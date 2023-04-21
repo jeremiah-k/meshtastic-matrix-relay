@@ -33,4 +33,4 @@ jobs:
         uses: actions/upload-artifact@v2
         with:
           name: meshtastic-matrix-relay-windows
-          path: dist/main.exe
+          path: dist/mmrelay.exe
