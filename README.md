@@ -91,7 +91,6 @@ python main.py
 Example output:
 ```
 $ python main.py
-$ python main.py
 INFO:meshtastic.matrix.relay:Starting Meshtastic <==> Matrix Relay...
 INFO:meshtastic.matrix.relay:Connecting to radio at meshtastic.local ...
 INFO:meshtastic.matrix.relay:Connected to radio at meshtastic.local.
