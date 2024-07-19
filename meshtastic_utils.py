@@ -16,7 +16,7 @@ logger = get_logger(name="Meshtastic")
 
 meshtastic_client = None
 main_loop = None
-session_start_time = time.time()
+last_packet_timestamp = None  # Track the last received packet's timestamp
 
 def connect_meshtastic(force_connect=False):
     global meshtastic_client
@@ -104,11 +104,15 @@ def on_meshtastic_message(packet, loop=None):
 
     sender = packet["fromId"]
 
-    # Only process packets that are newer than the session start time
+    # Only process packets that are newer than the last known timestamp
+    global last_packet_timestamp
     packet_timestamp = packet["rxTime"] / 1000  # Convert milliseconds to seconds
-    if packet_timestamp < session_start_time:
+
+    if last_packet_timestamp is not None and packet_timestamp <= last_packet_timestamp:
         logger.info(f"Skipping old packet from {sender} with timestamp {packet_timestamp}")
         return
+
+    last_packet_timestamp = packet_timestamp
 
     if "text" in packet["decoded"] and packet["decoded"]["text"]:
         text = packet["decoded"]["text"]
