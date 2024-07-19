@@ -16,6 +16,7 @@ logger = get_logger(name="Meshtastic")
 
 meshtastic_client = None
 main_loop = None
+session_start_time = time.time()
 
 def connect_meshtastic(force_connect=False):
     global meshtastic_client
@@ -62,9 +63,9 @@ def connect_meshtastic(force_connect=False):
                 logger.info(f"Connecting to host {target_host} ...")
                 meshtastic_client = meshtastic.tcp_interface.TCPInterface(hostname=target_host)
 
-            successful = True
             nodeInfo = meshtastic_client.getMyNodeInfo()
             logger.info(f"Connected to {nodeInfo['user']['shortName']} / {nodeInfo['user']['hwModel']}")
+            successful = True
         
         except (BleakDBusError, BleakError, meshtastic.ble_interface.BLEInterface.BLEError, Exception) as e:
             attempts += 1
@@ -87,11 +88,12 @@ async def reconnect():
     backoff_time = 10
     while True:
         try:
-            logger.info(f"Reconnection attempt starting in {backoff_time} seconds...")
             await asyncio.sleep(backoff_time)
-            meshtastic_client = connect_meshtastic(force_connect=True)
-            if meshtastic_client:
+            client = connect_meshtastic(force_connect=True)
+            if client and client.getMyNodeInfo():
                 logger.info("Reconnected successfully.")
+                global meshtastic_client
+                meshtastic_client = client
                 break
         except Exception as e:
             logger.error(f"Reconnection attempt failed: {e}")
@@ -101,6 +103,12 @@ def on_meshtastic_message(packet, loop=None):
     from matrix_utils import matrix_relay
 
     sender = packet["fromId"]
+
+    # Only process packets that are newer than the session start time
+    packet_timestamp = packet["rxTime"] / 1000  # Convert milliseconds to seconds
+    if packet_timestamp < session_start_time:
+        logger.info(f"Skipping old packet from {sender} with timestamp {packet_timestamp}")
+        return
 
     if "text" in packet["decoded"] and packet["decoded"]["text"]:
         text = packet["decoded"]["text"]
@@ -190,7 +198,9 @@ async def check_connection():
         if meshtastic_client:
             try:
                 # Attempt a read operation to check if the connection is alive
-                meshtastic_client.getMyNodeInfo()
+                nodeInfo = meshtastic_client.getMyNodeInfo()
+                if not nodeInfo:
+                    raise Exception("Connection lost")
             except (BleakDBusError, BleakError, meshtastic.ble_interface.BLEInterface.BLEError, Exception) as e:
                 logger.error(f"{connection_type.capitalize()} connection lost: {e}")
                 on_lost_meshtastic_connection(meshtastic_client)
