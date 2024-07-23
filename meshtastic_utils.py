@@ -90,11 +90,12 @@ async def reconnect():
     backoff_time = 10
     max_backoff_time = 300  # Cap backoff at 5 minutes
     logger.info(f"Attempting to reconnect...")
-    while True:
+    while reconnecting:
         try:
             # Ensure previous connection is closed properly
             if meshtastic_client:
                 meshtastic_client.close()
+                meshtastic_client = None
             meshtastic_client = connect_meshtastic(force_connect=True)
             if meshtastic_client:
                 logger.info("Reconnected successfully.")
