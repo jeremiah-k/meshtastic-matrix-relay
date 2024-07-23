@@ -16,6 +16,7 @@ logger = get_logger(name="Meshtastic")
 
 meshtastic_client = None
 main_loop = None
+reconnecting = False
 
 def connect_meshtastic(force_connect=False):
     global meshtastic_client
@@ -79,11 +80,13 @@ def connect_meshtastic(force_connect=False):
 
 def on_lost_meshtastic_connection(interface=None):
     logger.error("Lost connection. Reconnecting...")
-    global main_loop
-    if main_loop:
+    global main_loop, reconnecting
+    if not reconnecting and main_loop:
+        reconnecting = True
         asyncio.run_coroutine_threadsafe(reconnect(), main_loop)
 
 async def reconnect():
+    global reconnecting
     backoff_time = 10
     while True:
         try:
@@ -92,6 +95,7 @@ async def reconnect():
             meshtastic_client = connect_meshtastic(force_connect=True)
             if meshtastic_client:
                 logger.info("Reconnected successfully.")
+                reconnecting = False
                 break
         except Exception as e:
             logger.error(f"Reconnection attempt failed: {e}")
