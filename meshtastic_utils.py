@@ -86,7 +86,7 @@ def on_lost_meshtastic_connection(interface=None):
         asyncio.run_coroutine_threadsafe(reconnect(), main_loop)
 
 async def reconnect():
-    global reconnecting
+    global reconnecting, meshtastic_client
     backoff_time = 10
     while True:
         try:
