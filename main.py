@@ -23,6 +23,7 @@ from meshtastic_utils import (
     connect_meshtastic,
     on_meshtastic_message,
     on_lost_meshtastic_connection,
+    check_connection,
     logger as meshtastic_logger,
 )
 
@@ -66,6 +67,10 @@ async def main():
         on_room_message, (RoomMessageText, RoomMessageNotice)
     )
 
+    # Schedule check_connection
+    logger.debug("Scheduling check_connection coroutine")
+    asyncio.create_task(check_connection())
+
     # Start the Matrix client
     while True:
         try:
@@ -81,6 +86,5 @@ async def main():
             matrix_logger.error(f"Error syncing with server: {e}")
 
         await asyncio.sleep(60)  # Update longnames & shortnames every 60 seconds
-
 
 asyncio.run(main())
