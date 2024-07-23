@@ -202,6 +202,7 @@ async def check_connection():
             try:
                 # Check actual BLE connection status
                 if connection_type == "ble":
+                    logger.debug(f"Checking BLE connection status: {meshtastic_client.client.bleak_client.is_connected}")
                     if not meshtastic_client.client.bleak_client.is_connected:
                         raise BleakError("BLE connection lost")
 
