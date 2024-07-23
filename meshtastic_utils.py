@@ -190,6 +190,10 @@ async def check_connection():
     while True:
         if meshtastic_client:
             try:
+                # Check actual BLE connection status
+                if connection_type == "ble" and not meshtastic_client.client.is_connected:
+                    raise BleakError("BLE connection lost")
+
                 # Attempt a read operation to check if the connection is alive
                 node_info = meshtastic_client.getMyNodeInfo()
                 logger.debug(f"Connection is alive, node info: {node_info}")
