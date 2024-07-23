@@ -16,7 +16,7 @@ logger = get_logger(name="Meshtastic")
 
 meshtastic_client = None
 main_loop = None
-reconnecting = False
+reconnecting = False  # Global variable to manage reconnection state
 
 def connect_meshtastic(force_connect=False):
     global meshtastic_client
