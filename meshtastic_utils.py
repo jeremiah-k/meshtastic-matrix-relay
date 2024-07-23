@@ -164,7 +164,7 @@ def on_meshtastic_message(packet, loop=None):
         logger.info(f"Relaying Meshtastic message from {longname} to Matrix: {formatted_message}")
 
         for room in matrix_rooms:
-            if room["meshtastic_channel"] == channel):
+            if room["meshtastic_channel"] == channel:
                 asyncio.run_coroutine_threadsafe(
                     matrix_relay(
                         room["id"],
