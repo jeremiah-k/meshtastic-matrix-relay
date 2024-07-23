@@ -185,6 +185,7 @@ def on_meshtastic_message(packet, loop=None):
 
 async def check_connection():
     global meshtastic_client
+    logger.debug("Starting check_connection coroutine")
     connection_type = relay_config["meshtastic"]["connection_type"]
     while True:
         if meshtastic_client:
@@ -198,7 +199,9 @@ async def check_connection():
         await asyncio.sleep(5)  # Check connection every 5 seconds
 
 if __name__ == "__main__":
+    logger.debug("Starting main function")
     meshtastic_client = connect_meshtastic()
     main_loop = asyncio.get_event_loop()
     main_loop.create_task(check_connection())
+    logger.debug("Running main event loop")
     main_loop.run_forever()
