@@ -92,6 +92,9 @@ async def reconnect():
     logger.info(f"Attempting to reconnect...")
     while True:
         try:
+            # Ensure previous connection is closed properly
+            if meshtastic_client:
+                meshtastic_client.close()
             meshtastic_client = connect_meshtastic(force_connect=True)
             if meshtastic_client:
                 logger.info("Reconnected successfully.")
@@ -161,7 +164,7 @@ def on_meshtastic_message(packet, loop=None):
         logger.info(f"Relaying Meshtastic message from {longname} to Matrix: {formatted_message}")
 
         for room in matrix_rooms:
-            if room["meshtastic_channel"] == channel:
+            if room["meshtastic_channel"] == channel):
                 asyncio.run_coroutine_threadsafe(
                     matrix_relay(
                         room["id"],
