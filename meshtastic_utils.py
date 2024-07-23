@@ -190,7 +190,8 @@ async def check_connection():
         if meshtastic_client:
             try:
                 # Attempt a read operation to check if the connection is alive
-                meshtastic_client.getMyNodeInfo()
+                node_info = meshtastic_client.getMyNodeInfo()
+                logger.debug(f"Connection is alive, node info: {node_info}")
             except (BleakDBusError, BleakError, meshtastic.ble_interface.BLEInterface.BLEError, Exception) as e:
                 logger.error(f"{connection_type.capitalize()} connection lost: {e}")
                 on_lost_meshtastic_connection(meshtastic_client)
