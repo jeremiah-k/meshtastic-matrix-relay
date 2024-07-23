@@ -88,10 +88,10 @@ def on_lost_meshtastic_connection(interface=None):
 async def reconnect():
     global reconnecting, meshtastic_client
     backoff_time = 10
+    max_backoff_time = 300  # Cap backoff at 5 minutes
+    logger.info(f"Attempting to reconnect...")
     while True:
         try:
-            logger.info(f"Reconnection attempt starting in {backoff_time} seconds...")
-            await asyncio.sleep(backoff_time)
             meshtastic_client = connect_meshtastic(force_connect=True)
             if meshtastic_client:
                 logger.info("Reconnected successfully.")
@@ -99,7 +99,9 @@ async def reconnect():
                 break
         except Exception as e:
             logger.error(f"Reconnection attempt failed: {e}")
-            backoff_time = min(backoff_time * 2, 300)  # Cap backoff at 5 minutes
+            backoff_time = min(backoff_time * 2, max_backoff_time)
+            logger.info(f"Next reconnection attempt in {backoff_time} seconds...")
+            await asyncio.sleep(backoff_time)
 
 def on_meshtastic_message(packet, loop=None):
     from matrix_utils import matrix_relay
