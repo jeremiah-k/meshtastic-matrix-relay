@@ -9,6 +9,7 @@ from log_utils import get_logger
 from db_utils import get_longname, get_shortname
 from plugin_loader import load_plugins
 from bleak.exc import BleakDBusError, BleakError
+import mesh_pb2
 
 matrix_rooms: List[dict] = relay_config["matrix_rooms"]
 
@@ -63,8 +64,9 @@ def connect_meshtastic(force_connect=False):
                 meshtastic_client = meshtastic.tcp_interface.TCPInterface(hostname=target_host)
 
             successful = True
-            nodeInfo = meshtastic_client.getMyNodeInfo()
-            logger.info(f"Connected to {nodeInfo['user']['shortName']} / {nodeInfo['user']['hwModel']}")
+            # Use getMetadata instead of getMyNodeInfo for checking connection
+            meshtastic_client.localNode.getMetadata()  
+            logger.info("Connected to the Meshtastic node")
         
         except (BleakDBusError, BleakError, meshtastic.ble_interface.BLEInterface.BLEError, Exception) as e:
             attempts += 1
@@ -189,15 +191,28 @@ async def check_connection():
     while True:
         if meshtastic_client:
             try:
-                # Attempt a read operation to check if the connection is alive
-                meshtastic_client.getMyNodeInfo()
+                # Use getMetadata instead of getMyNodeInfo for checking connection
+                meshtastic_client.localNode.getMetadata()
+                logger.debug("Connection check passed using getMetadata")
             except (BleakDBusError, BleakError, meshtastic.ble_interface.BLEInterface.BLEError, Exception) as e:
                 logger.error(f"{connection_type.capitalize()} connection lost: {e}")
                 on_lost_meshtastic_connection(meshtastic_client)
         await asyncio.sleep(5)  # Check connection every 5 seconds
 
+async def send_heartbeat():
+    global meshtastic_client
+    if meshtastic_client:
+        try:
+            p = mesh_pb2.ToRadio()
+            p.heartbeat.CopyFrom(mesh_pb2.Heartbeat())
+            meshtastic_client._sendToRadio(p)
+            logger.debug("Heartbeat sent")
+        except Exception as e:
+            logger.error(f"Failed to send heartbeat: {e}")
+
 if __name__ == "__main__":
     meshtastic_client = connect_meshtastic()
     main_loop = asyncio.get_event_loop()
     main_loop.create_task(check_connection())
+    main_loop.create_task(send_heartbeat())  # Start the heartbeat task
     main_loop.run_forever()
