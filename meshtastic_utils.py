@@ -187,34 +187,28 @@ def on_meshtastic_message(packet, loop=None):
                 if found_matching_plugin:
                     logger.debug(f"Processed {portnum} with plugin {plugin.plugin_name}")
 
-async def check_connection():
+async def monitor_connection():
     global meshtastic_client
     connection_type = relay_config["meshtastic"]["connection_type"]
     while True:
         if meshtastic_client:
             try:
-                # Use getMetadata instead of getMyNodeInfo for checking connection
+                # Send heartbeat
+                p = ToRadio()
+                p.heartbeat.CopyFrom(Heartbeat())
+                meshtastic_client._sendToRadio(p)
+                logger.debug("Heartbeat sent")
+
+                # Check connection using getMetadata
                 meshtastic_client.localNode.getMetadata()
                 logger.debug("Connection check passed using getMetadata")
             except (BleakDBusError, BleakError, meshtastic.ble_interface.BLEInterface.BLEError, Exception) as e:
                 logger.error(f"{connection_type.capitalize()} connection lost: {e}")
                 on_lost_meshtastic_connection(meshtastic_client)
-        await asyncio.sleep(5)  # Check connection every 5 seconds
-
-async def send_heartbeat():
-    global meshtastic_client
-    if meshtastic_client:
-        try:
-            p = ToRadio()
-            p.heartbeat.CopyFrom(Heartbeat())
-            meshtastic_client._sendToRadio(p)
-            logger.debug("Heartbeat sent")
-        except Exception as e:
-            logger.error(f"Failed to send heartbeat: {e}")
+        await asyncio.sleep(30)  # Monitor connection and send heartbeat every 30 seconds
 
 if __name__ == "__main__":
     meshtastic_client = connect_meshtastic()
     main_loop = asyncio.get_event_loop()
-    main_loop.create_task(check_connection())
-    main_loop.create_task(send_heartbeat())  # Start the heartbeat task
+    main_loop.create_task(monitor_connection())
     main_loop.run_forever()
