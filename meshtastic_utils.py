@@ -9,7 +9,7 @@ from log_utils import get_logger
 from db_utils import get_longname, get_shortname
 from plugin_loader import load_plugins
 from bleak.exc import BleakDBusError, BleakError
-import mesh_pb2
+from meshtastic.mesh_pb2 import ToRadio, Heartbeat
 
 matrix_rooms: List[dict] = relay_config["matrix_rooms"]
 
@@ -203,8 +203,8 @@ async def send_heartbeat():
     global meshtastic_client
     if meshtastic_client:
         try:
-            p = mesh_pb2.ToRadio()
-            p.heartbeat.CopyFrom(mesh_pb2.Heartbeat())
+            p = ToRadio()
+            p.heartbeat.CopyFrom(Heartbeat())
             meshtastic_client._sendToRadio(p)
             logger.debug("Heartbeat sent")
         except Exception as e:
