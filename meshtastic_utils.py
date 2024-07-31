@@ -9,7 +9,9 @@ from log_utils import get_logger
 from db_utils import get_longname, get_shortname
 from plugin_loader import load_plugins
 from bleak.exc import BleakDBusError, BleakError
-from meshtastic.mesh_pb2 import ToRadio, Heartbeat
+
+# Import protobufs from meshtastic
+from meshtastic.protobuf.mesh_pb2 import ToRadio, Heartbeat
 
 matrix_rooms: List[dict] = relay_config["matrix_rooms"]
 
