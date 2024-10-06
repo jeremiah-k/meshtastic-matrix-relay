@@ -17,7 +17,8 @@ from bleak.exc import BleakDBusError, BleakError
 from pubsub import pub
 
 from config import relay_config
-from db_utils import get_logger
+from db_utils import get_longname, get_shortname  # Corrected import
+from log_utils import get_logger  # Corrected import
 from plugin_loader import load_plugins
 
 # Extract matrix rooms configuration
@@ -311,8 +312,8 @@ def on_meshtastic_message(packet, interface):
 
         logger.info(f"Processing inbound radio message from {sender} on channel {channel}")
 
-        longname = get_logger(sender) or sender
-        shortname = get_logger(sender) or sender
+        longname = get_longname(sender) or sender  # Corrected function call
+        shortname = get_shortname(sender) or sender  # Corrected function call
         meshnet_name = relay_config["meshtastic"]["meshnet_name"]
 
         formatted_message = f"[{longname}/{meshnet_name}]: {text}"
