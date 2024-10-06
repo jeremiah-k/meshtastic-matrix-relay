@@ -1,11 +1,10 @@
-# meshtastic_utils.py
 import asyncio
 import time
 import threading
 import os
-import socket  # Import socket for TCP exceptions
+import socket  # For TCP exceptions
 import serial  # For serial port exceptions
-import serial.tools.list_ports  # Import serial tools for port listing
+import serial.tools.list_ports  # For port listing
 from typing import List
 import sys
 import contextlib
@@ -17,8 +16,8 @@ from bleak.exc import BleakDBusError, BleakError
 from pubsub import pub
 
 from config import relay_config
-from db_utils import get_longname, get_shortname  # Corrected import
-from log_utils import get_logger  # Corrected import
+from db_utils import get_longname, get_shortname
+from log_utils import get_logger
 from plugin_loader import load_plugins
 
 # Extract matrix rooms configuration
@@ -141,11 +140,12 @@ def connect_meshtastic(force_connect=False):
                     logger.info(f"Connected to {nodeInfo['user']['shortName']} / {nodeInfo['user']['hwModel']}")
                 else:
                     logger.info("Connected to Meshtastic device.")
+                
+                    # Get metadata and log firmware version
+                    metadata = meshtastic_client.localNode.getMetadata()
+                    logger.info(f"Firmware version: {metadata.get('firmware_version')}")
+                    logger.debug(f"Device state version: {metadata.get('device_state_version')}")
 
-                # Get metadata and log firmware version
-                metadata = meshtastic_client.localNode.getMetadata()
-                logger.info(f"Firmware version: {metadata.get('firmware_version')}")
-                logger.info(f"Device state version: {metadata.get('device_state_version')}")
 
                 # Subscribe to message events
                 pub.subscribe(on_meshtastic_message, "meshtastic.receive")
@@ -157,7 +157,7 @@ def connect_meshtastic(force_connect=False):
                     break
                 attempts += 1
                 if retry_limit == 0 or attempts <= retry_limit:
-                    wait_time = min(attempts * 2, 30)  # Cap wait time to 30 seconds
+                    wait_time = min(attempts * 2, 30)
                     logger.warning(f"Attempt #{attempts - 1} failed. Retrying in {wait_time} secs: {e}")
                     time.sleep(wait_time)
                 else:
@@ -169,7 +169,7 @@ def connect_meshtastic(force_connect=False):
                     break
                 attempts += 1
                 if retry_limit == 0 or attempts <= retry_limit:
-                    wait_time = min(attempts * 2, 30)  # Cap wait time to 30 seconds
+                    wait_time = min(attempts * 2, 30)
                     logger.warning(f"Attempt #{attempts - 1} failed. Retrying in {wait_time} secs: {e}")
                     time.sleep(wait_time)
                 else:
@@ -181,7 +181,7 @@ def connect_meshtastic(force_connect=False):
                     break
                 attempts += 1
                 if retry_limit == 0 or attempts <= retry_limit:
-                    wait_time = min(attempts * 2, 30)  # Cap wait time to 30 seconds
+                    wait_time = min(attempts * 2, 30)
                     logger.warning(f"Attempt #{attempts - 1} failed. Retrying in {wait_time} secs: {e}")
                     time.sleep(wait_time)
                 else:
@@ -193,7 +193,7 @@ def connect_meshtastic(force_connect=False):
                     break
                 attempts += 1
                 if retry_limit == 0 or attempts <= retry_limit:
-                    wait_time = min(attempts * 2, 30)  # Cap wait time to 30 seconds
+                    wait_time = min(attempts * 2, 30)
                     logger.warning(f"Attempt #{attempts - 1} failed. Retrying in {wait_time} secs: {e}")
                     time.sleep(wait_time)
                 else:
@@ -312,8 +312,8 @@ def on_meshtastic_message(packet, interface):
 
         logger.info(f"Processing inbound radio message from {sender} on channel {channel}")
 
-        longname = get_longname(sender) or sender  # Corrected function call
-        shortname = get_shortname(sender) or sender  # Corrected function call
+        longname = get_longname(sender) or sender
+        shortname = get_shortname(sender) or sender
         meshnet_name = relay_config["meshtastic"]["meshnet_name"]
 
         formatted_message = f"[{longname}/{meshnet_name}]: {text}"
