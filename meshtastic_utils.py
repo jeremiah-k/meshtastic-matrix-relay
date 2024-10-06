@@ -382,6 +382,7 @@ async def check_connection():
             try:
                 # Suppress stdout when calling getMetadata() - it's spammy otherwise
                 with suppress_stdout():
+                    # Preserve these methods & comments.
                     # A Meshtastic python dev recommended we use getMetadata()
                     meshtastic_client.localNode.getMetadata()
             except Exception as e:
