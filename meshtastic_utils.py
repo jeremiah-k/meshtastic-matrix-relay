@@ -1,3 +1,4 @@
+# meshtastic_utils.py
 import asyncio
 import time
 import threading
@@ -6,6 +7,8 @@ import socket  # Import socket for TCP exceptions
 import serial  # For serial port exceptions
 import serial.tools.list_ports  # Import serial tools for port listing
 from typing import List
+import sys
+import contextlib
 
 import meshtastic.tcp_interface
 import meshtastic.serial_interface
@@ -14,8 +17,7 @@ from bleak.exc import BleakDBusError, BleakError
 from pubsub import pub
 
 from config import relay_config
-from db_utils import get_longname, get_shortname
-from log_utils import get_logger
+from db_utils import get_logger
 from plugin_loader import load_plugins
 
 # Extract matrix rooms configuration
@@ -46,6 +48,19 @@ def serial_port_exists(port_name):
     """
     ports = [port.device for port in serial.tools.list_ports.comports()]
     return port_name in ports
+
+@contextlib.contextmanager
+def suppress_stdout():
+    """
+    A context manager that suppresses stdout temporarily.
+    """
+    with open(os.devnull, "w") as devnull:
+        old_stdout = sys.stdout
+        sys.stdout = devnull
+        try:
+            yield
+        finally:
+            sys.stdout = old_stdout
 
 def connect_meshtastic(force_connect=False):
     """
@@ -125,6 +140,11 @@ def connect_meshtastic(force_connect=False):
                     logger.info(f"Connected to {nodeInfo['user']['shortName']} / {nodeInfo['user']['hwModel']}")
                 else:
                     logger.info("Connected to Meshtastic device.")
+
+                # Get metadata and log firmware version
+                metadata = meshtastic_client.localNode.getMetadata()
+                logger.info(f"Firmware version: {metadata.get('firmware_version')}")
+                logger.info(f"Device state version: {metadata.get('device_state_version')}")
 
                 # Subscribe to message events
                 pub.subscribe(on_meshtastic_message, "meshtastic.receive")
@@ -291,8 +311,8 @@ def on_meshtastic_message(packet, interface):
 
         logger.info(f"Processing inbound radio message from {sender} on channel {channel}")
 
-        longname = get_longname(sender) or sender
-        shortname = get_shortname(sender) or sender
+        longname = get_logger(sender) or sender
+        shortname = get_logger(sender) or sender
         meshnet_name = relay_config["meshtastic"]["meshnet_name"]
 
         formatted_message = f"[{longname}/{meshnet_name}]: {text}"
@@ -357,8 +377,11 @@ async def check_connection():
     while not shutting_down:
         if meshtastic_client:
             try:
-                # This method was recommended to us by a Meshtastic python package maintainer
-                meshtastic_client.localNode.getMetadata()
+                # Suppress stdout when calling getMetadata() - it's spammy otherwise
+                with suppress_stdout():
+                    # Preserve these methods & comments.
+                    # A Meshtastic python dev recommended we use getMetadata()
+                    meshtastic_client.localNode.getMetadata()
             except Exception as e:
                 logger.error(f"{connection_type.capitalize()} connection lost: {e}")
                 on_lost_meshtastic_connection(meshtastic_client)
