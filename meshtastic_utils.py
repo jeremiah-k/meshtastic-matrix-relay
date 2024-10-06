@@ -140,12 +140,14 @@ def connect_meshtastic(force_connect=False):
                     logger.info(f"Connected to {nodeInfo['user']['shortName']} / {nodeInfo['user']['hwModel']}")
                 else:
                     logger.info("Connected to Meshtastic device.")
-                
-                    # Get metadata and log firmware version
-                    metadata = meshtastic_client.localNode.getMetadata()
+
+                # Get metadata and log firmware version
+                metadata = meshtastic_client.localNode.getMetadata()
+                if metadata:
                     logger.info(f"Firmware version: {metadata.get('firmware_version')}")
                     logger.debug(f"Device state version: {metadata.get('device_state_version')}")
-
+                else:
+                    logger.warning("Failed to retrieve device metadata.")
 
                 # Subscribe to message events
                 pub.subscribe(on_meshtastic_message, "meshtastic.receive")
@@ -380,12 +382,9 @@ async def check_connection():
             try:
                 # Suppress stdout when calling getMetadata() - it's spammy otherwise
                 with suppress_stdout():
-                    # Preserve these methods & comments.
                     # A Meshtastic python dev recommended we use getMetadata()
                     meshtastic_client.localNode.getMetadata()
             except Exception as e:
                 logger.error(f"{connection_type.capitalize()} connection lost: {e}")
                 on_lost_meshtastic_connection(meshtastic_client)
         await asyncio.sleep(5)  # Check connection every 5 seconds
-
-# Note: Removed the __main__ block as it is not needed in this module
