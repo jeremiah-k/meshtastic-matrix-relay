@@ -70,7 +70,7 @@ async def connect_matrix():
     else:
         matrix_client.device_id = whoami_response.device_id
         if matrix_client.device_id:
-            logger.info(f"Retrieved device_id: {matrix_client.device_id}")
+            logger.debug(f"Retrieved device_id: {matrix_client.device_id}")
         else:
             logger.warning("device_id not returned by whoami()")
 
