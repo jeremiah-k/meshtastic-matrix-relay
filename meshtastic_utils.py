@@ -165,7 +165,7 @@ def on_lost_meshtastic_connection(interface=None):
     global meshtastic_client, reconnecting, shutting_down, event_loop, reconnect_task
     with meshtastic_lock:
         if shutting_down:
-            logger.info("Shutdown in progress. Not attempting to reconnect.")
+            logger.debug("Shutdown in progress. Not attempting to reconnect.")
             return
         if reconnecting:
             logger.debug("Reconnection already in progress. Skipping additional reconnection attempt.")
