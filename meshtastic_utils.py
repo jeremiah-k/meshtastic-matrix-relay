@@ -1,10 +1,18 @@
+"""
+This module handles the connection between the relay and the Meshtastic device.
+It supports serial, BLE, and network (TCP) connections and includes improved
+connection handling with proper error detection.
+"""
 import asyncio
 import time
 import threading
 import os
 import serial  # For serial port exceptions
 import serial.tools.list_ports  # Import serial tools for port listing
-from typing import List
+import socket  # For socket errors
+from typing import List, Optional
+import contextlib
+import io
 
 import meshtastic.tcp_interface
 import meshtastic.serial_interface
@@ -46,6 +54,7 @@ def serial_port_exists(port_name):
     ports = [port.device for port in serial.tools.list_ports.comports()]
     return port_name in ports
 
+
 def connect_meshtastic(force_connect=False):
     """
     Establish a connection to the Meshtastic device.
@@ -82,35 +91,11 @@ def connect_meshtastic(force_connect=False):
         while not successful and (retry_limit == 0 or attempts <= retry_limit) and not shutting_down:
             try:
                 if connection_type == "serial":
-                    serial_port = relay_config["meshtastic"]["serial_port"]
-                    logger.info(f"Connecting to serial port {serial_port} ...")
-
-                    # Check if serial port exists
-                    if not serial_port_exists(serial_port):
-                        logger.warning(f"Serial port {serial_port} does not exist. Waiting...")
-                        time.sleep(5)
-                        attempts += 1
-                        continue
-
-                    meshtastic_client = meshtastic.serial_interface.SerialInterface(serial_port)
+                    meshtastic_client = connect_serial()
                 elif connection_type == "ble":
-                    ble_address = relay_config["meshtastic"].get("ble_address")
-                    if ble_address:
-                        logger.info(f"Connecting to BLE address {ble_address} ...")
-                        meshtastic_client = meshtastic.ble_interface.BLEInterface(
-                            address=ble_address,
-                            noProto=False,
-                            debugOut=None,
-                            noNodes=False
-                        )
-                    else:
-                        logger.error("No BLE address provided.")
-                        return None
+                    meshtastic_client = connect_ble()
                 else:
-                    target_host = relay_config["meshtastic"]["host"]
-                    logger.info(f"Connecting to host {target_host} ...")
-                    meshtastic_client = meshtastic.tcp_interface.TCPInterface(hostname=target_host)
-
+                    meshtastic_client = connect_network()
                 successful = True
                 nodeInfo = meshtastic_client.getMyNodeInfo()
                 logger.info(f"Connected to {nodeInfo['user']['shortName']} / {nodeInfo['user']['hwModel']}")
@@ -119,7 +104,7 @@ def connect_meshtastic(force_connect=False):
                 pub.subscribe(on_meshtastic_message, "meshtastic.receive")
                 pub.subscribe(on_lost_meshtastic_connection, "meshtastic.connection.lost")
 
-            except (serial.SerialException, BleakDBusError, BleakError, Exception) as e:
+            except (serial.SerialException, BleakDBusError, BleakError, socket.error, Exception) as e:
                 if shutting_down:
                     logger.info("Shutdown in progress. Aborting connection attempts.")
                     break
@@ -133,6 +118,45 @@ def connect_meshtastic(force_connect=False):
                     return None
 
     return meshtastic_client
+
+
+def connect_serial():
+    serial_port = relay_config["meshtastic"]["serial_port"]
+    logger.info(f"Connecting to serial port {serial_port} ...")
+
+    # Check if serial port exists
+    if not serial_port_exists(serial_port):
+        raise serial.SerialException(f"Serial port {serial_port} does not exist.")
+
+    # Use noNodes=True to speed up connection and avoid unnecessary data
+    return meshtastic.serial_interface.SerialInterface(serial_port, noNodes=True)
+
+
+def connect_ble():
+    ble_address = relay_config["meshtastic"].get("ble_address")
+    if ble_address:
+        logger.info(f"Connecting to BLE address {ble_address} ...")
+        return meshtastic.ble_interface.BLEInterface(
+            address=ble_address,
+            noProto=False,
+            debugOut=None,
+            noNodes=True  # Use noNodes=True to speed up connection
+        )
+    else:
+        raise ValueError("No BLE address provided.")
+
+
+def connect_network():
+    target_host = relay_config["meshtastic"]["host"]
+    target_port = relay_config["meshtastic"].get("tcp_port", 4403)
+    logger.info(f"Connecting to host {target_host}:{target_port} ...")
+    try:
+        # Use noNodes=True to speed up connection
+        return meshtastic.tcp_interface.TCPInterface(hostname=target_host, portNumber=target_port, noNodes=True)
+    except Exception as e:
+        logger.error(f"Failed to connect to host {target_host}:{target_port}: {e}")
+        raise
+
 
 def on_lost_meshtastic_connection(interface=None):
     """
@@ -165,6 +189,7 @@ def on_lost_meshtastic_connection(interface=None):
         if event_loop:
             reconnect_task = asyncio.run_coroutine_threadsafe(reconnect(), event_loop)
 
+
 async def reconnect():
     """
     Asynchronously attempts to reconnect to the Meshtastic device with exponential backoff.
@@ -193,6 +218,7 @@ async def reconnect():
     finally:
         reconnecting = False
 
+
 def on_meshtastic_message(packet, interface):
     """
     Handle incoming Meshtastic messages and relay them to Matrix.
@@ -210,96 +236,92 @@ def on_meshtastic_message(packet, interface):
 
     loop = event_loop
 
-    sender = packet.get("fromId", packet.get("from"))
+    try:
+        sender = packet.get("fromId", packet.get("from"))
 
-    decoded = packet.get("decoded", {})
-    text = decoded.get("text")
+        decoded = packet.get("decoded", {})
+        text = decoded.get("text", "")
 
-    if text:
-        # Determine the channel
-        channel = packet.get("channel")
-        if channel is None:
-            if decoded.get("portnum") == "TEXT_MESSAGE_APP" or decoded.get("portnum") == 1:
-                channel = 0
-            elif decoded.get("portnum") == "DETECTION_SENSOR_APP":
-                channel = 0
-            else:
-                logger.debug(f"Unknown portnum {decoded.get('portnum')}, cannot determine channel")
+        if text:
+            # Determine the channel
+            channel = packet.get("channel", 0)
+            portnum = decoded.get("portnum", "TEXT_MESSAGE_APP")
+            if channel is None:
+                if portnum == "TEXT_MESSAGE_APP" or portnum == 1:
+                    channel = 0
+                elif portnum == "DETECTION_SENSOR_APP":
+                    channel = 0
+                else:
+                    logger.debug(f"Unknown portnum {portnum}, cannot determine channel")
+                    return
+
+            # Check if the channel is mapped to a Matrix room
+            room = next((r for r in matrix_rooms if r["meshtastic_channel"] == channel), None)
+            if not room:
+                logger.debug(f"Skipping message from unmapped channel {channel}")
+                return
+            if (portnum == "DETECTION_SENSOR_APP"
+                and not relay_config["meshtastic"].get("detection_sensor", False)):
+                logger.debug("Detection sensor packet received, but detection sensor processing is disabled.")
                 return
 
-        # Check if the channel is mapped to a Matrix room
-        channel_mapped = False
-        for room in matrix_rooms:
-            if room["meshtastic_channel"] == channel:
-                channel_mapped = True
-                break
+            logger.info(f"Processing inbound radio message from {sender} on channel {channel}")
 
-        if not channel_mapped:
-            logger.debug(f"Skipping message from unmapped channel {channel}")
-            return
-        if (decoded.get("portnum") == "DETECTION_SENSOR_APP"
-            and not relay_config["meshtastic"].get("detection_sensor", False)):
-            logger.debug("Detection sensor packet received, but detection sensor processing is disabled.")
-            return
+            longname = get_longname(sender) or sender
+            shortname = get_shortname(sender) or sender
+            meshnet_name = relay_config["meshtastic"]["meshnet_name"]
 
-        logger.info(f"Processing inbound radio message from {sender} on channel {channel}")
+            formatted_message = f"[{longname}/{meshnet_name}]: {text}"
 
-        longname = get_longname(sender) or sender
-        shortname = get_shortname(sender) or sender
-        meshnet_name = relay_config["meshtastic"]["meshnet_name"]
+            # Plugin functionality
+            plugins = load_plugins()
+            found_matching_plugin = False
+            for plugin in plugins:
+                if not found_matching_plugin:
+                    result = asyncio.run_coroutine_threadsafe(
+                        plugin.handle_meshtastic_message(
+                            packet, formatted_message, longname, meshnet_name
+                        ),
+                        loop=loop,
+                    )
+                    found_matching_plugin = result.result()
+                    if found_matching_plugin:
+                        logger.debug(f"Processed by plugin {plugin.plugin_name}")
 
-        formatted_message = f"[{longname}/{meshnet_name}]: {text}"
+            if found_matching_plugin:
+                return
 
-        # Plugin functionality
-        plugins = load_plugins()
-        found_matching_plugin = False
-        for plugin in plugins:
-            if not found_matching_plugin:
-                result = asyncio.run_coroutine_threadsafe(
-                    plugin.handle_meshtastic_message(
-                        packet, formatted_message, longname, meshnet_name
-                    ),
-                    loop=loop,
-                )
-                found_matching_plugin = result.result()
-                if found_matching_plugin:
-                    logger.debug(f"Processed by plugin {plugin.plugin_name}")
+            logger.info(f"Relaying Meshtastic message from {longname} to Matrix")
 
-        if found_matching_plugin:
-            return
-
-        logger.info(f"Relaying Meshtastic message from {longname} to Matrix")
-
-        # Relay message to Matrix rooms
-        for room in matrix_rooms:
-            if room["meshtastic_channel"] == channel:
-                asyncio.run_coroutine_threadsafe(
-                    matrix_relay(
-                        room["id"],
-                        formatted_message,
-                        longname,
-                        shortname,
-                        meshnet_name,
-                        decoded.get("portnum"),
-                    ),
-                    loop=loop,
-                )
-    else:
-        # Handle non-text messages via plugins
-        portnum = decoded.get("portnum")
-        plugins = load_plugins()
-        found_matching_plugin = False
-        for plugin in plugins:
-            if not found_matching_plugin:
+            # Relay message to Matrix rooms
+            asyncio.run_coroutine_threadsafe(
+                matrix_relay(
+                    room["id"],
+                    formatted_message,
+                    longname,
+                    shortname,
+                    meshnet_name,
+                    decoded.get("portnum"),
+                ),
+                loop=loop,
+            )
+        else:
+            # Handle non-text messages via plugins
+            portnum = decoded.get("portnum")
+            plugins = load_plugins()
+            for plugin in plugins:
                 result = asyncio.run_coroutine_threadsafe(
                     plugin.handle_meshtastic_message(
                         packet, formatted_message=None, longname=None, meshnet_name=None
                     ),
                     loop=loop,
                 )
-                found_matching_plugin = result.result()
-                if found_matching_plugin:
+                if result.result():
                     logger.debug(f"Processed {portnum} with plugin {plugin.plugin_name}")
+                    break
+    except Exception as e:
+        logger.exception(f"Error processing Meshtastic message: {e}")
+
 
 async def check_connection():
     """
@@ -310,8 +332,17 @@ async def check_connection():
     while not shutting_down:
         if meshtastic_client:
             try:
-                # Send a ping to check the connection
-                meshtastic_client.sendPing()
+                """
+                In order to detect and handle tcp interface disconnections, we need to use getMetadata() 
+                It checks the connection and keeps it alive but it spams output each time its called.
+                This uses Spudgunman's snippet which suppresses the output each time it's called.
+                """
+                output_capture = io.StringIO()
+                with contextlib.redirect_stdout(output_capture):
+                    meshtastic_client.localNode.getMetadata()
+                console_output = output_capture.getvalue()
+                if "firmware_version" not in console_output:
+                    raise Exception("Failed to get firmware version from node.")
             except Exception as e:
                 logger.error(f"{connection_type.capitalize()} connection lost: {e}")
                 on_lost_meshtastic_connection(meshtastic_client)
