@@ -257,20 +257,18 @@ def on_meshtastic_message(packet, interface):
     emoji_flag = 'emoji' in decoded and decoded['emoji'] == 1
 
     # Determine if the message is a direct message
-    myId = interface.myInfo.my_node_num  # Get relay's own node number
     from meshtastic.mesh_interface import BROADCAST_NUM
 
-    if toId == myId:
+    if toId == interface.myInfo.my_node_num:
         is_direct_message = True
     elif toId == BROADCAST_NUM:
         is_direct_message = False
     else:
-        # Message to someone else; we may ignore it
         is_direct_message = False
 
     meshnet_name = relay_config["meshtastic"]["meshnet_name"]
 
-    # Reaction handling (meshtastic->matrix)
+    # Meshtastic->Matrix reaction
     if replyId and emoji_flag and relay_reactions:
         longname = get_longname(sender) or str(sender)
         shortname = get_shortname(sender) or str(sender)
@@ -411,9 +409,9 @@ def on_meshtastic_message(packet, interface):
                     loop=loop,
                 )
     else:
-        # Handle non-text messages via plugins
+        # Non-text messages handled by plugins
         portnum = decoded.get("portnum")
-        from plugin_loader import load_plugins  # Import here to avoid circular imports
+        from plugin_loader import load_plugins
 
         plugins = load_plugins()
         found_matching_plugin = False
