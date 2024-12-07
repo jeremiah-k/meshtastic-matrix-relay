@@ -6,13 +6,13 @@ from typing import List
 import meshtastic.ble_interface
 import meshtastic.serial_interface
 import meshtastic.tcp_interface
-import serial  # For serial port exceptions
-import serial.tools.list_ports  # Import serial tools for port listing
+import serial
+import serial.tools.list_ports
 from bleak.exc import BleakDBusError, BleakError
 from pubsub import pub
 
 from config import relay_config
-from db_utils import get_longname, get_shortname, save_longname, save_shortname
+from db_utils import get_longname, get_shortname, save_longname, save_shortname, get_message_map_by_meshtastic_id, update_message_map_meshtastic_id, get_message_map_by_matrix_event_id
 from log_utils import get_logger
 
 # Do not import plugin_loader here to avoid circular imports
@@ -77,7 +77,7 @@ def connect_meshtastic(force_connect=False):
 
         # Initialize Meshtastic interface based on connection type
         connection_type = relay_config["meshtastic"]["connection_type"]
-        retry_limit = 0  # 0 for infinite retries
+        retry_limit = 0
         attempts = 1
         successful = False
 
@@ -226,15 +226,14 @@ async def reconnect():
 
 
 def on_meshtastic_message(packet, interface):
-    # Filter out TEXT_MESSAGE_APP packets with emoji or replyId
+    relay_reactions = relay_config["meshtastic"].get("relay_reactions", True)
+
     if packet.get('decoded', {}).get('portnum') == 'TEXT_MESSAGE_APP':
         decoded = packet.get('decoded', {})
-        if 'emoji' in decoded or 'replyId' in decoded:
-            logger.debug('Filtered out reaction/tapback packet.')
+        if not relay_reactions and ('emoji' in decoded or 'replyId' in decoded):
+            logger.debug('Filtered out reaction/tapback packet due to relay_reactions=false.')
             return
-    """
-    Handle incoming Meshtastic messages and relay them to Matrix.
-    """
+
     from matrix_utils import matrix_relay
 
     global event_loop
@@ -254,6 +253,8 @@ def on_meshtastic_message(packet, interface):
 
     decoded = packet.get("decoded", {})
     text = decoded.get("text")
+    replyId = decoded.get("replyId")
+    emoji_flag = 'emoji' in decoded and decoded['emoji'] == 1
 
     # Determine if the message is a direct message
     myId = interface.myInfo.my_node_num  # Get relay's own node number
@@ -266,6 +267,44 @@ def on_meshtastic_message(packet, interface):
     else:
         # Message to someone else; we may ignore it
         is_direct_message = False
+
+    meshnet_name = relay_config["meshtastic"]["meshnet_name"]
+
+    # Reaction handling (meshtastic->matrix)
+    if replyId and emoji_flag and relay_reactions:
+        longname = get_longname(sender) or str(sender)
+        shortname = get_shortname(sender) or str(sender)
+        orig = get_message_map_by_meshtastic_id(replyId)
+        if not orig:
+            # Try by matrix_event_id if the replyId was somehow referencing it (unlikely but we try)
+            # Normally replyId should always be a meshtastic_id, but let's just log a debug attempt.
+            # This is a fallback attempt if we ever encode matrix_event_id in text, but here we do not.
+            logger.debug("Original message for reaction not found in DB by meshtastic_id.")
+            # No fallback possible, message does not exist
+            return
+
+        matrix_event_id, matrix_room_id, meshtastic_text = orig
+        abbreviated_text = meshtastic_text[:40] + "..." if len(meshtastic_text) > 40 else meshtastic_text
+        full_display_name = f"{longname}/{meshnet_name}"
+        reaction_symbol = text if (text and text.strip()) else '⚠️'  # Fall back to warning sign in case text is empty
+        reaction_message = f"\n [{full_display_name}] reacted {reaction_symbol} to \"{abbreviated_text}\""
+        asyncio.run_coroutine_threadsafe(
+            matrix_relay(
+                matrix_room_id,
+                reaction_message,
+                longname,
+                shortname,
+                meshnet_name,
+                decoded.get("portnum"),
+                meshtastic_id=packet.get("id"),
+                meshtastic_replyId=replyId,
+                meshtastic_text=meshtastic_text,
+                emote=True,
+                emoji=True
+            ),
+            loop=loop,
+        )
+        return
 
     if text:
         # Determine the channel
@@ -330,14 +369,28 @@ def on_meshtastic_message(packet, interface):
         if not shortname:
             shortname = str(sender)
 
-        meshnet_name = relay_config["meshtastic"]["meshnet_name"]
+        # Check if this is a matrix-originated message tagged with [mmr:<matrix_event_id>]
+        matrix_event_id_from_tag = None
+        tag_match = re.match(r'^\[mmr:(\$[A-Za-z0-9_\-]+)\]\s+(.*)', text)
+        if tag_match:
+            matrix_event_id_from_tag = tag_match.group(1)
+            original_text = tag_match.group(2)
+            formatted_message = f"[{longname}/{meshnet_name}]: {original_text}"
+        else:
+            formatted_message = f"[{longname}/{meshnet_name}]: {text}"
 
-        formatted_message = f"[{longname}/{meshnet_name}]: {text}"
+        # If we detected a matrix_event_id tag, update the DB entry with meshtastic_id now
+        meshtastic_id = packet.get("id")
+        if matrix_event_id_from_tag and meshtastic_id is not None:
+            result = get_message_map_by_matrix_event_id(matrix_event_id_from_tag)
+            if result:
+                # We have a DB record for this matrix_event_id, update meshtastic_id now
+                update_message_map_meshtastic_id(matrix_event_id_from_tag, meshtastic_id)
+            else:
+                logger.debug(f"No DB entry found for matrix_event_id={matrix_event_id_from_tag} to update meshtastic_id.")
 
-        # Plugin functionality
-        from plugin_loader import load_plugins  # Import here to avoid circular imports
-
-        plugins = load_plugins()  # Load plugins within the function
+        from plugin_loader import load_plugins
+        plugins = load_plugins()
 
         found_matching_plugin = False
         for plugin in plugins:
@@ -379,6 +432,8 @@ def on_meshtastic_message(packet, interface):
                         shortname,
                         meshnet_name,
                         decoded.get("portnum"),
+                        meshtastic_id=packet.get("id"),
+                        meshtastic_text=original_text if matrix_event_id_from_tag else text
                     ),
                     loop=loop,
                 )
@@ -416,7 +471,6 @@ async def check_connection():
     while not shutting_down:
         if meshtastic_client:
             try:
-                # Send a ping to check the connection
                 meshtastic_client.sendPing()
             except Exception as e:
                 logger.error(f"{connection_type.capitalize()} connection lost: {e}")
