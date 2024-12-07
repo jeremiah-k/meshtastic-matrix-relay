@@ -1,5 +1,4 @@
 import asyncio
-import re
 import threading
 import time
 from typing import List
@@ -13,7 +12,7 @@ from bleak.exc import BleakDBusError, BleakError
 from pubsub import pub
 
 from config import relay_config
-from db_utils import get_longname, get_shortname, save_longname, save_shortname, get_message_map_by_meshtastic_id, update_message_map_meshtastic_id, get_message_map_by_matrix_event_id
+from db_utils import get_longname, get_shortname, save_longname, save_shortname, get_message_map_by_meshtastic_id
 from log_utils import get_logger
 
 # Do not import plugin_loader here to avoid circular imports
@@ -277,17 +276,13 @@ def on_meshtastic_message(packet, interface):
         shortname = get_shortname(sender) or str(sender)
         orig = get_message_map_by_meshtastic_id(replyId)
         if not orig:
-            # Try by matrix_event_id if the replyId was somehow referencing it (unlikely but we try)
-            # Normally replyId should always be a meshtastic_id, but let's just log a debug attempt.
-            # This is a fallback attempt if we ever encode matrix_event_id in text, but here we do not.
             logger.debug("Original message for reaction not found in DB by meshtastic_id.")
-            # No fallback possible, message does not exist
             return
 
         matrix_event_id, matrix_room_id, meshtastic_text = orig
         abbreviated_text = meshtastic_text[:40] + "..." if len(meshtastic_text) > 40 else meshtastic_text
         full_display_name = f"{longname}/{meshnet_name}"
-        reaction_symbol = text if (text and text.strip()) else '⚠️'  # Fall back to warning sign in case text is empty
+        reaction_symbol = text if (text and text.strip()) else '⚠️'
         reaction_message = f"\n [{full_display_name}] reacted {reaction_symbol} to \"{abbreviated_text}\""
         asyncio.run_coroutine_threadsafe(
             matrix_relay(
@@ -347,7 +342,6 @@ def on_meshtastic_message(packet, interface):
         shortname = get_shortname(sender)
 
         if not longname or not shortname:
-            # Try to get node info from interface.nodes
             node = interface.nodes.get(sender)
             if node:
                 user = node.get("user")
@@ -361,34 +355,14 @@ def on_meshtastic_message(packet, interface):
                         if shortname:
                             save_shortname(sender, shortname)
             else:
-                # Node info not available yet
                 logger.debug(f"Node info for sender {sender} not available yet.")
 
-        # If still not available, use sender ID as longname and shortname
         if not longname:
             longname = str(sender)
         if not shortname:
             shortname = str(sender)
 
-        # Check if this is a matrix-originated message tagged with [mmr:<matrix_event_id>]
-        matrix_event_id_from_tag = None
-        tag_match = re.match(r'^\[mmr:(\$[A-Za-z0-9_\-]+)\]\s+(.*)', text)
-        if tag_match:
-            matrix_event_id_from_tag = tag_match.group(1)
-            original_text = tag_match.group(2)
-            formatted_message = f"[{longname}/{meshnet_name}]: {original_text}"
-        else:
-            formatted_message = f"[{longname}/{meshnet_name}]: {text}"
-
-        # If we detected a matrix_event_id tag, update the DB entry with meshtastic_id now
-        meshtastic_id = packet.get("id")
-        if matrix_event_id_from_tag and meshtastic_id is not None:
-            result = get_message_map_by_matrix_event_id(matrix_event_id_from_tag)
-            if result:
-                # We have a DB record for this matrix_event_id, update meshtastic_id now
-                update_message_map_meshtastic_id(matrix_event_id_from_tag, meshtastic_id)
-            else:
-                logger.debug(f"No DB entry found for matrix_event_id={matrix_event_id_from_tag} to update meshtastic_id.")
+        formatted_message = f"[{longname}/{meshnet_name}]: {text}"
 
         from plugin_loader import load_plugins
         plugins = load_plugins()
@@ -406,8 +380,6 @@ def on_meshtastic_message(packet, interface):
                 if found_matching_plugin:
                     logger.debug(f"Processed by plugin {plugin.plugin_name}")
 
-        # **Added DM Check Here**
-        # If the message is a DM or handled by a plugin, do not relay it to Matrix
         if is_direct_message:
             logger.debug(
                 f"Received a direct message from {longname}. Not relaying to Matrix."
@@ -434,7 +406,7 @@ def on_meshtastic_message(packet, interface):
                         meshnet_name,
                         decoded.get("portnum"),
                         meshtastic_id=packet.get("id"),
-                        meshtastic_text=original_text if matrix_event_id_from_tag else text
+                        meshtastic_text=text
                     ),
                     loop=loop,
                 )

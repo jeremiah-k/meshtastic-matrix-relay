@@ -157,9 +157,10 @@ async def matrix_relay(room_id, message, longname, shortname, meshnet_name, port
         )
         logger.info(f"Sent inbound radio message to matrix room: {room_id}")
 
-        # Store message_map for all inbound meshtastic->matrix messages
-        # If meshtastic_id is None (e.g. from matrix to matrix?), still store to have matrix_event_id link
         from db_utils import store_message_map
+        # For meshtastic->matrix messages, we know meshtastic_id immediately. They are inbound from meshtastic.
+        # For matrix->meshtastic messages, we stored them with meshtastic_id=None already.
+        # Here, for inbound meshtastic->matrix, we store now.
         if not emote:
             store_message_map(meshtastic_id, response.event_id, room_id, meshtastic_text if meshtastic_text else message)
 
@@ -239,7 +240,6 @@ async def on_room_message(
                 short_display_name = full_display_name[:5]
                 prefix = f"{short_display_name}[M]: "
                 abbreviated_text = meshtastic_text[:40] + "..." if len(meshtastic_text) > 40 else meshtastic_text
-                reaction_message = f"{prefix}reacted {reaction_emoji} to \"{abbreviated_text}\""
                 meshtastic_interface = connect_meshtastic()
                 from meshtastic_utils import logger as meshtastic_logger
                 meshtastic_channel = room_config["meshtastic_channel"]
@@ -247,8 +247,11 @@ async def on_room_message(
                     meshtastic_logger.info(
                         f"Relaying reaction from {full_display_name} to radio broadcast"
                     )
+                    # Since this is matrix->meshtastic reaction, we do not have meshtastic_id for a matrix-originated message.
+                    # If meshtastic_id was None, we cannot do a true reaction back referencing the original message.
+                    # We just send as a new message.
                     meshtastic_interface.sendText(
-                        text=reaction_message, channelIndex=meshtastic_channel
+                        text=f"{prefix}reacted {reaction_emoji} to \"{abbreviated_text}\"", channelIndex=meshtastic_channel
                     )
         return
 
@@ -267,7 +270,7 @@ async def on_room_message(
             text = truncate_message(text)
             full_message = f"{shortname}/{short_meshnet_name}: {text}"
         else:
-            # Local meshnet message, ignore
+            # Local meshnet message, ignore, since it's our own net
             return
     else:
         display_name_response = await matrix_client.get_displayname(event.sender)
@@ -302,7 +305,8 @@ async def on_room_message(
         if is_command:
             break
 
-    # Store this matrix-originated message in DB now (meshtastic_id=None for now)
+    # Store this matrix-originated message in DB now (meshtastic_id=None)
+    # We do not know meshtastic_id because meshtastic doesn't provide it for outbound messages.
     if not is_reaction and not is_command:
         store_message_map(None, event.event_id, room.room_id, text)
 
@@ -336,14 +340,10 @@ async def on_room_message(
                 meshtastic_logger.info(
                     f"Relaying message from {full_display_name} to radio broadcast"
                 )
-                ### CHANGES START
-                # Add a unique tag so when we see it on meshtastic side, we know which matrix_event_id it relates to
-                # I don't know if I like this. It used text=full_message before. Remove tagged_message and use full_message instead if necessary.
-                tagged_message = f"[mmr:{event.event_id}] {full_message}"
+                # Send directly without adding tags or extra overhead
                 meshtastic_interface.sendText(
-                    text=tagged_message, channelIndex=meshtastic_channel
+                    text=full_message, channelIndex=meshtastic_channel
                 )
-                ### CHANGES END
         else:
             logger.debug(
                 f"Broadcast not supported: Message from {full_display_name} dropped."
