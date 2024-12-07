@@ -16,6 +16,7 @@ from nio import (
     UploadResponse,
     WhoamiError,
     ReactionEvent,
+    RoomSendError,
 )
 
 from PIL import Image
@@ -138,13 +139,18 @@ async def matrix_relay(room_id, message, longname, shortname, meshnet_name, port
             "meshtastic_meshnet": meshnet_name,
             "meshtastic_portnum": portnum,
         }
+        # We no longer attempt real reactions, just textual messages
+        # meshtastic_id if available can be included to link back
         if meshtastic_id is not None:
             content["meshtastic_id"] = meshtastic_id
-        if meshtastic_replyId is not None:
-            content["meshtastic_replyId"] = meshtastic_replyId
+        # meshtastic_replyId unused now since we are only doing textual representations
+        # meshtastic_text if we have it
         if meshtastic_text is not None:
             content["meshtastic_text"] = meshtastic_text
         if emoji:
+            # If we want to mark that this was originally a reaction with emoji,
+            # we can still indicate meshtastic_emoji=1 if we want,
+            # but user said we just want textual message. We'll still set it to show it was a reaction.
             content["meshtastic_emoji"] = 1
 
         response = await asyncio.wait_for(
@@ -158,14 +164,18 @@ async def matrix_relay(room_id, message, longname, shortname, meshnet_name, port
         logger.info(f"Sent inbound radio message to matrix room: {room_id}")
 
         from db_utils import store_message_map
-        # For meshtastic->matrix messages, we know meshtastic_id. Store it.
-        # For matrix->meshtastic messages, meshtastic_id might be None or known if remote.
-        # We always store here if it's a meshtastic->matrix message or if we haven't stored before.
-        if not emote:
-            store_message_map(meshtastic_id, response.event_id, room_id, meshtastic_text if meshtastic_text else message)
+        # Only store if response has event_id (successful send)
+        if hasattr(response, "event_id") and response.event_id:
+            # Store message_map for inbound meshtastic->matrix or matrix->meshtastic if we want
+            if not emote:
+                store_message_map(meshtastic_id, response.event_id, room_id, meshtastic_text if meshtastic_text else message)
+        else:
+            logger.error("Matrix message send did not return an event_id, not storing in DB")
 
     except asyncio.TimeoutError:
         logger.error("Timed out while waiting for Matrix response")
+    except RoomSendError as e:
+        logger.error(f"Error sending radio message to matrix room {room_id}: {e}")
     except Exception as e:
         logger.error(f"Error sending radio message to matrix room {room_id}: {e}")
 
@@ -223,8 +233,6 @@ async def on_room_message(
     shortname = event.source["content"].get("meshtastic_shortname", None)
     meshnet_name = event.source["content"].get("meshtastic_meshnet")
     meshtastic_id = event.source["content"].get("meshtastic_id")
-    # meshtastic_replyId = event.source["content"].get("meshtastic_replyId")
-    # meshtastic_emoji_flag = event.source["content"].get("meshtastic_emoji", 0)
     suppress = event.source["content"].get("mmrelay_suppress")
     local_meshnet_name = relay_config["meshtastic"]["meshnet_name"]
     relay_reactions = relay_config["meshtastic"].get("relay_reactions", True)
@@ -232,12 +240,12 @@ async def on_room_message(
     if suppress:
         return
 
-    # Handle Matrix->Meshtastic reaction
+    # Matrix->Meshtastic reaction as text only
     if is_reaction and relay_reactions:
         if original_matrix_event_id:
             orig = get_message_map_by_matrix_event_id(original_matrix_event_id)
             if orig:
-                # orig: (meshtastic_id, matrix_room_id, meshtastic_text)
+                # orig: (orig_meshtastic_id, matrix_room_id, meshtastic_text)
                 orig_meshtastic_id, matrix_room_id, meshtastic_text = orig
                 display_name_response = await matrix_client.get_displayname(event.sender)
                 full_display_name = display_name_response.displayname or event.sender
@@ -252,44 +260,23 @@ async def on_room_message(
                     meshtastic_logger.info(
                         f"Relaying reaction from {full_display_name} to radio broadcast"
                     )
-                    # If orig_meshtastic_id is None, we cannot send a true reaction referencing replyId
-                    # We just send a normal text message reaction.
-                    if orig_meshtastic_id is None:
-                        meshtastic_interface.sendText(
-                            text=f"{prefix}reacted {reaction_emoji} to \"{abbreviated_text}\"",
-                            channelIndex=meshtastic_channel
-                        )
-                    else:
-                        # We can send a true meshtastic reaction since we have meshtastic_id
-                        # Use replyId=orig_meshtastic_id and emoji=1
-                        # Reaction text is the emoji itself.
-                        meshtastic_interface.sendText(
-                            text=f"{prefix}reacted {reaction_emoji} to \"{abbreviated_text}\"", channelIndex=meshtastic_channel,
-                            wantAck=False,  # Usually for reactions we don't need ack
-                            # The underlying library doesn't have a direct param for replyId, we set it after send?
-                            # We might need to patch meshtastic-python for this functionality or set portnum fields directly.
-                            # For now, since the user said "We can do it if we want to," let's just send as text reaction if no direct method.
-                            # We'll fallback to a textual emote if we cannot set replyId from here.
-                            # Without modifying the underlying meshtastic library, we can only send text.
-                            # So just send as normal text reaction to keep consistent.
-                            # If the user wants actual reaction packets, they'd have to implement that at a lower level.
-                            # We'll emulate reaction by prefixing with [reaction]:
-                            # text=f"{prefix}reacted {reaction_emoji} to \"{abbreviated_text}\""
-                        )
+                    # No real reaction, just a textual message
+                    # Something like: "<prefix>reacted <reaction_emoji> to "<abbreviated_text>""
+                    reaction_message = f"{prefix}reacted {reaction_emoji} to \"{abbreviated_text}\""
+                    meshtastic_interface.sendText(
+                        text=reaction_message,
+                        channelIndex=meshtastic_channel
+                    )
         return
 
-    # Determine message origin and handling logic
-    # If longname and meshnet_name are present, this might be a meshtastic-originated message.
-    # Check if it's from our local mesh. If so, ignore (it's our own echo).
-    # If meshnet_name != local_meshnet_name and meshtastic_id is present, treat as remote meshtastic message.
+    # Determine message origin and handle accordingly
     if longname and meshnet_name:
         full_display_name = f"{longname}/{meshnet_name}"
         if meshnet_name == local_meshnet_name:
             # Message from our own meshnet, ignore re-broadcasting
-            # Still store it if not stored? It's likely already stored from meshtastic side.
             return
         else:
-            # Remote meshnet message relayed into Matrix
+            # Remote meshnet message
             logger.info(f"Processing message from remote meshnet: {text}")
             short_meshnet_name = meshnet_name[:4]
             if shortname is None:
@@ -299,10 +286,8 @@ async def on_room_message(
             )
             text = truncate_message(text)
             full_message = f"{shortname}/{short_meshnet_name}: {text}"
-            # If meshtastic_id is present, store it using that meshtastic_id
-            # If meshtastic_id not present, store with None
     else:
-        # Pure Matrix message or no meshtastic keys
+        # Pure Matrix message
         display_name_response = await matrix_client.get_displayname(event.sender)
         full_display_name = display_name_response.displayname or event.sender
         short_display_name = full_display_name[:5]
@@ -310,8 +295,6 @@ async def on_room_message(
         logger.debug(f"Processing matrix message from [{full_display_name}]: {text}")
         full_message = f"{prefix}{text}"
         text = truncate_message(text)
-        # meshtastic_id may or may not be present. If not present, meshtastic_id=None.
-        # If present, treat it like a meshtastic-originated message from a remote mesh.
 
     from plugin_loader import load_plugins
     plugins = load_plugins()
@@ -335,18 +318,15 @@ async def on_room_message(
         if is_command:
             break
 
-    # Store message map now
-    # If meshtastic_id is present, store with it. Otherwise store with None.
     if not is_reaction and not is_command:
-        from db_utils import store_message_map
+        # Store message map now
+        # If meshtastic_id present, use it, else None
         store_message_map(meshtastic_id, event.event_id, room.room_id, text)
 
     if is_command:
         logger.debug("Message is a command, not sending to mesh")
         return
 
-    # If this message originated from Matrix and we want to send it to Meshtastic
-    # Check that it's not from our bot (avoid loops)
     if event.sender == bot_user_id:
         return
 
@@ -354,7 +334,7 @@ async def on_room_message(
     from meshtastic_utils import logger as meshtastic_logger
     meshtastic_channel = room_config["meshtastic_channel"]
 
-    if not found_matching_plugin and event.sender != bot_user_id:
+    if not found_matching_plugin:
         if relay_config["meshtastic"]["broadcast_enabled"]:
             # If detection sensor app message
             if (

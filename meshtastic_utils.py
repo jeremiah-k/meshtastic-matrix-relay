@@ -67,7 +67,6 @@ def connect_meshtastic(force_connect=False):
         if meshtastic_client and not force_connect:
             return meshtastic_client
 
-        # Ensure previous connection is closed
         if meshtastic_client:
             try:
                 meshtastic_client.close()
@@ -75,7 +74,6 @@ def connect_meshtastic(force_connect=False):
                 logger.warning(f"Error closing previous connection: {e}")
             meshtastic_client = None
 
-        # Initialize Meshtastic interface based on connection type
         connection_type = relay_config["meshtastic"]["connection_type"]
         retry_limit = 0
         attempts = 1
@@ -256,7 +254,6 @@ def on_meshtastic_message(packet, interface):
     replyId = decoded.get("replyId")
     emoji_flag = 'emoji' in decoded and decoded['emoji'] == 1
 
-    # Determine if the message is a direct message
     from meshtastic.mesh_interface import BROADCAST_NUM
 
     if toId == interface.myInfo.my_node_num:
@@ -268,7 +265,7 @@ def on_meshtastic_message(packet, interface):
 
     meshnet_name = relay_config["meshtastic"]["meshnet_name"]
 
-    # Meshtastic->Matrix reaction
+    # Meshtastic->Matrix reaction as a textual description only
     if replyId and emoji_flag and relay_reactions:
         longname = get_longname(sender) or str(sender)
         shortname = get_shortname(sender) or str(sender)
@@ -281,6 +278,7 @@ def on_meshtastic_message(packet, interface):
         abbreviated_text = meshtastic_text[:40] + "..." if len(meshtastic_text) > 40 else meshtastic_text
         full_display_name = f"{longname}/{meshnet_name}"
         reaction_symbol = text if (text and text.strip()) else '⚠️'
+        # Just send a textual emote describing the reaction
         reaction_message = f"\n [{full_display_name}] reacted {reaction_symbol} to \"{abbreviated_text}\""
         asyncio.run_coroutine_threadsafe(
             matrix_relay(
@@ -291,8 +289,7 @@ def on_meshtastic_message(packet, interface):
                 meshnet_name,
                 decoded.get("portnum"),
                 meshtastic_id=packet.get("id"),
-                meshtastic_replyId=replyId,
-                meshtastic_text=meshtastic_text,
+                meshtastic_text=meshtastic_text,  # meshtastic_text is original message
                 emote=True,
                 emoji=True
             ),
@@ -301,7 +298,6 @@ def on_meshtastic_message(packet, interface):
         return
 
     if text:
-        # Determine the channel
         channel = packet.get("channel")
         if channel is None:
             if (
@@ -317,7 +313,6 @@ def on_meshtastic_message(packet, interface):
                 )
                 return
 
-        # Check if the channel is mapped to a Matrix room
         channel_mapped = False
         for room in matrix_rooms:
             if room["meshtastic_channel"] == channel:
@@ -335,7 +330,6 @@ def on_meshtastic_message(packet, interface):
             )
             return
 
-        # Attempt to get longname from database
         longname = get_longname(sender)
         shortname = get_shortname(sender)
 
@@ -395,19 +389,25 @@ def on_meshtastic_message(packet, interface):
         # Relay message to Matrix rooms
         for room in matrix_rooms:
             if room["meshtastic_channel"] == channel:
-                asyncio.run_coroutine_threadsafe(
-                    matrix_relay(
-                        room["id"],
-                        formatted_message,
-                        longname,
-                        shortname,
-                        meshnet_name,
-                        decoded.get("portnum"),
-                        meshtastic_id=packet.get("id"),
-                        meshtastic_text=text
-                    ),
-                    loop=loop,
-                )
+                # We just send it. If error occurs, we won't store it.
+                def send_to_matrix():
+                    # Use matrix_relay inside a try-except
+                    try:
+                        asyncio.run_coroutine_threadsafe(
+                            matrix_relay(
+                                formatted_message,
+                                longname,
+                                shortname,
+                                meshnet_name,
+                                decoded.get("portnum"),
+                                meshtastic_id=packet.get("id"),
+                                meshtastic_text=text
+                            ),
+                            loop=loop,
+                        )
+                    except Exception as e:
+                        logger.error(f"Error relaying message to Matrix room: {e}")
+                send_to_matrix()
     else:
         # Non-text messages handled by plugins
         portnum = decoded.get("portnum")
@@ -446,12 +446,12 @@ async def check_connection():
             except Exception as e:
                 logger.error(f"{connection_type.capitalize()} connection lost: {e}")
                 on_lost_meshtastic_connection(meshtastic_client)
-        await asyncio.sleep(5)  # Check connection every 5 seconds
+        await asyncio.sleep(5)
 
 
 if __name__ == "__main__":
     meshtastic_client = connect_meshtastic()
     loop = asyncio.get_event_loop()
-    event_loop = loop  # Set the event loop
+    event_loop = loop
     loop.create_task(check_connection())
     loop.run_forever()
