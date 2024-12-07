@@ -223,8 +223,8 @@ async def on_room_message(
     shortname = event.source["content"].get("meshtastic_shortname", None)
     meshnet_name = event.source["content"].get("meshtastic_meshnet")
     meshtastic_id = event.source["content"].get("meshtastic_id")
-    meshtastic_replyId = event.source["content"].get("meshtastic_replyId")
-    meshtastic_emoji_flag = event.source["content"].get("meshtastic_emoji", 0)
+    # meshtastic_replyId = event.source["content"].get("meshtastic_replyId")
+    # meshtastic_emoji_flag = event.source["content"].get("meshtastic_emoji", 0)
     suppress = event.source["content"].get("mmrelay_suppress")
     local_meshnet_name = relay_config["meshtastic"]["meshnet_name"]
     relay_reactions = relay_config["meshtastic"].get("relay_reactions", True)
@@ -264,7 +264,7 @@ async def on_room_message(
                         # Use replyId=orig_meshtastic_id and emoji=1
                         # Reaction text is the emoji itself.
                         meshtastic_interface.sendText(
-                            text=reaction_emoji, channelIndex=meshtastic_channel,
+                            text=f"{prefix}reacted {reaction_emoji} to \"{abbreviated_text}\"", channelIndex=meshtastic_channel,
                             wantAck=False,  # Usually for reactions we don't need ack
                             # The underlying library doesn't have a direct param for replyId, we set it after send?
                             # We might need to patch meshtastic-python for this functionality or set portnum fields directly.
@@ -274,7 +274,7 @@ async def on_room_message(
                             # So just send as normal text reaction to keep consistent.
                             # If the user wants actual reaction packets, they'd have to implement that at a lower level.
                             # We'll emulate reaction by prefixing with [reaction]:
-                            text=f"{prefix}reacted {reaction_emoji} to \"{abbreviated_text}\""
+                            # text=f"{prefix}reacted {reaction_emoji} to \"{abbreviated_text}\""
                         )
         return
 
