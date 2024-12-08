@@ -24,8 +24,8 @@ from config import relay_config
 from db_utils import (
     get_message_map_by_matrix_event_id,
     store_message_map,
-    get_message_map_by_meshtastic_id
-)  # Correctly import used functions. Removed unnecessary imports.
+    get_message_map_by_meshtastic_id,
+)
 from log_utils import get_logger
 from meshtastic_utils import connect_meshtastic
 
@@ -253,7 +253,9 @@ async def on_room_message(
         return
 
     if is_reaction and relay_reactions:
-        # Matrix reaction received.
+        logger.debug(
+            f"Matrix reaction received: {reaction_emoji} to event {original_matrix_event_id}"
+        )  # Log reaction
         meshtastic_id = event.source["content"].get("meshtastic_id")
         if meshtastic_id:
             # Reaction to remote meshnet message. Relay reaction to local meshnet.
@@ -287,13 +289,15 @@ async def on_room_message(
                         text=reaction_message, channelIndex=meshtastic_channel
                     )
         elif original_matrix_event_id:
-            # Reaction to Matrix or local meshnet message.
+            logger.debug(f"Looking up original Matrix message: {original_matrix_event_id}")
             orig = get_message_map_by_matrix_event_id(original_matrix_event_id)
             if orig:
                 meshtastic_id, matrix_room_id, meshtastic_text = orig
                 if not meshtastic_id:
                     # Only relay if original message was *not* from Meshtastic
-                    display_name_response = await matrix_client.get_displayname(event.sender)
+                    display_name_response = await matrix_client.get_displayname(
+                        event.sender
+                    )
                     full_display_name = display_name_response.displayname or event.sender
                     short_display_name = full_display_name[:5]
                     prefix = f"{short_display_name}[M]: "
@@ -302,9 +306,12 @@ async def on_room_message(
                         if len(meshtastic_text) > 40
                         else meshtastic_text
                     )
-                    reaction_message = f"{prefix}reacted {reaction_emoji} to \"{abbreviated_text}\""
+                    reaction_message = (
+                        f"{prefix}reacted {reaction_emoji} to \"{abbreviated_text}\""
+                    )
                     meshtastic_interface = connect_meshtastic()
                     from meshtastic_utils import logger as meshtastic_logger
+
                     meshtastic_channel = room_config["meshtastic_channel"]
                     if relay_config["meshtastic"]["broadcast_enabled"]:
                         meshtastic_logger.info(
@@ -312,10 +319,10 @@ async def on_room_message(
                         )
                         # Relay the reaction to the meshnet
                         meshtastic_interface.sendText(
-                            text=reaction_message,
-                            channelIndex=meshtastic_channel,
+                            text=reaction_message, channelIndex=meshtastic_channel
                         )
-
+            else:
+                logger.debug("Original Matrix message not found in DB.")
         return  # Stop processing after handling reaction
 
     if longname and meshnet_name:
@@ -342,86 +349,87 @@ async def on_room_message(
         short_display_name = full_display_name[:5]
         prefix = f"{short_display_name}[M]: "
         logger.debug(f"Processing matrix message from [{full_display_name}]: {text}")
-        full_message = f"{prefix}{text}"
-        text = truncate_message(text)
 
-    # Plugin functionality
-    from plugin_loader import load_plugins
+        # Plugin functionality
+        from plugin_loader import load_plugins
 
-    plugins = load_plugins()
+        plugins = load_plugins()
 
-    found_matching_plugin = False
-    for plugin in plugins:
-        if not found_matching_plugin:
-            found_matching_plugin = await plugin.handle_room_message(
-                room, event, full_message
-            )
-            if found_matching_plugin:
-                logger.debug(f"Processed by plugin {plugin.plugin_name}")
+        found_matching_plugin = False
+        for plugin in plugins:
+            if not found_matching_plugin:
+                found_matching_plugin = await plugin.handle_room_message(
+                    room, event, full_message # full_message is referenced before assignment
+                )
+                if found_matching_plugin:
+                    logger.debug(f"Processed by plugin {plugin.plugin_name}")
 
-    # Check if the message is a command directed at the bot
-    is_command = False
-    for plugin in plugins:
-        for command in plugin.get_matrix_commands():
-            if bot_command(command, text):
-                is_command = True
+        # Check if the message is a command directed at the bot
+        is_command = False
+        for plugin in plugins:
+            for command in plugin.get_matrix_commands():
+                if bot_command(command, text):
+                    is_command = True
+                    break
+            if is_command:
                 break
-        if is_command:
-            break
 
-    # Store this matrix-originated message in DB so we can reference it later for reactions
-    if (
-        not is_reaction
-        and not is_command
-        and event.sender != bot_user_id
-        and room_config  # Ensure message comes from a mapped Matrix room
-    ):
-        store_message_map(None, event.event_id, room.room_id, text)
+        # Crucial Fix: Store the message in the DB *before* sending to Meshtastic
+        # Store this matrix-originated message in DB so we can reference it later for reactions
+        if (
+            not is_reaction # is_reaction is already handled above
+            and not is_command
+            and event.sender != bot_user_id
+            and room_config  # Ensure message comes from a mapped Matrix room
+        ):
+            logger.debug(
+                f"Storing Matrix message in DB: event_id={event.event_id}, room_id={room.room_id}, text={text}"
+            )
+            store_message_map(None, event.event_id, room.room_id, text)
 
-    if is_command:
-        logger.debug("Message is a command, not sending to mesh")
-        return
+        full_message = f"{prefix}{text}" # full_message must be assigned before it can be used
 
-    meshtastic_interface = connect_meshtastic()
-    from meshtastic_utils import logger as meshtastic_logger
+        meshtastic_interface = connect_meshtastic()
+        from meshtastic_utils import logger as meshtastic_logger
 
-    if not room_config:
-         # Room config not found, don't try to send
-        logger.warning(
+        if not room_config:
+            # Room config not found, don't try to send
+            logger.warning(
                 f"No configuration found for room {room.room_id}. Not sending to mesh."
-        )
-        return
+            )
+            return
 
-    meshtastic_channel = room_config["meshtastic_channel"]
+        meshtastic_channel = room_config["meshtastic_channel"]
 
-    if not found_matching_plugin and event.sender != bot_user_id:
-        if relay_config["meshtastic"]["broadcast_enabled"]:
-            if (
-                event.source["content"].get("meshtastic_portnum")
-                == "DETECTION_SENSOR_APP"
-            ):
-                if relay_config["meshtastic"].get("detection_sensor", False):
-                    meshtastic_interface.sendData(
-                        data=full_message.encode("utf-8"),
-                        channelIndex=meshtastic_channel,
-                        portNum=meshtastic.protobuf.portnums_pb2.PortNum.DETECTION_SENSOR_APP,
-                    )
+        if not found_matching_plugin and event.sender != bot_user_id:
+            if relay_config["meshtastic"]["broadcast_enabled"]:
+                if (
+                    event.source["content"].get("meshtastic_portnum")
+                    == "DETECTION_SENSOR_APP"
+                ):
+                    if relay_config["meshtastic"].get("detection_sensor", False):
+                        meshtastic_interface.sendData(
+                            data=full_message.encode("utf-8"),
+                            channelIndex=meshtastic_channel,
+                            portNum=meshtastic.protobuf.portnums_pb2.PortNum.DETECTION_SENSOR_APP,
+                        )
+                    else:
+                        meshtastic_logger.debug(
+                            f"Detection sensor packet received from {full_display_name}, "
+                            + "but detection sensor processing is disabled."
+                        )
                 else:
-                    meshtastic_logger.debug(
-                        f"Detection sensor packet received from {full_display_name}, "
-                        + "but detection sensor processing is disabled."
+                    meshtastic_logger.info(
+                        f"Relaying message from {full_display_name} to radio broadcast"
+                    )
+                    meshtastic_interface.sendText(
+                        text=full_message, channelIndex=meshtastic_channel
                     )
             else:
-                meshtastic_logger.info(
-                    f"Relaying message from {full_display_name} to radio broadcast"
+                logger.debug(
+                    f"Broadcast not supported: Message from {full_display_name} dropped."
                 )
-                meshtastic_interface.sendText(
-                    text=full_message, channelIndex=meshtastic_channel
-                )
-        else:
-            logger.debug(
-                f"Broadcast not supported: Message from {full_display_name} dropped."
-            )
+
 
 async def upload_image(
     client: AsyncClient, image: Image.Image, filename: str
