@@ -252,8 +252,7 @@ def on_meshtastic_message(packet, interface):
 
     sender = packet.get("fromId") or packet.get("from")
     toId = packet.get("to")
-    # Added to help us debug.
-    meshtastic_id = packet.get("id")
+    meshtastic_id = packet.get("id")  # Capture meshtastic_id for logging and relaying
 
     decoded = packet.get("decoded", {})
     text = decoded.get("text")
@@ -279,27 +278,35 @@ def on_meshtastic_message(packet, interface):
     # We'll need to find the original message from the DB using replyId.
     # replyId corresponds to meshtastic_id in DB.
     if replyId and emoji_flag and relay_reactions:
+        # Log the incoming reaction details
         logger.debug(
             f"Meshtastic reaction received: meshtastic_id={meshtastic_id}, replyId={replyId}, emoji={emoji_flag}"
         )
+
         # This is a reaction message
-        # Get user names
         longname = get_longname(sender) or str(sender)
         shortname = get_shortname(sender) or str(sender)
+
         # Retrieve original message using replyId
         orig = get_message_map_by_meshtastic_id(replyId)
         if orig:
             logger.debug(f"Found original message for replyId {replyId}: {orig}")
             matrix_event_id, matrix_room_id, meshtastic_text = orig
-            abbreviated_text = meshtastic_text[:40] + "..." if len(meshtastic_text) > 40 else meshtastic_text
+
+            abbreviated_text = (
+                meshtastic_text[:40] + "..."
+                if len(meshtastic_text) > 40
+                else meshtastic_text
+            )
+
             # Construct emote message
-            # Add a newline and a bullet to create a nice list-style formatting in m.emote
             full_display_name = f"{longname}/{meshnet_name}"
-            # Use the actual text as reaction, or if no text is given, just use the emoji we know was set
-            reaction_symbol = text if (text and text.strip()) else '👍'
-            # Construct emote message (with a newline and bullet)
+            reaction_symbol = text if (text and text.strip()) else "👍" # Default emoji
+
+            # Construct emote message
             reaction_message = f"\n [{full_display_name}] reacted {reaction_symbol} to \"{abbreviated_text}\""
-            # Send as m.emote
+
+            # Relay reaction to Matrix as an emote
             asyncio.run_coroutine_threadsafe(
                 matrix_relay(
                     matrix_room_id,
@@ -308,11 +315,11 @@ def on_meshtastic_message(packet, interface):
                     shortname,
                     meshnet_name,
                     decoded.get("portnum"),
-                    meshtastic_id=meshtastic_id,
-                    meshtastic_replyId=replyId,
-                    meshtastic_text=meshtastic_text,
+                    meshtastic_id=packet.get("id"), # Use the current packet ID
+                    meshtastic_replyId=replyId, # Pass reply ID for context
+                    meshtastic_text=meshtastic_text, # Pass text of original message
                     emote=True,
-                    emoji=True
+                    emoji=True,
                 ),
                 loop=loop,
             )
@@ -430,11 +437,12 @@ def on_meshtastic_message(packet, interface):
                         shortname,
                         meshnet_name,
                         decoded.get("portnum"),
-                        meshtastic_id=meshtastic_id,
+                        meshtastic_id=packet.get("id"),  # Include meshtastic_id
                         meshtastic_text=text
                     ),
                     loop=loop,
                 )
+
     else:
         # Handle non-text messages via plugins
         portnum = decoded.get("portnum")
