@@ -37,6 +37,12 @@ reconnect_task = None  # To keep track of the reconnect task
 def serial_port_exists(port_name):
     """
     Check if the specified serial port exists.
+
+    Args:
+        port_name (str): The name of the serial port (e.g., 'COM15' or '/dev/ttyACM0').
+
+    Returns:
+        bool: True if the port exists, False otherwise.
     """
     ports = [port.device for port in serial.tools.list_ports.comports()]
     return port_name in ports
@@ -45,6 +51,12 @@ def serial_port_exists(port_name):
 def connect_meshtastic(force_connect=False):
     """
     Establish a connection to the Meshtastic device.
+
+    Args:
+        force_connect (bool): If True, forces a new connection even if one exists.
+
+    Returns:
+        The Meshtastic client interface or None if connection fails.
     """
     global meshtastic_client, shutting_down
     if shutting_down:
@@ -260,17 +272,28 @@ def on_meshtastic_message(packet, interface):
 
     meshnet_name = relay_config["meshtastic"]["meshnet_name"]
 
-    # Reaction message from Meshtastic to Matrix
+    # If this is a reaction packet (has replyId and emoji) and relay_reactions is True
+    # we will convert it into an emote in Matrix.
+    # We'll need to find the original message from the DB using replyId.
+    # replyId corresponds to meshtastic_id in DB.
     if replyId and emoji_flag and relay_reactions:
+        # This is a reaction message
+        # Get user names
         longname = get_longname(sender) or str(sender)
         shortname = get_shortname(sender) or str(sender)
+        # Retrieve original message
         orig = get_message_map_by_meshtastic_id(replyId)
         if orig:
             matrix_event_id, matrix_room_id, meshtastic_text = orig
             abbreviated_text = meshtastic_text[:40] + "..." if len(meshtastic_text) > 40 else meshtastic_text
+            # Construct emote message
+            # Add a newline and a bullet to create a nice list-style formatting in m.emote
             full_display_name = f"{longname}/{meshnet_name}"
+            # Use the actual text as reaction, or if no text is given, just use the emoji we know was set
             reaction_symbol = text if (text and text.strip()) else '👍'
+            # Construct emote message (with a newline and bullet)
             reaction_message = f"\n [{full_display_name}] reacted {reaction_symbol} to \"{abbreviated_text}\""
+            # Send as m.emote
             asyncio.run_coroutine_threadsafe(
                 matrix_relay(
                     matrix_room_id,
@@ -374,7 +397,8 @@ def on_meshtastic_message(packet, interface):
                 if found_matching_plugin:
                     logger.debug(f"Processed by plugin {plugin.plugin_name}")
 
-        # If DM or handled by plugin, do not relay
+        # **Added DM Check Here**
+        # If the message is a DM or handled by a plugin, do not relay it to Matrix
         if is_direct_message:
             logger.debug(
                 f"Received a direct message from {longname}. Not relaying to Matrix."
