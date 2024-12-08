@@ -252,6 +252,8 @@ def on_meshtastic_message(packet, interface):
 
     sender = packet.get("fromId") or packet.get("from")
     toId = packet.get("to")
+    # Added to help us debug.
+    meshtastic_id = packet.get("id")
 
     decoded = packet.get("decoded", {})
     text = decoded.get("text")
@@ -277,13 +279,17 @@ def on_meshtastic_message(packet, interface):
     # We'll need to find the original message from the DB using replyId.
     # replyId corresponds to meshtastic_id in DB.
     if replyId and emoji_flag and relay_reactions:
+        logger.debug(
+            f"Meshtastic reaction received: meshtastic_id={meshtastic_id}, replyId={replyId}, emoji={emoji_flag}"
+        )
         # This is a reaction message
         # Get user names
         longname = get_longname(sender) or str(sender)
         shortname = get_shortname(sender) or str(sender)
-        # Retrieve original message
+        # Retrieve original message using replyId
         orig = get_message_map_by_meshtastic_id(replyId)
         if orig:
+            logger.debug(f"Found original message for replyId {replyId}: {orig}")
             matrix_event_id, matrix_room_id, meshtastic_text = orig
             abbreviated_text = meshtastic_text[:40] + "..." if len(meshtastic_text) > 40 else meshtastic_text
             # Construct emote message
@@ -302,7 +308,7 @@ def on_meshtastic_message(packet, interface):
                     shortname,
                     meshnet_name,
                     decoded.get("portnum"),
-                    meshtastic_id=packet.get("id"),
+                    meshtastic_id=meshtastic_id,
                     meshtastic_replyId=replyId,
                     meshtastic_text=meshtastic_text,
                     emote=True,
@@ -311,7 +317,7 @@ def on_meshtastic_message(packet, interface):
                 loop=loop,
             )
         else:
-            logger.debug("Original message for reaction not found in DB.")
+            logger.debug(f"Original message for replyId {replyId} not found in DB.")
         return
 
     if text:
@@ -424,7 +430,7 @@ def on_meshtastic_message(packet, interface):
                         shortname,
                         meshnet_name,
                         decoded.get("portnum"),
-                        meshtastic_id=packet.get("id"),
+                        meshtastic_id=meshtastic_id,
                         meshtastic_text=text
                     ),
                     loop=loop,
@@ -453,7 +459,6 @@ def on_meshtastic_message(packet, interface):
                         f"Processed {portnum} with plugin {plugin.plugin_name}"
                     )
 
-
 async def check_connection():
     """
     Periodically checks the Meshtastic connection and attempts to reconnect if lost.
@@ -469,7 +474,6 @@ async def check_connection():
                 logger.error(f"{connection_type.capitalize()} connection lost: {e}")
                 on_lost_meshtastic_connection(meshtastic_client)
         await asyncio.sleep(5)  # Check connection every 5 seconds
-
 
 if __name__ == "__main__":
     meshtastic_client = connect_meshtastic()
