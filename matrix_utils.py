@@ -328,7 +328,7 @@ async def on_room_message(
     from meshtastic_utils import logger as meshtastic_logger
 
     meshtastic_channel = room_config["meshtastic_channel"]
-    sent_packet_id = None # initialize sent_packet_id
+    sent_packet_id = 0  # Initialize with 0 for Matrix-originated messages
 
     if not found_matching_plugin and event.sender != bot_user_id:
         if relay_config["meshtastic"]["broadcast_enabled"]:
@@ -342,7 +342,7 @@ async def on_room_message(
                         channelIndex=meshtastic_channel,
                         portNum=meshtastic.protobuf.portnums_pb2.PortNum.DETECTION_SENSOR_APP,
                     )
-                    sent_packet_id = sent_packet["id"]
+                    sent_packet_id = sent_packet.id # Access id attribute directly
                 else:
                     meshtastic_logger.debug(
                         f"Detection sensor packet received from {full_display_name}, "
@@ -355,7 +355,7 @@ async def on_room_message(
                 sent_packet = meshtastic_interface.sendText(
                     text=full_message, channelIndex=meshtastic_channel
                 )
-                sent_packet_id = sent_packet["id"]
+                sent_packet_id = sent_packet.id # Access id attribute directly
         else:
             logger.debug(
                 f"Broadcast not supported: Message from {full_display_name} dropped."
