@@ -322,18 +322,13 @@ async def on_room_message(
     # Store this matrix-originated message in DB so we can reference it later for reactions
     # Only store if it's not a reaction and not a command, and from a mapped room
     # This ensures that all normal matrix messages are recorded
-    if not is_reaction and not is_command and event.sender != bot_user_id:
-        logger.debug(f"Storing matrix message: event_id={event.event_id}, room_id={room.room_id}, text={text}")
-        store_message_map(None, event.event_id, room.room_id, text)
 
-    if is_command:
-        logger.debug("Message is a command, not sending to mesh")
-        return
-
+    # Capture sent packet here
     meshtastic_interface = connect_meshtastic()
     from meshtastic_utils import logger as meshtastic_logger
 
     meshtastic_channel = room_config["meshtastic_channel"]
+    sent_packet_id = None # initialize sent_packet_id
 
     if not found_matching_plugin and event.sender != bot_user_id:
         if relay_config["meshtastic"]["broadcast_enabled"]:
@@ -342,11 +337,12 @@ async def on_room_message(
                 == "DETECTION_SENSOR_APP"
             ):
                 if relay_config["meshtastic"].get("detection_sensor", False):
-                    meshtastic_interface.sendData(
+                    sent_packet = meshtastic_interface.sendData(
                         data=full_message.encode("utf-8"),
                         channelIndex=meshtastic_channel,
                         portNum=meshtastic.protobuf.portnums_pb2.PortNum.DETECTION_SENSOR_APP,
                     )
+                    sent_packet_id = sent_packet["id"]
                 else:
                     meshtastic_logger.debug(
                         f"Detection sensor packet received from {full_display_name}, "
@@ -356,14 +352,22 @@ async def on_room_message(
                 meshtastic_logger.info(
                     f"Relaying message from {full_display_name} to radio broadcast"
                 )
-                meshtastic_interface.sendText(
+                sent_packet = meshtastic_interface.sendText(
                     text=full_message, channelIndex=meshtastic_channel
                 )
+                sent_packet_id = sent_packet["id"]
         else:
             logger.debug(
                 f"Broadcast not supported: Message from {full_display_name} dropped."
             )
+    if not is_reaction and not is_command and event.sender != bot_user_id:
+        logger.debug(f"Storing matrix message: event_id={event.event_id}, room_id={room.room_id}, text={text}")
+        logger.debug(f"Associated Meshtastic packet ID: {sent_packet_id}")
+        store_message_map(sent_packet_id, event.event_id, room.room_id, text)
 
+    if is_command:
+        logger.debug("Message is a command, not sending to mesh")
+        return
 
 async def upload_image(
     client: AsyncClient, image: Image.Image, filename: str
