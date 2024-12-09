@@ -126,10 +126,6 @@ async def join_matrix_room(matrix_client, room_id_or_alias: str) -> None:
     except Exception as e:
         logger.error(f"Error joining room '{room_id_or_alias}': {e}")
 
-
-# Add ReactionEvent to callbacks so we catch m.reaction events
-# Previously we only listened for (RoomMessageText, RoomMessageNotice)
-# Now we include ReactionEvent as well
 async def matrix_relay(room_id, message, longname, shortname, meshnet_name, portnum, meshtastic_id=None, meshtastic_replyId=None, meshtastic_text=None, emote=False, emoji=False):
     matrix_client = await connect_matrix()
     try:
@@ -151,22 +147,19 @@ async def matrix_relay(room_id, message, longname, shortname, meshnet_name, port
             content["meshtastic_emoji"] = 1
 
         # Increased timeout to give matrix more time to respond
+        # Trunk is complaining that response is not used. Check this later.
         response = await asyncio.wait_for(
             matrix_client.room_send(
                 room_id=room_id,
                 message_type="m.room.message",
                 content=content,
             ),
-            timeout=5.0,  # Changed from 0.5 to 5.0 seconds
+            timeout=5.0,
         )
         logger.info(f"Sent inbound radio message to matrix room: {room_id}")
 
-        # Only store if this is not a reaction message (emote=True with emoji=True is a reaction)
-        # For inbound meshtastic messages, we store them here as before.
-        # Already handled meshtastic->matrix message storing logic here.
-        if meshtastic_id is not None and not emote:
-            from db_utils import store_message_map
-            store_message_map(meshtastic_id, response.event_id, room_id, meshtastic_text if meshtastic_text else message)
+        # Do not store message_map here anymore if it's an inbound meshtastic message (we handle that logic differently)
+        # For outbound matrix->meshtastic messages, we embed META in the text at send time (handled below in on_room_message)
 
     except asyncio.TimeoutError:
         logger.error("Timed out while waiting for Matrix response")
@@ -192,6 +185,7 @@ def truncate_message(
 async def on_room_message(
     room: MatrixRoom, event: Union[RoomMessageText, RoomMessageNotice, ReactionEvent]
 ) -> None:
+    # Trunk is complaining that store_message_map is not used. Check this later.
     from db_utils import get_message_map_by_matrix_event_id, store_message_map
     full_display_name = "Unknown user"
     message_timestamp = event.server_timestamp
@@ -256,12 +250,13 @@ async def on_room_message(
                 abbreviated_text = meshtastic_text[:40] + "..." if len(meshtastic_text) > 40 else meshtastic_text
                 reaction_message = f"{prefix}reacted {reaction_emoji} to \"{abbreviated_text}\""
                 meshtastic_interface = connect_meshtastic()
-                from meshtastic_utils import logger as meshtastic_logger
+                #from meshtastic_utils import logger as meshtastic_logger
                 meshtastic_channel = room_config["meshtastic_channel"]
                 if relay_config["meshtastic"]["broadcast_enabled"]:
-                    meshtastic_logger.info(
-                        f"Relaying reaction from {full_display_name} to radio broadcast"
-                    )
+                #    meshtastic_logger.info(
+                #        f"Relaying reaction from {full_display_name} to radio broadcast"
+                #    )
+
                     # Relay the reaction to the meshnet
                     logger.debug(f"Sending reaction to Meshtastic: {reaction_message}")
                     meshtastic_interface.sendText(
@@ -319,12 +314,14 @@ async def on_room_message(
         if is_command:
             break
 
-    # Store this matrix-originated message in DB so we can reference it later for reactions
-    # Only store if it's not a reaction and not a command, and from a mapped room
-    # This ensures that all normal matrix messages are recorded
+    # If this is a normal matrix message going to meshtastic
+    # We now embed matrix_event_id and room_id into the message itself so we can store mapping after meshtastic_id is available
     if not is_reaction and not is_command and event.sender != bot_user_id:
-        logger.debug(f"Storing matrix message: event_id={event.event_id}, room_id={room.room_id}, text={text}")
-        store_message_map(None, event.event_id, room.room_id, text)
+        # Append META info
+        meta_str = f"\nMETA:{event.event_id}:{room.room_id}"
+        full_message_with_meta = full_message + meta_str
+    else:
+        full_message_with_meta = full_message
 
     if is_command:
         logger.debug("Message is a command, not sending to mesh")
@@ -343,7 +340,7 @@ async def on_room_message(
             ):
                 if relay_config["meshtastic"].get("detection_sensor", False):
                     meshtastic_interface.sendData(
-                        data=full_message.encode("utf-8"),
+                        data=full_message_with_meta.encode("utf-8"),
                         channelIndex=meshtastic_channel,
                         portNum=meshtastic.protobuf.portnums_pb2.PortNum.DETECTION_SENSOR_APP,
                     )
@@ -357,7 +354,7 @@ async def on_room_message(
                     f"Relaying message from {full_display_name} to radio broadcast"
                 )
                 meshtastic_interface.sendText(
-                    text=full_message, channelIndex=meshtastic_channel
+                    text=full_message_with_meta, channelIndex=meshtastic_channel
                 )
         else:
             logger.debug(

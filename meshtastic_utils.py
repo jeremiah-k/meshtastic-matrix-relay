@@ -12,7 +12,7 @@ from bleak.exc import BleakDBusError, BleakError
 from pubsub import pub
 
 from config import relay_config
-from db_utils import get_longname, get_shortname, save_longname, save_shortname, get_message_map_by_meshtastic_id
+from db_utils import get_longname, get_shortname, save_longname, save_shortname, get_message_map_by_meshtastic_id, store_message_map
 from log_utils import get_logger
 
 # Do not import plugin_loader here to avoid circular imports
@@ -131,6 +131,8 @@ def connect_meshtastic(force_connect=False):
 
                 # Subscribe to message events
                 pub.subscribe(on_meshtastic_message, "meshtastic.receive")
+                # Subscribe to TEXT_MESSAGE_APP after processing is complete
+                pub.subscribe(handle_sent_message, "meshtastic.receive.data.TEXT_MESSAGE_APP")
                 pub.subscribe(
                     on_lost_meshtastic_connection, "meshtastic.connection.lost"
                 )
@@ -259,9 +261,8 @@ def on_meshtastic_message(packet, interface):
     emoji_flag = 'emoji' in decoded and decoded['emoji'] == 1
 
     # Determine if the message is a direct message
-    myId = interface.myInfo.my_node_num  # Get relay's own node number
     from meshtastic.mesh_interface import BROADCAST_NUM
-
+    myId = interface.myInfo.my_node_num
     if toId == myId:
         is_direct_message = True
     elif toId == BROADCAST_NUM:
@@ -272,10 +273,6 @@ def on_meshtastic_message(packet, interface):
 
     meshnet_name = relay_config["meshtastic"]["meshnet_name"]
 
-    # If this is a reaction packet (has replyId and emoji) and relay_reactions is True
-    # we will convert it into an emote in Matrix.
-    # We'll need to find the original message from the DB using replyId.
-    # replyId corresponds to meshtastic_id in DB.
     if replyId and emoji_flag and relay_reactions:
         # This is a reaction message
         # Get user names
@@ -291,7 +288,7 @@ def on_meshtastic_message(packet, interface):
             full_display_name = f"{longname}/{meshnet_name}"
             # Use the actual text as reaction, or if no text is given, just use the emoji we know was set
             reaction_symbol = text if (text and text.strip()) else '👍'
-            # Construct emote message (with a newline and bullet)
+            # Construct emote message with a newline
             reaction_message = f"\n [{full_display_name}] reacted {reaction_symbol} to \"{abbreviated_text}\""
             # Send as m.emote
             asyncio.run_coroutine_threadsafe(
@@ -397,7 +394,6 @@ def on_meshtastic_message(packet, interface):
                 if found_matching_plugin:
                     logger.debug(f"Processed by plugin {plugin.plugin_name}")
 
-        # **Added DM Check Here**
         # If the message is a DM or handled by a plugin, do not relay it to Matrix
         if is_direct_message:
             logger.debug(
@@ -430,7 +426,7 @@ def on_meshtastic_message(packet, interface):
                     loop=loop,
                 )
     else:
-        # Handle non-text messages via plugins
+        # Non-text messages handled by plugins
         portnum = decoded.get("portnum")
         from plugin_loader import load_plugins  # Import here to avoid circular imports
 
@@ -463,17 +459,48 @@ async def check_connection():
     while not shutting_down:
         if meshtastic_client:
             try:
-                # Send a ping to check the connection
                 meshtastic_client.sendPing()
             except Exception as e:
                 logger.error(f"{connection_type.capitalize()} connection lost: {e}")
                 on_lost_meshtastic_connection(meshtastic_client)
-        await asyncio.sleep(5)  # Check connection every 5 seconds
+        await asyncio.sleep(5)
 
+# New function to handle fully processed sent messages
+def handle_sent_message(packet, interface):
+    # This event fires for all TEXT_MESSAGE_APP packets after processing.
+    # We only finalize mapping for messages that we originated from Matrix.
+    decoded = packet.get("decoded", {})
+    meshtastic_id = packet.get("id")
+    text = decoded.get("text", "")
+    if not text:
+        return
 
-if __name__ == "__main__":
-    meshtastic_client = connect_meshtastic()
-    loop = asyncio.get_event_loop()
-    event_loop = loop  # Set the event loop
-    loop.create_task(check_connection())
-    loop.run_forever()
+    # Check if message has embedded META info: "META:<matrix_event_id>:<matrix_room_id>"
+    # We appended it at the end of the message in matrix_relay
+    if "META:" in text:
+        # Extract matrix_event_id, matrix_room_id
+        # The format is: original_message_text + "\nMETA:<matrix_event_id>:<matrix_room_id>"
+        # Let's parse from the last occurrence
+        parts = text.split("\nMETA:")
+        if len(parts) == 2:
+            original_text = parts[0].strip()
+            meta_parts = parts[1].strip().split(":")
+            if len(meta_parts) == 2:
+                matrix_event_id = meta_parts[0]
+                matrix_room_id = meta_parts[1]
+
+                # Store the final mapping now that we have meshtastic_id
+                store_message_map(meshtastic_id, matrix_event_id, matrix_room_id, original_text)
+                logger.debug(f"Stored message map for meshtastic_id={meshtastic_id}, matrix_event_id={matrix_event_id}")
+            else:
+                logger.debug("META format incorrect, cannot parse event_id and room_id")
+        else:
+            logger.debug("No proper META format found in message text")
+
+# Commented out for now
+#if __name__ == "__main__":
+#    meshtastic_client = connect_meshtastic()
+#    loop = asyncio.get_event_loop()
+#    event_loop = loop  # Set the event loop
+#    loop.create_task(check_connection())
+#    loop.run_forever()
