@@ -3,6 +3,7 @@ import threading
 import time
 from typing import List
 
+import io
 import meshtastic.ble_interface
 import meshtastic.serial_interface
 import meshtastic.tcp_interface
@@ -234,6 +235,38 @@ async def reconnect():
         reconnecting = False
 
 
+async def check_connection():
+    """
+    Periodically checks the Meshtastic connection by using getMetadata() from localNode.
+    We capture the output to suppress firmware_version prints.
+    If we fail to detect a valid firmware_version line, we assume the connection is lost.
+
+    This approach attempts to detect disconnections better on network connections.
+    If disconnected, getMetadata() should fail or not return the expected info.
+    If it fails, we call on_lost_meshtastic_connection to attempt reconnection.
+
+    We do this every 5 seconds.
+    """
+    global meshtastic_client, shutting_down
+    connection_type = relay_config["meshtastic"]["connection_type"]
+    while not shutting_down:
+        if meshtastic_client:
+            try:
+                # Attempt to get metadata quietly
+                output_capture = io.StringIO()
+                from contextlib import redirect_stdout
+                with redirect_stdout(output_capture):
+                    meshtastic_client.localNode.getMetadata()
+                console_output = output_capture.getvalue()
+                if "firmware_version" not in console_output:
+                    # If no firmware_version is found, assume disconnected
+                    raise Exception("No firmware_version detected, possible disconnection.")
+            except Exception as e:
+                logger.error(f"{connection_type.capitalize()} connection lost: {e}")
+                on_lost_meshtastic_connection(meshtastic_client)
+        await asyncio.sleep(5)  # Check connection every 5 seconds
+
+
 def on_meshtastic_message(packet, interface):
     """
     Handle incoming Meshtastic messages. For reaction messages, if relay_reactions is False,
@@ -333,10 +366,9 @@ def on_meshtastic_message(packet, interface):
 
     # Normal text messages or detection sensor messages
     if text:
-        # Determine the channel for this message
+        # Determine the channel
         channel = packet.get("channel")
         if channel is None:
-            # If channel not specified, deduce from portnum
             if (
                 decoded.get("portnum") == "TEXT_MESSAGE_APP"
                 or decoded.get("portnum") == 1
@@ -390,7 +422,6 @@ def on_meshtastic_message(packet, interface):
             else:
                 logger.debug(f"Node info for sender {sender} not available yet.")
 
-        # If still not available, fallback to sender ID
         if not longname:
             longname = str(sender)
         if not shortname:
@@ -426,7 +457,6 @@ def on_meshtastic_message(packet, interface):
             logger.debug("Message was handled by a plugin. Not relaying to Matrix.")
             return
 
-        # Relay the message to all Matrix rooms mapped to this channel
         logger.info(
             f"Processing inbound radio message from {sender} on channel {channel}"
         )
@@ -471,23 +501,6 @@ def on_meshtastic_message(packet, interface):
                     logger.debug(
                         f"Processed {portnum} with plugin {plugin.plugin_name}"
                     )
-
-
-async def check_connection():
-    """
-    Periodically checks the Meshtastic connection by sending a ping.
-    If an error occurs, it attempts to reconnect.
-    """
-    global meshtastic_client, shutting_down
-    connection_type = relay_config["meshtastic"]["connection_type"]
-    while not shutting_down:
-        if meshtastic_client:
-            try:
-                meshtastic_client.sendPing()
-            except Exception as e:
-                logger.error(f"{connection_type.capitalize()} connection lost: {e}")
-                on_lost_meshtastic_connection(meshtastic_client)
-        await asyncio.sleep(5)  # Check connection every 5 seconds
 
 
 if __name__ == "__main__":
