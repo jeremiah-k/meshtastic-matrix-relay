@@ -35,6 +35,8 @@ from meshtastic_utils import connect_meshtastic
 matrix_homeserver = relay_config["matrix"]["homeserver"]
 matrix_rooms: List[dict] = relay_config["matrix_rooms"]
 matrix_access_token = relay_config["matrix"]["access_token"]
+e2ee_support = relay_config["matrix"].get("e2ee_support", False)
+matrix_store_path = relay_config["matrix"].get("store_path", "./data/nio/")
 
 bot_user_id = relay_config["matrix"]["bot_user_id"]
 bot_user_name = None  # Detected upon logon
@@ -88,11 +90,17 @@ async def connect_matrix():
     # Create SSL context using certifi's certificates
     ssl_context = ssl.create_default_context(cafile=certifi.where())
 
+    # Configure AsyncClientConfig based on E2EE support
+    config = AsyncClientConfig(
+        encryption_enabled=e2ee_support,
+        store_sync_tokens=e2ee_support,
+    )
+
     # Initialize the Matrix client with custom SSL context
-    config = AsyncClientConfig(encryption_enabled=False)
     matrix_client = AsyncClient(
         homeserver=matrix_homeserver,
         user=bot_user_id,
+        store_path=matrix_store_path,
         config=config,
         ssl=ssl_context,
     )
@@ -119,6 +127,16 @@ async def connect_matrix():
         bot_user_name = response.displayname
     else:
         bot_user_name = bot_user_id  # Fallback if display name is not set
+
+    if e2ee_support:
+        # Load the encryption store
+        await matrix_client.load_store()
+        logger.info("Loaded encryption state from store.")
+
+        # Upload encryption keys if necessary
+        if matrix_client.should_upload_keys:
+            await matrix_client.keys_upload()
+            logger.info("Uploaded encryption keys.")
 
     return matrix_client
 
@@ -213,11 +231,13 @@ async def matrix_relay(
         if emoji:
             content["meshtastic_emoji"] = 1
 
+        # Send the message with ignore_unverified_devices=True if E2EE is enabled
         response = await asyncio.wait_for(
             matrix_client.room_send(
                 room_id=room_id,
                 message_type="m.room.message",
                 content=content,
+                ignore_unverified_devices=e2ee_support,
             ),
             timeout=5.0,
         )
@@ -244,7 +264,6 @@ async def matrix_relay(
     except Exception as e:
         logger.error(f"Error sending radio message to matrix room {room_id}: {e}")
 
-
 def truncate_message(text, max_bytes=227):
     """
     Truncate the given text to fit within the specified byte size.
@@ -256,6 +275,11 @@ def truncate_message(text, max_bytes=227):
     truncated_text = text.encode("utf-8")[:max_bytes].decode("utf-8", "ignore")
     return truncated_text
 
+async def decryption_failure_callback(room, event):
+    """
+    Callback for handling decryption failures.
+    """
+    logger.warning(f"Failed to decrypt message {event.event_id} in {room.display_name}")
 
 # Callback for new messages in Matrix room
 async def on_room_message(
@@ -569,7 +593,6 @@ async def on_room_message(
                 f"Broadcast not supported: Message from {full_display_name} dropped."
             )
 
-
 async def upload_image(
     client: AsyncClient, image: Image.Image, filename: str
 ) -> UploadResponse:
@@ -588,7 +611,6 @@ async def upload_image(
     )
 
     return response
-
 
 async def send_room_image(
     client: AsyncClient, room_id: str, upload_response: UploadResponse

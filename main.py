@@ -9,7 +9,7 @@ import signal
 import sys
 from typing import List
 
-from nio import ReactionEvent, RoomMessageEmote, RoomMessageNotice, RoomMessageText
+from nio import MegolmEvent, ReactionEvent, RoomMessageEmote, RoomMessageNotice, RoomMessageText
 
 # Import meshtastic_utils as a module to set event_loop
 import meshtastic_utils
@@ -21,7 +21,7 @@ from db_utils import (
     wipe_message_map,
 )
 from log_utils import get_logger
-from matrix_utils import connect_matrix, join_matrix_room
+from matrix_utils import connect_matrix, join_matrix_room, decryption_failure_callback
 from matrix_utils import logger as matrix_logger
 from matrix_utils import on_room_message
 from meshtastic_utils import connect_meshtastic
@@ -33,6 +33,9 @@ logger = get_logger(name="M<>M Relay")
 
 # Extract Matrix configuration
 matrix_rooms: List[dict] = relay_config["matrix_rooms"]
+
+# Extract E2EE support flag from config
+e2ee_support = relay_config["matrix"].get("e2ee_support", False)
 
 # Set the logging level for 'nio' to ERROR to suppress warnings
 logging.getLogger("nio").setLevel(logging.ERROR)
@@ -83,6 +86,9 @@ async def main():
     # Add ReactionEvent callback so we can handle matrix reactions
     matrix_client.add_event_callback(on_room_message, ReactionEvent)
 
+    # Add decryption failure callback so we can handle decryption errors
+    matrix_client.add_event_callback(decryption_failure_callback, MegolmEvent)
+
     # Set up shutdown event
     shutdown_event = asyncio.Event()
 
@@ -114,7 +120,7 @@ async def main():
 
                 matrix_logger.info("Starting Matrix sync loop...")
                 sync_task = asyncio.create_task(
-                    matrix_client.sync_forever(timeout=30000)
+                    matrix_client.sync_forever(timeout=30000, full_state=e2ee_support)
                 )
                 shutdown_task = asyncio.create_task(shutdown_event.wait())
                 done, pending = await asyncio.wait(
