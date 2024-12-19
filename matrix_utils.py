@@ -71,11 +71,7 @@ def bot_command(command, event):
         return bool(re.match(pattern, full_message)) or bool(re.match(pattern, text_content))
     else:
         return False
-    # # Construct a regex pattern to match variations of bot mention and command
-    # pattern = rf"^(?:{re.escape(bot_user_id)}|{re.escape(bot_user_name)}|[#@].+?)[,:;]?\s*!{command}$"
 
-    # # Check if the message matches the pattern
-    # return bool(re.match(pattern, full_message)) or bool(re.match(pattern, text_content))
 
 async def connect_matrix():
     """
@@ -238,6 +234,7 @@ async def matrix_relay(
                 message_type="m.room.message",
                 content=content,
                 ignore_unverified_devices=e2ee_support,
+                encrypted=e2ee_support,
             ),
             timeout=5.0,
         )
@@ -622,4 +619,6 @@ async def send_room_image(
         room_id=room_id,
         message_type="m.room.message",
         content={"msgtype": "m.image", "url": upload_response.content_uri, "body": ""},
+        ignore_unverified_devices=e2ee_support,
+        encrypted=e2ee_support,
     )
