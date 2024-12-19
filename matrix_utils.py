@@ -1,5 +1,6 @@
 import asyncio
 import io
+import os
 import re
 import ssl
 import time
@@ -20,7 +21,7 @@ from nio import (
 )
 from PIL import Image
 
-from config import relay_config
+from config import relay_config, get_app_path
 from db_utils import (
     get_message_map_by_matrix_event_id,
     prune_message_map,
@@ -83,6 +84,10 @@ async def connect_matrix():
     if matrix_client:
         return matrix_client
 
+    # Create the store directory if it doesn't exist
+    store_path = os.path.join(get_app_path(), matrix_store_path)
+    os.makedirs(store_path, exist_ok=True)
+
     # Create SSL context using certifi's certificates
     ssl_context = ssl.create_default_context(cafile=certifi.where())
 
@@ -96,7 +101,7 @@ async def connect_matrix():
     matrix_client = AsyncClient(
         homeserver=matrix_homeserver,
         user=bot_user_id,
-        store_path=matrix_store_path,
+        store_path=store_path,
         config=config,
         ssl=ssl_context,
     )
