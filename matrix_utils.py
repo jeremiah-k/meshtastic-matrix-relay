@@ -1,6 +1,6 @@
 import asyncio
-import io
 import os
+import io
 import re
 import ssl
 import time
@@ -130,14 +130,19 @@ async def connect_matrix():
         bot_user_name = bot_user_id  # Fallback if display name is not set
 
     if e2ee_support:
-        # Load the encryption store
-        await matrix_client.load_store()
-        logger.info("Loaded encryption state from store.")
-
-        # Upload encryption keys if necessary
-        if matrix_client.should_upload_keys:
-            await matrix_client.keys_upload()
-            logger.info("Uploaded encryption keys.")
+        try:
+            # Try to load the encryption store
+            await matrix_client.load_store()
+            logger.info("Loaded encryption state from store.")
+        except Exception as e:
+            logger.error(f"Error loading encryption store: {e}")
+            logger.error("End-to-end encryption may not be available.")
+            # Proceed without encryption store
+        else:
+            # Upload encryption keys if necessary
+            if matrix_client.should_upload_keys:
+                await matrix_client.keys_upload()
+                logger.info("Uploaded encryption keys.")
 
     return matrix_client
 
@@ -175,7 +180,6 @@ async def join_matrix_room(matrix_client, room_id_or_alias: str) -> None:
             logger.debug(f"Bot is already in room '{room_id_or_alias}'")
     except Exception as e:
         logger.error(f"Error joining room '{room_id_or_alias}': {e}")
-
 
 async def matrix_relay(
     room_id,
