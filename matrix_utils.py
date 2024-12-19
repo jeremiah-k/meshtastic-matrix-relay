@@ -19,6 +19,7 @@ from nio import (
     UploadResponse,
     WhoamiError,
 )
+from nio.store import SqliteStore, MemoryStore
 from PIL import Image
 
 from config import relay_config, get_app_path
@@ -72,7 +73,6 @@ def bot_command(command, event):
         return bool(re.match(pattern, full_message)) or bool(re.match(pattern, text_content))
     else:
         return False
-
 
 async def connect_matrix():
     """
@@ -145,10 +145,12 @@ async def connect_matrix():
             logger.error(
                 "Please ensure you have correctly installed matrix-nio with `pip install matrix-nio[e2e]`"
             )
-            logger.error(
-                "If that does not resolve the issue, you may need to create a new store by deleting the old one."
+            logger.error("Trying to use a temporary MemoryStore instead of SqliteStore.")
+            matrix_client.store = MemoryStore(
+                user_id=bot_user_id,
+                device_id=matrix_client.device_id
             )
-            return None  # Indicate failure to load store
+            logger.warning("Using MemoryStore means encryption data will not be persisted between restarts.")
 
         # Upload encryption keys if necessary
         if matrix_client.should_upload_keys:
