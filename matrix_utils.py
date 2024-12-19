@@ -132,11 +132,23 @@ async def connect_matrix():
     # Load the encryption store if e2ee_support is True
     if e2ee_support:
         try:
+            # Use nio's SqliteStore to check if the path is valid
+            if not os.path.isdir(matrix_client.store_path):
+                raise ValueError(f"Invalid store path: {matrix_client.store_path}")
+
+            # Try to load the encryption store
             await matrix_client.load_store()
             logger.info("Loaded encryption state from store.")
+
         except Exception as e:
             logger.error(f"Error loading encryption store: {e}")
-            return None
+            logger.error(
+                "Please ensure you have correctly installed matrix-nio with `pip install matrix-nio[e2e]`"
+            )
+            logger.error(
+                "If that does not resolve the issue, you may need to create a new store by deleting the old one."
+            )
+            return None  # Indicate failure to load store
 
         # Upload encryption keys if necessary
         if matrix_client.should_upload_keys:
@@ -205,6 +217,9 @@ async def matrix_relay(
     to prevent database bloat and maintain privacy.
     """
     matrix_client = await connect_matrix()
+    if matrix_client is None:
+        logger.error("Matrix client is not initialized properly. Message not relayed.")
+        return
 
     # Retrieve relay_reactions configuration; default to False now if not specified.
     relay_reactions = relay_config["meshtastic"].get("relay_reactions", False)
