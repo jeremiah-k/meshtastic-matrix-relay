@@ -1,46 +1,52 @@
 import json
 import sqlite3
+import os
 
 from log_utils import get_logger
 
 logger = get_logger(name="db_utils")
 
+# Define the database file path
+DATABASE_FILE = "meshtastic.sqlite"
 
-# Initialize SQLite database
 def initialize_database():
-    with sqlite3.connect("meshtastic.sqlite") as conn:
-        cursor = conn.cursor()
-        # Updated table schema: matrix_event_id is now PRIMARY KEY, meshtastic_id is not necessarily unique
-        cursor.execute(
-            "CREATE TABLE IF NOT EXISTS longnames (meshtastic_id TEXT PRIMARY KEY, longname TEXT)"
-        )
-        cursor.execute(
-            "CREATE TABLE IF NOT EXISTS shortnames (meshtastic_id TEXT PRIMARY KEY, shortname TEXT)"
-        )
-        cursor.execute(
-            "CREATE TABLE IF NOT EXISTS plugin_data (plugin_name TEXT, meshtastic_id TEXT, data TEXT, PRIMARY KEY (plugin_name, meshtastic_id))"
-        )
-        # Changed the schema for message_map: matrix_event_id is now primary key
-        # Added a new column 'meshtastic_meshnet' to store the meshnet origin of the message.
-        # If table already exists, we try adding the column if it doesn't exist.
-        cursor.execute(
-            "CREATE TABLE IF NOT EXISTS message_map (meshtastic_id INTEGER, matrix_event_id TEXT PRIMARY KEY, matrix_room_id TEXT, meshtastic_text TEXT, meshtastic_meshnet TEXT)"
-        )
+    """Initializes the SQLite database, creating tables if they don't exist."""
 
-        # Attempt to add meshtastic_meshnet column if it's missing (for upgrades)
-        # This is a no-op if the column already exists.
-        # If user runs fresh, it will already be there from CREATE TABLE IF NOT EXISTS.
-        try:
-            cursor.execute("ALTER TABLE message_map ADD COLUMN meshtastic_meshnet TEXT")
-        except sqlite3.OperationalError:
-            # Column already exists, or table just created with it
-            pass
+    db_dir = os.path.dirname(DATABASE_FILE)
+    if db_dir:  # Check if a directory part exists in the path
+        os.makedirs(db_dir, exist_ok=True)  # Create directory if it doesn't exist
 
-        conn.commit()
+    try:
+        with sqlite3.connect(DATABASE_FILE) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "CREATE TABLE IF NOT EXISTS longnames (meshtastic_id TEXT PRIMARY KEY, longname TEXT)"
+            )
+            cursor.execute(
+                "CREATE TABLE IF NOT EXISTS shortnames (meshtastic_id TEXT PRIMARY KEY, shortname TEXT)"
+            )
+            cursor.execute(
+                "CREATE TABLE IF NOT EXISTS plugin_data (plugin_name TEXT, meshtastic_id TEXT, data TEXT, PRIMARY KEY (plugin_name, meshtastic_id))"
+            )
+            cursor.execute(
+                "CREATE TABLE IF NOT EXISTS message_map (meshtastic_id INTEGER, matrix_event_id TEXT PRIMARY KEY, matrix_room_id TEXT, meshtastic_text TEXT, meshtastic_meshnet TEXT)"
+            )
 
+            try:
+                cursor.execute("ALTER TABLE message_map ADD COLUMN meshtastic_meshnet TEXT")
+            except sqlite3.OperationalError:
+                pass
+
+            conn.commit()
+    except sqlite3.OperationalError as e:
+        logger.error(f"Error initializing database: {e}")
+        logger.error(
+            f"Ensure that the directory for the database file '{DATABASE_FILE}' exists and has the correct permissions."
+        )
+        raise  # Re-raise the exception to stop execution
 
 def store_plugin_data(plugin_name, meshtastic_id, data):
-    with sqlite3.connect("meshtastic.sqlite") as conn:
+    with sqlite3.connect(DATABASE_FILE) as conn:
         cursor = conn.cursor()
         cursor.execute(
             "INSERT OR REPLACE INTO plugin_data (plugin_name, meshtastic_id, data) VALUES (?, ?, ?) ON CONFLICT (plugin_name, meshtastic_id) DO UPDATE SET data = ?",
@@ -50,7 +56,7 @@ def store_plugin_data(plugin_name, meshtastic_id, data):
 
 
 def delete_plugin_data(plugin_name, meshtastic_id):
-    with sqlite3.connect("meshtastic.sqlite") as conn:
+    with sqlite3.connect(DATABASE_FILE) as conn:
         cursor = conn.cursor()
         cursor.execute(
             "DELETE FROM plugin_data WHERE plugin_name=? AND meshtastic_id=?",
@@ -61,7 +67,7 @@ def delete_plugin_data(plugin_name, meshtastic_id):
 
 # Get the data for a given plugin and Meshtastic ID
 def get_plugin_data_for_node(plugin_name, meshtastic_id):
-    with sqlite3.connect("meshtastic.sqlite") as conn:
+    with sqlite3.connect(DATABASE_FILE) as conn:
         cursor = conn.cursor()
         cursor.execute(
             "SELECT data FROM plugin_data WHERE plugin_name=? AND meshtastic_id=?",
@@ -76,7 +82,7 @@ def get_plugin_data_for_node(plugin_name, meshtastic_id):
 
 # Get the data for a given plugin
 def get_plugin_data(plugin_name):
-    with sqlite3.connect("meshtastic.sqlite") as conn:
+    with sqlite3.connect(DATABASE_FILE) as conn:
         cursor = conn.cursor()
         cursor.execute(
             "SELECT data FROM plugin_data WHERE plugin_name=? ",
@@ -87,7 +93,7 @@ def get_plugin_data(plugin_name):
 
 # Get the longname for a given Meshtastic ID
 def get_longname(meshtastic_id):
-    with sqlite3.connect("meshtastic.sqlite") as conn:
+    with sqlite3.connect(DATABASE_FILE) as conn:
         cursor = conn.cursor()
         cursor.execute(
             "SELECT longname FROM longnames WHERE meshtastic_id=?", (meshtastic_id,)
@@ -97,7 +103,7 @@ def get_longname(meshtastic_id):
 
 
 def save_longname(meshtastic_id, longname):
-    with sqlite3.connect("meshtastic.sqlite") as conn:
+    with sqlite3.connect(DATABASE_FILE) as conn:
         cursor = conn.cursor()
         cursor.execute(
             "INSERT OR REPLACE INTO longnames (meshtastic_id, longname) VALUES (?, ?)",
@@ -117,7 +123,7 @@ def update_longnames(nodes):
 
 
 def get_shortname(meshtastic_id):
-    with sqlite3.connect("meshtastic.sqlite") as conn:
+    with sqlite3.connect(DATABASE_FILE) as conn:
         cursor = conn.cursor()
         cursor.execute(
             "SELECT shortname FROM shortnames WHERE meshtastic_id=?", (meshtastic_id,)
@@ -127,7 +133,7 @@ def get_shortname(meshtastic_id):
 
 
 def save_shortname(meshtastic_id, shortname):
-    with sqlite3.connect("meshtastic.sqlite") as conn:
+    with sqlite3.connect(DATABASE_FILE) as conn:
         cursor = conn.cursor()
         cursor.execute(
             "INSERT OR REPLACE INTO shortnames (meshtastic_id, shortname) VALUES (?, ?)",
@@ -163,7 +169,7 @@ def store_message_map(
     :param meshtastic_meshnet: The name of the meshnet this message originated from.
                                This helps us identify remote vs local mesh origins.
     """
-    with sqlite3.connect("meshtastic.sqlite") as conn:
+    with sqlite3.connect(DATABASE_FILE) as conn:
         cursor = conn.cursor()
         logger.debug(
             f"Storing message map: meshtastic_id={meshtastic_id}, matrix_event_id={matrix_event_id}, matrix_room_id={matrix_room_id}, meshtastic_text={meshtastic_text}, meshtastic_meshnet={meshtastic_meshnet}"
@@ -182,7 +188,7 @@ def store_message_map(
 
 
 def get_message_map_by_meshtastic_id(meshtastic_id):
-    with sqlite3.connect("meshtastic.sqlite") as conn:
+    with sqlite3.connect(DATABASE_FILE) as conn:
         cursor = conn.cursor()
         cursor.execute(
             "SELECT matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet FROM message_map WHERE meshtastic_id=?",
@@ -199,7 +205,7 @@ def get_message_map_by_meshtastic_id(meshtastic_id):
 
 
 def get_message_map_by_matrix_event_id(matrix_event_id):
-    with sqlite3.connect("meshtastic.sqlite") as conn:
+    with sqlite3.connect(DATABASE_FILE) as conn:
         cursor = conn.cursor()
         cursor.execute(
             "SELECT meshtastic_id, matrix_room_id, meshtastic_text, meshtastic_meshnet FROM message_map WHERE matrix_event_id=?",
@@ -220,7 +226,7 @@ def wipe_message_map():
     Wipes all entries from the message_map table.
     Useful when db.msg_map.wipe_on_restart is True, ensuring no stale data remains.
     """
-    with sqlite3.connect("meshtastic.sqlite") as conn:
+    with sqlite3.connect(DATABASE_FILE) as conn:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM message_map")
         conn.commit()
