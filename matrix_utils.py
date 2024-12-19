@@ -19,6 +19,7 @@ from nio import (
     UploadResponse,
     WhoamiError,
 )
+import nio
 from PIL import Image
 
 from config import relay_config, get_app_path
@@ -131,18 +132,29 @@ async def connect_matrix():
 
     if e2ee_support:
         try:
+            # Use nio's SqliteStore to check if the path is valid
+            if not os.path.isdir(matrix_client.store_path):
+                raise ValueError(f"Invalid store path: {matrix_client.store_path}")
+
             # Try to load the encryption store
             await matrix_client.load_store()
             logger.info("Loaded encryption state from store.")
+
         except Exception as e:
             logger.error(f"Error loading encryption store: {e}")
-            logger.error("End-to-end encryption may not be available.")
-            # Proceed without encryption store
-        else:
-            # Upload encryption keys if necessary
-            if matrix_client.should_upload_keys:
-                await matrix_client.keys_upload()
-                logger.info("Uploaded encryption keys.")
+            logger.error(
+                "Please ensure you have correctly installed matrix-nio with `pip install matrix-nio[e2e]`"
+            )
+            logger.error("Error details:", exc_info=True)
+            logger.error(
+                "If that does not resolve the issue, you may need to create a new store by deleting the old one."
+            )
+            return None  # Indicate failure to load store
+
+        # Upload encryption keys if necessary
+        if matrix_client.should_upload_keys:
+            await matrix_client.keys_upload()
+            logger.info("Uploaded encryption keys.")
 
     return matrix_client
 
@@ -205,6 +217,9 @@ async def matrix_relay(
     to prevent database bloat and maintain privacy.
     """
     matrix_client = await connect_matrix()
+    if matrix_client is None:
+        logger.error("Matrix client is not initialized properly. Message not relayed.")
+        return
 
     # Retrieve relay_reactions configuration; default to False now if not specified.
     relay_reactions = relay_config["meshtastic"].get("relay_reactions", False)
