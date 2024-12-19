@@ -129,10 +129,14 @@ async def connect_matrix():
     else:
         bot_user_name = bot_user_id  # Fallback if display name is not set
 
+    # Load the encryption store if e2ee_support is True
     if e2ee_support:
-        # Load the encryption store
-        await matrix_client.load_store()
-        logger.info("Loaded encryption state from store.")
+        try:
+            await matrix_client.load_store()
+            logger.info("Loaded encryption state from store.")
+        except Exception as e:
+            logger.error(f"Error loading encryption store: {e}")
+            return None
 
         # Upload encryption keys if necessary
         if matrix_client.should_upload_keys:
