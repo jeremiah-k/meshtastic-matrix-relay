@@ -1,6 +1,6 @@
 import asyncio
-import os
 import io
+import os
 import re
 import ssl
 import time
@@ -19,7 +19,6 @@ from nio import (
     UploadResponse,
     WhoamiError,
 )
-import nio
 from PIL import Image
 
 from config import relay_config, get_app_path
@@ -149,6 +148,7 @@ async def connect_matrix():
             logger.error(
                 "If that does not resolve the issue, you may need to create a new store by deleting the old one."
             )
+            matrix_client = None  # Reset client on failure
             return None  # Indicate failure to load store
 
         # Upload encryption keys if necessary
@@ -251,8 +251,8 @@ async def matrix_relay(
         if emoji:
             content["meshtastic_emoji"] = 1
 
-        # If E2EE is enabled, we use room_send_encrypted
-        if e2ee_support:
+        # Check if encryption is available before using room_send_encrypted
+        if e2ee_support and matrix_client and matrix_client.encryption:
             response = await asyncio.wait_for(
                 matrix_client.room_send_encrypted(
                     room_id=room_id,
