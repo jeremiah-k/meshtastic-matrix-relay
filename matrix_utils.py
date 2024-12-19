@@ -227,17 +227,27 @@ async def matrix_relay(
         if emoji:
             content["meshtastic_emoji"] = 1
 
-        # Send the message with ignore_unverified_devices=True if E2EE is enabled
-        response = await asyncio.wait_for(
-            matrix_client.room_send(
-                room_id=room_id,
-                message_type="m.room.message",
-                content=content,
-                ignore_unverified_devices=e2ee_support,
-                encrypted=e2ee_support,
-            ),
-            timeout=5.0,
-        )
+        # If E2EE is enabled, we use room_send_encrypted
+        if e2ee_support:
+            response = await asyncio.wait_for(
+                matrix_client.room_send_encrypted(
+                    room_id=room_id,
+                    message_type="m.room.message",
+                    content=content,
+                    ignore_unverified_devices=True,
+                ),
+                timeout=5.0,
+            )
+        else:
+            response = await asyncio.wait_for(
+                matrix_client.room_send(
+                    room_id=room_id,
+                    message_type="m.room.message",
+                    content=content,
+                ),
+                timeout=5.0,
+            )
+
         logger.info(f"Sent inbound radio message to matrix room: {room_id}")
 
         # Only store message map if relay_reactions is True and meshtastic_id is present and not an emote.
@@ -615,10 +625,16 @@ async def send_room_image(
     """
     Sends an already uploaded image to the specified room.
     """
-    await client.room_send(
-        room_id=room_id,
-        message_type="m.room.message",
-        content={"msgtype": "m.image", "url": upload_response.content_uri, "body": ""},
-        ignore_unverified_devices=e2ee_support,
-        encrypted=e2ee_support,
-    )
+    if e2ee_support:
+        await client.room_send_encrypted(
+            room_id=room_id,
+            message_type="m.room.message",
+            content={"msgtype": "m.image", "url": upload_response.content_uri, "body": ""},
+            ignore_unverified_devices=True,
+        )
+    else:
+        await client.room_send(
+            room_id=room_id,
+            message_type="m.room.message",
+            content={"msgtype": "m.image", "url": upload_response.content_uri, "body": ""},
+        )
