@@ -153,6 +153,14 @@ async def connect_matrix():
             except Exception as e:
                 logger.error(f"Error loading encryption store: {e}")
                 logger.error("Error details:", exc_info=True)
+                # Add these debugging lines:
+                print(f"matrix_client: {matrix_client.__dict__}")
+                print(f"matrix_client.store: {matrix_client.store}")
+                print(f"matrix_client.user_id: {matrix_client.user_id}")
+                print(f"matrix_client.device_id: {matrix_client.device_id}")
+                logger.error(
+                    "If that does not resolve the issue, you may need to create a new store by deleting the old one."
+                )
                 return None  # Indicate failure to load store
         else:
             logger.error("Cannot load encryption store: user_id or device_id is not set.")
