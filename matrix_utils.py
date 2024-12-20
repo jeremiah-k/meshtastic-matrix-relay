@@ -95,6 +95,10 @@ async def connect_matrix():
     store_path = os.path.join(get_app_path(), matrix_store_path)
     os.makedirs(store_path, exist_ok=True)
 
+    if not os.access(store_path, os.R_OK | os.W_OK):
+        logger.error(f"Cannot access store directory: {store_path}")
+        return None
+
     # Create SSL context using certifi's certificates
     ssl_context = ssl.create_default_context(cafile=certifi.where())
 
@@ -139,26 +143,20 @@ async def connect_matrix():
     else:
         bot_user_name = bot_user_id  # Fallback if display name is not set
 
+    # Load the encryption store if e2ee_support is True
+    # Ensure user_id and device_id are set before loading the store
     if e2ee_support:
-        try:
-            # Use nio's SqliteStore to check if the path is valid
-            if not os.path.isdir(matrix_client.store_path):
-                raise ValueError(f"Invalid store path: {matrix_client.store_path}")
-
-            # Try to load the encryption store
-            await matrix_client.load_store()
-            logger.info("Loaded encryption state from store.")
-
-        except Exception as e:
-            logger.error(f"Error loading encryption store: {e}")
-            logger.error(
-                "Please ensure you have correctly installed matrix-nio with `pip install matrix-nio[e2e]`"
-            )
-            logger.error("Error details:", exc_info=True)
-            logger.error(
-                "If that does not resolve the issue, you may need to create a new store by deleting the old one."
-            )
-            return None  # Indicate failure to load store
+        if matrix_client.user_id and matrix_client.device_id:
+            try:
+                await matrix_client.load_store()
+                logger.info("Loaded encryption state from store.")
+            except Exception as e:
+                logger.error(f"Error loading encryption store: {e}")
+                logger.error("Error details:", exc_info=True)
+                return None  # Indicate failure to load store
+        else:
+            logger.error("Cannot load encryption store: user_id or device_id is not set.")
+            return None
 
         # Upload encryption keys if necessary
         if matrix_client.should_upload_keys:
@@ -261,8 +259,8 @@ async def matrix_relay(
         if emoji:
             content["meshtastic_emoji"] = 1
 
-        # If E2EE is enabled, we use room_send_encrypted
-        if e2ee_support:
+        # If E2EE is enabled and the store is loaded, use room_send_encrypted
+        if e2ee_support and matrix_client.encryption:
             response = await asyncio.wait_for(
                 matrix_client.room_send_encrypted(
                     room_id=room_id,
