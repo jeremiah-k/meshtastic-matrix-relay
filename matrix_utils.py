@@ -153,48 +153,34 @@ async def connect_matrix():
                 if not os.path.isdir(matrix_client.store_path):
                     raise ValueError(f"Invalid store path: {matrix_client.store_path}")
 
-                # Try to load encryption store from database
-                try:
-                    print(f"matrix_client: {matrix_client.__dict__}")
-                    print(f"matrix_client.store: {matrix_client.store}")
-                    print(f"matrix_client.user_id: {matrix_client.user_id}")
-                    print(f"matrix_client.device_id: {matrix_client.device_id}")
-                    await matrix_client.load_store()
-                    logger.info("Loaded encryption state from store.")
-                except Exception as e:
-                    logger.error(f"Error loading encryption store: {e}")
-                    logger.error("Error details:", exc_info=True)
-                    logger.error("Failed to load store. Creating and saving new Olm account.")
-                    # Create and save new Olm account
-                    olm_account = OlmAccount.with_config(
-                        matrix_client.user_id,
-                        matrix_client.device_id,
-                        config
-                    )
-                    matrix_client.store.save_account(olm_account)
-                    logger.info("New Olm account created and saved.")
+                # Try to load the encryption store
+                await matrix_client.load_store()
+                logger.info("Loaded encryption state from store.")
 
             except Exception as e:
                 logger.error(f"Error loading encryption store: {e}")
-                logger.error(
-                    "Please ensure you have correctly installed matrix-nio with `pip install matrix-nio[e2e]`"
-                )
                 logger.error("Error details:", exc_info=True)
-                logger.error(
-                    "If that does not resolve the issue, you may need to create a new store by deleting the old one."
-                )
-                return None  # Indicate failure to load store
+                # If the store was not loaded and we have the necessary info, create and save a new Olm account
+                if matrix_client.user_id and matrix_client.device_id:
+                    logger.info("Attempting to create and save a new Olm account.")
+                    try:
+                        account = OlmAccount(matrix_client.user_id, matrix_client.device_id)
+                        matrix_client.store.save_account(account)
+                        logger.info("New Olm account created and saved.")
+                        # Since we created a new account, we should upload keys
+                        await matrix_client.keys_upload()
+                        logger.info("Uploaded encryption keys for the new account.")
+                    except Exception as e:
+                        logger.error(f"Failed to create and save new Olm account: {e}")
+                        return None
+                else:
+                    logger.error("Cannot create new Olm account: user_id or device_id is not set.")
+                    return None
         else:
             logger.error("Cannot load encryption store: user_id or device_id is not set.")
             return None
 
-        # Upload encryption keys if necessary
-        if matrix_client.should_upload_keys:
-            await matrix_client.keys_upload()
-            logger.info("Uploaded encryption keys.")
-
     return matrix_client
-
 
 async def join_matrix_room(matrix_client, room_id_or_alias: str) -> None:
     """Join a Matrix room by its ID or alias."""
@@ -229,7 +215,6 @@ async def join_matrix_room(matrix_client, room_id_or_alias: str) -> None:
             logger.debug(f"Bot is already in room '{room_id_or_alias}'")
     except Exception as e:
         logger.error(f"Error joining room '{room_id_or_alias}': {e}")
-
 
 async def matrix_relay(
     room_id,
