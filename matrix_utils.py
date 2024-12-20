@@ -19,6 +19,7 @@ from nio import (
     UploadResponse,
     WhoamiError,
 )
+import nio
 from PIL import Image
 
 from config import relay_config, get_app_path
@@ -130,11 +131,12 @@ async def connect_matrix():
         bot_user_name = bot_user_id  # Fallback if display name is not set
 
     if e2ee_support:
+        # adding debug prints here
+        print(f"matrix-nio version: {nio.__version__}")
+        print(f"matrix_client.store_path: {matrix_client.store_path}")
+        print(f"matrix_client.store: {matrix_client.store}")
+        print(f"matrix_client.config: {matrix_client.config}")
         try:
-            # Use nio's SqliteStore to check if the path is valid
-            if not os.path.isdir(matrix_client.store_path):
-                raise ValueError(f"Invalid store path: {matrix_client.store_path}")
-
             # Try to load the encryption store
             await matrix_client.load_store()
             logger.info("Loaded encryption state from store.")
@@ -148,7 +150,6 @@ async def connect_matrix():
             logger.error(
                 "If that does not resolve the issue, you may need to create a new store by deleting the old one."
             )
-            matrix_client = None  # Reset client on failure
             return None  # Indicate failure to load store
 
         # Upload encryption keys if necessary
@@ -251,8 +252,8 @@ async def matrix_relay(
         if emoji:
             content["meshtastic_emoji"] = 1
 
-        # Check if encryption is available before using room_send_encrypted
-        if e2ee_support and matrix_client and matrix_client.encryption:
+        # If E2EE is enabled and the store is loaded, use room_send_encrypted
+        if e2ee_support and matrix_client.encryption:
             response = await asyncio.wait_for(
                 matrix_client.room_send_encrypted(
                     room_id=room_id,
