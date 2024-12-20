@@ -1,6 +1,5 @@
 import asyncio
 import io
-import os
 import re
 import ssl
 import time
@@ -91,32 +90,20 @@ async def connect_matrix():
     # Create SSL context using certifi's certificates
     ssl_context = ssl.create_default_context(cafile=certifi.where())
 
-    # Ensure the store directory exists
-    abs_store_path = os.path.abspath(matrix_store_path)
-    os.makedirs(abs_store_path, exist_ok=True)
-    logger.debug(f"Ensuring Matrix store directory exists: {abs_store_path}")
-
-    # Initialize the Matrix client with custom SSL context and absolute store path
+    # Initialize the Matrix client with custom SSL context
     config = AsyncClientConfig(encryption_enabled=matrix_e2ee_support)
     matrix_client = AsyncClient(
         homeserver=matrix_homeserver,
         user=bot_user_id,
         config=config,
         ssl=ssl_context,
-        store_path=abs_store_path,
+        store_path=matrix_store_path,
     )
 
+    # Set the access_token and user_id
     if matrix_access_token:
         matrix_client.access_token = matrix_access_token
         matrix_client.user_id = bot_user_id
-
-    if matrix_e2ee_support:
-        logger.info(f"E2EE support is enabled. Loading store from: {abs_store_path}")
-        try:
-            matrix_client.load_store()
-        except Exception as e:
-            logger.error(f"Error loading Matrix store: {e}")
-            return None  # Return None if store loading fails
 
     # Attempt to retrieve the device_id using whoami()
     whoami_response = await matrix_client.whoami()
@@ -199,9 +186,6 @@ async def matrix_relay(
     to prevent database bloat and maintain privacy.
     """
     matrix_client = await connect_matrix()
-    if not matrix_client:
-        logger.error("Matrix client not initialized. Cannot relay message.")
-        return
 
     # Retrieve relay_reactions configuration; default to False now if not specified.
     relay_reactions = relay_config["meshtastic"].get("relay_reactions", False)
@@ -280,7 +264,7 @@ def truncate_message(text, max_bytes=227):
 # Callback for new messages in Matrix room
 async def on_room_message(
     room: MatrixRoom,
-    event: Union[RoomMessageText, RoomMessageNotice, ReactionEvent, RoomMessageEmote, ],
+    event: Union[RoomMessageText, RoomMessageNotice, ReactionEvent, RoomMessageEmote],
 ) -> None:
     """
     Handle new messages and reactions in Matrix. For reactions, we ensure that when relaying back
