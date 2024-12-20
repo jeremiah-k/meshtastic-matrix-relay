@@ -35,8 +35,6 @@ from meshtastic_utils import connect_meshtastic
 matrix_homeserver = relay_config["matrix"]["homeserver"]
 matrix_rooms: List[dict] = relay_config["matrix_rooms"]
 matrix_access_token = relay_config["matrix"]["access_token"]
-matrix_e2ee_support = relay_config["matrix"].get("e2ee_support", False)
-matrix_store_path = relay_config["matrix"].get("store_path", "./data/nio")
 
 bot_user_id = relay_config["matrix"]["bot_user_id"]
 bot_user_name = None  # Detected upon logon
@@ -91,19 +89,17 @@ async def connect_matrix():
     ssl_context = ssl.create_default_context(cafile=certifi.where())
 
     # Initialize the Matrix client with custom SSL context
-    config = AsyncClientConfig(encryption_enabled=matrix_e2ee_support)
+    config = AsyncClientConfig(encryption_enabled=False)
     matrix_client = AsyncClient(
         homeserver=matrix_homeserver,
         user=bot_user_id,
         config=config,
         ssl=ssl_context,
-        store_path=matrix_store_path,
     )
 
     # Set the access_token and user_id
-    if matrix_access_token:
-        matrix_client.access_token = matrix_access_token
-        matrix_client.user_id = bot_user_id
+    matrix_client.access_token = matrix_access_token
+    matrix_client.user_id = bot_user_id
 
     # Attempt to retrieve the device_id using whoami()
     whoami_response = await matrix_client.whoami()
