@@ -1,5 +1,6 @@
 import asyncio
 import io
+import os
 import re
 import ssl
 import time
@@ -20,7 +21,7 @@ from nio import (
 )
 from PIL import Image
 
-from config import relay_config
+from config import relay_config, get_app_path
 from db_utils import (
     get_message_map_by_matrix_event_id,
     prune_message_map,
@@ -83,6 +84,10 @@ async def connect_matrix():
     if matrix_client:
         return matrix_client
 
+    # Create the store directory if it doesn't exist
+    store_path = os.path.join(get_app_path(), matrix_store_path)
+    os.makedirs(store_path, exist_ok=True)
+
     # Create SSL context using certifi's certificates
     ssl_context = ssl.create_default_context(cafile=certifi.where())
 
@@ -96,29 +101,28 @@ async def connect_matrix():
     matrix_client = AsyncClient(
         homeserver=matrix_homeserver,
         user=bot_user_id,
-        store_path=matrix_store_path,
+        store_path=store_path,
         config=config,
         ssl=ssl_context,
     )
 
-    # Set the access_token and user_id
+    # Set the access_token
     matrix_client.access_token = matrix_access_token
+
+    # Set the user_id
     matrix_client.user_id = bot_user_id
 
     # Attempt to retrieve the device_id using whoami()
     whoami_response = await matrix_client.whoami()
     if isinstance(whoami_response, WhoamiError):
         logger.error(f"Failed to retrieve device_id: {whoami_response.message}")
-        # If we cannot retrieve device_id and E2EE is enabled, we cannot proceed.
-        # Return None to indicate failure to connect.
-        return None
-
-    matrix_client.device_id = whoami_response.device_id
-    if not matrix_client.device_id:
-        logger.error("Device ID not returned by whoami()")
-        return None
-
-    logger.debug(f"Retrieved device_id: {matrix_client.device_id}")
+        matrix_client.device_id = None
+    else:
+        matrix_client.device_id = whoami_response.device_id
+        if matrix_client.device_id:
+            logger.debug(f"Retrieved device_id: {matrix_client.device_id}")
+        else:
+            logger.warning("device_id not returned by whoami()")
 
     # Fetch the bot's display name
     response = await matrix_client.get_displayname(bot_user_id)
@@ -127,19 +131,25 @@ async def connect_matrix():
     else:
         bot_user_name = bot_user_id  # Fallback if display name is not set
 
+    # Load the encryption store if e2ee_support is True
+    # Ensure user_id and device_id are set before loading the store
     if e2ee_support:
-        try:
-            # Load the encryption store
-            await matrix_client.load_store()
-            logger.info("Loaded encryption state from store.")
-
-            # Upload encryption keys if necessary
-            if matrix_client.should_upload_keys:
-                await matrix_client.keys_upload()
-                logger.info("Uploaded encryption keys.")
-        except Exception as e:
-            logger.error(f"Error initializing encryption store: {e}")
+        if matrix_client.user_id and matrix_client.device_id:
+            try:
+                await matrix_client.load_store()
+                logger.info("Loaded encryption state from store.")
+            except Exception as e:
+                logger.error(f"Error loading encryption store: {e}")
+                logger.error("End-to-end encryption may not be available.")
+                return None  # Indicate failure to load store
+        else:
+            logger.error("Cannot load encryption store: user_id or device_id is not set.")
             return None
+
+        # Upload encryption keys if necessary
+        if matrix_client.should_upload_keys:
+            await matrix_client.keys_upload()
+            logger.info("Uploaded encryption keys.")
 
     return matrix_client
 
@@ -203,8 +213,11 @@ async def matrix_relay(
     to prevent database bloat and maintain privacy.
     """
     matrix_client = await connect_matrix()
+    if matrix_client is None:
+        logger.error("Matrix client is not initialized properly. Message not relayed.")
+        return
 
-    # Retrieve relay_reactions configuration; default to False
+    # Retrieve relay_reactions configuration; default to False now if not specified.
     relay_reactions = relay_config["meshtastic"].get("relay_reactions", False)
 
     # Retrieve db config for message_map pruning
@@ -564,7 +577,6 @@ async def on_room_message(
                     )
                     # If relay_reactions is True, we store the message map for these messages as well.
                     # If False, skip storing.
-                    relay_reactions = relay_config["meshtastic"].get("relay_reactions", False)
                     if relay_reactions and sent_packet and hasattr(sent_packet, "id"):
                         store_message_map(
                             sent_packet.id,
@@ -590,7 +602,6 @@ async def on_room_message(
                     text=full_message, channelIndex=meshtastic_channel
                 )
                 # Store message_map only if relay_reactions is True
-                relay_reactions = relay_config["meshtastic"].get("relay_reactions", False)
                 if relay_reactions and sent_packet and hasattr(sent_packet, "id"):
                     store_message_map(
                         sent_packet.id,
