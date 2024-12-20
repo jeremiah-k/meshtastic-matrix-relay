@@ -9,7 +9,7 @@ import signal
 import sys
 from typing import List
 
-from nio import ReactionEvent, RoomMessageEmote, RoomMessageNotice, RoomMessageText
+from nio import ReactionEvent, RoomMessageEmote, RoomMessageNotice, RoomMessageText, MegolmEvent
 
 # Import meshtastic_utils as a module to set event_loop
 import meshtastic_utils
@@ -33,10 +33,10 @@ logger = get_logger(name="M<>M Relay")
 
 # Extract Matrix configuration
 matrix_rooms: List[dict] = relay_config["matrix_rooms"]
+matrix_e2ee_support = relay_config["matrix"].get("e2ee_support", False)
 
 # Set the logging level for 'nio' to ERROR to suppress warnings
 logging.getLogger("nio").setLevel(logging.ERROR)
-
 
 async def main():
     """
@@ -71,9 +71,19 @@ async def main():
         logger.error("Failed to connect to Matrix. Exiting.")
         return
 
+    if matrix_e2ee_support:
+        matrix_logger.info("E2EE support is enabled. Loading store.")
+        matrix_client.load_store()
+
     # Join the rooms specified in the config.yaml
     for room in matrix_rooms:
         await join_matrix_room(matrix_client, room["id"])
+
+    if matrix_e2ee_support:
+        # Initialize encryption for joined rooms
+        for room_id in matrix_client.rooms:
+            matrix_logger.debug(f"Ensuring encryption for room: {room_id}")
+            await matrix_client.create_room_key_share(room_id)
 
     # Register the message callback for Matrix
     matrix_logger.info("Listening for inbound Matrix messages...")
@@ -82,6 +92,8 @@ async def main():
     )
     # Add ReactionEvent callback so we can handle matrix reactions
     matrix_client.add_event_callback(on_room_message, ReactionEvent)
+    # Add MegolmEvent callback for handling decryption keys
+    matrix_client.add_event_callback(on_room_message, MegolmEvent)
 
     # Set up shutdown event
     shutdown_event = asyncio.Event()
