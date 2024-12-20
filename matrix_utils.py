@@ -39,6 +39,8 @@ matrix_rooms: List[dict] = relay_config["matrix_rooms"]
 matrix_access_token = relay_config["matrix"]["access_token"]
 e2ee_support = relay_config["matrix"].get("e2ee_support", False)
 matrix_store_path = relay_config["matrix"].get("store_path", "./data/nio/")
+# added to support pickle_key in config.yaml
+pickle_key = relay_config["matrix"].get("pickle_key", "")
 
 bot_user_id = relay_config["matrix"]["bot_user_id"]
 bot_user_name = None  # Detected upon logon
@@ -80,7 +82,6 @@ def bot_command(command, event):
     else:
         return False
 
-
 async def connect_matrix():
     """
     Establish a connection to the Matrix homeserver.
@@ -106,6 +107,7 @@ async def connect_matrix():
     config = AsyncClientConfig(
         encryption_enabled=e2ee_support,
         store_sync_tokens=e2ee_support,
+        pickle_key=pickle_key,
     )
 
     # Initialize the Matrix client with custom SSL context
@@ -143,9 +145,8 @@ async def connect_matrix():
     else:
         bot_user_name = bot_user_id  # Fallback if display name is not set
 
-    # Load the encryption store if e2ee_support is True
-    # Ensure user_id and device_id are set before loading the store
     if e2ee_support:
+        # Ensure user_id and device_id are set before loading the store
         if matrix_client.user_id and matrix_client.device_id:
             try:
                 await matrix_client.load_store()
@@ -153,14 +154,6 @@ async def connect_matrix():
             except Exception as e:
                 logger.error(f"Error loading encryption store: {e}")
                 logger.error("Error details:", exc_info=True)
-                # Add these debugging lines:
-                print(f"matrix_client: {matrix_client.__dict__}")
-                print(f"matrix_client.store: {matrix_client.store}")
-                print(f"matrix_client.user_id: {matrix_client.user_id}")
-                print(f"matrix_client.device_id: {matrix_client.device_id}")
-                logger.error(
-                    "If that does not resolve the issue, you may need to create a new store by deleting the old one."
-                )
                 return None  # Indicate failure to load store
         else:
             logger.error("Cannot load encryption store: user_id or device_id is not set.")
@@ -267,8 +260,8 @@ async def matrix_relay(
         if emoji:
             content["meshtastic_emoji"] = 1
 
-        # If E2EE is enabled and the store is loaded, use room_send_encrypted
-        if e2ee_support and matrix_client.encryption:
+        # If E2EE is enabled, we use room_send_encrypted
+        if e2ee_support:
             response = await asyncio.wait_for(
                 matrix_client.room_send_encrypted(
                     room_id=room_id,
