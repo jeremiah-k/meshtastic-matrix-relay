@@ -112,15 +112,13 @@ async def connect_matrix():
         # If we cannot retrieve device_id and E2EE is enabled, we cannot proceed.
         # Return None to indicate failure to connect.
         return None
-    else:
-        matrix_client.device_id = whoami_response.device_id
-        if matrix_client.device_id:
-            logger.debug(f"Retrieved device_id: {matrix_client.device_id}")
-        else:
-            logger.warning("device_id not returned by whoami()")
-            # If E2EE is enabled and no device_id is returned, we cannot proceed.
-            if e2ee_support:
-                return None
+
+    matrix_client.device_id = whoami_response.device_id
+    if not matrix_client.device_id:
+        logger.error("Device ID not returned by whoami()")
+        return None
+
+    logger.debug(f"Retrieved device_id: {matrix_client.device_id}")
 
     # Fetch the bot's display name
     response = await matrix_client.get_displayname(bot_user_id)
@@ -130,14 +128,18 @@ async def connect_matrix():
         bot_user_name = bot_user_id  # Fallback if display name is not set
 
     if e2ee_support:
-        # Load the encryption store
-        await matrix_client.load_store()
-        logger.info("Loaded encryption state from store.")
+        try:
+            # Load the encryption store
+            await matrix_client.load_store()
+            logger.info("Loaded encryption state from store.")
 
-        # Upload encryption keys if necessary
-        if matrix_client.should_upload_keys:
-            await matrix_client.keys_upload()
-            logger.info("Uploaded encryption keys.")
+            # Upload encryption keys if necessary
+            if matrix_client.should_upload_keys:
+                await matrix_client.keys_upload()
+                logger.info("Uploaded encryption keys.")
+        except Exception as e:
+            logger.error(f"Error initializing encryption store: {e}")
+            return None
 
     return matrix_client
 
@@ -202,7 +204,7 @@ async def matrix_relay(
     """
     matrix_client = await connect_matrix()
 
-    # Retrieve relay_reactions configuration; default to False now if not specified.
+    # Retrieve relay_reactions configuration; default to False
     relay_reactions = relay_config["meshtastic"].get("relay_reactions", False)
 
     # Retrieve db config for message_map pruning
