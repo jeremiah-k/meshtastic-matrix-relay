@@ -108,6 +108,7 @@ async def main():
         pass
 
     # Start the Matrix client sync loop
+    first_sync = True # Flag for initial sync
     try:
         while not shutdown_event.is_set():
             try:
@@ -119,9 +120,15 @@ async def main():
                     meshtastic_logger.warning("Meshtastic client is not connected.")
 
                 matrix_logger.info("Starting Matrix sync loop...")
-                sync_task = asyncio.create_task(
-                    matrix_client.sync_forever(timeout=30000, full_state=e2ee_support)
-                )
+                if first_sync:
+                  sync_task = asyncio.create_task(
+                      matrix_client.sync_forever(timeout=30000, full_state=True)
+                  )
+                  first_sync = False
+                else:
+                  sync_task = asyncio.create_task(
+                      matrix_client.sync_forever(timeout=30000, full_state=False)
+                  )
                 shutdown_task = asyncio.create_task(shutdown_event.wait())
                 done, pending = await asyncio.wait(
                     [sync_task, shutdown_task],
