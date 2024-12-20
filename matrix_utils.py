@@ -109,13 +109,18 @@ async def connect_matrix():
     whoami_response = await matrix_client.whoami()
     if isinstance(whoami_response, WhoamiError):
         logger.error(f"Failed to retrieve device_id: {whoami_response.message}")
-        matrix_client.device_id = None
+        # If we cannot retrieve device_id and E2EE is enabled, we cannot proceed.
+        # Return None to indicate failure to connect.
+        return None
     else:
         matrix_client.device_id = whoami_response.device_id
         if matrix_client.device_id:
             logger.debug(f"Retrieved device_id: {matrix_client.device_id}")
         else:
             logger.warning("device_id not returned by whoami()")
+            # If E2EE is enabled and no device_id is returned, we cannot proceed.
+            if e2ee_support:
+                return None
 
     # Fetch the bot's display name
     response = await matrix_client.get_displayname(bot_user_id)
@@ -557,6 +562,7 @@ async def on_room_message(
                     )
                     # If relay_reactions is True, we store the message map for these messages as well.
                     # If False, skip storing.
+                    relay_reactions = relay_config["meshtastic"].get("relay_reactions", False)
                     if relay_reactions and sent_packet and hasattr(sent_packet, "id"):
                         store_message_map(
                             sent_packet.id,
@@ -582,6 +588,7 @@ async def on_room_message(
                     text=full_message, channelIndex=meshtastic_channel
                 )
                 # Store message_map only if relay_reactions is True
+                relay_reactions = relay_config["meshtastic"].get("relay_reactions", False)
                 if relay_reactions and sent_packet and hasattr(sent_packet, "id"):
                     store_message_map(
                         sent_packet.id,
