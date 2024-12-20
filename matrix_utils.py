@@ -5,6 +5,7 @@ import re
 import ssl
 import time
 from typing import List, Union
+import importlib.metadata
 
 import certifi
 import meshtastic.protobuf.portnums_pb2
@@ -19,7 +20,6 @@ from nio import (
     UploadResponse,
     WhoamiError,
 )
-import nio
 from PIL import Image
 
 from config import relay_config, get_app_path
@@ -49,6 +49,12 @@ bot_start_time = int(
 logger = get_logger(name="Matrix")
 
 matrix_client = None
+
+def get_nio_version():
+    try:
+        return importlib.metadata.version('matrix-nio')
+    except importlib.metadata.PackageNotFoundError:
+        return "matrix-nio not installed"
 
 def bot_command(command, event):
     """
@@ -112,7 +118,7 @@ async def connect_matrix():
     matrix_client.user_id = bot_user_id
 
     # Print the matrix-nio version being used
-    print(f"matrix-nio version: {nio.__version__}")
+    logger.debug(f"matrix-nio version: {get_nio_version()}")
 
     # Attempt to retrieve the device_id using whoami()
     whoami_response = await matrix_client.whoami()
@@ -133,30 +139,31 @@ async def connect_matrix():
     else:
         bot_user_name = bot_user_id  # Fallback if display name is not set
 
-    # Load the encryption store if e2ee_support is True
     if e2ee_support:
-        if matrix_client.user_id and matrix_client.device_id:
-            try:
-                await matrix_client.load_store()
-                logger.info("Loaded encryption state from store.")
-            except Exception as e:
-                logger.error(f"Error loading encryption store: {e}")
-                logger.error("Error details:", exc_info=True)
-                # No need to return None, handle potential missing keys below
-        else:
-            logger.error("Cannot load encryption store: user_id or device_id is not set.")
+        try:
+            # Use nio's SqliteStore to check if the path is valid
+            if not os.path.isdir(matrix_client.store_path):
+                raise ValueError(f"Invalid store path: {matrix_client.store_path}")
+
+            # Try to load the encryption store
+            await matrix_client.load_store()
+            logger.info("Loaded encryption state from store.")
+
+        except Exception as e:
+            logger.error(f"Error loading encryption store: {e}")
+            logger.error(
+                "Please ensure you have correctly installed matrix-nio with `pip install matrix-nio[e2e]`"
+            )
+            logger.error("Error details:", exc_info=True)
+            logger.error(
+                "If that does not resolve the issue, you may need to create a new store by deleting the old one."
+            )
             return None  # Indicate failure to load store
 
-        # Upload encryption keys if necessary and if the store was loaded
+        # Upload encryption keys if necessary
         if matrix_client.should_upload_keys:
-            try:
-                keys_upload_response = await matrix_client.keys_upload()
-                if isinstance(keys_upload_response, nio.KeysUploadResponse):
-                    logger.info("Uploaded encryption keys.")
-                else:
-                    logger.error(f"Failed to upload encryption keys: {keys_upload_response}")
-            except Exception as e:
-                logger.error(f"Error uploading encryption keys: {e}")
+            await matrix_client.keys_upload()
+            logger.info("Uploaded encryption keys.")
 
     return matrix_client
 
