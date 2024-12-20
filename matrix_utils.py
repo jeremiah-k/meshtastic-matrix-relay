@@ -19,6 +19,7 @@ from nio import (
     UploadResponse,
     WhoamiError,
 )
+import nio
 from PIL import Image
 
 from config import relay_config, get_app_path
@@ -106,11 +107,12 @@ async def connect_matrix():
         ssl=ssl_context,
     )
 
-    # Set the access_token
+    # Set the access_token and user_id
     matrix_client.access_token = matrix_access_token
-
-    # Set the user_id
     matrix_client.user_id = bot_user_id
+
+    # Print the matrix-nio version being used
+    print(f"matrix-nio version: {nio.__version__}")
 
     # Attempt to retrieve the device_id using whoami()
     whoami_response = await matrix_client.whoami()
@@ -132,7 +134,6 @@ async def connect_matrix():
         bot_user_name = bot_user_id  # Fallback if display name is not set
 
     # Load the encryption store if e2ee_support is True
-    # Ensure user_id and device_id are set before loading the store
     if e2ee_support:
         if matrix_client.user_id and matrix_client.device_id:
             try:
@@ -140,16 +141,22 @@ async def connect_matrix():
                 logger.info("Loaded encryption state from store.")
             except Exception as e:
                 logger.error(f"Error loading encryption store: {e}")
-                logger.error("End-to-end encryption may not be available.")
-                return None  # Indicate failure to load store
+                logger.error("Error details:", exc_info=True)
+                # No need to return None, handle potential missing keys below
         else:
             logger.error("Cannot load encryption store: user_id or device_id is not set.")
-            return None
+            return None  # Indicate failure to load store
 
-        # Upload encryption keys if necessary
+        # Upload encryption keys if necessary and if the store was loaded
         if matrix_client.should_upload_keys:
-            await matrix_client.keys_upload()
-            logger.info("Uploaded encryption keys.")
+            try:
+                keys_upload_response = await matrix_client.keys_upload()
+                if isinstance(keys_upload_response, nio.KeysUploadResponse):
+                    logger.info("Uploaded encryption keys.")
+                else:
+                    logger.error(f"Failed to upload encryption keys: {keys_upload_response}")
+            except Exception as e:
+                logger.error(f"Error uploading encryption keys: {e}")
 
     return matrix_client
 
