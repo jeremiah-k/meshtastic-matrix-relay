@@ -164,15 +164,15 @@ async def connect_matrix():
                 if matrix_client.user_id and matrix_client.device_id:
                     logger.info("Attempting to create and save a new Olm account.")
                     try:
-                        account = OlmAccount(matrix_client.user_id, matrix_client.device_id)
-                        matrix_client.store.save_account(account)
+                        olm_account = OlmAccount(matrix_client.user_id, matrix_client.device_id)
+                        matrix_client.store.save_account(olm_account)
                         logger.info("New Olm account created and saved.")
                         # Since we created a new account, we should upload keys
                         await matrix_client.keys_upload()
                         logger.info("Uploaded encryption keys for the new account.")
                     except Exception as e:
                         logger.error(f"Failed to create and save new Olm account: {e}")
-                        return None
+                        return None  # Indicate failure to create new Olm account
                 else:
                     logger.error("Cannot create new Olm account: user_id or device_id is not set.")
                     return None
