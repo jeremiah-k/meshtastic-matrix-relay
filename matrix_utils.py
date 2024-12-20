@@ -20,6 +20,7 @@ from nio import (
     UploadResponse,
     WhoamiError,
 )
+from nio.crypto import OlmAccount
 from PIL import Image
 
 from config import relay_config, get_app_path
@@ -39,7 +40,6 @@ matrix_rooms: List[dict] = relay_config["matrix_rooms"]
 matrix_access_token = relay_config["matrix"]["access_token"]
 e2ee_support = relay_config["matrix"].get("e2ee_support", False)
 matrix_store_path = relay_config["matrix"].get("store_path", "./data/nio/")
-# added to support pickle_key in config.yaml
 pickle_key = relay_config["matrix"].get("pickle_key", "")
 
 bot_user_id = relay_config["matrix"]["bot_user_id"]
@@ -149,11 +149,40 @@ async def connect_matrix():
         # Ensure user_id and device_id are set before loading the store
         if matrix_client.user_id and matrix_client.device_id:
             try:
-                await matrix_client.load_store()
-                logger.info("Loaded encryption state from store.")
+                # Use nio's SqliteStore to check if the path is valid
+                if not os.path.isdir(matrix_client.store_path):
+                    raise ValueError(f"Invalid store path: {matrix_client.store_path}")
+
+                # Try to load encryption store from database
+                try:
+                    print(f"matrix_client: {matrix_client.__dict__}")
+                    print(f"matrix_client.store: {matrix_client.store}")
+                    print(f"matrix_client.user_id: {matrix_client.user_id}")
+                    print(f"matrix_client.device_id: {matrix_client.device_id}")
+                    await matrix_client.load_store()
+                    logger.info("Loaded encryption state from store.")
+                except Exception as e:
+                    logger.error(f"Error loading encryption store: {e}")
+                    logger.error("Error details:", exc_info=True)
+                    logger.error("Failed to load store. Creating and saving new Olm account.")
+                    # Create and save new Olm account
+                    olm_account = OlmAccount.with_config(
+                        matrix_client.user_id,
+                        matrix_client.device_id,
+                        config
+                    )
+                    matrix_client.store.save_account(olm_account)
+                    logger.info("New Olm account created and saved.")
+
             except Exception as e:
                 logger.error(f"Error loading encryption store: {e}")
+                logger.error(
+                    "Please ensure you have correctly installed matrix-nio with `pip install matrix-nio[e2e]`"
+                )
                 logger.error("Error details:", exc_info=True)
+                logger.error(
+                    "If that does not resolve the issue, you may need to create a new store by deleting the old one."
+                )
                 return None  # Indicate failure to load store
         else:
             logger.error("Cannot load encryption store: user_id or device_id is not set.")
