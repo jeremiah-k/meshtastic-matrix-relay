@@ -106,7 +106,6 @@ async def initialize_encryption(client: AsyncClient) -> bool:
             encryption_enabled=True,
             store_sync_tokens=True,
             pickle_key=matrix_pickle_key,
-            ignore_unverified_devices=True, # Add this for ignore_unverified_devices
         )
 
         client = AsyncClient(
@@ -160,7 +159,6 @@ async def connect_matrix():
         encryption_enabled=e2ee_support,
         store_sync_tokens=True,
         pickle_key=matrix_pickle_key,
-        ignore_unverified_devices=True,
     )
 
     matrix_client = AsyncClient(
@@ -310,6 +308,7 @@ async def matrix_relay(
                 room_id=room_id,
                 message_type="m.room.message",
                 content=content,
+                ignore_unverified_devices=True,
             ),
             timeout=5.0,
         )
@@ -661,7 +660,6 @@ async def on_room_message(
                 f"Broadcast not supported: Message from {full_display_name} dropped."
             )
 
-
 async def upload_image(
     client: AsyncClient, image: Image.Image, filename: str
 ) -> UploadResponse:
@@ -680,7 +678,6 @@ async def upload_image(
     )
 
     return response
-
 
 async def send_room_image(
     client: AsyncClient, room_id: str, upload_response: UploadResponse
