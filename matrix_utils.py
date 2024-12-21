@@ -101,7 +101,7 @@ async def initialize_encryption(client: AsyncClient) -> bool:
             logger.debug(f"Set device_id to {client.device_id}")
 
         # Re-initialize the client with the correct config and store path
-        client.close()
+        await client.close() # Await client.close()
         config = AsyncClientConfig(
             encryption_enabled=True,
             store_sync_tokens=True,
@@ -190,7 +190,7 @@ async def connect_matrix():
         if not await initialize_encryption(matrix_client):
             logger.error("Failed to initialize encryption. Continuing without E2EE.")
             # Revert to non-e2ee client if encryption fails
-            matrix_client.close()
+            await matrix_client.close() # Await client.close()
             config = AsyncClientConfig(encryption_enabled=False)
             matrix_client = AsyncClient(
                 homeserver=matrix_homeserver,
