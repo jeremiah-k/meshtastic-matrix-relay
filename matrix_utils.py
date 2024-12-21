@@ -35,6 +35,9 @@ from meshtastic_utils import connect_meshtastic
 matrix_homeserver = relay_config["matrix"]["homeserver"]
 matrix_rooms: List[dict] = relay_config["matrix_rooms"]
 matrix_access_token = relay_config["matrix"]["access_token"]
+matrix_store_path = relay_config["matrix"].get("store_path", "./data/nio")
+matrix_pickle_key = relay_config["matrix"].get("pickle_key", "")
+e2ee_support = relay_config["matrix"].get("e2ee_support", False)
 
 bot_user_id = relay_config["matrix"]["bot_user_id"]
 bot_user_name = None  # Detected upon logon
@@ -82,6 +85,62 @@ def bot_command(command, event):
     # # Check if the message matches the pattern
     # return bool(re.match(pattern, full_message)) or bool(re.match(pattern, text_content))
 
+async def initialize_encryption(client: AsyncClient) -> bool:
+    """
+    Initialize encryption for the Matrix client.
+    Returns True if encryption was successfully initialized, False otherwise.
+    """
+    try:
+        # Ensure we have a device_id from whoami
+        if not client.device_id:
+            whoami_response = await client.whoami()
+            if isinstance(whoami_response, WhoamiError):
+                logger.error(f"Failed to get device ID: {whoami_response.message}")
+                return False
+            client.device_id = whoami_response.device_id
+            logger.debug(f"Set device_id to {client.device_id}")
+
+        # Re-initialize the client with the correct config and store path
+        client.close()
+        config = AsyncClientConfig(
+            encryption_enabled=True,
+            store_sync_tokens=True,
+            pickle_key=matrix_pickle_key,
+            ignore_unverified_devices=True, # Add this for ignore_unverified_devices
+        )
+
+        client = AsyncClient(
+            homeserver=matrix_homeserver,
+            user=bot_user_id,
+            device_id=client.device_id,
+            store_path=matrix_store_path,
+            config=config,
+            ssl=ssl.create_default_context(cafile=certifi.where()),
+        )
+
+        client.access_token = matrix_access_token
+        client.user_id = bot_user_id
+
+        # Load the store
+        try:
+            await client.load_store()
+            logger.debug("Successfully loaded encryption store")
+        except Exception as e:
+            logger.error(f"Error loading store: {e}")
+            return False
+
+        # Ensure we have encryption keys
+        try:
+            await client.keys_upload()
+            logger.debug("Successfully uploaded encryption keys")
+        except Exception as e:
+            logger.error(f"Error uploading keys: {e}")
+            return False
+
+        return True
+    except Exception as e:
+        logger.error(f"Failed to initialize encryption: {e}")
+        return False
 
 async def connect_matrix():
     """
@@ -96,11 +155,18 @@ async def connect_matrix():
     # Create SSL context using certifi's certificates
     ssl_context = ssl.create_default_context(cafile=certifi.where())
 
-    # Initialize the Matrix client with custom SSL context
-    config = AsyncClientConfig(encryption_enabled=False)
+    # Initialize the Matrix client with custom SSL context and encryption if enabled
+    config = AsyncClientConfig(
+        encryption_enabled=e2ee_support,
+        store_sync_tokens=True,
+        pickle_key=matrix_pickle_key,
+        ignore_unverified_devices=True,
+    )
+
     matrix_client = AsyncClient(
         homeserver=matrix_homeserver,
         user=bot_user_id,
+        store_path=matrix_store_path if e2ee_support else None,
         config=config,
         ssl=ssl_context,
     )
@@ -120,6 +186,24 @@ async def connect_matrix():
             logger.debug(f"Retrieved device_id: {matrix_client.device_id}")
         else:
             logger.warning("device_id not returned by whoami()")
+
+    # Initialize encryption if enabled
+    if e2ee_support:
+        if not await initialize_encryption(matrix_client):
+            logger.error("Failed to initialize encryption. Continuing without E2EE.")
+            # Revert to non-e2ee client if encryption fails
+            matrix_client.close()
+            config = AsyncClientConfig(encryption_enabled=False)
+            matrix_client = AsyncClient(
+                homeserver=matrix_homeserver,
+                user=bot_user_id,
+                config=config,
+                ssl=ssl_context,
+            )
+            matrix_client.access_token = matrix_access_token
+            matrix_client.user_id = bot_user_id
+    else:
+        logger.debug("E2EE support is disabled")
 
     # Fetch the bot's display name
     response = await matrix_client.get_displayname(bot_user_id)
