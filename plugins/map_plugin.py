@@ -1,17 +1,9 @@
-import PIL.ImageDraw
-
-def textsize(self: PIL.ImageDraw.ImageDraw, *args, **kwargs):
-    x, y, w, h = self.textbbox((0, 0), *args, **kwargs)
-    return w, h
-
-# Monkeypatch fix for https://github.com/flopp/py-staticmaps/issues/39
-PIL.ImageDraw.ImageDraw.textsize = textsize
-
 import io
 import math
 import random
 import re
 
+import PIL.ImageDraw
 import s2sphere
 import staticmaps
 from nio import AsyncClient, UploadResponse
@@ -19,6 +11,10 @@ from PIL import Image
 
 from plugins.base_plugin import BasePlugin
 
+
+def textsize(self: PIL.ImageDraw.ImageDraw, *args, **kwargs):
+    x, y, w, h = self.textbbox((0, 0), *args, **kwargs)
+    return w, h
 
 
 # Monkeypatch fix for https://github.com/flopp/py-staticmaps/issues/39
@@ -221,7 +217,11 @@ async def send_room_image(
     await client.room_send(
         room_id=room_id,
         message_type="m.room.message",
-        content={"msgtype": "m.image", "url": upload_response.content_uri, "body": ""},
+        content={
+            "msgtype": "m.image",
+            "url": upload_response.content_uri,
+            "body": "",
+        },
     )
 
 
