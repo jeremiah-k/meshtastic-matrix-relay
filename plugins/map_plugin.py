@@ -1,3 +1,12 @@
+import PIL.ImageDraw
+
+def textsize(self: PIL.ImageDraw.ImageDraw, *args, **kwargs):
+    x, y, w, h = self.textbbox((0, 0), *args, **kwargs)
+    return w, h
+
+# Monkeypatch fix for https://github.com/flopp/py-staticmaps/issues/39
+PIL.ImageDraw.ImageDraw.textsize = textsize
+
 import io
 import math
 import random
