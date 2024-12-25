@@ -1,12 +1,14 @@
 import io
+import io
 import math
 import random
 import re
 
-import PIL.ImageDraw
 import s2sphere
 import staticmaps
 from nio import AsyncClient, UploadResponse
+from PIL import Image
+
 from PIL import Image
 
 from plugins.base_plugin import BasePlugin
