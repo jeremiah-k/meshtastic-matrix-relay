@@ -47,7 +47,9 @@ class TextLabel(staticmaps.Object):
         x, y = renderer.transformer().ll2pixel(self.latlng())
         x = x + renderer.offset_x()
 
-        tw, th = renderer.draw().textsize(self._text)
+        # Updated to use textbbox instead of textsize
+        bbox = renderer.draw().textbbox((0, 0), self._text)
+        tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
         w = max(self._arrow, tw + 2 * self._margin)
         h = th + 2 * self._margin
 
@@ -220,7 +222,7 @@ async def send_room_image(
         content={
             "msgtype": "m.image",
             "url": upload_response.content_uri,
-            "body": "",
+            "body": "image.png",
         },
     )
 
