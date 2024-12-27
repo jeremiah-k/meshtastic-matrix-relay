@@ -31,13 +31,15 @@ M<>M Relay supports plugins for extending its functionality, enabling customizat
 
 ## Core Plugins
 
-~~Generate a map of your nodes:~~ _(The map plugin is currently broken, see https://github.com/geoffwhittington/meshtastic-matrix-relay/issues/117 for more information.)_
+Generate a map of your nodes:
 
 ![Map Plugin Screenshot](https://user-images.githubusercontent.com/1770544/235247915-47750b4f-d505-4792-a458-54a5f24c1523.png)
 
 Produce high-level details about your mesh:
 
 ![Mesh Details Screenshot](https://user-images.githubusercontent.com/1770544/235245873-1ddc773b-a4cd-4c67-b0a5-b55a29504b73.png)
+
+See the full list of core plugins [here](https://github.com/geoffwhittington/meshtastic-matrix-relay/wiki/Core-Plugins).
 
 ## Community & custom plugins
 
