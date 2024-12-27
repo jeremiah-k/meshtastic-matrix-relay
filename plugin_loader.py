@@ -169,8 +169,13 @@ def load_plugins():
                 logger.error("Please specify the repository URL in config.yaml")
                 sys.exit(1)
 
-    # Load community plugins (recursive)
-    plugins.extend(load_plugins_from_directory(community_plugins_dir, recursive=True))
+    # Only load community plugins that are explicitly enabled
+    for plugin_name in active_community_plugins:
+        plugin_path = os.path.join(community_plugins_dir, plugin_name)
+        if os.path.exists(plugin_path):
+            plugins.extend(load_plugins_from_directory(plugin_path, recursive=True))
+        else:
+            logger.warning(f"Community plugin directory not found: {plugin_path}")
 
     # Filter and sort active plugins by priority
     active_plugins = []
