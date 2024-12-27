@@ -187,11 +187,18 @@ def load_plugins():
 
     # Only load community plugins that are explicitly enabled
     for plugin_name in active_community_plugins:
-        plugin_path = os.path.join(community_plugins_dir, plugin_name)
-        if os.path.exists(plugin_path):
-            plugins.extend(load_plugins_from_directory(plugin_path, recursive=True))
+        plugin_info = community_plugins_config[plugin_name]
+        repo_url = plugin_info.get("repository")
+        if repo_url:
+            # Extract repository name from URL
+            repo_name = os.path.splitext(os.path.basename(repo_url.rstrip("/")))[0]
+            plugin_path = os.path.join(community_plugins_dir, repo_name)
+            if os.path.exists(plugin_path):
+                plugins.extend(load_plugins_from_directory(plugin_path, recursive=True))
+            else:
+                logger.warning(f"Community plugin directory not found: {plugin_path}")
         else:
-            logger.warning(f"Community plugin directory not found: {plugin_path}")
+            logger.error(f"Repository URL not specified for community plugin: {plugin_name}")
 
     # Filter and sort active plugins by priority
     active_plugins = []
