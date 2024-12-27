@@ -144,14 +144,22 @@ def load_plugins():
     )  # Use get_app_path()
 
     # Create community plugins directory if needed
-    if any(
-        plugin_info.get("active", False)
-        for plugin_info in community_plugins_config.values()
-    ):
-        os.makedirs(community_plugins_dir, exist_ok=True)
+    active_community_plugins = [
+        plugin_name for plugin_name, plugin_info in community_plugins_config.items()
+        if plugin_info.get("active", False)
+    ]
 
-    for plugin_info in community_plugins_config.values():
-        if plugin_info.get("active", False):
+    if active_community_plugins:
+        os.makedirs(community_plugins_dir, exist_ok=True)
+        logger.debug(f"Loading active community plugins: {', '.join(active_community_plugins)}")
+
+    # Only process community plugins if config section exists and is a dictionary
+    if isinstance(community_plugins_config, dict):
+        for plugin_name, plugin_info in community_plugins_config.items():
+            if not plugin_info.get("active", False):
+                logger.debug(f"Skipping community plugin {plugin_name} - not active in config")
+                continue
+
             repo_url = plugin_info.get("repository")
             tag = plugin_info.get("tag", "master")
             if repo_url:
