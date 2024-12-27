@@ -131,11 +131,27 @@ def load_plugins():
 
     plugins = core_plugins.copy()
 
-    # Load custom plugins (non-recursive)
+    # Process and load custom plugins
+    custom_plugins_config = config.get("custom-plugins", {})
     custom_plugins_dir = os.path.join(
         get_app_path(), "plugins", "custom"
     )  # Use get_app_path()
-    plugins.extend(load_plugins_from_directory(custom_plugins_dir, recursive=False))
+
+    active_custom_plugins = [
+        plugin_name for plugin_name, plugin_info in custom_plugins_config.items()
+        if plugin_info.get("active", False)
+    ]
+
+    if active_custom_plugins:
+        logger.debug(f"Loading active custom plugins: {', '.join(active_custom_plugins)}")
+
+    # Only load custom plugins that are explicitly enabled
+    for plugin_name in active_custom_plugins:
+        plugin_path = os.path.join(custom_plugins_dir, plugin_name)
+        if os.path.exists(plugin_path):
+            plugins.extend(load_plugins_from_directory(plugin_path, recursive=False))
+        else:
+            logger.warning(f"Custom plugin directory not found: {plugin_path}")
 
     # Process and download community plugins
     community_plugins_config = config.get("community-plugins", {})
