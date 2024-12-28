@@ -10,9 +10,9 @@ plugins/__pycache__/
 *.pyd
 *$py.class
 custom_plugins/
-logs/*
-plugins/custom/*
-plugins/community/*
+logs/**
+plugins/custom/**
+plugins/community/**
 data/**
 
 # Allow the directories themselves to be tracked
