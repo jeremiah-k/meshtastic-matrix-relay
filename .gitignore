@@ -13,9 +13,10 @@ custom_plugins/
 logs/*
 plugins/custom/*
 plugins/community/*
-data/*
+data/**
 
 # Allow the directories themselves to be tracked
+!data/.gitkeep
 !logs/.gitkeep
 !plugins/custom/.gitkeep
 !plugins/community/.gitkeep
