@@ -99,7 +99,7 @@ def load_plugins():
     if plugins_loaded:
         return sorted_active_plugins
 
-    logger.debug("Loading plugins...")
+    logger.info("Checking plugin config...")
 
     config = relay_config  # Use relay_config loaded in config.py
 
@@ -232,4 +232,13 @@ def load_plugins():
                 logger.error(f"Error starting plugin {plugin_name}: {e}")
 
     sorted_active_plugins = sorted(active_plugins, key=lambda plugin: plugin.priority)
+
+    # Log all loaded plugins
+    if sorted_active_plugins:
+        plugin_names = [getattr(plugin, "plugin_name", plugin.__class__.__name__)
+                       for plugin in sorted_active_plugins]
+        logger.info(f"Plugins loaded: {', '.join(plugin_names)}")
+    else:
+        logger.info("Plugins loaded: none")
+
     plugins_loaded = True  # Set the flag to indicate that plugins have been load
