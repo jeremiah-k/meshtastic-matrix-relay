@@ -161,13 +161,24 @@ async def connect_matrix():
         pickle_key=matrix_pickle_key,
     )
 
+    # Ensure store directory exists
+    os.makedirs(matrix_store_path, exist_ok=True)
+
     matrix_client = AsyncClient(
         homeserver=matrix_homeserver,
         user=bot_user_id,
-        store_path=matrix_store_path if e2ee_support else None,
+        store_path=matrix_store_path,
         config=config,
         ssl=ssl_context,
     )
+
+    # Initialize store
+    try:
+        await matrix_client.load_store()
+        logger.debug("Successfully initialized Matrix store")
+    except Exception as e:
+        logger.error(f"Error initializing Matrix store: {e}")
+        return None
 
     # Set the access_token and user_id
     matrix_client.access_token = matrix_access_token
