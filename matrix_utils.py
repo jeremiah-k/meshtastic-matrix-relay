@@ -171,6 +171,9 @@ async def connect_matrix():
         config=config,
         ssl=ssl_context,
     )
+    # Set user_id and access_token before store initialization
+    matrix_client.user_id = bot_user_id
+    matrix_client.access_token = matrix_access_token
 
     # Initialize store
     try:
