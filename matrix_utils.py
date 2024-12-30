@@ -180,9 +180,8 @@ async def connect_matrix():
         logger.error(f"Error initializing Matrix store: {e}")
         return None
 
-    # Set the access_token and user_id
+    # Set the access_token
     matrix_client.access_token = matrix_access_token
-    matrix_client.user_id = bot_user_id
 
     # Attempt to retrieve the device_id using whoami()
     whoami_response = await matrix_client.whoami()
@@ -191,6 +190,8 @@ async def connect_matrix():
         matrix_client.device_id = None
     else:
         matrix_client.device_id = whoami_response.device_id
+        # Set user_id after successful whoami response
+        matrix_client.user_id = bot_user_id
         if matrix_client.device_id:
             logger.debug(f"Retrieved device_id: {matrix_client.device_id}")
         else:
