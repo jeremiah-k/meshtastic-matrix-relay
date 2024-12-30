@@ -1,5 +1,6 @@
 import asyncio
 import io
+import os
 import re
 import ssl
 import time
@@ -100,25 +101,15 @@ async def initialize_encryption(client: AsyncClient) -> bool:
             client.device_id = whoami_response.device_id
             logger.debug(f"Set device_id to {client.device_id}")
 
-        # Re-initialize the client with the correct config and store path
-        await client.close() # Await client.close()
-        config = AsyncClientConfig(
+        # Update client config with encryption settings
+        client.config = AsyncClientConfig(
             encryption_enabled=True,
             store_sync_tokens=True,
             pickle_key=matrix_pickle_key,
         )
 
-        client = AsyncClient(
-            homeserver=matrix_homeserver,
-            user=bot_user_id,
-            device_id=client.device_id,
-            store_path=matrix_store_path,
-            config=config,
-            ssl=ssl.create_default_context(cafile=certifi.where()),
-        )
-
-        client.access_token = matrix_access_token
-        client.user_id = bot_user_id
+        # Ensure store directory exists
+        os.makedirs(matrix_store_path, exist_ok=True)
 
         # Load the store
         try:
@@ -128,12 +119,21 @@ async def initialize_encryption(client: AsyncClient) -> bool:
             logger.error(f"Error loading store: {e}")
             return False
 
-        # Ensure we have encryption keys
+        # Perform full key management
         try:
-            await client.keys_upload()
-            logger.debug("Successfully uploaded encryption keys")
+            if client.should_upload_keys:
+                await client.keys_upload()
+                logger.debug("Successfully uploaded encryption keys")
+
+            if client.should_query_keys:
+                await client.keys_query()
+                logger.debug("Successfully queried encryption keys")
+
+            if client.should_claim_keys:
+                await client.keys_claim()
+                logger.debug("Successfully claimed encryption keys")
         except Exception as e:
-            logger.error(f"Error uploading keys: {e}")
+            logger.error(f"Error managing encryption keys: {e}")
             return False
 
         return True
