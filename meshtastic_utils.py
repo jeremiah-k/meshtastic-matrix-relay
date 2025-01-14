@@ -419,7 +419,7 @@ def on_meshtastic_message(packet, interface):
         # If message is a DM or handled by plugin, do not relay further
         if is_direct_message:
             logger.debug(
-                f"Received a direct message from {longname}. Not relaying to Matrix."
+                f"Received a direct message from {longname}: {text}. Not relaying to Matrix."
             )
             return
         if found_matching_plugin:

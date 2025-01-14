@@ -156,7 +156,7 @@ class Plugin(BasePlugin):
                 return False
 
             # Log that the plugin is processing the message
-            self.logger.info(f"Processing message with plugin '{self.plugin_name}'")
+                self.logger.info(f"Processing message from {longname} on channel {channel} with plugin '{self.plugin_name}'")
 
             fromId = packet.get("fromId")
             if fromId in meshtastic_client.nodes:
