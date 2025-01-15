@@ -36,7 +36,7 @@ class Plugin(BasePlugin):
 
             # Extract relevant weather data
             current_temp = data["current_weather"]["temperature"]
-            current_weather_code = data["current_weather"]["weather_code"]
+            current_weather_code = data["current_weather"].get("weather_code", None)  # Use .get() to avoid KeyError
             is_day = data["current_weather"]["is_day"]
             cloud_cover = data["current_weather"]["cloud_cover"]
             wind_speed = data["current_weather"]["wind_speed_10m"]
@@ -63,9 +63,7 @@ class Plugin(BasePlugin):
                     2: "⛅️ Partly cloudy" if is_day else "🌙⛅️ Partly cloudy",
                     3: "☁️ Overcast" if is_day else "🌙☁️ Overcast",
                     45: "🌫️ Fog" if is_day else "🌙🌫️ Fog",
-                    48: (
-                        "🌫️ Depositing rime fog" if is_day else "🌙🌫️ Depositing rime fog"
-                    ),
+                    48: "🌫️ Depositing rime fog" if is_day else "🌙🌫️ Depositing rime fog",
                     51: "🌧️ Light drizzle",
                     53: "🌧️ Moderate drizzle",
                     55: "🌧️ Dense drizzle",
@@ -92,16 +90,21 @@ class Plugin(BasePlugin):
 
                 return weather_mapping.get(weather_code, "❓ Unknown")
 
-            forecast = (
-                f"Now: {weather_code_to_text(current_weather_code, is_day)} - "
-                f"{current_temp}{temperature_unit} | "
-                f"Cloud cover: {cloud_cover}% | "
-                f"Wind: {wind_speed} km/h {wind_direction}° | "
-                f"Sunrise: {sunrise} | Sunset: {sunset} | "
-                f"High: {high_temp}{temperature_unit} | Low: {low_temp}{temperature_unit}"
-            )
+            # Handle case where weather_code is None
+            if current_weather_code is None:
+                weather_notice = "Weather data is not available for current conditions."
+            else:
+                forecast = (
+                    f"Now: {weather_code_to_text(current_weather_code, is_day)} - "
+                    f"{current_temp}{temperature_unit} | "
+                    f"Cloud cover: {cloud_cover}% | "
+                    f"Wind: {wind_speed} km/h {wind_direction}° | "
+                    f"Sunrise: {sunrise} | Sunset: {sunset} | "
+                    f"High: {high_temp}{temperature_unit} | Low: {low_temp}{temperature_unit}"
+                )
+                weather_notice = forecast
 
-            return forecast
+            return weather_notice
 
         except requests.exceptions.RequestException as e:
             self.logger.error(f"Error fetching weather data: {e}")
