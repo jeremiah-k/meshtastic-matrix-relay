@@ -34,17 +34,19 @@ class Plugin(BasePlugin):
             response = requests.get(url, timeout=10)
             data = response.json()
 
-            # Extract relevant weather data
+            # Extract relevant weather data from the current weather
             current_temp = data["current_weather"]["temperature"]
             current_weather_code = data["current_weather"].get("weather_code", None)  # Use .get() to avoid KeyError
             is_day = data["current_weather"]["is_day"]
-            cloud_cover = data["current_weather"]["cloud_cover"]
-            wind_speed = data["current_weather"]["wind_speed_10m"]
-            wind_direction = data["current_weather"]["wind_direction_10m"]
             sunrise = data["sunrise"]
             sunset = data["sunset"]
             high_temp = data["daily"]["temperature_2m_max"][0]  # High temperature
             low_temp = data["daily"]["temperature_2m_min"][0]  # Low temperature
+
+            # Extract cloud cover and wind information from hourly data
+            cloud_cover = data["hourly"]["cloud_cover"][0]  # Cloud cover from hourly data
+            wind_speed = data["hourly"]["wind_speed_10m"][0]  # Wind speed from hourly data
+            wind_direction = data["hourly"]["wind_direction_10m"][0]  # Wind direction from hourly data
 
             # Convert to Fahrenheit if needed
             if units == "imperial":
