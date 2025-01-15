@@ -13,16 +13,22 @@ class Plugin(BasePlugin):
     def description(self):
         return "Show weather forecast for a radio node using GPS location"
 
-    def generate_forecast(self, latitude, longitude):
+    def generate_forecast(self, latitude, longitude, zip_code=None):
         units = self.config.get("units", "metric")  # Default to metric
         temperature_unit = "°C" if units == "metric" else "°F"
 
+        # Define URL for Open Meteo API
         url = (
             f"https://api.open-meteo.com/v1/forecast?"
             f"latitude={latitude}&longitude={longitude}&"
-            f"hourly=temperature_2m,precipitation_probability,weathercode,cloudcover&"
-            f"forecast_days=1&current_weather=true"
+            f"hourly=temperature_2m,precipitation_probability,weather_code,cloud_cover,"
+            f"wind_speed_10m,wind_direction_10m&"
+            f"current_weather=true&sunrise_sunset=true&forecast_days=1"
         )
+
+        if zip_code:
+            # Add search functionality for zip code
+            url = f"https://api.open-meteo.com/v1/forecast?zip={zip_code}&"
 
         try:
             response = requests.get(url, timeout=10)
@@ -30,35 +36,25 @@ class Plugin(BasePlugin):
 
             # Extract relevant weather data
             current_temp = data["current_weather"]["temperature"]
-            current_weather_code = data["current_weather"]["weathercode"]
+            current_weather_code = data["current_weather"]["weather_code"]
             is_day = data["current_weather"]["is_day"]
+            cloud_cover = data["current_weather"]["cloud_cover"]
+            wind_speed = data["current_weather"]["wind_speed_10m"]
+            wind_direction = data["current_weather"]["wind_direction_10m"]
+            sunrise = data["sunrise"]
+            sunset = data["sunset"]
+            high_temp = data["daily"]["temperature_2m_max"][0]  # High temperature
+            low_temp = data["daily"]["temperature_2m_min"][0]  # Low temperature
 
-            # Get indices for +2h and +5h forecasts
-            # Assuming hourly data starts from current hour
-            forecast_2h_index = 2
-            forecast_5h_index = 5
-
-            forecast_2h_temp = data["hourly"]["temperature_2m"][forecast_2h_index]
-            forecast_2h_precipitation = data["hourly"]["precipitation_probability"][
-                forecast_2h_index
-            ]
-            forecast_2h_weather_code = data["hourly"]["weathercode"][forecast_2h_index]
-
-            forecast_5h_temp = data["hourly"]["temperature_2m"][forecast_5h_index]
-            forecast_5h_precipitation = data["hourly"]["precipitation_probability"][
-                forecast_5h_index
-            ]
-            forecast_5h_weather_code = data["hourly"]["weathercode"][forecast_5h_index]
-
+            # Convert to Fahrenheit if needed
             if units == "imperial":
-                # Convert temperatures from Celsius to Fahrenheit
                 current_temp = current_temp * 9 / 5 + 32
-                forecast_2h_temp = forecast_2h_temp * 9 / 5 + 32
-                forecast_5h_temp = forecast_5h_temp * 9 / 5 + 32
+                high_temp = high_temp * 9 / 5 + 32
+                low_temp = low_temp * 9 / 5 + 32
 
             current_temp = round(current_temp, 1)
-            forecast_2h_temp = round(forecast_2h_temp, 1)
-            forecast_5h_temp = round(forecast_5h_temp, 1)
+            high_temp = round(high_temp, 1)
+            low_temp = round(low_temp, 1)
 
             def weather_code_to_text(weather_code, is_day):
                 weather_mapping = {
@@ -96,18 +92,13 @@ class Plugin(BasePlugin):
 
                 return weather_mapping.get(weather_code, "❓ Unknown")
 
-            # Generate one-line weather forecast
             forecast = (
                 f"Now: {weather_code_to_text(current_weather_code, is_day)} - "
                 f"{current_temp}{temperature_unit} | "
-            )
-            forecast += (
-                f"+2h: {weather_code_to_text(forecast_2h_weather_code, is_day)} - "
-                f"{forecast_2h_temp}{temperature_unit} {forecast_2h_precipitation}% | "
-            )
-            forecast += (
-                f"+5h: {weather_code_to_text(forecast_5h_weather_code, is_day)} - "
-                f"{forecast_5h_temp}{temperature_unit} {forecast_5h_precipitation}%"
+                f"Cloud cover: {cloud_cover}% | "
+                f"Wind: {wind_speed} km/h {wind_direction}° | "
+                f"Sunrise: {sunrise} | Sunset: {sunset} | "
+                f"High: {high_temp}{temperature_unit} | Low: {low_temp}{temperature_unit}"
             )
 
             return forecast
@@ -155,8 +146,10 @@ class Plugin(BasePlugin):
             if f"!{self.plugin_name}" not in message.lower():
                 return False
 
-            # Log that the plugin is processing the message
-                self.logger.info(f"Processing message from {longname} on channel {channel} with plugin '{self.plugin_name}'")
+                # Log that the plugin is processing the message
+                self.logger.info(
+                    f"Processing message from {longname} on channel {channel} with plugin '{self.plugin_name}'"
+                )
 
             fromId = packet.get("fromId")
             if fromId in meshtastic_client.nodes:
