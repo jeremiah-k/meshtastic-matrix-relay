@@ -26,6 +26,8 @@ class Plugin(BasePlugin):
                     air_util_tx.append(info["deviceMetrics"]["airUtilTx"])
             if "snr" in info:
                 snr.append(info["snr"])
+        #filter out none type values from snr
+        snr = [value for value in snr if value is not None]
 
         #filter out none type values from snr and air_util_tx just in case
         air_util_tx = [value for value in air_util_tx if value is not None]
