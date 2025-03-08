@@ -14,7 +14,7 @@ from bleak.exc import BleakDBusError, BleakError
 from pubsub import pub
 
 # We need protobuf for forced heartbeat
-import meshtastic.mesh_pb2 as mesh_pb2
+from meshtastic.protobuf import mesh_pb2
 
 from config import relay_config
 from db_utils import (
