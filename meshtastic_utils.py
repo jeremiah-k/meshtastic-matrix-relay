@@ -245,7 +245,7 @@ def get_node_firmware(client):
     and parse out the firmware_version line. If we cannot find it or
     we hit an exception, return None.
 
-    This is used to confirm that the node is responding at all.
+    This is used to confirm that the node is actually responding.
     """
     if not client:
         return None
@@ -257,99 +257,35 @@ def get_node_firmware(client):
         ):
             client.localNode.getMetadata()
     except Exception:
-        logger.debug("get_node_firmware() - exception while calling getMetadata()")
+        logger.info("get_node_firmware() - exception calling getMetadata()")
         return None
 
     console_output = output_capture.getvalue()
-    # Look for "firmware_version: x.x.x" to confirm the node responded
+
     if "firmware_version" not in console_output:
-        logger.debug("get_node_firmware() - no firmware_version in metadata output")
+        logger.info("get_node_firmware() - no firmware_version in getMetadata output")
         return None
 
     try:
         ver = console_output.split("firmware_version: ")[1].split("\n")[0]
         return ver.strip()
     except Exception as e:
-        logger.debug(f"get_node_firmware() - parse error: {e}")
+        logger.info(f"get_node_firmware() - error parsing version: {e}")
         return None
 
 
 def _sendHeartbeat(client):
     """
     Force-send a heartbeat packet to the radio. If the connection is truly broken,
-    often this call will raise an OSError or BrokenPipeError.
+    we often see an OSError or BrokenPipeError here.
     """
     if not client:
         return
 
     heartbeat_msg = mesh_pb2.ToRadio()
     heartbeat_msg.heartbeat.CopyFrom(mesh_pb2.Heartbeat())
-
-    # The library uses an internal _sendToRadio() function. This might raise an error if disconnected:
     client._sendToRadio(heartbeat_msg)
-    logger.debug("_sendHeartbeat() - Heartbeat sent to device")
-
-
-async def _dm_self_wantAck_check(client):
-    """
-    Fallback: Attempt sending a self-DM with wantAck=True.
-    If no ack is received within a few seconds, assume link is dead.
-    This approach forces a genuine ack check from the radio.
-    """
-    logger.debug("_dm_self_wantAck_check() - Attempting fallback ack-check with a self-DM")
-
-    # We'll track if we got an ack by hooking a short callback
-    ack_received = asyncio.Future()
-
-    def onAckNak(p):
-        # The library calls this callback for ack/nak if ackPermitted is True
-        # We set the future result to True if "errorReason" is "NONE", else it's an error
-        decoded = p.get("decoded", {})
-        routing = decoded.get("routing")
-        if routing and routing.get("errorReason") == "NONE":
-            # We got an actual ack
-            if not ack_received.done():
-                ack_received.set_result(True)
-        else:
-            # We consider this a failure
-            if not ack_received.done():
-                ack_received.set_result(False)
-
-    try:
-        # We need to get our own numeric node ID
-        if not client.myInfo:
-            logger.debug("_dm_self_wantAck_check() - no myInfo in client, cannot do fallback ack check.")
-            return False
-
-        # Prepare a short text
-        test_msg = "HealthCheck"
-        node_num = client.myInfo.my_node_num
-        # Use the library's direct "sendData" approach with wantAck and onResponse=onAckNak
-        # This ensures we see ack/nak events
-        client.sendData(
-            data=test_msg.encode("utf-8"),
-            destinationId=node_num,
-            portNum=1,  # TEXT_MESSAGE_APP
-            wantAck=True,
-            wantResponse=False,
-            onResponse=onAckNak,
-            onResponseAckPermitted=True,  # so onAckNak is called for ack
-            channelIndex=0,
-        )
-
-        logger.debug("_dm_self_wantAck_check() - Sent self-DM with wantAck")
-
-        try:
-            # Wait up to 7 seconds for the ack future
-            result = await asyncio.wait_for(ack_received, timeout=7.0)
-            return bool(result)
-        except asyncio.TimeoutError:
-            logger.debug("_dm_self_wantAck_check() - No ack received within 7s")
-            return False
-
-    except Exception as e:
-        logger.debug(f"_dm_self_wantAck_check() - exception: {e}")
-        return False
+    logger.info("_sendHeartbeat() - sent heartbeat to device")
 
 
 def on_meshtastic_message(packet, interface):
@@ -454,13 +390,7 @@ def on_meshtastic_message(packet, interface):
         # Determine the channel for this message
         channel = packet.get("channel")
         if channel is None:
-            # If channel not specified, deduce from portnum
-            if (
-                decoded.get("portnum") == "TEXT_MESSAGE_APP"
-                or decoded.get("portnum") == 1
-            ):
-                channel = 0
-            elif decoded.get("portnum") == "DETECTION_SENSOR_APP":
+            if decoded.get("portnum") in ["TEXT_MESSAGE_APP", 1, "DETECTION_SENSOR_APP"]:
                 channel = 0
             else:
                 logger.debug(
@@ -526,13 +456,13 @@ def on_meshtastic_message(packet, interface):
         found_matching_plugin = False
         for plugin in plugins:
             if not found_matching_plugin:
-                future = asyncio.run_coroutine_threadsafe(
+                fut = asyncio.run_coroutine_threadsafe(
                     plugin.handle_meshtastic_message(
                         packet, formatted_message, longname, meshnet_name
                     ),
                     loop=loop,
                 )
-                handled = future.result()
+                handled = fut.result()
                 if handled:
                     logger.debug(f"Processed by plugin {plugin.plugin_name}")
                     found_matching_plugin = True
@@ -578,14 +508,17 @@ def on_meshtastic_message(packet, interface):
         found_matching_plugin = False
         for plugin in plugins:
             if not found_matching_plugin:
-                future = asyncio.run_coroutine_threadsafe(
+                fut = asyncio.run_coroutine_threadsafe(
                     plugin.handle_meshtastic_message(
-                        packet, None, None, None
+                        packet,
+                        formatted_message=None,
+                        longname=None,
+                        meshnet_name=None,
                     ),
                     loop=loop,
                 )
-                handled = future.result()
-                if handled:
+                is_done = fut.result()
+                if is_done:
                     logger.debug(
                         f"Processed {portnum} with plugin {plugin.plugin_name}"
                     )
@@ -595,37 +528,36 @@ def on_meshtastic_message(packet, interface):
 async def check_connection():
     """
     Periodically verifies that the TCP/serial/BLE link to the Meshtastic node is still alive.
-    We'll do the following checks every ~5 seconds:
-      1) Force-send a heartbeat using _sendHeartbeat(). If the link is broken, we often get OSError.
-      2) Call get_node_firmware() to see if the node’s getMetadata() call is still working.
-      3) If both pass but we still suspect a stale link, attempt a fallback self-DM with wantAck=True.
-         If we can't get an ack, we assume the link is lost.
+    We'll do these checks every ~5 seconds:
+      1) Force a heartbeat packet to the node (_sendHeartbeat). If the link is broken.
+         we often see an OSError or BrokenPipeError immediately.
+      2) Call get_node_firmware() to verify the node responded with a 'firmware_version'.
+         If not, we assume no real response.
 
-    If any check fails, we trigger on_lost_meshtastic_connection().
+    If either fails, we call on_lost_meshtastic_connection().
+
+    NOTE: This coroutine must be scheduled alongside your matrix sync, e.g.:
+          loop.create_task(check_connection())
+
+          await asyncio.gather(check_connection(), matrix_client.sync_forever(...))
+    If you do not actually run this in parallel, it will never happen.
     """
     global meshtastic_client, shutting_down
     connection_type = relay_config["meshtastic"]["connection_type"]
 
+    # This loop runs until the entire program shuts down
     while not shutting_down:
         if meshtastic_client:
             try:
-                # 1) Attempt an outbound heartbeat
-                logger.debug("check_connection() - Attempting heartbeat")
+                logger.info("check_connection() - Sending heartbeat to see if link is alive")
                 _sendHeartbeat(meshtastic_client)
 
-                # 2) Try reading firmware via get_node_firmware
-                logger.debug("check_connection() - Checking metadata firmware_version")
+                logger.info("check_connection() - Attempting get_node_firmware() to confirm device response")
                 fw = get_node_firmware(meshtastic_client)
                 if not fw:
-                    raise RuntimeError("No firmware_version detected; node might be offline.")
+                    raise RuntimeError("No firmware_version found; device may be offline.")
 
-                # 3) Fallback ack-check
-                # If you have a fully functional library environment where heartbeat fails on a broken link,
-                # you might skip this step. But let's do it anyway to forcibly confirm ack traffic.
-                logger.debug("check_connection() - Doing fallback wantAck DM check")
-                ack_ok = await _dm_self_wantAck_check(meshtastic_client)
-                if not ack_ok:
-                    raise RuntimeError("Self-DM ack check timed out or failed")
+                logger.info(f"check_connection() - Link check passed. Firmware: {fw}")
 
             except Exception as e:
                 logger.error(f"{connection_type.capitalize()} link check failed: {e}")
@@ -635,7 +567,11 @@ async def check_connection():
 
 
 if __name__ == "__main__":
-    # If running this standalone (normally the main.py does the loop), just try connecting and run forever.
+    """
+    If running this module directly, we do a standalone loop that attempts to connect
+    and then starts our check_connection() in the background. This won't do any Matrix
+    sync. It's purely for debugging Meshtastic connectivity.
+    """
     meshtastic_client = connect_meshtastic()
     loop = asyncio.get_event_loop()
     event_loop = loop  # Set the event loop for use in callbacks
