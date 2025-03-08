@@ -101,6 +101,13 @@ async def main():
         # On Windows, we can't use add_signal_handler, so we'll handle KeyboardInterrupt
         pass
 
+    # -------------------------------------------------------------------
+    # IMPORTANT: We create a task to run the meshtastic_utils.check_connection()
+    # so its while loop runs in parallel with the matrix sync loop
+    # Use "_" to avoid trunk's "assigned but unused variable" warning
+    # -------------------------------------------------------------------
+    _ = asyncio.create_task(meshtastic_utils.check_connection())
+
     # Start the Matrix client sync loop
     try:
         while not shutdown_event.is_set():
@@ -116,7 +123,10 @@ async def main():
                 sync_task = asyncio.create_task(
                     matrix_client.sync_forever(timeout=30000)
                 )
+
                 shutdown_task = asyncio.create_task(shutdown_event.wait())
+
+                # Wait for either the matrix sync to fail, or for a shutdown
                 done, pending = await asyncio.wait(
                     [sync_task, shutdown_task],
                     return_when=asyncio.FIRST_COMPLETED,
@@ -129,11 +139,12 @@ async def main():
                     except asyncio.CancelledError:
                         pass
                     break
+
             except Exception as e:
                 if shutdown_event.is_set():
                     break
                 matrix_logger.error(f"Error syncing with Matrix server: {e}")
-                await asyncio.sleep(5)  # Wait before retrying
+                await asyncio.sleep(5)  # Wait briefly before retrying
     except KeyboardInterrupt:
         await shutdown()
     finally:
@@ -157,7 +168,7 @@ async def main():
             meshtastic_utils.reconnect_task.cancel()
             meshtastic_logger.info("Cancelled Meshtastic reconnect task.")
 
-        # Cancel any remaining tasks
+        # Cancel any remaining tasks (including the check_conn_task)
         tasks = [t for t in asyncio.all_tasks(loop) if not t.done()]
         for task in tasks:
             task.cancel()
@@ -165,6 +176,7 @@ async def main():
                 await task
             except asyncio.CancelledError:
                 pass
+
         matrix_logger.info("Shutdown complete.")
 
 

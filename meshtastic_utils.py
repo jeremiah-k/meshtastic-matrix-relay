@@ -49,7 +49,7 @@ def serial_port_exists(port_name):
     Check if the specified serial port exists.
     This prevents attempting connections on non-existent ports.
     """
-    ports = [port.device for port in serial.tools.list_ports.comports()]
+    ports = [p.device for p in serial.tools.list_ports.comports()]
     return port_name in ports
 
 
@@ -382,13 +382,15 @@ def on_meshtastic_message(packet, interface):
                 user = node.get("user")
                 if user:
                     if not longname:
-                        longname = user.get("longName")
-                        if longname:
-                            save_longname(sender, longname)
+                        longname_val = user.get("longName")
+                        if longname_val:
+                            save_longname(sender, longname_val)
+                            longname = longname_val
                     if not shortname:
-                        shortname = user.get("shortName")
-                        if shortname:
-                            save_shortname(sender, shortname)
+                        shortname_val = user.get("shortName")
+                        if shortname_val:
+                            save_shortname(sender, shortname_val)
+                            shortname = shortname_val
             else:
                 logger.debug(f"Node info for sender {sender} not available yet.")
 
