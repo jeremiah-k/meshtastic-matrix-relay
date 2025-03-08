@@ -13,6 +13,9 @@ import serial.tools.list_ports  # Import serial tools for port listing
 from bleak.exc import BleakDBusError, BleakError
 from pubsub import pub
 
+# We need protobuf for forced heartbeat
+import meshtastic.mesh_pb2 as mesh_pb2
+
 from config import relay_config
 from db_utils import (
     get_longname,
@@ -49,7 +52,7 @@ def serial_port_exists(port_name):
     Check if the specified serial port exists.
     This prevents attempting connections on non-existent ports.
     """
-    ports = [port.device for port in serial.tools.list_ports.comports()]
+    ports = [p.device for p in serial.tools.list_ports.comports()]
     return port_name in ports
 
 
@@ -79,7 +82,7 @@ def connect_meshtastic(force_connect=False):
 
         # Determine connection type and attempt connection
         connection_type = relay_config["meshtastic"]["connection_type"]
-        retry_limit = 0  # 0 means infinite retries
+        retry_limit = 0  # 0 == infinite
         attempts = 1
         successful = False
 
@@ -236,6 +239,51 @@ async def reconnect():
         reconnecting = False
 
 
+def get_node_firmware(client):
+    """
+    Attempt to call localNode.getMetadata(), capture its stdout spam,
+    and parse out the firmware_version line. If we cannot find it or
+    we hit an exception, return None.
+    """
+    if not client:
+        return None
+
+    output_capture = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(output_capture), contextlib.redirect_stderr(
+            output_capture
+        ):
+            client.localNode.getMetadata()
+    except Exception:
+        return None
+
+    console_output = output_capture.getvalue()
+    # Look for "firmware_version: x.x.x"
+    if "firmware_version" not in console_output:
+        return None
+
+    try:
+        ver = console_output.split("firmware_version: ")[1].split("\n")[0]
+        return ver.strip()
+    except Exception:
+        return None
+
+
+def _sendHeartbeat(client):
+    """
+    Force-send a heartbeat packet to the radio. If the connection is truly broken,
+    often this call will throw an OSError or BrokenPipeError.
+    """
+    if not client:
+        return
+
+    p = mesh_pb2.ToRadio()
+    p.heartbeat.CopyFrom(mesh_pb2.Heartbeat())
+    # This is an internal call in the library. If the connection is gone,
+    # it might raise an Exception.
+    client._sendToRadio(p)
+
+
 def on_meshtastic_message(packet, interface):
     """
     Handle incoming Meshtastic messages. For reaction messages, if relay_reactions is False,
@@ -382,13 +430,15 @@ def on_meshtastic_message(packet, interface):
                 user = node.get("user")
                 if user:
                     if not longname:
-                        longname = user.get("longName")
-                        if longname:
-                            save_longname(sender, longname)
+                        longname_val = user.get("longName")
+                        if longname_val:
+                            save_longname(sender, longname_val)
+                            longname = longname_val
                     if not shortname:
-                        shortname = user.get("shortName")
-                        if shortname:
-                            save_shortname(sender, shortname)
+                        shortname_val = user.get("shortName")
+                        if shortname_val:
+                            save_shortname(sender, shortname_val)
+                            shortname = shortname_val
             else:
                 logger.debug(f"Node info for sender {sender} not available yet.")
 
@@ -477,27 +527,32 @@ def on_meshtastic_message(packet, interface):
 
 async def check_connection():
     """
-    Periodically checks the Meshtastic connection by calling localNode.getMetadata().
-    If it fails or doesn't return the firmware version, we assume the connection is lost
-    and attempt to reconnect.
+    Periodically verifies that the TCP/serial/BLE link to the Meshtastic node is still alive.
+    We'll do two checks:
+      1) Force a heartbeat message to the node, which often fails with an OSError if the node is offline.
+      2) Call get_node_firmware() to see if we get a real firmware_version from getMetadata().
+
+    If either fails, we declare the link lost and trigger on_lost_meshtastic_connection().
     """
     global meshtastic_client, shutting_down
     connection_type = relay_config["meshtastic"]["connection_type"]
+
     while not shutting_down:
         if meshtastic_client:
             try:
-                output_capture = io.StringIO()
-                with contextlib.redirect_stdout(output_capture), contextlib.redirect_stderr(output_capture):
-                    meshtastic_client.localNode.getMetadata()
+                # Send an internal heartbeat to forcibly check the connection
+                _sendHeartbeat(meshtastic_client)
 
-                console_output = output_capture.getvalue()
-                if "firmware_version" not in console_output:
-                    raise Exception("No firmware_version in getMetadata output.")
+                # Also attempt to parse a firmware_version via get_node_firmware
+                fw = get_node_firmware(meshtastic_client)
+                if not fw:
+                    raise RuntimeError("No firmware_version detected; node may be offline.")
 
             except Exception as e:
-                logger.error(f"{connection_type.capitalize()} connection lost: {e}")
+                logger.error(f"{connection_type.capitalize()} link check failed: {e}")
                 on_lost_meshtastic_connection(meshtastic_client)
-        await asyncio.sleep(5)  # Check connection every 5 seconds
+
+        await asyncio.sleep(5)
 
 
 if __name__ == "__main__":
