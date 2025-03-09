@@ -1,8 +1,8 @@
 import asyncio
-import threading
-import time
 import contextlib
 import io
+import threading
+import time
 from typing import List
 
 import meshtastic.ble_interface
@@ -489,7 +489,9 @@ async def check_connection():
         if meshtastic_client:
             try:
                 output_capture = io.StringIO()
-                with contextlib.redirect_stdout(output_capture), contextlib.redirect_stderr(output_capture):
+                with contextlib.redirect_stdout(
+                    output_capture
+                ), contextlib.redirect_stderr(output_capture):
                     meshtastic_client.localNode.getMetadata()
 
                 console_output = output_capture.getvalue()

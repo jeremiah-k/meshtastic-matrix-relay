@@ -155,8 +155,10 @@ class Plugin(BasePlugin):
             if f"!{self.plugin_name}" not in message.lower():
                 return False
 
-            # Log that the plugin is processing the message
-                self.logger.info(f"Processing message from {longname} on channel {channel} with plugin '{self.plugin_name}'")
+                # Log that the plugin is processing the message
+                self.logger.info(
+                    f"Processing message from {longname} on channel {channel} with plugin '{self.plugin_name}'"
+                )
 
             fromId = packet.get("fromId")
             if fromId in meshtastic_client.nodes:

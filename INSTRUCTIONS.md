@@ -13,11 +13,13 @@ git clone https://github.com/geoffwhittington/meshtastic-matrix-relay.git
 ### Setup
 
 1. Create a Python virtual environment in the project directory:
+
    ```bash
    python3 -m venv .pyenv
    ```
 
 2. Activate the virtual environment:
+
    - Linux/macOS:
      ```bash
      source .pyenv/bin/activate
@@ -87,11 +89,13 @@ Contributions are welcome! We use **Trunk** for automated code quality checks an
 #### Setting Up Trunk
 
 1. Install Trunk:
+
    ```bash
    curl -fsSL https://get.trunk.io | bash
    ```
 
 2. Initialize Trunk:
+
    ```bash
    trunk init
    ```
