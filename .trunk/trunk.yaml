@@ -2,12 +2,12 @@
 # To learn more about the format of this file, see https://docs.trunk.io/reference/trunk-yaml
 version: 0.1
 cli:
-  version: 1.22.8
+  version: 1.22.10
 # Trunk provides extensibility via plugins. (https://docs.trunk.io/plugins)
 plugins:
   sources:
     - id: trunk
-      ref: v1.6.6
+      ref: v1.6.7
       uri: https://github.com/trunk-io/plugins
 # Many linters and tools depend on runtimes - configure them here. (https://docs.trunk.io/runtimes)
 runtimes:
@@ -18,17 +18,17 @@ runtimes:
 lint:
   enabled:
     - taplo@0.9.3
-    - actionlint@1.7.4
-    - bandit@1.8.0
-    - black@24.10.0
-    - checkov@3.2.344
+    - actionlint@1.7.7
+    - bandit@1.8.3
+    - black@25.1.0
+    - checkov@3.2.382
     - git-diff-check
-    - isort@5.13.2
-    - markdownlint@0.43.0
+    - isort@6.0.1
+    - markdownlint@0.44.0
     - osv-scanner@1.9.2
-    - prettier@3.4.2
-    - ruff@0.8.4
-    - trufflehog@3.88.0
+    - prettier@3.5.3
+    - ruff@0.9.9
+    - trufflehog@3.88.15
     - yamllint@1.35.1
   # Remove map_plugin.py after staticmaps is updated and we're able to work on it again
   # For more info: https://github.com/geoffwhittington/meshtastic-matrix-relay/issues/117
