@@ -499,7 +499,7 @@ async def check_connection():
             except Exception as e:
                 logger.error(f"{connection_type.capitalize()} connection lost: {e}")
                 on_lost_meshtastic_connection(meshtastic_client)
-        await asyncio.sleep(2)  # Check connection every 2 seconds
+        await asyncio.sleep(30)  # Check connection every 30 seconds
 
 
 if __name__ == "__main__":
