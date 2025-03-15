@@ -17,7 +17,7 @@
     "vscode": {
       "settings": {},
       "extensions": [
-        //				"streetsidesoftware.code-spell-checker"
+        "Trunk.io"
       ]
     }
   },
