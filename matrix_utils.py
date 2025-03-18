@@ -82,6 +82,8 @@ async def connect_matrix():
     """
     Establish a connection to the Matrix homeserver.
     Sets global matrix_client and detects the bot's display name.
+    Also enables optional end-to-end encryption if specified,
+    creating or using a local store path, and ignoring unverified devices.
     """
     global matrix_client
     global bot_user_name
@@ -91,14 +93,27 @@ async def connect_matrix():
     # Create SSL context using certifi's certificates
     ssl_context = ssl.create_default_context(cafile=certifi.where())
 
-    # Initialize the Matrix client with custom SSL context
-    config = AsyncClientConfig(encryption_enabled=False)
+    # Read encryption settings from config
+    e2ee_enabled = relay_config["matrix"].get("encryption_enabled", False)
+    store_path = relay_config["matrix"].get("store_path", "data/nio_keystore")
+
+    config = AsyncClientConfig(
+        max_limit_exceeded=0,
+        max_timeouts=0,
+        encryption_enabled=e2ee_enabled,
+        store_sync_tokens=True
+    )
+
     matrix_client = AsyncClient(
         homeserver=matrix_homeserver,
         user=bot_user_id,
         config=config,
         ssl=ssl_context,
+        store_path=store_path,
     )
+
+    # Permit sending messages to unverified devices if E2EE is enabled
+    matrix_client.ignore_unverified_devices = True
 
     # Set the access_token and user_id
     matrix_client.access_token = matrix_access_token
@@ -115,6 +130,12 @@ async def connect_matrix():
             logger.debug(f"Retrieved device_id: {matrix_client.device_id}")
         else:
             logger.warning("device_id not returned by whoami()")
+
+    # If we haven't uploaded our keys yet (and E2EE is enabled), do so now
+    if e2ee_enabled and matrix_client.should_upload_keys:
+        logger.debug("Keys not yet uploaded; uploading now.")
+        await matrix_client.keys_upload()
+        logger.debug("Keys uploaded successfully.")
 
     # Fetch the bot's display name
     response = await matrix_client.get_displayname(bot_user_id)
@@ -221,6 +242,7 @@ async def matrix_relay(
                 room_id=room_id,
                 message_type="m.room.message",
                 content=content,
+                ignore_unverified_devices=True,
             ),
             timeout=5.0,
         )
@@ -376,7 +398,6 @@ async def on_room_message(
             short_meshnet_name = meshnet_name[:4]
 
             # Format the reaction message for relaying to the local meshnet.
-            # The necessary information is in the m.emote event
             if not shortname:
                 shortname = longname[:3] if longname else "???"
 
