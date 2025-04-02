@@ -20,9 +20,11 @@ jobs:
       - name: Set up QEMU for multi-arch builds
         uses: docker/setup-qemu-action@v3
 
-      - name: Extract version from tag
+      - name: Extract version from setup.cfg
         id: get_version
-        run: echo "VERSION=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+        run: |
+          VERSION=$(grep '^version =' setup.cfg | cut -d= -f2 | tr -d '[:space:]')
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Build inside ARMv7 Docker (using shiv)
         uses: addnab/docker-run-action@v3
@@ -39,7 +41,6 @@ jobs:
 
             echo "--- Building PYZ ---"
             PYZ_FILENAME="mmrelay_armv7_${{ steps.get_version.outputs.VERSION }}.pyz"
-            #  Use "-c mmrelay" referencing the console_scripts entry_point in setup.cfg:
             shiv . -o "${PYZ_FILENAME}" -c mmrelay --compressed
 
             echo "--- Listing created PYZ file ---"
