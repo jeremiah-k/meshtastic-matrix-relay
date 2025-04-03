@@ -1,27 +1,30 @@
 import os
 import sys
-
 import yaml
 from yaml.loader import SafeLoader
-
+from mmrelay.cli import parse_args
 
 def get_app_path():
-    """
-    Returns the base directory of the application, whether running from source or as an executable.
-    """
     if getattr(sys, "frozen", False):
-        # Running in a bundle (PyInstaller)
         return os.path.dirname(sys.executable)
-    else:
-        # Running in a normal Python environment
-        return os.path.dirname(os.path.abspath(__file__))
+    return os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
+def find_config_path(cli_arg=None):
+    if cli_arg and os.path.isfile(cli_arg):
+        return cli_arg
+    root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    for path in [os.path.join(root, "config.yaml"), os.path.join(__file__, "config.yaml")]:
+        if os.path.isfile(path):
+            return path
+    return None
 
-relay_config = {}
-config_path = os.path.join(get_app_path(), "config.yaml")
+def load_config():
+    args = parse_args()
+    path = find_config_path(args.config)
+    if not path:
+        print("Configuration file not found.")
+        return {}
+    with open(path, "r") as f:
+        return yaml.load(f, Loader=SafeLoader)
 
-if not os.path.isfile(config_path):
-    print(f"Configuration file not found: {config_path}")
-else:
-    with open(config_path, "r") as f:
-        relay_config = yaml.load(f, Loader=SafeLoader)
+relay_config = load_config()
