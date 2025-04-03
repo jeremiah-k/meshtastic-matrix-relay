@@ -12,7 +12,7 @@ from typing import List
 from nio import ReactionEvent, RoomMessageEmote, RoomMessageNotice, RoomMessageText
 
 # Import meshtastic_utils as a module to set event_loop
-import meshtastic_utils
+from mmrelay import meshtastic_utils
 from mmrelay.config import relay_config
 from mmrelay.db_utils import (
     initialize_database,
