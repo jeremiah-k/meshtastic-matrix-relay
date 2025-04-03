@@ -1,6 +1,8 @@
 # Entry point wrapper for shiv compatibility.
-# Allows `mmrelay:main` to call `main.main()` without moving the script.
-# This enables PyZ builds without breaking existing setups that run main.py directly.
+# Dynamically load main.py as a module so it's included in the .pyz
+import runpy
+import os
+
 def main():
-    from main import main as real_main
-    real_main()
+    path = os.path.join(os.path.dirname(__file__), "..", "main.py")
+    runpy.run_path(path, run_name="__main__")
