@@ -1,7 +1,7 @@
 import json
 import sqlite3
 
-from log_utils import get_logger
+from mmrelay.log_utils import get_logger
 
 logger = get_logger(name="db_utils")
 

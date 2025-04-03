@@ -13,20 +13,20 @@ from nio import ReactionEvent, RoomMessageEmote, RoomMessageNotice, RoomMessageT
 
 # Import meshtastic_utils as a module to set event_loop
 import meshtastic_utils
-from config import relay_config
-from db_utils import (
+from mmrelay.config import relay_config
+from mmrelay.db_utils import (
     initialize_database,
     update_longnames,
     update_shortnames,
     wipe_message_map,
 )
-from log_utils import get_logger
-from matrix_utils import connect_matrix, join_matrix_room
-from matrix_utils import logger as matrix_logger
-from matrix_utils import on_room_message
-from meshtastic_utils import connect_meshtastic
-from meshtastic_utils import logger as meshtastic_logger
-from plugin_loader import load_plugins
+from mmrelay.log_utils import get_logger
+from mmrelay.matrix_utils import connect_matrix, join_matrix_room
+from mmrelay.matrix_utils import logger as matrix_logger
+from mmrelay.matrix_utils import on_room_message
+from mmrelay.meshtastic_utils import connect_meshtastic
+from mmrelay.meshtastic_utils import logger as meshtastic_logger
+from mmrelay.plugin_loader import load_plugins
 
 # Initialize logger
 logger = get_logger(name="M<>M Relay")
