@@ -18,7 +18,13 @@ def get_app_path():
 
 
 relay_config = {}
-config_path = os.path.join(get_app_path(), "config.yaml")
+
+# Prefer config.yaml in current working directory, else fallback to get_app_path()
+cwd_config = os.path.join(os.getcwd(), "config.yaml")
+if os.path.isfile(cwd_config):
+    config_path = cwd_config
+else:
+    config_path = os.path.join(get_app_path(), "config.yaml")
 
 if not os.path.isfile(config_path):
     print(f"Configuration file not found: {config_path}")
