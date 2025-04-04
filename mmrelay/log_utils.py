@@ -1,24 +1,54 @@
+# ./mmrelay/log_utils.py:
 import logging
 import os
+import sys
+import pathlib
 from logging.handlers import RotatingFileHandler
-import pathlib # Use pathlib
 
-from mmrelay.config import relay_config
-# Import the new path utility
+# Import path utils for default log directory
 from mmrelay.path_utils import get_log_dir
 
+# Keep relay_config import for easy access within setup_logging if needed later,
+# but primarily pass config dictionary as argument.
+from mmrelay.config import relay_config
 
-def get_logger(name):
-    logger = logging.getLogger(name=name)
-    # Ensure logger level is set only once
-    if logger.hasHandlers():
-         # Logger already configured, just return it
-         return logger
 
-    log_level_name = relay_config.get("logging", {}).get("level", "INFO").upper()
+# Flag to prevent setup_logging from running multiple times
+_logging_configured = False
+
+
+def get_logger(name: str) -> logging.Logger:
+    """Gets a logger instance. Does not configure handlers."""
+    return logging.getLogger(name)
+
+
+def setup_logging(config: dict, override_logfile_path: str = None):
+    """
+    Configures logging handlers (Stream + Optional File) based on the loaded config
+    and potential command-line override for the file path.
+
+    Args:
+        config: The loaded configuration dictionary.
+        override_logfile_path: Full path to the log file from command line, if provided.
+    """
+    global _logging_configured
+    if _logging_configured:
+        # Avoid re-configuring handlers if called multiple times
+        # print("DEBUG: Logging already configured, skipping setup.", file=sys.stderr) # Optional debug print
+        return
+
+    log_config = config.get("logging", {})
+    log_level_name = log_config.get("level", "INFO").upper()
     log_level = getattr(logging, log_level_name, logging.INFO)
-    logger.setLevel(log_level)
-    logger.propagate = False # Prevent duplicating logs to root logger
+
+    # Get the root logger to configure handlers centrally
+    root_logger = logging.getLogger() # Configure root logger
+    # Ensure root logger level is set appropriately (e.g., lowest level used by handlers)
+    root_logger.setLevel(min(log_level, logging.DEBUG)) # Set root level low enough
+
+    # Clear existing handlers from root to avoid duplication if setup is called again somehow
+    # for handler in root_logger.handlers[:]:
+    #      root_logger.removeHandler(handler)
 
     # Common formatter
     formatter = logging.Formatter(
@@ -26,48 +56,52 @@ def get_logger(name):
         datefmt="%Y-%m-%d %H:%M:%S %z",
     )
 
-    # Add stream handler (console logging) if not already added
-    if not any(isinstance(h, logging.StreamHandler) for h in logger.handlers):
-        stream_handler = logging.StreamHandler()
+    # --- Stream Handler (Console) ---
+    if not any(isinstance(h, logging.StreamHandler) for h in root_logger.handlers):
+        stream_handler = logging.StreamHandler(sys.stdout) # Explicitly use stdout
         stream_handler.setFormatter(formatter)
-        logger.addHandler(stream_handler)
+        stream_handler.setLevel(log_level) # Set level on handler
+        root_logger.addHandler(stream_handler)
+        # print(f"DEBUG: Added StreamHandler with level {log_level_name}", file=sys.stderr) # Optional debug print
 
-    # Check if file logging is enabled
-    if relay_config.get("logging", {}).get("log_to_file", False):
-        # Get the log directory using path_utils (ensures it exists)
-        log_dir: pathlib.Path = get_log_dir()
-        # Default filename within the log directory
-        default_log_filename = "mmrelay.log"
-        log_file_name = relay_config.get("logging", {}).get("filename", default_log_filename)
-
-        # Construct the full path to the log file
-        log_file_path = log_dir / log_file_name
-
-        # Set up size-based log rotation
-        max_bytes = relay_config.get("logging", {}).get(
-            "max_log_size", 10 * 1024 * 1024 # Default 10 MB
-        )
-        backup_count = relay_config.get("logging", {}).get(
-            "backup_count", 1 # Default to 1 backup
-        )
-
-        # Add file handler if not already added
-        if not any(isinstance(h, RotatingFileHandler) for h in logger.handlers):
+    # --- File Handler ---
+    final_log_path = None
+    if log_config.get("log_to_file", False):
+        if override_logfile_path:
+            # Use the command-line override path
+            final_log_path = pathlib.Path(override_logfile_path).resolve()
+            # Ensure the directory exists for the override path
             try:
+                final_log_path.parent.mkdir(parents=True, exist_ok=True)
+            except OSError as e:
+                 print(f"Error: Could not create directory for specified log file {final_log_path.parent}: {e}", file=sys.stderr)
+                 final_log_path = None # Disable file logging if dir creation fails
+        else:
+            # Use the default path logic
+            try:
+                log_dir: pathlib.Path = get_log_dir() # Handles user/legacy and creates dir
+                default_log_filename = "mmrelay.log"
+                log_file_name = log_config.get("filename", default_log_filename)
+                final_log_path = log_dir / log_file_name
+            except Exception as e:
+                 print(f"Error determining default log directory: {e}", file=sys.stderr)
+                 # final_log_path remains None
+
+        if final_log_path and not any(isinstance(h, RotatingFileHandler) for h in root_logger.handlers):
+            try:
+                max_bytes = log_config.get("max_log_size", 10 * 1024 * 1024) # Default 10 MB
+                backup_count = log_config.get("backup_count", 1) # Default 1 backup
+
                 file_handler = RotatingFileHandler(
-                    log_file_path, maxBytes=max_bytes, backupCount=backup_count, encoding="utf-8"
+                    final_log_path, maxBytes=max_bytes, backupCount=backup_count, encoding="utf-8"
                 )
                 file_handler.setFormatter(formatter)
-                logger.addHandler(file_handler)
-                # Log the path only once on successful setup
-                # Use a flag or check handlers to prevent repeated logging if get_logger is called multiple times
-                if not getattr(logger, '_has_logged_file_path', False):
-                     logger.info(f"Logging to file: {log_file_path}")
-                     logger._has_logged_file_path = True # Set flag
+                file_handler.setLevel(log_level) # Set level on handler
+                root_logger.addHandler(file_handler)
+                print(f"Logging to file: {final_log_path}") # Use print, logger might not be ready
+                # print(f"DEBUG: Added RotatingFileHandler with level {log_level_name}", file=sys.stderr) # Optional debug print
 
             except Exception as e:
-                 # Log error to console if file logging setup fails
-                 logger.error(f"Failed to set up file logging at {log_file_path}: {e}", exc_info=True)
+                print(f"Error setting up file logging at {final_log_path}: {e}", file=sys.stderr)
 
-
-    return logger
+    _logging_configured = True # Mark logging as configured
