@@ -104,16 +104,16 @@ def load_plugins():
     config = relay_config  # Use relay_config loaded in config.py
 
     # Import core plugins
-    from plugins.debug_plugin import Plugin as DebugPlugin
-    from plugins.drop_plugin import Plugin as DropPlugin
-    from plugins.health_plugin import Plugin as HealthPlugin
-    from plugins.help_plugin import Plugin as HelpPlugin
-    from plugins.map_plugin import Plugin as MapPlugin
-    from plugins.mesh_relay_plugin import Plugin as MeshRelayPlugin
-    from plugins.nodes_plugin import Plugin as NodesPlugin
-    from plugins.ping_plugin import Plugin as PingPlugin
-    from plugins.telemetry_plugin import Plugin as TelemetryPlugin
-    from plugins.weather_plugin import Plugin as WeatherPlugin
+    from mmrelay.plugins.debug_plugin import Plugin as DebugPlugin
+    from mmrelay.plugins.drop_plugin import Plugin as DropPlugin
+    from mmrelay.plugins.health_plugin import Plugin as HealthPlugin
+    from mmrelay.plugins.help_plugin import Plugin as HelpPlugin
+    from mmrelay.plugins.map_plugin import Plugin as MapPlugin
+    from mmrelay.plugins.mesh_relay_plugin import Plugin as MeshRelayPlugin
+    from mmrelay.plugins.nodes_plugin import Plugin as NodesPlugin
+    from mmrelay.plugins.ping_plugin import Plugin as PingPlugin
+    from mmrelay.plugins.telemetry_plugin import Plugin as TelemetryPlugin
+    from mmrelay.plugins.weather_plugin import Plugin as WeatherPlugin
 
     # Initial list of core plugins
     core_plugins = [
