@@ -34,14 +34,23 @@ jobs:
           run: |
             set -e
             echo "--- Installing build dependencies (apt) ---"
-            apt-get update && apt-get install -y --no-install-recommends gcc libffi-dev libssl-dev
+            # Added libbluetooth-dev for bleak if needed, libatlas-base-dev for numpy/scipy potentially
+            apt-get update && apt-get install -y --no-install-recommends gcc libffi-dev libssl-dev git libbluetooth-dev libatlas-base-dev
 
             echo "--- Installing shiv ---"
             pip install --no-cache-dir shiv
 
             echo "--- Building PYZ ---"
             PYZ_FILENAME="mmrelay_armv7_${{ steps.get_version.outputs.VERSION }}.pyz"
-            shiv . -o "${PYZ_FILENAME}" -c mmrelay.entry --compressed
+            # --- Use the console script name 'mmrelay' defined in setup.cfg ---
+            # Ensure the current directory (.) is built correctly by setuptools first
+            # Install the project itself along with dependencies INSIDE the container before shivving
+            echo "--- Installing project dependencies and project itself ---"
+            pip install .
+
+            echo "--- Building PYZ with shiv ---"
+            # Now shiv can find the entry point because the package is installed
+            shiv . -o "${PYZ_FILENAME}" -c mmrelay --compressed
 
             echo "--- Listing created PYZ file ---"
             ls -l "${PYZ_FILENAME}"
