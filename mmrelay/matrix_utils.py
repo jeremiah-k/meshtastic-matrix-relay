@@ -20,16 +20,12 @@ from nio import (
 )
 from PIL import Image
 
-from config import relay_config
-from db_utils import (
-    get_message_map_by_matrix_event_id,
-    prune_message_map,
-    store_message_map,
-)
-from log_utils import get_logger
+from mmrelay.config import relay_config
+from mmrelay.db_utils import get_message_map_by_matrix_event_id, prune_message_map, store_message_map
+from mmrelay.log_utils import get_logger
 
 # Do not import plugin_loader here to avoid circular imports
-from meshtastic_utils import connect_meshtastic
+from mmrelay.meshtastic_utils import connect_meshtastic
 
 # Extract Matrix configuration
 matrix_homeserver = relay_config["matrix"]["homeserver"]

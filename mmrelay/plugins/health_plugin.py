@@ -1,6 +1,6 @@
 import statistics
 
-from plugins.base_plugin import BasePlugin
+from mmrelay.plugins.base_plugin import BasePlugin
 
 
 class Plugin(BasePlugin):
@@ -11,7 +11,7 @@ class Plugin(BasePlugin):
         return "Show mesh health using avg battery, SNR, AirUtil"
 
     def generate_response(self):
-        from meshtastic_utils import connect_meshtastic
+        from mmrelay.meshtastic_utils import connect_meshtastic
 
         meshtastic_client = connect_meshtastic()
         battery_levels = []

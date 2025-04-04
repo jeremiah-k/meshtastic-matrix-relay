@@ -5,8 +5,8 @@ import os
 import subprocess
 import sys
 
-from config import get_app_path, relay_config
-from log_utils import get_logger
+from mmrelay.config import get_app_path, relay_config
+from mmrelay.log_utils import get_logger
 
 logger = get_logger(name="Plugins")
 sorted_active_plugins = []

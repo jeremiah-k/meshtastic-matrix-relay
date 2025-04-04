@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
 from PIL import Image
 
-from plugins.base_plugin import BasePlugin
+from mmrelay.plugins.base_plugin import BasePlugin
 
 
 class Plugin(BasePlugin):
@@ -79,7 +79,7 @@ class Plugin(BasePlugin):
         return []
 
     def matches(self, event):
-        from matrix_utils import bot_command
+        from mmrelay.matrix_utils import bot_command
 
         # Use bot_command() to check if any of the commands match
         for command in self.get_matrix_commands():
@@ -102,7 +102,7 @@ class Plugin(BasePlugin):
         node = match.group(2)
 
         hourly_intervals = self._generate_timeperiods()
-        from matrix_utils import connect_matrix
+        from mmrelay.matrix_utils import connect_matrix
 
         matrix_client = await connect_matrix()
 
@@ -172,7 +172,7 @@ class Plugin(BasePlugin):
         img = Image.open(buf)
         pil_image = Image.frombytes(mode="RGBA", size=img.size, data=img.tobytes())
 
-        from matrix_utils import send_room_image, upload_image
+        from mmrelay.matrix_utils import send_room_image, upload_image
 
         upload_response = await upload_image(matrix_client, pil_image, "graph.png")
         await send_room_image(matrix_client, room.room_id, upload_response)

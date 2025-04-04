@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from plugins.base_plugin import BasePlugin
+from mmrelay.plugins.base_plugin import BasePlugin
 
 
 def get_relative_time(timestamp):
@@ -42,7 +42,7 @@ $shortname $longname / $devicemodel / $battery $voltage / $snr / $lastseen
 """
 
     def generate_response(self):
-        from meshtastic_utils import connect_meshtastic
+        from mmrelay.meshtastic_utils import connect_meshtastic
 
         meshtastic_client = connect_meshtastic()
 
