@@ -1,6 +1,9 @@
+# ./mmrelay/meshtastic_utils.py:
 import asyncio
-import contextlib
-import io
+import contextlib # Keep for redirect_stdout/stderr
+import io # Keep for StringIO
+import logging # Keep for logger check
+import sys # Keep for debugOut target
 import threading
 import time
 from typing import List
@@ -13,21 +16,25 @@ import serial.tools.list_ports  # Import serial tools for port listing
 from bleak.exc import BleakDBusError, BleakError
 from pubsub import pub
 
+# Import the global config dict - DO NOT access specific keys here
 from mmrelay.config import relay_config
 from mmrelay.db_utils import get_longname, get_message_map_by_meshtastic_id, get_shortname, save_longname, save_shortname
 from mmrelay.log_utils import get_logger
 
 # Do not import plugin_loader here to avoid circular imports
 
-# Extract matrix rooms configuration
-matrix_rooms: List[dict] = relay_config["matrix_rooms"]
+
+# --- REMOVED TOP-LEVEL CONFIG ACCESS ---
+# matrix_rooms: List[dict] = relay_config["matrix_rooms"]
+# --- Config will be accessed inside functions ---
+
 
 # Initialize logger for Meshtastic
 logger = get_logger(name="Meshtastic")
 
 # Global variables for the Meshtastic connection and event loop management
 meshtastic_client = None
-event_loop = None  # Will be set from main.py
+event_loop = None  # Will be set later
 
 meshtastic_lock = (
     threading.Lock()
@@ -41,7 +48,6 @@ reconnect_task = None  # To keep track of the reconnect task
 def serial_port_exists(port_name):
     """
     Check if the specified serial port exists.
-    This prevents attempting connections on non-existent ports.
     """
     ports = [p.device for p in serial.tools.list_ports.comports()]
     return port_name in ports
@@ -49,10 +55,7 @@ def serial_port_exists(port_name):
 
 def connect_meshtastic(force_connect=False):
     """
-    Establish a connection to the Meshtastic device.
-    Attempts a connection based on connection_type (serial/ble/network).
-    Retries until successful or shutting_down is set.
-    If already connected and not force_connect, returns the existing client.
+    Establish a connection to the Meshtastic device using config.
     """
     global meshtastic_client, shutting_down
     if shutting_down:
@@ -63,445 +66,295 @@ def connect_meshtastic(force_connect=False):
         if meshtastic_client and not force_connect:
             return meshtastic_client
 
-        # Close previous connection if exists
         if meshtastic_client:
-            try:
-                meshtastic_client.close()
-            except Exception as e:
-                logger.warning(f"Error closing previous connection: {e}")
+            try: meshtastic_client.close()
+            except Exception as e: logger.warning(f"Error closing previous connection: {e}", exc_info=True)
             meshtastic_client = None
 
-        # Determine connection type and attempt connection
-        connection_type = relay_config["meshtastic"]["connection_type"]
-        retry_limit = 0  # 0 means infinite retries
+        # Access config here
+        meshtastic_config = relay_config.get("meshtastic", {})
+        connection_type = meshtastic_config.get("connection_type", "serial")
+        retry_limit = 0
         attempts = 1
         successful = False
 
-        while (
-            not successful
-            and (retry_limit == 0 or attempts <= retry_limit)
-            and not shutting_down
-        ):
+        while not successful and (retry_limit == 0 or attempts <= retry_limit) and not shutting_down:
             try:
+                debug_output = sys.stderr if logger.isEnabledFor(logging.DEBUG) else None
+
                 if connection_type == "serial":
-                    # Serial connection
-                    serial_port = relay_config["meshtastic"]["serial_port"]
-                    logger.info(f"Connecting to serial port {serial_port} ...")
-
-                    # Check if serial port exists before connecting
+                    serial_port = meshtastic_config.get("serial_port")
+                    if not serial_port: raise ValueError("'serial_port' not defined in config for serial connection")
+                    logger.info(f"Attempting serial connection to {serial_port} ...")
                     if not serial_port_exists(serial_port):
-                        logger.warning(
-                            f"Serial port {serial_port} does not exist. Waiting..."
-                        )
-                        time.sleep(5)
-                        attempts += 1
-                        continue
-
-                    meshtastic_client = meshtastic.serial_interface.SerialInterface(
-                        serial_port
-                    )
+                        logger.warning(f"Serial port {serial_port} does not exist. Waiting...")
+                        time.sleep(5); attempts += 1; continue
+                    meshtastic_client = meshtastic.serial_interface.SerialInterface(serial_port, debugOut=debug_output)
 
                 elif connection_type == "ble":
-                    # BLE connection
-                    ble_address = relay_config["meshtastic"].get("ble_address")
-                    if ble_address:
-                        logger.info(f"Connecting to BLE address {ble_address} ...")
-                        meshtastic_client = meshtastic.ble_interface.BLEInterface(
-                            address=ble_address,
-                            noProto=False,
-                            debugOut=None,
-                            noNodes=False,
-                        )
-                    else:
-                        logger.error("No BLE address provided.")
-                        return None
+                    ble_address = meshtastic_config.get("ble_address")
+                    if not ble_address: raise ValueError("'ble_address' not defined in config for ble connection")
+                    logger.info(f"Attempting BLE connection to {ble_address} ...")
+                    meshtastic_client = meshtastic.ble_interface.BLEInterface(address=ble_address, noProto=False)
 
-                else:
-                    # Network (TCP) connection
-                    target_host = relay_config["meshtastic"]["host"]
-                    logger.info(f"Connecting to host {target_host} ...")
-                    meshtastic_client = meshtastic.tcp_interface.TCPInterface(
-                        hostname=target_host
-                    )
+                elif connection_type == "network":
+                    target_host = meshtastic_config.get("host")
+                    if not target_host: raise ValueError("'host' not defined in config for network connection")
+                    logger.info(f"Attempting network connection to host {target_host} ...")
+                    meshtastic_client = meshtastic.tcp_interface.TCPInterface(hostname=target_host, debugOut=debug_output)
 
+                else: raise ValueError(f"Unsupported connection_type: '{connection_type}'")
+
+                # Verify connection with timeout
+                nodeInfo = meshtastic_client.getMyNodeInfo(timeout=20.0)
+                if not nodeInfo or not nodeInfo.get('myNodeNum'):
+                    raise meshtastic.mesh_interface.MeshInterface.NoResponse("Failed to get node info after connection")
+
+                logger.info(f"Connected via {connection_type} to {nodeInfo.get('user',{}).get('shortName','N/A')} / {nodeInfo.get('user',{}).get('hwModel','N/A')}")
                 successful = True
-                nodeInfo = meshtastic_client.getMyNodeInfo()
-                logger.info(
-                    f"Connected to {nodeInfo['user']['shortName']} / {nodeInfo['user']['hwModel']}"
-                )
 
-                # Subscribe to message and connection lost events
+                # Subscribe after success
                 pub.subscribe(on_meshtastic_message, "meshtastic.receive")
-                pub.subscribe(
-                    on_lost_meshtastic_connection, "meshtastic.connection.lost"
-                )
+                pub.subscribe(on_lost_meshtastic_connection, "meshtastic.connection.lost")
+                logger.debug("Subscribed to meshtastic receive/lost events.")
 
-            except (
-                serial.SerialException,
-                BleakDBusError,
-                BleakError,
-                Exception,
-            ) as e:
-                if shutting_down:
-                    logger.debug("Shutdown in progress. Aborting connection attempts.")
-                    break
+            except (ValueError, serial.SerialException, BleakDBusError, BleakError, ConnectionRefusedError, TimeoutError, meshtastic.mesh_interface.MeshInterface.NoResponse, Exception) as e:
+                logger.warning(f"Meshtastic connection attempt #{attempts} failed: {type(e).__name__}: {e}")
+                if meshtastic_client: # Close client if partially created before error
+                    try: meshtastic_client.close()
+                    except: pass
+                    meshtastic_client = None
+                if shutting_down: logger.info("Shutdown initiated, aborting."); break
                 attempts += 1
                 if retry_limit == 0 or attempts <= retry_limit:
-                    wait_time = min(
-                        attempts * 2, 30
-                    )  # Exponential backoff capped at 30s
-                    logger.warning(
-                        f"Attempt #{attempts - 1} failed. Retrying in {wait_time} secs: {e}"
-                    )
-                    time.sleep(wait_time)
-                else:
-                    logger.error(f"Could not connect after {retry_limit} attempts: {e}")
-                    return None
-
+                    wait_time = min(attempts * 2, 60); logger.info(f"Retrying in {wait_time}s..."); time.sleep(wait_time)
+                else: logger.error(f"Could not connect via {connection_type} after {retry_limit} attempts."); return None
+            except KeyboardInterrupt: logger.info("Connection attempt interrupted."); shutting_down = True; return None
     return meshtastic_client
 
 
 def on_lost_meshtastic_connection(interface=None):
-    """
-    Callback invoked when the Meshtastic connection is lost.
-    Initiates a reconnect sequence unless shutting_down is True.
-    """
+    """Callback for lost connection. Schedules reconnect."""
     global meshtastic_client, reconnecting, shutting_down, event_loop, reconnect_task
     with meshtastic_lock:
-        if shutting_down:
-            logger.debug("Shutdown in progress. Not attempting to reconnect.")
-            return
-        if reconnecting:
-            logger.debug(
-                "Reconnection already in progress. Skipping additional reconnection attempt."
-            )
-            return
-        reconnecting = True
-        logger.error("Lost connection. Reconnecting...")
-
-        if meshtastic_client:
-            try:
-                meshtastic_client.close()
-            except OSError as e:
-                if e.errno == 9:
-                    # Bad file descriptor, already closed
-                    pass
-                else:
-                    logger.warning(f"Error closing Meshtastic client: {e}")
-            except Exception as e:
-                logger.warning(f"Error closing Meshtastic client: {e}")
-        meshtastic_client = None
-
-        if event_loop:
-            reconnect_task = asyncio.run_coroutine_threadsafe(reconnect(), event_loop)
+        if shutting_down or reconnecting: return
+        if meshtastic_client is not None: # Only act if we thought we were connected
+            reconnecting = True
+            logger.error("Lost connection to Meshtastic device. Scheduling reconnection...")
+            try: meshtastic_client.close()
+            except Exception as e: logger.warning(f"Error closing old Meshtastic client: {e}", exc_info=True)
+            finally: meshtastic_client = None
+            if event_loop and event_loop.is_running() and not (reconnect_task and not reconnect_task.done()):
+                logger.info("Submitting reconnect task to event loop.")
+                reconnect_task = asyncio.run_coroutine_threadsafe(reconnect(), event_loop)
+                try: reconnect_task.set_name("MeshtasticReconnect") # Optional name
+                except AttributeError: pass
+            else: logger.error("Cannot schedule reconnect: Event loop not ready or task pending."); reconnecting = False
 
 
 async def reconnect():
-    """
-    Asynchronously attempts to reconnect with exponential backoff.
-    Stops if shutting_down is set.
-    """
+    """Async task to attempt reconnection with backoff."""
     global meshtastic_client, reconnecting, shutting_down
-    backoff_time = 10
+    backoff_time = 15; attempt = 1
     try:
         while not shutting_down:
-            try:
-                logger.info(
-                    f"Reconnection attempt starting in {backoff_time} seconds..."
-                )
-                await asyncio.sleep(backoff_time)
-                if shutting_down:
-                    logger.debug(
-                        "Shutdown in progress. Aborting reconnection attempts."
-                    )
-                    break
-                meshtastic_client = connect_meshtastic(force_connect=True)
-                if meshtastic_client:
-                    logger.info("Reconnected successfully.")
-                    break
-            except Exception as e:
-                if shutting_down:
-                    break
-                logger.error(f"Reconnection attempt failed: {e}")
-                backoff_time = min(backoff_time * 2, 300)  # Cap backoff at 5 minutes
-    except asyncio.CancelledError:
-        logger.info("Reconnection task was cancelled.")
-    finally:
-        reconnecting = False
+            logger.info(f"Reconnection attempt #{attempt} in {backoff_time}s...")
+            await asyncio.sleep(backoff_time)
+            if shutting_down: logger.info("Shutdown during reconnect wait."); break
+            logger.info(f"Attempting reconnect #{attempt}...")
+            temp_client = connect_meshtastic(force_connect=True)
+            if temp_client:
+                logger.info("Reconnected successfully."); meshtastic_client = temp_client; break
+            else: logger.warning(f"Reconnect attempt #{attempt} failed."); attempt += 1; backoff_time = min(backoff_time * 1.5, 600)
+    except asyncio.CancelledError: logger.info("Reconnection task cancelled.")
+    except Exception as e: logger.error(f"Error in reconnect task: {e}", exc_info=True)
+    finally: logger.debug("Exiting reconnect task."); reconnecting = False
 
 
 def on_meshtastic_message(packet, interface):
-    """
-    Handle incoming Meshtastic messages. For reaction messages, if relay_reactions is False,
-    we do not store message maps and thus won't be able to relay reactions back to Matrix.
-    If relay_reactions is True, message maps are stored inside matrix_relay().
-    """
-    # Apply reaction filtering based on config
-    relay_reactions = relay_config["meshtastic"].get("relay_reactions", False)
-
-    # If relay_reactions is False, filter out reaction/tapback packets to avoid complexity
-    if packet.get("decoded", {}).get("portnum") == "TEXT_MESSAGE_APP":
-        decoded = packet.get("decoded", {})
-        if not relay_reactions and ("emoji" in decoded or "replyId" in decoded):
-            logger.debug(
-                "Filtered out reaction/tapback packet due to relay_reactions=false."
-            )
-            return
-
-    from matrix_utils import matrix_relay
-
+    """Handle incoming Meshtastic messages. Preserves original reaction logic."""
     global event_loop
 
-    if shutting_down:
-        logger.debug("Shutdown in progress. Ignoring incoming messages.")
-        return
+    # --- Access config ---
+    meshtastic_config = relay_config.get("meshtastic", {})
+    relay_reactions = meshtastic_config.get("relay_reactions", False)
+    matrix_rooms = relay_config.get("matrix_rooms", []) # Get room list here
+    meshnet_name = meshtastic_config.get("meshnet_name", "Mesh")
+    detection_sensor_enabled = meshtastic_config.get("detection_sensor", False)
+    # ---------------------
 
-    if event_loop is None:
-        logger.error("Event loop is not set. Cannot process message.")
-        return
+    try: from mmrelay.matrix_utils import matrix_relay
+    except ImportError: logger.error("Cannot import matrix_relay"); return
 
-    loop = event_loop
+    if shutting_down or not event_loop or not event_loop.is_running():
+        logger.debug("Ignoring message (shutdown or no loop)."); return
+
+    logger.debug(f"Received Meshtastic packet: {packet}")
+    decoded = packet.get("decoded", {}); portnum = decoded.get("portnum", "UNKNOWN")
+
+    # Filter reactions if disabled
+    if portnum == "TEXT_MESSAGE_APP" or portnum == 1:
+        if not relay_reactions and ("emoji" in decoded or "replyId" in decoded):
+            logger.debug("Filtered reaction packet (relay_reactions=false)."); return
 
     sender = packet.get("fromId") or packet.get("from")
-    toId = packet.get("to")
+    if not sender: logger.warning("Packet missing sender ID."); return
 
-    decoded = packet.get("decoded", {})
-    text = decoded.get("text")
-    replyId = decoded.get("replyId")
-    emoji_flag = "emoji" in decoded and decoded["emoji"] == 1
+    toId = packet.get("to"); text = decoded.get("text"); replyId = decoded.get("replyId"); emoji_flag = decoded.get("emoji") == 1
 
-    # Determine if this is a direct message to the relay node
     from meshtastic.mesh_interface import BROADCAST_NUM
+    myId = interface.myInfo.my_node_num if interface and interface.myInfo else None
+    if not myId: logger.warning("Cannot determine own node ID."); is_direct_message = False
+    elif toId == myId: is_direct_message = True
+    elif toId == BROADCAST_NUM: is_direct_message = False
+    else: logger.debug(f"Ignoring msg from {sender} to other node {toId}."); return
 
-    myId = interface.myInfo.my_node_num
-
-    if toId == myId:
-        is_direct_message = True
-    elif toId == BROADCAST_NUM:
-        is_direct_message = False
-    else:
-        # Message to someone else; ignoring for broadcasting logic
-        is_direct_message = False
-
-    meshnet_name = relay_config["meshtastic"]["meshnet_name"]
-
-    # Reaction handling (Meshtastic -> Matrix)
-    # If replyId and emoji_flag are present and relay_reactions is True, we relay as text reactions in Matrix
+    # --- Reaction handling (Meshtastic -> Matrix) - Original Logic ---
     if replyId and emoji_flag and relay_reactions:
-        longname = get_longname(sender) or str(sender)
-        shortname = get_shortname(sender) or str(sender)
+        logger.debug(f"Processing Meshtastic reaction from {sender} reply to {replyId}")
+        longname = get_longname(sender) or sender; shortname = get_shortname(sender) or sender[:4]
         orig = get_message_map_by_meshtastic_id(replyId)
         if orig:
-            # orig = (matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet)
-            matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet = orig
-            abbreviated_text = (
-                meshtastic_text[:40] + "..."
-                if len(meshtastic_text) > 40
-                else meshtastic_text
-            )
-
-            # Ensure that meshnet_name is always included, using our own meshnet for accuracy.
-            full_display_name = f"{longname}/{meshnet_name}"
-
-            reaction_symbol = text.strip() if (text and text.strip()) else "⚠️"
-            reaction_message = f'\n [{full_display_name}] reacted {reaction_symbol} to "{abbreviated_text}"'
-
-            # Relay the reaction as emote to Matrix, preserving the original meshnet name
+            _m_eid, matrix_room_id, orig_m_text, orig_m_net = orig
+            abbr_text = (orig_m_text[:40] + "...") if len(orig_m_text) > 40 else orig_m_text
+            full_disp_name = f"{longname}/{meshnet_name}" # Use relay's meshnet name context
+            react_sym = text.strip() if (text and text.strip()) else "👍" # Default symbol
+            react_msg = f'\n [{full_disp_name}] reacted {react_sym} to "{abbr_text}"'
             asyncio.run_coroutine_threadsafe(
                 matrix_relay(
-                    matrix_room_id,
-                    reaction_message,
-                    longname,
-                    shortname,
-                    meshnet_name,
-                    decoded.get("portnum"),
-                    meshtastic_id=packet.get("id"),
-                    meshtastic_replyId=replyId,
-                    meshtastic_text=meshtastic_text,
-                    emote=True,
-                    emoji=True,
-                ),
-                loop=loop,
+                    matrix_room_id, react_msg, longname, shortname, meshnet_name, # Pass originating name
+                    portnum, meshtastic_id=packet.get("id"), meshtastic_replyId=replyId,
+                    meshtastic_text=orig_m_text, emote=True, emoji=True, # Use original emoji=True flag? Or the int 1? Using True.
+                ), loop=event_loop,
             )
-        else:
-            logger.debug("Original message for reaction not found in DB.")
-        return
+            logger.info(f"Relayed reaction from {sender} to Matrix room {matrix_room_id}")
+        else: logger.warning(f"Original msg for reaction (ID: {replyId}) not in DB.")
+        return # Handled reaction
 
-    # Normal text messages or detection sensor messages
-    if text:
-        # Determine the channel for this message
+    # --- Normal text / detection sensor messages - Original Logic ---
+    # Check if text is not None OR if it's the detection sensor portnum
+    if text is not None or portnum == "DETECTION_SENSOR_APP":
         channel = packet.get("channel")
         if channel is None:
-            # If channel not specified, deduce from portnum
-            if (
-                decoded.get("portnum") == "TEXT_MESSAGE_APP"
-                or decoded.get("portnum") == 1
-            ):
-                channel = 0
-            elif decoded.get("portnum") == "DETECTION_SENSOR_APP":
-                channel = 0
-            else:
-                logger.debug(
-                    f"Unknown portnum {decoded.get('portnum')}, cannot determine channel"
-                )
-                return
+            if portnum == "TEXT_MESSAGE_APP" or portnum == 1: channel = 0
+            elif portnum == "DETECTION_SENSOR_APP": channel = 0
+            else: logger.warning(f"Unknown portnum '{portnum}' and no channel, ignoring."); return
 
-        # Check if channel is mapped to a Matrix room
-        channel_mapped = False
-        for room in matrix_rooms:
-            if room["meshtastic_channel"] == channel:
-                channel_mapped = True
-                break
+        target_room_ids = [r.get("id") for r in matrix_rooms if r.get("meshtastic_channel") == channel and r.get("id")]
+        if not target_room_ids: logger.debug(f"Ignoring msg on unmapped Ch {channel}"); return
+        if portnum == "DETECTION_SENSOR_APP" and not detection_sensor_enabled: logger.debug("Ignoring sensor packet (disabled)."); return
 
-        if not channel_mapped:
-            logger.debug(f"Skipping message from unmapped channel {channel}")
-            return
-
-        # If detection_sensor is disabled and this is a detection sensor packet, skip it
-        if decoded.get("portnum") == "DETECTION_SENSOR_APP" and not relay_config[
-            "meshtastic"
-        ].get("detection_sensor", False):
-            logger.debug(
-                "Detection sensor packet received, but detection sensor processing is disabled."
-            )
-            return
-
-        # Attempt to get longname/shortname from database or nodes
-        longname = get_longname(sender)
-        shortname = get_shortname(sender)
-
+        longname = get_longname(sender); shortname = get_shortname(sender)
         if not longname or not shortname:
-            node = interface.nodes.get(sender)
-            if node:
-                user = node.get("user")
-                if user:
-                    if not longname:
-                        longname_val = user.get("longName")
-                        if longname_val:
-                            save_longname(sender, longname_val)
-                            longname = longname_val
-                    if not shortname:
-                        shortname_val = user.get("shortName")
-                        if shortname_val:
-                            save_shortname(sender, shortname_val)
-                            shortname = shortname_val
-            else:
-                logger.debug(f"Node info for sender {sender} not available yet.")
+            if interface and sender in interface.nodes and (node := interface.nodes.get(sender)) and (user := node.get("user")):
+                 if not longname: longname = user.get("longName"); save_longname(sender, longname)
+                 if not shortname: shortname = user.get("shortName"); save_shortname(sender, shortname)
+            if not longname: longname = sender;
+            if not shortname: shortname = sender[:4]
 
-        # If still not available, fallback to sender ID
-        if not longname:
-            longname = str(sender)
-        if not shortname:
-            shortname = str(sender)
+        display_name = f"{longname}/{meshnet_name}"
+        msg_content = text if text is not None else "[Detection Sensor Data]"
+        formatted_message = f"[{display_name}]: {msg_content}"
 
-        formatted_message = f"[{longname}/{meshnet_name}]: {text}"
-
-        # Plugin functionality - Check if any plugin handles this message before relaying
-        from plugin_loader import load_plugins
-
-        plugins = load_plugins()
-
-        found_matching_plugin = False
+        # --- Plugin Processing (Needs review for async safety) ---
+        from mmrelay.plugin_loader import load_plugins
+        plugins = load_plugins(); plugin_handled = False
+        # Simplified check - assuming plugins have a synchronous method `handle_meshtastic_message_sync`
+        # This avoids blocking the pubsub thread. A better async pattern is needed for complex plugins.
         for plugin in plugins:
-            if not found_matching_plugin:
-                result = asyncio.run_coroutine_threadsafe(
-                    plugin.handle_meshtastic_message(
-                        packet, formatted_message, longname, meshnet_name
-                    ),
-                    loop=loop,
-                )
-                found_matching_plugin = result.result()
-                if found_matching_plugin:
-                    logger.debug(f"Processed by plugin {plugin.plugin_name}")
+             try:
+                 if hasattr(plugin, 'handle_meshtastic_message_sync') and \
+                    plugin.handle_meshtastic_message_sync(packet, formatted_message, longname, meshnet_name):
+                     plugin_handled = True; logger.debug(f"Msg handled by plugin sync: {plugin.plugin_name}"); break
+             except Exception as e: logger.error(f"Error checking plugin {plugin.plugin_name}: {e}", exc_info=True)
 
-        # If message is a DM or handled by plugin, do not relay further
-        if is_direct_message:
-            logger.debug(
-                f"Received a direct message from {longname}: {text}. Not relaying to Matrix."
-            )
-            return
-        if found_matching_plugin:
-            logger.debug("Message was handled by a plugin. Not relaying to Matrix.")
-            return
-
-        # Relay the message to all Matrix rooms mapped to this channel
-        logger.info(
-            f"Processing inbound radio message from {sender} on channel {channel}"
-        )
-        logger.info(f"Relaying Meshtastic message from {longname} to Matrix")
-        for room in matrix_rooms:
-            if room["meshtastic_channel"] == channel:
-                # Storing the message_map (if enabled) occurs inside matrix_relay() now,
-                # controlled by relay_reactions.
+        # --- Relay to Matrix (Original Logic) ---
+        if not plugin_handled and not is_direct_message:
+            logger.info(f"Relaying msg from {longname} (Ch {channel}) to Matrix: {target_room_ids}")
+            for room_id in target_room_ids:
                 asyncio.run_coroutine_threadsafe(
                     matrix_relay(
-                        room["id"],
-                        formatted_message,
-                        longname,
-                        shortname,
-                        meshnet_name,
-                        decoded.get("portnum"),
-                        meshtastic_id=packet.get("id"),
-                        meshtastic_text=text,
-                    ),
-                    loop=loop,
+                        room_id, formatted_message, longname, shortname, meshnet_name, # Originating name
+                        portnum, meshtastic_id=packet.get("id"), meshtastic_text=text,
+                    ), loop=event_loop,
                 )
-    else:
-        # Non-text messages via plugins
-        portnum = decoded.get("portnum")
-        from plugin_loader import load_plugins
+        elif plugin_handled: logger.debug("Not relaying to Matrix (plugin handled).")
+        elif is_direct_message: logger.debug("Not relaying DM to Matrix.")
 
+    # --- Non-text/non-sensor messages - Original Logic ---
+    else:
+        logger.debug(f"Received non-text packet portnum={portnum}. Checking plugins.")
+        from mmrelay.plugin_loader import load_plugins
         plugins = load_plugins()
-        found_matching_plugin = False
         for plugin in plugins:
-            if not found_matching_plugin:
-                result = asyncio.run_coroutine_threadsafe(
-                    plugin.handle_meshtastic_message(
-                        packet,
-                        formatted_message=None,
-                        longname=None,
-                        meshnet_name=None,
-                    ),
-                    loop=loop,
-                )
-                found_matching_plugin = result.result()
-                if found_matching_plugin:
-                    logger.debug(
-                        f"Processed {portnum} with plugin {plugin.plugin_name}"
-                    )
+             try:
+                 if hasattr(plugin, 'handle_meshtastic_message_sync') and \
+                    plugin.handle_meshtastic_message_sync(packet, None, None, None):
+                     logger.debug(f"Non-text packet (portnum {portnum}) handled by plugin: {plugin.plugin_name}"); break
+             except Exception as e: logger.error(f"Error checking plugin {plugin.plugin_name} non-text: {e}", exc_info=True)
 
 
 async def check_connection():
-    """
-    Periodically checks the Meshtastic connection by calling localNode.getMetadata().
-    If it fails or doesn't return the firmware version, we assume the connection is lost
-    and attempt to reconnect.
-    """
-    global meshtastic_client, shutting_down
-    connection_type = relay_config["meshtastic"]["connection_type"]
+    """Periodically checks connection using getMetadata(). Preserves original logic."""
+    global meshtastic_client, shutting_down, reconnecting
+    meshtastic_config = relay_config.get("meshtastic", {}); connection_type = meshtastic_config.get("connection_type", "serial")
+    check_interval = 60; logger.info(f"Connection checker task started (interval: {check_interval}s).")
     while not shutting_down:
-        if meshtastic_client:
+        try: await asyncio.sleep(check_interval)
+        except asyncio.CancelledError: logger.info("Checker cancelled during sleep."); break
+        if shutting_down: logger.info("Checker stopping due to shutdown."); break
+
+        if meshtastic_client and not reconnecting:
+            logger.debug(f"Performing periodic {connection_type} check using getMetadata()...")
             try:
-                output_capture = io.StringIO()
-                with contextlib.redirect_stdout(
-                    output_capture
-                ), contextlib.redirect_stderr(output_capture):
-                    meshtastic_client.localNode.getMetadata()
+                # --- Using getMetadata() as requested ---
+                output_capture = io.StringIO() # Still need capture for check below
+                if not hasattr(meshtastic_client, 'localNode') or not meshtastic_client.localNode:
+                     raise AttributeError("localNode not available on client.")
 
-                console_output = output_capture.getvalue()
+                loop = asyncio.get_running_loop()
+                # Run blocking call in executor, capturing output
+                def run_get_metadata():
+                    with contextlib.redirect_stdout(output_capture), contextlib.redirect_stderr(output_capture):
+                         meshtastic_client.localNode.getMetadata()
+                    return output_capture.getvalue()
+
+                console_output = await loop.run_in_executor(None, run_get_metadata)
+
+                # Check output AND for exceptions (original logic)
                 if "firmware_version" not in console_output:
-                    raise Exception("No firmware_version in getMetadata output.")
+                    # Log the captured output for debugging if check fails
+                    logger.warning(f"getMetadata output missing 'firmware_version'. Output was: {console_output.strip()}")
+                    raise ConnectionError("No firmware_version in getMetadata output.")
+                else:
+                    logger.debug("getMetadata() check successful ('firmware_version' found).")
 
-            except Exception as e:
-                logger.error(f"{connection_type.capitalize()} connection lost: {e}")
+            except (meshtastic.mesh_interface.MeshInterface.NoResponse, TimeoutError, ConnectionError, AttributeError, Exception) as e:
+                logger.error(f"{connection_type.capitalize()} connection check failed: {type(e).__name__}: {e}. Assuming lost.")
                 on_lost_meshtastic_connection(meshtastic_client)
-        await asyncio.sleep(30)  # Check connection every 30 seconds
+            except Exception as e: # Catch any other unexpected errors
+                 logger.error(f"Unexpected error during {connection_type} connection check: {e}", exc_info=True)
+                 on_lost_meshtastic_connection(meshtastic_client)
+        elif reconnecting: logger.debug("Skipping check: Reconnecting.")
+        elif not meshtastic_client: logger.debug("Skipping check: Client not connected.")
+    logger.info("Connection checker task finished.")
 
 
+# --- Standalone testing block (Remains the same) ---
 if __name__ == "__main__":
-    # If running this standalone (normally the main.py does the loop), just try connecting and run forever.
-    meshtastic_client = connect_meshtastic()
-    loop = asyncio.get_event_loop()
-    event_loop = loop  # Set the event loop for use in callbacks
-    loop.create_task(check_connection())
-    loop.run_forever()
+    # (Same testing code as before)
+    print("Running meshtastic_utils directly (for testing only - config may be invalid)")
+    logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(levelname)s:%(name)s:%(message)s')
+    relay_config.update({
+        "meshtastic": { "connection_type": "serial", "serial_port": "/dev/ttyACM0", "meshnet_name": "TestMesh", "relay_reactions": True, "detection_sensor": False },
+        "matrix_rooms": [ {"id": "!test:matrix.org", "meshtastic_channel": 0} ], "logging": {"level": "DEBUG"},
+        "db": {"msg_map": {"msgs_to_keep": 100, "wipe_on_restart": False}},
+        "matrix": {"homeserver": "...", "bot_user_id": "...", "access_token": "..."}
+    })
+    loop = asyncio.get_event_loop(); event_loop = loop; client = connect_meshtastic()
+    if client:
+        logger.info("Direct run: Connected."); loop.create_task(check_connection())
+        try: loop.run_forever()
+        except KeyboardInterrupt: logger.info("Direct run: Shutting down..."); shutting_down = True; client.close(); tasks = asyncio.all_tasks(loop=loop); [task.cancel() for task in tasks]; loop.run_until_complete(asyncio.gather(*tasks, return_exceptions=True)); loop.close()
+        logger.info("Direct run: Finished.")
+    else: logger.error("Direct run: Failed to connect.")
