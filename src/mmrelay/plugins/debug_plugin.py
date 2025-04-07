@@ -1,4 +1,4 @@
-from plugins.base_plugin import BasePlugin
+from mmrelay.plugins.base_plugin import BasePlugin
 
 
 class Plugin(BasePlugin):

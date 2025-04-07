@@ -4,7 +4,7 @@ import string
 
 from meshtastic.mesh_interface import BROADCAST_NUM
 
-from plugins.base_plugin import BasePlugin
+from mmrelay.plugins.base_plugin import BasePlugin
 
 
 def match_case(source, target):
@@ -28,7 +28,7 @@ class Plugin(BasePlugin):
             message = packet["decoded"]["text"].strip()
             channel = packet.get("channel", 0)  # Default to channel 0 if not provided
 
-            from meshtastic_utils import connect_meshtastic
+            from mmrelay.meshtastic_utils import connect_meshtastic
 
             meshtastic_client = connect_meshtastic()
 

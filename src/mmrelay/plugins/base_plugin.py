@@ -5,14 +5,14 @@ from abc import ABC, abstractmethod
 import markdown
 import schedule
 
-from config import relay_config
-from db_utils import (
+from mmrelay.config import relay_config
+from mmrelay.db_utils import (
     delete_plugin_data,
     get_plugin_data,
     get_plugin_data_for_node,
     store_plugin_data,
 )
-from log_utils import get_logger
+from mmrelay.log_utils import get_logger
 
 
 class BasePlugin(ABC):
@@ -129,7 +129,7 @@ class BasePlugin(ABC):
         return [self.plugin_name]
 
     async def send_matrix_message(self, room_id, message, formatted=True):
-        from matrix_utils import connect_matrix
+        from mmrelay.matrix_utils import connect_matrix
 
         matrix_client = await connect_matrix()
 
@@ -170,7 +170,7 @@ class BasePlugin(ABC):
         return get_plugin_data(self.plugin_name)
 
     def matches(self, event):
-        from matrix_utils import bot_command
+        from mmrelay.matrix_utils import bot_command
 
         # Pass the entire event to bot_command
         return bot_command(self.plugin_name, event)
