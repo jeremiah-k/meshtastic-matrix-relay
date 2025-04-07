@@ -9,7 +9,7 @@ DEFAULT_FORMATTER = logging.Formatter(
 )
 
 
-def setup_logging(config, log_file=None):
+def setup_logging(config_dict, log_file=None):
     """
     Set up logging configuration based on the provided config.
 
