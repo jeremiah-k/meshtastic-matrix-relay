@@ -24,10 +24,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pyinstaller
+          pip install pyinstaller build twine
 
       - name: Build executable
-        run: pyinstaller --name=mmrelay.exe --onefile --console main.py
+        run: pyinstaller --name=mmrelay.exe --onefile --console src/mmrelay/cli.py
 
       - name: Build installer
         uses: nadeemjazmawe/inno-setup-action-cli@v6.0.5
@@ -42,3 +42,12 @@ jobs:
           asset_name: MMRelay_setup_${{ github.ref_name }}.exe
           tag: ${{ github.ref }}
           overwrite: true
+
+      - name: Build Python package
+        run: python -m build
+
+      - name: Publish to PyPI
+        if: startsWith(github.ref, 'refs/tags')
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}

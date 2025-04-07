@@ -48,22 +48,22 @@ begin
   OverwriteConfig := CreateInputOptionPage(wpWelcome,
     'Configure the relay', 'Create new configuration',
     '', False, False);
-  MatrixPage := CreateInputQueryPage(OverwriteConfig.ID, 
+  MatrixPage := CreateInputQueryPage(OverwriteConfig.ID,
       'Matrix Setup', 'Configure Matrix Settings',
       'Enter the settings for your Matrix server.');
-  MeshtasticPage := CreateInputQueryPage(MatrixPage.ID, 
+  MeshtasticPage := CreateInputQueryPage(MatrixPage.ID,
       'Meshtastic Setup', 'Configure Meshtastic Settings',
       'Enter the settings for connecting with your Meshtastic radio.');
-  MatrixMeshtasticPage := CreateInputQueryPage(MeshtasticPage.ID, 
+  MatrixMeshtasticPage := CreateInputQueryPage(MeshtasticPage.ID,
       'Matrix <> Meshtastic Setup', 'Configure Matrix <> Meshtastic Settings',
       'Connect a Matrix room with a Meshtastic radio channel.');
-  OptionsPage := CreateInputOptionPage(MatrixMeshtasticPage.ID, 
+  OptionsPage := CreateInputOptionPage(MatrixMeshtasticPage.ID,
       'Additional Options', 'Provide additional options',
       'Set logging and broadcast options, you can keep the defaults.', False, False);
 
   // Increase page height
   WizardForm.ClientHeight := WizardForm.ClientHeight + 50;
-  
+
   OverwriteConfig.Add('Generate configuration (overwrite any current config files)');
   OverwriteConfig.Values[0] := False;
 
@@ -191,7 +191,7 @@ begin
     MsgBox('Could not create config file "config.yaml". Close any applications that may have it open and re-run setup', mbInformation, MB_OK);
   end;
 
-  batch_file := '"' + sAppDir + '\mmrelay.exe" config.yaml ' + #13#10 +
+  batch_file := '"' + sAppDir + '\mmrelay.exe" --config config.yaml ' + #13#10 +
                 'pause';
 
   if Not SaveStringToFile(sAppDir + '/mmrelay.bat', batch_file, false) then
