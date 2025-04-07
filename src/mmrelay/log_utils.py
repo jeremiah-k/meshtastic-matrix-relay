@@ -2,7 +2,7 @@ import logging
 import os
 from logging.handlers import RotatingFileHandler
 
-from config import relay_config
+from mmrelay.config import relay_config
 
 
 def get_logger(name):

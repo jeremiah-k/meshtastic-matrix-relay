@@ -13,15 +13,15 @@ import serial.tools.list_ports  # Import serial tools for port listing
 from bleak.exc import BleakDBusError, BleakError
 from pubsub import pub
 
-from config import relay_config
-from db_utils import (
+from mmrelay.config import relay_config
+from mmrelay.db_utils import (
     get_longname,
     get_message_map_by_meshtastic_id,
     get_shortname,
     save_longname,
     save_shortname,
 )
-from log_utils import get_logger
+from mmrelay.log_utils import get_logger
 
 # Do not import plugin_loader here to avoid circular imports
 
@@ -254,7 +254,7 @@ def on_meshtastic_message(packet, interface):
             )
             return
 
-    from matrix_utils import matrix_relay
+    from mmrelay.matrix_utils import matrix_relay
 
     global event_loop
 
@@ -403,7 +403,7 @@ def on_meshtastic_message(packet, interface):
         formatted_message = f"[{longname}/{meshnet_name}]: {text}"
 
         # Plugin functionality - Check if any plugin handles this message before relaying
-        from plugin_loader import load_plugins
+        from mmrelay.plugin_loader import load_plugins
 
         plugins = load_plugins()
 
@@ -455,7 +455,7 @@ def on_meshtastic_message(packet, interface):
     else:
         # Non-text messages via plugins
         portnum = decoded.get("portnum")
-        from plugin_loader import load_plugins
+        from mmrelay.plugin_loader import load_plugins
 
         plugins = load_plugins()
         found_matching_plugin = False
