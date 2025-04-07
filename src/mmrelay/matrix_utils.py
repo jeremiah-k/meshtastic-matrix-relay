@@ -20,7 +20,7 @@ from nio import (
 )
 from PIL import Image
 
-from mmrelay.config import relay_config
+from mmrelay.config import config, relay_config
 from mmrelay.db_utils import (
     get_message_map_by_matrix_event_id,
     prune_message_map,
@@ -32,11 +32,11 @@ from mmrelay.log_utils import get_logger
 from mmrelay.meshtastic_utils import connect_meshtastic
 
 # Extract Matrix configuration
-matrix_homeserver = relay_config["matrix"]["homeserver"]
-matrix_rooms: List[dict] = relay_config["matrix_rooms"]
-matrix_access_token = relay_config["matrix"]["access_token"]
+matrix_homeserver = config.matrix_homeserver
+matrix_rooms: List[dict] = config.matrix_rooms
+matrix_access_token = config.matrix_access_token
 
-bot_user_id = relay_config["matrix"]["bot_user_id"]
+bot_user_id = config.matrix_bot_user_id
 bot_user_name = None  # Detected upon logon
 bot_start_time = int(
     time.time() * 1000

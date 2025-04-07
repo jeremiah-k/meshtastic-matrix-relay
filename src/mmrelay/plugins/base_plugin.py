@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 import markdown
 import schedule
 
-from mmrelay.config import relay_config
+from mmrelay.config import config
 from mmrelay.db_utils import (
     delete_plugin_data,
     get_plugin_data,
@@ -30,15 +30,20 @@ class BasePlugin(ABC):
         self.config = {"active": False}
         plugin_levels = ["plugins", "community-plugins", "custom-plugins"]
 
-        for level in plugin_levels:
-            if level in relay_config and self.plugin_name in relay_config[level]:
-                self.config = relay_config[level][self.plugin_name]
-                break
+        # Check in plugins config
+        if self.plugin_name in config.plugins:
+            self.config = config.plugins[self.plugin_name]
+        # Check in community plugins config
+        elif self.plugin_name in config.community_plugins:
+            self.config = config.community_plugins[self.plugin_name]
+        # Check in custom plugins config
+        elif self.plugin_name in config.custom_plugins:
+            self.config = config.custom_plugins[self.plugin_name]
 
         # Get the list of mapped channels
         self.mapped_channels = [
             room.get("meshtastic_channel")
-            for room in relay_config.get("matrix_rooms", [])
+            for room in config.matrix_rooms
         ]
 
         # Get the channels specified for this plugin, or default to all mapped channels
@@ -58,9 +63,7 @@ class BasePlugin(ABC):
             )
 
         # Get the response delay from the meshtastic config only
-        self.response_delay = relay_config.get("meshtastic", {}).get(
-            "plugin_response_delay", 3
-        )
+        self.response_delay = config.meshtastic.get("plugin_response_delay", 3)
 
     def start(self):
         if "schedule" not in self.config or (

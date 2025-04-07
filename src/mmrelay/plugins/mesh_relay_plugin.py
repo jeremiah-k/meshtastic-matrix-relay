@@ -5,10 +5,10 @@ from typing import List
 
 from meshtastic import mesh_pb2
 
-from mmrelay.config import relay_config
+from mmrelay.config import config
 from mmrelay.plugins.base_plugin import BasePlugin
 
-matrix_rooms: List[dict] = relay_config["matrix_rooms"]
+matrix_rooms: List[dict] = config.matrix_rooms
 
 
 class Plugin(BasePlugin):

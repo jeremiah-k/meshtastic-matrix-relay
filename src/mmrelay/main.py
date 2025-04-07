@@ -13,7 +13,7 @@ from nio import ReactionEvent, RoomMessageEmote, RoomMessageNotice, RoomMessageT
 
 # Import meshtastic_utils as a module to set event_loop
 from mmrelay import meshtastic_utils
-from mmrelay.config import relay_config
+from mmrelay.config import config, relay_config
 from mmrelay.db_utils import (
     initialize_database,
     update_longnames,
@@ -32,7 +32,7 @@ from mmrelay.plugin_loader import load_plugins
 logger = get_logger(name="M<>M Relay")
 
 # Extract Matrix configuration
-matrix_rooms: List[dict] = relay_config["matrix_rooms"]
+matrix_rooms: List[dict] = config.matrix_rooms
 
 # Set the logging level for 'nio' to ERROR to suppress warnings
 logging.getLogger("nio").setLevel(logging.ERROR)
@@ -52,9 +52,7 @@ async def main():
     initialize_database()
 
     # Check db config for wipe_on_restart
-    db_config = relay_config.get("db", {})
-    msg_map_config = db_config.get("msg_map", {})
-    wipe_on_restart = msg_map_config.get("wipe_on_restart", False)
+    wipe_on_restart = config.db_wipe_on_restart
 
     if wipe_on_restart:
         logger.debug("wipe_on_restart enabled. Wiping message_map now (startup).")

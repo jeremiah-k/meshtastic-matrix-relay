@@ -5,7 +5,7 @@ import os
 import subprocess
 import sys
 
-from mmrelay.config import relay_config
+from mmrelay.config import config
 from mmrelay.log_utils import get_logger
 from mmrelay.path_utils import get_package_dir, get_plugins_dir
 
@@ -102,7 +102,7 @@ def load_plugins():
 
     logger.info("Checking plugin config...")
 
-    config = relay_config  # Use relay_config loaded in config.py
+    # Use the config instance
 
     # Import core plugins
     from mmrelay.plugins.debug_plugin import Plugin as DebugPlugin
@@ -133,7 +133,7 @@ def load_plugins():
     plugins = core_plugins.copy()
 
     # Process and load custom plugins
-    custom_plugins_config = config.get("custom-plugins", {})
+    custom_plugins_config = config.custom_plugins
     plugins_dir = get_plugins_dir()
     custom_plugins_dir = os.path.join(plugins_dir, "custom")
     os.makedirs(custom_plugins_dir, exist_ok=True)
@@ -158,7 +158,7 @@ def load_plugins():
             logger.warning(f"Custom plugin directory not found: {plugin_path}")
 
     # Process and download community plugins
-    community_plugins_config = config.get("community-plugins", {})
+    community_plugins_config = config.community_plugins
     community_plugins_dir = os.path.join(plugins_dir, "community")
 
     # Create community plugins directory if needed
@@ -217,12 +217,12 @@ def load_plugins():
         # Determine if the plugin is active based on the configuration
         if plugin in core_plugins:
             # Core plugins: default to inactive unless specified otherwise
-            plugin_config = config.get("plugins", {}).get(plugin_name, {})
+            plugin_config = config.plugins.get(plugin_name, {})
             is_active = plugin_config.get("active", False)
         else:
             # Custom and community plugins: default to inactive unless specified
-            if plugin_name in config.get("custom-plugins", {}):
-                plugin_config = config.get("custom-plugins", {}).get(plugin_name, {})
+            if plugin_name in config.custom_plugins:
+                plugin_config = config.custom_plugins.get(plugin_name, {})
             elif plugin_name in community_plugins_config:
                 plugin_config = community_plugins_config.get(plugin_name, {})
             else:
