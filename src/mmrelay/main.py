@@ -48,6 +48,7 @@ async def main():
     meshtastic_utils.event_loop = asyncio.get_event_loop()
 
     # Initialize the SQLite database
+    logger.info("Initializing database...")
     initialize_database()
 
     # Check db config for wipe_on_restart

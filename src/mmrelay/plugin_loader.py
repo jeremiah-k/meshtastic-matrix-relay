@@ -5,8 +5,9 @@ import os
 import subprocess
 import sys
 
-from mmrelay.config import get_app_path, relay_config
+from mmrelay.config import relay_config
 from mmrelay.log_utils import get_logger
+from mmrelay.path_utils import get_package_dir, get_plugins_dir
 
 logger = get_logger(name="Plugins")
 sorted_active_plugins = []
@@ -133,9 +134,9 @@ def load_plugins():
 
     # Process and load custom plugins
     custom_plugins_config = config.get("custom-plugins", {})
-    custom_plugins_dir = os.path.join(
-        get_app_path(), "plugins", "custom"
-    )  # Use get_app_path()
+    plugins_dir = get_plugins_dir()
+    custom_plugins_dir = os.path.join(plugins_dir, "custom")
+    os.makedirs(custom_plugins_dir, exist_ok=True)
 
     active_custom_plugins = [
         plugin_name
@@ -158,9 +159,7 @@ def load_plugins():
 
     # Process and download community plugins
     community_plugins_config = config.get("community-plugins", {})
-    community_plugins_dir = os.path.join(
-        get_app_path(), "plugins", "community"
-    )  # Use get_app_path()
+    community_plugins_dir = os.path.join(plugins_dir, "community")
 
     # Create community plugins directory if needed
     active_community_plugins = [

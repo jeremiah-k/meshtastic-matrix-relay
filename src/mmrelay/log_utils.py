@@ -2,53 +2,79 @@ import logging
 import os
 from logging.handlers import RotatingFileHandler
 
-from mmrelay.config import relay_config
+# Default formatter for all handlers
+DEFAULT_FORMATTER = logging.Formatter(
+    fmt="%(asctime)s %(levelname)s:%(name)s:%(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S %z",
+)
+
+
+def setup_logging(config, log_file=None):
+    """
+    Set up logging configuration based on the provided config.
+
+    Args:
+        config: Configuration dictionary
+        log_file: Optional override for log file path
+    """
+    # Configure root logger
+    root_logger = logging.getLogger()
+
+    # Clear existing handlers
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
+
+    # Set log level from config
+    log_level = getattr(
+        logging,
+        config.get("logging", {}).get("level", "INFO").upper()
+    )
+    root_logger.setLevel(log_level)
+
+    # Add console handler
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(DEFAULT_FORMATTER)
+    root_logger.addHandler(console_handler)
+
+    # Add file handler if enabled
+    if config.get("logging", {}).get("log_to_file", False):
+        # Use override if provided, otherwise use config
+        if log_file is None:
+            log_file = config["logging"].get("filename", "logs/mmrelay.log")
+
+        # Create log directory if needed
+        log_dir = os.path.dirname(log_file)
+        if log_dir:
+            os.makedirs(log_dir, exist_ok=True)
+
+        # Set up size-based log rotation
+        max_bytes = config["logging"].get(
+            "max_log_size", 10 * 1024 * 1024
+        )  # Default 10 MB
+        backup_count = config["logging"].get(
+            "backup_count", 1
+        )  # Default to 1 backup
+
+        file_handler = RotatingFileHandler(
+            log_file,
+            maxBytes=max_bytes,
+            backupCount=backup_count,
+            encoding="utf-8"
+        )
+        file_handler.setFormatter(DEFAULT_FORMATTER)
+        root_logger.addHandler(file_handler)
+
+        logging.info(f"Logging to file: {log_file}")
 
 
 def get_logger(name):
-    logger = logging.getLogger(name=name)
-    log_level = getattr(logging, relay_config["logging"]["level"].upper())
-    logger.setLevel(log_level)
-    logger.propagate = False
+    """
+    Get a logger with the specified name.
 
-    # Add stream handler (console logging)
-    stream_handler = logging.StreamHandler()
-    stream_handler.setFormatter(
-        logging.Formatter(
-            fmt="%(asctime)s %(levelname)s:%(name)s:%(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S %z",
-        )
-    )
-    logger.addHandler(stream_handler)
+    Args:
+        name: Logger name
 
-    # Check if file logging is enabled
-    if relay_config["logging"].get("log_to_file", False):
-        # Default to `logs/mmrelay.log` if no filename is provided
-        log_file = relay_config["logging"].get("filename", "logs/mmrelay.log")
-
-        # Only create directories if the path is not the default
-        if log_file != "logs/mmrelay.log":
-            log_dir = os.path.dirname(log_file)
-            if log_dir:  # Ensure non-empty directory paths exist
-                os.makedirs(log_dir, exist_ok=True)
-
-        # Set up size-based log rotation
-        max_bytes = relay_config["logging"].get(
-            "max_log_size", 10 * 1024 * 1024
-        )  # Default 10 MB
-        backup_count = relay_config["logging"].get(
-            "backup_count", 1
-        )  # Default to 1 backup
-        file_handler = RotatingFileHandler(
-            log_file, maxBytes=max_bytes, backupCount=backup_count, encoding="utf-8"
-        )
-
-        file_handler.setFormatter(
-            logging.Formatter(
-                fmt="%(asctime)s %(levelname)s:%(name)s:%(message)s",
-                datefmt="%Y-%m-%d %H:%M:%S %z",
-            )
-        )
-        logger.addHandler(file_handler)
-
-    return logger
+    Returns:
+        Logger instance
+    """
+    return logging.getLogger(name)
