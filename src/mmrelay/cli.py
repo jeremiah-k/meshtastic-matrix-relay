@@ -65,6 +65,7 @@ def run_cli():
             print(f"Warning: Default configuration not found. Please create {config_path} manually.")
 
     # Load the configuration
+    print(f"Loading configuration from {config_path}")
     load_config(config_path)
 
     # Setup logging
