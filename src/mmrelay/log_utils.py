@@ -14,7 +14,7 @@ def setup_logging(config_dict, log_file=None):
     Set up logging configuration based on the provided config.
 
     Args:
-        config: Configuration dictionary
+        config_dict: Configuration dictionary
         log_file: Optional override for log file path
     """
     # Configure root logger
@@ -27,7 +27,7 @@ def setup_logging(config_dict, log_file=None):
     # Set log level from config
     log_level = getattr(
         logging,
-        config.get("logging", {}).get("level", "INFO").upper()
+        config_dict.get("logging", {}).get("level", "INFO").upper()
     )
     root_logger.setLevel(log_level)
 
@@ -37,10 +37,10 @@ def setup_logging(config_dict, log_file=None):
     root_logger.addHandler(console_handler)
 
     # Add file handler if enabled
-    if config.get("logging", {}).get("log_to_file", False):
+    if config_dict.get("logging", {}).get("log_to_file", False):
         # Use override if provided, otherwise use config
         if log_file is None:
-            log_file = config["logging"].get("filename", "logs/mmrelay.log")
+            log_file = config_dict["logging"].get("filename", "logs/mmrelay.log")
 
         # Create log directory if needed
         log_dir = os.path.dirname(log_file)
@@ -48,10 +48,10 @@ def setup_logging(config_dict, log_file=None):
             os.makedirs(log_dir, exist_ok=True)
 
         # Set up size-based log rotation
-        max_bytes = config["logging"].get(
+        max_bytes = config_dict["logging"].get(
             "max_log_size", 10 * 1024 * 1024
         )  # Default 10 MB
-        backup_count = config["logging"].get(
+        backup_count = config_dict["logging"].get(
             "backup_count", 1
         )  # Default to 1 backup
 
