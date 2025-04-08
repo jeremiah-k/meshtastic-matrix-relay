@@ -8,11 +8,10 @@ import asyncio
 import os
 import sys
 import shutil
-from pathlib import Path
 
 from mmrelay import __version__
 from mmrelay.main import main
-from mmrelay.config import config, load_config, relay_config
+from mmrelay.config import load_config, relay_config
 from mmrelay.log_utils import setup_logging
 from mmrelay.path_utils import get_config_path, get_log_path
 
