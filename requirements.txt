@@ -1,6 +1,6 @@
 meshtastic
 Pillow==11.1.0
-git+https://github.com/flopp/py-staticmaps.git@e0266dc40163e87ce42a0ea5d8836a9a4bd92208
+py-staticmaps==0.4.0
 matrix-nio==0.25.2
 matplotlib==3.10.1
 requests==2.32.3
