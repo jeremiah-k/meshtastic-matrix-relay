@@ -15,6 +15,7 @@ plugins/custom/**
 plugins/community/**
 data/**
 src/meshtastic_matrix_relay.egg-info
+src/mmrelay.egg-info
 
 # Allow the directories themselves to be tracked
 !data/.gitkeep
