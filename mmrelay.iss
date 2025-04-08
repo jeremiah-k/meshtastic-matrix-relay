@@ -191,7 +191,7 @@ begin
     MsgBox('Could not create config file "config.yaml". Close any applications that may have it open and re-run setup', mbInformation, MB_OK);
   end;
 
-  batch_file := '"' + sAppDir + '\mmrelay.exe" --config config.yaml ' + #13#10 +
+  batch_file := '"' + sAppDir + '\mmrelay.exe" config.yaml ' + #13#10 +
                 'pause';
 
   if Not SaveStringToFile(sAppDir + '/mmrelay.bat', batch_file, false) then
