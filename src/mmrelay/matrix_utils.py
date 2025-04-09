@@ -20,7 +20,7 @@ from nio import (
 )
 from PIL import Image
 
-from mmrelay.config import config, relay_config
+from mmrelay.config import config
 from mmrelay.db_utils import (
     get_message_map_by_matrix_event_id,
     prune_message_map,
@@ -92,11 +92,11 @@ async def connect_matrix():
     ssl_context = ssl.create_default_context(cafile=certifi.where())
 
     # Initialize the Matrix client with custom SSL context
-    config = AsyncClientConfig(encryption_enabled=False)
+    config_matrix = AsyncClientConfig(encryption_enabled=False)
     matrix_client = AsyncClient(
         homeserver=matrix_homeserver,
         user=bot_user_id,
-        config=config,
+        config=config_matrix,
         ssl=ssl_context,
     )
 
@@ -186,19 +186,11 @@ async def matrix_relay(
     """
     matrix_client = await connect_matrix()
 
-    # Retrieve relay_reactions configuration; default to False now if not specified.
-    relay_reactions = relay_config["meshtastic"].get("relay_reactions", False)
-
-    # Retrieve db config for message_map pruning
-    db_config = relay_config.get("db", {})
-    msg_map_config = db_config.get("msg_map", {})
-    msgs_to_keep = msg_map_config.get(
-        "msgs_to_keep", 500
-    )  # Default is 500 if not specified
+    relay_reactions = config.meshtastic_relay_reactions
+    msgs_to_keep = config.db_msgs_to_keep
 
     try:
-        # Always use our own local meshnet_name for outgoing events
-        local_meshnet_name = relay_config["meshtastic"]["meshnet_name"]
+        local_meshnet_name = config.meshtastic_meshnet_name
         content = {
             "msgtype": "m.text" if not emote else "m.emote",
             "body": message,
@@ -226,10 +218,7 @@ async def matrix_relay(
         )
         logger.info(f"Sent inbound radio message to matrix room: {room_id}")
 
-        # Only store message map if relay_reactions is True and meshtastic_id is present and not an emote.
-        # If relay_reactions is False, we skip storing entirely.
         if relay_reactions and meshtastic_id is not None and not emote:
-            # Store the message map
             store_message_map(
                 meshtastic_id,
                 response.event_id,
@@ -237,8 +226,6 @@ async def matrix_relay(
                 meshtastic_text if meshtastic_text else message,
                 meshtastic_meshnet=local_meshnet_name,
             )
-
-            # If msgs_to_keep > 0, prune old messages after inserting a new one
             if msgs_to_keep > 0:
                 prune_message_map(msgs_to_keep)
 
@@ -269,7 +256,6 @@ def strip_quoted_lines(text: str) -> str:
     filtered = [line for line in lines if not line.strip().startswith(">")]
     return " ".join(filtered).strip()
 
-
 # Callback for new messages in Matrix room
 async def on_room_message(
     room: MatrixRoom,
@@ -287,24 +273,21 @@ async def on_room_message(
     Additionally, we only deal with message_map storage (and thus reaction linking)
     if relay_reactions is True. If it's False, none of these mappings are stored or used.
     """
-    # Importing here to avoid circular imports and to keep logic consistent
-    # Note: We do not call store_message_map directly here for inbound matrix->mesh messages.
-    # That logic occurs inside matrix_relay if needed.
+    from mmrelay.plugin_loader import load_plugins
+    from mmrelay.meshtastic_utils import logger as meshtastic_logger
+
     full_display_name = "Unknown user"
     message_timestamp = event.server_timestamp
 
-    # We do not relay messages that occurred before the bot started
     if message_timestamp < bot_start_time:
         return
 
-    # Find the room_config that matches this room, if any
     room_config = None
-    for config in matrix_rooms:
-        if config["id"] == room.room_id:
-            room_config = config
+    for config_room in matrix_rooms:
+        if config_room["id"] == room.room_id:
+            room_config = config_room
             break
 
-    # Only proceed if the room is supported
     if not room_config:
         return
 
@@ -313,28 +296,21 @@ async def on_room_message(
     reaction_emoji = None
     original_matrix_event_id = None
 
-    # Retrieve relay_reactions option from config, now defaulting to False
-    relay_reactions = relay_config["meshtastic"].get("relay_reactions", False)
+    relay_reactions = config.meshtastic_relay_reactions
 
-    # Check if this is a Matrix ReactionEvent (usually m.reaction)
     if isinstance(event, ReactionEvent):
-        # This is a reaction event
         is_reaction = True
         logger.debug(f"Processing Matrix reaction event: {event.source}")
         if relates_to and "event_id" in relates_to and "key" in relates_to:
-            # Extract the reaction emoji and the original event it relates to
             reaction_emoji = relates_to["key"]
             original_matrix_event_id = relates_to["event_id"]
             logger.debug(
                 f"Original matrix event ID: {original_matrix_event_id}, Reaction emoji: {reaction_emoji}"
             )
 
-    # Check if this is a Matrix RoomMessageEmote (m.emote)
     if isinstance(event, RoomMessageEmote):
         logger.debug(f"Processing Matrix reaction event: {event.source}")
-        # For RoomMessageEmote, treat as remote reaction if meshtastic_replyId exists
         is_reaction = True
-        # We need to manually extract the reaction emoji from the body
         reaction_body = event.source["content"].get("body", "")
         reaction_match = re.search(r"reacted (.+?) to", reaction_body)
         reaction_emoji = reaction_match.group(1).strip() if reaction_match else "?"
@@ -347,144 +323,116 @@ async def on_room_message(
     meshtastic_replyId = event.source["content"].get("meshtastic_replyId")
     suppress = event.source["content"].get("mmrelay_suppress")
 
-    # If a message has suppress flag, do not process
     if suppress:
         return
 
-    # If this is a reaction and relay_reactions is False, do nothing
     if is_reaction and not relay_reactions:
         logger.debug(
             "Reaction event encountered but relay_reactions is disabled. Doing nothing."
         )
         return
 
-    local_meshnet_name = relay_config["meshtastic"]["meshnet_name"]
+    local_meshnet_name = config.meshtastic_meshnet_name
 
-    # If this is a reaction and relay_reactions is True, attempt to relay it
-    if is_reaction and relay_reactions:
-        # Check if we need to relay a reaction from a remote meshnet to our local meshnet.
-        # If meshnet_name != local_meshnet_name and meshtastic_replyId is present and this is an emote,
-        # it's a remote reaction that needs to be forwarded as a text message describing the reaction.
-        if (
-            meshnet_name
-            and meshnet_name != local_meshnet_name
-            and meshtastic_replyId
-            and isinstance(event, RoomMessageEmote)
-        ):
-            logger.info(f"Relaying reaction from remote meshnet: {meshnet_name}")
+    # Remote reaction from remote meshnet
+    if (
+        is_reaction
+        and relay_reactions
+        and meshnet_name
+        and meshnet_name != local_meshnet_name
+        and meshtastic_replyId
+        and isinstance(event, RoomMessageEmote)
+    ):
+        logger.info(f"Relaying reaction from remote meshnet: {meshnet_name}")
 
-            short_meshnet_name = meshnet_name[:4]
+        short_meshnet_name = meshnet_name[:4]
+        if not shortname:
+            shortname = longname[:3] if longname else "???"
 
-            # Format the reaction message for relaying to the local meshnet.
-            # The necessary information is in the m.emote event
-            if not shortname:
-                shortname = longname[:3] if longname else "???"
+        meshtastic_text_db = event.source["content"].get("meshtastic_text", "")
+        meshtastic_text_db = strip_quoted_lines(meshtastic_text_db)
+        meshtastic_text_db = meshtastic_text_db.replace("\n", " ").replace("\r", " ")
 
-            meshtastic_text_db = event.source["content"].get("meshtastic_text", "")
-            # Strip out any quoted lines from the text
-            meshtastic_text_db = strip_quoted_lines(meshtastic_text_db)
-            meshtastic_text_db = meshtastic_text_db.replace("\n", " ").replace("\r", " ")
+        abbreviated_text = (
+            meshtastic_text_db[:40] + "..."
+            if len(meshtastic_text_db) > 40
+            else meshtastic_text_db
+        )
 
-            abbreviated_text = (
-                meshtastic_text_db[:40] + "..."
-                if len(meshtastic_text_db) > 40
-                else meshtastic_text_db
+        reaction_message = f'{shortname}/{short_meshnet_name} reacted {reaction_emoji} to "{abbreviated_text}"'
+
+        meshtastic_interface = connect_meshtastic()
+        meshtastic_channel = room_config["meshtastic_channel"]
+
+        if config.meshtastic_broadcast_enabled:
+            meshtastic_logger.info(
+                f"Relaying reaction from remote meshnet {meshnet_name} to radio broadcast"
             )
+            logger.debug(
+                f"Sending reaction to Meshtastic with meshnet={local_meshnet_name}: {reaction_message}"
+            )
+            meshtastic_interface.sendText(
+                text=reaction_message, channelIndex=meshtastic_channel
+            )
+        return
 
-            reaction_message = f'{shortname}/{short_meshnet_name} reacted {reaction_emoji} to "{abbreviated_text}"'
-
-            # Relay the remote reaction to the local meshnet.
-            meshtastic_interface = connect_meshtastic()
-            from mmrelay.meshtastic_utils import logger as meshtastic_logger
-
-            meshtastic_channel = room_config["meshtastic_channel"]
-
-            if relay_config["meshtastic"]["broadcast_enabled"]:
-                meshtastic_logger.info(
-                    f"Relaying reaction from remote meshnet {meshnet_name} to radio broadcast"
-                )
-                logger.debug(
-                    f"Sending reaction to Meshtastic with meshnet={local_meshnet_name}: {reaction_message}"
-                )
-                meshtastic_interface.sendText(
-                    text=reaction_message, channelIndex=meshtastic_channel
-                )
-            # We've relayed the remote reaction to our local mesh, so we're done.
+    if is_reaction and relay_reactions and original_matrix_event_id:
+        orig = get_message_map_by_matrix_event_id(original_matrix_event_id)
+        if not orig:
+            logger.debug(
+                "Original message for reaction not found in DB. Possibly a reaction-to-reaction scenario. Not forwarding."
+            )
             return
 
-        # If original_matrix_event_id is set, this is a reaction to some other matrix event
-        if original_matrix_event_id:
-            orig = get_message_map_by_matrix_event_id(original_matrix_event_id)
-            if not orig:
-                # If we don't find the original message in the DB, we suspect it's a reaction-to-reaction scenario
-                logger.debug(
-                    "Original message for reaction not found in DB. Possibly a reaction-to-reaction scenario. Not forwarding."
-                )
-                return
+        meshtastic_id, matrix_room_id, meshtastic_text_db, meshtastic_meshnet_db = orig
+        display_name_response = await matrix_client.get_displayname(event.sender)
+        full_display_name = display_name_response.displayname or event.sender
 
-            # orig = (meshtastic_id, matrix_room_id, meshtastic_text, meshtastic_meshnet)
-            meshtastic_id, matrix_room_id, meshtastic_text_db, meshtastic_meshnet_db = (
-                orig
+        short_display_name = full_display_name[:5]
+        prefix = f"{short_display_name}[M]: "
+
+        meshtastic_text_db = strip_quoted_lines(meshtastic_text_db)
+        meshtastic_text_db = meshtastic_text_db.replace("\n", " ").replace("\r", " ")
+
+        abbreviated_text = (
+            meshtastic_text_db[:40] + "..."
+            if len(meshtastic_text_db) > 40
+            else meshtastic_text_db
+        )
+
+        reaction_message = (
+            f'{prefix}reacted {reaction_emoji} to "{abbreviated_text}"'
+        )
+        meshtastic_interface = connect_meshtastic()
+        meshtastic_channel = room_config["meshtastic_channel"]
+
+        if config.meshtastic_broadcast_enabled:
+            meshtastic_logger.info(
+                f"Relaying reaction from {full_display_name} to radio broadcast"
             )
-            display_name_response = await matrix_client.get_displayname(event.sender)
-            full_display_name = display_name_response.displayname or event.sender
-
-            # If not from a remote meshnet, proceed as normal to relay back to the originating meshnet
-            short_display_name = full_display_name[:5]
-            prefix = f"{short_display_name}[M]: "
-
-            # Remove quoted lines so we don't bring in the original '>' lines from replies
-            meshtastic_text_db = strip_quoted_lines(meshtastic_text_db)
-            meshtastic_text_db = meshtastic_text_db.replace("\n", " ").replace("\r", " ")
-
-            abbreviated_text = (
-                meshtastic_text_db[:40] + "..."
-                if len(meshtastic_text_db) > 40
-                else meshtastic_text_db
+            logger.debug(
+                f"Sending reaction to Meshtastic with meshnet={local_meshnet_name}: {reaction_message}"
             )
-
-            # Always use our local meshnet_name for outgoing events
-            reaction_message = (
-                f'{prefix}reacted {reaction_emoji} to "{abbreviated_text}"'
+            meshtastic_interface.sendText(
+                text=reaction_message, channelIndex=meshtastic_channel
             )
-            meshtastic_interface = connect_meshtastic()
-            from mmrelay.meshtastic_utils import logger as meshtastic_logger
+        return
 
-            meshtastic_channel = room_config["meshtastic_channel"]
-
-            if relay_config["meshtastic"]["broadcast_enabled"]:
-                meshtastic_logger.info(
-                    f"Relaying reaction from {full_display_name} to radio broadcast"
-                )
-                logger.debug(
-                    f"Sending reaction to Meshtastic with meshnet={local_meshnet_name}: {reaction_message}"
-                )
-                meshtastic_interface.sendText(
-                    text=reaction_message, channelIndex=meshtastic_channel
-                )
-            return
-
-    # For Matrix->Mesh messages from a remote meshnet, rewrite the message format
+    # Matrix message from remote meshnet
     if longname and meshnet_name:
-        # Always include the meshnet_name in the full display name.
         full_display_name = f"{longname}/{meshnet_name}"
 
         if meshnet_name != local_meshnet_name:
-            # A message from a remote meshnet relayed into Matrix, now going back out
             logger.info(f"Processing message from remote meshnet: {meshnet_name}")
             short_meshnet_name = meshnet_name[:4]
-            # If shortname is not available, derive it from the longname
             if shortname is None:
                 shortname = longname[:3] if longname else "???"
-            # Remove the original prefix "[longname/meshnet]: " to avoid double-tagging
             text = re.sub(rf"^\[{full_display_name}\]: ", "", text)
             text = truncate_message(text)
             full_message = f"{shortname}/{short_meshnet_name}: {text}"
         else:
-            # If this message is from our local meshnet (loopback), we ignore it
             return
     else:
-        # Normal Matrix message from a Matrix user
         display_name_response = await matrix_client.get_displayname(event.sender)
         full_display_name = display_name_response.displayname or event.sender
         short_display_name = full_display_name[:5]
@@ -492,9 +440,6 @@ async def on_room_message(
         logger.debug(f"Processing matrix message from [{full_display_name}]: {text}")
         full_message = f"{prefix}{text}"
         text = truncate_message(text)
-
-    # Plugin functionality
-    from mmrelay.plugin_loader import load_plugins
 
     plugins = load_plugins()
 
@@ -507,7 +452,6 @@ async def on_room_message(
             if found_matching_plugin:
                 logger.debug(f"Processed by plugin {plugin.plugin_name}")
 
-    # Check if the message is a command directed at the bot
     is_command = False
     for plugin in plugins:
         for command in plugin.get_matrix_commands():
@@ -517,33 +461,23 @@ async def on_room_message(
         if is_command:
             break
 
-    # If this is a command, we do not send it to the mesh
     if is_command:
         logger.debug("Message is a command, not sending to mesh")
         return
 
-    # Connect to Meshtastic
     meshtastic_interface = connect_meshtastic()
-    from mmrelay.meshtastic_utils import logger as meshtastic_logger
-
     meshtastic_channel = room_config["meshtastic_channel"]
 
-    # If message is from Matrix and broadcast_enabled is True, relay to Meshtastic
-    # Note: If relay_reactions is False, we won't store message_map, but we can still relay.
-    # The lack of message_map storage just means no reaction bridging will occur.
     if not found_matching_plugin and event.sender != bot_user_id:
-        if relay_config["meshtastic"]["broadcast_enabled"]:
+        if config.meshtastic_broadcast_enabled:
             portnum = event.source["content"].get("meshtastic_portnum")
             if portnum == "DETECTION_SENSOR_APP":
-                # If detection_sensor is enabled, forward this data as detection sensor data
-                if relay_config["meshtastic"].get("detection_sensor", False):
+                if config.meshtastic_detection_sensor:
                     sent_packet = meshtastic_interface.sendData(
                         data=full_message.encode("utf-8"),
                         channelIndex=meshtastic_channel,
                         portNum=meshtastic.protobuf.portnums_pb2.PortNum.DETECTION_SENSOR_APP,
                     )
-                    # If relay_reactions is True, we store the message map for these messages as well.
-                    # If False, skip storing.
                     if relay_reactions and sent_packet and hasattr(sent_packet, "id"):
                         store_message_map(
                             sent_packet.id,
@@ -552,9 +486,7 @@ async def on_room_message(
                             text,
                             meshtastic_meshnet=local_meshnet_name,
                         )
-                        db_config = relay_config.get("db", {})
-                        msg_map_config = db_config.get("msg_map", {})
-                        msgs_to_keep = msg_map_config.get("msgs_to_keep", 500)
+                        msgs_to_keep = config.db_msgs_to_keep
                         if msgs_to_keep > 0:
                             prune_message_map(msgs_to_keep)
                 else:
@@ -568,7 +500,6 @@ async def on_room_message(
                 sent_packet = meshtastic_interface.sendText(
                     text=full_message, channelIndex=meshtastic_channel
                 )
-                # Store message_map only if relay_reactions is True
                 if relay_reactions and sent_packet and hasattr(sent_packet, "id"):
                     store_message_map(
                         sent_packet.id,
@@ -577,16 +508,13 @@ async def on_room_message(
                         text,
                         meshtastic_meshnet=local_meshnet_name,
                     )
-                    db_config = relay_config.get("db", {})
-                    msg_map_config = db_config.get("msg_map", {})
-                    msgs_to_keep = msg_map_config.get("msgs_to_keep", 500)
+                    msgs_to_keep = config.db_msgs_to_keep
                     if msgs_to_keep > 0:
                         prune_message_map(msgs_to_keep)
         else:
             logger.debug(
                 f"Broadcast not supported: Message from {full_display_name} dropped."
             )
-
 
 async def upload_image(
     client: AsyncClient, image: Image.Image, filename: str
@@ -617,5 +545,9 @@ async def send_room_image(
     await client.room_send(
         room_id=room_id,
         message_type="m.room.message",
-        content={"msgtype": "m.image", "url": upload_response.content_uri, "body": ""},
+        content={
+            "msgtype": "m.image",
+            "url": upload_response.content_uri,
+            "body": "",
+        },
     )
