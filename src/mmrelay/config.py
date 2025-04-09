@@ -37,7 +37,10 @@ class Config:
         return cls._instance
 
     def __init__(self):
-        """Initialize the config if not already initialized."""
+        """
+        Initialize the config if not already initialized.
+        This avoids reloading the config multiple times.
+        """
         if not self._initialized:
             self._initialized = True
 
@@ -65,7 +68,7 @@ class Config:
                 logging.warning(f"Invalid configuration format in {config_path}")
                 loaded_config = {}
 
-            # Update the config
+            # Update the internal config dictionary
             self._config.clear()
             self._config.update(loaded_config)
 
@@ -239,7 +242,6 @@ config = Config()
 # For backward compatibility
 relay_config = {}
 
-# Function to load configuration and update relay_config for backward compatibility
 def load_config(config_path: str) -> Dict[str, Any]:
     """
     Load configuration from the specified path and update relay_config.
@@ -255,16 +257,3 @@ def load_config(config_path: str) -> Dict[str, Any]:
     relay_config.clear()
     relay_config.update(loaded_config)
     return loaded_config
-
-
-# For backward compatibility, initialize with default path
-# This will be overridden by cli.py calling load_config()
-config_path = os.path.join(get_app_path(), "config.yaml")
-if os.path.isfile(config_path):
-    try:
-        with open(config_path, "r") as f:
-            loaded_config = yaml.load(f, Loader=SafeLoader) or {}
-            relay_config.update(loaded_config)
-            config._config.update(loaded_config)
-    except Exception:
-        pass

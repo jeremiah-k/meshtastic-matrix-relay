@@ -11,7 +11,7 @@ import shutil
 
 from mmrelay import __version__
 from mmrelay.main import main
-from mmrelay.config import load_config, relay_config
+from mmrelay.config import load_config, relay_config, config
 from mmrelay.log_utils import setup_logging
 from mmrelay.path_utils import get_config_path, get_log_path
 
@@ -66,6 +66,9 @@ def run_cli():
     # Load the configuration
     print(f"Loading configuration from {config_path}")
     load_config(config_path)
+
+    # Debug: Check matrix access token
+    print(f"DEBUG: Matrix access token is: {config.matrix_access_token}")
 
     # Setup logging
     log_path = get_log_path(args.logfile)
