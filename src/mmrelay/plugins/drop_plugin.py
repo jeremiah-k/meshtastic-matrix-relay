@@ -1,8 +1,8 @@
-import re
+import mmrelay.re
 
-from haversine import haversine
+from mmrelay.haversine import haversine
 
-from meshtastic_utils import connect_meshtastic
+from mmrelay.meshtastic_utils import connect_meshtastic
 from plugins.base_plugin import BasePlugin
 
 

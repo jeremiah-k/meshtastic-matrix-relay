@@ -1,11 +1,11 @@
-import base64
-import json
-import re
-from typing import List
+import mmrelay.base64
+import mmrelay.json
+import mmrelay.re
+from mmrelay.typing import List
 
-from meshtastic import mesh_pb2
+from mmrelay.meshtastic import mesh_pb2
 
-from config import relay_config
+from mmrelay.config import relay_config
 from plugins.base_plugin import BasePlugin
 
 matrix_rooms: List[dict] = relay_config["matrix_rooms"]

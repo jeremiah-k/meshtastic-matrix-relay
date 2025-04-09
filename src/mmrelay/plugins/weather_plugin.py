@@ -1,6 +1,6 @@
-import asyncio
+import mmrelay.asyncio
 
-import requests
+import mmrelay.requests
 from meshtastic.mesh_interface import BROADCAST_NUM
 
 from plugins.base_plugin import BasePlugin

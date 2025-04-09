@@ -1,4 +1,4 @@
-import statistics
+import mmrelay.statistics
 
 from plugins.base_plugin import BasePlugin
 

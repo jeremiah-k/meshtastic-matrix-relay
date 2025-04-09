@@ -1,7 +1,7 @@
-import os
-import sys
+import mmrelay.os
+import mmrelay.sys
 
-import yaml
+import mmrelay.yaml
 from yaml.loader import SafeLoader
 
 

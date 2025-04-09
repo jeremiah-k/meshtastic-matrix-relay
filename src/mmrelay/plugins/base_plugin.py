@@ -1,18 +1,18 @@
-import threading
-import time
-from abc import ABC, abstractmethod
+import mmrelay.threading
+import mmrelay.time
+from mmrelay.abc import ABC, abstractmethod
 
-import markdown
-import schedule
+import mmrelay.markdown
+import mmrelay.schedule
 
-from config import relay_config
-from db_utils import (
+from mmrelay.config import relay_config
+from mmrelay.db_utils import (
     delete_plugin_data,
     get_plugin_data,
     get_plugin_data_for_node,
     store_plugin_data,
 )
-from log_utils import get_logger
+from mmrelay.log_utils import get_logger
 
 
 class BasePlugin(ABC):

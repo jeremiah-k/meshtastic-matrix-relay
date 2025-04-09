@@ -1,13 +1,13 @@
-import asyncio
-import io
-import re
-import ssl
-import time
-from typing import List, Union
+import mmrelay.asyncio
+import mmrelay.io
+import mmrelay.re
+import mmrelay.ssl
+import mmrelay.time
+from mmrelay.typing import List, Union
 
-import certifi
-import meshtastic.protobuf.portnums_pb2
-from nio import (
+import mmrelay.certifi
+import mmrelay.meshtastic.protobuf.portnums_pb2
+from mmrelay.nio import (
     AsyncClient,
     AsyncClientConfig,
     MatrixRoom,
@@ -18,18 +18,18 @@ from nio import (
     UploadResponse,
     WhoamiError,
 )
-from PIL import Image
+from mmrelay.PIL import Image
 
-from config import relay_config
-from db_utils import (
+from mmrelay.config import relay_config
+from mmrelay.db_utils import (
     get_message_map_by_matrix_event_id,
     prune_message_map,
     store_message_map,
 )
-from log_utils import get_logger
+from mmrelay.log_utils import get_logger
 
 # Do not import plugin_loader here to avoid circular imports
-from meshtastic_utils import connect_meshtastic
+from mmrelay.meshtastic_utils import connect_meshtastic
 
 # Extract Matrix configuration
 matrix_homeserver = relay_config["matrix"]["homeserver"]

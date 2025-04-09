@@ -1,27 +1,27 @@
-import asyncio
-import contextlib
-import io
-import threading
-import time
-from typing import List
+import mmrelay.asyncio
+import mmrelay.contextlib
+import mmrelay.io
+import mmrelay.threading
+import mmrelay.time
+from mmrelay.typing import List
 
-import meshtastic.ble_interface
-import meshtastic.serial_interface
-import meshtastic.tcp_interface
-import serial  # For serial port exceptions
-import serial.tools.list_ports  # Import serial tools for port listing
+import mmrelay.meshtastic.ble_interface
+import mmrelay.meshtastic.serial_interface
+import mmrelay.meshtastic.tcp_interface
+import mmrelay.serial  # For serial port exceptions
+import mmrelay.serial.tools.list_ports  # Import serial tools for port listing
 from bleak.exc import BleakDBusError, BleakError
-from pubsub import pub
+from mmrelay.pubsub import pub
 
-from config import relay_config
-from db_utils import (
+from mmrelay.config import relay_config
+from mmrelay.db_utils import (
     get_longname,
     get_message_map_by_meshtastic_id,
     get_shortname,
     save_longname,
     save_shortname,
 )
-from log_utils import get_logger
+from mmrelay.log_utils import get_logger
 
 # Do not import plugin_loader here to avoid circular imports
 

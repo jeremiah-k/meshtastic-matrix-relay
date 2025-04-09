@@ -1,13 +1,13 @@
-import io
-import math
-import random
-import re
+import mmrelay.io
+import mmrelay.math
+import mmrelay.random
+import mmrelay.re
 
-import PIL.ImageDraw
-import s2sphere
-import staticmaps
-from nio import AsyncClient, UploadResponse
-from PIL import Image
+import mmrelay.PIL.ImageDraw
+import mmrelay.s2sphere
+import mmrelay.staticmaps
+from mmrelay.nio import AsyncClient, UploadResponse
+from mmrelay.PIL import Image
 
 from plugins.base_plugin import BasePlugin
 

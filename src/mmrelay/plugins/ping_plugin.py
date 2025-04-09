@@ -1,6 +1,6 @@
-import asyncio
-import re
-import string
+import mmrelay.asyncio
+import mmrelay.re
+import mmrelay.string
 
 from meshtastic.mesh_interface import BROADCAST_NUM
 

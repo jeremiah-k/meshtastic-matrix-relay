@@ -1,6 +1,6 @@
-import re
+import mmrelay.re
 
-from plugin_loader import load_plugins
+from mmrelay.plugin_loader import load_plugins
 from plugins.base_plugin import BasePlugin
 
 

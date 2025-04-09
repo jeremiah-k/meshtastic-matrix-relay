@@ -1,4 +1,4 @@
-from datetime import datetime
+from mmrelay.datetime import datetime
 
 from plugins.base_plugin import BasePlugin
 

@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mmrelay"
+version = "0.1.0"
+description = "Meshtastic Matrix Relay"
+authors = [
+    { name="AgentGrunt", email="grunt@agentgrunt.com" },
+]
+license = {text = "MIT"}
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "meshtastic",
+    "nio",
+    "pyyaml",
+    "pillow"
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[project.scripts]
+mmrelay = "mmrelay.main:main"

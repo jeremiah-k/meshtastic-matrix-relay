@@ -1,10 +1,10 @@
-import io
-import json
-import re
-from datetime import datetime, timedelta
+import mmrelay.io
+import mmrelay.json
+import mmrelay.re
+from mmrelay.datetime import datetime, timedelta
 
-import matplotlib.pyplot as plt
-from PIL import Image
+import mmrelay.matplotlib.pyplot as plt
+from mmrelay.PIL import Image
 
 from plugins.base_plugin import BasePlugin
 
