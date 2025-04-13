@@ -78,16 +78,26 @@ async def verify_own_device(matrix_client: AsyncClient) -> bool:
     try:
         # First, ensure we have our own device keys by querying them from the server
         logger.debug(f"Querying device keys for our user {matrix_client.user_id}")
-        query_response = await matrix_client.keys_query([matrix_client.user_id])
-        if (
-            hasattr(query_response, "device_keys")
-            and matrix_client.user_id in query_response.device_keys
-        ):
-            logger.debug(
-                f"Received keys for {len(query_response.device_keys[matrix_client.user_id])} devices"
-            )
-        else:
-            logger.warning("Failed to query device keys from server")
+        try:
+            # We need to manually set up the users for key query since we can't pass them directly
+            # to the keys_query method
+            if not hasattr(matrix_client, "_users_for_key_query") or not matrix_client._users_for_key_query:
+                matrix_client._users_for_key_query = set()
+            matrix_client._users_for_key_query.add(matrix_client.user_id)
+
+            # Now query the keys
+            query_response = await matrix_client.keys_query()
+            if (
+                hasattr(query_response, "device_keys")
+                and matrix_client.user_id in query_response.device_keys
+            ):
+                logger.debug(
+                    f"Received keys for {len(query_response.device_keys[matrix_client.user_id])} devices"
+                )
+            else:
+                logger.warning("Failed to query device keys from server")
+        except Exception as e:
+            logger.warning(f"Error querying device keys: {e}")
 
         # Get our own device from the device store (should be populated after keys_query)
         own_devices = matrix_client.device_store.active_user_devices(
@@ -212,10 +222,25 @@ async def initialize_e2ee(matrix_client: AsyncClient, config: Dict) -> None:
         )
         for room_id in encrypted_rooms:
             try:
-                await matrix_client.share_group_session(room_id)
+                # First ensure we have all the members of the room
+                try:
+                    await matrix_client.joined_members(room_id)
+                    logger.debug(f"Retrieved members for room {room_id}")
+                except Exception as me:
+                    logger.warning(f"Error retrieving members for room {room_id}: {me}")
+
+                # Then share the group session with ignore_unverified_devices=True
+                await matrix_client.share_group_session(room_id, ignore_unverified_devices=True)
                 logger.debug(f"Shared group session for room {room_id}")
+
+                # Verify that the session was shared successfully
+                if matrix_client.olm and hasattr(matrix_client.olm, "outbound_group_sessions"):
+                    if room_id in matrix_client.olm.outbound_group_sessions:
+                        logger.debug(f"Confirmed outbound group session exists for room {room_id}")
+                    else:
+                        logger.warning(f"No outbound group session found for room {room_id} after sharing")
             except Exception as e:
-                logger.debug(f"Could not share group session for room {room_id}: {e}")
+                logger.warning(f"Could not share group session for room {room_id}: {e}")
     else:
         logger.debug("No encrypted rooms found")
 
@@ -606,6 +631,61 @@ async def join_matrix_room(matrix_client, room_id_or_alias: str) -> None:
         logger.error(f"Error joining room '{room_id_or_alias}': {e}")
 
 
+async def ensure_encryption_ready(room_id: str) -> bool:
+    """
+    Ensures that encryption is properly set up for a room before sending a message.
+    This helps prevent the first message decryption failure issue.
+
+    Args:
+        room_id: The ID of the room to check
+
+    Returns:
+        bool: True if encryption is ready, False otherwise
+    """
+    global matrix_client
+
+    if not matrix_client or not matrix_client.olm:
+        return True  # Not using encryption, so we're "ready"
+
+    try:
+        # Check if the room is encrypted
+        room = matrix_client.rooms.get(room_id)
+        if not room or not room.encrypted:
+            return True  # Room is not encrypted, so we're "ready"
+
+        # Check if we need to share a group session
+        if matrix_client.olm.should_share_group_session(room_id):
+            logger.debug(f"Need to share group session for room {room_id} before sending message")
+
+            # First ensure we have all the members of the room
+            try:
+                await matrix_client.joined_members(room_id)
+                logger.debug(f"Retrieved members for room {room_id}")
+            except Exception as me:
+                logger.warning(f"Error retrieving members for room {room_id}: {me}")
+
+            # Then share the group session
+            await matrix_client.share_group_session(room_id, ignore_unverified_devices=True)
+            logger.debug(f"Shared group session for room {room_id} before sending message")
+
+            # Verify that the session was shared successfully
+            if hasattr(matrix_client.olm, "outbound_group_sessions"):
+                if room_id in matrix_client.olm.outbound_group_sessions:
+                    logger.debug(f"Confirmed outbound group session exists for room {room_id}")
+                    return True
+                else:
+                    logger.warning(f"No outbound group session found for room {room_id} after sharing")
+                    return False
+        else:
+            # Group session already exists
+            logger.debug(f"Group session already exists for room {room_id}")
+            return True
+
+        return True
+    except Exception as e:
+        logger.warning(f"Error ensuring encryption is ready for room {room_id}: {e}")
+        return False
+
 async def matrix_relay(
     room_id,
     message,
@@ -805,6 +885,10 @@ async def matrix_relay(
                     logger.warning(f"Error sharing group session: {e}")
             else:
                 logger.debug(f"Room {room_id} is not encrypted")
+
+            # Ensure encryption is ready before sending the message
+            if matrix_client.olm:
+                await ensure_encryption_ready(room_id)
 
             # Send the message with a timeout
             response = await asyncio.wait_for(
