@@ -62,6 +62,9 @@ async def verify_own_device(matrix_client: AsyncClient) -> bool:
     This function verifies the current device in the device store, which helps
     eliminate the "unverified session" warning in Element and other Matrix clients.
 
+    If the device is not found in the store, it will query the keys from the server
+    and update the device store before attempting verification.
+
     Args:
         matrix_client: The Matrix client instance
 
@@ -73,7 +76,15 @@ async def verify_own_device(matrix_client: AsyncClient) -> bool:
         return False
 
     try:
-        # Get our own device from the device store
+        # First, ensure we have our own device keys by querying them from the server
+        logger.debug(f"Querying device keys for our user {matrix_client.user_id}")
+        query_response = await matrix_client.keys_query([matrix_client.user_id])
+        if hasattr(query_response, "device_keys") and matrix_client.user_id in query_response.device_keys:
+            logger.debug(f"Received keys for {len(query_response.device_keys[matrix_client.user_id])} devices")
+        else:
+            logger.warning("Failed to query device keys from server")
+
+        # Get our own device from the device store (should be populated after keys_query)
         own_devices = matrix_client.device_store.active_user_devices(matrix_client.user_id)
         current_device = None
 
@@ -81,13 +92,22 @@ async def verify_own_device(matrix_client: AsyncClient) -> bool:
         for device in own_devices:
             if device.device_id == matrix_client.device_id:
                 current_device = device
+                logger.debug(f"Found our device {device.device_id} in the device store")
                 break
 
         if not current_device:
             logger.warning(f"Could not find our own device {matrix_client.device_id} in the device store")
+            # Try to manually create and add our device to the store
+            logger.debug("Attempting to manually verify device through direct store access")
+            if hasattr(matrix_client.olm, "store") and hasattr(matrix_client.olm.store, "verify_device_by_id"):
+                # Some implementations have a direct method to verify by ID
+                success = matrix_client.olm.store.verify_device_by_id(matrix_client.user_id, matrix_client.device_id)
+                if success:
+                    logger.info(f"Successfully verified our device {matrix_client.device_id} using direct store access")
+                    return True
             return False
 
-        # Verify our own device using the store's verify_device method
+        # Verify our own device using the client's verify_device method
         matrix_client.verify_device(current_device)
         logger.info(f"Successfully verified our own device: {matrix_client.device_id}")
 
@@ -137,9 +157,9 @@ async def initialize_e2ee(matrix_client: AsyncClient, config: Dict) -> None:
     except Exception as ke:
         logger.debug(f"Key upload info: {ke}")
 
-    # 2. Perform another short sync to confirm key upload and room encryption state
-    logger.debug("Performing short sync to confirm encryption setup...")
-    await matrix_client.sync(timeout=3000)  # 3 second timeout
+    # 2. Perform a longer sync to ensure device keys are properly populated
+    logger.debug("Performing sync to ensure device keys are properly populated...")
+    await matrix_client.sync(timeout=10000)  # 10 second timeout
 
     # 3. Verify our own device to remove the red shield warning in Element
     logger.debug("Verifying our own device...")
@@ -147,7 +167,14 @@ async def initialize_e2ee(matrix_client: AsyncClient, config: Dict) -> None:
     if verified:
         logger.info("Successfully verified our own device - this should remove the red shield warning in Element")
     else:
-        logger.warning("Could not verify our own device - you may still see a red shield warning in Element")
+        # If first attempt failed, try again after another sync
+        logger.debug("First verification attempt failed, trying again after another sync...")
+        await matrix_client.sync(timeout=5000)  # 5 second timeout
+        verified = await verify_own_device(matrix_client)
+        if verified:
+            logger.info("Successfully verified our own device on second attempt")
+        else:
+            logger.warning("Could not verify our own device - you may still see a red shield warning in Element")
 
     # 4. Share group sessions for all encrypted rooms
     encrypted_rooms = [
