@@ -55,6 +55,52 @@ logger = get_logger(name="Matrix")
 matrix_client = None
 
 
+async def verify_own_device(matrix_client: AsyncClient) -> bool:
+    """
+    Manually verify the bot's own device to remove the red shield warning in Element.
+
+    This function verifies the current device in the device store, which helps
+    eliminate the "unverified session" warning in Element and other Matrix clients.
+
+    Args:
+        matrix_client: The Matrix client instance
+
+    Returns:
+        bool: True if verification was successful, False otherwise
+    """
+    if not matrix_client.olm or not matrix_client.device_id:
+        logger.debug("Cannot verify own device: E2EE not enabled or device_id not set")
+        return False
+
+    try:
+        # Get our own device from the device store
+        own_devices = matrix_client.device_store.active_user_devices(matrix_client.user_id)
+        current_device = None
+
+        # Find our current device
+        for device in own_devices:
+            if device.device_id == matrix_client.device_id:
+                current_device = device
+                break
+
+        if not current_device:
+            logger.warning(f"Could not find our own device {matrix_client.device_id} in the device store")
+            return False
+
+        # Verify our own device using the store's verify_device method
+        matrix_client.verify_device(current_device)
+        logger.info(f"Successfully verified our own device: {matrix_client.device_id}")
+
+        # Also mark the device as trusted in the store if the method exists
+        if hasattr(matrix_client.olm.store, "mark_device_as_trusted"):
+            matrix_client.olm.store.mark_device_as_trusted(current_device)
+            logger.debug(f"Marked our device {matrix_client.device_id} as trusted in the store")
+
+        return True
+    except Exception as e:
+        logger.error(f"Error verifying own device: {e}")
+        return False
+
 async def initialize_e2ee(matrix_client: AsyncClient, config: Dict) -> None:
     """
     Initialize end-to-end encryption for Matrix client after initial sync.
@@ -95,7 +141,15 @@ async def initialize_e2ee(matrix_client: AsyncClient, config: Dict) -> None:
     logger.debug("Performing short sync to confirm encryption setup...")
     await matrix_client.sync(timeout=3000)  # 3 second timeout
 
-    # 3. Share group sessions for all encrypted rooms
+    # 3. Verify our own device to remove the red shield warning in Element
+    logger.debug("Verifying our own device...")
+    verified = await verify_own_device(matrix_client)
+    if verified:
+        logger.info("Successfully verified our own device - this should remove the red shield warning in Element")
+    else:
+        logger.warning("Could not verify our own device - you may still see a red shield warning in Element")
+
+    # 4. Share group sessions for all encrypted rooms
     encrypted_rooms = [
         room_id for room_id, room in matrix_client.rooms.items() if room.encrypted
     ]
