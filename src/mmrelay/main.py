@@ -131,33 +131,12 @@ async def main(config):
             if room.encrypted:
                 matrix_logger.debug(f"Ensuring group session for encrypted room {room_id}")
                 try:
-                    # First, share a group session
-                    await matrix_client.share_group_session(room_id)
+                    # Share a group session for the encrypted room
+                    await matrix_client.share_group_session(room_id, ignore_unverified_devices=True)
                     matrix_logger.debug(f"Shared group session for room {room_id}")
 
-                    # Then, send a dummy event to establish the encryption session
-                    # This event will be immediately redacted
-                    dummy_event_response = await matrix_client.room_send(
-                        room_id=room_id,
-                        message_type="m.room.message",
-                        content={
-                            "msgtype": "m.notice",
-                            "body": "Initializing encryption session..."
-                        },
-                    )
-
-                    # If the event was sent successfully, redact it immediately
-                    if hasattr(dummy_event_response, "event_id"):
-                        matrix_logger.debug(f"Sent dummy event to initialize encryption: {dummy_event_response.event_id}")
-                        try:
-                            await matrix_client.room_redact(
-                                room_id=room_id,
-                                event_id=dummy_event_response.event_id,
-                                reason="Initializing encryption session"
-                            )
-                            matrix_logger.debug(f"Redacted dummy event: {dummy_event_response.event_id}")
-                        except Exception as redact_error:
-                            matrix_logger.debug(f"Could not redact dummy event: {redact_error}")
+                    # Wait a moment for the session to be established
+                    await asyncio.sleep(1)
                 except Exception as e:
                     matrix_logger.debug(f"Info: Could not initialize encryption for room {room_id}: {e}")
 
