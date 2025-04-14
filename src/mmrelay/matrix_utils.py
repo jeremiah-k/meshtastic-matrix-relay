@@ -139,6 +139,27 @@ async def verify_own_device(matrix_client: AsyncClient) -> bool:
         return False
 
 
+def is_encryption_enabled(config: Dict) -> bool:
+    """
+    Check if encryption is enabled in the configuration.
+    Checks both 'encryption' and 'e2ee' keys for backward compatibility.
+
+    Args:
+        config: The application configuration
+
+    Returns:
+        bool: True if encryption is enabled, False otherwise
+    """
+    if not config or "matrix" not in config:
+        return False
+
+    # Check for both encryption and e2ee for backward compatibility
+    return (
+        ("encryption" in config["matrix"] and config["matrix"]["encryption"].get("enabled", False))
+        or ("e2ee" in config["matrix"] and config["matrix"]["e2ee"].get("enabled", False))
+    )
+
+
 async def initialize_e2ee(matrix_client: AsyncClient, config: Dict) -> None:
     """
     Initialize end-to-end encryption for Matrix client after initial sync.
@@ -148,20 +169,8 @@ async def initialize_e2ee(matrix_client: AsyncClient, config: Dict) -> None:
         matrix_client: The Matrix client instance
         config: The application configuration
     """
-    # Check for both encryption and e2ee for backward compatibility
-    if (
-        not (
-            (
-                "encryption" in config["matrix"]
-                and config["matrix"]["encryption"].get("enabled", False)
-            )
-            or (
-                "e2ee" in config["matrix"]
-                and config["matrix"]["e2ee"].get("enabled", False)
-            )
-        )
-        or not matrix_client.olm
-    ):
+    # Check if encryption is enabled in config and if olm is available
+    if not is_encryption_enabled(config) or not matrix_client.olm:
         return
 
     logger.info("Initializing end-to-end encryption...")
@@ -240,32 +249,46 @@ async def initialize_e2ee(matrix_client: AsyncClient, config: Dict) -> None:
         room_id for room_id, room in matrix_client.rooms.items() if room.encrypted
     ]
     if encrypted_rooms:
-        logger.debug(
+        logger.info(
             f"Sharing group sessions for {len(encrypted_rooms)} encrypted rooms"
         )
         for room_id in encrypted_rooms:
             try:
                 # First ensure we have all the members of the room
                 try:
-                    await matrix_client.joined_members(room_id)
-                    logger.debug(f"Retrieved members for room {room_id}")
+                    members_response = await matrix_client.joined_members(room_id)
+                    if hasattr(members_response, "members"):
+                        logger.debug(f"Retrieved {len(members_response.members)} members for room {room_id}")
+                    else:
+                        logger.debug(f"Retrieved members for room {room_id}")
                 except Exception as me:
                     logger.warning(f"Error retrieving members for room {room_id}: {me}")
 
+                # Make sure the room is actually encrypted
+                room = matrix_client.rooms.get(room_id)
+                if not room or not room.encrypted:
+                    logger.warning(f"Room {room_id} is not marked as encrypted, skipping group session")
+                    continue
+
                 # Then share the group session with ignore_unverified_devices=True
-                await matrix_client.share_group_session(room_id, ignore_unverified_devices=True)
-                logger.debug(f"Shared group session for room {room_id}")
+                logger.debug(f"Sharing group session for room {room_id}")
+                response = await matrix_client.share_group_session(room_id, ignore_unverified_devices=True)
+
+                if hasattr(response, "room_id"):
+                    logger.info(f"Successfully shared group session for room {room_id}")
+                else:
+                    logger.info(f"Shared group session for room {room_id}")
 
                 # Verify that the session was shared successfully
                 if matrix_client.olm and hasattr(matrix_client.olm, "outbound_group_sessions"):
                     if room_id in matrix_client.olm.outbound_group_sessions:
-                        logger.debug(f"Confirmed outbound group session exists for room {room_id}")
+                        logger.info(f"Confirmed outbound group session exists for room {room_id}")
                     else:
                         logger.warning(f"No outbound group session found for room {room_id} after sharing")
             except Exception as e:
                 logger.warning(f"Could not share group session for room {room_id}: {e}")
     else:
-        logger.debug("No encrypted rooms found")
+        logger.warning("No encrypted rooms found - encryption may not be working properly")
 
     logger.info("End-to-end encryption initialization complete")
 
@@ -604,13 +627,23 @@ async def join_matrix_room(matrix_client, room_id_or_alias: str) -> None:
         if room_id not in matrix_client.rooms:
             response = await matrix_client.join(room_id)
             if response and hasattr(response, "room_id"):
-                logger.info(f"Joined room '{room_id_or_alias}' successfully")
-
                 # Force a sync to update the client's rooms list
                 logger.debug(f"Forcing sync after joining room {room_id}")
-                await matrix_client.sync(
-                    timeout=5000
-                )  # Increased timeout for better reliability
+                await matrix_client.sync(timeout=5000)  # Increased timeout for better reliability
+
+                # Check if the room is encrypted
+                is_encrypted = False
+                if room_id in matrix_client.rooms:
+                    room = matrix_client.rooms[room_id]
+                    is_encrypted = room.encrypted
+                    if is_encrypted:
+                        logger.info(f"Joined room '{room_id_or_alias}' successfully (encrypted)")
+                    else:
+                        logger.info(f"Joined room '{room_id_or_alias}' successfully (not encrypted)")
+                else:
+                    logger.info(f"Joined room '{room_id_or_alias}' successfully")
+
+                # We already did a sync above, no need for another one
 
                 # If the room is still not in the client's rooms after sync, try to get room state
                 if room_id not in matrix_client.rooms:
