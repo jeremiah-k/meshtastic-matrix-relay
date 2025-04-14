@@ -62,8 +62,8 @@ async def verify_own_device(matrix_client: AsyncClient) -> bool:
     This function verifies the current device in the device store, which helps
     eliminate the "unverified session" warning in Element and other Matrix clients.
 
-    If the device is not found in the store, it will query the keys from the server
-    and update the device store before attempting verification.
+    The key insight is that we need to explicitly force a keys query for our own user ID,
+    which matrix-nio normally skips. This ensures our own device is in the device store.
 
     Args:
         matrix_client: The Matrix client instance
@@ -76,17 +76,13 @@ async def verify_own_device(matrix_client: AsyncClient) -> bool:
         return False
 
     try:
-        # First, ensure we have our own device keys by querying them from the server
-        logger.debug(f"Querying device keys for our user {matrix_client.user_id}")
+        # Force a keys query specifically for our own user ID
+        logger.debug(f"Forcing keys query for our own user {matrix_client.user_id}")
         try:
-            # We need to manually set up the users for key query since we can't pass them directly
-            # to the keys_query method
-            if not hasattr(matrix_client, "_users_for_key_query") or not matrix_client._users_for_key_query:
-                matrix_client._users_for_key_query = set()
-            matrix_client._users_for_key_query.add(matrix_client.user_id)
+            # The key is to explicitly pass our user_id in the users parameter
+            # This bypasses matrix-nio's normal optimization that skips querying for our own user
+            query_response = await matrix_client.keys_query(users=[matrix_client.user_id])
 
-            # Now query the keys
-            query_response = await matrix_client.keys_query()
             if (
                 hasattr(query_response, "device_keys")
                 and matrix_client.user_id in query_response.device_keys
@@ -99,51 +95,31 @@ async def verify_own_device(matrix_client: AsyncClient) -> bool:
         except Exception as e:
             logger.warning(f"Error querying device keys: {e}")
 
-        # Get our own device from the device store (should be populated after keys_query)
-        own_devices = matrix_client.device_store.active_user_devices(
-            matrix_client.user_id
-        )
-        current_device = None
+        # Get our device directly from the device store
+        device = matrix_client.device_store.active_user_devices(matrix_client.user_id).get(matrix_client.device_id)
 
-        # Find our current device
-        for device in own_devices:
-            if device.device_id == matrix_client.device_id:
-                current_device = device
-                logger.debug(f"Found our device {device.device_id} in the device store")
-                break
-
-        if not current_device:
-            logger.warning(
-                f"Could not find our own device {matrix_client.device_id} in the device store"
-            )
-            # Try to manually create and add our device to the store
-            logger.debug(
-                "Attempting to manually verify device through direct store access"
-            )
-            if hasattr(matrix_client.olm, "store") and hasattr(
-                matrix_client.olm.store, "verify_device_by_id"
-            ):
-                # Some implementations have a direct method to verify by ID
-                success = matrix_client.olm.store.verify_device_by_id(
-                    matrix_client.user_id, matrix_client.device_id
-                )
-                if success:
-                    logger.info(
-                        f"Successfully verified our device {matrix_client.device_id} using direct store access"
-                    )
-                    return True
+        if not device:
+            logger.warning(f"Could not find our own device {matrix_client.device_id} in the device store")
+            # Log all devices we have for debugging
+            devices = matrix_client.device_store.active_user_devices(matrix_client.user_id)
+            if devices:
+                logger.debug(f"Found {len(devices)} devices for our user, but not our device ID")
+                for d in devices:
+                    logger.debug(f"Device in store: {d.device_id}")
             return False
 
         # Verify our own device using the client's verify_device method
-        matrix_client.verify_device(current_device)
+        matrix_client.verify_device(device)
         logger.info(f"Successfully verified our own device: {matrix_client.device_id}")
 
-        # Also mark the device as trusted in the store if the method exists
-        if hasattr(matrix_client.olm.store, "mark_device_as_trusted"):
-            matrix_client.olm.store.mark_device_as_trusted(current_device)
-            logger.debug(
-                f"Marked our device {matrix_client.device_id} as trusted in the store"
-            )
+        # Also mark the device as trusted if the client has a trust_manager
+        trust_manager = getattr(matrix_client.crypto, "trust_manager", None)
+        if trust_manager:
+            trust_manager.mark_as_trusted(device)
+            logger.debug(f"Marked our device {matrix_client.device_id} as trusted via trust_manager")
+        elif hasattr(matrix_client.olm.store, "mark_device_as_trusted"):
+            matrix_client.olm.store.mark_device_as_trusted(device)
+            logger.debug(f"Marked our device {matrix_client.device_id} as trusted in the store")
 
         return True
     except Exception as e:
