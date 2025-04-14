@@ -62,8 +62,7 @@ async def verify_own_device(matrix_client: AsyncClient) -> bool:
     This function verifies the current device in the device store, which helps
     eliminate the "unverified session" warning in Element and other Matrix clients.
 
-    The key insight is that we need to explicitly force a keys query for our own user ID,
-    which matrix-nio normally skips. This ensures our own device is in the device store.
+    Based on the matrix-nio example for manual device verification.
 
     Args:
         matrix_client: The Matrix client instance
@@ -76,65 +75,59 @@ async def verify_own_device(matrix_client: AsyncClient) -> bool:
         return False
 
     try:
-        # Force a keys query specifically for our own user ID
-        logger.debug(f"Forcing keys query for our own user {matrix_client.user_id}")
+        # First, make sure we have a proper sync to populate the device store
+        logger.debug("Performing a sync to ensure device store is populated")
+        await matrix_client.sync(timeout=10000)  # 10 second timeout
+
+        # Manually verify all of our own devices
+        logger.debug(f"Verifying all devices for our user {matrix_client.user_id}")
+        verified_count = 0
+
+        # Get all devices for our user from the device store
         try:
-            # We need to manually set up the users for key query
-            # This is how matrix-nio internally tracks which users to query
-            if not hasattr(matrix_client, "_users_for_key_query"):
-                matrix_client._users_for_key_query = set()
+            # The device store contains devices for all users we share rooms with
+            if matrix_client.user_id in matrix_client.device_store:
+                user_devices = matrix_client.device_store[matrix_client.user_id]
+                logger.debug(f"Found {len(user_devices)} devices for our user in the device store")
 
-            # Add our own user ID to force querying our own devices
-            matrix_client._users_for_key_query.add(matrix_client.user_id)
+                # Verify each device
+                for device_id, olm_device in user_devices.items():
+                    # Skip our current device - we can't verify ourselves
+                    if device_id == matrix_client.device_id:
+                        logger.debug(f"Skipping our current device {device_id} (can't verify ourselves)")
+                        continue
 
-            # Now query the keys
-            query_response = await matrix_client.keys_query()
+                    # Verify this device
+                    matrix_client.verify_device(olm_device)
+                    logger.debug(f"Verified device {device_id} for our user")
+                    verified_count += 1
 
-            if (
-                hasattr(query_response, "device_keys")
-                and matrix_client.user_id in query_response.device_keys
-            ):
-                logger.debug(
-                    f"Received keys for {len(query_response.device_keys[matrix_client.user_id])} devices"
-                )
+                    # Also mark as trusted if possible
+                    trust_manager = getattr(matrix_client.crypto, "trust_manager", None)
+                    if trust_manager:
+                        trust_manager.mark_as_trusted(olm_device)
+                        logger.debug(f"Marked device {device_id} as trusted via trust_manager")
+                    elif hasattr(matrix_client.olm.store, "mark_device_as_trusted"):
+                        matrix_client.olm.store.mark_device_as_trusted(olm_device)
+                        logger.debug(f"Marked device {device_id} as trusted in the store")
+
+                if verified_count > 0:
+                    logger.info(f"Successfully verified {verified_count} devices for our user")
+                    return True
+                else:
+                    logger.warning("No devices to verify for our user")
             else:
-                logger.warning("Failed to query device keys from server")
+                logger.warning(f"Our user {matrix_client.user_id} not found in device store")
+
+                # Debug: print all users in the device store
+                users = list(matrix_client.device_store.keys())
+                logger.debug(f"Users in device store: {users}")
         except Exception as e:
-            logger.warning(f"Error querying device keys: {e}")
+            logger.warning(f"Error accessing device store: {e}")
 
-        # Get our device by iterating through the device store
-        # active_user_devices returns a generator, not a dictionary
-        device = None
-        for d in matrix_client.device_store.active_user_devices(matrix_client.user_id):
-            if d.device_id == matrix_client.device_id:
-                device = d
-                logger.debug(f"Found our device {d.device_id} in the device store")
-                break
-
-        if not device:
-            logger.warning(f"Could not find our own device {matrix_client.device_id} in the device store")
-            # Log all devices we have for debugging
-            devices = list(matrix_client.device_store.active_user_devices(matrix_client.user_id))
-            if devices:
-                logger.debug(f"Found {len(devices)} devices for our user, but not our device ID")
-                for d in devices:
-                    logger.debug(f"Device in store: {d.device_id}")
-            return False
-
-        # Verify our own device using the client's verify_device method
-        matrix_client.verify_device(device)
-        logger.info(f"Successfully verified our own device: {matrix_client.device_id}")
-
-        # Also mark the device as trusted if the client has a trust_manager
-        trust_manager = getattr(matrix_client.crypto, "trust_manager", None)
-        if trust_manager:
-            trust_manager.mark_as_trusted(device)
-            logger.debug(f"Marked our device {matrix_client.device_id} as trusted via trust_manager")
-        elif hasattr(matrix_client.olm.store, "mark_device_as_trusted"):
-            matrix_client.olm.store.mark_device_as_trusted(device)
-            logger.debug(f"Marked our device {matrix_client.device_id} as trusted in the store")
-
-        return True
+        # If we get here, we couldn't verify any devices
+        logger.warning("Could not verify any devices for our user")
+        return False
     except Exception as e:
         logger.error(f"Error verifying own device: {e}")
         return False
@@ -180,12 +173,12 @@ async def initialize_e2ee(matrix_client: AsyncClient, config: Dict) -> None:
     logger.debug("Performing sync to ensure device keys are properly populated...")
     await matrix_client.sync(timeout=10000)  # 10 second timeout
 
-    # 3. Verify our own device to remove the red shield warning in Element
-    logger.debug("Verifying our own device...")
+    # 3. Verify all devices for our user
+    logger.debug("Verifying our devices...")
     verified = await verify_own_device(matrix_client)
     if verified:
         logger.info(
-            "Successfully verified our own device - this should remove the red shield warning in Element"
+            "Successfully verified our devices - this should remove the red shield warning in Element"
         )
     else:
         # If first attempt failed, try again after another sync
@@ -195,13 +188,48 @@ async def initialize_e2ee(matrix_client: AsyncClient, config: Dict) -> None:
         await matrix_client.sync(timeout=5000)  # 5 second timeout
         verified = await verify_own_device(matrix_client)
         if verified:
-            logger.info("Successfully verified our own device on second attempt")
+            logger.info("Successfully verified our devices on second attempt")
         else:
             logger.warning(
                 "Could not verify our own device - you may still see a red shield warning in Element"
             )
 
-    # 4. Share group sessions for all encrypted rooms
+    # 4. Trust all devices for all users in our rooms
+    # This is important to avoid verification errors when sending messages
+    logger.debug("Trusting all devices for all users in our rooms...")
+    try:
+        # Get all users in our rooms
+        all_users = set()
+        for _, room in matrix_client.rooms.items():
+            all_users.update(room.users)
+
+        # Trust all devices for each user
+        trusted_count = 0
+        for user_id in all_users:
+            # Skip our own user as we already handled it
+            if user_id == matrix_client.user_id:
+                continue
+
+            # Trust all devices for this user
+            if user_id in matrix_client.device_store:
+                user_devices = matrix_client.device_store[user_id]
+                for _, olm_device in user_devices.items():
+                    matrix_client.verify_device(olm_device)
+                    trusted_count += 1
+
+                    # Also mark as trusted if possible
+                    trust_manager = getattr(matrix_client.crypto, "trust_manager", None)
+                    if trust_manager:
+                        trust_manager.mark_as_trusted(olm_device)
+                    elif hasattr(matrix_client.olm.store, "mark_device_as_trusted"):
+                        matrix_client.olm.store.mark_device_as_trusted(olm_device)
+
+        if trusted_count > 0:
+            logger.debug(f"Trusted {trusted_count} devices for other users")
+    except Exception as e:
+        logger.warning(f"Error trusting devices for other users: {e}")
+
+    # 5. Share group sessions for all encrypted rooms
     encrypted_rooms = [
         room_id for room_id, room in matrix_client.rooms.items() if room.encrypted
     ]
