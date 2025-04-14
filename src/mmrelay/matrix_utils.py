@@ -81,10 +81,14 @@ async def verify_own_device(matrix_client: AsyncClient) -> bool:
         # First, ensure we have our own device keys by querying them from the server
         logger.debug(f"Querying device keys for our user {matrix_client.user_id}")
         try:
-            # Force a keys query specifically for our own user ID
-            # The key is to explicitly pass our user_id in the users parameter
-            # This bypasses matrix-nio's normal optimization that skips querying for our own user
-            query_response = await matrix_client.keys_query(user_ids=[matrix_client.user_id])
+            # We need to manually set up the users for key query since we can't pass them directly
+            # to the keys_query method
+            if not hasattr(matrix_client, "_users_for_key_query") or not matrix_client._users_for_key_query:
+                matrix_client._users_for_key_query = set()
+            matrix_client._users_for_key_query.add(matrix_client.user_id)
+
+            # Now query the keys
+            query_response = await matrix_client.keys_query()
 
             if (
                 hasattr(query_response, "device_keys")
@@ -197,7 +201,7 @@ async def self_verify_device(matrix_client: AsyncClient) -> bool:
 
         logger.debug("Sending verification request to ourselves")
         resp = await matrix_client.to_device(request_message, txid)
-        if isinstance(resp, exceptions.ToDeviceError):
+        if hasattr(resp, "message") and getattr(resp, "status", 0) >= 400:
             logger.warning(f"Failed to send verification request: {resp}")
             return False
 
@@ -217,7 +221,7 @@ async def self_verify_device(matrix_client: AsyncClient) -> bool:
 
         logger.debug("Sending verification ready message")
         resp = await matrix_client.to_device(ready_message, txid)
-        if isinstance(resp, exceptions.ToDeviceError):
+        if hasattr(resp, "message") and getattr(resp, "status", 0) >= 400:
             logger.warning(f"Failed to send verification ready message: {resp}")
             return False
 
@@ -235,7 +239,7 @@ async def self_verify_device(matrix_client: AsyncClient) -> bool:
 
         logger.debug("Sending verification done message")
         resp = await matrix_client.to_device(done_message, txid)
-        if isinstance(resp, exceptions.ToDeviceError):
+        if hasattr(resp, "message") and getattr(resp, "status", 0) >= 400:
             logger.warning(f"Failed to send verification done message: {resp}")
             return False
 
