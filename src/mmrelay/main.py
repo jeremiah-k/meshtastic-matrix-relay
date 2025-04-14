@@ -85,6 +85,9 @@ async def main(config):
     # Load plugins early
     load_plugins(passed_config=config)
 
+    # Log a consolidated message about loading resources
+    matrix_logger.info(f"Using Matrix credentials from {config.get('credentials_path', 'config.yaml')}")
+
     # Connect to Matrix first
     matrix_client = await connect_matrix(passed_config=config)
 
