@@ -79,9 +79,16 @@ async def verify_own_device(matrix_client: AsyncClient) -> bool:
         # Force a keys query specifically for our own user ID
         logger.debug(f"Forcing keys query for our own user {matrix_client.user_id}")
         try:
-            # The key is to explicitly pass our user_id in the user_ids parameter
-            # This bypasses matrix-nio's normal optimization that skips querying for our own user
-            query_response = await matrix_client.keys_query(user_ids=[matrix_client.user_id])
+            # We need to manually set up the users for key query
+            # This is how matrix-nio internally tracks which users to query
+            if not hasattr(matrix_client, "_users_for_key_query"):
+                matrix_client._users_for_key_query = set()
+
+            # Add our own user ID to force querying our own devices
+            matrix_client._users_for_key_query.add(matrix_client.user_id)
+
+            # Now query the keys
+            query_response = await matrix_client.keys_query()
 
             if (
                 hasattr(query_response, "device_keys")
