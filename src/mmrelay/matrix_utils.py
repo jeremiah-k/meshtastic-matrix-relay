@@ -108,12 +108,8 @@ async def verify_own_device(matrix_client: AsyncClient) -> bool:
                         logger.debug(f"Verified device {device_id} for our user")
                         verified_count += 1
 
-                        # Also mark as trusted if possible
-                        trust_manager = getattr(matrix_client.crypto, "trust_manager", None)
-                        if trust_manager:
-                            trust_manager.mark_as_trusted(olm_device)
-                            logger.debug(f"Marked device {device_id} as trusted via trust_manager")
-                        elif hasattr(matrix_client.olm.store, "mark_device_as_trusted"):
+                        # Mark the device as trusted in the store if the method exists
+                        if hasattr(matrix_client.olm.store, "mark_device_as_trusted"):
                             matrix_client.olm.store.mark_device_as_trusted(olm_device)
                             logger.debug(f"Marked device {device_id} as trusted in the store")
 
@@ -228,11 +224,8 @@ async def initialize_e2ee(matrix_client: AsyncClient, config: Dict) -> None:
                     matrix_client.verify_device(device)
                     trusted_count += 1
 
-                    # Also mark as trusted if possible
-                    trust_manager = getattr(matrix_client.crypto, "trust_manager", None)
-                    if trust_manager:
-                        trust_manager.mark_as_trusted(device)
-                    elif hasattr(matrix_client.olm.store, "mark_device_as_trusted"):
+                    # Mark the device as trusted in the store if the method exists
+                    if hasattr(matrix_client.olm.store, "mark_device_as_trusted"):
                         matrix_client.olm.store.mark_device_as_trusted(device)
             except Exception as e:
                 logger.debug(f"Error trusting devices for user {user_id}: {e}")
