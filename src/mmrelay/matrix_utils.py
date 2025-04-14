@@ -158,7 +158,8 @@ async def connect_matrix(passed_config=None):
     e2ee_device_id = None
 
     try:
-        if "e2ee" in config["matrix"] and config["matrix"]["e2ee"].get(
+        # First check for 'encryption' key (preferred)
+        if "encryption" in config["matrix"] and config["matrix"]["encryption"].get(
             "enabled", False
         ):
             # Check if python-olm is installed
@@ -167,6 +168,41 @@ async def connect_matrix(passed_config=None):
 
                 e2ee_enabled = True
                 logger.info("End-to-End Encryption (E2EE) is enabled")
+
+                # Get store path from config or use default
+                if "store_path" in config["matrix"]["encryption"]:
+                    e2ee_store_path = os.path.expanduser(
+                        config["matrix"]["encryption"]["store_path"]
+                    )
+                else:
+                    from mmrelay.config import get_e2ee_store_dir
+
+                    e2ee_store_path = get_e2ee_store_dir()
+
+                # Create store directory if it doesn't exist
+                os.makedirs(e2ee_store_path, exist_ok=True)
+                logger.debug(f"Using E2EE store path: {e2ee_store_path}")
+
+                # We'll get the device ID from whoami() later
+                e2ee_device_id = None
+                logger.debug("Will retrieve device_id from whoami() response")
+            except ImportError:
+                logger.warning(
+                    "E2EE is enabled in config but python-olm is not installed."
+                )
+                logger.warning("Install mmrelay[e2e] to use E2EE features.")
+                e2ee_enabled = False
+        # Then check for legacy 'e2ee' key for backward compatibility
+        elif "e2ee" in config["matrix"] and config["matrix"]["e2ee"].get(
+            "enabled", False
+        ):
+            # Check if python-olm is installed
+            try:
+                import olm  # noqa: F401
+
+                e2ee_enabled = True
+                logger.info("End-to-End Encryption (E2EE) is enabled")
+                logger.debug("NOTE: Using 'e2ee' config key which will be deprecated in favor of 'encryption' in a future release")
 
                 # Get store path from config or use default
                 if "store_path" in config["matrix"]["e2ee"]:
@@ -301,7 +337,8 @@ async def connect_matrix(passed_config=None):
                     try:
                         # First, explicitly query our own devices to ensure they're in the device store
                         logger.debug(f"Querying keys for our own user ID: {matrix_client.user_id}")
-                        await matrix_client.keys_query(user_ids=[matrix_client.user_id])
+                        # Use the correct parameter format for keys_query
+                        await matrix_client.keys_query([matrix_client.user_id])
 
                         # Get our own devices
                         own_devices = list(matrix_client.device_store.active_user_devices(
@@ -617,6 +654,26 @@ async def matrix_relay(
                 except Exception as e:
                     logger.warning(f"Error checking room state for encryption: {e}")
 
+            # If the room is still not showing as encrypted, check if we have any encrypted messages in the room
+            # This is a fallback for rooms that are encrypted but don't have the encryption flag set
+            if not is_encrypted and matrix_client.olm and matrix_client.device_id:
+                logger.debug(f"Room {room_id} still not showing as encrypted. Checking for encrypted messages...")
+                try:
+                    # Force a short sync to get the latest messages
+                    await matrix_client.sync(timeout=3000)
+
+                    # Check if we have any encrypted messages in the room
+                    if room and room.timeline:
+                        for event in room.timeline:
+                            if event.get("type") == "m.room.encrypted":
+                                logger.info(f"Found encrypted message in room {room_id}")
+                                is_encrypted = True
+                                # Update the room's encrypted flag
+                                room.encrypted = True
+                                break
+                except Exception as e:
+                    logger.warning(f"Error checking for encrypted messages: {e}")
+
             if is_encrypted:
                 logger.debug(f"Room {room_id} is encrypted, sending with encryption")
 
@@ -646,6 +703,8 @@ async def matrix_relay(
                             )
                             try:
                                 await matrix_client.keys_upload()
+                                # Wait a moment for keys to be processed
+                                await asyncio.sleep(1)
                                 logger.debug("Keys uploaded successfully")
                             except Exception as ke:
                                 logger.warning(f"Error uploading keys: {ke}")
@@ -655,16 +714,35 @@ async def matrix_relay(
                             logger.debug(f"Claiming keys for devices in room {room_id}")
                             try:
                                 await matrix_client.keys_claim(users_devices)
+                                # Wait a moment for keys to be processed
+                                await asyncio.sleep(1)
                                 logger.debug("Keys claim completed successfully")
                             except Exception as ke:
                                 logger.warning(f"Error claiming keys: {ke}")
 
+                        # Check if we already have a group session for this room
+                        has_session = False
+                        if hasattr(matrix_client.olm, "outbound_group_sessions") and \
+                           room_id in matrix_client.olm.outbound_group_sessions:
+                            has_session = True
+                            logger.debug(f"Found existing group session for room {room_id}")
+
                         # Force sharing a new group session to ensure all devices get keys
-                        logger.debug(f"Sharing new group session for room {room_id}")
-                        await matrix_client.share_group_session(
-                            room_id, ignore_unverified_devices=True
-                        )
-                        logger.debug(f"Shared new group session for room {room_id}")
+                        if not has_session:
+                            logger.debug(f"Sharing new group session for room {room_id}")
+                            await matrix_client.share_group_session(
+                                room_id, ignore_unverified_devices=True
+                            )
+                            # Wait a moment for the session to be established
+                            await asyncio.sleep(1)
+                            logger.debug(f"Shared new group session for room {room_id}")
+                        else:
+                            # Even with an existing session, we should ensure it's shared with all devices
+                            logger.debug(f"Ensuring group session is shared with all devices in room {room_id}")
+                            await matrix_client.share_group_session(
+                                room_id, ignore_unverified_devices=True
+                            )
+                            logger.debug(f"Group session sharing completed for room {room_id}")
                 except Exception as e:
                     logger.warning(f"Error sharing group session: {e}")
             else:
