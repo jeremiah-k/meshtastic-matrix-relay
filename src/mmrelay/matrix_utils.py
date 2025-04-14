@@ -252,7 +252,13 @@ async def connect_matrix(passed_config=None):
             # Upload encryption keys if needed
             if matrix_client.should_upload_keys:
                 logger.debug("Uploading encryption keys to server")
-                await matrix_client.keys_upload()
+                try:
+                    await matrix_client.keys_upload()
+                    # Wait for a moment to ensure keys are properly registered
+                    await asyncio.sleep(1)
+                    logger.debug("Keys uploaded successfully")
+                except Exception as e:
+                    logger.warning(f"Error uploading keys: {e}")
 
             # Patch the client to handle unverified devices
             # This is a safer approach than monkey patching the OlmDevice class
@@ -293,10 +299,17 @@ async def connect_matrix(passed_config=None):
                         f"Ensuring our own device {matrix_client.device_id} is verified and trusted"
                     )
                     try:
+                        # First, explicitly query our own devices to ensure they're in the device store
+                        logger.debug(f"Querying keys for our own user ID: {matrix_client.user_id}")
+                        await matrix_client.keys_query(user_ids=[matrix_client.user_id])
+
                         # Get our own devices
-                        own_devices = matrix_client.device_store.active_user_devices(
+                        own_devices = list(matrix_client.device_store.active_user_devices(
                             matrix_client.user_id
-                        )
+                        ))
+
+                        logger.debug(f"Found {len(own_devices)} of our own devices")
+
                         for device in own_devices:
                             # Verify and trust all our devices, especially our current one
                             matrix_client.olm.store.verify_device(device)
@@ -314,6 +327,13 @@ async def connect_matrix(passed_config=None):
                                 logger.info(
                                     f"Verified and trusted our current device: {device.device_id}"
                                 )
+
+                        # If our current device wasn't found in the list, log a warning
+                        if not any(device.device_id == matrix_client.device_id for device in own_devices):
+                            logger.warning(
+                                f"Our current device {matrix_client.device_id} was not found in the device store. "
+                                f"This may cause encryption issues."
+                            )
                     except Exception as e:
                         logger.warning(f"Error verifying our own devices: {e}")
 
@@ -573,6 +593,29 @@ async def matrix_relay(
             # Check if the room is encrypted
             room = matrix_client.rooms.get(room_id)
             is_encrypted = room and room.encrypted
+
+            # Debug room encryption status
+            logger.debug(f"Room {room_id} encryption status: {is_encrypted}")
+
+            # If we have E2EE enabled but the room doesn't show as encrypted,
+            # check if we need to fetch the room state to detect encryption
+            if not is_encrypted and matrix_client.olm and matrix_client.device_id:
+                logger.debug(f"Room {room_id} not showing as encrypted but E2EE is enabled. Checking room state...")
+                try:
+                    # Get the room state to check for encryption event
+                    state = await matrix_client.room_get_state(room_id)
+                    if hasattr(state, "events"):
+                        # Look for encryption event in the state
+                        for event in state.events:
+                            if event.get("type") == "m.room.encryption":
+                                logger.info(f"Found encryption event in room {room_id} state")
+                                is_encrypted = True
+                                # Update the room's encrypted flag
+                                if room:
+                                    room.encrypted = True
+                                break
+                except Exception as e:
+                    logger.warning(f"Error checking room state for encryption: {e}")
 
             if is_encrypted:
                 logger.debug(f"Room {room_id} is encrypted, sending with encryption")
@@ -1331,10 +1374,6 @@ async def login_matrix_bot(
     """
     import getpass
 
-    import yaml
-
-    from mmrelay.config import get_config_paths
-
     # Get homeserver URL
     if not homeserver:
         homeserver = input("Enter Matrix homeserver URL (e.g., https://matrix.org): ")
@@ -1376,18 +1415,35 @@ async def login_matrix_bot(
     # Login exactly like m2m-lite does
     try:
         response = await client.login(password)
+        # Debug the response
+        logger.debug(f"Login response: {response.__dict__ if hasattr(response, '__dict__') else response}")
     except Exception as e:
         logger.error(f"Error during login: {e}")
         await client.close()
         return None
 
+    # Check if the response is an error
+    if hasattr(response, "message") and hasattr(response, "status_code"):
+        logger.error(f"Login failed: {response.message}")
+        await client.close()
+        return None
+
+    # Check if the response has the required fields
     if hasattr(response, "access_token") and response.access_token:
         logger.info("Login successful!")
 
-        # Get user ID
-        user_id = response.user_id
-        device_id = response.device_id
-        access_token = response.access_token
+        # Get user ID - handle different response formats
+        user_id = getattr(response, "user_id", None)
+        device_id = getattr(response, "device_id", None)
+        access_token = getattr(response, "access_token", None)
+
+        # Validate that we have all required fields
+        if not user_id or not device_id or not access_token:
+            logger.error("Login response missing required fields (user_id, device_id, or access_token)")
+            await client.close()
+            return None
+
+        logger.debug(f"Login successful with user_id={user_id}, device_id={device_id}")
 
         # Save credentials to credentials.json
         credentials = {
@@ -1409,43 +1465,10 @@ async def login_matrix_bot(
                 import json
                 json.dump(credentials, f)
             logger.info(f"Credentials saved to {credentials_path}")
-        except Exception as e:
-            logger.warning(f"Failed to save credentials: {e}")
-
-        # Original homeserver URL with protocol for config
-        original_homeserver = homeserver
-
-        # Use the same config directory for config.yaml
-        # config_dir is already set from above
-        os.makedirs(config_dir, exist_ok=True)
-
-        # Save credentials to credentials.json
-        credentials = {
-            "user_id": user_id,
-            "device_id": device_id,
-            "access_token": access_token,
-            "homeserver": homeserver
-        }
-
-        # Save credentials to file
-        credentials_path = os.path.join(config_dir, "credentials.json")
-        try:
-            with open(credentials_path, "w") as f:
-                import json
-                json.dump(credentials, f)
-            logger.info(f"Credentials saved to {credentials_path}")
             logger.info("NOTE: Using credentials.json for login instead of config.yaml")
             logger.info("You can safely remove Matrix login details from config.yaml if desired")
         except Exception as e:
             logger.warning(f"Failed to save credentials: {e}")
-
-        # Close the client
-        await client.close()
-    else:
-        error_msg = getattr(response, "message", "Unknown error")
-        logger.error(f"Login failed: {error_msg}")
-        await client.close()
-        return None
 
         # Log out other sessions if requested
         if logout_others:
@@ -1471,41 +1494,18 @@ async def login_matrix_bot(
                     f"Failed to get devices: {devices_response.message if hasattr(devices_response, 'message') else 'Unknown error'}"
                 )
 
-        # Get config file path
-        config_paths = get_config_paths()
-        config_file = config_paths[0]  # Use the first config path
-
-        # Load existing config if it exists
-        config = {}
-        if os.path.exists(config_file):
-            with open(config_file, "r") as f:
-                config = yaml.load(f, Loader=yaml.SafeLoader) or {}
-
-        # Update config with new login info
-        if "matrix" not in config:
-            config["matrix"] = {}
-
-        config["matrix"]["homeserver"] = original_homeserver
-        config["matrix"]["access_token"] = access_token
-        config["matrix"]["bot_user_id"] = user_id
-
-        # Add E2EE config if not present
-        if "e2ee" not in config["matrix"]:
-            config["matrix"]["e2ee"] = {"enabled": True}
-
-        # Save config
-        os.makedirs(os.path.dirname(config_file), exist_ok=True)
-        with open(config_file, "w") as f:
-            yaml.dump(config, f, default_flow_style=False)
-
-        logger.info(f"Login information saved to {config_file}")
-
         # Close the client
         await client.close()
 
+        # Return the credentials
         return {
             "homeserver": homeserver,
             "user_id": user_id,
             "device_id": device_id,
             "access_token": access_token,
         }
+    else:
+        error_msg = getattr(response, "message", "Unknown error")
+        logger.error(f"Login failed: {error_msg}")
+        await client.close()
+        return None
