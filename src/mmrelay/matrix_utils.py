@@ -337,8 +337,9 @@ async def connect_matrix(passed_config=None):
                     try:
                         # First, explicitly query our own devices to ensure they're in the device store
                         logger.debug(f"Querying keys for our own user ID: {matrix_client.user_id}")
-                        # Use the correct parameter format for keys_query
-                        await matrix_client.keys_query([matrix_client.user_id])
+                        # Query keys for all users we share encrypted rooms with
+                        # This method doesn't take any parameters
+                        await matrix_client.keys_query()
 
                         # Get our own devices
                         own_devices = list(matrix_client.device_store.active_user_devices(
@@ -819,9 +820,12 @@ async def matrix_relay(
                         f"Querying keys for users in room {room_id} after error: {list(users_devices.keys())}"
                     )
                     try:
-                        await matrix_client.keys_query(list(users_devices.keys()))
+                        # Query keys for all users we share encrypted rooms with
+                        # This method doesn't take any parameters
+                        await matrix_client.keys_query()
                         logger.debug("Keys query completed successfully after error")
                     except Exception as ke:
+                        # This would be a more serious error
                         logger.warning(f"Error querying keys after error: {ke}")
 
                 # Claim keys for all devices
