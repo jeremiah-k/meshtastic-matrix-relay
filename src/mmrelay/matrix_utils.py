@@ -86,42 +86,52 @@ async def verify_own_device(matrix_client: AsyncClient) -> bool:
         # Get all devices for our user from the device store
         try:
             # The device store contains devices for all users we share rooms with
-            if matrix_client.user_id in matrix_client.device_store:
-                user_devices = matrix_client.device_store[matrix_client.user_id]
-                logger.debug(f"Found {len(user_devices)} devices for our user in the device store")
+            # Check if we have devices for our user
+            try:
+                # Get all devices for our user
+                user_devices = {}
+                for device in matrix_client.device_store.active_user_devices(matrix_client.user_id):
+                    user_devices[device.device_id] = device
 
-                # Verify each device
-                for device_id, olm_device in user_devices.items():
-                    # Skip our current device - we can't verify ourselves
-                    if device_id == matrix_client.device_id:
-                        logger.debug(f"Skipping our current device {device_id} (can't verify ourselves)")
-                        continue
+                if user_devices:
+                    logger.debug(f"Found {len(user_devices)} devices for our user in the device store")
 
-                    # Verify this device
-                    matrix_client.verify_device(olm_device)
-                    logger.debug(f"Verified device {device_id} for our user")
-                    verified_count += 1
+                    # Verify each device
+                    for device_id, olm_device in user_devices.items():
+                        # Skip our current device - we can't verify ourselves
+                        if device_id == matrix_client.device_id:
+                            logger.debug(f"Skipping our current device {device_id} (can't verify ourselves)")
+                            continue
 
-                    # Also mark as trusted if possible
-                    trust_manager = getattr(matrix_client.crypto, "trust_manager", None)
-                    if trust_manager:
-                        trust_manager.mark_as_trusted(olm_device)
-                        logger.debug(f"Marked device {device_id} as trusted via trust_manager")
-                    elif hasattr(matrix_client.olm.store, "mark_device_as_trusted"):
-                        matrix_client.olm.store.mark_device_as_trusted(olm_device)
-                        logger.debug(f"Marked device {device_id} as trusted in the store")
+                        # Verify this device
+                        matrix_client.verify_device(olm_device)
+                        logger.debug(f"Verified device {device_id} for our user")
+                        verified_count += 1
 
-                if verified_count > 0:
-                    logger.info(f"Successfully verified {verified_count} devices for our user")
-                    return True
+                        # Also mark as trusted if possible
+                        trust_manager = getattr(matrix_client.crypto, "trust_manager", None)
+                        if trust_manager:
+                            trust_manager.mark_as_trusted(olm_device)
+                            logger.debug(f"Marked device {device_id} as trusted via trust_manager")
+                        elif hasattr(matrix_client.olm.store, "mark_device_as_trusted"):
+                            matrix_client.olm.store.mark_device_as_trusted(olm_device)
+                            logger.debug(f"Marked device {device_id} as trusted in the store")
+
+                    if verified_count > 0:
+                        logger.info(f"Successfully verified {verified_count} devices for our user")
+                        return True
+                    else:
+                        logger.warning("No devices to verify for our user")
                 else:
-                    logger.warning("No devices to verify for our user")
-            else:
-                logger.warning(f"Our user {matrix_client.user_id} not found in device store")
+                    logger.warning(f"No devices found for our user {matrix_client.user_id} in the device store")
 
-                # Debug: print all users in the device store
-                users = list(matrix_client.device_store.keys())
-                logger.debug(f"Users in device store: {users}")
+                    # Debug: try to list all users in the device store
+                    all_users = set()
+                    for _, room in matrix_client.rooms.items():
+                        all_users.update(room.users)
+                    logger.debug(f"Users in rooms: {all_users}")
+            except Exception as e:
+                logger.warning(f"Error accessing device store: {e}")
         except Exception as e:
             logger.warning(f"Error accessing device store: {e}")
 
@@ -211,18 +221,21 @@ async def initialize_e2ee(matrix_client: AsyncClient, config: Dict) -> None:
                 continue
 
             # Trust all devices for this user
-            if user_id in matrix_client.device_store:
-                user_devices = matrix_client.device_store[user_id]
-                for _, olm_device in user_devices.items():
-                    matrix_client.verify_device(olm_device)
+            try:
+                # Get all devices for this user
+                user_devices = list(matrix_client.device_store.active_user_devices(user_id))
+                for device in user_devices:
+                    matrix_client.verify_device(device)
                     trusted_count += 1
 
                     # Also mark as trusted if possible
                     trust_manager = getattr(matrix_client.crypto, "trust_manager", None)
                     if trust_manager:
-                        trust_manager.mark_as_trusted(olm_device)
+                        trust_manager.mark_as_trusted(device)
                     elif hasattr(matrix_client.olm.store, "mark_device_as_trusted"):
-                        matrix_client.olm.store.mark_device_as_trusted(olm_device)
+                        matrix_client.olm.store.mark_device_as_trusted(device)
+            except Exception as e:
+                logger.debug(f"Error trusting devices for user {user_id}: {e}")
 
         if trusted_count > 0:
             logger.debug(f"Trusted {trusted_count} devices for other users")
