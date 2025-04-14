@@ -341,65 +341,20 @@ async def initialize_e2ee(matrix_client: AsyncClient, config: Dict) -> None:
     except Exception as e:
         logger.warning(f"Error trusting devices for other users: {e}")
 
-    # 5. Check if rooms are encrypted and enable encryption if needed
+    # 5. Check which rooms are encrypted
     logger.info("Checking encryption status of all rooms...")
     encrypted_count = 0
     for room_id, room in matrix_client.rooms.items():
-        # Check if the room is already encrypted
+        # Check if the room is encrypted
         if room.encrypted:
-            logger.info(f"Room {room_id} is already encrypted")
+            logger.info(f"Room {room_id} is encrypted")
             encrypted_count += 1
         else:
-            # Check if we need to enable encryption for this room
-            # First check if we have permission to enable encryption
-            try:
-                # Get the room state to check if we have permission
-                state_response = await matrix_client.room_get_state(room_id)
-                if hasattr(state_response, "events"):
-                    # Check if we have permission to enable encryption
-                    can_enable_encryption = False
-                    for event in state_response.events:
-                        if event.get("type") == "m.room.power_levels":
-                            # Check if we have permission to send state events
-                            content = event.get("content", {})
-                            state_default = content.get("state_default", 50)
-                            user_level = content.get("users", {}).get(matrix_client.user_id, 0)
-                            if user_level >= state_default:
-                                can_enable_encryption = True
-                                break
+            logger.debug(f"Room {room_id} is not encrypted")
 
-                    if can_enable_encryption:
-                        logger.info(f"Enabling encryption for room {room_id}")
-                        try:
-                            # Enable encryption for the room
-                            response = await matrix_client.room_send(
-                                room_id=room_id,
-                                message_type="m.room.encryption",
-                                content={
-                                    "algorithm": "m.megolm.v1.aes-sha2",
-                                    "rotation_period_ms": 604800000,  # 1 week
-                                    "rotation_period_msgs": 100
-                                },
-                            )
-                            logger.info(f"Encryption enabled for room {room_id}")
-
-                            # Force a sync to update the room state
-                            await matrix_client.sync(timeout=5000)
-
-                            # Check if the room is now encrypted
-                            if room_id in matrix_client.rooms and matrix_client.rooms[room_id].encrypted:
-                                logger.info(f"Confirmed room {room_id} is now encrypted")
-                                encrypted_count += 1
-                            else:
-                                logger.warning(f"Room {room_id} is still not marked as encrypted after enabling")
-                        except Exception as ee:
-                            logger.warning(f"Error enabling encryption for room {room_id}: {ee}")
-                    else:
-                        logger.warning(f"No permission to enable encryption for room {room_id}")
-                else:
-                    logger.warning(f"Could not get state for room {room_id}")
-            except Exception as e:
-                logger.warning(f"Error checking encryption status for room {room_id}: {e}")
+    if encrypted_count == 0:
+        logger.warning("No encrypted rooms found - encryption will not be used")
+        logger.info("Note: You need to enable encryption in rooms using Element or another client")
 
     # 6. Share group sessions for all encrypted rooms
     encrypted_rooms = [
@@ -445,8 +400,8 @@ async def initialize_e2ee(matrix_client: AsyncClient, config: Dict) -> None:
             except Exception as e:
                 logger.warning(f"Could not share group session for room {room_id}: {e}")
     else:
-        logger.warning("No encrypted rooms found - encryption may not be working properly")
-        logger.info("Note: You may need to enable encryption in the rooms manually using Element or another client")
+        logger.warning("No encrypted rooms found - encryption will not be used")
+        logger.info("Note: You need to enable encryption in rooms using Element or another client")
 
     logger.info("End-to-end encryption initialization complete")
 
