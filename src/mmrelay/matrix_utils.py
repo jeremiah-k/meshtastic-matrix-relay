@@ -79,9 +79,9 @@ async def verify_own_device(matrix_client: AsyncClient) -> bool:
         # Force a keys query specifically for our own user ID
         logger.debug(f"Forcing keys query for our own user {matrix_client.user_id}")
         try:
-            # The key is to explicitly pass our user_id in the users parameter
+            # The key is to explicitly pass our user_id in the user_ids parameter
             # This bypasses matrix-nio's normal optimization that skips querying for our own user
-            query_response = await matrix_client.keys_query(users=[matrix_client.user_id])
+            query_response = await matrix_client.keys_query(user_ids=[matrix_client.user_id])
 
             if (
                 hasattr(query_response, "device_keys")
@@ -95,13 +95,19 @@ async def verify_own_device(matrix_client: AsyncClient) -> bool:
         except Exception as e:
             logger.warning(f"Error querying device keys: {e}")
 
-        # Get our device directly from the device store
-        device = matrix_client.device_store.active_user_devices(matrix_client.user_id).get(matrix_client.device_id)
+        # Get our device by iterating through the device store
+        # active_user_devices returns a generator, not a dictionary
+        device = None
+        for d in matrix_client.device_store.active_user_devices(matrix_client.user_id):
+            if d.device_id == matrix_client.device_id:
+                device = d
+                logger.debug(f"Found our device {d.device_id} in the device store")
+                break
 
         if not device:
             logger.warning(f"Could not find our own device {matrix_client.device_id} in the device store")
             # Log all devices we have for debugging
-            devices = matrix_client.device_store.active_user_devices(matrix_client.user_id)
+            devices = list(matrix_client.device_store.active_user_devices(matrix_client.user_id))
             if devices:
                 logger.debug(f"Found {len(devices)} devices for our user, but not our device ID")
                 for d in devices:
@@ -284,7 +290,7 @@ async def connect_matrix(passed_config=None):
         credentials_path = os.path.join(config_dir, "credentials.json")
 
         if os.path.exists(credentials_path):
-            logger.info(f"Found credentials at {credentials_path}")
+            logger.info(f"Using Matrix credentials from {credentials_path}")
             with open(credentials_path, "r") as f:
                 credentials = json.load(f)
     except Exception as e:
@@ -296,12 +302,9 @@ async def connect_matrix(passed_config=None):
         matrix_access_token = credentials["access_token"]
         bot_user_id = credentials["user_id"]
         e2ee_device_id = credentials["device_id"]
-        logger.info(f"Using credentials from {credentials_path}")
         # If config also has Matrix login info, let the user know we're ignoring it
         if config and "matrix" in config and "access_token" in config["matrix"]:
-            logger.info(
-                "NOTE: Ignoring Matrix login details in config.yaml in favor of credentials.json"
-            )
+            logger.debug("Ignoring Matrix login details in config.yaml in favor of credentials.json")
     else:
         # Check if config is available
         if config is None:
