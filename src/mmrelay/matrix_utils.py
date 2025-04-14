@@ -325,14 +325,9 @@ async def connect_matrix(passed_config=None):
         credentials_path = os.path.join(config_dir, "credentials.json")
 
         if os.path.exists(credentials_path):
-            # Load credentials but log at debug level - main.py will log a summary
-            logger.debug(f"Loading Matrix credentials from {credentials_path}")
+            logger.info(f"Using Matrix credentials from {credentials_path}")
             with open(credentials_path, "r") as f:
                 credentials = json.load(f)
-
-            # Add the credentials path to the config for reference in main.py
-            if config:
-                config["credentials_path"] = credentials_path
     except Exception as e:
         logger.warning(f"Error loading credentials: {e}")
 
