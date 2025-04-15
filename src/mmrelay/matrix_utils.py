@@ -388,21 +388,20 @@ async def connect_matrix(passed_config=None):
                     devices = matrix_client.device_store[matrix_client.user_id]
                     logger.info(f"Found {len(devices)} of our own devices in the device store")
 
-                    # Trust other devices but NOT our current one
-                    # Matrix cannot verify its own current device directly
+                    # For bots, the pragmatic approach is to mark our own device as ignored
+                    # This tells matrix-nio to ignore verification status and proceed with encryption
                     for device_id, device in devices.items():
-                        # Skip our current device as we can't verify it directly
-                        # This is a fundamental limitation in Matrix's trust model
                         if device_id == matrix_client.device_id:
-                            logger.debug(f"Skipping verification of our current device: {device_id} (cannot verify own device)")
-                            continue
-
-                        try:
-                            # Verify other devices
-                            matrix_client.verify_device(device)
-                            logger.info(f"Trusted own device {device_id}")
-                        except Exception as e:
-                            logger.debug(f"Failed to trust device {device_id}: {e}")
+                            # Mark our own device as ignored to avoid verification warnings
+                            matrix_client.ignore_device(device)
+                            logger.debug(f"Marked our own device {device_id} as ignored to avoid verification warnings")
+                        else:
+                            try:
+                                # Verify other devices
+                                matrix_client.verify_device(device)
+                                logger.debug(f"Trusted other device {device_id}")
+                            except Exception as e:
+                                logger.debug(f"Failed to trust device {device_id}: {e}")
 
                     # Log about our current device
                     if matrix_client.device_id in devices:
@@ -447,10 +446,10 @@ async def connect_matrix(passed_config=None):
             ):
                 verified_count = 0
 
-                # First, make sure our own device is verified and trusted
+                # First, set up device trust for our bot
                 if matrix_client.device_id and matrix_client.user_id:
                     logger.debug(
-                        "Setting up cross-signing for our devices"
+                        "Setting up device trust for our bot"
                     )
                     try:
                         # Get our own devices
@@ -458,25 +457,24 @@ async def connect_matrix(passed_config=None):
                             matrix_client.user_id
                         )
                         for device in own_devices:
-                            # Skip our current device as we can't verify it directly
-                            # This is a fundamental limitation in Matrix's trust model
                             if device.device_id == matrix_client.device_id:
-                                logger.debug(f"Skipping verification of our current device: {device.device_id} (cannot verify own device)")
-                                continue
+                                # Mark our own device as ignored to avoid verification warnings
+                                matrix_client.ignore_device(device)
+                                logger.debug(f"Marked our own device {device.device_id} as ignored to avoid verification warnings")
+                            else:
+                                # Verify other devices
+                                matrix_client.verify_device(device)
 
-                            # Verify other devices
-                            matrix_client.verify_device(device)
+                                # Also mark the device as trusted if that method exists
+                                if hasattr(matrix_client.olm.store, "mark_device_as_trusted"):
+                                    matrix_client.olm.store.mark_device_as_trusted(device)
 
-                            # Also mark the device as trusted if that method exists
-                            if hasattr(matrix_client.olm.store, "mark_device_as_trusted"):
-                                matrix_client.olm.store.mark_device_as_trusted(device)
-
-                            logger.debug(
-                                f"Verified and trusted other device: {device.device_id}"
-                            )
-                            verified_count += 1
+                                logger.debug(
+                                    f"Verified other device: {device.device_id}"
+                                )
+                                verified_count += 1
                     except Exception as e:
-                        logger.debug(f"Error verifying other devices: {e}")
+                        logger.debug(f"Error setting up device trust: {e}")
 
                 # Then verify and trust all other devices
                 for user_id in matrix_client.device_store.users:
@@ -774,25 +772,24 @@ async def matrix_relay(
                             if matrix_client.device_store and matrix_client.user_id in matrix_client.device_store:
                                 devices = matrix_client.device_store[matrix_client.user_id]
 
-                                # Trust other devices but NOT our current one
-                                # Matrix cannot verify its own current device directly
+                                # For bots, the pragmatic approach is to mark our own device as ignored
+                                # This tells matrix-nio to ignore verification status and proceed with encryption
                                 for device_id, device in devices.items():
-                                    # Skip our current device as we can't verify it directly
-                                    # This is a fundamental limitation in Matrix's trust model
                                     if device_id == matrix_client.device_id:
-                                        logger.debug(f"Skipping verification of our current device: {device_id} (cannot verify own device)")
-                                        continue
+                                        # Mark our own device as ignored to avoid verification warnings
+                                        matrix_client.ignore_device(device)
+                                        logger.debug(f"Marked our own device {device_id} as ignored to avoid verification warnings")
+                                    else:
+                                        try:
+                                            # Verify other devices
+                                            matrix_client.verify_device(device)
+                                            logger.debug(f"Trusted other device {device_id}")
 
-                                    try:
-                                        # Verify other devices
-                                        matrix_client.verify_device(device)
-                                        logger.debug(f"Trusted own device {device_id}")
-
-                                        # Also mark the device as trusted if that method exists
-                                        if hasattr(matrix_client.olm.store, "mark_device_as_trusted"):
-                                            matrix_client.olm.store.mark_device_as_trusted(device)
-                                    except Exception as e:
-                                        logger.warning(f"Failed to trust device {device_id}: {e}")
+                                            # Also mark the device as trusted if that method exists
+                                            if hasattr(matrix_client.olm.store, "mark_device_as_trusted"):
+                                                matrix_client.olm.store.mark_device_as_trusted(device)
+                                        except Exception as e:
+                                            logger.debug(f"Failed to trust device {device_id}: {e}")
                             else:
                                 logger.debug("No devices found for our user in the device store (this is normal for first run)")
                         except Exception as ve:

@@ -177,25 +177,24 @@ async def main(config):
                 devices = matrix_client.device_store[matrix_client.user_id]
                 matrix_logger.info(f"Found {len(devices)} of our own devices in the device store")
 
-                # Trust other devices but NOT our current one
-                # Matrix cannot verify its own current device directly
+                # For bots, the pragmatic approach is to mark our own device as ignored
+                # This tells matrix-nio to ignore verification status and proceed with encryption
                 for device_id, device in devices.items():
-                    # Skip our current device as we can't verify it directly
-                    # This is a fundamental limitation in Matrix's trust model
                     if device_id == matrix_client.device_id:
-                        matrix_logger.debug(f"Skipping verification of our current device: {device_id} (cannot verify own device)")
-                        continue
+                        # Mark our own device as ignored to avoid verification warnings
+                        matrix_client.ignore_device(device)
+                        matrix_logger.debug(f"Marked our own device {device_id} as ignored to avoid verification warnings")
+                    else:
+                        try:
+                            # Verify other devices
+                            matrix_client.verify_device(device)
+                            matrix_logger.debug(f"Trusted other device {device_id}")
 
-                    try:
-                        # Verify other devices
-                        matrix_client.verify_device(device)
-                        matrix_logger.info(f"Trusted own device {device_id}")
-
-                        # Also mark the device as trusted if that method exists
-                        if hasattr(matrix_client.olm.store, "mark_device_as_trusted"):
-                            matrix_client.olm.store.mark_device_as_trusted(device)
-                    except Exception as e:
-                        matrix_logger.debug(f"Failed to trust device {device_id}: {e}")
+                            # Also mark the device as trusted if that method exists
+                            if hasattr(matrix_client.olm.store, "mark_device_as_trusted"):
+                                matrix_client.olm.store.mark_device_as_trusted(device)
+                        except Exception as e:
+                            matrix_logger.debug(f"Failed to trust device {device_id}: {e}")
 
                 # Log about our current device
                 if matrix_client.device_id in devices:
