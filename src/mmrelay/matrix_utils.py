@@ -394,7 +394,7 @@ async def connect_matrix(passed_config=None):
                         # Skip our current device as we can't verify it directly
                         # This is a fundamental limitation in Matrix's trust model
                         if device_id == matrix_client.device_id:
-                            logger.info(f"Skipping verification of our current device: {device_id} (will be trusted through cross-signing)")
+                            logger.debug(f"Skipping verification of our current device: {device_id} (cannot verify own device)")
                             continue
 
                         try:
@@ -402,7 +402,7 @@ async def connect_matrix(passed_config=None):
                             matrix_client.verify_device(device)
                             logger.info(f"Trusted own device {device_id}")
                         except Exception as e:
-                            logger.error(f"Failed to trust device {device_id}: {e}")
+                            logger.debug(f"Failed to trust device {device_id}: {e}")
 
                     # Log about our current device
                     if matrix_client.device_id in devices:
@@ -461,7 +461,7 @@ async def connect_matrix(passed_config=None):
                             # Skip our current device as we can't verify it directly
                             # This is a fundamental limitation in Matrix's trust model
                             if device.device_id == matrix_client.device_id:
-                                logger.info(f"Skipping verification of our current device: {device.device_id} (will be trusted through cross-signing)")
+                                logger.debug(f"Skipping verification of our current device: {device.device_id} (cannot verify own device)")
                                 continue
 
                             # Verify other devices
@@ -476,7 +476,7 @@ async def connect_matrix(passed_config=None):
                             )
                             verified_count += 1
                     except Exception as e:
-                        logger.warning(f"Error setting up cross-signing: {e}")
+                        logger.debug(f"Error verifying other devices: {e}")
 
                 # Then verify and trust all other devices
                 for user_id in matrix_client.device_store.users:
@@ -780,7 +780,7 @@ async def matrix_relay(
                                     # Skip our current device as we can't verify it directly
                                     # This is a fundamental limitation in Matrix's trust model
                                     if device_id == matrix_client.device_id:
-                                        logger.debug(f"Skipping verification of our current device: {device_id} (will be trusted through cross-signing)")
+                                        logger.debug(f"Skipping verification of our current device: {device_id} (cannot verify own device)")
                                         continue
 
                                     try:
@@ -796,7 +796,7 @@ async def matrix_relay(
                             else:
                                 logger.debug("No devices found for our user in the device store (this is normal for first run)")
                         except Exception as ve:
-                            logger.warning(f"Error setting up cross-signing: {ve}")
+                            logger.debug(f"Error verifying other devices: {ve}")
 
                         # Then, verify ALL other devices in the room to ensure encryption works
                         logger.debug(f"Verifying all devices in room {room_id}")

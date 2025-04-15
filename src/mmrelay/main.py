@@ -183,7 +183,7 @@ async def main(config):
                     # Skip our current device as we can't verify it directly
                     # This is a fundamental limitation in Matrix's trust model
                     if device_id == matrix_client.device_id:
-                        matrix_logger.info(f"Skipping verification of our current device: {device_id} (will be trusted through cross-signing)")
+                        matrix_logger.debug(f"Skipping verification of our current device: {device_id} (cannot verify own device)")
                         continue
 
                     try:
@@ -195,7 +195,7 @@ async def main(config):
                         if hasattr(matrix_client.olm.store, "mark_device_as_trusted"):
                             matrix_client.olm.store.mark_device_as_trusted(device)
                     except Exception as e:
-                        matrix_logger.error(f"Failed to trust device {device_id}: {e}")
+                        matrix_logger.debug(f"Failed to trust device {device_id}: {e}")
 
                 # Log about our current device
                 if matrix_client.device_id in devices:
