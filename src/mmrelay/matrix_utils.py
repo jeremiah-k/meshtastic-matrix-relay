@@ -388,16 +388,16 @@ async def connect_matrix(passed_config=None):
                     devices = matrix_client.device_store[matrix_client.user_id]
                     logger.info(f"Found {len(devices)} of our own devices in the device store")
 
-                    # Trust each of our devices
+                    # Trust ALL of our devices, including our current device
                     for device_id, device in devices.items():
-                        # Skip our current device as we can't verify it
-                        if device_id == matrix_client.device_id:
-                            logger.debug(f"Skipping our current device: {device_id}")
-                            continue
-
                         try:
+                            # Always verify all devices, including our current one
                             matrix_client.verify_device(device)
                             logger.info(f"Trusted own device {device_id}")
+
+                            # If this is our current device, log it specially
+                            if device_id == matrix_client.device_id:
+                                logger.info(f"Trusted our current device: {device_id}")
                         except Exception as e:
                             logger.error(f"Failed to trust device {device_id}: {e}")
 
@@ -455,12 +455,17 @@ async def connect_matrix(passed_config=None):
                             matrix_client.user_id
                         )
                         for device in own_devices:
-                            # Verify and trust all our devices, especially our current one
-                            matrix_client.olm.store.verify_device(device)
-                            if hasattr(
-                                matrix_client.olm.store, "mark_device_as_trusted"
-                            ):
+                            # First use the client's verify_device method
+                            matrix_client.verify_device(device)
+
+                            # Then also use the store's methods for extra assurance
+                            if hasattr(matrix_client.olm.store, "verify_device"):
+                                matrix_client.olm.store.verify_device(device)
+
+                            # Also mark the device as trusted if that method exists
+                            if hasattr(matrix_client.olm.store, "mark_device_as_trusted"):
                                 matrix_client.olm.store.mark_device_as_trusted(device)
+
                             logger.debug(
                                 f"Verified and trusted our device: {device.device_id}"
                             )
@@ -770,16 +775,24 @@ async def matrix_relay(
                             if matrix_client.device_store and matrix_client.user_id in matrix_client.device_store:
                                 devices = matrix_client.device_store[matrix_client.user_id]
 
-                                # Trust each of our devices
+                                # Trust ALL of our devices, including our current device
                                 for device_id, device in devices.items():
-                                    # Skip our current device as we can't verify it
-                                    if device_id == matrix_client.device_id:
-                                        logger.debug(f"Skipping our current device: {device_id}")
-                                        continue
-
                                     try:
+                                        # Always verify all devices, including our current one
                                         matrix_client.verify_device(device)
                                         logger.debug(f"Trusted own device {device_id}")
+
+                                        # If this is our current device, log it specially
+                                        if device_id == matrix_client.device_id:
+                                            logger.debug(f"Trusted our current device: {device_id}")
+
+                                            # Also use the store's methods for extra assurance
+                                            if hasattr(matrix_client.olm.store, "verify_device"):
+                                                matrix_client.olm.store.verify_device(device)
+
+                                            # Also mark the device as trusted if that method exists
+                                            if hasattr(matrix_client.olm.store, "mark_device_as_trusted"):
+                                                matrix_client.olm.store.mark_device_as_trusted(device)
                                     except Exception as e:
                                         logger.warning(f"Failed to trust device {device_id}: {e}")
                             else:
@@ -905,7 +918,7 @@ async def matrix_relay(
                                         await matrix_client.share_group_session(room_id, ignore_unverified_devices=True)
                                     except Exception as retry_error:
                                         if "Already sharing a group session" in str(retry_error):
-                                            logger.debug(f"Recovery detected group session already being shared, continuing")
+                                            logger.debug("Recovery detected group session already being shared, continuing")
                                         else:
                                             raise
 
