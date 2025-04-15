@@ -184,17 +184,6 @@ async def main(config):
                         # Mark our own device as ignored to avoid verification warnings
                         matrix_client.ignore_device(device)
                         matrix_logger.debug(f"Marked our own device {device_id} as ignored to avoid verification warnings")
-                    else:
-                        try:
-                            # Verify other devices
-                            matrix_client.verify_device(device)
-                            matrix_logger.debug(f"Trusted other device {device_id}")
-
-                            # Also mark the device as trusted if that method exists
-                            if hasattr(matrix_client.olm.store, "mark_device_as_trusted"):
-                                matrix_client.olm.store.mark_device_as_trusted(device)
-                        except Exception as e:
-                            matrix_logger.debug(f"Failed to trust device {device_id}: {e}")
 
                 # Log about our current device
                 if matrix_client.device_id in devices:
@@ -204,16 +193,10 @@ async def main(config):
             else:
                 matrix_logger.debug("No devices found for our user in the device store (this is normal for first run)")
 
-            # Verify all other devices
-            if matrix_client.device_store:
-                for user_id in matrix_client.device_store.users:
-                    if user_id == matrix_client.user_id:
-                        continue
-                    for device in matrix_client.device_store.active_user_devices(user_id):
-                        matrix_client.verify_device(device)
-                        matrix_logger.debug(f"Verified device {device.device_id} for user {user_id}")
+            # We don't verify other users' devices - we use ignore_unverified_devices instead
+            matrix_logger.debug("Using ignore_unverified_devices for all rooms")
         except Exception as ve:
-            matrix_logger.debug(f"Device verification info: {ve}")
+            matrix_logger.debug(f"Device trust setup info: {ve}")
 
         # 2. Check if keys need to be uploaded and upload them if needed
         matrix_logger.debug("Checking if encryption keys need to be uploaded...")

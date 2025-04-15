@@ -395,13 +395,6 @@ async def connect_matrix(passed_config=None):
                             # Mark our own device as ignored to avoid verification warnings
                             matrix_client.ignore_device(device)
                             logger.debug(f"Marked our own device {device_id} as ignored to avoid verification warnings")
-                        else:
-                            try:
-                                # Verify other devices
-                                matrix_client.verify_device(device)
-                                logger.debug(f"Trusted other device {device_id}")
-                            except Exception as e:
-                                logger.debug(f"Failed to trust device {device_id}: {e}")
 
                     # Log about our current device
                     if matrix_client.device_id in devices:
@@ -444,9 +437,9 @@ async def connect_matrix(passed_config=None):
                 and matrix_client.olm
                 and matrix_client.olm.store
             ):
-                verified_count = 0
+                # Set up device trust for our bot
 
-                # First, set up device trust for our bot
+                # Mark our own device as ignored to avoid verification warnings
                 if matrix_client.device_id and matrix_client.user_id:
                     logger.debug(
                         "Setting up device trust for our bot"
@@ -461,41 +454,10 @@ async def connect_matrix(passed_config=None):
                                 # Mark our own device as ignored to avoid verification warnings
                                 matrix_client.ignore_device(device)
                                 logger.debug(f"Marked our own device {device.device_id} as ignored to avoid verification warnings")
-                            else:
-                                # Verify other devices
-                                matrix_client.verify_device(device)
-
-                                # Also mark the device as trusted if that method exists
-                                if hasattr(matrix_client.olm.store, "mark_device_as_trusted"):
-                                    matrix_client.olm.store.mark_device_as_trusted(device)
-
-                                logger.debug(
-                                    f"Verified other device: {device.device_id}"
-                                )
-                                verified_count += 1
                     except Exception as e:
                         logger.debug(f"Error setting up device trust: {e}")
 
-                # Then verify and trust all other devices
-                for user_id in matrix_client.device_store.users:
-                    # Skip our own user as we already processed it
-                    if user_id == matrix_client.user_id:
-                        continue
-
-                    for device in matrix_client.device_store.active_user_devices(
-                        user_id
-                    ):
-                        # Always verify and trust all devices
-                        matrix_client.olm.store.verify_device(device)
-                        # Also mark the device as trusted in the store
-                        if hasattr(matrix_client.olm.store, "mark_device_as_trusted"):
-                            matrix_client.olm.store.mark_device_as_trusted(device)
-                        verified_count += 1
-
-                if verified_count > 0:
-                    logger.debug(
-                        f"Verified and trusted {verified_count} total devices in the store"
-                    )
+                # We don't verify other users' devices - we use ignore_unverified_devices instead
 
             # Upload keys if needed
             if matrix_client.should_upload_keys:
@@ -765,8 +727,8 @@ async def matrix_relay(
                 try:
                     # Ensure we have shared a group session
                     if matrix_client.olm:
-                        # First, trust our other devices (not our current one)
-                        logger.debug("Setting up cross-signing before sending encrypted message...")
+                        # Mark our own device as ignored to avoid verification warnings
+                        logger.debug("Setting up device trust before sending encrypted message...")
                         try:
                             # Check if our user_id is in the device_store
                             if matrix_client.device_store and matrix_client.user_id in matrix_client.device_store:
@@ -779,34 +741,13 @@ async def matrix_relay(
                                         # Mark our own device as ignored to avoid verification warnings
                                         matrix_client.ignore_device(device)
                                         logger.debug(f"Marked our own device {device_id} as ignored to avoid verification warnings")
-                                    else:
-                                        try:
-                                            # Verify other devices
-                                            matrix_client.verify_device(device)
-                                            logger.debug(f"Trusted other device {device_id}")
-
-                                            # Also mark the device as trusted if that method exists
-                                            if hasattr(matrix_client.olm.store, "mark_device_as_trusted"):
-                                                matrix_client.olm.store.mark_device_as_trusted(device)
-                                        except Exception as e:
-                                            logger.debug(f"Failed to trust device {device_id}: {e}")
                             else:
                                 logger.debug("No devices found for our user in the device store (this is normal for first run)")
                         except Exception as ve:
-                            logger.debug(f"Error verifying other devices: {ve}")
+                            logger.debug(f"Error setting up device trust: {ve}")
 
-                        # Then, verify ALL other devices in the room to ensure encryption works
-                        logger.debug(f"Verifying all devices in room {room_id}")
-                        if matrix_client.device_store:
-                            for user_id in room.users:
-                                if user_id == matrix_client.user_id:  # Skip our own user
-                                    continue
-
-                                # Get all devices for this user and verify them
-                                for device in matrix_client.device_store.active_user_devices(user_id):
-                                    # Verify the device using the client's method
-                                    matrix_client.verify_device(device)
-                                    logger.debug(f"Verified device {device.device_id} for user {user_id}")
+                        # We don't verify other users' devices - we use ignore_unverified_devices instead
+                        logger.debug(f"Using ignore_unverified_devices for room {room_id}")
 
                         # Make sure the store is loaded
                         try:
@@ -980,32 +921,16 @@ async def matrix_relay(
                 f"Encryption error with unverified device in room {room_id}: {e}"
             )
             logger.warning(
-                "Attempting to verify all devices and share a new group session..."
+                "Using ignore_unverified_devices and sharing a new group session..."
             )
             try:
-                # Get all devices in the room and mark them as verified
+                # Get the room to use ignore_unverified_devices
                 if matrix_client.olm and matrix_client.device_store:
                     # Get all users in the room
                     room = matrix_client.rooms.get(room_id)
                     if room:
-                        # Verify all devices for all users in the room
-                        for user_id in room.users:
-                            # Skip our own user
-                            if user_id == matrix_client.user_id:
-                                continue
-
-                            # Get all devices for this user and mark them as verified
-                            for (
-                                device
-                            ) in matrix_client.device_store.active_user_devices(
-                                user_id
-                            ):
-                                # Use the store's verify_device method
-                                if hasattr(matrix_client.olm.store, "verify_device"):
-                                    matrix_client.olm.store.verify_device(device)
-                                    logger.debug(
-                                        f"Verified device {device.device_id} for user {user_id}"
-                                    )
+                        # We don't verify other users' devices - we use ignore_unverified_devices instead
+                        logger.debug(f"Using ignore_unverified_devices for room {room_id}")
 
                 # Query and claim keys for all devices in the room
                 users_devices = {}
@@ -1047,7 +972,7 @@ async def matrix_relay(
                         room_id, ignore_unverified_devices=True
                     )
                     logger.debug(
-                        f"Shared new group session for room {room_id} after verification"
+                        f"Shared new group session for room {room_id} with ignore_unverified_devices=True"
                     )
 
                 # Retry sending the message with explicit ignore_unverified_devices=True
@@ -1061,11 +986,11 @@ async def matrix_relay(
                     timeout=10.0,
                 )
                 logger.info(
-                    f"Successfully sent message after verification bypass to room: {room_id}"
+                    f"Successfully sent message with ignore_unverified_devices=True to room: {room_id}"
                 )
             except Exception as retry_error:
                 logger.error(
-                    f"Failed to send message even after verification bypass: {retry_error}"
+                    f"Failed to send message even with ignore_unverified_devices=True: {retry_error}"
                 )
                 return
         except Exception as e:
@@ -1214,20 +1139,8 @@ async def on_room_message(
                         f"Attempting to handle undecryptable event from {sender}"
                     )
 
-                    # 1. Verify and trust all devices for this sender
-                    for device in matrix_client.device_store.active_user_devices(
-                        sender
-                    ):
-                        if hasattr(matrix_client.olm.store, "verify_device"):
-                            matrix_client.olm.store.verify_device(device)
-                            logger.debug(
-                                f"Verified device {device.device_id} for user {sender}"
-                            )
-                        if hasattr(matrix_client.olm.store, "mark_device_as_trusted"):
-                            matrix_client.olm.store.mark_device_as_trusted(device)
-                            logger.debug(
-                                f"Trusted device {device.device_id} for user {sender}"
-                            )
+                    # We don't verify other users' devices - we use ignore_unverified_devices instead
+                    logger.debug(f"Using ignore_unverified_devices for {sender}'s devices")
 
                     # 2. Upload our keys
                     if matrix_client.should_upload_keys:
