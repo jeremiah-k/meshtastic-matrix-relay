@@ -408,22 +408,46 @@ async def connect_matrix(passed_config=None):
 
             # Patch the client to handle unverified devices
             # This is a safer approach than monkey patching the OlmDevice class
-            original_encrypt_for_devices = None
             if hasattr(matrix_client, "olm") and matrix_client.olm:
+                # First, make sure all devices are marked as ignored
+                if hasattr(matrix_client, "device_store") and matrix_client.device_store:
+                    logger.debug("Marking all devices as ignored to ensure encryption works")
+                    devices_to_ignore = []
+                    for user_id in matrix_client.device_store.users:
+                        for device in matrix_client.device_store.active_user_devices(user_id):
+                            if not matrix_client.is_device_ignored(device):
+                                devices_to_ignore.append(device)
+
+                    if devices_to_ignore:
+                        logger.debug(f"Ignoring {len(devices_to_ignore)} devices to ensure encryption works")
+                        matrix_client.store.ignore_devices(devices_to_ignore)
+
+                # Then patch the encrypt_for_devices method
                 if hasattr(matrix_client.olm, "encrypt_for_devices"):
                     original_encrypt_for_devices = matrix_client.olm.encrypt_for_devices
 
                     # Create a wrapper that ignores verification status
                     async def encrypt_for_all_devices(
-                        room_id, users_devices, plaintext
+                        room_id, users_devices, plaintext, **kwargs
                     ):
-                        # Force ignore_unverified_devices=True
-                        return await original_encrypt_for_devices(
-                            room_id,
-                            users_devices,
-                            plaintext,
-                            ignore_unverified_devices=True,
-                        )
+                        # Force ignore_unverified_devices=True regardless of what was passed
+                        kwargs["ignore_unverified_devices"] = True
+                        try:
+                            return await original_encrypt_for_devices(
+                                room_id,
+                                users_devices,
+                                plaintext,
+                                **kwargs
+                            )
+                        except Exception as e:
+                            logger.warning(f"Error in patched encrypt_for_devices: {e}")
+                            # Try one more time with a clean set of parameters
+                            return await original_encrypt_for_devices(
+                                room_id,
+                                users_devices,
+                                plaintext,
+                                ignore_unverified_devices=True
+                            )
 
                     # Apply the patch
                     matrix_client.olm.encrypt_for_devices = encrypt_for_all_devices
@@ -808,7 +832,6 @@ async def matrix_relay(
                                 logger.warning(f"Error loading encryption store: {le}")
 
                             # Implement exponential backoff retry for sharing group session
-                            import asyncio
                             max_attempts = 3
                             for attempt in range(max_attempts):
                                 try:
