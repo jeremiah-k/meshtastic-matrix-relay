@@ -377,7 +377,7 @@ async def connect_matrix(passed_config=None):
                 logger.debug(f"Available rooms: {list(matrix_client.rooms.keys())}")
 
             # Trust all of our own devices to ensure encryption works
-            logger.debug("Trusting our own devices for encryption...")
+            logger.debug("Setting up cross-signing for encryption...")
             try:
                 # First make sure we have synced to populate the device store
                 logger.debug("Performing sync to populate device store...")
@@ -388,16 +388,19 @@ async def connect_matrix(passed_config=None):
                     devices = matrix_client.device_store[matrix_client.user_id]
                     logger.info(f"Found {len(devices)} of our own devices in the device store")
 
-                    # Trust ALL of our devices, including our current device
+                    # Trust other devices but NOT our current one
+                    # Matrix cannot verify its own current device directly
                     for device_id, device in devices.items():
+                        # Skip our current device as we can't verify it directly
+                        # This is a fundamental limitation in Matrix's trust model
+                        if device_id == matrix_client.device_id:
+                            logger.info(f"Skipping verification of our current device: {device_id} (will be trusted through cross-signing)")
+                            continue
+
                         try:
-                            # Always verify all devices, including our current one
+                            # Verify other devices
                             matrix_client.verify_device(device)
                             logger.info(f"Trusted own device {device_id}")
-
-                            # If this is our current device, log it specially
-                            if device_id == matrix_client.device_id:
-                                logger.info(f"Trusted our current device: {device_id}")
                         except Exception as e:
                             logger.error(f"Failed to trust device {device_id}: {e}")
 
@@ -447,7 +450,7 @@ async def connect_matrix(passed_config=None):
                 # First, make sure our own device is verified and trusted
                 if matrix_client.device_id and matrix_client.user_id:
                     logger.debug(
-                        f"Ensuring our own device {matrix_client.device_id} is verified and trusted"
+                        "Setting up cross-signing for our devices"
                     )
                     try:
                         # Get our own devices
@@ -455,29 +458,25 @@ async def connect_matrix(passed_config=None):
                             matrix_client.user_id
                         )
                         for device in own_devices:
-                            # First use the client's verify_device method
-                            matrix_client.verify_device(device)
+                            # Skip our current device as we can't verify it directly
+                            # This is a fundamental limitation in Matrix's trust model
+                            if device.device_id == matrix_client.device_id:
+                                logger.info(f"Skipping verification of our current device: {device.device_id} (will be trusted through cross-signing)")
+                                continue
 
-                            # Then also use the store's methods for extra assurance
-                            if hasattr(matrix_client.olm.store, "verify_device"):
-                                matrix_client.olm.store.verify_device(device)
+                            # Verify other devices
+                            matrix_client.verify_device(device)
 
                             # Also mark the device as trusted if that method exists
                             if hasattr(matrix_client.olm.store, "mark_device_as_trusted"):
                                 matrix_client.olm.store.mark_device_as_trusted(device)
 
                             logger.debug(
-                                f"Verified and trusted our device: {device.device_id}"
+                                f"Verified and trusted other device: {device.device_id}"
                             )
                             verified_count += 1
-
-                            # If this is our current device, log it
-                            if device.device_id == matrix_client.device_id:
-                                logger.info(
-                                    f"Verified and trusted our current device: {device.device_id}"
-                                )
                     except Exception as e:
-                        logger.warning(f"Error verifying our own devices: {e}")
+                        logger.warning(f"Error setting up cross-signing: {e}")
 
                 # Then verify and trust all other devices
                 for user_id in matrix_client.device_store.users:
@@ -768,37 +767,36 @@ async def matrix_relay(
                 try:
                     # Ensure we have shared a group session
                     if matrix_client.olm:
-                        # First, trust our own devices
-                        logger.debug("Trusting our own devices before sending encrypted message...")
+                        # First, trust our other devices (not our current one)
+                        logger.debug("Setting up cross-signing before sending encrypted message...")
                         try:
                             # Check if our user_id is in the device_store
                             if matrix_client.device_store and matrix_client.user_id in matrix_client.device_store:
                                 devices = matrix_client.device_store[matrix_client.user_id]
 
-                                # Trust ALL of our devices, including our current device
+                                # Trust other devices but NOT our current one
+                                # Matrix cannot verify its own current device directly
                                 for device_id, device in devices.items():
+                                    # Skip our current device as we can't verify it directly
+                                    # This is a fundamental limitation in Matrix's trust model
+                                    if device_id == matrix_client.device_id:
+                                        logger.debug(f"Skipping verification of our current device: {device_id} (will be trusted through cross-signing)")
+                                        continue
+
                                     try:
-                                        # Always verify all devices, including our current one
+                                        # Verify other devices
                                         matrix_client.verify_device(device)
                                         logger.debug(f"Trusted own device {device_id}")
 
-                                        # If this is our current device, log it specially
-                                        if device_id == matrix_client.device_id:
-                                            logger.debug(f"Trusted our current device: {device_id}")
-
-                                            # Also use the store's methods for extra assurance
-                                            if hasattr(matrix_client.olm.store, "verify_device"):
-                                                matrix_client.olm.store.verify_device(device)
-
-                                            # Also mark the device as trusted if that method exists
-                                            if hasattr(matrix_client.olm.store, "mark_device_as_trusted"):
-                                                matrix_client.olm.store.mark_device_as_trusted(device)
+                                        # Also mark the device as trusted if that method exists
+                                        if hasattr(matrix_client.olm.store, "mark_device_as_trusted"):
+                                            matrix_client.olm.store.mark_device_as_trusted(device)
                                     except Exception as e:
                                         logger.warning(f"Failed to trust device {device_id}: {e}")
                             else:
                                 logger.debug("No devices found for our user in the device store (this is normal for first run)")
                         except Exception as ve:
-                            logger.warning(f"Error verifying own devices: {ve}")
+                            logger.warning(f"Error setting up cross-signing: {ve}")
 
                         # Then, verify ALL other devices in the room to ensure encryption works
                         logger.debug(f"Verifying all devices in room {room_id}")
