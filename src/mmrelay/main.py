@@ -94,6 +94,13 @@ async def main(config):
     for room in matrix_rooms:
         await join_matrix_room(matrix_client, room["id"])
 
+    # Log all configured rooms
+    matrix_logger.info("Configured Matrix rooms:")
+    for i, room in enumerate(matrix_rooms, 1):
+        room_id = room["id"]
+        room_name = room.get("name", "Unnamed room")
+        matrix_logger.info(f"  {i}. {room_name}: {room_id}")
+
     # Perform an initial sync to get room state and encryption info
     matrix_logger.info("Performing initial Matrix sync...")
     await matrix_client.sync(timeout=10000)  # 10 second timeout
@@ -105,6 +112,19 @@ async def main(config):
     matrix_logger.info(
         f"Initial sync completed with {len(matrix_client.rooms)} total rooms ({configured_rooms_found} configured rooms)"
     )
+
+    # Log all joined rooms after sync
+    if matrix_client.rooms:
+        matrix_logger.info("Successfully joined Matrix rooms:")
+        for i, (room_id, room) in enumerate(matrix_client.rooms.items(), 1):
+            room_name = room.display_name if hasattr(room, "display_name") else "Unknown"
+            is_configured = room_id in configured_room_ids
+            is_encrypted = room.encrypted if hasattr(room, "encrypted") else False
+            encryption_status = "(encrypted)" if is_encrypted else "(unencrypted)"
+            config_status = "(configured)" if is_configured else "(not configured)"
+            matrix_logger.info(f"  {i}. {room_name}: {room_id} {config_status} {encryption_status}")
+    else:
+        matrix_logger.warning("No Matrix rooms found after sync!")
 
     # =====================================================================
     # MATRIX E2EE IMPLEMENTATION - MAIN INITIALIZATION
@@ -235,7 +255,19 @@ async def main(config):
         matrix_logger.debug("Performing final sync to update encryption state...")
         await matrix_client.sync(timeout=5000)  # 5 second timeout
 
+        # Log encryption status of all rooms after E2EE setup
         matrix_logger.info("End-to-end encryption initialization complete")
+        if matrix_client.rooms:
+            matrix_logger.info("Room encryption status after E2EE setup:")
+            encrypted_count = 0
+            for i, (room_id, room) in enumerate(matrix_client.rooms.items(), 1):
+                room_name = room.display_name if hasattr(room, "display_name") else "Unknown"
+                is_encrypted = room.encrypted if hasattr(room, "encrypted") else False
+                if is_encrypted:
+                    encrypted_count += 1
+                encryption_status = "ENCRYPTED" if is_encrypted else "unencrypted"
+                matrix_logger.info(f"  {i}. {room_name}: {room_id} - {encryption_status}")
+            matrix_logger.info(f"Total rooms: {len(matrix_client.rooms)}, Encrypted: {encrypted_count}")
 
     # Now connect to Meshtastic after Matrix is ready
     meshtastic_utils.meshtastic_client = connect_meshtastic(passed_config=config)
