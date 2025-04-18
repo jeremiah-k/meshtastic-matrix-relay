@@ -8,7 +8,14 @@ import logging
 import signal
 import sys
 
-from nio import ReactionEvent, RoomMessageEmote, RoomMessageNotice, RoomMessageText
+from nio import (
+    MegolmEvent,
+    ReactionEvent,
+    RoomEncryptionEvent,
+    RoomMessageEmote,
+    RoomMessageNotice,
+    RoomMessageText,
+)
 
 # Import meshtastic_utils as a module to set event_loop
 from mmrelay import meshtastic_utils
@@ -78,15 +85,75 @@ async def main(config):
     # Load plugins early
     load_plugins(passed_config=config)
 
-    # Connect to Meshtastic
-    meshtastic_utils.meshtastic_client = connect_meshtastic(passed_config=config)
-
-    # Connect to Matrix
+    # Connect to Matrix first
     matrix_client = await connect_matrix(passed_config=config)
 
-    # Join the rooms specified in the config.yaml
+    # Join the rooms specified in the config.yaml before connecting to Meshtastic
+    # This gives Matrix time to sync and establish encryption sessions
+    matrix_logger.info("Joining Matrix rooms...")
     for room in matrix_rooms:
         await join_matrix_room(matrix_client, room["id"])
+
+    # Log all configured rooms
+    matrix_logger.info("Configured Matrix rooms:")
+    for i, room in enumerate(matrix_rooms, 1):
+        room_id = room["id"]
+        room_name = room.get("name", "Unnamed room")
+        matrix_logger.info(f"  {i}. {room_name}: {room_id}")
+
+    # Perform an initial sync to get room state and encryption info
+    matrix_logger.info("Performing initial Matrix sync...")
+    await matrix_client.sync(timeout=10000)  # 10 second timeout
+    # Count configured rooms vs. total rooms
+    configured_room_ids = [room["id"] for room in matrix_rooms]
+    configured_rooms_found = sum(
+        1 for room_id in matrix_client.rooms if room_id in configured_room_ids
+    )
+    matrix_logger.info(
+        f"Initial sync completed with {len(matrix_client.rooms)} total rooms ({configured_rooms_found} configured rooms)"
+    )
+
+    # Log all joined rooms after sync at debug level
+    if matrix_client.rooms:
+        matrix_logger.debug("Successfully joined Matrix rooms:")
+        for i, (room_id, room) in enumerate(matrix_client.rooms.items(), 1):
+            room_name = room.display_name if hasattr(room, "display_name") else "Unknown"
+            is_configured = room_id in configured_room_ids
+            is_encrypted = room.encrypted if hasattr(room, "encrypted") else False
+            encryption_status = "(encrypted)" if is_encrypted else "(unencrypted)"
+            config_status = "(configured)" if is_configured else "(not configured)"
+            matrix_logger.debug(f"  {i}. {room_name}: {room_id} {config_status} {encryption_status}")
+    else:
+        matrix_logger.warning("No Matrix rooms found after sync!")
+
+    # If E2EE is enabled, properly initialize encryption
+    if (("encryption" in config["matrix"] and config["matrix"]["encryption"].get("enabled", False)) or
+        ("e2ee" in config["matrix"] and config["matrix"]["e2ee"].get("enabled", False))) and hasattr(matrix_client, "olm") and matrix_client.olm:
+        matrix_logger.info("Initializing end-to-end encryption...")
+
+        # Share group sessions for all encrypted rooms
+        encrypted_rooms = [room_id for room_id, room in matrix_client.rooms.items() if hasattr(room, "encrypted") and room.encrypted]
+        if encrypted_rooms:
+            matrix_logger.debug(f"Sharing group sessions for {len(encrypted_rooms)} encrypted rooms")
+            for room_id in encrypted_rooms:
+                try:
+                    # Use ignore_unverified_devices=True to ensure messages can be sent
+                    await matrix_client.share_group_session(room_id, ignore_unverified_devices=True)
+                    matrix_logger.debug(f"Shared group session for room {room_id}")
+                except Exception as e:
+                    matrix_logger.warning(f"Could not share group session for room {room_id}: {e}")
+        else:
+            matrix_logger.debug("No encrypted rooms found")
+
+        # Perform a final sync to ensure all group sessions are properly registered
+        matrix_logger.debug("Performing final sync to update encryption state...")
+        await matrix_client.sync(timeout=5000)  # 5 second timeout
+
+        # Log encryption status of all rooms after E2EE setup
+        matrix_logger.info("End-to-end encryption initialization complete")
+
+    # Now connect to Meshtastic after Matrix is ready
+    meshtastic_utils.meshtastic_client = connect_meshtastic(passed_config=config)
 
     # Register the message callback for Matrix
     matrix_logger.info("Listening for inbound Matrix messages...")
@@ -95,6 +162,10 @@ async def main(config):
     )
     # Add ReactionEvent callback so we can handle matrix reactions
     matrix_client.add_event_callback(on_room_message, ReactionEvent)
+    # Add MegolmEvent callback for encrypted messages
+    matrix_client.add_event_callback(on_room_message, MegolmEvent)
+    # Add RoomEncryptionEvent callback to detect when a room becomes encrypted
+    matrix_client.add_event_callback(on_room_message, RoomEncryptionEvent)
 
     # Set up shutdown event
     shutdown_event = asyncio.Event()
