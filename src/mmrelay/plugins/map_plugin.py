@@ -261,10 +261,15 @@ class Plugin(BasePlugin):
         if not self.matches(event):
             return False
 
-        from mmrelay.matrix_utils import connect_matrix
+        # Use the global matrix_client instance instead of calling connect_matrix()
+        # This avoids creating multiple client instances and ensures consistent state
+        from mmrelay.matrix_utils import matrix_client
         from mmrelay.meshtastic_utils import connect_meshtastic
 
-        matrix_client = await connect_matrix()
+        if not matrix_client:
+            self.logger.error("Matrix client is not initialized. Cannot send message.")
+            return False
+
         meshtastic_client = connect_meshtastic()
 
         pattern = r"^.*:(?: !map(?: zoom=(\d+))?(?: size=(\d+),(\d+))?)?$"

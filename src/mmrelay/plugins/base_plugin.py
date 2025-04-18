@@ -155,9 +155,13 @@ class BasePlugin(ABC):
         return [self.plugin_name]
 
     async def send_matrix_message(self, room_id, message, formatted=True):
-        from mmrelay.matrix_utils import connect_matrix
+        # Use the global matrix_client instance instead of calling connect_matrix()
+        # This avoids creating multiple client instances and ensures consistent state
+        from mmrelay.matrix_utils import matrix_client
 
-        matrix_client = await connect_matrix()
+        if not matrix_client:
+            self.logger.error("Matrix client is not initialized. Cannot send message.")
+            return None
 
         return await matrix_client.room_send(
             room_id=room_id,

@@ -102,9 +102,13 @@ class Plugin(BasePlugin):
         node = match.group(2)
 
         hourly_intervals = self._generate_timeperiods()
-        from mmrelay.matrix_utils import connect_matrix
+        # Use the global matrix_client instance instead of calling connect_matrix()
+        # This avoids creating multiple client instances and ensures consistent state
+        from mmrelay.matrix_utils import matrix_client
 
-        matrix_client = await connect_matrix()
+        if not matrix_client:
+            self.logger.error("Matrix client is not initialized. Cannot send message.")
+            return
 
         # Compute the hourly averages for each node
         hourly_averages = {}
