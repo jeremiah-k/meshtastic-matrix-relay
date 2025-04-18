@@ -2,6 +2,11 @@ matrix:
   homeserver: https://example.matrix.org
   access_token: reaalllllyloooooongsecretttttcodeeeeeeforrrrbot # See: https://t2bot.io/docs/access_tokens/
   bot_user_id: "@botuser:example.matrix.org"
+  # End-to-End Encryption (E2EE) configuration
+  # For E2EE, it's recommended to use 'mmrelay --bot-login' instead of manually setting access_token
+  encryption:
+    enabled: false # Set to true to enable E2EE support
+    # store_path: ~/.mmrelay/store # Optional: custom path for encryption keys
 
 matrix_rooms: # Needs at least 1 room & channel, but supports all Meshtastic channels
   - id: "#someroomalias:example.matrix.org" # Matrix room aliases & IDs supported
