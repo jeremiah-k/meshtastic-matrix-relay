@@ -26,7 +26,7 @@ def parse_arguments():
     parser.add_argument("--config", help="Path to config file", default=None)
     parser.add_argument(
         "--data-dir",
-        help="Base directory for all data (logs, database, plugins)",
+        help="Base directory for all data (logs, database, plugins, store)",
         default=None,
     )
     parser.add_argument(
@@ -45,6 +45,11 @@ def parse_arguments():
         "--generate-config",
         action="store_true",
         help="Generate a sample config.yaml file",
+    )
+    parser.add_argument(
+        "--bot-login",
+        action="store_true",
+        help="Login to Matrix as a bot and save credentials for E2EE",
     )
     parser.add_argument(
         "--install-service",
@@ -133,18 +138,35 @@ def check_config(args=None):
                     return False
 
                 matrix_section = config["matrix"]
-                required_matrix_fields = ["homeserver", "access_token", "bot_user_id"]
-                missing_matrix_fields = [
-                    field
-                    for field in required_matrix_fields
-                    if field not in matrix_section
-                ]
+                # Check if credentials.json is used instead
+                from mmrelay.config import get_base_dir
+                credentials_path = os.path.join(get_base_dir(), "credentials.json")
+                if not os.path.exists(credentials_path):
+                    # If credentials.json doesn't exist, config needs login details
+                    required_matrix_fields = ["homeserver", "access_token", "bot_user_id"]
+                    missing_matrix_fields = [
+                        field
+                        for field in required_matrix_fields
+                        if field not in matrix_section
+                    ]
 
-                if missing_matrix_fields:
-                    print(
-                        f"Error: Missing required fields in 'matrix' section: {', '.join(missing_matrix_fields)}"
-                    )
-                    return False
+                    if missing_matrix_fields:
+                        print(
+                            f"Error: Missing required fields in 'matrix' section (or use --bot-login to create credentials.json): {', '.join(missing_matrix_fields)}"
+                        )
+                        return False
+                else:
+                     # If credentials.json exists, config only needs homeserver and bot_user_id for reference
+                    required_matrix_fields = ["homeserver", "bot_user_id"]
+                    missing_matrix_fields = [
+                        field
+                        for field in required_matrix_fields
+                        if field not in matrix_section
+                    ]
+                    if missing_matrix_fields:
+                         print(
+                            f"Warning: Missing optional fields in 'matrix' section used for reference when credentials.json exists: {', '.join(missing_matrix_fields)}"
+                        )
 
                 # Check matrix_rooms section
                 if "matrix_rooms" not in config or not config["matrix_rooms"]:
@@ -265,6 +287,47 @@ def main():
         print(f"mmrelay {get_version()}")
         return 0
 
+    # Handle --bot-login
+    if args.bot_login:
+        import asyncio
+
+        # We need matrix_utils for login_matrix_bot
+        # Set up minimal logging for the login process
+        import logging
+        login_logger = logging.getLogger("MatrixLogin")
+        login_logger.setLevel(logging.INFO)
+        handler = logging.StreamHandler()
+        handler.setFormatter(
+            logging.Formatter(
+                fmt="%(asctime)s %(levelname)s:%(name)s:%(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S %z",
+            )
+        )
+        login_logger.addHandler(handler)
+
+        # Load matrix_utils dynamically to avoid circular dependency issues
+        # during initial setup if config/credentials aren't present yet
+        try:
+            from mmrelay.matrix_utils import login_matrix_bot
+        except ImportError as e:
+             login_logger.error(f"Failed to import matrix_utils: {e}")
+             login_logger.error("Ensure dependencies are installed correctly.")
+             return 1
+
+        # Only run the login function, not the main application
+        print("Matrix Bot Login")
+        print("================")
+        try:
+            # Run the login function with logout_others defaulting to True
+            result = asyncio.run(login_matrix_bot(logout_others=True))
+            return 0 if result else 1
+        except KeyboardInterrupt:
+            print("\nLogin cancelled by user.")
+            return 1
+        except Exception as e:
+            print(f"\nError during login: {e}")
+            return 1
+
     # If no command was specified, run the main functionality
     from mmrelay.main import run_main
 
@@ -317,6 +380,51 @@ def handle_cli_commands(args):
         import sys
 
         sys.exit(0 if check_config() else 1)
+
+    # Handle --bot-login
+    if args.bot_login:
+        import asyncio
+
+        # Set up minimal logging for the login process
+        import logging
+        login_logger = logging.getLogger("MatrixLogin")
+        login_logger.setLevel(logging.INFO)
+        handler = logging.StreamHandler()
+        handler.setFormatter(
+            logging.Formatter(
+                fmt="%(asctime)s %(levelname)s:%(name)s:%(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S %z",
+            )
+        )
+        login_logger.addHandler(handler)
+
+        try:
+            from mmrelay.matrix_utils import login_matrix_bot
+        except ImportError as e:
+             login_logger.error(f"Failed to import matrix_utils: {e}")
+             login_logger.error("Ensure dependencies are installed correctly.")
+             sys.exit(1)
+
+
+        # Only run the login function, not the main application
+        print("Matrix Bot Login")
+        print("================")
+        try:
+            # Run the login function with logout_others defaulting to True
+            result = asyncio.run(login_matrix_bot(logout_others=True))
+            import sys
+
+            sys.exit(0 if result else 1)
+        except KeyboardInterrupt:
+            print("\nLogin cancelled by user.")
+            import sys
+
+            sys.exit(1)
+        except Exception as e:
+            print(f"\nError during login: {e}")
+            import sys
+
+            sys.exit(1)
 
     # No commands were handled
     return False
@@ -378,6 +486,7 @@ def generate_sample_config():
         print(
             "\nEdit this file with your Matrix and Meshtastic settings before running mmrelay."
         )
+        print("For E2EE, run 'mmrelay --bot-login' after editing.")
         return True
     else:
         print("Error: Could not find sample_config.yaml")
