@@ -52,7 +52,7 @@ jobs:
             python -m shiv --compressed \
               --compile-pyc \
               --reproducible \
-              --entry-point mmrelay \
+              --entry-point mmrelay.cli:main \
               --output-file dist/mmrelay-${{ env.VERSION }}-dev-${{ env.GIT_SHA }}-armv7.pyz \
               .
 
