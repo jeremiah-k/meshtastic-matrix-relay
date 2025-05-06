@@ -34,6 +34,16 @@ pip install mmrelay
 
 For pipx installation instructions, see: [pipx installation guide](https://pipx.pypa.io/stable/installation/#on-linux)
 
+### Standalone Executable (ARMv7)
+
+For ARMv7 devices (like Raspberry Pi), we provide a standalone `.pyz` executable:
+
+1. Download the latest `mmrelay-x.x.x-armv7.pyz` from [Releases](https://github.com/geoffwhittington/meshtastic-matrix-relay/releases)
+2. Make it executable: `chmod +x mmrelay-x.x.x-armv7.pyz`
+3. Run it: `./mmrelay-x.x.x-armv7.pyz`
+
+This standalone version includes all dependencies with native extensions.
+
 ### Resources
 
 - **New Users**: See [INSTRUCTIONS.md](INSTRUCTIONS.md) for setup and configuration

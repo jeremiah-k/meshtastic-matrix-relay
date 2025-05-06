@@ -50,23 +50,34 @@ jobs:
               build-essential libatlas-base-dev libolm-dev python3-dev python3.11-dev
             curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
             . "$HOME/.cargo/env"
-            pip install --upgrade pip setuptools wheel maturin
+            pip install --upgrade pip setuptools wheel maturin build
 
-            # Install jsonschema with a version that doesn't require rpds-py
-            pip install "jsonschema<4.0.0" "referencing<0.30.0"
+            # Create a wheelhouse directory to store all dependencies
+            mkdir -p wheelhouse
 
-            # Install the rest of the requirements
-            pip install -r requirements.txt
+            # Download all required wheels, including compiled ones
+            pip download . -r requirements.txt --only-binary :all: -d wheelhouse || true
+
+            # Build mmrelay and any missing binary wheels locally
+            pip wheel . -w wheelhouse
+
+            # Install shiv for building the pyz file
             pip install shiv
             mkdir -p dist
 
-            # Build the PYZ file with the correct entry point
-            python -m shiv --compressed \
+            # Build the PYZ file with the correct entry point and include site-packages
+            python -m shiv \
+              --compressed \
               --compile-pyc \
+              --site-packages wheelhouse \
               --reproducible \
               --entry-point mmrelay.cli:main \
               --output-file dist/mmrelay-${{ env.FILE_VERSION }}-armv7.pyz \
               .
+
+            # Verify the build contains native modules
+            echo "--- Verifying PYZ contents ---"
+            python -m zipfile -l dist/mmrelay-${{ env.FILE_VERSION }}-armv7.pyz | grep -i "\.so" || echo "Warning: No .so files found in PYZ"
 
             # Test the PYZ file
             echo "--- Testing PYZ file ---"
