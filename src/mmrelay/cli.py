@@ -3,10 +3,9 @@ Command-line interface handling for the Meshtastic Matrix Relay.
 """
 
 import argparse
+import importlib.resources
 import os
 import sys
-import importlib.resources
-from pathlib import Path
 
 import yaml
 from yaml.loader import SafeLoader
@@ -368,7 +367,11 @@ def generate_sample_config():
     # Use importlib.resources to access the sample config file
     try:
         # Try to get the sample config from the package resources
-        sample_config_content = importlib.resources.files("mmrelay.tools").joinpath("sample_config.yaml").read_text()
+        sample_config_content = (
+            importlib.resources.files("mmrelay.tools")
+            .joinpath("sample_config.yaml")
+            .read_text()
+        )
 
         # Write the sample config to the target path
         with open(target_path, "w") as f:
@@ -391,9 +394,11 @@ def generate_sample_config():
             # Check in the package directory
             os.path.join(package_dir, "sample_config.yaml"),
             # Check in the repository root
-            os.path.join(os.path.dirname(os.path.dirname(package_dir)), "sample_config.yaml"),
+            os.path.join(
+                os.path.dirname(os.path.dirname(package_dir)), "sample_config.yaml"
+            ),
             # Check in the current directory
-            os.path.join(os.getcwd(), "sample_config.yaml")
+            os.path.join(os.getcwd(), "sample_config.yaml"),
         ]
 
         for path in sample_config_paths:

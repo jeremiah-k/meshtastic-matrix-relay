@@ -5,12 +5,13 @@ This module provides simple functions for managing the systemd user service
 and generating configuration files.
 """
 
+import importlib.resources
+
 # Import version from package
 import os
 import shutil
 import subprocess
 import sys
-import importlib.resources
 from pathlib import Path
 
 
@@ -104,16 +105,31 @@ def get_template_service_path():
         os.path.join(sys.prefix, "share", "mmrelay", "mmrelay.service"),
         os.path.join(sys.prefix, "share", "mmrelay", "tools", "mmrelay.service"),
         # Check in the user site-packages location
-        os.path.join(os.path.expanduser("~"), ".local", "share", "mmrelay", "mmrelay.service"),
-        os.path.join(os.path.expanduser("~"), ".local", "share", "mmrelay", "tools", "mmrelay.service"),
+        os.path.join(
+            os.path.expanduser("~"), ".local", "share", "mmrelay", "mmrelay.service"
+        ),
+        os.path.join(
+            os.path.expanduser("~"),
+            ".local",
+            "share",
+            "mmrelay",
+            "tools",
+            "mmrelay.service",
+        ),
         # Check one level up from the package directory
         os.path.join(os.path.dirname(package_dir), "tools", "mmrelay.service"),
         # Check two levels up from the package directory (for development)
-        os.path.join(os.path.dirname(os.path.dirname(package_dir)), "tools", "mmrelay.service"),
+        os.path.join(
+            os.path.dirname(os.path.dirname(package_dir)), "tools", "mmrelay.service"
+        ),
         # Check in the repository root (for development)
-        os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "tools", "mmrelay.service"),
+        os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+            "tools",
+            "mmrelay.service",
+        ),
         # Check in the current directory (fallback)
-        os.path.join(os.getcwd(), "tools", "mmrelay.service")
+        os.path.join(os.getcwd(), "tools", "mmrelay.service"),
     ]
 
     # Try each path until we find one that exists
@@ -139,7 +155,11 @@ def get_template_service_content():
     """
     # Try to get the service template from the package resources
     try:
-        service_template = importlib.resources.files("mmrelay.tools").joinpath("mmrelay.service").read_text()
+        service_template = (
+            importlib.resources.files("mmrelay.tools")
+            .joinpath("mmrelay.service")
+            .read_text()
+        )
         return service_template
     except (FileNotFoundError, ImportError, OSError) as e:
         print(f"Error accessing mmrelay.service via importlib.resources: {e}")
@@ -433,10 +453,16 @@ def install_service():
         # Check if user lingering is enabled
         lingering_enabled = check_lingering_enabled()
         if not lingering_enabled:
-            print("\nUser lingering is not enabled. This is required for the service to start automatically at boot.")
-            print("Lingering allows user services to run even when you're not logged in.")
+            print(
+                "\nUser lingering is not enabled. This is required for the service to start automatically at boot."
+            )
+            print(
+                "Lingering allows user services to run even when you're not logged in."
+            )
             if (
-                input("Do you want to enable lingering for your user? (requires sudo) (y/n): ")
+                input(
+                    "Do you want to enable lingering for your user? (requires sudo) (y/n): "
+                )
                 .lower()
                 .startswith("y")
             ):
