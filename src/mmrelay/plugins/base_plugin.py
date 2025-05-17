@@ -30,24 +30,24 @@ class BasePlugin(ABC):
         return ""
 
     def __init__(self) -> None:
-        # IMPORTANT NOTE FOR PLUGIN DEVELOPERS:
-        # When creating a plugin that inherits from BasePlugin, you MUST set
-        # self.plugin_name in your __init__ method BEFORE calling super().__init__()
-        # Example:
-        #   def __init__(self):
-        #       self.plugin_name = "your_plugin_name"  # Set this FIRST
-        #       super().__init__()                     # Then call parent
-        #
-        # Failure to do this will cause command recognition issues and other problems.
-
+        # Call parent constructor first
         super().__init__()
 
-        # Verify plugin_name is properly defined
+        # If self.plugin_name is not set at the instance level, use the class-level value
+        # This allows plugins to define plugin_name just once as a class variable
         if not hasattr(self, "plugin_name") or self.plugin_name is None:
-            raise ValueError(
-                f"{self.__class__.__name__} is missing plugin_name definition. "
-                f"Make sure to set self.plugin_name BEFORE calling super().__init__()"
-            )
+            # Get the class-level plugin_name
+            class_plugin_name = getattr(self.__class__, "plugin_name", None)
+
+            if class_plugin_name is not None:
+                # Use the class-level plugin_name
+                self.plugin_name = class_plugin_name
+            else:
+                # Neither instance nor class has plugin_name defined
+                raise ValueError(
+                    f"{self.__class__.__name__} is missing plugin_name definition. "
+                    f"Define plugin_name as a class variable or set self.plugin_name in __init__"
+                )
 
         self.logger = get_logger(f"Plugin:{self.plugin_name}")
         self.config = {"active": False}
