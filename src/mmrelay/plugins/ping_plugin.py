@@ -18,7 +18,6 @@ class Plugin(BasePlugin):
     punctuation = string.punctuation
 
     def __init__(self):
-        self.plugin_name = "ping"
         super().__init__()
 
     @property

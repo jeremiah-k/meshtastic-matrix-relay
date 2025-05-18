@@ -236,7 +236,6 @@ class Plugin(BasePlugin):
     plugin_name = "map"
 
     def __init__(self):
-        self.plugin_name = "map"
         super().__init__()
 
     @property
