@@ -21,7 +21,7 @@ config = None
 
 class BasePlugin(ABC):
     # Class-level default attributes
-    plugin_name = None  # Must be overridden in subclasses
+    plugin_name = None  # Subclasses MUST override this as a class attribute
     max_data_rows_per_node = 100
     priority = 10
 
@@ -33,21 +33,12 @@ class BasePlugin(ABC):
         # Call parent constructor first
         super().__init__()
 
-        # If self.plugin_name is not set at the instance level, use the class-level value
-        # This allows plugins to define plugin_name just once as a class variable
-        if not hasattr(self, "plugin_name") or self.plugin_name is None:
-            # Get the class-level plugin_name
-            class_plugin_name = getattr(self.__class__, "plugin_name", None)
-
-            if class_plugin_name is not None:
-                # Use the class-level plugin_name
-                self.plugin_name = class_plugin_name
-            else:
-                # Neither instance nor class has plugin_name defined
-                raise ValueError(
-                    f"{self.__class__.__name__} is missing plugin_name definition. "
-                    f"Define plugin_name as a class variable or set self.plugin_name in __init__"
-                )
+        # Get plugin_name from class attribute
+        self.plugin_name = getattr(self.__class__, "plugin_name", None)
+        if not self.plugin_name:
+            raise ValueError(
+                f"{self.__class__.__name__} must define class attribute 'plugin_name'"
+            )
 
         self.logger = get_logger(f"Plugin:{self.plugin_name}")
         self.config = {"active": False}
@@ -66,6 +57,8 @@ class BasePlugin(ABC):
                 room.get("meshtastic_channel")
                 for room in config.get("matrix_rooms", [])
             ]
+        else:
+            self.mapped_channels = []
 
         # Get the channels specified for this plugin, or default to all mapped channels
         self.channels = self.config.get("channels", self.mapped_channels)
