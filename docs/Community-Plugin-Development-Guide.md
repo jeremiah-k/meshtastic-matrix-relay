@@ -1,4 +1,6 @@
-> ⚠️ **Important Note for Existing Plugin Authors**: If you are updating an old plugin, check your `__init__()` method order. The order of operations is critical - you must set `self.plugin_name` **before** calling `super().__init__()`. See [Plugin Name Initialization: A Critical Detail](#plugin-name-initialization-a-critical-detail) for details.
+# Community Plugin Development Guide
+
+> 🎉 **Good News for Plugin Authors**: Plugin initialization has been simplified! You now have multiple ways to set your plugin name. See [Plugin Name Initialization: Simplified](#plugin-name-initialization-simplified) for details.
 
 Welcome to the M<>M Relay plugin development guide! This document will get you started with writing plugins for the relay system. It covers setting up a development environment, understanding the `BasePlugin` class, and creating your first plugin. This guide is here to help you extend the relay's functionality with custom plugins tailored to your specific needs.
 
@@ -7,15 +9,18 @@ Welcome to the M<>M Relay plugin development guide! This document will get you s
 With the release of v1.0, there are some important changes to plugin development:
 
 - **New Plugin Locations**: Plugins are now stored in standardized locations:
+
   - Core plugins: Included in the package
   - Custom plugins: `~/.mmrelay/plugins/custom/`
   - Community plugins: `~/.mmrelay/plugins/community/`
 
 - **Standardized Data Storage**: Plugin data should be stored in standardized locations:
+
   - Database data: Use `BasePlugin` methods like `store_node_data()` and `get_node_data()`
   - File data: Use `self.get_plugin_data_dir()` to get `~/.mmrelay/data/plugins/<plugin_name>/`
 
 - **Absolute Imports**: The codebase now uses absolute imports. When developing plugins, you should use:
+
   ```python
   from mmrelay.plugins.base_plugin import BasePlugin
   from mmrelay.meshtastic_utils import connect_meshtastic
@@ -49,17 +54,17 @@ Plugins in M<>M Relay are Python classes that extend what the relay can do. All 
 
 The `BasePlugin` is designed to provide a consistent interface for all plugins. Here's a quick look at some of its important features:
 
-> ⚠️ **Critical Note**: When creating a plugin, you must set `self.plugin_name` **before** calling `super().__init__()` in your `__init__` method. See [Plugin Name Initialization: A Critical Detail](#plugin-name-initialization-a-critical-detail) for details.
+> 💡 **Plugin Name Setup**: There are now multiple ways to set your plugin name. See [Plugin Name Initialization: Simplified](#plugin-name-initialization-simplified) for details.
 
--   **Logging**: Each plugin has its own logger (`self.logger`) to help with tracking actions and debugging.
--   **Data Storage**: Methods like `store_node_data()`, `get_node_data()`, and `delete_node_data()` let plugins persistently store data specific to nodes.
--   **Message Handling**: Plugins can react to incoming messages from Meshtastic or Matrix by implementing specific methods.
--   **Configuration Options**: Plugins can access configuration options like `channels` from the `config.yaml` file. Note that the `plugin_response_delay` is now configured globally under the `meshtastic` section.
+- **Logging**: Each plugin has its own logger (`self.logger`) to help with tracking actions and debugging.
+- **Data Storage**: Methods like `store_node_data()`, `get_node_data()`, and `delete_node_data()` let plugins persistently store data specific to nodes.
+- **Message Handling**: Plugins can react to incoming messages from Meshtastic or Matrix by implementing specific methods.
+- **Configuration Options**: Plugins can access configuration options like `channels` from the `config.yaml` file. Note that the `plugin_response_delay` is now configured globally under the `meshtastic` section.
 
 Each plugin must implement two key methods:
 
--   `handle_meshtastic_message(packet, formatted_message, longname, meshnet_name)`
--   `handle_room_message(room, event, full_message)`
+- `handle_meshtastic_message(packet, formatted_message, longname, meshnet_name)`
+- `handle_room_message(room, event, full_message)`
 
 These functions define how your plugin will handle incoming messages from Meshtastic nodes and Matrix rooms, respectively.
 
@@ -85,13 +90,10 @@ from mmrelay.meshtastic_utils import connect_meshtastic
 from mmrelay.matrix_utils import bot_command
 
 class Plugin(BasePlugin):
-    plugin_name = "simple_responder"
+    plugin_name = "simple_responder"  # Define the plugin name as a class variable
 
-    def __init__(self):
-        # IMPORTANT: Set plugin_name BEFORE calling super().__init__()
-        # See "Plugin Name Initialization: A Critical Detail" section for explanation
-        self.plugin_name = "simple_responder"
-        super().__init__()
+    # No need to set plugin_name in __init__ anymore!
+    # The BasePlugin will use the class variable automatically
 
     async def handle_meshtastic_message(self, packet, formatted_message, longname, meshnet_name):
         if "decoded" in packet and "text" in packet["decoded"]:
@@ -116,7 +118,7 @@ class Plugin(BasePlugin):
 
 This example avoids complexities of channel and DM handling. It uses the `bot_command` function from `matrix_utils.py` to check if the message is a command directed at the bot, and `connect_meshtastic` from `meshtastic_utils.py` to send a message to the mesh network.
 
-Notice that we define `plugin_name` twice: once as a class variable and once in the `__init__` method. This is important because the instance methods (like `handle_meshtastic_message`) use `self.plugin_name`, which needs to be initialized in `__init__`. Without this initialization, commands that use `self.plugin_name` in f-strings (like `f"!{self.plugin_name}"`) won't work correctly.
+With the simplified plugin system, you only need to define `plugin_name` once as a class variable. The `BasePlugin` class will automatically use this value to initialize the instance attribute `self.plugin_name`, which is used by instance methods like `handle_meshtastic_message`. This makes plugin development cleaner and less error-prone.
 
 ### Step 3: Activate the Plugin in Your Configuration
 
@@ -129,7 +131,7 @@ community-plugins:
   simple_responder:
     active: true
     repository: https://github.com/YourUsername/SimpleResponder.git
-    branch: main  # Use branch: for branches
+    branch: main # Use branch: for branches
     # OR
     # tag: v1.0.0  # Use tag: for specific version tags
 ```
@@ -138,13 +140,14 @@ community-plugins:
 
 If your plugin requires additional Python packages, you can include a `requirements.txt` file in your repository. The plugin loader will automatically detect and install these dependencies when the plugin is loaded.
 
-```
+```text
 # Example requirements.txt
 gpxpy==1.5.0
 requests==2.28.1
 ```
 
 The plugin system will automatically detect whether mmrelay is installed with pip or pipx and use the appropriate method to install dependencies:
+
 - For pip installations: `pip install -r requirements.txt`
 - For pipx installations: `pipx inject mmrelay <package>` for each package
 
@@ -168,13 +171,10 @@ Create a file named `hello_world.py` and add the following code:
 from mmrelay.plugins.base_plugin import BasePlugin
 
 class Plugin(BasePlugin):
-    plugin_name = "hello_world"
+    plugin_name = "hello_world"  # Define the plugin name as a class variable
 
-    def __init__(self):
-        # IMPORTANT: Set plugin_name BEFORE calling super().__init__()
-        # See "Plugin Name Initialization: A Critical Detail" section for explanation
-        self.plugin_name = "hello_world"
-        super().__init__()
+    # No need for __init__ method at all!
+    # BasePlugin will handle the initialization
 
     async def handle_meshtastic_message(self, packet, formatted_message, longname, meshnet_name):
         self.logger.debug("Hello world, Meshtastic")
@@ -187,89 +187,105 @@ class Plugin(BasePlugin):
 
 Activate this plugin in your `config.yaml` just like you did with the `simple_responder` plugin.
 
-## Plugin Name Initialization: A Critical Detail
+## Plugin Name Initialization: Simplified
 
-You might have noticed that in both examples, we define `plugin_name` twice: once as a class variable and once in the `__init__` method. This isn't redundant—it's actually crucial for proper plugin operation.
+The plugin system has been simplified to make plugin development easier and less error-prone. You now have multiple ways to set your plugin name:
 
-### Initialization Order Matters
+### Option 1: Class Variable Only (Recommended)
 
-The order of operations in your plugin's `__init__` method is critical:
+The simplest approach is to just define `plugin_name` as a class variable:
 
-1. **FIRST**: Set `self.plugin_name`
-2. **THEN**: Call `super().__init__()`
-
-This is because `BasePlugin.__init__()` relies on `self.plugin_name` being set before it runs. If you call `super().__init__()` first, and then assign `self.plugin_name` afterward, the parent constructor runs without knowledge of the plugin's name, which causes failures in command recognition and plugin registration.
-
-### Why This Is Important
-
-When your plugin uses `self.plugin_name` in instance methods (like checking for commands with `f"!{self.plugin_name}"` in message text), it needs to be properly initialized in the `__init__` method. Without this initialization, commands won't be recognized correctly.
-
-For example, in the weather plugin, this check:
-```python
-if f"!{self.plugin_name}" not in message.lower():
-    return False
-```
-
-Would fail silently if `self.plugin_name` wasn't initialized in `__init__` before calling `super().__init__()`, causing the plugin to ignore valid commands.
-
-### The Correct Pattern
-
-Always follow this pattern in your plugins:
 ```python
 class Plugin(BasePlugin):
-    plugin_name = "your_plugin_name"  # Class variable for compatibility
+    plugin_name = "your_plugin_name"  # Define as a class variable
 
-    def __init__(self):
-        self.plugin_name = "your_plugin_name"  # Must match the class variable
-        super().__init__()  # Call parent constructor AFTER setting plugin_name
+    # No __init__ method needed!
 ```
 
-This ensures your plugin will correctly process commands and work as expected. The class-level attribute defines a default for the class, but `BasePlugin.__init__()` operates at the instance level and reads `self.plugin_name`. Setting it inside `__init__()` before calling `super().__init__()` ensures correct behavior at the instance level.
+The `BasePlugin` will automatically use this class variable to set the instance attribute `self.plugin_name`. This is the cleanest and recommended approach.
+
+### Option 2: Pass to Constructor
+
+You can pass the plugin name directly to the `BasePlugin` constructor:
+
+```python
+class Plugin(BasePlugin):
+    def __init__(self):
+        super().__init__(plugin_name="your_plugin_name")
+```
+
+This is useful if you need to dynamically determine the plugin name at runtime.
+
+### Option 3: Legacy Method (For Backward Compatibility)
+
+For backward compatibility, the old method still works:
+
+```python
+class Plugin(BasePlugin):
+    plugin_name = "your_plugin_name"  # Class variable
+
+    def __init__(self):
+        self.plugin_name = "your_plugin_name"  # Set instance attribute
+        super().__init__()
+```
+
+### Why This Matters
+
+The plugin name is used throughout the plugin system for:
+
+- Command recognition (e.g., `!your_plugin_name`)
+- Logging (e.g., `self.logger` is named `Plugin:your_plugin_name`)
+- Data storage (e.g., `self.get_plugin_data_dir()` returns `~/.mmrelay/data/plugins/your_plugin_name/`)
+
+With the simplified initialization, you no longer need to worry about the order of operations in your `__init__` method. The `BasePlugin` class handles all the details for you.
 
 ## Useful Functions from Other Modules
 
 Besides the methods in `BasePlugin`, there are several functions in the relay's codebase you can use to avoid reinventing the wheel:
 
--   **Matrix Utilities**:
-    -   `bot_command(command, event)`: A function from `matrix_utils.py` that helps determine if a Matrix message is a command directed at the bot.
-    -   `matrix_client`: The global Matrix client instance. Always use this instead of calling `connect_matrix()` to avoid reinitializing the client.
+- **Matrix Utilities**:
 
-     **Example Usage**:
+  - `bot_command(command, event)`: A function from `matrix_utils.py` that helps determine if a Matrix message is a command directed at the bot.
+  - `matrix_client`: The global Matrix client instance. Always use this instead of calling `connect_matrix()` to avoid reinitializing the client.
 
-    ```python
-    from mmrelay.matrix_utils import bot_command, matrix_client
+  **Example Usage**:
 
-    async def handle_room_message(self, room, event, full_message):
-        if bot_command("status", event):
-            # Handle the 'status' command
-            await self.send_matrix_message(room.room_id, "System is running smoothly.")
-            return True  # Indicate that we handled the message
-        return False
-    ```
+  ```python
+  from mmrelay.matrix_utils import bot_command, matrix_client
 
-    > ⚠️ **Important Note**: Never call `connect_matrix()` directly in your plugins. Always use the global `matrix_client` instance or the `send_matrix_message()` method provided by `BasePlugin`. Calling `connect_matrix()` will reinitialize the Matrix client and cause unnecessary credential reloading.
+  async def handle_room_message(self, room, event, full_message):
+      if bot_command("status", event):
+          # Handle the 'status' command
+          await self.send_matrix_message(room.room_id, "System is running smoothly.")
+          return True  # Indicate that we handled the message
+      return False
+  ```
 
--   **Meshtastic Utilities**:
-    -   `connect_meshtastic()`: A function from `meshtastic_utils.py` that returns the Meshtastic client interface. Useful for sending messages or accessing node information.
+  > ⚠️ **Important Note**: Never call `connect_matrix()` directly in your plugins. Always use the global `matrix_client` instance or the `send_matrix_message()` method provided by `BasePlugin`. Calling `connect_matrix()` will reinitialize the Matrix client and cause unnecessary credential reloading.
 
-    ```python
-    from mmrelay.meshtastic_utils import connect_meshtastic
+- **Meshtastic Utilities**:
 
-    meshtastic_client = connect_meshtastic()
-    ```
+  - `connect_meshtastic()`: A function from `meshtastic_utils.py` that returns the Meshtastic client interface. Useful for sending messages or accessing node information.
 
--   **Database Utilities**:
-    -   For storing plugin-specific data, use the data persistence methods provided by `BasePlugin`. If you need to access node information like long names or short names, you can use functions from `db_utils.py`.
+  ```python
+  from mmrelay.meshtastic_utils import connect_meshtastic
 
-        -   `get_longname(meshtastic_id)`: Retrieve the longname for a given Meshtastic ID.
-        -   `get_shortname(meshtastic_id)`: Retrieve the shortname for a given Meshtastic ID.
+  meshtastic_client = connect_meshtastic()
+  ```
 
-    ```python
-    from mmrelay.db_utils import get_longname, get_shortname
+- **Database Utilities**:
 
-    longname = get_longname(sender_id)
-    shortname = get_shortname(sender_id)
-    ```
+  - For storing plugin-specific data, use the data persistence methods provided by `BasePlugin`. If you need to access node information like long names or short names, you can use functions from `db_utils.py`.
+
+    - `get_longname(meshtastic_id)`: Retrieve the longname for a given Meshtastic ID.
+    - `get_shortname(meshtastic_id)`: Retrieve the shortname for a given Meshtastic ID.
+
+  ```python
+  from mmrelay.db_utils import get_longname, get_shortname
+
+  longname = get_longname(sender_id)
+  shortname = get_shortname(sender_id)
+  ```
 
 ## Advanced Topics
 
@@ -287,7 +303,7 @@ To make your plugin respond **only** to DMs and ignore all channel messages, set
 plugins:
   my_plugin:
     active: true
-    channels: []  # Empty list: plugin only responds to DMs
+    channels: [] # Empty list: plugin only responds to DMs
 ```
 
 In your plugin, check whether to respond based on the channel and whether it's a DM using `is_channel_enabled`:
@@ -319,7 +335,7 @@ To make your plugin respond only to specific channels, list them in the `channel
 plugins:
   my_plugin:
     active: true
-    channels: [0, 1, 3, 4]  # List of Meshtastic channels to respond to
+    channels: [0, 1, 3, 4] # List of Meshtastic channels to respond to
 ```
 
 #### Handling Direct Messages (DMs)
@@ -386,7 +402,7 @@ This is ideal for storing configuration settings, user preferences, or small amo
 
 For larger files or binary data, MMRelay provides a standardized directory structure:
 
-```
+```text
 ~/.mmrelay/data/plugins/<plugin_name>/
 ```
 
@@ -519,7 +535,7 @@ async def handle_meshtastic_message(self, packet, formatted_message, longname, m
 
 ```yaml
 meshtastic:
-  plugin_response_delay: 5  # Delay in seconds before plugin responses; defaults to 3
+  plugin_response_delay: 5 # Delay in seconds before plugin responses; defaults to 3
 ```
 
 ## Appendix: `bot_command()` Implementation
@@ -569,7 +585,7 @@ def bot_command(command, event):
 9. **Use Standardized Data Storage**: Store plugin data in the standardized locations:
    - For structured data: Use the database methods (`store_node_data()`, `get_node_data()`, etc.)
    - For files and binary data: Use `self.get_plugin_data_dir()` to get the plugin's data directory
-10. **Initialize Plugin Name Properly**: Always initialize `self.plugin_name` in the `__init__` method **before** calling `super().__init__()`, even though it's also defined as a class variable. See [Plugin Name Initialization: A Critical Detail](#plugin-name-initialization-a-critical-detail) for a detailed explanation.
+10. **Initialize Plugin Name Simply**: Define `plugin_name` as a class variable for the simplest approach. See [Plugin Name Initialization: Simplified](#plugin-name-initialization-simplified) for all available options.
 
 ## Example Configuration
 
@@ -581,16 +597,16 @@ community-plugins:
     active: true
     repository: https://github.com/jeremiah-k/MMR-GPXTRacker.git
     # Use either tag or branch:
-    tag: v1.0.0  # For a specific tag
+    tag: v1.0.0 # For a specific tag
     # OR
-    branch: main  # For a specific branch
+    branch: main # For a specific branch
     # Optional custom data directory:
-    gpx_directory: "~/my_gpx_files"  # Custom directory for GPX files
+    gpx_directory: "~/my_gpx_files" # Custom directory for GPX files
     # Optional plugin-specific configuration:
     allowed_device_ids:
-      - "*"  # Allow all devices
+      - "*" # Allow all devices
     # Optional priority setting:
-    priority: 50  # Default is 100, lower numbers run first
+    priority: 50 # Default is 100, lower numbers run first
 ```
 
 ## Next Steps

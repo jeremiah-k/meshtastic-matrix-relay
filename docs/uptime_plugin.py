@@ -1,7 +1,9 @@
-import time
 import asyncio
+import time
+
+from mmrelay.matrix_utils import bot_command, join_matrix_room, matrix_client
 from mmrelay.plugins.base_plugin import BasePlugin
-from mmrelay.matrix_utils import matrix_client, join_matrix_room, bot_command
+
 
 class Plugin(BasePlugin):
     plugin_name = "uptime"
@@ -13,7 +15,8 @@ class Plugin(BasePlugin):
     def __init__(self, *args, **kwargs):
         # Pass plugin_name to super().__init__() for simplified initialization
         # Also forward any other arguments
-        super().__init__(plugin_name=self.plugin_name, *args, **kwargs)
+        # Note: We need to pass *args first, then plugin_name, then **kwargs to avoid the star-arg unpacking issue
+        super().__init__(*args, plugin_name=self.plugin_name, **kwargs)
         self.node_last_seen = {}
         self.tracked_nodes = self.config.get("tracked_nodes", [])
         self.offline_threshold = self.config.get("offline_threshold", 1800)
@@ -22,10 +25,14 @@ class Plugin(BasePlugin):
         # Setting for which Matrix room to send OFFLINE alerts to
         self.alert_room_id = self.config.get("alert_room_id", None)
         if not self.alert_room_id:
-            self.logger.warning(f"No alert_room_id specified in config for plugin '{self.plugin_name}'. "
-                                "Offline alerts will not be sent to Matrix.")
+            self.logger.warning(
+                f"No alert_room_id specified in config for plugin '{self.plugin_name}'. "
+                "Offline alerts will not be sent to Matrix."
+            )
 
-    async def handle_meshtastic_message(self, packet, formatted_message, longname, meshnet_name):
+    async def handle_meshtastic_message(
+        self, packet, formatted_message, longname, meshnet_name
+    ):
         """
         Records last-seen time for any tracked node that sends a packet.
         Clears 'alert_sent' if the node is back online after being offline.
@@ -68,10 +75,12 @@ class Plugin(BasePlugin):
                         await self.send_matrix_message(
                             self.alert_room_id,
                             f"Alert: Node {node_id} is OFFLINE for {downtime:.2f} seconds!",
-                            formatted=False
+                            formatted=False,
                         )
                     except Exception as e:
-                        self.logger.error(f"Failed sending offline alert for node {node_id} to Matrix: {e}")
+                        self.logger.error(
+                            f"Failed sending offline alert for node {node_id} to Matrix: {e}"
+                        )
 
             await asyncio.sleep(10)
 
@@ -86,11 +95,7 @@ class Plugin(BasePlugin):
         if bot_command("uptime", event):
             report = self.generate_uptime_report()
             try:
-                await self.send_matrix_message(
-                    room.room_id,
-                    report,
-                    formatted=False
-                )
+                await self.send_matrix_message(room.room_id, report, formatted=False)
             except Exception as e:
                 self.logger.error(f"Failed sending uptime report to Matrix: {e}")
             return True
@@ -111,9 +116,13 @@ class Plugin(BasePlugin):
             else:
                 downtime = current_time - last_seen
                 if downtime > self.offline_threshold:
-                    report_lines.append(f"Node {node_id}: OFFLINE for {downtime:.2f} seconds")
+                    report_lines.append(
+                        f"Node {node_id}: OFFLINE for {downtime:.2f} seconds"
+                    )
                 else:
-                    report_lines.append(f"Node {node_id}: ONLINE, last seen {downtime:.2f} seconds ago")
+                    report_lines.append(
+                        f"Node {node_id}: ONLINE, last seen {downtime:.2f} seconds ago"
+                    )
 
         return "\n".join(report_lines)
 
