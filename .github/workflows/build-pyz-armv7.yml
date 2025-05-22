@@ -52,8 +52,8 @@ jobs:
             . "$HOME/.cargo/env"
             pip install --upgrade pip setuptools wheel maturin
 
-            # Install jsonschema with a version that doesn't require rpds-py
-            pip install "jsonschema<4.0.0" "referencing<0.30.0"
+            # Explicitly install rpds-py to ensure it builds correctly
+            pip install rpds-py
 
             # Install the rest of the requirements
             pip install -r requirements.txt
