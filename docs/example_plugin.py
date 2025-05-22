@@ -4,6 +4,7 @@ from mmrelay.meshtastic_utils import connect_meshtastic
 
 class Plugin(BasePlugin):
     plugin_name = "example_plugin"  # Define plugin_name as a class variable
+    # No __init__ method needed with the simplified plugin system!
 
 
     async def handle_meshtastic_message(self, packet, formatted_message, longname, meshnet_name):

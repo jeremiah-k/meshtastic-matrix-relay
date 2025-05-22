@@ -11,7 +11,9 @@ class Plugin(BasePlugin):
         return "Tracks uptime of specific nodes, sends alerts when they exceed the downtime threshold, and responds to the !uptime command."
 
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+        # Pass plugin_name to super().__init__() for simplified initialization
+        # Also forward any other arguments
+        super().__init__(plugin_name=self.plugin_name, *args, **kwargs)
         self.node_last_seen = {}
         self.tracked_nodes = self.config.get("tracked_nodes", [])
         self.offline_threshold = self.config.get("offline_threshold", 1800)

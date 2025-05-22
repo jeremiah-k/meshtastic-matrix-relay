@@ -7,7 +7,8 @@ class Plugin(BasePlugin):
     plugin_name = "gpxtracker"  # Define plugin_name as a class variable
 
     def __init__(self, config_file='config.yaml'):
-        super().__init__()
+        # Pass plugin_name to super().__init__() for simplified initialization
+        super().__init__(plugin_name=self.plugin_name)
         # Load configuration options
         self.allowed_device_ids = self.config.get('allowed_device_ids', ["*"])
 
