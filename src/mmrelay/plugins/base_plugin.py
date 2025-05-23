@@ -29,25 +29,28 @@ class BasePlugin(ABC):
     def description(self):
         return ""
 
-    def __init__(self) -> None:
-        # IMPORTANT NOTE FOR PLUGIN DEVELOPERS:
-        # When creating a plugin that inherits from BasePlugin, you MUST set
-        # self.plugin_name in your __init__ method BEFORE calling super().__init__()
-        # Example:
-        #   def __init__(self):
-        #       self.plugin_name = "your_plugin_name"  # Set this FIRST
-        #       super().__init__()                     # Then call parent
-        #
-        # Failure to do this will cause command recognition issues and other problems.
-
+    def __init__(self, plugin_name=None) -> None:
+        # Allow plugin_name to be passed as a parameter for simpler initialization
+        # This maintains backward compatibility while providing a cleaner API
         super().__init__()
 
-        # Verify plugin_name is properly defined
+        # If plugin_name is provided as a parameter, use it
+        if plugin_name is not None:
+            self.plugin_name = plugin_name
+
+        # For backward compatibility: if plugin_name is not provided as a parameter,
+        # check if it's set as an instance attribute (old way) or use the class attribute
         if not hasattr(self, "plugin_name") or self.plugin_name is None:
-            raise ValueError(
-                f"{self.__class__.__name__} is missing plugin_name definition. "
-                f"Make sure to set self.plugin_name BEFORE calling super().__init__()"
-            )
+            # Try to get the class-level plugin_name
+            class_plugin_name = getattr(self.__class__, "plugin_name", None)
+            if class_plugin_name is not None:
+                self.plugin_name = class_plugin_name
+            else:
+                raise ValueError(
+                    f"{self.__class__.__name__} is missing plugin_name definition. "
+                    f"Either set class.plugin_name, pass plugin_name to __init__, "
+                    f"or set self.plugin_name before calling super().__init__()"
+                )
 
         self.logger = get_logger(f"Plugin:{self.plugin_name}")
         self.config = {"active": False}
