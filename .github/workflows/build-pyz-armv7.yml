@@ -52,8 +52,8 @@ jobs:
             export CARGO_BUILD_TARGET=armv7-unknown-linux-gnueabihf
             pip install --upgrade pip setuptools wheel maturin
 
-            # Explicitly install rpds-py to ensure it builds correctly with verbose output
-            pip install -v rpds-py
+            # Force rpds-py to build from source with verbose output
+            pip install -v --no-binary rpds-py rpds-py
 
             # Install the rest of the requirements
             pip install -r requirements.txt
