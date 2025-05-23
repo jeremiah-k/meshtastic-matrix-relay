@@ -1,20 +1,23 @@
-from mmrelay.plugins.base_plugin import BasePlugin
-from datetime import datetime, timezone
-import gpxpy
 import os
+from datetime import datetime, timezone
+
+import gpxpy
+
+from mmrelay.plugins.base_plugin import BasePlugin
+
 
 class Plugin(BasePlugin):
     plugin_name = "gpxtracker"  # Define plugin_name as a class variable
 
-    def __init__(self, config_file='config.yaml'):
+    def __init__(self, config_file="config.yaml"):
         # Pass plugin_name to super().__init__() for simplified initialization
         super().__init__(plugin_name=self.plugin_name)
         # Load configuration options
-        self.allowed_device_ids = self.config.get('allowed_device_ids', ["*"])
+        self.allowed_device_ids = self.config.get("allowed_device_ids", ["*"])
 
         # Use the standardized plugin data directory structure
         # Check for custom directory in config first (for backward compatibility)
-        custom_dir = self.config.get('gpx_directory')
+        custom_dir = self.config.get("gpx_directory")
         if custom_dir:
             # Expand user directory if needed (e.g., ~/gpx_data -> /home/user/gpx_data)
             custom_dir = os.path.expanduser(custom_dir)
@@ -24,17 +27,23 @@ class Plugin(BasePlugin):
             try:
                 os.makedirs(self.gpx_directory, exist_ok=True)
             except Exception as e:
-                self.logger.error(f"Failed to create custom GPX directory '{self.gpx_directory}': {e}")
+                self.logger.error(
+                    f"Failed to create custom GPX directory '{self.gpx_directory}': {e}"
+                )
         else:
             # Use the standardized plugin data directory with 'gpx_data' subdirectory
-            self.gpx_directory = self.get_plugin_data_dir('gpx_data')
+            self.gpx_directory = self.get_plugin_data_dir("gpx_data")
             self.logger.info(f"Using standardized GPX directory: {self.gpx_directory}")
 
         # Warn if no allowed device IDs are set
         if not self.allowed_device_ids:
-            self.logger.warning("[CONFIG_WARNING] Allowed device IDs list is empty. No locations will be logged.")
+            self.logger.warning(
+                "[CONFIG_WARNING] Allowed device IDs list is empty. No locations will be logged."
+            )
 
-    async def handle_meshtastic_message(self, packet, formatted_message, longname, meshnet_name):
+    async def handle_meshtastic_message(
+        self, packet, formatted_message, longname, meshnet_name
+    ):
         """
         Handles Meshtastic messages and updates the GPX file for the corresponding device.
         """
@@ -42,7 +51,12 @@ class Plugin(BasePlugin):
         # Ensure the message is valid and contains the necessary data
         decoded = packet.get("decoded", {})
         position = decoded.get("position", {})
-        if not decoded or decoded.get("portnum") != "POSITION_APP" or not position or "precisionBits" not in position:
+        if (
+            not decoded
+            or decoded.get("portnum") != "POSITION_APP"
+            or not position
+            or "precisionBits" not in position
+        ):
             return
 
         # Extract device ID
@@ -50,8 +64,13 @@ class Plugin(BasePlugin):
         device_id_hex = device_id_raw.lstrip("!")
 
         # Check if the device is allowed or if wildcard is enabled
-        if "*" not in self.allowed_device_ids and device_id_hex not in self.allowed_device_ids:
-            self.logger.debug(f"Device ID {device_id_hex} sent a location but is not in the allowed list. Ignoring message.")
+        if (
+            "*" not in self.allowed_device_ids
+            and device_id_hex not in self.allowed_device_ids
+        ):
+            self.logger.debug(
+                f"Device ID {device_id_hex} sent a location but is not in the allowed list. Ignoring message."
+            )
             return
 
         # Extract position data
@@ -69,11 +88,15 @@ class Plugin(BasePlugin):
         try:
             os.makedirs(os.path.dirname(gpx_file_path), exist_ok=True)
         except Exception as e:
-            self.logger.error(f"Failed to ensure GPX directory exists '{os.path.dirname(gpx_file_path)}': {e}")
+            self.logger.error(
+                f"Failed to ensure GPX directory exists '{os.path.dirname(gpx_file_path)}': {e}"
+            )
             return
 
         # Log processed data
-        self.logger.debug(f"Processed data from Device={device_id_hex}: Latitude={latitude}, Longitude={longitude}, Altitude={altitude}, track_name={track_name}, Path={gpx_file_path}")
+        self.logger.debug(
+            f"Processed data from Device={device_id_hex}: Latitude={latitude}, Longitude={longitude}, Altitude={altitude}, track_name={track_name}, Path={gpx_file_path}"
+        )
 
         # Load or create GPX file
         try:
@@ -83,7 +106,9 @@ class Plugin(BasePlugin):
             else:
                 gpx = gpxpy.gpx.GPX()
         except Exception as e:
-            self.logger.error(f"Error loading or creating GPX file {gpx_file_path}: {e}")
+            self.logger.error(
+                f"Error loading or creating GPX file {gpx_file_path}: {e}"
+            )
             return
 
         # Create or find the track for the current day
@@ -98,17 +123,20 @@ class Plugin(BasePlugin):
         segment = track.segments[0]
 
         # Add a point to the segment
-        point = gpxpy.gpx.GPXTrackPoint(latitude, longitude, elevation=altitude, time=now)
+        point = gpxpy.gpx.GPXTrackPoint(
+            latitude, longitude, elevation=altitude, time=now
+        )
         segment.points.append(point)
 
         # Save the GPX file
         try:
             with open(gpx_file_path, "w") as gpx_file:
                 gpx_file.write(gpx.to_xml())
-            self.logger.debug(f"Data saved in {gpx_file_path} for device {device_id_hex}")
+            self.logger.debug(
+                f"Data saved in {gpx_file_path} for device {device_id_hex}"
+            )
         except Exception as e:
             self.logger.error(f"Error saving GPX file {gpx_file_path}: {e}")
-
 
     async def handle_room_message(self, room, event, full_message):
         """Placeholder for Matrix messages (if needed)."""
