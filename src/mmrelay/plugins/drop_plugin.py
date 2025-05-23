@@ -10,9 +10,8 @@ class Plugin(BasePlugin):
     plugin_name = "drop"
     special_node = "!NODE_MSGS!"
 
-    def __init__(self):
-        self.plugin_name = "drop"
-        super().__init__()
+    # No __init__ method needed with the simplified plugin system!
+    # The BasePlugin will automatically use the class-level plugin_name
 
     def get_position(self, meshtastic_client, node_id):
         for _node, info in meshtastic_client.nodes.items():

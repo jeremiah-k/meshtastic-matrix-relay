@@ -9,9 +9,8 @@ from mmrelay.plugins.base_plugin import BasePlugin
 class Plugin(BasePlugin):
     plugin_name = "weather"
 
-    def __init__(self):
-        self.plugin_name = "weather"
-        super().__init__()
+    # No __init__ method needed with the simplified plugin system!
+    # The BasePlugin will automatically use the class-level plugin_name
 
     @property
     def description(self):

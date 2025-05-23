@@ -17,9 +17,8 @@ class Plugin(BasePlugin):
     plugin_name = "ping"
     punctuation = string.punctuation
 
-    def __init__(self):
-        self.plugin_name = "ping"
-        super().__init__()
+    # No __init__ method needed with the simplified plugin system!
+    # The BasePlugin will automatically use the class-level plugin_name
 
     @property
     def description(self):

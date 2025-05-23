@@ -235,9 +235,8 @@ async def send_image(client: AsyncClient, room_id: str, image: Image.Image):
 class Plugin(BasePlugin):
     plugin_name = "map"
 
-    def __init__(self):
-        self.plugin_name = "map"
-        super().__init__()
+    # No __init__ method needed with the simplified plugin system!
+    # The BasePlugin will automatically use the class-level plugin_name
 
     @property
     def description(self):
