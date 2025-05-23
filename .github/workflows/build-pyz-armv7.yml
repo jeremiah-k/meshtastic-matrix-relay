@@ -45,7 +45,7 @@ jobs:
           options: --platform linux/arm/v7 -v ${{ github.workspace }}:/github/workspace -w /github/workspace
           run: |
             apt-get update
-            apt-get install -y --no-install-recommends               gcc libffi-dev libssl-dev git libbluetooth-dev curl pkg-config               build-essential libatlas-base-dev libolm-dev python3-dev python3.10-dev unzip libtiff-dev
+            apt-get install -y --no-install-recommends               gcc libffi-dev libssl-dev git libbluetooth-dev curl pkg-config               build-essential libatlas-base-dev libolm-dev python3-dev python3.10-dev unzip libtiff5-dev
             curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
             . "$HOME/.cargo/env"
             rustup target add armv7-unknown-linux-gnueabihf
