@@ -6,38 +6,39 @@ import os
 from nio import (
     AsyncClient,
     MegolmEvent,
-    RoomMessageText, 
+    RoomMessageText,
     UploadResponse,
     WhoamiError,
     exceptions,
-    MatrixRoom, 
+    MatrixRoom,
 )
 
-from mmrelay.log_utils import get_logger 
+from mmrelay.log_utils import get_logger
 from mmrelay.config import get_e2ee_store_dir # Added for handle_decryption_failure
 
 logger = get_logger(name="E2EE")
 
 async def initialize_e2ee(client: AsyncClient, config: dict):
-    # Logic to be moved from main.py and matrix_utils.connect_matrix
+    """Initialize E2EE for the Matrix client.
+
+    Note: Store loading and basic client setup should be done in connect_matrix().
+    This function focuses on E2EE-specific initialization only.
+    """
     logger.info("Initializing end-to-end encryption...")
-
-    # 1. Make sure the store is loaded
-    logger.debug("Loading encryption store...")
-    try:
-        # Explicitly load the store
-        client.load_store()
-        logger.debug("Encryption store loaded successfully")
-
-        # Debug store state
-        logger.debug(f"Device store users immediately after load: {list(client.device_store.users) if client.device_store else 'None'}")
-    except Exception as le:
-        logger.warning(f"Error loading encryption store: {le}")
 
     # Confirm client credentials are set
     logger.debug(f"Checking client credentials: user_id={client.user_id}, device_id={client.device_id}")
     if not (client.user_id and client.device_id and client.access_token):
         logger.warning("Missing essential credentials for E2EE. Encryption may not work correctly.")
+        return
+
+    # Verify that OLM is available
+    if not (hasattr(client, 'olm') and client.olm):
+        logger.error("OLM (encryption library) is not available. E2EE cannot be initialized.")
+        return
+
+    # Debug store state
+    logger.debug(f"Device store users: {list(client.device_store.users) if client.device_store else 'None'}")
 
     # 1.5 Upload keys BEFORE first sync
     logger.debug("Uploading encryption keys to server BEFORE sync")
@@ -199,7 +200,7 @@ async def encrypt_content_for_room(client: AsyncClient, room_id: str, content: d
             # Perform sync AFTER key upload
             logger.debug("Performing sync AFTER key upload")
             await client.sync(timeout=3000)
-            
+
             room = client.rooms.get(room_id) # Get room object
             if not room:
                 logger.error(f"Room {room_id} not found in client.rooms. Cannot claim keys.")
@@ -354,7 +355,7 @@ async def encrypt_content_for_room(client: AsyncClient, room_id: str, content: d
                                 devices = client.device_store.active_user_devices(user_id_in_room)
                                 if devices:
                                     users_devices[user_id_in_room] = [device.device_id for device in devices]
-                        
+
                         if users_devices:
                             logger.debug(f"Querying keys for users in room {room_id} after error: {list(users_devices.keys())}")
                             try:
@@ -369,7 +370,7 @@ async def encrypt_content_for_room(client: AsyncClient, room_id: str, content: d
                                 logger.debug("Keys claim completed successfully after error")
                             except Exception as ke:
                                 logger.warning(f"Error claiming keys after error: {ke}")
-                        
+
                         if client.olm:
                             await client.share_group_session(room_id, ignore_unverified_devices=True)
                             logger.debug(f"Shared new group session for room {room_id} with ignore_unverified_devices=True")
@@ -461,7 +462,7 @@ async def handle_decryption_failure(client: AsyncClient, room: MatrixRoom, event
         "To fix encryption issues, try restarting the relay or clearing the store directory."
     )
     # Note: get_e2ee_store_dir() is imported from mmrelay.config
-    logger.info(f"Current store directory: {get_e2ee_store_dir()}") 
+    logger.info(f"Current store directory: {get_e2ee_store_dir()}")
     logger.info(
         "You can also try logging out and back in to your Matrix client."
     )

@@ -1,5 +1,6 @@
 import asyncio
 import io
+import os
 import re
 import ssl
 import time
@@ -87,8 +88,8 @@ def bot_command(command, event):
 
 async def connect_matrix(passed_config=None):
     """
-    Establish a connection to the Matrix homeserver.
-    Sets global matrix_client and detects the bot's display name.
+    Establish a connection to the Matrix homeserver following nio best practices.
+    Handles both E2EE and non-E2EE configurations with proper credential management.
 
     Args:
         passed_config: The configuration dictionary to use (will update global config)
@@ -114,33 +115,107 @@ async def connect_matrix(passed_config=None):
     if matrix_client:
         return matrix_client
 
+    # Check if E2EE is enabled
+    e2ee_enabled = config.get("matrix", {}).get("e2ee", {}).get("enabled", False)
+
     # Create SSL context using certifi's certificates
     ssl_context = ssl.create_default_context(cafile=certifi.where())
 
-    # Initialize the Matrix client with custom SSL context
-    client_config = AsyncClientConfig(encryption_enabled=False)
-    matrix_client = AsyncClient(
-        homeserver=matrix_homeserver,
-        user=bot_user_id,
-        config=client_config,
-        ssl=ssl_context,
-    )
+    # Configure AsyncClient for E2EE if enabled
+    if e2ee_enabled:
+        from mmrelay.config import get_e2ee_store_dir
 
-    # Set the access_token and user_id
-    matrix_client.access_token = matrix_access_token
-    matrix_client.user_id = bot_user_id
+        # Get E2EE store path from config or use default
+        e2ee_config = config.get("matrix", {}).get("e2ee", {})
+        store_path = e2ee_config.get("store_path")
+        if not store_path:
+            store_path = get_e2ee_store_dir()
 
-    # Attempt to retrieve the device_id using whoami()
-    whoami_response = await matrix_client.whoami()
-    if isinstance(whoami_response, WhoamiError):
-        logger.error(f"Failed to retrieve device_id: {whoami_response.message}")
-        matrix_client.device_id = None
-    else:
-        matrix_client.device_id = whoami_response.device_id
-        if matrix_client.device_id:
-            logger.debug(f"Retrieved device_id: {matrix_client.device_id}")
+        # Configure client for E2EE
+        client_config = AsyncClientConfig(
+            store_sync_tokens=True,
+            encryption_enabled=True
+        )
+
+        logger.debug(f"E2EE enabled, using store path: {store_path}")
+
+        matrix_client = AsyncClient(
+            homeserver=matrix_homeserver,
+            user=bot_user_id,
+            store_path=store_path,
+            config=client_config,
+            ssl=ssl_context,
+        )
+
+        # For E2EE, we should use credentials.json if available
+        # This preserves device_id which is critical for trust relationships
+        credentials_path = os.path.join(store_path, "credentials.json")
+
+        if os.path.exists(credentials_path):
+            # Load stored credentials
+            try:
+                import json
+                with open(credentials_path, 'r') as f:
+                    creds = json.load(f)
+
+                # Restore login using stored credentials
+                matrix_client.restore_login(
+                    user_id=creds["user_id"],
+                    device_id=creds["device_id"],
+                    access_token=creds["access_token"]
+                )
+
+                # Load the encryption store
+                matrix_client.load_store()
+
+                logger.info(f"Restored E2EE session: {creds['user_id']} on device {creds['device_id']}")
+
+            except Exception as e:
+                logger.warning(f"Failed to restore E2EE credentials: {e}")
+                # Fall back to token-based auth
+                matrix_client.access_token = matrix_access_token
+                matrix_client.user_id = bot_user_id
         else:
-            logger.warning("device_id not returned by whoami()")
+            # No stored credentials, use token-based auth
+            # Note: This won't preserve device_id, so E2EE trust won't persist
+            logger.warning("No E2EE credentials found. Device trust will not persist.")
+            logger.info("Run 'mmrelay --login' to set up persistent E2EE credentials.")
+            matrix_client.access_token = matrix_access_token
+            matrix_client.user_id = bot_user_id
+
+            # Try to get device_id via whoami
+            whoami_response = await matrix_client.whoami()
+            if isinstance(whoami_response, WhoamiError):
+                logger.error(f"Failed to retrieve device_id: {whoami_response.message}")
+                matrix_client.device_id = None
+            else:
+                matrix_client.device_id = whoami_response.device_id
+                logger.debug(f"Retrieved device_id via whoami: {matrix_client.device_id}")
+    else:
+        # E2EE disabled, use simple configuration
+        client_config = AsyncClientConfig(encryption_enabled=False)
+        matrix_client = AsyncClient(
+            homeserver=matrix_homeserver,
+            user=bot_user_id,
+            config=client_config,
+            ssl=ssl_context,
+        )
+
+        # Set the access_token and user_id
+        matrix_client.access_token = matrix_access_token
+        matrix_client.user_id = bot_user_id
+
+        # Attempt to retrieve the device_id using whoami()
+        whoami_response = await matrix_client.whoami()
+        if isinstance(whoami_response, WhoamiError):
+            logger.error(f"Failed to retrieve device_id: {whoami_response.message}")
+            matrix_client.device_id = None
+        else:
+            matrix_client.device_id = whoami_response.device_id
+            if matrix_client.device_id:
+                logger.debug(f"Retrieved device_id: {matrix_client.device_id}")
+            else:
+                logger.warning("device_id not returned by whoami()")
 
     # Fetch the bot's display name
     response = await matrix_client.get_displayname(bot_user_id)
@@ -150,6 +225,79 @@ async def connect_matrix(passed_config=None):
         bot_user_name = bot_user_id  # Fallback if display name is not set
 
     return matrix_client
+
+
+async def login_matrix_bot():
+    """
+    Interactive login function to set up E2EE credentials.
+    This should be called via CLI command to establish persistent E2EE session.
+    """
+    import getpass
+    import json
+    from mmrelay.config import get_e2ee_store_dir
+
+    print("Setting up Matrix E2EE credentials...")
+
+    homeserver = input("Enter Matrix homeserver URL: ")
+    if not (homeserver.startswith("https://") or homeserver.startswith("http://")):
+        homeserver = "https://" + homeserver
+
+    user_id = input("Enter your full Matrix user ID (e.g., @user:example.org): ")
+    device_name = input("Enter device name for this relay [MMRelay]: ") or "MMRelay"
+    password = getpass.getpass("Enter Matrix password: ")
+
+    store_path = get_e2ee_store_dir()
+
+    # Configure client for E2EE
+    client_config = AsyncClientConfig(
+        store_sync_tokens=True,
+        encryption_enabled=True
+    )
+
+    client = AsyncClient(
+        homeserver=homeserver,
+        user=user_id,
+        store_path=store_path,
+        config=client_config,
+    )
+
+    try:
+        # Login with password
+        response = await client.login(password=password, device_name=device_name)
+
+        if hasattr(response, 'access_token'):
+            # Save credentials for future use
+            credentials = {
+                "homeserver": homeserver,
+                "user_id": response.user_id,
+                "device_id": response.device_id,
+                "access_token": response.access_token,
+            }
+
+            credentials_path = os.path.join(store_path, "credentials.json")
+            with open(credentials_path, 'w') as f:
+                json.dump(credentials, f, indent=2)
+
+            print(f"✅ E2EE credentials saved successfully!")
+            print(f"   User ID: {response.user_id}")
+            print(f"   Device ID: {response.device_id}")
+            print(f"   Store path: {store_path}")
+            print("\nYou can now enable E2EE in your config.yaml:")
+            print("matrix:")
+            print("  e2ee:")
+            print("    enabled: true")
+
+        else:
+            print(f"❌ Login failed: {response}")
+            return False
+
+    except Exception as e:
+        print(f"❌ Error during login: {e}")
+        return False
+    finally:
+        await client.close()
+
+    return True
 
 
 async def join_matrix_room(matrix_client, room_id_or_alias: str) -> None:
