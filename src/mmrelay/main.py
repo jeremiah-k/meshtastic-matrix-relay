@@ -19,6 +19,7 @@ from nio import (
 
 # Import meshtastic_utils as a module to set event_loop
 from mmrelay import meshtastic_utils
+from mmrelay.matrix import e2ee # Added for E2EE initialization
 from mmrelay.db_utils import (
     initialize_database,
     update_longnames,
@@ -126,148 +127,20 @@ async def main(config):
     else:
         matrix_logger.warning("No Matrix rooms found after sync!")
 
-    # =====================================================================
-    # MATRIX E2EE IMPLEMENTATION - MAIN INITIALIZATION
-    # =====================================================================
-    # This section handles the critical encryption initialization sequence:
-    # 1. Load the encryption store (contains keys and device information)
-    # 2. Verify client credentials are set properly
-    # 3. Upload keys BEFORE performing the main sync
-    # 4. Perform sync AFTER key upload
-    # 5. Verify devices and share group sessions
-    #
-    # This sequence is critical for proper encryption. If keys are not uploaded
-    # before the first sync that handles encrypted messages, the first message
-    # will fail to encrypt properly ("waiting for this message" error in Element).
-    # =====================================================================
-
-    # If E2EE is enabled, properly initialize encryption
-    if (("encryption" in config["matrix"] and config["matrix"]["encryption"].get("enabled", False)) or
-        ("e2ee" in config["matrix"] and config["matrix"]["e2ee"].get("enabled", False))) and matrix_client.olm:
-        matrix_logger.info("Initializing end-to-end encryption...")
-
-        # 1. Make sure the store is loaded
-        matrix_logger.debug("Loading encryption store...")
-        try:
-            # Explicitly load the store
-            matrix_client.load_store()
-            matrix_logger.debug("Encryption store loaded successfully")
-
-            # Debug store state
-            matrix_logger.debug(f"Device store users immediately after load: {list(matrix_client.device_store.users) if matrix_client.device_store else 'None'}")
-        except Exception as le:
-            matrix_logger.warning(f"Error loading encryption store: {le}")
-
-        # Confirm client credentials are set
-        matrix_logger.debug(f"Checking client credentials: user_id={matrix_client.user_id}, device_id={matrix_client.device_id}")
-        if not (matrix_client.user_id and matrix_client.device_id and matrix_client.access_token):
-            matrix_logger.warning("Missing essential credentials for E2EE. Encryption may not work correctly.")
-
-        # 1.5 Upload keys BEFORE first sync
-        matrix_logger.debug("Uploading encryption keys to server BEFORE sync")
-        try:
-            if matrix_client.should_upload_keys:
-                await matrix_client.keys_upload()
-                matrix_logger.debug("Encryption keys uploaded successfully")
-            else:
-                matrix_logger.debug("No key upload needed at this stage")
-        except Exception as ke:
-            matrix_logger.warning(f"Error uploading keys: {ke}")
-
-        # 1.6 Perform sync AFTER key upload
-        matrix_logger.debug("Performing sync AFTER key upload")
-        await matrix_client.sync(timeout=5000)
-        matrix_logger.debug(f"Device store users after sync: {list(matrix_client.device_store.users) if matrix_client.device_store else 'None'}")
-
-        # Verify that rooms are properly populated
-        if not matrix_client.rooms:
-            matrix_logger.warning("No rooms found after sync. Message delivery may not work correctly.")
+    # Initialize E2EE if enabled
+    # The e2ee_enabled check was already updated in a previous step by the worker to:
+    #   if config.get("matrix", {}).get("e2ee", {}).get("enabled", False) and matrix_client.olm:
+    # Ensure this check is correctly placed here.
+    if config.get("matrix", {}).get("e2ee", {}).get("enabled", False) and hasattr(matrix_client, 'olm') and matrix_client.olm:
+        # Ensure matrix_client.olm exists, as it's needed for E2EE.
+        # The connect_matrix function sets up the client with olm if e2ee is enabled in config.
+        logger.info("E2EE is enabled in config, proceeding with E2EE initialization.") # Use main logger instance
+        await e2ee.initialize_e2ee(matrix_client, config)
+    else:
+        if not (hasattr(matrix_client, 'olm') and matrix_client.olm):
+            logger.info("E2EE is configured but OLM (encryption library) is not available on the client. Skipping E2EE initialization.") # Use main logger instance
         else:
-            matrix_logger.debug(f"Found {len(matrix_client.rooms)} rooms after sync")
-
-        # 2. Trust all of our own devices to ensure encryption works
-        matrix_logger.debug("Trusting our own devices for encryption...")
-        try:
-            # First make sure we have synced to populate the device store
-            matrix_logger.debug("Performing sync to populate device store...")
-            await matrix_client.sync(timeout=5000)
-
-            # Check if our user_id is in the device_store
-            if matrix_client.device_store and matrix_client.user_id in matrix_client.device_store:
-                devices = matrix_client.device_store[matrix_client.user_id]
-                matrix_logger.info(f"Found {len(devices)} of our own devices in the device store")
-
-                # For bots, the pragmatic approach is to mark our own device as ignored
-                # This tells matrix-nio to ignore verification status and proceed with encryption
-                for device_id, device in devices.items():
-                    if device_id == matrix_client.device_id:
-                        # Mark our own device as ignored to avoid verification warnings
-                        matrix_client.ignore_device(device)
-                        matrix_logger.debug(f"Marked our own device {device_id} as ignored to avoid verification warnings")
-
-                # Log about our current device
-                if matrix_client.device_id in devices:
-                    matrix_logger.info(f"Our current device is in the device store: {matrix_client.device_id}")
-                else:
-                    matrix_logger.debug(f"Our current device {matrix_client.device_id} not found in device store (this is normal)")
-            else:
-                matrix_logger.debug("No devices found for our user in the device store (this is normal for first run)")
-
-            # We don't verify other users' devices - we use ignore_unverified_devices instead
-            matrix_logger.debug("Using ignore_unverified_devices for all rooms")
-        except Exception as ve:
-            matrix_logger.debug(f"Device trust setup info: {ve}")
-
-        # 2. Check if keys need to be uploaded and upload them if needed
-        matrix_logger.debug("Checking if encryption keys need to be uploaded...")
-        matrix_logger.debug(f"should_upload_keys = {matrix_client.should_upload_keys}")
-
-        # Always try to upload keys to ensure they're properly registered
-        matrix_logger.debug("Uploading encryption keys...")
-        try:
-            await matrix_client.keys_upload()
-            matrix_logger.debug("Encryption keys uploaded successfully")
-        except Exception as ke:
-            if "No key upload needed" in str(ke):
-                matrix_logger.debug("No key upload needed")
-            else:
-                matrix_logger.warning(f"Error uploading keys: {ke}")
-
-        # 3. Perform another sync to ensure everything is up-to-date
-        matrix_logger.debug("Performing sync to update encryption state...")
-        await matrix_client.sync(timeout=10000)  # 10 second timeout
-
-        # 4. Share group sessions for all encrypted rooms
-        encrypted_rooms = [room_id for room_id, room in matrix_client.rooms.items() if room.encrypted]
-        if encrypted_rooms:
-            matrix_logger.debug(f"Sharing group sessions for {len(encrypted_rooms)} encrypted rooms")
-            for room_id in encrypted_rooms:
-                try:
-                    # Use ignore_unverified_devices=True to ensure messages can be sent
-                    await matrix_client.share_group_session(room_id, ignore_unverified_devices=True)
-                    matrix_logger.debug(f"Shared group session for room {room_id}")
-                except Exception as e:
-                    matrix_logger.warning(f"Could not share group session for room {room_id}: {e}")
-        else:
-            matrix_logger.debug("No encrypted rooms found")
-
-        # 5. Perform a final sync to ensure all group sessions are properly registered
-        matrix_logger.debug("Performing final sync to update encryption state...")
-        await matrix_client.sync(timeout=5000)  # 5 second timeout
-
-        # Log encryption status of all rooms after E2EE setup
-        matrix_logger.info("End-to-end encryption initialization complete")
-        if matrix_client.rooms:
-            matrix_logger.info("Room encryption status after E2EE setup:")
-            encrypted_count = 0
-            for i, (room_id, room) in enumerate(matrix_client.rooms.items(), 1):
-                room_name = room.display_name if hasattr(room, "display_name") else "Unknown"
-                is_encrypted = room.encrypted if hasattr(room, "encrypted") else False
-                if is_encrypted:
-                    encrypted_count += 1
-                encryption_status = "ENCRYPTED" if is_encrypted else "unencrypted"
-                matrix_logger.info(f"  {i}. {room_name}: {room_id} - {encryption_status}")
-            matrix_logger.info(f"Total rooms: {len(matrix_client.rooms)}, Encrypted: {encrypted_count}")
+            logger.info("E2EE is not enabled in config. Skipping E2EE initialization.") # Use main logger instance
 
     # Now connect to Meshtastic after Matrix is ready
     meshtastic_utils.meshtastic_client = connect_meshtastic(passed_config=config)
