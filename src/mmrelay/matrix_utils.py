@@ -27,6 +27,7 @@ from mmrelay.db_utils import (
     store_message_map,
 )
 from mmrelay.log_utils import get_logger
+from mmrelay.matrix import e2ee  # Added for E2EE integration
 
 # Do not import plugin_loader here to avoid circular imports
 from mmrelay.meshtastic_utils import connect_meshtastic
@@ -269,15 +270,23 @@ async def matrix_relay(
                 logger.error("Matrix client is None. Cannot send message.")
                 return
 
-            # Send the message with a timeout
-            response = await asyncio.wait_for(
-                matrix_client.room_send(
-                    room_id=room_id,
-                    message_type="m.room.message",
-                    content=content,
-                ),
-                timeout=10.0,  # Increased timeout
-            )
+            # Check if the room is encrypted and E2EE is available
+            room = matrix_client.rooms.get(room_id)
+            if room and hasattr(room, 'encrypted') and room.encrypted and hasattr(matrix_client, 'olm') and matrix_client.olm:
+                logger.debug(f"Room {room_id} is encrypted, using E2EE message sending")
+                response = await e2ee.encrypt_content_for_room(
+                    matrix_client, room_id, content, "m.room.message"
+                )
+            else:
+                # Send the message normally (unencrypted)
+                response = await asyncio.wait_for(
+                    matrix_client.room_send(
+                        room_id=room_id,
+                        message_type="m.room.message",
+                        content=content,
+                    ),
+                    timeout=10.0,  # Increased timeout
+                )
 
             # Log at info level, matching one-point-oh pattern
             logger.info(f"Sent inbound radio message to matrix room: {room_id}")
@@ -348,7 +357,7 @@ def strip_quoted_lines(text: str) -> str:
 # Callback for new messages in Matrix room
 async def on_room_message(
     room: MatrixRoom,
-    event: Union[RoomMessageText, RoomMessageNotice, ReactionEvent, RoomMessageEmote],
+    event: Union[RoomMessageText, RoomMessageNotice, ReactionEvent, RoomMessageEmote, MegolmEvent],
 ) -> None:
     """
     Handle new messages and reactions in Matrix. For reactions, we ensure that when relaying back

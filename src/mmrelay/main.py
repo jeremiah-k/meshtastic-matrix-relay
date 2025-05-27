@@ -8,12 +8,18 @@ import logging
 import signal
 import sys
 
-from nio import ReactionEvent, RoomMessageEmote, RoomMessageNotice, RoomMessageText
+from nio import (
+    ReactionEvent,
+    RoomMessageEmote,
+    RoomMessageNotice,
+    RoomMessageText,
+)
 from nio.events.room_events import RoomMemberEvent
 
 # Import version from package
 # Import meshtastic_utils as a module to set event_loop
 from mmrelay import __version__, meshtastic_utils
+from mmrelay.matrix import e2ee  # Added for E2EE initialization
 from mmrelay.db_utils import (
     initialize_database,
     update_longnames,
@@ -98,6 +104,16 @@ async def main(config):
 
     # Connect to Matrix
     matrix_client = await connect_matrix(passed_config=config)
+
+    # Initialize E2EE if enabled
+    if config.get("matrix", {}).get("e2ee", {}).get("enabled", False) and hasattr(matrix_client, 'olm') and matrix_client.olm:
+        logger.info("E2EE is enabled in config, proceeding with E2EE initialization.")
+        await e2ee.initialize_e2ee(matrix_client, config)
+    else:
+        if not (hasattr(matrix_client, 'olm') and matrix_client.olm):
+            logger.info("E2EE is configured but OLM (encryption library) is not available on the client. Skipping E2EE initialization.")
+        else:
+            logger.info("E2EE is not enabled in config. Skipping E2EE initialization.")
 
     # Join the rooms specified in the config.yaml
     for room in matrix_rooms:
