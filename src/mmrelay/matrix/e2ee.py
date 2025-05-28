@@ -3,15 +3,33 @@ import asyncio
 import logging
 import os
 
-from nio import (
-    AsyncClient,
-    MegolmEvent,
-    RoomMessageText,
-    UploadResponse,
-    WhoamiError,
-    exceptions,
-    MatrixRoom,
-)
+# Check if E2EE dependencies are available
+try:
+    from nio import (
+        AsyncClient,
+        MegolmEvent,
+        RoomMessageText,
+        UploadResponse,
+        WhoamiError,
+        exceptions,
+        MatrixRoom,
+    )
+    # Test if OLM is available (required for E2EE)
+    from nio.crypto import OlmDevice
+    E2EE_AVAILABLE = True
+except ImportError as e:
+    # E2EE dependencies not available
+    from nio import (
+        AsyncClient,
+        MegolmEvent,
+        RoomMessageText,
+        UploadResponse,
+        WhoamiError,
+        exceptions,
+        MatrixRoom,
+    )
+    E2EE_AVAILABLE = False
+    E2EE_IMPORT_ERROR = str(e)
 
 from mmrelay.log_utils import get_logger
 from mmrelay.config import get_e2ee_store_dir # Added for handle_decryption_failure
@@ -26,6 +44,13 @@ async def initialize_e2ee(client: AsyncClient, config: dict):
     """
     logger.info("Initializing end-to-end encryption...")
 
+    # Check if E2EE dependencies are available
+    if not E2EE_AVAILABLE:
+        logger.error(f"E2EE dependencies not available: {E2EE_IMPORT_ERROR}")
+        logger.error("To enable E2EE, install with: pip install mmrelay[e2ee]")
+        logger.error("Or manually: pip install 'matrix-nio[e2e]>=0.25.2'")
+        return
+
     # Confirm client credentials are set
     logger.debug(f"Checking client credentials: user_id={client.user_id}, device_id={client.device_id}")
     if not (client.user_id and client.device_id and client.access_token):
@@ -35,6 +60,8 @@ async def initialize_e2ee(client: AsyncClient, config: dict):
     # Verify that OLM is available
     if not (hasattr(client, 'olm') and client.olm):
         logger.error("OLM (encryption library) is not available. E2EE cannot be initialized.")
+        logger.error("This usually means E2EE dependencies are not properly installed.")
+        logger.error("Try: pip install mmrelay[e2ee]")
         return
 
     # Debug store state

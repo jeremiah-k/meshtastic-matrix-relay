@@ -22,8 +22,14 @@ MMRelay runs on Linux, macOS, and Windows.
 # Install using pipx for isolated installation (recommended)
 pipx install mmrelay
 
+# For E2EE support, install with E2EE dependencies
+pipx install mmrelay[e2ee]
+
 # Generate a sample configuration file & then edit it
 mmrelay --generate-config
+
+# Set up E2EE credentials (if using encrypted Matrix rooms)
+mmrelay --login
 
 # Start the relay (without --install-service to run manually)
 mmrelay --install-service
@@ -46,7 +52,7 @@ For detailed installation and configuration instructions, see the [Installation 
 - Relays messages to/from an MQTT broker, if configured in the Meshtastic firmware
 - ✨️ _Cross-platform reactions support_ ✨️ **NEW!!**
 
-_We would love to support [Matrix E2EE rooms](https://github.com/geoffwhittington/meshtastic-matrix-relay/issues/33), but this is currently not implemented._
+- ✨️ _Matrix End-to-End Encryption (E2EE) support_ ✨️ **NEW!!** (requires `pip install mmrelay[e2ee]`)
 
 ---
 

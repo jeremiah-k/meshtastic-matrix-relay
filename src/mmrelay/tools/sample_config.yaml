@@ -2,7 +2,9 @@ matrix:
   homeserver: https://example.matrix.org
   access_token: reaalllllyloooooongsecretttttcodeeeeeeforrrrbot # See: https://t2bot.io/docs/access_tokens/
   bot_user_id: "@botuser:example.matrix.org"
-  # Optional encryption configuration (requires matrix-nio[e2e] installation)
+  # Optional encryption configuration
+  # Requires E2EE dependencies: pip install mmrelay[e2ee]
+  # Or manually: pip install "matrix-nio[e2e]>=0.25.2"
   #e2ee:
   #  enabled: true
   #  store_path: ~/.mmrelay/store  # Default location if not specified
