@@ -8,17 +8,36 @@ from typing import Union
 
 import certifi
 import meshtastic.protobuf.portnums_pb2
-from nio import (
-    AsyncClient,
-    AsyncClientConfig,
-    MatrixRoom,
-    ReactionEvent,
-    RoomMessageEmote,
-    RoomMessageNotice,
-    RoomMessageText,
-    UploadResponse,
-    WhoamiError,
-)
+# Import basic nio classes
+try:
+    from nio import (
+        AsyncClient,
+        AsyncClientConfig,
+        MatrixRoom,
+        MegolmEvent,
+        ReactionEvent,
+        RoomMessageEmote,
+        RoomMessageNotice,
+        RoomMessageText,
+        UploadResponse,
+        WhoamiError,
+    )
+except ImportError:
+    # Fallback if MegolmEvent is not available (E2EE dependencies missing)
+    from nio import (
+        AsyncClient,
+        AsyncClientConfig,
+        MatrixRoom,
+        ReactionEvent,
+        RoomMessageEmote,
+        RoomMessageNotice,
+        RoomMessageText,
+        UploadResponse,
+        WhoamiError,
+    )
+    # Create a dummy MegolmEvent class for type hints
+    class MegolmEvent:
+        pass
 from nio.events.room_events import RoomMemberEvent
 from PIL import Image
 

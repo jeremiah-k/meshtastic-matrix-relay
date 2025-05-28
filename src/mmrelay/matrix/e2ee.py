@@ -17,17 +17,21 @@ try:
     # Test if OLM is available (required for E2EE)
     from nio.crypto import OlmDevice
     E2EE_AVAILABLE = True
+    E2EE_IMPORT_ERROR = None
 except ImportError as e:
-    # E2EE dependencies not available
+    # E2EE dependencies not available - import basic nio classes only
     from nio import (
         AsyncClient,
-        MegolmEvent,
         RoomMessageText,
         UploadResponse,
         WhoamiError,
         exceptions,
         MatrixRoom,
     )
+    # Create a dummy MegolmEvent class for type hints when E2EE not available
+    class MegolmEvent:
+        pass
+
     E2EE_AVAILABLE = False
     E2EE_IMPORT_ERROR = str(e)
 
