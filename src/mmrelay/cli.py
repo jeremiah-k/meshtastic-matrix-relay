@@ -58,6 +58,11 @@ def parse_arguments():
         action="store_true",
         help="Check if the configuration file is valid",
     )
+    parser.add_argument(
+        "--login",
+        action="store_true",
+        help="Set up Matrix E2EE credentials interactively",
+    )
 
     # Windows-specific handling for backward compatibility
     # On Windows, add a positional argument for the config file path
@@ -259,6 +264,10 @@ def main():
     if args.check_config:
         return 0 if check_config(args) else 1
 
+    # Handle --login
+    if args.login:
+        return 0 if login_e2ee() else 1
+
     # Handle --install-service
     if args.install_service:
         from mmrelay.setup_utils import install_service
@@ -321,6 +330,12 @@ def handle_cli_commands(args):
 
             sys.exit(1)
 
+    # Handle --login
+    if args.login:
+        import sys
+
+        sys.exit(0 if login_e2ee() else 1)
+
     # Handle --check-config
     if args.check_config:
         import sys
@@ -329,6 +344,27 @@ def handle_cli_commands(args):
 
     # No commands were handled
     return False
+
+
+def login_e2ee():
+    """Set up Matrix E2EE credentials interactively.
+
+    Returns:
+        bool: True if login was successful, False otherwise.
+    """
+    try:
+        import asyncio
+        from mmrelay.matrix_utils import login_matrix_bot
+
+        # Run the async login function
+        asyncio.run(login_matrix_bot())
+        return True
+    except KeyboardInterrupt:
+        print("\nLogin cancelled by user.")
+        return False
+    except Exception as e:
+        print(f"Error during E2EE login: {e}")
+        return False
 
 
 def generate_sample_config():
