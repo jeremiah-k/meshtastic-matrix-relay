@@ -47,8 +47,8 @@ async def initialize_e2ee(client: AsyncClient, config: dict):
     # Check if E2EE dependencies are available
     if not E2EE_AVAILABLE:
         logger.error(f"E2EE dependencies not available: {E2EE_IMPORT_ERROR}")
-        logger.error("To enable E2EE, install with: pip install mmrelay[e2ee]")
-        logger.error("Or manually: pip install 'matrix-nio[e2e]>=0.25.2'")
+        logger.error("To enable E2EE, install with: pip install mmrelay[e2e]")
+        logger.error("Or manually: pip install 'matrix-nio[e2e]==0.25.2' python-olm")
         return
 
     # Confirm client credentials are set

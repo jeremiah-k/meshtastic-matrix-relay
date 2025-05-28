@@ -4,7 +4,7 @@ matrix:
   bot_user_id: "@botuser:example.matrix.org"
   # Optional encryption configuration
   # Requires E2EE dependencies: pip install mmrelay[e2ee]
-  # Or manually: pip install "matrix-nio[e2e]>=0.25.2"
+  # Or manually: pip install "matrix-nio[e2e]==0.25.2" python-olm
   #e2ee:
   #  enabled: true
   #  store_path: ~/.mmrelay/store  # Default location if not specified
