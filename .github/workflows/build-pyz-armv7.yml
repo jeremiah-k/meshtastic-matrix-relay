@@ -47,7 +47,7 @@ jobs:
             apt-get update
             apt-get install -y --no-install-recommends \
               gcc libffi-dev libssl-dev git libbluetooth-dev curl pkg-config \
-              build-essential libatlas-base-dev libolm-dev python3-dev python3.10-dev
+              build-essential libatlas-base-dev libolm-dev python3-dev python3.10-dev libtiff6
             curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
             . "$HOME/.cargo/env"
             pip install --upgrade pip setuptools wheel maturin
