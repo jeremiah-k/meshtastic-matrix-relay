@@ -41,13 +41,13 @@ jobs:
       - name: Build inside ARMv7 Docker (shiv, rustup, fixed cargo config)
         uses: addnab/docker-run-action@v3
         with:
-          image: arm32v7/python:3.11
+          image: arm32v7/python:3.10
           options: --platform linux/arm/v7 -v ${{ github.workspace }}:/github/workspace -w /github/workspace
           run: |
             apt-get update
             apt-get install -y --no-install-recommends \
               gcc libffi-dev libssl-dev git libbluetooth-dev curl pkg-config \
-              build-essential libatlas-base-dev libolm-dev python3-dev python3.11-dev
+              build-essential libatlas-base-dev libolm-dev python3-dev python3.10-dev
             curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
             . "$HOME/.cargo/env"
             pip install --upgrade pip setuptools wheel maturin
@@ -57,8 +57,20 @@ jobs:
 
             # Install the rest of the requirements
             pip install -r requirements.txt
+            echo "Attempting to reinstall rpds-py from source..."
+            pip uninstall -y rpds-py
+            pip install -v --no-binary :all: --compile rpds-py
             pip install shiv
             mkdir -p dist
+
+            # --- New step: Inspect site-packages for rpds ---
+            echo "--- Inspecting site-packages for rpds compiled artifacts ---"
+            SITE_PACKAGES_DIR=$(python -c 'import site; print(site.getsitepackages()[0])')
+            echo "Site-packages directory is: $SITE_PACKAGES_DIR"
+            echo "Listing contents of $SITE_PACKAGES_DIR/rpds* ..."
+            ls -R $SITE_PACKAGES_DIR/rpds* || echo "rpds directory not found in site-packages"
+            echo "Looking for rpds compiled objects..."
+            find $SITE_PACKAGES_DIR -name "rpds*.so" -o -name "_rpds*.so"
 
             # Build the PYZ file with the correct entry point
             python -m shiv --compressed \
