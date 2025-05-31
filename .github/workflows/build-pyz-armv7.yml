@@ -47,13 +47,16 @@ jobs:
             apt-get update
             apt-get install -y --no-install-recommends \
               gcc libffi-dev libssl-dev git libbluetooth-dev curl pkg-config \
-              build-essential libatlas-base-dev libolm-dev python3-dev libtiff-dev libtiff6 unzip
+              build-essential libatlas-base-dev libolm-dev python3-dev libtiff5-dev unzip
             curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
             . "$HOME/.cargo/env"
             pip install --upgrade pip setuptools wheel maturin
 
             # Install the rest of the requirements
             pip install -r requirements.txt
+            echo "Attempting to reinstall Pillow from source against libtiff5..."
+            pip uninstall -y Pillow
+            pip install -v --no-binary :all: --compile Pillow==11.2.1
             echo "Attempting to reinstall rpds-py from source..."
             pip uninstall -y rpds-py
             pip install -v --no-binary :all: --compile rpds-py
@@ -68,6 +71,23 @@ jobs:
             ls -R $SITE_PACKAGES_DIR/rpds* || echo "rpds directory not found in site-packages"
             echo "Looking for rpds compiled objects..."
             find $SITE_PACKAGES_DIR -name "rpds*.so" -o -name "_rpds*.so"
+
+            # --- Check Pillow linkage ---
+            echo "--- Checking Pillow's _imaging.so linkage ---"
+            SITE_PACKAGES_DIR=$(python -c 'import site; print(site.getsitepackages()[0])')
+            IMAGING_SO_PATH=$(find $SITE_PACKAGES_DIR/PIL -name "_imaging*.so" | head -n 1)
+            if [ -n "$IMAGING_SO_PATH" ]; then
+              echo "Found _imaging.so at: $IMAGING_SO_PATH"
+              echo "Running ldd on _imaging.so:"
+              ldd $IMAGING_SO_PATH || echo "ldd command failed or _imaging.so not found"
+              echo "Checking for libtiff.so.5 in ldd output:"
+              ldd $IMAGING_SO_PATH | grep 'libtiff.so.5' || echo "libtiff.so.5 NOT found in ldd output for _imaging.so"
+              echo "Checking for libtiff.so.6 in ldd output:"
+              ldd $IMAGING_SO_PATH | grep 'libtiff.so.6' || echo "libtiff.so.6 NOT found in ldd output for _imaging.so (this is good)"
+            else
+              echo "ERROR: _imaging.so not found in $SITE_PACKAGES_DIR/PIL"
+            fi
+            echo "--- Finished checking Pillow linkage ---"
 
             # Build the PYZ file with the correct entry point
             python -m shiv --compressed \
