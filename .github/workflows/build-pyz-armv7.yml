@@ -44,19 +44,24 @@ jobs:
           image: arm32v7/python:3.10
           options: --platform linux/arm/v7 -v ${{ github.workspace }}:/github/workspace -w /github/workspace
           run: |
+            set -e
             apt-get update
             apt-get install -y --no-install-recommends \
               gcc libffi-dev libssl-dev git libbluetooth-dev curl pkg-config \
               build-essential libatlas-base-dev libolm-dev python3-dev libjpeg-dev zlib1g-dev libtiff-dev libtiff6 unzip
+
             curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
             . "$HOME/.cargo/env"
+
             pip install --upgrade pip setuptools wheel maturin
 
             # Install the rest of the requirements
             pip install -r requirements.txt
+
             echo "Attempting to reinstall rpds-py from source..."
             pip uninstall -y rpds-py
             pip install -v --no-binary :all: --compile rpds-py
+
             pip install shiv
             mkdir -p dist
 
@@ -106,10 +111,6 @@ jobs:
 
                   echo "Copying $LIBTIFF_SYMLINK_PATH to _shiv_libs/"
                   cp -L $LIBTIFF_SYMLINK_PATH _shiv_libs/libtiff.so.6
-                  # We copied the actual file with -L to libtiff.so.6, ensure the actual versioned file is also there if different
-                  # However, cp -L makes libtiff.so.6 a copy of the target, not a symlink.
-                  # For shiv's purposes, having the actual library named libtiff.so.6 in _shiv_libs might be enough.
-                  # Let's also copy the specific versioned file if its name is different.
                   LIBTIFF_REAL_FILENAME=$(basename $LIBTIFF_REAL_PATH)
                   if [ "$LIBTIFF_REAL_FILENAME" != "libtiff.so.6" ]; then
                     echo "Copying $LIBTIFF_REAL_PATH to _shiv_libs/$LIBTIFF_REAL_FILENAME"
