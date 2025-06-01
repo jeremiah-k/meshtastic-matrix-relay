@@ -132,18 +132,16 @@ jobs:
 
             # --- Create the wrapper script for LD_LIBRARY_PATH ---
             echo "--- Creating run_mmrelay.sh wrapper ---"
-            cat << 'EOF' > run_mmrelay.sh
-#!/bin/sh
-# Get the directory where the PYZ is extracted
-# SHIV_ROOT is set by shiv's bootstrap process to the extraction path
-APP_DIR="$SHIV_ROOT"
-
-# Prepend our vendored libs to LD_LIBRARY_PATH
-export LD_LIBRARY_PATH="$APP_DIR/_shiv_libs:$LD_LIBRARY_PATH"
-
-# Execute the original Python entry point
-exec python -m mmrelay.cli "$@"
-EOF
+            echo '#!/bin/sh' > run_mmrelay.sh
+            echo '# Get the directory where the PYZ is extracted' >> run_mmrelay.sh
+            echo '# SHIV_ROOT is set by shivs bootstrap process to the extraction path' >> run_mmrelay.sh
+            echo 'APP_DIR="$SHIV_ROOT"' >> run_mmrelay.sh
+            echo '' >> run_mmrelay.sh
+            echo '# Prepend our vendored libs to LD_LIBRARY_PATH' >> run_mmrelay.sh
+            echo 'export LD_LIBRARY_PATH="$APP_DIR/_shiv_libs:$LD_LIBRARY_PATH"' >> run_mmrelay.sh
+            echo '' >> run_mmrelay.sh
+            echo '# Execute the original Python entry point' >> run_mmrelay.sh
+            echo 'exec python -m mmrelay.cli "$@"' >> run_mmrelay.sh
             chmod +x run_mmrelay.sh
             echo "run_mmrelay.sh created:"
             cat run_mmrelay.sh
