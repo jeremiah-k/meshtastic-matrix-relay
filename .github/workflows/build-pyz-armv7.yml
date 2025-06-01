@@ -47,14 +47,42 @@ jobs:
             apt-get update
             apt-get install -y --no-install-recommends \
               gcc libffi-dev libssl-dev git libbluetooth-dev curl pkg-config \
-              build-essential libatlas-base-dev libolm-dev python3-dev libtiff5-dev unzip
+              build-essential libatlas-base-dev libolm-dev python3-dev libjpeg-dev zlib1g-dev unzip
+
+            # Download and build libtiff statically
+            echo "--- Downloading and building libtiff statically ---"
+            TIFF_VERSION="4.5.1"
+            wget "http://download.osgeo.org/libtiff/tiff-${TIFF_VERSION}.tar.gz"
+            tar -xzf "tiff-${TIFF_VERSION}.tar.gz"
+            cd "tiff-${TIFF_VERSION}"
+            echo "Configuring libtiff..."
+            CFLAGS="-fPIC" ./configure --disable-shared --enable-static --prefix=/usr/local/custom-tiff
+            echo "Building libtiff..."
+            make -j$(nproc)
+            echo "Installing libtiff..."
+            make install
+            cd ..
+            echo "--- Finished building libtiff ---"
             curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
             . "$HOME/.cargo/env"
             pip install --upgrade pip setuptools wheel maturin
 
             # Install the rest of the requirements
             pip install -r requirements.txt
-            echo "Attempting to reinstall Pillow from source against libtiff5..."
+            echo "--- Configuring environment for Pillow to use custom static libtiff ---"
+            export TIFF_INCLUDE_DIR="/usr/local/custom-tiff/include"
+            export TIFF_LIBRARY_DIR="/usr/local/custom-tiff/lib"
+            # Prepend to LDFLAGS and CFLAGS to ensure they are prioritized
+            export LDFLAGS="-L/usr/local/custom-tiff/lib $LDFLAGS"
+            export CFLAGS="-I/usr/local/custom-tiff/include $CFLAGS"
+            # Prepend to PKG_CONFIG_PATH as well
+            export PKG_CONFIG_PATH="/usr/local/custom-tiff/lib/pkgconfig:$PKG_CONFIG_PATH"
+            echo "TIFF_INCLUDE_DIR=$TIFF_INCLUDE_DIR"
+            echo "TIFF_LIBRARY_DIR=$TIFF_LIBRARY_DIR"
+            echo "LDFLAGS=$LDFLAGS"
+            echo "CFLAGS=$CFLAGS"
+            echo "PKG_CONFIG_PATH=$PKG_CONFIG_PATH"
+            echo "Attempting to reinstall Pillow from source against custom static libtiff..."
             pip uninstall -y Pillow
             pip install -v --no-binary :all: --compile Pillow==11.2.1
             echo "Attempting to reinstall rpds-py from source..."
