@@ -47,44 +47,13 @@ jobs:
             apt-get update
             apt-get install -y --no-install-recommends \
               gcc libffi-dev libssl-dev git libbluetooth-dev curl pkg-config \
-              build-essential libatlas-base-dev libolm-dev python3-dev libjpeg-dev zlib1g-dev unzip
-
-            # Download and build libtiff statically
-            echo "--- Downloading and building libtiff statically ---"
-            TIFF_VERSION="4.5.1"
-            wget "http://download.osgeo.org/libtiff/tiff-${TIFF_VERSION}.tar.gz"
-            tar -xzf "tiff-${TIFF_VERSION}.tar.gz"
-            cd "tiff-${TIFF_VERSION}"
-            echo "Configuring libtiff..."
-            CFLAGS="-fPIC" ./configure --disable-shared --enable-static --prefix=/usr/local/custom-tiff
-            echo "Building libtiff..."
-            make -j$(nproc)
-            echo "Installing libtiff..."
-            make install
-            cd ..
-            echo "--- Finished building libtiff ---"
+              build-essential libatlas-base-dev libolm-dev python3-dev libjpeg-dev zlib1g-dev libtiff-dev libtiff6 unzip
             curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
             . "$HOME/.cargo/env"
             pip install --upgrade pip setuptools wheel maturin
 
             # Install the rest of the requirements
             pip install -r requirements.txt
-            echo "--- Configuring environment for Pillow to use custom static libtiff ---"
-            export TIFF_INCLUDE_DIR="/usr/local/custom-tiff/include"
-            export TIFF_LIBRARY_DIR="/usr/local/custom-tiff/lib"
-            # Prepend to LDFLAGS and CFLAGS to ensure they are prioritized
-            export LDFLAGS="-L/usr/local/custom-tiff/lib $LDFLAGS"
-            export CFLAGS="-I/usr/local/custom-tiff/include $CFLAGS"
-            # Prepend to PKG_CONFIG_PATH as well
-            export PKG_CONFIG_PATH="/usr/local/custom-tiff/lib/pkgconfig:$PKG_CONFIG_PATH"
-            echo "TIFF_INCLUDE_DIR=$TIFF_INCLUDE_DIR"
-            echo "TIFF_LIBRARY_DIR=$TIFF_LIBRARY_DIR"
-            echo "LDFLAGS=$LDFLAGS"
-            echo "CFLAGS=$CFLAGS"
-            echo "PKG_CONFIG_PATH=$PKG_CONFIG_PATH"
-            echo "Attempting to reinstall Pillow from source against custom static libtiff..."
-            pip uninstall -y Pillow
-            pip install -v --no-binary :all: --compile Pillow==11.2.1
             echo "Attempting to reinstall rpds-py from source..."
             pip uninstall -y rpds-py
             pip install -v --no-binary :all: --compile rpds-py
@@ -99,6 +68,10 @@ jobs:
             ls -R $SITE_PACKAGES_DIR/rpds* || echo "rpds directory not found in site-packages"
             echo "Looking for rpds compiled objects..."
             find $SITE_PACKAGES_DIR -name "rpds*.so" -o -name "_rpds*.so"
+
+            # Prepare directory for vendoring libtiff
+            echo "--- Preparing directory for vendoring libtiff ---"
+            mkdir -p _shiv_libs
 
             # --- Check Pillow linkage ---
             echo "--- Checking Pillow's _imaging.so linkage ---"
@@ -117,11 +90,69 @@ jobs:
             fi
             echo "--- Finished checking Pillow linkage ---"
 
+            # --- Copy libtiff.so.6 and its real file into _shiv_libs ---
+            echo "--- Finding and vendoring libtiff.so.6 ---"
+            SITE_PACKAGES_DIR=$(python -c 'import site; print(site.getsitepackages()[0])')
+            IMAGING_SO_PATH=$(find $SITE_PACKAGES_DIR/PIL -name "_imaging*.so" | head -n 1)
+            if [ -n "$IMAGING_SO_PATH" ]; then
+              LIBTIFF_PATH_LINE=$(ldd $IMAGING_SO_PATH | grep 'libtiff.so.6')
+              if [ -n "$LIBTIFF_PATH_LINE" ]; then
+                # Extract the path: "libtiff.so.6 => /path/to/libtiff.so.6 (0xb...)" -> "/path/to/libtiff.so.6"
+                LIBTIFF_SYMLINK_PATH=$(echo $LIBTIFF_PATH_LINE | awk '{print $3}')
+                if [ -L "$LIBTIFF_SYMLINK_PATH" ]; then
+                  echo "Found libtiff.so.6 symlink at: $LIBTIFF_SYMLINK_PATH"
+                  LIBTIFF_REAL_PATH=$(readlink -f $LIBTIFF_SYMLINK_PATH)
+                  echo "Real libtiff.so.6 file is: $LIBTIFF_REAL_PATH"
+
+                  echo "Copying $LIBTIFF_SYMLINK_PATH to _shiv_libs/"
+                  cp -L $LIBTIFF_SYMLINK_PATH _shiv_libs/libtiff.so.6
+                  # We copied the actual file with -L to libtiff.so.6, ensure the actual versioned file is also there if different
+                  # However, cp -L makes libtiff.so.6 a copy of the target, not a symlink.
+                  # For shiv's purposes, having the actual library named libtiff.so.6 in _shiv_libs might be enough.
+                  # Let's also copy the specific versioned file if its name is different.
+                  LIBTIFF_REAL_FILENAME=$(basename $LIBTIFF_REAL_PATH)
+                  if [ "$LIBTIFF_REAL_FILENAME" != "libtiff.so.6" ]; then
+                    echo "Copying $LIBTIFF_REAL_PATH to _shiv_libs/$LIBTIFF_REAL_FILENAME"
+                    cp $LIBTIFF_REAL_PATH _shiv_libs/$LIBTIFF_REAL_FILENAME
+                  fi
+
+                  echo "Contents of _shiv_libs:"
+                  ls -la _shiv_libs/
+                else
+                  echo "ERROR: $LIBTIFF_SYMLINK_PATH is not a symlink or not found."
+                fi
+              else
+                echo "ERROR: libtiff.so.6 not found in ldd output for $IMAGING_SO_PATH. Cannot vendor."
+              fi
+            else
+              echo "ERROR: _imaging.so not found. Cannot determine libtiff path."
+            fi
+            echo "--- Finished vendoring libtiff.so.6 ---"
+
+            # --- Create the wrapper script for LD_LIBRARY_PATH ---
+            echo "--- Creating run_mmrelay.sh wrapper ---"
+            cat << 'EOF' > run_mmrelay.sh
+#!/bin/sh
+# Get the directory where the PYZ is extracted
+# SHIV_ROOT is set by shiv's bootstrap process to the extraction path
+APP_DIR="$SHIV_ROOT"
+
+# Prepend our vendored libs to LD_LIBRARY_PATH
+export LD_LIBRARY_PATH="$APP_DIR/_shiv_libs:$LD_LIBRARY_PATH"
+
+# Execute the original Python entry point
+exec python -m mmrelay.cli "$@"
+EOF
+            chmod +x run_mmrelay.sh
+            echo "run_mmrelay.sh created:"
+            cat run_mmrelay.sh
+            echo "--- Finished creating wrapper script ---"
+
             # Build the PYZ file with the correct entry point
             python -m shiv --compressed \
               --compile-pyc \
               --reproducible \
-              --entry-point mmrelay.cli:main \
+              --entry-point run_mmrelay.sh \
               --output-file dist/mmrelay-${{ env.FILE_VERSION }}-armv7.pyz \
               .
 
