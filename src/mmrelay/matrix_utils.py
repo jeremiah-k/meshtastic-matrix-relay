@@ -351,16 +351,9 @@ async def on_room_message(
     event: Union[RoomMessageText, RoomMessageNotice, ReactionEvent, RoomMessageEmote],
 ) -> None:
     """
-    Handle new messages and reactions in Matrix. For reactions, we ensure that when relaying back
-    to Meshtastic, we always apply our local meshnet_name to outgoing events.
-
-    We must be careful not to relay reactions to reactions (reaction-chains),
-    especially remote reactions that got relayed into the room as m.emote events,
-    as we do not store them in the database. If we can't find the original message in the DB,
-    it likely means it's a reaction to a reaction, and we stop there.
-
-    Additionally, we only deal with message_map storage (and thus reaction linking)
-    if relay_reactions is True. If it's False, none of these mappings are stored or used.
+    Handles incoming Matrix room messages and reactions, relaying them to Meshtastic as appropriate.
+    
+    Processes both standard messages and reactions, ensuring correct mapping and formatting for relay to Meshtastic. Prevents reaction loops by avoiding relaying reactions to reactions. Integrates with plugins for command handling and supports configuration-driven features such as reaction relaying and detection sensor data forwarding. Messages and reactions are only relayed if permitted by the current configuration and room settings.
     """
     # Importing here to avoid circular imports and to keep logic consistent
     # Note: We do not call store_message_map directly here for inbound matrix->mesh messages.
