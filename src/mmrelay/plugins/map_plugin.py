@@ -7,6 +7,11 @@ import PIL.ImageDraw
 import s2sphere
 import staticmaps
 from nio import AsyncClient, UploadResponse
+
+try:
+    import cairo
+except ImportError:  # pragma: no cover - optional dependency
+    cairo = None
 from PIL import Image
 
 from mmrelay.plugins.base_plugin import BasePlugin
@@ -309,7 +314,7 @@ class Plugin(BasePlugin):
 
         try:
             zoom = int(zoom)
-        except:
+        except Exception:
             zoom = self.config["zoom"] if "zoom" in self.config else 8
 
         if zoom < 0 or zoom > 30:
@@ -317,7 +322,7 @@ class Plugin(BasePlugin):
 
         try:
             image_size = (int(image_size[0]), int(image_size[1]))
-        except:
+        except Exception:
             image_size = (
                 self.config["image_width"] if "image_width" in self.config else 1000,
                 self.config["image_height"] if "image_height" in self.config else 1000,
