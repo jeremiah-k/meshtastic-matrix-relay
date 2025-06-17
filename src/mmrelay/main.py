@@ -12,8 +12,7 @@ from nio import ReactionEvent, RoomMessageEmote, RoomMessageNotice, RoomMessageT
 from nio.events.room_events import RoomMemberEvent
 
 # Import version from package
-# Import meshtastic_utils as a module to set event_loop
-from mmrelay import __version__, meshtastic_utils
+from mmrelay import __version__
 from mmrelay.db_utils import (
     initialize_database,
     update_longnames,
@@ -21,12 +20,23 @@ from mmrelay.db_utils import (
     wipe_message_map,
 )
 from mmrelay.log_utils import get_logger
-from mmrelay.matrix_utils import connect_matrix, join_matrix_room
-from mmrelay.matrix_utils import logger as matrix_logger
-from mmrelay.matrix_utils import on_room_member, on_room_message
-from mmrelay.meshtastic_utils import connect_meshtastic
-from mmrelay.meshtastic_utils import logger as meshtastic_logger
+from mmrelay.matrix.client import connect_matrix, join_matrix_room
+from mmrelay.matrix.handlers import on_room_member, on_room_message
+from mmrelay.meshtastic.interface import (
+    connect_meshtastic,
+    check_connection as meshtastic_check_connection, # Alias to avoid conflict if main has one
+    set_event_loop as set_meshtastic_event_loop,
+    set_shutting_down_flag as set_meshtastic_shutting_down_flag,
+    get_meshtastic_interface,
+    # meshtastic_client as meshtastic_interface_client, # For direct access if needed, prefer get_meshtastic_interface
+    reconnect_task as meshtastic_reconnect_task # For shutdown cleanup
+)
+
 from mmrelay.plugin_loader import load_plugins
+# Import the meshtastic_utils shim to access its re-exported reconnect_task for now
+# This is a temporary measure. Ideally, main.py would get reconnect_task from meshtastic.interface directly.
+from mmrelay import meshtastic_utils
+
 
 # Initialize logger
 logger = get_logger(name="M<>M Relay")
@@ -63,11 +73,49 @@ async def main(config):
 
     matrix_rooms: List[dict] = config["matrix_rooms"]
 
-    # Set the event loop in meshtastic_utils
-    meshtastic_utils.event_loop = asyncio.get_event_loop()
+    # Set the event loop in meshtastic.interface
+    set_meshtastic_event_loop(asyncio.get_event_loop())
 
     # Initialize the SQLite database
     initialize_database()
+
+# Initialize logger
+logger = get_logger(name="M<>M Relay")
+
+# Set the logging level for 'nio' to ERROR to suppress warnings
+logging.getLogger("nio").setLevel(logging.ERROR)
+
+
+# Flag to track if banner has been printed
+_banner_printed = False
+
+
+def print_banner():
+    """Print a simple startup message with version information."""
+    global _banner_printed
+    # Only print the banner once
+    if not _banner_printed:
+        logger.info(f"Starting MMRelay v{__version__}")
+        _banner_printed = True
+
+
+async def main(config):
+    """
+    Main asynchronous function to set up and run the relay.
+    Includes logic for wiping the message_map if configured in database.msg_map.wipe_on_restart
+    or db.msg_map.wipe_on_restart (legacy format).
+    Also updates longnames and shortnames periodically as before.
+
+    Args:
+        config: The loaded configuration
+    """
+    # Extract Matrix configuration
+    from typing import List
+
+    # Check database config for wipe_on_restart (preferred format)
+    database_config = config.get("database", {})
+    msg_map_config = database_config.get("msg_map", {})
+    wipe_on_restart = msg_map_config.get("wipe_on_restart", False)
 
     # Check database config for wipe_on_restart (preferred format)
     database_config = config.get("database", {})
@@ -93,8 +141,8 @@ async def main(config):
     # Load plugins early
     load_plugins(passed_config=config)
 
-    # Connect to Meshtastic
-    meshtastic_utils.meshtastic_client = connect_meshtastic(passed_config=config)
+    # Connect to Meshtastic - this will set the client in meshtastic.interface
+    connect_meshtastic(passed_config=config)
 
     # Connect to Matrix
     matrix_client = await connect_matrix(passed_config=config)
@@ -104,7 +152,7 @@ async def main(config):
         await join_matrix_room(matrix_client, room["id"])
 
     # Register the message callback for Matrix
-    matrix_logger.info("Listening for inbound Matrix messages...")
+    logger.info("Listening for inbound Matrix messages...") # Use main logger
     matrix_client.add_event_callback(
         on_room_message, (RoomMessageText, RoomMessageNotice, RoomMessageEmote)
     )
@@ -117,8 +165,8 @@ async def main(config):
     shutdown_event = asyncio.Event()
 
     async def shutdown():
-        matrix_logger.info("Shutdown signal received. Closing down...")
-        meshtastic_utils.shutting_down = True  # Set the shutting_down flag
+        logger.info("Shutdown signal received. Closing down...") # Use main logger
+        set_meshtastic_shutting_down_flag(True)  # Use new function
         shutdown_event.set()
 
     loop = asyncio.get_running_loop()
@@ -132,24 +180,25 @@ async def main(config):
         pass
 
     # -------------------------------------------------------------------
-    # IMPORTANT: We create a task to run the meshtastic_utils.check_connection()
+    # IMPORTANT: We create a task to run the meshtastic_check_connection()
     # so its while loop runs in parallel with the matrix sync loop
     # Use "_" to avoid trunk's "assigned but unused variable" warning
     # -------------------------------------------------------------------
-    _ = asyncio.create_task(meshtastic_utils.check_connection())
+    _ = asyncio.create_task(meshtastic_check_connection()) # Use new function
 
     # Start the Matrix client sync loop
     try:
         while not shutdown_event.is_set():
             try:
-                if meshtastic_utils.meshtastic_client:
+                current_meshtastic_client = get_meshtastic_interface()
+                if current_meshtastic_client:
                     # Update longnames & shortnames
-                    update_longnames(meshtastic_utils.meshtastic_client.nodes)
-                    update_shortnames(meshtastic_utils.meshtastic_client.nodes)
+                    update_longnames(current_meshtastic_client.nodes)
+                    update_shortnames(current_meshtastic_client.nodes)
                 else:
-                    meshtastic_logger.warning("Meshtastic client is not connected.")
+                    logger.warning("Meshtastic client is not connected.") # Use main logger
 
-                matrix_logger.info("Starting Matrix sync loop...")
+                logger.info("Starting Matrix sync loop...") # Use main logger
                 sync_task = asyncio.create_task(
                     matrix_client.sync_forever(timeout=30000)
                 )
@@ -167,39 +216,43 @@ async def main(config):
                     try:
                         await sync_task
                     except asyncio.CancelledError:
-                        pass
-                    break
+                        pass # Expected during shutdown
+                    break # Exit while loop
 
             except Exception as e:
                 if shutdown_event.is_set():
-                    break
-                matrix_logger.error(f"Error syncing with Matrix server: {e}")
+                    break # Exit while loop if shutdown during error handling
+                logger.error(f"Error syncing with Matrix server: {e}") # Use main logger
                 await asyncio.sleep(5)  # Wait briefly before retrying
-    except KeyboardInterrupt:
+    except KeyboardInterrupt: # Should be caught by signal handler on non-Windows
+        logger.info("KeyboardInterrupt received, initiating shutdown...")
         await shutdown()
     finally:
         # Cleanup
-        matrix_logger.info("Closing Matrix client...")
-        await matrix_client.close()
-        if meshtastic_utils.meshtastic_client:
-            meshtastic_logger.info("Closing Meshtastic client...")
+        logger.info("Closing Matrix client...") # Use main logger
+        if matrix_client and hasattr(matrix_client, 'close'): # Ensure client exists and has close method
+            await matrix_client.close()
+
+        current_meshtastic_client = get_meshtastic_interface()
+        if current_meshtastic_client:
+            logger.info("Closing Meshtastic client...") # Use main logger
             try:
-                meshtastic_utils.meshtastic_client.close()
+                current_meshtastic_client.close()
             except Exception as e:
-                meshtastic_logger.warning(f"Error closing Meshtastic client: {e}")
+                logger.warning(f"Error closing Meshtastic client: {e}") # Use main logger
 
         # Attempt to wipe message_map on shutdown if enabled
         if wipe_on_restart:
             logger.debug("wipe_on_restart enabled. Wiping message_map now (shutdown).")
             wipe_message_map()
 
-        # Cancel the reconnect task if it exists
-        if meshtastic_utils.reconnect_task:
+        # Cancel the reconnect task if it exists - use the one from meshtastic_utils shim for now
+        if meshtastic_utils.reconnect_task and not meshtastic_utils.reconnect_task.done():
             meshtastic_utils.reconnect_task.cancel()
-            meshtastic_logger.info("Cancelled Meshtastic reconnect task.")
+            logger.info("Cancelled Meshtastic reconnect task via shim.") # Use main logger
 
         # Cancel any remaining tasks (including the check_conn_task)
-        tasks = [t for t in asyncio.all_tasks(loop) if not t.done()]
+        tasks = [t for t in asyncio.all_tasks(loop) if t is not asyncio.current_task() and not t.done()]
         for task in tasks:
             task.cancel()
             try:
@@ -257,9 +310,9 @@ def run_main(args):
     from mmrelay.config import set_config
     from mmrelay.plugins import base_plugin
 
-    # Use the centralized set_config function to set up the configuration for all modules
-    set_config(matrix_utils, config)
-    set_config(meshtastic_utils, config)
+    # Use the centralized set_config function to set up the configuration for modules that still use it.
+    # matrix_utils and meshtastic_utils (now shims) don't need set_config.
+    # Their underlying modules (matrix.client, meshtastic.interface) get config via connect_* calls.
     set_config(plugin_loader, config)
     set_config(log_utils, config)
     set_config(db_utils, config)
