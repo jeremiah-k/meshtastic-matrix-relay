@@ -8,17 +8,58 @@ from mmrelay.log_utils import get_logger
 # Global config variable that will be set from main.py
 config = None
 
+# Cache for database path to avoid repeated logging and path resolution
+_cached_db_path = None
+_db_path_logged = False
+_cached_config_hash = None
+
 logger = get_logger(name="db_utils")
+
+
+def clear_db_path_cache():
+    """Clear the cached database path to force re-resolution on next call.
+
+    This is useful for testing or if the application supports runtime
+    configuration changes.
+    """
+    global _cached_db_path, _db_path_logged, _cached_config_hash
+    _cached_db_path = None
+    _db_path_logged = False
+    _cached_config_hash = None
 
 
 # Get the database path
 def get_db_path():
     """
-    Returns the path to the SQLite database file.
-    By default, uses the standard data directory (~/.mmrelay/data).
-    Can be overridden by setting 'path' under 'database' in config.yaml.
+    Resolve and return the file path to the SQLite database, using configuration overrides if provided.
+
+    By default, returns the path to `meshtastic.sqlite` in the standard data directory (`~/.mmrelay/data`).
+    If a custom path is specified in the configuration under `database.path` (preferred) or `db.path` (legacy),
+    that path is used instead. The resolved path is cached for subsequent calls, and the directory is created
+    if it does not exist. Cache is automatically invalidated if the relevant configuration changes.
     """
-    global config
+    global config, _cached_db_path, _db_path_logged, _cached_config_hash
+
+    # Create a hash of the relevant config sections to detect changes
+    current_config_hash = None
+    if config is not None:
+        # Hash only the database-related config sections
+        db_config = {
+            'database': config.get('database', {}),
+            'db': config.get('db', {})  # Legacy format
+        }
+        current_config_hash = hash(str(sorted(db_config.items())))
+
+    # Check if cache is valid (path exists and config hasn't changed)
+    if (_cached_db_path is not None and
+        current_config_hash == _cached_config_hash):
+        return _cached_db_path
+
+    # Config changed or first call - clear cache and re-resolve
+    if current_config_hash != _cached_config_hash:
+        _cached_db_path = None
+        _db_path_logged = False
+        _cached_config_hash = current_config_hash
 
     # Check if config is available
     if config is not None:
@@ -30,7 +71,12 @@ def get_db_path():
                 db_dir = os.path.dirname(custom_path)
                 if db_dir:
                     os.makedirs(db_dir, exist_ok=True)
-                logger.info(f"Using database path from config: {custom_path}")
+
+                # Cache the path and log only once
+                _cached_db_path = custom_path
+                if not _db_path_logged:
+                    logger.info(f"Using database path from config: {custom_path}")
+                    _db_path_logged = True
                 return custom_path
 
         # Check legacy format (db section)
@@ -41,13 +87,20 @@ def get_db_path():
                 db_dir = os.path.dirname(custom_path)
                 if db_dir:
                     os.makedirs(db_dir, exist_ok=True)
-                logger.warning(
-                    "Using 'db.path' configuration (legacy). 'database.path' is now the preferred format and 'db.path' will be deprecated in a future version."
-                )
+
+                # Cache the path and log only once
+                _cached_db_path = custom_path
+                if not _db_path_logged:
+                    logger.warning(
+                        "Using 'db.path' configuration (legacy). 'database.path' is now the preferred format and 'db.path' will be deprecated in a future version."
+                    )
+                    _db_path_logged = True
                 return custom_path
 
     # Use the standard data directory
-    return os.path.join(get_data_dir(), "meshtastic.sqlite")
+    default_path = os.path.join(get_data_dir(), "meshtastic.sqlite")
+    _cached_db_path = default_path
+    return default_path
 
 
 # Initialize SQLite database
