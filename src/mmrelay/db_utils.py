@@ -11,8 +11,21 @@ config = None
 # Cache for database path to avoid repeated logging and path resolution
 _cached_db_path = None
 _db_path_logged = False
+_cached_config_hash = None
 
 logger = get_logger(name="db_utils")
+
+
+def clear_db_path_cache():
+    """Clear the cached database path to force re-resolution on next call.
+
+    This is useful for testing or if the application supports runtime
+    configuration changes.
+    """
+    global _cached_db_path, _db_path_logged, _cached_config_hash
+    _cached_db_path = None
+    _db_path_logged = False
+    _cached_config_hash = None
 
 
 # Get the database path
@@ -23,13 +36,31 @@ def get_db_path():
     Can be overridden by setting 'path' under 'database' in config.yaml.
 
     This function caches the database path to avoid repeated path resolution
-    and logs the path only once to prevent log spam.
+    and logs the path only once to prevent log spam. Cache is invalidated
+    if the relevant configuration changes.
     """
-    global config, _cached_db_path, _db_path_logged
+    global config, _cached_db_path, _db_path_logged, _cached_config_hash
 
-    # Return cached path if available and config hasn't changed
-    if _cached_db_path is not None:
+    # Create a hash of the relevant config sections to detect changes
+    current_config_hash = None
+    if config is not None:
+        # Hash only the database-related config sections
+        db_config = {
+            'database': config.get('database', {}),
+            'db': config.get('db', {})  # Legacy format
+        }
+        current_config_hash = hash(str(sorted(db_config.items())))
+
+    # Check if cache is valid (path exists and config hasn't changed)
+    if (_cached_db_path is not None and
+        current_config_hash == _cached_config_hash):
         return _cached_db_path
+
+    # Config changed or first call - clear cache and re-resolve
+    if current_config_hash != _cached_config_hash:
+        _cached_db_path = None
+        _db_path_logged = False
+        _cached_config_hash = current_config_hash
 
     # Check if config is available
     if config is not None:
