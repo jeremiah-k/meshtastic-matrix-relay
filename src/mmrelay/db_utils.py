@@ -8,6 +8,10 @@ from mmrelay.log_utils import get_logger
 # Global config variable that will be set from main.py
 config = None
 
+# Cache for database path to avoid repeated logging and path resolution
+_cached_db_path = None
+_db_path_logged = False
+
 logger = get_logger(name="db_utils")
 
 
@@ -17,8 +21,15 @@ def get_db_path():
     Returns the path to the SQLite database file.
     By default, uses the standard data directory (~/.mmrelay/data).
     Can be overridden by setting 'path' under 'database' in config.yaml.
+
+    This function caches the database path to avoid repeated path resolution
+    and logs the path only once to prevent log spam.
     """
-    global config
+    global config, _cached_db_path, _db_path_logged
+
+    # Return cached path if available and config hasn't changed
+    if _cached_db_path is not None:
+        return _cached_db_path
 
     # Check if config is available
     if config is not None:
@@ -30,7 +41,12 @@ def get_db_path():
                 db_dir = os.path.dirname(custom_path)
                 if db_dir:
                     os.makedirs(db_dir, exist_ok=True)
-                logger.info(f"Using database path from config: {custom_path}")
+
+                # Cache the path and log only once
+                _cached_db_path = custom_path
+                if not _db_path_logged:
+                    logger.info(f"Using database path from config: {custom_path}")
+                    _db_path_logged = True
                 return custom_path
 
         # Check legacy format (db section)
@@ -41,13 +57,20 @@ def get_db_path():
                 db_dir = os.path.dirname(custom_path)
                 if db_dir:
                     os.makedirs(db_dir, exist_ok=True)
-                logger.warning(
-                    "Using 'db.path' configuration (legacy). 'database.path' is now the preferred format and 'db.path' will be deprecated in a future version."
-                )
+
+                # Cache the path and log only once
+                _cached_db_path = custom_path
+                if not _db_path_logged:
+                    logger.warning(
+                        "Using 'db.path' configuration (legacy). 'database.path' is now the preferred format and 'db.path' will be deprecated in a future version."
+                    )
+                    _db_path_logged = True
                 return custom_path
 
     # Use the standard data directory
-    return os.path.join(get_data_dir(), "meshtastic.sqlite")
+    default_path = os.path.join(get_data_dir(), "meshtastic.sqlite")
+    _cached_db_path = default_path
+    return default_path
 
 
 # Initialize SQLite database
