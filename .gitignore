@@ -1,3 +1,6 @@
+# Note to agents: Never force push agor snapshots to feature branches - always use the dev tools to commit to memory branches.
+.agor
+
 .pyenv
 .vscode
 config.yaml
