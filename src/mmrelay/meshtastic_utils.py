@@ -322,9 +322,9 @@ async def reconnect():
 
 def on_meshtastic_message(packet, interface):
     """
-    Handle incoming Meshtastic messages. For reaction messages, if relay_reactions is False,
-    we do not store message maps and thus won't be able to relay reactions back to Matrix.
-    If relay_reactions is True, message maps are stored inside matrix_relay().
+    Processes incoming Meshtastic messages and relays them to Matrix rooms or plugins based on message type and interaction settings.
+    
+    Handles reactions and replies by relaying them to Matrix if enabled in the interaction settings. Normal text messages are relayed to all mapped Matrix rooms unless handled by a plugin or directed to the relay node. Non-text messages are passed to plugins for processing. Filters out messages from unmapped channels or disabled detection sensors, and ensures sender information is retrieved or stored as needed.
     """
     global config, matrix_rooms
 
