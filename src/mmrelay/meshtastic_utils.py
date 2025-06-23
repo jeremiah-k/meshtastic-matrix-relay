@@ -399,6 +399,14 @@ def on_meshtastic_message(packet, interface):
         if orig:
             # orig = (matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet)
             matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet = orig
+
+            # Import strip_quoted_lines to remove quoted content from reactions
+            from mmrelay.matrix_utils import strip_quoted_lines
+
+            # Strip quoted lines to avoid including original quoted parts in reaction text
+            meshtastic_text = strip_quoted_lines(meshtastic_text)
+            meshtastic_text = meshtastic_text.replace("\n", " ").replace("\r", " ")
+
             abbreviated_text = (
                 meshtastic_text[:40] + "..."
                 if len(meshtastic_text) > 40
