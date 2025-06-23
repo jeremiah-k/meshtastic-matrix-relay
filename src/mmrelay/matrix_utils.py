@@ -508,9 +508,71 @@ async def on_room_message(
         if original_matrix_event_id:
             orig = get_message_map_by_matrix_event_id(original_matrix_event_id)
             if not orig:
-                # If we don't find the original message in the DB, we suspect it's a reaction-to-reaction scenario
+                # If we don't find the original message in the DB, it might be a reaction to a Matrix reply
+                # that contains quoted content. Try to fetch the Matrix message content directly.
+                try:
+                    # Fetch the Matrix message content by event ID
+                    event_response = await matrix_client.room_get_event(room.room_id, original_matrix_event_id)
+                    if hasattr(event_response, 'event') and hasattr(event_response.event, 'content'):
+                        matrix_message_content = event_response.event.content.get('body', '')
+
+                        # Check if this is a Matrix message with quoted content (contains '>')
+                        if '>' in matrix_message_content:
+                            logger.debug(f"Found Matrix reply with quoted content: {matrix_message_content[:50]}...")
+
+                            # Strip quoted lines from the Matrix message content
+                            stripped_content = strip_quoted_lines(matrix_message_content)
+                            stripped_content = stripped_content.replace("\n", " ").replace("\r", " ")
+
+                            if stripped_content.strip():  # Only proceed if there's content after stripping
+                                # Get user display name for the reaction
+                                room_display_name = room.user_name(event.sender)
+                                if room_display_name:
+                                    full_display_name = room_display_name
+                                else:
+                                    display_name_response = await matrix_client.get_displayname(event.sender)
+                                    full_display_name = display_name_response.displayname or event.sender
+
+                                short_display_name = full_display_name[:5]
+                                prefix = f"{short_display_name}[M]: "
+
+                                abbreviated_text = (
+                                    stripped_content[:40] + "..."
+                                    if len(stripped_content) > 40
+                                    else stripped_content
+                                )
+
+                                reaction_message = f'{prefix}reacted {reaction_emoji} to "{abbreviated_text}"'
+
+                                # Relay the reaction to Meshtastic
+                                meshtastic_interface = connect_meshtastic()
+                                from mmrelay.meshtastic_utils import logger as meshtastic_logger
+
+                                meshtastic_channel = room_config["meshtastic_channel"]
+
+                                if config["meshtastic"]["broadcast_enabled"]:
+                                    meshtastic_logger.info(
+                                        f"Relaying reaction to Matrix reply from {full_display_name} to radio broadcast"
+                                    )
+                                    logger.debug(
+                                        f"Sending reaction to Meshtastic: {reaction_message}"
+                                    )
+                                    meshtastic_interface.sendText(
+                                        text=reaction_message, channelIndex=meshtastic_channel
+                                    )
+                                return
+                            else:
+                                logger.debug("Matrix message content was empty after stripping quoted lines")
+                        else:
+                            logger.debug("Matrix message found but no quoted content detected")
+                    else:
+                        logger.debug("Could not retrieve Matrix message content")
+                except Exception as e:
+                    logger.debug(f"Failed to fetch Matrix message content: {e}")
+
+                # If we get here, it's likely a reaction-to-reaction scenario or other edge case
                 logger.debug(
-                    "Original message for reaction not found in DB. Possibly a reaction-to-reaction scenario. Not forwarding."
+                    "Original message for reaction not found in DB and could not process as Matrix reply. Possibly a reaction-to-reaction scenario. Not forwarding."
                 )
                 return
 
