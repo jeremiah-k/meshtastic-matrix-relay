@@ -1188,7 +1188,6 @@ class TestEdgeCasesAndErrorHandling:
 
     def test_performance_with_high_message_volume(self):
         """Test performance with high volume of messages."""
-        import time
         
         meshtastic_utils.config = {
             'meshtastic': {'meshnet_name': 'TestMesh'}
