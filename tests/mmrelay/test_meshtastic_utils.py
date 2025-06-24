@@ -1044,8 +1044,6 @@ class TestEdgeCasesAndErrorHandling:
 
     def test_thread_safety_meshtastic_lock(self):
         """Test that meshtastic_lock prevents race conditions."""
-        import threading
-        import time
         
         results = []
         
