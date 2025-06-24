@@ -16,7 +16,7 @@ import asyncio
 import threading
 import time
 import os
-from unittest.mock import Mock, patch, MagicMock, AsyncMock, call
+from unittest.mock import Mock, patch, AsyncMock
 from unittest import mock
 import logging
 
