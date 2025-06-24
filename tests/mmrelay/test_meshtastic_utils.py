@@ -1,14 +1,16 @@
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+
+import sys
+import os
+sys.path.insert(0, os.path.abspath("."))
+
 """
 Comprehensive unit tests for mmrelay.meshtastic_utils module.
 Testing framework: pytest
 
 This test suite covers all functions in the meshtastic_utils module including:
-- Connection management functions
-- Message processing and relay functionality  
-- Service detection utilities
-- Serial port validation
-- Async reconnection logic
-- Error handling and edge cases
 """
 
 import pytest
@@ -20,7 +22,7 @@ from unittest.mock import Mock, patch, AsyncMock
 from unittest import mock
 
 # Import the module under test
-import mmrelay.meshtastic_utils as meshtastic_utils
+import git.src.mmrelay.meshtastic_utils as meshtastic_utils
 
 
 class TestIsRunningAsService:
@@ -185,7 +187,7 @@ class TestConnectMeshtastic:
             }
         }
         
-        with patch('mmrelay.meshtastic_utils.serial_port_exists', return_value=True):
+        with patch('src.mmrelay.meshtastic_utils.serial_port_exists', return_value=True):
             with patch('meshtastic.serial_interface.SerialInterface') as mock_serial:
                 mock_new_client = Mock()
                 mock_new_client.getMyNodeInfo.return_value = {
@@ -211,7 +213,7 @@ class TestConnectMeshtastic:
             }
         }
         
-        with patch('mmrelay.meshtastic_utils.serial_port_exists', return_value=True):
+        with patch('src.mmrelay.meshtastic_utils.serial_port_exists', return_value=True):
             with patch('meshtastic.serial_interface.SerialInterface') as mock_serial:
                 mock_client = Mock()
                 mock_client.getMyNodeInfo.return_value = {
@@ -234,7 +236,7 @@ class TestConnectMeshtastic:
             }
         }
         
-        with patch('mmrelay.meshtastic_utils.serial_port_exists', return_value=False):
+        with patch('src.mmrelay.meshtastic_utils.serial_port_exists', return_value=False):
             with patch('time.sleep') as mock_sleep:
                 # Mock shutting_down to be True after first iteration to break loop
                 def side_effect():
@@ -354,7 +356,7 @@ class TestConnectMeshtastic:
             ]
         }
         
-        with patch('mmrelay.meshtastic_utils.serial_port_exists', return_value=True):
+        with patch('src.mmrelay.meshtastic_utils.serial_port_exists', return_value=True):
             with patch('meshtastic.serial_interface.SerialInterface') as mock_serial:
                 mock_client = Mock()
                 mock_client.getMyNodeInfo.return_value = {
@@ -377,7 +379,7 @@ class TestConnectMeshtastic:
             }
         }
         
-        with patch('mmrelay.meshtastic_utils.serial_port_exists', return_value=True):
+        with patch('src.mmrelay.meshtastic_utils.serial_port_exists', return_value=True):
             with patch('meshtastic.serial_interface.SerialInterface') as mock_serial:
                 # First call raises exception, second succeeds
                 mock_client = Mock()
@@ -508,9 +510,9 @@ class TestReconnect:
         """Test successful reconnection."""
         mock_client = Mock()
         
-        with patch('mmrelay.meshtastic_utils.connect_meshtastic', return_value=mock_client):
+        with patch('src.mmrelay.meshtastic_utils.connect_meshtastic', return_value=mock_client):
             with patch('asyncio.sleep'):
-                with patch('mmrelay.meshtastic_utils.is_running_as_service', return_value=True):
+                with patch('src.mmrelay.meshtastic_utils.is_running_as_service', return_value=True):
                     await meshtastic_utils.reconnect()
         
         assert meshtastic_utils.reconnecting is False
@@ -530,8 +532,8 @@ class TestReconnect:
     @pytest.mark.asyncio
     async def test_reconnect_with_rich_progress(self):
         """Test reconnection with Rich progress display."""
-        with patch('mmrelay.meshtastic_utils.is_running_as_service', return_value=False):
-            with patch('mmrelay.meshtastic_utils.connect_meshtastic', return_value=Mock()):
+        with patch('src.mmrelay.meshtastic_utils.is_running_as_service', return_value=False):
+            with patch('src.mmrelay.meshtastic_utils.connect_meshtastic', return_value=Mock()):
                 with patch('rich.progress.Progress') as mock_progress:
                     mock_progress_instance = Mock()
                     mock_progress_instance.__enter__ = Mock(return_value=mock_progress_instance)
@@ -556,9 +558,9 @@ class TestReconnect:
                 return None  # Fail first 2 attempts
             return Mock()  # Succeed on 3rd attempt
         
-        with patch('mmrelay.meshtastic_utils.connect_meshtastic', side_effect=mock_connect_side_effect):
+        with patch('src.mmrelay.meshtastic_utils.connect_meshtastic', side_effect=mock_connect_side_effect):
             with patch('asyncio.sleep') as mock_sleep:
-                with patch('mmrelay.meshtastic_utils.is_running_as_service', return_value=True):
+                with patch('src.mmrelay.meshtastic_utils.is_running_as_service', return_value=True):
                     await meshtastic_utils.reconnect()
         
         # Should have attempted multiple times with increasing backoff
@@ -585,9 +587,9 @@ class TestReconnect:
                 return None
             return Mock()
         
-        with patch('mmrelay.meshtastic_utils.connect_meshtastic', side_effect=mock_connect_side_effect):
+        with patch('src.mmrelay.meshtastic_utils.connect_meshtastic', side_effect=mock_connect_side_effect):
             with patch('asyncio.sleep') as mock_sleep:
-                with patch('mmrelay.meshtastic_utils.is_running_as_service', return_value=True):
+                with patch('src.mmrelay.meshtastic_utils.is_running_as_service', return_value=True):
                     await meshtastic_utils.reconnect()
         
         # Check that sleep was called with capped value (300 seconds)
@@ -676,15 +678,15 @@ class TestOnMeshtasticMessage:
         interface.myInfo.my_node_num = 987654321
         interface.nodes = {}
         
-        with patch('mmrelay.meshtastic_utils.get_longname', return_value='TestNode'):
-            with patch('mmrelay.meshtastic_utils.get_shortname', return_value='TN'):
-                with patch('mmrelay.matrix_utils.get_interaction_settings') as mock_interactions:
+        with patch('src.mmrelay.meshtastic_utils.get_longname', return_value='TestNode'):
+            with patch('src.mmrelay.meshtastic_utils.get_shortname', return_value='TN'):
+                with patch('src.mmrelay.matrix_utils.get_interaction_settings') as mock_interactions:
                     mock_interactions.return_value = {
                         'reactions': True,
                         'replies': True
                     }
-                    with patch('mmrelay.matrix_utils.message_storage_enabled', return_value=True):
-                        with patch('mmrelay.plugin_loader.load_plugins', return_value=[]):
+                    with patch('src.mmrelay.matrix_utils.message_storage_enabled', return_value=True):
+                        with patch('src.mmrelay.plugin_loader.load_plugins', return_value=[]):
                             with patch('asyncio.run_coroutine_threadsafe') as mock_run:
                                 meshtastic_utils.on_meshtastic_message(packet, interface)
                                 
@@ -713,15 +715,15 @@ class TestOnMeshtasticMessage:
         
         interface = Mock()
         
-        with patch('mmrelay.matrix_utils.get_interaction_settings') as mock_interactions:
+        with patch('src.mmrelay.matrix_utils.get_interaction_settings') as mock_interactions:
             mock_interactions.return_value = {
                 'reactions': True,
                 'replies': True
             }
-            with patch('mmrelay.matrix_utils.message_storage_enabled', return_value=True):
-                with patch('mmrelay.meshtastic_utils.get_longname', return_value='TestNode'):
-                    with patch('mmrelay.meshtastic_utils.get_shortname', return_value='TN'):
-                        with patch('mmrelay.meshtastic_utils.get_message_map_by_meshtastic_id') as mock_get_map:
+            with patch('src.mmrelay.matrix_utils.message_storage_enabled', return_value=True):
+                with patch('src.mmrelay.meshtastic_utils.get_longname', return_value='TestNode'):
+                    with patch('src.mmrelay.meshtastic_utils.get_shortname', return_value='TN'):
+                        with patch('src.mmrelay.meshtastic_utils.get_message_map_by_meshtastic_id') as mock_get_map:
                             mock_get_map.return_value = (
                                 'matrix_event_id', 
                                 '!room:matrix.org', 
@@ -756,15 +758,15 @@ class TestOnMeshtasticMessage:
         
         interface = Mock()
         
-        with patch('mmrelay.matrix_utils.get_interaction_settings') as mock_interactions:
+        with patch('src.mmrelay.matrix_utils.get_interaction_settings') as mock_interactions:
             mock_interactions.return_value = {
                 'reactions': True,
                 'replies': True
             }
-            with patch('mmrelay.matrix_utils.message_storage_enabled', return_value=True):
-                with patch('mmrelay.meshtastic_utils.get_longname', return_value='TestNode'):
-                    with patch('mmrelay.meshtastic_utils.get_shortname', return_value='TN'):
-                        with patch('mmrelay.meshtastic_utils.get_message_map_by_meshtastic_id') as mock_get_map:
+            with patch('src.mmrelay.matrix_utils.message_storage_enabled', return_value=True):
+                with patch('src.mmrelay.meshtastic_utils.get_longname', return_value='TestNode'):
+                    with patch('src.mmrelay.meshtastic_utils.get_shortname', return_value='TN'):
+                        with patch('src.mmrelay.meshtastic_utils.get_message_map_by_meshtastic_id') as mock_get_map:
                             mock_get_map.return_value = (
                                 'matrix_event_id',
                                 '!room:matrix.org',
@@ -799,15 +801,15 @@ class TestOnMeshtasticMessage:
         interface = Mock()
         interface.myInfo.my_node_num = 987654321  # Same as 'to' field
         
-        with patch('mmrelay.matrix_utils.get_interaction_settings') as mock_interactions:
+        with patch('src.mmrelay.matrix_utils.get_interaction_settings') as mock_interactions:
             mock_interactions.return_value = {
                 'reactions': True,
                 'replies': True
             }
-            with patch('mmrelay.matrix_utils.message_storage_enabled', return_value=True):
-                with patch('mmrelay.meshtastic_utils.get_longname', return_value='TestNode'):
-                    with patch('mmrelay.meshtastic_utils.get_shortname', return_value='TN'):
-                        with patch('mmrelay.plugin_loader.load_plugins', return_value=[]):
+            with patch('src.mmrelay.matrix_utils.message_storage_enabled', return_value=True):
+                with patch('src.mmrelay.meshtastic_utils.get_longname', return_value='TestNode'):
+                    with patch('src.mmrelay.meshtastic_utils.get_shortname', return_value='TN'):
+                        with patch('src.mmrelay.plugin_loader.load_plugins', return_value=[]):
                             with patch('asyncio.run_coroutine_threadsafe') as mock_run:
                                 meshtastic_utils.on_meshtastic_message(packet, interface)
                                 
@@ -838,12 +840,12 @@ class TestOnMeshtasticMessage:
         
         interface = Mock()
         
-        with patch('mmrelay.matrix_utils.get_interaction_settings') as mock_interactions:
+        with patch('src.mmrelay.matrix_utils.get_interaction_settings') as mock_interactions:
             mock_interactions.return_value = {
                 'reactions': True,
                 'replies': True
             }
-            with patch('mmrelay.matrix_utils.message_storage_enabled', return_value=True):
+            with patch('src.mmrelay.matrix_utils.message_storage_enabled', return_value=True):
                 with patch('asyncio.run_coroutine_threadsafe') as mock_run:
                     meshtastic_utils.on_meshtastic_message(packet, interface)
                     
@@ -873,12 +875,12 @@ class TestOnMeshtasticMessage:
         
         interface = Mock()
         
-        with patch('mmrelay.matrix_utils.get_interaction_settings') as mock_interactions:
+        with patch('src.mmrelay.matrix_utils.get_interaction_settings') as mock_interactions:
             mock_interactions.return_value = {
                 'reactions': True,
                 'replies': True
             }
-            with patch('mmrelay.matrix_utils.message_storage_enabled', return_value=True):
+            with patch('src.mmrelay.matrix_utils.message_storage_enabled', return_value=True):
                 with patch('asyncio.run_coroutine_threadsafe') as mock_run:
                     meshtastic_utils.on_meshtastic_message(packet, interface)
                     
@@ -915,15 +917,15 @@ class TestOnMeshtasticMessage:
         mock_plugin.handle_meshtastic_message = AsyncMock(return_value=True)
         mock_plugin.plugin_name = 'test_plugin'
         
-        with patch('mmrelay.matrix_utils.get_interaction_settings') as mock_interactions:
+        with patch('src.mmrelay.matrix_utils.get_interaction_settings') as mock_interactions:
             mock_interactions.return_value = {
                 'reactions': True,
                 'replies': True
             }
-            with patch('mmrelay.matrix_utils.message_storage_enabled', return_value=True):
-                with patch('mmrelay.meshtastic_utils.get_longname', return_value='TestNode'):
-                    with patch('mmrelay.meshtastic_utils.get_shortname', return_value='TN'):
-                        with patch('mmrelay.plugin_loader.load_plugins', return_value=[mock_plugin]):
+            with patch('src.mmrelay.matrix_utils.message_storage_enabled', return_value=True):
+                with patch('src.mmrelay.meshtastic_utils.get_longname', return_value='TestNode'):
+                    with patch('src.mmrelay.meshtastic_utils.get_shortname', return_value='TN'):
+                        with patch('src.mmrelay.plugin_loader.load_plugins', return_value=[mock_plugin]):
                             with patch('asyncio.run_coroutine_threadsafe') as mock_run:
                                 # Mock the plugin result
                                 mock_result = Mock()
@@ -1005,7 +1007,7 @@ class TestCheckConnection:
         mock_client.localNode.getMetadata.side_effect = Exception("Connection lost")
         meshtastic_utils.meshtastic_client = mock_client
         
-        with patch('mmrelay.meshtastic_utils.on_lost_meshtastic_connection') as mock_lost:
+        with patch('src.mmrelay.meshtastic_utils.on_lost_meshtastic_connection') as mock_lost:
             with patch('asyncio.sleep', side_effect=asyncio.CancelledError):
                 with pytest.raises(asyncio.CancelledError):
                     await meshtastic_utils.check_connection()
@@ -1030,7 +1032,7 @@ class TestCheckConnection:
                 with patch('io.StringIO') as mock_stringio:
                     mock_stringio.return_value.getvalue.return_value = "other_info: value"
                     
-                    with patch('mmrelay.meshtastic_utils.on_lost_meshtastic_connection') as mock_lost:
+                    with patch('src.mmrelay.meshtastic_utils.on_lost_meshtastic_connection') as mock_lost:
                         with patch('asyncio.sleep', side_effect=asyncio.CancelledError):
                             with pytest.raises(asyncio.CancelledError):
                                 await meshtastic_utils.check_connection()
@@ -1056,7 +1058,7 @@ class TestEdgeCasesAndErrorHandling:
                 }
             }
             
-            with patch('mmrelay.meshtastic_utils.serial_port_exists', return_value=True):
+            with patch('src.mmrelay.meshtastic_utils.serial_port_exists', return_value=True):
                 with patch('meshtastic.serial_interface.SerialInterface') as mock_serial:
                     mock_client = Mock()
                     mock_client.getMyNodeInfo.return_value = {
@@ -1111,12 +1113,12 @@ class TestEdgeCasesAndErrorHandling:
         interface = Mock()
         interface.myInfo.my_node_num = 987654321
         
-        with patch('mmrelay.matrix_utils.get_interaction_settings') as mock_interactions:
+        with patch('src.mmrelay.matrix_utils.get_interaction_settings') as mock_interactions:
             mock_interactions.return_value = {'reactions': True, 'replies': True}
-            with patch('mmrelay.matrix_utils.message_storage_enabled', return_value=True):
-                with patch('mmrelay.meshtastic_utils.get_longname', return_value='TestNode'):
-                    with patch('mmrelay.meshtastic_utils.get_shortname', return_value='TN'):
-                        with patch('mmrelay.plugin_loader.load_plugins', return_value=[]):
+            with patch('src.mmrelay.matrix_utils.message_storage_enabled', return_value=True):
+                with patch('src.mmrelay.meshtastic_utils.get_longname', return_value='TestNode'):
+                    with patch('src.mmrelay.meshtastic_utils.get_shortname', return_value='TN'):
+                        with patch('src.mmrelay.plugin_loader.load_plugins', return_value=[]):
                             with patch('asyncio.run_coroutine_threadsafe'):
                                 # Should handle large messages without issues
                                 meshtastic_utils.on_meshtastic_message(packet, interface)
@@ -1153,12 +1155,12 @@ class TestEdgeCasesAndErrorHandling:
                 'channel': 0
             }
             
-            with patch('mmrelay.matrix_utils.get_interaction_settings') as mock_interactions:
+            with patch('src.mmrelay.matrix_utils.get_interaction_settings') as mock_interactions:
                 mock_interactions.return_value = {'reactions': True, 'replies': True}
-                with patch('mmrelay.matrix_utils.message_storage_enabled', return_value=True):
-                    with patch('mmrelay.meshtastic_utils.get_longname', return_value='TestNode'):
-                        with patch('mmrelay.meshtastic_utils.get_shortname', return_value='TN'):
-                            with patch('mmrelay.plugin_loader.load_plugins', return_value=[]):
+                with patch('src.mmrelay.matrix_utils.message_storage_enabled', return_value=True):
+                    with patch('src.mmrelay.meshtastic_utils.get_longname', return_value='TestNode'):
+                        with patch('src.mmrelay.meshtastic_utils.get_shortname', return_value='TN'):
+                            with patch('src.mmrelay.plugin_loader.load_plugins', return_value=[]):
                                 with patch('asyncio.run_coroutine_threadsafe'):
                                     # Should handle Unicode without exceptions
                                     meshtastic_utils.on_meshtastic_message(packet, interface)
@@ -1203,12 +1205,12 @@ class TestEdgeCasesAndErrorHandling:
         # Process many messages quickly
         start_time = time.time()
         
-        with patch('mmrelay.matrix_utils.get_interaction_settings') as mock_interactions:
+        with patch('src.mmrelay.matrix_utils.get_interaction_settings') as mock_interactions:
             mock_interactions.return_value = {'reactions': True, 'replies': True}
-            with patch('mmrelay.matrix_utils.message_storage_enabled', return_value=True):
-                with patch('mmrelay.meshtastic_utils.get_longname', return_value='TestNode'):
-                    with patch('mmrelay.meshtastic_utils.get_shortname', return_value='TN'):
-                        with patch('mmrelay.plugin_loader.load_plugins', return_value=[]):
+            with patch('src.mmrelay.matrix_utils.message_storage_enabled', return_value=True):
+                with patch('src.mmrelay.meshtastic_utils.get_longname', return_value='TestNode'):
+                    with patch('src.mmrelay.meshtastic_utils.get_shortname', return_value='TN'):
+                        with patch('src.mmrelay.plugin_loader.load_plugins', return_value=[]):
                             with patch('asyncio.run_coroutine_threadsafe'):
                                 for i in range(100):
                                     packet = {

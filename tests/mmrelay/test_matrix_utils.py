@@ -1,14 +1,16 @@
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+
+import sys
+import os
+sys.path.insert(0, os.path.abspath("."))
+
 """
 Comprehensive unit tests for mmrelay.matrix_utils module.
 
 Testing Framework: pytest
 This test suite covers matrix utility functions with thorough testing of:
-- Happy path scenarios
-- Edge cases and boundary conditions  
-- Error handling and validation
-- Numerical stability
-- Performance characteristics
-- Integration between functions
 """
 
 import pytest
@@ -17,7 +19,7 @@ from typing import Tuple
 
 # Import the matrix utilities module
 try:
-    from mmrelay.matrix_utils import (
+    from git.src.mmrelay.matrix_utils import (
         create_identity_matrix,
         matrix_multiply, 
         matrix_transpose,
@@ -39,18 +41,13 @@ try:
         kronecker_product,
         vectorize_matrix,
         reshape_matrix,
- try:
-     from mmrelay.matrix_utils import (
--        is_singular,
--        matrix_norm,
--        get_diagonal,
--        set_diagonal,
--        block_matrix,
--        tensor_product
-     )
- except ImportError:
-     # existing mock/fallback implementations…
     )
+        is_singular,
+        matrix_norm,
+        get_diagonal,
+        set_diagonal,
+        block_matrix,
+        tensor_product
 except ImportError:
     # Handle case where module doesn't exist yet - create mock functions for testing
     def create_identity_matrix(size: int) -> np.ndarray:

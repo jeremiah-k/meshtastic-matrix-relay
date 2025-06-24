@@ -1,23 +1,23 @@
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+
+import sys
+import os
+sys.path.insert(0, os.path.abspath("."))
+
 """
 Comprehensive unit tests for mmrelay.tools.sample_config module.
 Testing Framework: pytest
 """
 
 import pytest
-import json
 import yaml
 import tempfile
 import os
--from pathlib import Path
--from unittest.mock import Mock, patch, mock_open, MagicMock
--import sys
--from io import StringIO
-+from unittest.mock import patch
-
-
 # Mock the sample_config module if it doesn't exist
 try:
-    from mmrelay.tools.sample_config import (
+    from git.src.mmrelay.tools.sample_config import (
         load_config, validate_config, merge_configs, 
         get_default_config, save_config, ConfigValidationError
     )
@@ -106,8 +106,6 @@ except ImportError:
                 yaml.dump(config, f)
             elif path.endswith('.json'):
                 json.dump(config, f, indent=2)
-
-
 class TestLoadConfigBasicFunctionality:
     """Test basic functionality of config loading."""
     
@@ -152,8 +150,6 @@ class TestLoadConfigBasicFunctionality:
             assert result == config_data
         finally:
             os.unlink(temp_path)
-
-
 class TestLoadConfigEdgeCases:
     """Test edge cases and error conditions for config loading."""
     
@@ -256,8 +252,6 @@ class TestLoadConfigEdgeCases:
             assert result["key_500"] == "value_500"
         finally:
             os.unlink(temp_path)
-
-
 class TestValidateConfigBasic:
     """Test basic config validation functionality."""
     
@@ -279,8 +273,6 @@ class TestValidateConfigBasic:
         """Test validation with all required fields present."""
         config = {"required_field": "value", "optional_field": "value"}
         validate_config(config, required_fields=["required_field"])
-
-
 class TestValidateConfigComprehensive:
     """Comprehensive validation tests for config validation."""
     
@@ -377,8 +369,6 @@ class TestValidateConfigComprehensive:
         """Test validation with non-dictionary input."""
         with pytest.raises((ConfigValidationError, TypeError, AttributeError)):
             validate_config(invalid_config)
-
-
 class TestMergeConfigsBasic:
     """Test basic config merging functionality."""
     
@@ -417,8 +407,6 @@ class TestMergeConfigsBasic:
         
         expected = {"key1": "value1", "key2": "value2"}
         assert result == expected
-
-
 class TestMergeConfigsExtensive:
     """Extensive tests for config merging functionality."""
     
@@ -521,8 +509,6 @@ class TestMergeConfigsExtensive:
         # Original configs should be unchanged
         assert base == original_base
         assert override == original_override
-
-
 class TestSaveConfigBasic:
     """Test basic config saving functionality."""
     
@@ -555,8 +541,6 @@ class TestSaveConfigBasic:
             # Verify content
             loaded = load_config(config_path)
             assert loaded == config
-
-
 class TestSaveConfigEdgeCases:
     """Test edge cases for config saving functionality."""
     
@@ -672,8 +656,6 @@ class TestSaveConfigEdgeCases:
             
             loaded = load_config(config_path)
             assert loaded == complex_config
-
-
 class TestGetDefaultConfigBehavior:
     """Test default config generation and behavior."""
     
@@ -736,8 +718,6 @@ class TestGetDefaultConfigBehavior:
         default2 = get_default_config()
         
         assert default1 == default2
-
-
 class TestConfigIntegrationScenarios:
     """Integration test scenarios combining multiple config operations."""
     
@@ -854,8 +834,6 @@ class TestConfigIntegrationScenarios:
             loaded2 = load_config(config_path)
             
             assert original_config == loaded1 == loaded2
-
-
 class TestConfigErrorRecovery:
     """Test error recovery and graceful degradation."""
     
@@ -906,8 +884,6 @@ class TestConfigErrorRecovery:
         
         # Error message should be informative
         assert "port" in str(exc_info.value).lower()
-
-
 class TestConfigPerformance:
     """Test performance-related aspects of config operations."""
     
@@ -956,8 +932,6 @@ class TestConfigPerformance:
         # Should complete in reasonable time
         assert merge_time < 1.0
         assert merged is not None
-
-
 @pytest.fixture
 def sample_config():
     """Fixture providing a sample config for testing."""
@@ -976,8 +950,6 @@ def sample_config():
             "file": "/var/log/app.log"
         }
     }
-
-
 @pytest.fixture
 def temp_config_file(sample_config):
     """Fixture providing a temporary config file."""
@@ -989,15 +961,11 @@ def temp_config_file(sample_config):
     
     if os.path.exists(temp_path):
         os.unlink(temp_path)
-
-
 @pytest.fixture
 def temp_directory():
     """Fixture providing a temporary directory."""
     with tempfile.TemporaryDirectory() as temp_dir:
         yield temp_dir
-
-
 class TestConfigWithFixtures:
     """Tests using pytest fixtures for setup."""
     
@@ -1056,8 +1024,6 @@ class TestConfigWithFixtures:
         incomplete_config = {"server": sample_config["server"]}
         with pytest.raises(ConfigValidationError):
             validate_config(incomplete_config, required_fields=["database"])
-
-
 class TestConfigEdgeCasesAndBoundaries:
     """Test edge cases and boundary conditions."""
     
@@ -1142,7 +1108,5 @@ class TestConfigEdgeCasesAndBoundaries:
             stat_info = os.stat(config_path)
             # File should be readable by owner
             assert stat_info.st_mode & 0o400
-
-
 if __name__ == "__main__":
     pytest.main([__file__])
