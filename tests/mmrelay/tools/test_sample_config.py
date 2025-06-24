@@ -775,32 +775,30 @@ class TestConfigIntegrationScenarios:
     
     def test_config_layering_multiple_sources(self):
         """Test layering configs from multiple sources."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            # Base config
-            base = get_default_config()
-            
-            # Environment-specific config
-            env_config = {
-                "server": {"host": "prod.example.com"},
-                "database": {"pool_size": 20}
-            }
-            
-            # User-specific config
-            user_config = {
-                "logging": {"level": "DEBUG"},
-                "features": {"debug": True}
-            }
-            
-            # Merge all layers
-            final_config = merge_configs(base, env_config, user_config)
-            
-            # Verify layering worked correctly
-            assert final_config["server"]["host"] == "prod.example.com"
-            assert final_config["server"]["port"] == base["server"]["port"]
-            assert final_config["database"]["pool_size"] == 20
-            assert final_config["logging"]["level"] == "DEBUG"
-            assert final_config["features"]["debug"] is True
-    
+        # Base config
+        base = get_default_config()
+        
+        # Environment-specific config
+        env_config = {
+            "server": {"host": "prod.example.com"},
+            "database": {"pool_size": 20}
+        }
+        
+        # User-specific config
+        user_config = {
+            "logging": {"level": "DEBUG"},
+            "features": {"debug": True}
+        }
+        
+        # Merge all layers
+        final_config = merge_configs(base, env_config, user_config)
+        
+        # Verify layering worked correctly
+        assert final_config["server"]["host"] == "prod.example.com"
+        assert final_config["server"]["port"] == base["server"]["port"]
+        assert final_config["database"]["pool_size"] == 20
+        assert final_config["logging"]["level"] == "DEBUG"
+        assert final_config["features"]["debug"] is True
     def test_config_environment_override(self):
         """Test config loading with environment variable overrides."""
         with patch.dict(os.environ, {"MMRELAY_SERVER_PORT": "8888", "MMRELAY_DEBUG": "true"}):
