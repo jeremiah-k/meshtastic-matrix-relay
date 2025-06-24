@@ -13,11 +13,7 @@ This test suite covers matrix utility functions with thorough testing of:
 
 import pytest
 import numpy as np
-from unittest.mock import Mock, patch, MagicMock, call
-import warnings
-import sys
-from typing import Any, Tuple, List
-import itertools
+from typing import Tuple
 
 # Import the matrix utilities module
 try:
