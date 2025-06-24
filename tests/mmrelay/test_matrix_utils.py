@@ -14,9 +14,10 @@ from typing import Tuple
 
 # Import the matrix utilities module
 try:
-    from git.src.mmrelay.matrix_utils import (
+try:
+    from src.mmrelay.matrix_utils import (
         create_identity_matrix,
-        matrix_multiply, 
+        matrix_multiply,
         matrix_transpose,
         matrix_determinant,
         matrix_inverse,
@@ -36,13 +37,13 @@ try:
         kronecker_product,
         vectorize_matrix,
         reshape_matrix,
-    )
         is_singular,
         matrix_norm,
         get_diagonal,
         set_diagonal,
         block_matrix,
         tensor_product
+    )
 except ImportError:
     # Handle case where module doesn't exist yet - create mock functions for testing
     def create_identity_matrix(size: int) -> np.ndarray:
