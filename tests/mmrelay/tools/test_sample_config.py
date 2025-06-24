@@ -8,10 +8,11 @@ import json
 import yaml
 import tempfile
 import os
-from pathlib import Path
-from unittest.mock import Mock, patch, mock_open, MagicMock
-import sys
-from io import StringIO
+-from pathlib import Path
+-from unittest.mock import Mock, patch, mock_open, MagicMock
+-import sys
+-from io import StringIO
++from unittest.mock import patch
 
 
 # Mock the sample_config module if it doesn't exist
