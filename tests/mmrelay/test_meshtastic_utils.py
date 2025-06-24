@@ -18,7 +18,6 @@ import time
 import os
 from unittest.mock import Mock, patch, AsyncMock
 from unittest import mock
-import logging
 
 # Import the module under test
 import mmrelay.meshtastic_utils as meshtastic_utils
