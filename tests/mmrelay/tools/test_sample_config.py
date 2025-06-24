@@ -1,10 +1,17 @@
 import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+
+import sys
+import os
+sys.path.insert(0, os.path.abspath("."))
+
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 """
 Comprehensive unit tests for mmrelay.tools.sample_config module.
 Testing Framework: pytest
-"""
 
 import pytest
 import yaml

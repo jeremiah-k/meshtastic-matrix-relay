@@ -1,6 +1,14 @@
 import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+
+import sys
+import os
+sys.path.insert(0, os.path.abspath("."))
+
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 """
 Comprehensive unit tests for mmrelay.matrix_utils module.
 
@@ -37,20 +45,15 @@ try:
         kronecker_product,
         vectorize_matrix,
         reshape_matrix,
+    )
+        is_singular,
+        matrix_norm,
         is_singular,
         matrix_norm,
         get_diagonal,
         set_diagonal,
         block_matrix,
         tensor_product
-    )
-except ImportError:
-    # Handle case where module doesn't exist yet - create mock functions for testing
-    def create_identity_matrix(size: int) -> np.ndarray:
-        """Create identity matrix of given size."""
-        if not isinstance(size, int) or size <= 0:
-            raise ValueError("Size must be positive integer")
-        return np.eye(size)
     
     def matrix_multiply(a: np.ndarray, b: np.ndarray) -> np.ndarray:
         """Multiply two matrices."""

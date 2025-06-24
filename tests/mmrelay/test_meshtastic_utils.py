@@ -1,6 +1,14 @@
 import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+
+import sys
+import os
+sys.path.insert(0, os.path.abspath("."))
+
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 """
 Comprehensive unit tests for mmrelay.meshtastic_utils module.
 Testing framework: pytest
@@ -17,8 +25,6 @@ from unittest.mock import Mock, patch, AsyncMock
 from unittest import mock
 
 # Import the module under test
--import git.src.mmrelay.meshtastic_utils as meshtastic_utils
-+import src.mmrelay.meshtastic_utils as meshtastic_utils
 
 
 class TestIsRunningAsService:
