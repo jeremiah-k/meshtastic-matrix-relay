@@ -39,12 +39,17 @@ try:
         kronecker_product,
         vectorize_matrix,
         reshape_matrix,
-        is_singular,
-        matrix_norm,
-        get_diagonal,
-        set_diagonal,
-        block_matrix,
-        tensor_product
+ try:
+     from mmrelay.matrix_utils import (
+-        is_singular,
+-        matrix_norm,
+-        get_diagonal,
+-        set_diagonal,
+-        block_matrix,
+-        tensor_product
+     )
+ except ImportError:
+     # existing mock/fallback implementations…
     )
 except ImportError:
     # Handle case where module doesn't exist yet - create mock functions for testing
