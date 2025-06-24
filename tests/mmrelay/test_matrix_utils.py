@@ -1,11 +1,6 @@
 import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
-
-import sys
-import os
-sys.path.insert(0, os.path.abspath("."))
-
 """
 Comprehensive unit tests for mmrelay.matrix_utils module.
 
