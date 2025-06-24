@@ -17,7 +17,8 @@ from unittest.mock import Mock, patch, AsyncMock
 from unittest import mock
 
 # Import the module under test
-import git.src.mmrelay.meshtastic_utils as meshtastic_utils
+-import git.src.mmrelay.meshtastic_utils as meshtastic_utils
++import src.mmrelay.meshtastic_utils as meshtastic_utils
 
 
 class TestIsRunningAsService:
