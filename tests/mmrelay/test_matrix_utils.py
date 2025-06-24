@@ -129,9 +129,12 @@ except ImportError:
     
     def decompose_lu(matrix: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """LU decomposition."""
-        from scipy.linalg import lu
-        P, L, U = lu(matrix)
-        return L, U
+        try:
+            from scipy.linalg import lu
+            P, L, U = lu(matrix)
+            return L, U
+        except ImportError:
+            raise ImportError("scipy is required for LU decomposition")
     
     def decompose_qr(matrix: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """QR decomposition.""" 
