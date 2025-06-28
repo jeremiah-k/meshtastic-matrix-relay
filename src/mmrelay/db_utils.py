@@ -45,14 +45,13 @@ def get_db_path():
     if config is not None:
         # Hash only the database-related config sections
         db_config = {
-            'database': config.get('database', {}),
-            'db': config.get('db', {})  # Legacy format
+            "database": config.get("database", {}),
+            "db": config.get("db", {}),  # Legacy format
         }
         current_config_hash = hash(str(sorted(db_config.items())))
 
     # Check if cache is valid (path exists and config hasn't changed)
-    if (_cached_db_path is not None and
-        current_config_hash == _cached_config_hash):
+    if _cached_db_path is not None and current_config_hash == _cached_config_hash:
         return _cached_db_path
 
     # Config changed or first call - clear cache and re-resolve
