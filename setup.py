@@ -1,16 +1,12 @@
-from setuptools import find_packages, setup
-
-# Read README file with proper resource management
-with open("README.md", encoding="utf-8") as f:
-    long_description = f.read()
+from setuptools import setup, find_packages
 
 setup(
     name="mmrelay",
-    version="1.0.12",
+    version="1.0.11",
     author="Geoff Whittington, Jeremiah K., and contributors",
     author_email="jeremiahk@gmx.com",
     description="Bridge between Meshtastic mesh networks and Matrix chat rooms",
-    long_description=long_description,
+    long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
     url="https://github.com/geoffwhittington/meshtastic-matrix-relay",
     project_urls={
@@ -25,9 +21,7 @@ setup(
     ],
     python_requires=">=3.8",
     install_requires=[
-        # TEMPORARY: Using fork with BLE hanging fix until upstream merge
-        # Commit: 19f5174a7ee3d166dceea317be09782d663263d5
-        "meshtastic @ git+https://github.com/jeremiah-k/meshtastic-python.git@19f5174a7ee3d166dceea317be09782d663263d5",
+        "meshtastic @ git+https://github.com/jeremiah-k/meshtastic-python.git@1dfd8fb5525a9b58a033db56bfd7c9862115d1ca",
         "Pillow==11.2.1",
         "matrix-nio==0.25.2",
         "matplotlib==3.10.1",
@@ -43,6 +37,9 @@ setup(
     packages=find_packages(where="src"),
     package_dir={"": "src"},
     include_package_data=True,
-    package_data={"mmrelay.tools": ["sample_config.yaml"]},
-    entry_points={"console_scripts": ["mmrelay = mmrelay.cli:main"]},
+    entry_points={
+        "console_scripts": [
+            "mmrelay = mmrelay.cli:main"
+        ]
+    },
 )
