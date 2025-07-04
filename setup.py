@@ -21,7 +21,7 @@ setup(
     ],
     python_requires=">=3.8",
     install_requires=[
-        "meshtastic @ git+https://github.com/jeremiah-k/meshtastic-python.git@1dfd8fb5525a9b58a033db56bfd7c9862115d1ca",
+        "meshtastic @ git+https://github.com/jeremiah-k/meshtastic-python.git@fix-ble-hanging-issues",
         "Pillow==11.2.1",
         "matrix-nio==0.25.2",
         "matplotlib==3.10.1",
