@@ -50,13 +50,9 @@ def print_banner():
 
 async def main(config):
     """
-    Main asynchronous function to set up and run the relay.
-    Includes logic for wiping the message_map if configured in database.msg_map.wipe_on_restart
-    or db.msg_map.wipe_on_restart (legacy format).
-    Also updates longnames and shortnames periodically as before.
-
-    Args:
-        config: The loaded configuration
+    Initializes and runs the Meshtastic-to-Matrix relay, managing connections, event handling, and graceful shutdown.
+    
+    This function sets up the relay according to the provided configuration, including database initialization, plugin loading, and connection to both Meshtastic and Matrix clients. It handles joining Matrix rooms, registering event callbacks, and periodically updating node information. The function also manages shutdown signals, cleans up resources, and optionally wipes the message map on startup and shutdown if configured.
     """
     # Extract Matrix configuration
     from typing import List

@@ -56,10 +56,9 @@ connection_lost_listener = None
 
 def _subscribe_to_meshtastic_events():
     """
-    Subscribe to Meshtastic pubsub events and store listener objects.
-
-    This function stores the listener objects returned by pub.subscribe()
-    so they can be properly unsubscribed later to prevent duplicate handlers.
+    Subscribes to Meshtastic pubsub events and saves the listener objects globally.
+    
+    This enables later unsubscription to prevent duplicate event handling during reconnections.
     """
     global message_listener, connection_lost_listener
 
@@ -72,11 +71,9 @@ def _subscribe_to_meshtastic_events():
 
 def _unsubscribe_from_meshtastic_events():
     """
-    Unsubscribe from Meshtastic pubsub events to prevent duplicate handlers.
-
-    This is called before reconnecting to ensure we don't accumulate multiple
-    subscriptions to the same topics, which would cause messages to be processed
-    multiple times (once per subscription).
+    Unsubscribes from Meshtastic pubsub events to prevent duplicate event handling.
+    
+    Removes existing listeners for `"meshtastic.receive"` and `"meshtastic.connection.lost"` topics if present, ensuring that only a single set of handlers is active after reconnection or reconfiguration.
     """
     global message_listener, connection_lost_listener
 
@@ -93,11 +90,10 @@ def _unsubscribe_from_meshtastic_events():
 
 def is_running_as_service():
     """
-    Check if the application is running as a systemd service.
-    This is used to determine whether to show Rich progress indicators.
-
+    Determine if the application is running as a systemd service.
+    
     Returns:
-        bool: True if running as a service, False otherwise
+        bool: True if running as a systemd service, otherwise False.
     """
     # Check for INVOCATION_ID environment variable (set by systemd)
     if os.environ.get("INVOCATION_ID"):
@@ -128,14 +124,16 @@ def serial_port_exists(port_name):
 
 def connect_meshtastic(passed_config=None, force_connect=False):
     """
-    Establish a connection to the Meshtastic device.
-    Attempts a connection based on connection_type (serial/ble/network).
-    Retries until successful or shutting_down is set.
-    If already connected and not force_connect, returns the existing client.
-
-    Args:
-        passed_config: The configuration dictionary to use (will update global config)
-        force_connect: Whether to force a new connection even if one exists
+    Establishes and manages a connection to a Meshtastic device using the configured connection type (serial, BLE, or TCP).
+    
+    If a configuration is provided, updates the global configuration and Matrix room mappings. Handles reconnection logic, including closing any existing client, retrying with exponential backoff on failure, and supporting legacy connection types. Ensures only one connection attempt occurs at a time using a lock. Subscribes to Meshtastic message and connection lost events, preventing duplicate subscriptions. Returns the connected Meshtastic client instance, or `None` if unable to connect or if shutdown is in progress.
+    
+    Parameters:
+        passed_config (dict, optional): Configuration dictionary to use for the connection.
+        force_connect (bool, optional): If True, forces a new connection even if one already exists.
+    
+    Returns:
+        meshtastic_client: The connected Meshtastic client instance, or None on failure or shutdown.
     """
     global meshtastic_client, shutting_down, config, matrix_rooms
     if shutting_down:
@@ -274,10 +272,9 @@ def connect_meshtastic(passed_config=None, force_connect=False):
 
 def on_lost_meshtastic_connection(interface=None):
     """
-    Callback invoked when the Meshtastic connection is lost.
-    Initiates a reconnect sequence unless shutting_down is True.
-
-    Also cleans up pubsub subscriptions to prevent accumulation of duplicate handlers.
+    Handles loss of Meshtastic connection by initiating a reconnection sequence and cleaning up event subscriptions.
+    
+    If not already reconnecting or shutting down, this function unsubscribes from Meshtastic pubsub events, closes the current client, and schedules an asynchronous reconnection attempt.
     """
     global meshtastic_client, reconnecting, shutting_down, event_loop, reconnect_task
     with meshtastic_lock:
