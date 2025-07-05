@@ -1,4 +1,4 @@
-from setuptools import setup, find_packages
+from setuptools import find_packages, setup
 
 # Read README file with proper resource management
 with open("README.md", encoding="utf-8") as f:
@@ -25,7 +25,9 @@ setup(
     ],
     python_requires=">=3.8",
     install_requires=[
-        "meshtastic @ git+https://github.com/jeremiah-k/meshtastic-python.git@fix-ble-hanging-clean",
+        # TEMPORARY: Using fork with BLE hanging fix until upstream merge
+        # Commit: 19f5174a7ee3d166dceea317be09782d663263d5
+        "meshtastic @ git+https://github.com/jeremiah-k/meshtastic-python.git@19f5174a7ee3d166dceea317be09782d663263d5",
         "Pillow==11.2.1",
         "matrix-nio==0.25.2",
         "matplotlib==3.10.1",
@@ -41,9 +43,5 @@ setup(
     packages=find_packages(where="src"),
     package_dir={"": "src"},
     include_package_data=True,
-    entry_points={
-        "console_scripts": [
-            "mmrelay = mmrelay.cli:main"
-        ]
-    },
+    entry_points={"console_scripts": ["mmrelay = mmrelay.cli:main"]},
 )
