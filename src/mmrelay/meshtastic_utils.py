@@ -47,6 +47,49 @@ reconnecting = False
 shutting_down = False
 reconnect_task = None  # To keep track of the reconnect task
 
+# Global variables for pubsub subscription management
+# These store the listener objects returned by pub.subscribe() so we can unsubscribe later
+# to prevent duplicate message handling during reconnections
+message_listener = None
+connection_lost_listener = None
+
+
+def _subscribe_to_meshtastic_events():
+    """
+    Subscribe to Meshtastic pubsub events and store listener objects.
+
+    This function stores the listener objects returned by pub.subscribe()
+    so they can be properly unsubscribed later to prevent duplicate handlers.
+    """
+    global message_listener, connection_lost_listener
+
+    logger.debug("Subscribing to Meshtastic pubsub events")
+    message_listener = pub.subscribe(on_meshtastic_message, "meshtastic.receive")
+    connection_lost_listener = pub.subscribe(
+        on_lost_meshtastic_connection, "meshtastic.connection.lost"
+    )
+
+
+def _unsubscribe_from_meshtastic_events():
+    """
+    Unsubscribe from Meshtastic pubsub events to prevent duplicate handlers.
+
+    This is called before reconnecting to ensure we don't accumulate multiple
+    subscriptions to the same topics, which would cause messages to be processed
+    multiple times (once per subscription).
+    """
+    global message_listener, connection_lost_listener
+
+    if message_listener is not None:
+        logger.debug("Unsubscribing from meshtastic.receive")
+        pub.unsubscribe(message_listener, "meshtastic.receive")
+        message_listener = None
+
+    if connection_lost_listener is not None:
+        logger.debug("Unsubscribing from meshtastic.connection.lost")
+        pub.unsubscribe(connection_lost_listener, "meshtastic.connection.lost")
+        connection_lost_listener = None
+
 
 def is_running_as_service():
     """
@@ -198,10 +241,11 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                 )
 
                 # Subscribe to message and connection lost events
-                pub.subscribe(on_meshtastic_message, "meshtastic.receive")
-                pub.subscribe(
-                    on_lost_meshtastic_connection, "meshtastic.connection.lost"
-                )
+                # First, unsubscribe any existing listeners to prevent duplicates
+                _unsubscribe_from_meshtastic_events()
+
+                # Now subscribe with fresh listeners
+                _subscribe_to_meshtastic_events()
 
             except (
                 serial.SerialException,
@@ -232,6 +276,8 @@ def on_lost_meshtastic_connection(interface=None):
     """
     Callback invoked when the Meshtastic connection is lost.
     Initiates a reconnect sequence unless shutting_down is True.
+
+    Also cleans up pubsub subscriptions to prevent accumulation of duplicate handlers.
     """
     global meshtastic_client, reconnecting, shutting_down, event_loop, reconnect_task
     with meshtastic_lock:
@@ -245,6 +291,9 @@ def on_lost_meshtastic_connection(interface=None):
             return
         reconnecting = True
         logger.error("Lost connection. Reconnecting...")
+
+        # Clean up existing subscriptions to prevent duplicates during reconnection
+        _unsubscribe_from_meshtastic_events()
 
         if meshtastic_client:
             try:

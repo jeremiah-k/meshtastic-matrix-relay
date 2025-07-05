@@ -188,6 +188,9 @@ async def main(config):
             except Exception as e:
                 meshtastic_logger.warning(f"Error closing Meshtastic client: {e}")
 
+        # Clean up Meshtastic pubsub subscriptions to prevent memory leaks
+        meshtastic_utils._unsubscribe_from_meshtastic_events()
+
         # Attempt to wipe message_map on shutdown if enabled
         if wipe_on_restart:
             logger.debug("wipe_on_restart enabled. Wiping message_map now (shutdown).")
