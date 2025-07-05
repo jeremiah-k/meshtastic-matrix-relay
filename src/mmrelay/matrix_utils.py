@@ -161,14 +161,17 @@ def is_bot_command_message(event):
         return True
 
     # Check if the message starts with bot_user_id or bot_user_name and contains a command
-    if full_message.startswith(bot_user_id) or text_content.startswith(bot_user_id):
+    if (
+        full_message.startswith(bot_user_id)
+        or text_content.startswith(bot_user_id)
+        or full_message.startswith(bot_user_name)
+        or text_content.startswith(bot_user_name)
+    ):
         # Look for any command pattern after bot mention
         pattern = rf"^(?:{re.escape(bot_user_id)}|{re.escape(bot_user_name)}|[#@].+?)[,:;]?\s*!"
-        return bool(re.search(pattern, full_message)) or bool(re.search(pattern, text_content))
-    elif full_message.startswith(bot_user_name) or text_content.startswith(bot_user_name):
-        # Look for any command pattern after bot mention
-        pattern = rf"^(?:{re.escape(bot_user_id)}|{re.escape(bot_user_name)}|[#@].+?)[,:;]?\s*!"
-        return bool(re.search(pattern, full_message)) or bool(re.search(pattern, text_content))
+        return bool(re.search(pattern, full_message)) or bool(
+            re.search(pattern, text_content)
+        )
 
     return False
 
