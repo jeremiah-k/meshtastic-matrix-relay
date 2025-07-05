@@ -82,12 +82,12 @@ def _unsubscribe_from_meshtastic_events():
 
     if message_listener is not None:
         logger.debug("Unsubscribing from meshtastic.receive")
-        pub.unsubscribe(message_listener, "meshtastic.receive")
+        message_listener.unsubscribe()
         message_listener = None
 
     if connection_lost_listener is not None:
         logger.debug("Unsubscribing from meshtastic.connection.lost")
-        pub.unsubscribe(connection_lost_listener, "meshtastic.connection.lost")
+        connection_lost_listener.unsubscribe()
         connection_lost_listener = None
 
 

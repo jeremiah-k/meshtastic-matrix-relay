@@ -1,12 +1,16 @@
 from setuptools import setup, find_packages
 
+# Read README file with proper resource management
+with open("README.md", encoding="utf-8") as f:
+    long_description = f.read()
+
 setup(
     name="mmrelay",
     version="1.0.11",
     author="Geoff Whittington, Jeremiah K., and contributors",
     author_email="jeremiahk@gmx.com",
     description="Bridge between Meshtastic mesh networks and Matrix chat rooms",
-    long_description=open("README.md").read(),
+    long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/geoffwhittington/meshtastic-matrix-relay",
     project_urls={
