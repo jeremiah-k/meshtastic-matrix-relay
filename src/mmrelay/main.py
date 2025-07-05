@@ -20,7 +20,7 @@ from mmrelay.db_utils import (
     update_shortnames,
     wipe_message_map,
 )
-from mmrelay.log_utils import get_logger
+from mmrelay.log_utils import get_logger, setup_upstream_logging_capture
 from mmrelay.matrix_utils import connect_matrix, join_matrix_room
 from mmrelay.matrix_utils import logger as matrix_logger
 from mmrelay.matrix_utils import on_room_member, on_room_message
@@ -50,13 +50,12 @@ def print_banner():
 
 async def main(config):
     """
-    Main asynchronous function to set up and run the relay.
-    Includes logic for wiping the message_map if configured in database.msg_map.wipe_on_restart
-    or db.msg_map.wipe_on_restart (legacy format).
-    Also updates longnames and shortnames periodically as before.
-
-    Args:
-        config: The loaded configuration
+    Sets up and runs the asynchronous relay between Meshtastic and Matrix, managing connections, event handling, and graceful shutdown.
+    
+    This function initializes the database, configures logging, loads plugins, connects to both Meshtastic and Matrix, joins specified Matrix rooms, and registers event callbacks for message and membership events. It periodically updates node names from the Meshtastic network and manages the Matrix sync loop, handling reconnections and shutdown signals. If configured, it wipes the message map on startup and shutdown.
+    
+    Parameters:
+        config: The loaded configuration dictionary containing Matrix, Meshtastic, and database settings.
     """
     # Extract Matrix configuration
     from typing import List
@@ -68,6 +67,9 @@ async def main(config):
 
     # Initialize the SQLite database
     initialize_database()
+
+    # Set up upstream logging capture to format library messages consistently
+    setup_upstream_logging_capture()
 
     # Check database config for wipe_on_restart (preferred format)
     database_config = config.get("database", {})
@@ -132,11 +134,11 @@ async def main(config):
         pass
 
     # -------------------------------------------------------------------
-    # IMPORTANT: We create a task to run the meshtastic_utils.check_connection()
-    # so its while loop runs in parallel with the matrix sync loop
-    # Use "_" to avoid trunk's "assigned but unused variable" warning
+    # NOTE: Disabled custom check_connection() to rely on improved meshtastic library
+    # disconnection detection. The updated fork (commit 33d23e9c28508a740da6567627e42d81552c9b58)
+    # includes better detection for all interface types, eliminating duplicate detection.
     # -------------------------------------------------------------------
-    _ = asyncio.create_task(meshtastic_utils.check_connection())
+    # _ = asyncio.create_task(meshtastic_utils.check_connection())
 
     # Start the Matrix client sync loop
     try:

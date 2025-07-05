@@ -47,14 +47,17 @@ reconnecting = False
 shutting_down = False
 reconnect_task = None  # To keep track of the reconnect task
 
+# Track pubsub subscription state to prevent duplicate subscriptions during reconnections
+subscribed_to_messages = False
+subscribed_to_connection_lost = False
+
 
 def is_running_as_service():
     """
-    Check if the application is running as a systemd service.
-    This is used to determine whether to show Rich progress indicators.
-
+    Determine if the application is running as a systemd service.
+    
     Returns:
-        bool: True if running as a service, False otherwise
+        bool: True if running under systemd (either via environment variable or parent process), False otherwise.
     """
     # Check for INVOCATION_ID environment variable (set by systemd)
     if os.environ.get("INVOCATION_ID"):
@@ -85,14 +88,16 @@ def serial_port_exists(port_name):
 
 def connect_meshtastic(passed_config=None, force_connect=False):
     """
-    Establish a connection to the Meshtastic device.
-    Attempts a connection based on connection_type (serial/ble/network).
-    Retries until successful or shutting_down is set.
-    If already connected and not force_connect, returns the existing client.
-
-    Args:
-        passed_config: The configuration dictionary to use (will update global config)
-        force_connect: Whether to force a new connection even if one exists
+    Establishes and manages a connection to a Meshtastic device using the configured connection type (serial, BLE, or TCP).
+    
+    If a configuration is provided, updates the global configuration and Matrix room mappings. Handles reconnection logic, including closing any existing connection if `force_connect` is True. Retries connection attempts with exponential backoff until successful or shutdown is initiated. Subscribes to message and connection lost events only once per process to avoid duplicate subscriptions.
+    
+    Parameters:
+        passed_config (dict, optional): Configuration dictionary to use for the connection. If provided, updates the global configuration.
+        force_connect (bool, optional): If True, forces a new connection even if one already exists.
+    
+    Returns:
+        Meshtastic interface client if the connection is successful, or None if the connection fails or shutdown is in progress.
     """
     global meshtastic_client, shutting_down, config, matrix_rooms
     if shutting_down:
@@ -197,11 +202,17 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                     f"Connected to {nodeInfo['user']['shortName']} / {nodeInfo['user']['hwModel']}"
                 )
 
-                # Subscribe to message and connection lost events
-                pub.subscribe(on_meshtastic_message, "meshtastic.receive")
-                pub.subscribe(
-                    on_lost_meshtastic_connection, "meshtastic.connection.lost"
-                )
+                # Subscribe to message and connection lost events (only if not already subscribed)
+                global subscribed_to_messages, subscribed_to_connection_lost
+                if not subscribed_to_messages:
+                    pub.subscribe(on_meshtastic_message, "meshtastic.receive")
+                    subscribed_to_messages = True
+                    logger.debug("Subscribed to meshtastic.receive")
+
+                if not subscribed_to_connection_lost:
+                    pub.subscribe(on_lost_meshtastic_connection, "meshtastic.connection.lost")
+                    subscribed_to_connection_lost = True
+                    logger.debug("Subscribed to meshtastic.connection.lost")
 
             except (
                 serial.SerialException,
