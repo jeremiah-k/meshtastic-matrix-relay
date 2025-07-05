@@ -56,35 +56,46 @@ connection_lost_listener = None
 
 def _subscribe_to_meshtastic_events():
     """
-    Subscribes to Meshtastic pubsub events and saves the listener objects globally.
-    
-    This enables later unsubscription to prevent duplicate event handling during reconnections.
+    Subscribes to Meshtastic pubsub events.
+
+    Unsubscribes from existing events first to prevent duplicate event handling during reconnections.
     """
     global message_listener, connection_lost_listener
 
+    # First unsubscribe from any existing subscriptions
+    _unsubscribe_from_meshtastic_events()
+
     logger.debug("Subscribing to Meshtastic pubsub events")
-    message_listener = pub.subscribe(on_meshtastic_message, "meshtastic.receive")
-    connection_lost_listener = pub.subscribe(
-        on_lost_meshtastic_connection, "meshtastic.connection.lost"
-    )
+    pub.subscribe(on_meshtastic_message, "meshtastic.receive")
+    pub.subscribe(on_lost_meshtastic_connection, "meshtastic.connection.lost")
+
+    # Mark that we have active subscriptions
+    message_listener = True
+    connection_lost_listener = True
 
 
 def _unsubscribe_from_meshtastic_events():
     """
     Unsubscribes from Meshtastic pubsub events to prevent duplicate event handling.
-    
-    Removes existing listeners for `"meshtastic.receive"` and `"meshtastic.connection.lost"` topics if present, ensuring that only a single set of handlers is active after reconnection or reconfiguration.
+
+    Removes existing listeners for `"meshtastic.receive"` and `"meshtastic.connection.lost"` topics if present.
     """
     global message_listener, connection_lost_listener
 
-    if message_listener is not None:
+    if message_listener:
         logger.debug("Unsubscribing from meshtastic.receive")
-        message_listener.unsubscribe()
+        try:
+            pub.unsubscribe(on_meshtastic_message, "meshtastic.receive")
+        except Exception as e:
+            logger.debug(f"Error unsubscribing from meshtastic.receive: {e}")
         message_listener = None
 
-    if connection_lost_listener is not None:
+    if connection_lost_listener:
         logger.debug("Unsubscribing from meshtastic.connection.lost")
-        connection_lost_listener.unsubscribe()
+        try:
+            pub.unsubscribe(on_lost_meshtastic_connection, "meshtastic.connection.lost")
+        except Exception as e:
+            logger.debug(f"Error unsubscribing from meshtastic.connection.lost: {e}")
         connection_lost_listener = None
 
 
