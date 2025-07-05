@@ -101,14 +101,14 @@ matrix_client = None
 
 def bot_command(command, event):
     """
-    Determine if a given command string is directed at the bot in a Matrix message event.
-    
-    Checks for command invocation using both plain text and formatted message content, supporting variations such as direct bot mentions, display name references, and different Matrix client formats.
-    
-    Parameters:
+    Checks if the given command is directed at the bot,
+    accounting for variations in different Matrix clients.
+
+    Args:
         command (str): The command string to check for (without the leading '!').
+                      If None, checks for any command directed at the bot.
         event: The Matrix event object containing the message.
-    
+
     Returns:
         bool: True if the command is directed at the bot, otherwise False.
     """
@@ -119,61 +119,34 @@ def bot_command(command, event):
     # Remove HTML tags and extract the text content
     text_content = re.sub(r"<[^>]+>", "", formatted_body).strip()
 
-    # Check for simple !command format first
+    # If command is None, check for any command directed at the bot
+    if command is None:
+        # Check for simple !command format first
+        if full_message.startswith("!") or text_content.startswith("!"):
+            return True
+        # Check if the message starts with bot_user_id or bot_user_name and contains any command
+        if (full_message.startswith(bot_user_id) or text_content.startswith(bot_user_id) or
+            full_message.startswith(bot_user_name) or text_content.startswith(bot_user_name)):
+            # Look for any command pattern after bot mention
+            pattern = rf"^(?:{re.escape(bot_user_id)}|{re.escape(bot_user_name)}|[#@].+?)[,:;]?\s*!"
+            return bool(re.search(pattern, full_message)) or bool(re.search(pattern, text_content))
+        return False
+
+    # Check for specific command
     if full_message.startswith(f"!{command}") or text_content.startswith(f"!{command}"):
         return True
 
     # Check if the message starts with bot_user_id or bot_user_name
-    if full_message.startswith(bot_user_id) or text_content.startswith(bot_user_id):
+    if (full_message.startswith(bot_user_id) or text_content.startswith(bot_user_id) or
+        full_message.startswith(bot_user_name) or text_content.startswith(bot_user_name)):
         # Construct a regex pattern to match variations of bot mention and command
         pattern = rf"^(?:{re.escape(bot_user_id)}|{re.escape(bot_user_name)}|[#@].+?)[,:;]?\s*!{command}"
-        return bool(re.match(pattern, full_message)) or bool(
-            re.match(pattern, text_content)
-        )
-    elif full_message.startswith(bot_user_name) or text_content.startswith(
-        bot_user_name
-    ):
-        # Construct a regex pattern to match variations of bot mention and command
-        pattern = rf"^(?:{re.escape(bot_user_id)}|{re.escape(bot_user_name)}|[#@].+?)[,:;]?\s*!{command}"
-        return bool(re.match(pattern, full_message)) or bool(
-            re.match(pattern, text_content)
-        )
-    else:
-        return False
-
-
-def is_bot_command_message(event):
-    """
-    Determine if a Matrix message event is a command directed at the bot.
-    
-    Returns:
-        bool: True if the message is a bot command, otherwise False.
-    """
-    full_message = event.body.strip()
-    content = event.source.get("content", {})
-    formatted_body = content.get("formatted_body", "")
-
-    # Remove HTML tags and extract the text content
-    text_content = re.sub(r"<[^>]+>", "", formatted_body).strip()
-
-    # Check for simple !command format first
-    if full_message.startswith("!") or text_content.startswith("!"):
-        return True
-
-    # Check if the message starts with bot_user_id or bot_user_name and contains a command
-    if (
-        full_message.startswith(bot_user_id)
-        or text_content.startswith(bot_user_id)
-        or full_message.startswith(bot_user_name)
-        or text_content.startswith(bot_user_name)
-    ):
-        # Look for any command pattern after bot mention
-        pattern = rf"^(?:{re.escape(bot_user_id)}|{re.escape(bot_user_name)}|[#@].+?)[,:;]?\s*!"
-        return bool(re.search(pattern, full_message)) or bool(
-            re.search(pattern, text_content)
-        )
+        return bool(re.match(pattern, full_message)) or bool(re.match(pattern, text_content))
 
     return False
+
+
+
 
 
 async def connect_matrix(passed_config=None):
@@ -955,10 +928,11 @@ async def on_room_message(
             break
 
     # Also check if this is any command directed at this bot to prevent relaying
-    is_bot_command_detected = is_bot_command_message(event)
+    # Use bot_command with None to check for any command
+    is_any_bot_command = bot_command(None, event)
 
     # If this is a command, we do not send it to the mesh
-    if is_command or is_bot_command_detected:
+    if is_command or is_any_bot_command:
         logger.debug("Message is a bot command, not sending to mesh")
         return
 
