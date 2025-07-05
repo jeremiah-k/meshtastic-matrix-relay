@@ -101,8 +101,16 @@ matrix_client = None
 
 def bot_command(command, event):
     """
-    Checks if the given command is directed at the bot,
-    accounting for variations in different Matrix clients.
+    Determine if a given command string is directed at the bot in a Matrix message event.
+    
+    Checks for command invocation using both plain text and formatted message content, supporting variations such as direct bot mentions, display name references, and different Matrix client formats.
+    
+    Parameters:
+        command (str): The command string to check for (without the leading '!').
+        event: The Matrix event object containing the message.
+    
+    Returns:
+        bool: True if the command is directed at the bot, otherwise False.
     """
     full_message = event.body.strip()
     content = event.source.get("content", {})
@@ -136,10 +144,10 @@ def bot_command(command, event):
 
 def is_bot_command_message(event):
     """
-    Checks if the message is any command directed at this bot,
-    to prevent relaying bot commands to Meshtastic.
-
-    Returns True if the message appears to be a command directed at this bot.
+    Determine if a Matrix message event is a command directed at the bot.
+    
+    Returns:
+        bool: True if the message is a bot command, otherwise False.
     """
     full_message = event.body.strip()
     content = event.source.get("content", {})
@@ -167,11 +175,9 @@ def is_bot_command_message(event):
 
 async def connect_matrix(passed_config=None):
     """
-    Establish a connection to the Matrix homeserver.
-    Sets global matrix_client and detects the bot's display name.
-
-    Args:
-        passed_config: The configuration dictionary to use (will update global config)
+    Asynchronously establishes and configures a connection to the Matrix homeserver using the provided or global configuration.
+    
+    Initializes the global Matrix client, retrieves the bot's device ID and display name, and sets up connection parameters. Returns the initialized Matrix client instance, or `None` if configuration is missing.
     """
     global matrix_client, bot_user_name, matrix_homeserver, matrix_rooms, matrix_access_token, bot_user_id, config
 
@@ -647,9 +653,9 @@ async def on_room_message(
     event: Union[RoomMessageText, RoomMessageNotice, ReactionEvent, RoomMessageEmote],
 ) -> None:
     """
-    Handles incoming Matrix room messages, reactions, and replies, relaying them to Meshtastic as appropriate.
-
-    Processes events from Matrix rooms, including text messages, reactions, and replies. Relays supported messages to Meshtastic if broadcasting is enabled, applying message mapping for cross-referencing when reactions or replies are enabled. Prevents relaying of reactions to reactions and avoids processing messages from the bot itself or messages sent before the bot started. Integrates with plugins for command and message handling, and ensures that only supported messages are forwarded to Meshtastic.
+    Handles incoming Matrix room messages, reactions, and replies, relaying them to Meshtastic if appropriate.
+    
+    Processes Matrix events including text messages, reactions, and replies. Relays supported messages to Meshtastic channels when broadcasting is enabled, and manages message mapping for cross-referencing when reactions or replies are enabled. Prevents relaying of bot commands, reactions to reactions, messages from the bot itself, and messages sent before the bot started. Integrates with plugins for command and message handling, and ensures only supported messages are forwarded to Meshtastic. Handles special cases for remote meshnet messages and reactions, and manages message mapping storage and pruning as configured.
     """
     # Importing here to avoid circular imports and to keep logic consistent
     # Note: We do not call store_message_map directly here for inbound matrix->mesh messages.
