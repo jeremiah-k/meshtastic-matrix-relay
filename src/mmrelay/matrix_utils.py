@@ -103,6 +103,14 @@ def bot_command(command, event):
     """
     Checks if the given command is directed at the bot,
     accounting for variations in different Matrix clients.
+
+    Args:
+        command (str): The command string to check for (without the leading '!').
+                      If None, checks for any command directed at the bot.
+        event: The Matrix event object containing the message.
+
+    Returns:
+        bool: True if the command is directed at the bot, otherwise False.
     """
     full_message = event.body.strip()
     content = event.source.get("content", {})
@@ -111,36 +119,41 @@ def bot_command(command, event):
     # Remove HTML tags and extract the text content
     text_content = re.sub(r"<[^>]+>", "", formatted_body).strip()
 
-    # Check for simple !command format first
+    # If command is None, check for any command directed at the bot
+    if command is None:
+        # Check for simple !command format first
+        if full_message.startswith("!") or text_content.startswith("!"):
+            return True
+        # Check if the message starts with bot_user_id or bot_user_name and contains any command
+        if (full_message.startswith(bot_user_id) or text_content.startswith(bot_user_id) or
+            full_message.startswith(bot_user_name) or text_content.startswith(bot_user_name)):
+            # Look for any command pattern after bot mention
+            pattern = rf"^(?:{re.escape(bot_user_id)}|{re.escape(bot_user_name)}|[#@].+?)[,:;]?\s*!"
+            return bool(re.search(pattern, full_message)) or bool(re.search(pattern, text_content))
+        return False
+
+    # Check for specific command
     if full_message.startswith(f"!{command}") or text_content.startswith(f"!{command}"):
         return True
 
     # Check if the message starts with bot_user_id or bot_user_name
-    if full_message.startswith(bot_user_id) or text_content.startswith(bot_user_id):
+    if (full_message.startswith(bot_user_id) or text_content.startswith(bot_user_id) or
+        full_message.startswith(bot_user_name) or text_content.startswith(bot_user_name)):
         # Construct a regex pattern to match variations of bot mention and command
         pattern = rf"^(?:{re.escape(bot_user_id)}|{re.escape(bot_user_name)}|[#@].+?)[,:;]?\s*!{command}"
-        return bool(re.match(pattern, full_message)) or bool(
-            re.match(pattern, text_content)
-        )
-    elif full_message.startswith(bot_user_name) or text_content.startswith(
-        bot_user_name
-    ):
-        # Construct a regex pattern to match variations of bot mention and command
-        pattern = rf"^(?:{re.escape(bot_user_id)}|{re.escape(bot_user_name)}|[#@].+?)[,:;]?\s*!{command}"
-        return bool(re.match(pattern, full_message)) or bool(
-            re.match(pattern, text_content)
-        )
-    else:
-        return False
+        return bool(re.match(pattern, full_message)) or bool(re.match(pattern, text_content))
+
+    return False
+
+
+
 
 
 async def connect_matrix(passed_config=None):
     """
-    Establish a connection to the Matrix homeserver.
-    Sets global matrix_client and detects the bot's display name.
-
-    Args:
-        passed_config: The configuration dictionary to use (will update global config)
+    Asynchronously establishes and configures a connection to the Matrix homeserver using the provided or global configuration.
+    
+    Initializes the global Matrix client, retrieves the bot's device ID and display name, and sets up connection parameters. Returns the initialized Matrix client instance, or `None` if configuration is missing.
     """
     global matrix_client, bot_user_name, matrix_homeserver, matrix_rooms, matrix_access_token, bot_user_id, config
 
@@ -616,9 +629,9 @@ async def on_room_message(
     event: Union[RoomMessageText, RoomMessageNotice, ReactionEvent, RoomMessageEmote],
 ) -> None:
     """
-    Handles incoming Matrix room messages, reactions, and replies, relaying them to Meshtastic as appropriate.
-
-    Processes events from Matrix rooms, including text messages, reactions, and replies. Relays supported messages to Meshtastic if broadcasting is enabled, applying message mapping for cross-referencing when reactions or replies are enabled. Prevents relaying of reactions to reactions and avoids processing messages from the bot itself or messages sent before the bot started. Integrates with plugins for command and message handling, and ensures that only supported messages are forwarded to Meshtastic.
+    Handles incoming Matrix room messages, reactions, and replies, relaying them to Meshtastic if appropriate.
+    
+    Processes Matrix events including text messages, reactions, and replies. Relays supported messages to Meshtastic channels when broadcasting is enabled, and manages message mapping for cross-referencing when reactions or replies are enabled. Prevents relaying of bot commands, reactions to reactions, messages from the bot itself, and messages sent before the bot started. Integrates with plugins for command and message handling, and ensures only supported messages are forwarded to Meshtastic. Handles special cases for remote meshnet messages and reactions, and manages message mapping storage and pruning as configured.
     """
     # Importing here to avoid circular imports and to keep logic consistent
     # Note: We do not call store_message_map directly here for inbound matrix->mesh messages.
@@ -914,9 +927,13 @@ async def on_room_message(
         if is_command:
             break
 
+    # Also check if this is any command directed at this bot to prevent relaying
+    # Use bot_command with None to check for any command
+    is_any_bot_command = bot_command(None, event)
+
     # If this is a command, we do not send it to the mesh
-    if is_command:
-        logger.debug("Message is a command, not sending to mesh")
+    if is_command or is_any_bot_command:
+        logger.debug("Message is a bot command, not sending to mesh")
         return
 
     # Connect to Meshtastic
