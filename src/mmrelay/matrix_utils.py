@@ -134,6 +134,34 @@ def bot_command(command, event):
         return False
 
 
+def is_any_bot_command(event):
+    """
+    Checks if the message is any bot command (directed at any bot),
+    to prevent relaying bot commands to Meshtastic regardless of target.
+
+    Returns True if the message appears to be a bot command directed at any bot.
+    """
+    full_message = event.body.strip()
+    content = event.source.get("content", {})
+    formatted_body = content.get("formatted_body", "")
+
+    # Remove HTML tags and extract the text content
+    text_content = re.sub(r"<[^>]+>", "", formatted_body).strip()
+
+    # Check for bot mention patterns followed by commands
+    # Patterns like: @bot:server.com: !command or @bot:server.com !command
+    bot_command_pattern = r"^@[^:]+:[^:\s]+[:\s]+!\w+"
+
+    if re.match(bot_command_pattern, full_message) or re.match(bot_command_pattern, text_content):
+        return True
+
+    # Check for simple !command at start of message (could be directed at any bot)
+    if full_message.startswith("!") or text_content.startswith("!"):
+        return True
+
+    return False
+
+
 async def connect_matrix(passed_config=None):
     """
     Establish a connection to the Matrix homeserver.
@@ -914,9 +942,16 @@ async def on_room_message(
         if is_command:
             break
 
-    # If this is a command, we do not send it to the mesh
-    if is_command:
-        logger.debug("Message is a command, not sending to mesh")
+    # Also check if this is any bot command (directed at any bot)
+    # to prevent relaying bot commands to Meshtastic regardless of target
+    is_any_bot_command_detected = is_any_bot_command(event)
+
+    # If this is a command (directed at us or any other bot), we do not send it to the mesh
+    if is_command or is_any_bot_command_detected:
+        if is_command:
+            logger.debug("Message is a command directed at this bot, not sending to mesh")
+        else:
+            logger.debug("Message is a bot command directed at another bot, not sending to mesh")
         return
 
     # Connect to Meshtastic
