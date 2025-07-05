@@ -134,12 +134,12 @@ def bot_command(command, event):
         return False
 
 
-def is_any_bot_command(event):
+def is_bot_command_message(event):
     """
-    Checks if the message is any bot command (directed at any bot),
-    to prevent relaying bot commands to Meshtastic regardless of target.
+    Checks if the message is any command directed at this bot,
+    to prevent relaying bot commands to Meshtastic.
 
-    Returns True if the message appears to be a bot command directed at any bot.
+    Returns True if the message appears to be a command directed at this bot.
     """
     full_message = event.body.strip()
     content = event.source.get("content", {})
@@ -148,16 +148,19 @@ def is_any_bot_command(event):
     # Remove HTML tags and extract the text content
     text_content = re.sub(r"<[^>]+>", "", formatted_body).strip()
 
-    # Check for bot mention patterns followed by commands
-    # Patterns like: @bot:server.com: !command or @bot:server.com !command
-    bot_command_pattern = r"^@[^:]+:[^:\s]+[:\s]+!\w+"
-
-    if re.match(bot_command_pattern, full_message) or re.match(bot_command_pattern, text_content):
-        return True
-
-    # Check for simple !command at start of message (could be directed at any bot)
+    # Check for simple !command format first
     if full_message.startswith("!") or text_content.startswith("!"):
         return True
+
+    # Check if the message starts with bot_user_id or bot_user_name and contains a command
+    if full_message.startswith(bot_user_id) or text_content.startswith(bot_user_id):
+        # Look for any command pattern after bot mention
+        pattern = rf"^(?:{re.escape(bot_user_id)}|{re.escape(bot_user_name)}|[#@].+?)[,:;]?\s*!"
+        return bool(re.search(pattern, full_message)) or bool(re.search(pattern, text_content))
+    elif full_message.startswith(bot_user_name) or text_content.startswith(bot_user_name):
+        # Look for any command pattern after bot mention
+        pattern = rf"^(?:{re.escape(bot_user_id)}|{re.escape(bot_user_name)}|[#@].+?)[,:;]?\s*!"
+        return bool(re.search(pattern, full_message)) or bool(re.search(pattern, text_content))
 
     return False
 
@@ -942,16 +945,12 @@ async def on_room_message(
         if is_command:
             break
 
-    # Also check if this is any bot command (directed at any bot)
-    # to prevent relaying bot commands to Meshtastic regardless of target
-    is_any_bot_command_detected = is_any_bot_command(event)
+    # Also check if this is any command directed at this bot to prevent relaying
+    is_bot_command_detected = is_bot_command_message(event)
 
-    # If this is a command (directed at us or any other bot), we do not send it to the mesh
-    if is_command or is_any_bot_command_detected:
-        if is_command:
-            logger.debug("Message is a command directed at this bot, not sending to mesh")
-        else:
-            logger.debug("Message is a bot command directed at another bot, not sending to mesh")
+    # If this is a command, we do not send it to the mesh
+    if is_command or is_bot_command_detected:
+        logger.debug("Message is a bot command, not sending to mesh")
         return
 
     # Connect to Meshtastic
