@@ -30,6 +30,17 @@ log_file_path = None
 
 
 def get_logger(name):
+    """
+    Create and configure a logger with console and optional file output, supporting colorized output and log rotation.
+    
+    The logger's level, color usage, and file logging behavior are determined by global configuration and command line arguments. Console output uses rich formatting if enabled. File logging supports log rotation and stores logs in a configurable or default location. The log file path is stored globally if the logger name is "M<>M Relay".
+    
+    Parameters:
+        name (str): The name of the logger to create.
+    
+    Returns:
+        logging.Logger: The configured logger instance.
+    """
     logger = logging.getLogger(name=name)
 
     # Default to INFO level if config is not available
@@ -138,8 +149,9 @@ def get_logger(name):
 
 def setup_upstream_logging_capture():
     """
-    Captures upstream library logging (like ERROR:root messages) and redirects
-    them to our formatted logger to maintain consistent log formatting.
+    Redirects warning and error log messages from upstream libraries and the root logger into the application's formatted logging system.
+    
+    This ensures that log output from external dependencies (such as "meshtastic", "bleak", and "asyncio") appears with consistent formatting alongside the application's own logs. Only messages at WARNING level or higher are captured, and messages originating from the application's own loggers are excluded to prevent recursion.
     """
     # Get our main logger
     main_logger = get_logger("Upstream")
@@ -148,6 +160,11 @@ def setup_upstream_logging_capture():
     class UpstreamLogHandler(logging.Handler):
         def emit(self, record):
             # Skip if this is already from our logger to avoid recursion
+            """
+            Redirects log records from external sources to the main logger, mapping their severity and prefixing with the original logger name.
+            
+            Skips records originating from the application's own loggers to prevent recursion.
+            """
             if record.name.startswith("mmrelay") or record.name == "Upstream":
                 return
 
