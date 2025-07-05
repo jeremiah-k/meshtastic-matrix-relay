@@ -56,47 +56,34 @@ connection_lost_listener = None
 
 def _subscribe_to_meshtastic_events():
     """
-    Subscribes to Meshtastic pubsub events.
-
-    Unsubscribes from existing events first to prevent duplicate event handling during reconnections.
+    Subscribes to Meshtastic pubsub events, avoiding duplicate subscriptions.
     """
     global message_listener, connection_lost_listener
 
-    # First unsubscribe from any existing subscriptions
-    _unsubscribe_from_meshtastic_events()
+    # Only subscribe if we haven't already subscribed
+    if not message_listener:
+        logger.debug("Subscribing to meshtastic.receive")
+        pub.subscribe(on_meshtastic_message, "meshtastic.receive")
+        message_listener = True
 
-    logger.debug("Subscribing to Meshtastic pubsub events")
-    pub.subscribe(on_meshtastic_message, "meshtastic.receive")
-    pub.subscribe(on_lost_meshtastic_connection, "meshtastic.connection.lost")
-
-    # Mark that we have active subscriptions
-    message_listener = True
-    connection_lost_listener = True
+    if not connection_lost_listener:
+        logger.debug("Subscribing to meshtastic.connection.lost")
+        pub.subscribe(on_lost_meshtastic_connection, "meshtastic.connection.lost")
+        connection_lost_listener = True
 
 
 def _unsubscribe_from_meshtastic_events():
     """
-    Unsubscribes from Meshtastic pubsub events to prevent duplicate event handling.
+    Resets subscription tracking flags to allow resubscription.
 
-    Removes existing listeners for `"meshtastic.receive"` and `"meshtastic.connection.lost"` topics if present.
+    Note: We don't actually unsubscribe from pubsub events as this can cause issues.
+    The meshtastic library handles cleanup automatically.
     """
     global message_listener, connection_lost_listener
 
-    if message_listener:
-        logger.debug("Unsubscribing from meshtastic.receive")
-        try:
-            pub.unsubscribe(on_meshtastic_message, "meshtastic.receive")
-        except Exception as e:
-            logger.debug(f"Error unsubscribing from meshtastic.receive: {e}")
-        message_listener = None
-
-    if connection_lost_listener:
-        logger.debug("Unsubscribing from meshtastic.connection.lost")
-        try:
-            pub.unsubscribe(on_lost_meshtastic_connection, "meshtastic.connection.lost")
-        except Exception as e:
-            logger.debug(f"Error unsubscribing from meshtastic.connection.lost: {e}")
-        connection_lost_listener = None
+    logger.debug("Resetting subscription tracking flags")
+    message_listener = None
+    connection_lost_listener = None
 
 
 def is_running_as_service():
@@ -699,9 +686,12 @@ async def check_connection():
         return
 
     connection_type = config["meshtastic"]["connection_type"]
+    logger.debug(f"Starting connection check loop for {connection_type}")
+
     while not shutting_down:
         if meshtastic_client:
             try:
+                logger.debug("Checking connection with getMetadata()")
                 output_capture = io.StringIO()
                 with contextlib.redirect_stdout(
                     output_capture
@@ -712,9 +702,13 @@ async def check_connection():
                 if "firmware_version" not in console_output:
                     raise Exception("No firmware_version in getMetadata output.")
 
+                logger.debug("Connection check passed")
+
             except Exception as e:
                 logger.error(f"{connection_type.capitalize()} connection lost: {e}")
                 on_lost_meshtastic_connection(meshtastic_client)
+        else:
+            logger.debug("No meshtastic_client available for connection check")
         await asyncio.sleep(30)  # Check connection every 30 seconds
 
 
