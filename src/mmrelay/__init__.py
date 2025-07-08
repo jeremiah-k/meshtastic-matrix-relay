@@ -14,4 +14,4 @@ else:
         __version__ = version("mmrelay")
     except PackageNotFoundError:
         # If all else fails, use hardcoded version
-        __version__ = "1.0.11"
+        __version__ = "1.1.0"

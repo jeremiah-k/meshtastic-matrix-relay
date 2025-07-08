@@ -9,8 +9,6 @@ A powerful and easy-to-use relay between Meshtastic devices and Matrix chat room
 Visit our [Wiki](https://github.com/geoffwhittington/meshtastic-matrix-relay/wiki) for comprehensive guides and information.
 
 - [Installation Instructions](docs/INSTRUCTIONS.md) - Setup and configuration guide
-- [v1.0 Release Announcement](docs/ANNOUNCEMENT.md) - New changes in v1.0
-- [Upgrade Guide](docs/UPGRADE_TO_V1.md) - Migration guidance for existing users
 
 ---
 
@@ -30,6 +28,32 @@ mmrelay --install-service
 ```
 
 For detailed installation and configuration instructions, see the [Installation Guide](docs/INSTRUCTIONS.md).
+
+## Docker
+
+MMRelay includes official Docker support for easy deployment and management:
+
+```bash
+# Quick setup with Docker
+make config  # Creates config files and directories
+make build   # Build the Docker image
+make run     # Start the container
+
+# View logs
+make logs
+
+# Stop the container
+make stop
+```
+
+Docker provides:
+
+- **Isolated environment** - No dependency conflicts
+- **Easy deployment** - Single command setup
+- **Automatic restarts** - Container restarts on failure
+- **Volume persistence** - Data and logs preserved across restarts
+
+For detailed Docker setup instructions, see the [Docker Guide](DOCKER.md) or [Installation Guide](docs/INSTRUCTIONS.md#docker).
 
 ---
 
@@ -54,7 +78,7 @@ _We would love to support [Matrix E2EE rooms](https://github.com/geoffwhittingto
 
 ![Windows Installer Screenshot](https://user-images.githubusercontent.com/1770544/235249050-8c79107a-50cc-4803-b989-39e58100342d.png)
 
-The latest installer is available [here](https://github.com/geoffwhittington/meshtastic-matrix-relay/releases).
+The latest installer is available in the [releases section](https://github.com/geoffwhittington/meshtastic-matrix-relay/releases).
 
 ---
 
@@ -72,7 +96,7 @@ Produce high-level details about your mesh:
 
 ![Mesh Details Screenshot](https://user-images.githubusercontent.com/1770544/235245873-1ddc773b-a4cd-4c67-b0a5-b55a29504b73.png)
 
-See the full list of core plugins [here](https://github.com/geoffwhittington/meshtastic-matrix-relay/wiki/Core-Plugins).
+See the full list of [core plugins](https://github.com/geoffwhittington/meshtastic-matrix-relay/wiki/Core-Plugins).
 
 ### Community & Custom Plugins
 

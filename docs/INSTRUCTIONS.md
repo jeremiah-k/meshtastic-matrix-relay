@@ -30,7 +30,7 @@ cd meshtastic-matrix-relay
 pipx install -e . --force
 ```
 
-> **Upgrading from a previous version?** Please see [Upgrade Guide](UPGRADE_TO_V1.md) for migration guidance.
+> **Upgrading from a previous version?** Please see [Upgrade Guide](UPGRADE_TO_V1.md) for migration guidance from pre-v1.0 versions.
 
 ## Configuration
 
@@ -158,13 +158,98 @@ journalctl --user -u mmrelay.service
 tail -f ~/.mmrelay/logs/mmrelay.log
 ```
 
-## Dockerized Versions (Unofficial)
+## Docker
 
-If you would prefer to use a Dockerized version of the relay, there are unofficial third-party projects available. Please note that these are not officially supported, and issues should be reported to their respective repositories.
+MMRelay includes official Docker support for easy deployment and management. Docker provides several key benefits:
 
-> **Note**: Dockerized versions may need updates to be compatible with MMRelay v1.0. Check with the maintainers of these projects for their status.
+- **Isolated environment** - No conflicts with system dependencies
+- **Automatic dependency management** - All required packages included
+- **Easy updates** - Simple container rebuilds for new versions
+- **Consistent deployment** - Same environment across different systems
+- **Quick setup** - Get running in minutes with minimal configuration
 
-For more details, visit the [Third Party Projects](https://github.com/geoffwhittington/meshtastic-matrix-relay/wiki/Third-Party-Projects) page.
+### Quick Docker Setup
+
+```bash
+# Clone the repository (if you haven't already)
+git clone https://github.com/geoffwhittington/meshtastic-matrix-relay.git
+cd meshtastic-matrix-relay
+
+# Set up configuration files and directories
+make config
+
+# Edit the configuration file
+nano ~/.mmrelay/config.yaml
+
+# Build and run the Docker container
+make build
+make run
+
+# View logs
+make logs
+
+# Stop the container
+make stop
+```
+
+### Docker Benefits
+
+- **Isolated Environment**: No dependency conflicts with your system
+- **Easy Deployment**: Single command setup and management
+- **Automatic Restarts**: Container restarts automatically on failure
+- **Volume Persistence**: Data and logs are preserved across container restarts
+- **Consistent Environment**: Same runtime environment across different systems
+
+### Docker Commands
+
+The included Makefile provides convenient commands for Docker management:
+
+```bash
+# Setup and configuration
+make config          # Create config files and directories
+make setup           # Alias for config
+
+# Building and running
+make build           # Build the Docker image
+make run             # Start the container in detached mode
+make rebuild         # Stop, rebuild (no cache), and restart
+
+# Monitoring and management
+make logs            # View container logs (follow mode)
+make status          # Show container status
+make stop            # Stop the container
+make restart         # Restart the container
+
+# Cleanup
+make clean           # Remove container and image
+```
+
+### Docker Configuration
+
+The Docker setup uses:
+
+- **Host networking** for Meshtastic device access (serial/BLE)
+- **Volume mounts** for configuration and data persistence:
+  - `~/.mmrelay/config.yaml` → `/app/config.yaml` (read-only)
+  - `~/.mmrelay/data/` → `/app/data/` (read-write)
+  - `~/.mmrelay/logs/` → `/app/logs/` (read-write)
+
+### Docker Compose
+
+For advanced users, you can also use docker-compose directly:
+
+```bash
+# Start with docker-compose
+docker compose up -d
+
+# View logs
+docker compose logs -f
+
+# Stop
+docker compose down
+```
+
+The `docker-compose.yaml` file is automatically created by `make config` and can be customized for your specific needs.
 
 ## Development
 

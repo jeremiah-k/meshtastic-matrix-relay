@@ -16,6 +16,64 @@ from mmrelay.tools import get_sample_config_path
 
 
 def parse_arguments():
+    """Parse and validate command-line arguments for MMRelay application.
+    
+    Configures argument parser with all supported command-line options for
+    controlling MMRelay behavior, configuration, logging, and utility functions.
+    Provides help text and validation for each argument.
+    
+    Supported arguments:
+    - --config: Path to YAML configuration file
+    - --data-dir: Custom base directory for all data storage
+    - --log-level: Logging verbosity (error, warning, info, debug)
+    - --logfile: Custom log file path
+    - --version: Display version information and exit
+    - --generate-config: Create sample configuration file and exit
+    
+    Returns:
+        argparse.Namespace: Parsed arguments object with the following attributes:
+            - config (str or None): Configuration file path
+            - data_dir (str or None): Custom data directory path
+            - log_level (str or None): Logging level
+            - logfile (str or None): Log file path
+            - version (bool): Version flag
+            - generate_config (bool): Config generation flag
+    
+    Example:
+        >>> args = parse_arguments()
+        >>> if args.version:
+        ...     print(f"MMRelay v{__version__}")
+        >>> if args.config:
+        ...     config = load_config(args.config, args)
+    """
+    
+    Configures argument parser with all supported command-line options for
+    controlling MMRelay behavior, configuration, logging, and utility functions.
+    Provides help text and validation for each argument.
+    
+    Supported arguments:
+    - --config: Path to YAML configuration file
+    - --data-dir: Custom base directory for all data storage
+    - --log-level: Logging verbosity (error, warning, info, debug)
+    - --logfile: Custom log file path
+    - --version: Display version information and exit
+    - --generate-config: Create sample configuration file and exit
+    
+    Returns:
+        argparse.Namespace: Parsed arguments object with the following attributes:
+            - config (str or None): Configuration file path
+            - data_dir (str or None): Custom data directory path
+            - log_level (str or None): Logging level
+            - logfile (str or None): Log file path
+            - version (bool): Version flag
+            - generate_config (bool): Config generation flag
+    
+    Example:
+        >>> args = parse_arguments()
+        >>> if args.version:
+        ...     print(f"MMRelay v{__version__}")
+        >>> if args.config:
+        ...     config = load_config(args.config, args)
     """
     Parse command-line arguments.
 

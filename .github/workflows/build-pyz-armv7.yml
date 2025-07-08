@@ -26,7 +26,12 @@ jobs:
       - name: Extract version and git SHA
         id: get_version
         run: |
-          VERSION=$(grep "version =" setup.cfg | sed 's/.*= //')
+          # Extract version from setup.py
+          if [ -f setup.py ]; then
+            VERSION=$(grep -E "^\s*version\s*=" setup.py | sed -E 's/.*version\s*=\s*["\x27]([^"\x27]+)["\x27].*/\1/' || echo "1.1.0")
+          else
+            VERSION="1.1.0"
+          fi
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "Extracted version: $VERSION"
           GIT_SHA=$(git rev-parse --short HEAD)

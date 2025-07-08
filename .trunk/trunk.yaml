@@ -17,9 +17,11 @@ runtimes:
 # This is the section where you manage your linters. (https://docs.trunk.io/check/configuration)
 lint:
   enabled:
+    - dotenv-linter@3.3.0
+    - hadolint@2.12.1-beta
     - taplo@0.9.3
     - actionlint@1.7.7
-    - bandit@1.8.5
+    - bandit@1.8.6
     - black@25.1.0
     - checkov@3.2.447
     - git-diff-check
@@ -27,7 +29,7 @@ lint:
     - markdownlint@0.45.0
     - osv-scanner@2.0.3
     - prettier@3.6.2
-    - ruff@0.12.1
+    - ruff@0.12.2
     - trufflehog@3.89.2
     - yamllint@1.37.1
   # Remove map_plugin.py after staticmaps is updated and we're able to work on it again

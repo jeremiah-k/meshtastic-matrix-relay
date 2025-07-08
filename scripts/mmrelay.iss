@@ -13,7 +13,7 @@ OutputBaseFilename=MMRelay_setup_{#AppVersion}
 PrivilegesRequiredOverridesAllowed=dialog commandline
 
 [Files]
-Source: "dist\mmrelay.exe"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs; AfterInstall: AfterInstall(ExpandConstant('{app}'));
+Source: "..\dist\mmrelay.exe"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs; AfterInstall: AfterInstall(ExpandConstant('{app}'));
 
 [Icons]
 Name: "{group}\MM Relay"; Filename: "{app}\mmrelay.bat"

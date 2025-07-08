@@ -40,20 +40,67 @@ _banner_printed = False
 
 
 def print_banner():
-    """Print a simple startup message with version information."""
-    global _banner_printed
-    # Only print the banner once
-    if not _banner_printed:
-        logger.info(f"Starting MMRelay v{__version__}")
-        _banner_printed = True
-
-
-async def main(config):
+    """Print a simple startup message with version information.
+    
+    Displays the MMRelay version number in the logs. Uses a global flag to ensure
+    the banner is only printed once during the application lifecycle, preventing
+    duplicate messages during reconnections or restarts.
+    
+    Global Variables:
+        _banner_printed (bool): Flag to track if banner has been displayed
+    """
+    """Print a simple startup message with version information.
+    
+    Displays the MMRelay version number in the logs. Uses a global flag to ensure
+    the banner is only printed once during the application lifecycle, preventing
+    duplicate messages during reconnections or restarts.
+    
+    Global Variables:
+        _banner_printed (bool): Flag to track if banner has been displayed
+    """
+    """Print a simple startup message with version information.
+    
+    Displays the MMRelay version number in the logs. Uses a global flag to ensure
+    the banner is only printed once during the application lifecycle, preventing
+    duplicate messages during reconnections or restarts.
+    
+    Global Variables:
+        _banner_printed (bool): Flag to track if banner has been displayed
+    """
+    """Initialize and run the main MMRelay application.
+    
+    This is the core function that orchestrates the entire MMRelay application lifecycle.
+    It manages connections to both Matrix chat servers and Meshtastic mesh networks,
+    initializes the database, loads plugins, and handles graceful shutdown.
+    
+    The function performs the following operations:
+    1. Sets up global configuration and data directories
+    2. Initializes the SQLite database schema
+    3. Establishes connection to Matrix server and joins configured rooms
+    4. Connects to Meshtastic device (radio, BLE, or TCP)
+    5. Loads and initializes all plugins
+    6. Updates node information in the database
+    7. Starts the connection health monitoring loop
+    8. Runs indefinitely until shutdown signal received
+    
+    Args:
+        config (dict): Application configuration dictionary containing Matrix server
+                      settings, Meshtastic connection parameters, plugin configurations,
+                      and room mappings.
+    
+    Raises:
+        SystemExit: When graceful shutdown is initiated
+        Exception: For any unhandled errors during initialization or runtime
+    
+    Note:
+        This function runs in an asyncio event loop and handles both async Matrix
+        operations and sync Meshtastic operations through proper thread management.
+    """
     """
     Sets up and runs the asynchronous relay between Meshtastic and Matrix, managing connections, event handling, and graceful shutdown.
-    
+
     This function initializes the database, configures logging, loads plugins, connects to both Meshtastic and Matrix, joins specified Matrix rooms, and registers event callbacks for message and membership events. It periodically updates node names from the Meshtastic network and manages the Matrix sync loop, handling reconnections and shutdown signals. If configured, it wipes the message map on startup and shutdown.
-    
+
     Parameters:
         config: The loaded configuration dictionary containing Matrix, Meshtastic, and database settings.
     """
@@ -133,12 +180,9 @@ async def main(config):
         # On Windows, we can't use add_signal_handler, so we'll handle KeyboardInterrupt
         pass
 
-    # -------------------------------------------------------------------
-    # NOTE: Disabled custom check_connection() to rely on improved meshtastic library
-    # disconnection detection. The updated fork (commit 33d23e9c28508a740da6567627e42d81552c9b58)
-    # includes better detection for all interface types, eliminating duplicate detection.
-    # -------------------------------------------------------------------
-    # _ = asyncio.create_task(meshtastic_utils.check_connection())
+    # Start connection health monitoring using getMetadata() heartbeat
+    # This provides proactive connection detection for all interface types
+    _ = asyncio.create_task(meshtastic_utils.check_connection())
 
     # Start the Matrix client sync loop
     try:
@@ -184,14 +228,34 @@ async def main(config):
         matrix_logger.info("Closing Matrix client...")
         await matrix_client.close()
         if meshtastic_utils.meshtastic_client:
-            meshtastic_logger.info("Closing Meshtastic client...")
-            try:
-                meshtastic_utils.meshtastic_client.close()
-            except Exception as e:
-                meshtastic_logger.warning(f"Error closing Meshtastic client: {e}")
-
-        # Attempt to wipe message_map on shutdown if enabled
-        if wipe_on_restart:
+    """Load configuration, set up logging, and run the main application loop.
+    
+    This function serves as the entry point for the MMRelay application. It handles
+    configuration loading, logging setup, signal handling for graceful shutdown,
+    and starts the async main loop.
+    
+    The function performs these initialization steps:
+    1. Loads configuration from file or command line arguments
+    2. Sets up file and console logging with appropriate levels
+    3. Configures signal handlers for graceful shutdown (SIGINT, SIGTERM)
+    4. Sets global configuration in all relevant modules
+    5. Starts the asyncio event loop with the main() coroutine
+    
+    Args:
+        args (argparse.Namespace): Parsed command line arguments containing:
+            - config: Path to configuration file
+            - data_dir: Custom data directory path
+            - log_level: Logging verbosity level
+            - logfile: Custom log file path
+    
+    Raises:
+        SystemExit: On configuration errors, file not found, or startup failures
+        KeyboardInterrupt: When user interrupts with Ctrl+C (handled gracefully)
+    
+    Example:
+        >>> args = parse_arguments()
+        >>> run_main(args)  # Starts the relay application
+    """
             logger.debug("wipe_on_restart enabled. Wiping message_map now (shutdown).")
             wipe_message_map()
 
@@ -213,7 +277,61 @@ async def main(config):
 
 
 def run_main(args):
-    """Run the main functionality of the application.
+    """Load configuration, set up logging, and run the main application loop.
+    
+    This function serves as the entry point for the MMRelay application. It handles
+    configuration loading, logging setup, signal handling for graceful shutdown,
+    and starts the async main loop.
+    
+    The function performs these initialization steps:
+    1. Loads configuration from file or command line arguments
+    2. Sets up file and console logging with appropriate levels
+    3. Configures signal handlers for graceful shutdown (SIGINT, SIGTERM)
+    4. Sets global configuration in all relevant modules
+    5. Starts the asyncio event loop with the main() coroutine
+    
+    Args:
+        args (argparse.Namespace): Parsed command line arguments containing:
+            - config: Path to configuration file
+            - data_dir: Custom data directory path
+            - log_level: Logging verbosity level
+            - logfile: Custom log file path
+    
+    Raises:
+        SystemExit: On configuration errors, file not found, or startup failures
+        KeyboardInterrupt: When user interrupts with Ctrl+C (handled gracefully)
+    
+    Example:
+        >>> args = parse_arguments()
+        >>> run_main(args)  # Starts the relay application
+    """
+    
+    This function serves as the entry point for the MMRelay application. It handles
+    configuration loading, logging setup, signal handling for graceful shutdown,
+    and starts the async main loop.
+    
+    The function performs these initialization steps:
+    1. Loads configuration from file or command line arguments
+    2. Sets up file and console logging with appropriate levels
+    3. Configures signal handlers for graceful shutdown (SIGINT, SIGTERM)
+    4. Sets global configuration in all relevant modules
+    5. Starts the asyncio event loop with the main() coroutine
+    
+    Args:
+        args (argparse.Namespace): Parsed command line arguments containing:
+            - config: Path to configuration file
+            - data_dir: Custom data directory path
+            - log_level: Logging verbosity level
+            - logfile: Custom log file path
+    
+    Raises:
+        SystemExit: On configuration errors, file not found, or startup failures
+        KeyboardInterrupt: When user interrupts with Ctrl+C (handled gracefully)
+    
+    Example:
+        >>> args = parse_arguments()
+        >>> run_main(args)  # Starts the relay application
+    """
 
     Args:
         args: The parsed command-line arguments

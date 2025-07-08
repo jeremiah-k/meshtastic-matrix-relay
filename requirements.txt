@@ -1,5 +1,5 @@
 meshtastic
-Pillow==11.2.1
+Pillow==11.3.0
 matrix-nio==0.25.2
 matplotlib==3.10.1
 requests==2.32.4

@@ -6,7 +6,7 @@ with open("README.md", encoding="utf-8") as f:
 
 setup(
     name="mmrelay",
-    version="1.0.12",
+    version="1.1.0",
     author="Geoff Whittington, Jeremiah K., and contributors",
     author_email="jeremiahk@gmx.com",
     description="Bridge between Meshtastic mesh networks and Matrix chat rooms",
@@ -28,7 +28,7 @@ setup(
         # TEMPORARY: Using fork with BLE hanging fix until upstream merge
         # Commit: 33d23e9c28508a740da6567627e42d81552c9b58
         "meshtastic @ git+https://github.com/jeremiah-k/meshtastic-python.git@33d23e9c28508a740da6567627e42d81552c9b58",
-        "Pillow==11.2.1",
+        "Pillow==11.3.0",
         "matrix-nio==0.25.2",
         "matplotlib==3.10.1",
         "requests==2.32.4",
