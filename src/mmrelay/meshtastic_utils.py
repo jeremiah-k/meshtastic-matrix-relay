@@ -53,6 +53,24 @@ subscribed_to_connection_lost = False
 
 
 def is_running_as_service():
+    """Check if the current process is running as a systemd service or daemon.
+    
+    Determines whether the application is running in a service context by checking
+    for common service environment indicators. This is used to adjust logging
+    behavior and connection strategies for headless operation.
+    
+    Checks for:
+    - INVOCATION_ID environment variable (systemd)
+    - No controlling terminal (TTY)
+    - Running as a different user than typical interactive sessions
+    
+    Returns:
+        bool: True if likely running as a service, False for interactive execution
+    
+    Example:
+        >>> if is_running_as_service():
+        ...     # Use more conservative connection timeouts
+        ...     setup_service_logging()
     """
     Determine if the application is running as a systemd service.
 
@@ -78,6 +96,23 @@ def is_running_as_service():
 
 
 def serial_port_exists(port_name):
+    """Check if the specified serial port exists and is available.
+    
+    Validates that a serial port device exists on the system before attempting
+    to connect. This prevents connection errors and provides early validation
+    of configuration settings.
+    
+    Args:
+        port_name (str): Serial port device name (e.g., "/dev/ttyUSB0", "COM3")
+    
+    Returns:
+        bool: True if the port exists and is accessible, False otherwise
+    
+    Example:
+        >>> if serial_port_exists("/dev/ttyUSB0"):
+        ...     print("Port is available for connection")
+        >>> serial_port_exists("COM3")
+        False
     """
     Check if the specified serial port exists.
     This prevents attempting connections on non-existent ports.
@@ -87,6 +122,44 @@ def serial_port_exists(port_name):
 
 
 def connect_meshtastic(passed_config=None, force_connect=False):
+    """Establish connection to Meshtastic device using configured connection type.
+    
+    Creates and manages a connection to a Meshtastic device via serial, BLE, or TCP.
+    Handles connection retries with exponential backoff, subscription management,
+    and connection state tracking. Supports both initial connections and reconnections
+    with proper cleanup of existing connections.
+    
+    Connection types supported:
+    - Serial: Direct USB/UART connection to device
+    - BLE: Bluetooth Low Energy wireless connection
+    - TCP: Network connection to Meshtastic-over-IP device
+    
+    Args:
+        passed_config (dict, optional): Configuration dictionary containing connection
+                                      parameters. If provided, updates global config
+                                      and Matrix room mappings.
+        force_connect (bool, optional): If True, closes existing connection before
+                                      creating new one. Defaults to False.
+    
+    Returns:
+        meshtastic.interface: Connected Meshtastic interface object, or None if
+                            connection fails or shutdown is in progress
+    
+    Raises:
+        serial.SerialException: For serial port connection failures
+        BleakError: For BLE connection failures
+        Exception: For TCP connection failures or configuration errors
+    
+    Global Variables:
+        meshtastic_client: Set to the connected interface on success
+        config: Updated with passed_config if provided
+        matrix_rooms: Updated from config if available
+    
+    Example:
+        >>> config = {"meshtastic": {"connection_type": "serial", "serial_port": "/dev/ttyUSB0"}}
+        >>> client = connect_meshtastic(config)
+        >>> if client:
+        ...     print(f"Connected to {client.getMyNodeInfo()}")
     """
     Establishes and manages a connection to a Meshtastic device using the configured connection type (serial, BLE, or TCP).
 
@@ -277,6 +350,35 @@ def on_lost_meshtastic_connection(interface=None):
 
 
 async def reconnect():
+    """Attempt to reconnect to the Meshtastic device with exponential backoff.
+    
+    Implements an intelligent reconnection strategy for when the Meshtastic
+    connection is lost. Uses exponential backoff to avoid overwhelming the
+    device or network, and includes jitter to prevent thundering herd effects
+    in multi-relay scenarios.
+    
+    Reconnection strategy:
+    - Initial delay: 10 seconds
+    - Maximum delay: 300 seconds (5 minutes)
+    - Backoff multiplier: 2x
+    - Progress indication in interactive mode
+    
+    The function runs indefinitely until either:
+    - Successful reconnection is established
+    - Shutdown signal is received
+    - Maximum retry attempts exceeded (if configured)
+    
+    Global Variables:
+        reconnecting (bool): Set to True while reconnection is in progress
+        shutting_down (bool): Checked to abort reconnection during shutdown
+        meshtastic_client: Updated with new connection on success
+    
+    Raises:
+        asyncio.CancelledError: If reconnection task is cancelled during shutdown
+    
+    Example:
+        >>> # Called automatically when connection is lost
+        >>> await reconnect()
     """
     Asynchronously attempts to reconnect with exponential backoff.
     Stops if shutting_down is set.
@@ -335,6 +437,58 @@ async def reconnect():
 
 
 def on_meshtastic_message(packet, interface):
+    """Handle incoming Meshtastic packets and route them to Matrix and plugins.
+    
+    This is the main callback function for processing all Meshtastic packets
+    received from the mesh network. It performs packet validation, extracts
+    message content, determines routing, and forwards messages to appropriate
+    Matrix rooms and plugins.
+    
+    Processing pipeline:
+    1. Validate packet structure and extract metadata
+    2. Handle reactions and replies based on interaction settings
+    3. Filter messages based on channel mapping and configuration
+    4. Update node information in database
+    5. Route text messages to configured Matrix rooms
+    6. Pass packets to all loaded plugins for processing
+    7. Handle direct messages and plugin responses
+    
+    Message types handled:
+    - TEXT_MESSAGE_APP: Regular text messages and replies
+    - DETECTION_SENSOR_APP: Motion/sensor alerts (if enabled)
+    - Reactions: Emoji responses to previous messages
+    - Plugin messages: Custom application data
+    
+    Args:
+        packet (dict): Meshtastic packet containing message data, routing info,
+                      sender details, and decoded payload with keys:
+                      - fromId: Sender node ID
+                      - to: Destination node ID
+                      - decoded: Message payload with text, portnum, etc.
+                      - channel: Meshtastic channel number
+                      - id: Unique packet identifier
+        interface: Meshtastic interface object that received the packet
+    
+    Global Variables:
+        config: Application configuration for routing and features
+        matrix_rooms: List of Matrix rooms mapped to Meshtastic channels
+        event_loop: AsyncIO loop for Matrix operations
+        shutting_down: Flag to ignore messages during shutdown
+    
+    Note:
+        This function is called from the Meshtastic library event system
+        and runs in a separate thread. It uses asyncio.run_coroutine_threadsafe()
+        to properly handle async operations like Matrix message sending.
+    
+    Example:
+        >>> # Typically called automatically by Meshtastic library
+        >>> packet = {
+        ...     "fromId": "!a1b2c3d4",
+        ...     "decoded": {"text": "Hello mesh!", "portnum": "TEXT_MESSAGE_APP"},
+        ...     "channel": 0,
+        ...     "id": 1234567890
+        ... }
+        >>> on_meshtastic_message(packet, interface)
     """
     Processes incoming Meshtastic messages and relays them to Matrix rooms or plugins based on message type and interaction settings.
 
@@ -706,6 +860,43 @@ def sendTextReply(
     wantAck: bool = False,
     channelIndex: int = 0,
 ):
+    """Send a text message as a reply to a previous Meshtastic message.
+    
+    Creates a proper Meshtastic reply by setting the reply_id field in the
+    Data protobuf message, enabling threaded conversations across the mesh
+    network. This provides functionality that the standard sendText() method
+    does not support.
+    
+    Args:
+        interface: Meshtastic interface object to send through
+        text (str): The text message content to send as a reply
+        reply_id (int): The packet ID of the message this is replying to
+        destinationId (int, optional): Target node number. Defaults to
+                                     BROADCAST_ADDR for channel broadcast.
+        wantAck (bool, optional): Request delivery acknowledgment from recipient.
+                                Defaults to False.
+        channelIndex (int, optional): Meshtastic channel number (0-7) to send on.
+                                    Defaults to 0.
+    
+    Returns:
+        mesh_pb2.MeshPacket: The sent packet object with populated ID field
+    
+    Raises:
+        Exception: If interface is not connected or packet creation fails
+    
+    Note:
+        The reply_id creates a threaded conversation that Meshtastic clients
+        can display as linked messages. This is essential for proper message
+        threading when bridging between Matrix and Meshtastic.
+    
+    Example:
+        >>> # Reply to a specific message
+        >>> original_packet_id = 1234567890
+        >>> reply_packet = sendTextReply(
+        ...     interface, "Thanks for the message!", original_packet_id,
+        ...     wantAck=True, channelIndex=0
+        ... )
+        >>> print(f"Reply sent with ID: {reply_packet.id}")
     """
     Send a text message as a reply to a previous message.
 
