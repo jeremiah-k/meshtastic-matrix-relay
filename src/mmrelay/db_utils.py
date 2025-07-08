@@ -142,6 +142,38 @@ def initialize_database():
 
 
 def store_plugin_data(plugin_name, meshtastic_id, data):
+    """Store plugin-specific data for a Meshtastic node in the database.
+    
+    Stores arbitrary data associated with a specific plugin and Meshtastic node ID.
+    Uses INSERT OR REPLACE to update existing data or create new entries. Data is
+    automatically JSON-serialized before storage.
+    
+    Args:
+        plugin_name (str): Unique identifier of the plugin storing the data
+        meshtastic_id (str): Meshtastic node ID (e.g., "!a1b2c3d4")
+        data: Data to store (will be JSON-serialized). Can be dict, list, or any
+              JSON-serializable type.
+    
+    Example:
+        >>> store_plugin_data("weather", "!a1b2c3d4", {"temp": 23.5, "humidity": 60})
+        >>> store_plugin_data("ping", "!e5f6g7h8", [{"timestamp": 1234567890}])
+    """
+    """Store plugin-specific data for a Meshtastic node in the database.
+    
+    Stores arbitrary data associated with a specific plugin and Meshtastic node ID.
+    Uses INSERT OR REPLACE to update existing data or create new entries. Data is
+    automatically JSON-serialized before storage.
+    
+    Args:
+        plugin_name (str): Unique identifier of the plugin storing the data
+        meshtastic_id (str): Meshtastic node ID (e.g., "!a1b2c3d4")
+        data: Data to store (will be JSON-serialized). Can be dict, list, or any
+              JSON-serializable type.
+    
+    Example:
+        >>> store_plugin_data("weather", "!a1b2c3d4", {"temp": 23.5, "humidity": 60})
+        >>> store_plugin_data("ping", "!e5f6g7h8", [{"timestamp": 1234567890}])
+    """
     with sqlite3.connect(get_db_path()) as conn:
         cursor = conn.cursor()
         cursor.execute(
@@ -249,12 +281,84 @@ def update_shortnames(nodes):
 
 
 def store_message_map(
+    """Store a mapping between Meshtastic and Matrix messages for reply tracking.
+    
+    Creates a bidirectional mapping between Meshtastic packets and Matrix events
+    to enable proper message threading and replies across the bridge. This allows
+    users to reply to messages from either platform and have the replies properly
+    attributed and threaded.
+    
+    Args:
+        meshtastic_id (str): Unique Meshtastic message/packet ID
+        meshtastic_meshnet (str): Name of the Meshtastic network/mesh
+        meshtastic_channel (int): Meshtastic channel number (0-7)
+        matrix_event_id (str): Matrix event ID for the corresponding message
+        matrix_room_id (str): Matrix room ID where the message was sent
+    
+    Example:
+        >>> store_message_map(
+        ...     "1234567890", "MyMesh", 0,
+        ...     "$event123:matrix.org", "!room456:matrix.org"
+        ... )
+    """
+    """Retrieve plugin-specific data for a Meshtastic node from the database.
+    
+    Fetches and deserializes stored data for the specified plugin and node ID.
+    Returns an empty list if no data exists for the given combination.
+    
+    Args:
+        plugin_name (str): Unique identifier of the plugin
+        meshtastic_id (str): Meshtastic node ID to retrieve data for
+    
+    Returns:
+        list: Deserialized data stored for the plugin and node, or empty list
+              if no data exists
+    
+    Example:
+        >>> data = get_plugin_data_for_node("weather", "!a1b2c3d4")
+        >>> # Returns: [{"temp": 23.5, "timestamp": 1234567890}]
+    """
+    
+    Creates a bidirectional mapping between Meshtastic packets and Matrix events
+    to enable proper message threading and replies across the bridge. This allows
+    users to reply to messages from either platform and have the replies properly
+    attributed and threaded.
+    
+    Args:
+        meshtastic_id (str): Unique Meshtastic message/packet ID
+        meshtastic_meshnet (str): Name of the Meshtastic network/mesh
+        meshtastic_channel (int): Meshtastic channel number (0-7)
+        matrix_event_id (str): Matrix event ID for the corresponding message
+        matrix_room_id (str): Matrix room ID where the message was sent
+    
+    Example:
+        >>> store_message_map(
+        ...     "1234567890", "MyMesh", 0,
+        ...     "$event123:matrix.org", "!room456:matrix.org"
+        ... )
+    """
     meshtastic_id,
     matrix_event_id,
     matrix_room_id,
     meshtastic_text,
     meshtastic_meshnet=None,
 ):
+    """Retrieve plugin-specific data for a Meshtastic node from the database.
+    
+    Fetches and deserializes stored data for the specified plugin and node ID.
+    Returns an empty list if no data exists for the given combination.
+    
+    Args:
+        plugin_name (str): Unique identifier of the plugin
+        meshtastic_id (str): Meshtastic node ID to retrieve data for
+    
+    Returns:
+        list: Deserialized data stored for the plugin and node, or empty list
+              if no data exists
+    
+    Example:
+        >>> data = get_plugin_data_for_node("weather", "!a1b2c3d4")
+        >>> # Returns: [{"temp": 23.5, "timestamp": 1234567890}]
     """
     Stores a message map in the database.
 

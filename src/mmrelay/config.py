@@ -88,6 +88,32 @@ def get_config_paths(args=None):
 
 
 def get_data_dir():
+    """Get the directory for storing application data files.
+    
+    Returns the platform-appropriate directory for storing MMRelay data files
+    such as SQLite databases, logs, and plugin data. On Unix systems, uses
+    ~/.mmrelay/data/. On Windows, uses the platformdirs standard data directory.
+    Creates the directory structure if it doesn't exist.
+    
+    Returns:
+        str: Absolute path to the data directory
+    
+    Example:
+        >>> get_data_dir()
+        '/home/user/.mmrelay/data'
+    """
+    
+    Returns the platform-appropriate directory for storing MMRelay data files
+    such as SQLite databases, logs, and plugin data. On Unix systems, uses
+    ~/.mmrelay/data/. On Windows, uses the platformdirs standard data directory.
+    Creates the directory structure if it doesn't exist.
+    
+    Returns:
+        str: Absolute path to the data directory
+    
+    Example:
+        >>> get_data_dir()
+        '/home/user/.mmrelay/data'
     """
     Returns the directory for storing application data files.
     Creates the directory if it doesn't exist.
@@ -104,6 +130,46 @@ def get_data_dir():
 
 
 def get_plugin_data_dir(plugin_name=None):
+    """Get the directory for storing plugin-specific data files.
+    
+    Returns the directory where plugins can store their persistent data files,
+    configurations, or cache. If a plugin name is provided, returns a dedicated
+    subdirectory for that plugin. Creates the directory structure if it doesn't exist.
+    
+    Args:
+        plugin_name (str, optional): Name of the plugin. If provided, returns
+                                   a plugin-specific subdirectory.
+    
+    Returns:
+        str: Absolute path to the plugin data directory. If plugin_name is None,
+             returns the base plugins directory. If plugin_name is provided,
+             returns the plugin-specific subdirectory.
+    
+    Examples:
+        >>> get_plugin_data_dir()
+        '/home/user/.mmrelay/data/plugins'
+        >>> get_plugin_data_dir('weather')
+        '/home/user/.mmrelay/data/plugins/weather'
+    """
+    
+    Returns the directory where plugins can store their persistent data files,
+    configurations, or cache. If a plugin name is provided, returns a dedicated
+    subdirectory for that plugin. Creates the directory structure if it doesn't exist.
+    
+    Args:
+        plugin_name (str, optional): Name of the plugin. If provided, returns
+                                   a plugin-specific subdirectory.
+    
+    Returns:
+        str: Absolute path to the plugin data directory. If plugin_name is None,
+             returns the base plugins directory. If plugin_name is provided,
+             returns the plugin-specific subdirectory.
+    
+    Examples:
+        >>> get_plugin_data_dir()
+        '/home/user/.mmrelay/data/plugins'
+        >>> get_plugin_data_dir('weather')
+        '/home/user/.mmrelay/data/plugins/weather'
     """
     Returns the directory for storing plugin-specific data files.
     If plugin_name is provided, returns a plugin-specific subdirectory.
@@ -130,6 +196,32 @@ def get_plugin_data_dir(plugin_name=None):
 
 
 def get_log_dir():
+    """Get the directory for storing application log files.
+    
+    Returns the platform-appropriate directory for storing MMRelay log files.
+    On Unix systems, uses ~/.mmrelay/logs/. On Windows, uses a logs subdirectory
+    within the platformdirs data directory. Creates the directory structure if
+    it doesn't exist.
+    
+    Returns:
+        str: Absolute path to the logs directory
+    
+    Example:
+        >>> get_log_dir()
+        '/home/user/.mmrelay/logs'
+    """
+    
+    Returns the platform-appropriate directory for storing MMRelay log files.
+    On Unix systems, uses ~/.mmrelay/logs/. On Windows, uses a logs subdirectory
+    within the platformdirs data directory. Creates the directory structure if
+    it doesn't exist.
+    
+    Returns:
+        str: Absolute path to the logs directory
+    
+    Example:
+        >>> get_log_dir()
+        '/home/user/.mmrelay/logs'
     """
     Returns the directory for storing log files.
     Creates the directory if it doesn't exist.
@@ -163,6 +255,36 @@ config_path = None
 
 
 def set_config(module, passed_config):
+    """Set the global configuration in a specified module.
+    
+    Updates the global 'config' variable in the target module with the provided
+    configuration dictionary. This is used to propagate configuration settings
+    across different MMRelay modules without circular imports.
+    
+    Args:
+        module: Python module object that has a global 'config' variable
+        passed_config (dict): Configuration dictionary to set in the module
+    
+    Example:
+        >>> import mmrelay.db_utils as db_utils
+        >>> config = {'database': {'path': '/custom/path.db'}}
+        >>> set_config(db_utils, config)
+    """
+    """Set the global configuration in a specified module.
+    
+    Updates the global 'config' variable in the target module with the provided
+    configuration dictionary. This is used to propagate configuration settings
+    across different MMRelay modules without circular imports.
+    
+    Args:
+        module: Python module object that has a global 'config' variable
+        passed_config (dict): Configuration dictionary to set in the module
+    
+    Example:
+        >>> import mmrelay.db_utils as db_utils
+        >>> config = {'database': {'path': '/custom/path.db'}}
+        >>> set_config(db_utils, config)
+    """
     """
     Set the configuration for a module.
 
@@ -200,7 +322,65 @@ def set_config(module, passed_config):
 
 
 def load_config(config_file=None, args=None):
-    """Load the configuration from the specified file or search for it.
+    """Load and merge configuration from YAML file and command line arguments.
+    
+    Loads the application configuration by reading from a YAML configuration file
+    and merging it with command line argument overrides. Searches for config files
+    in multiple locations if no specific file is provided. Validates that required
+    configuration sections exist.
+    
+    Configuration loading priority:
+    1. Command line --config argument
+    2. ~/.mmrelay/config.yaml (preferred)
+    3. ./config.yaml (backward compatibility)
+    4. Application directory config.yaml
+    
+    Args:
+        config_file (str, optional): Specific path to configuration file.
+                                   If None, searches in default locations.
+        args (argparse.Namespace, optional): Parsed command line arguments
+                                           used to override config file settings.
+    
+    Returns:
+        dict: Merged configuration dictionary with all settings
+    
+    Raises:
+        SystemExit: If no configuration file is found or if the configuration
+                   is invalid (missing required sections like 'matrix' or 'meshtastic')
+    
+    Example:
+        >>> config = load_config('/path/to/config.yaml', args)
+        >>> matrix_settings = config['matrix']
+    """
+    
+    Loads the application configuration by reading from a YAML configuration file
+    and merging it with command line argument overrides. Searches for config files
+    in multiple locations if no specific file is provided. Validates that required
+    configuration sections exist.
+    
+    Configuration loading priority:
+    1. Command line --config argument
+    2. ~/.mmrelay/config.yaml (preferred)
+    3. ./config.yaml (backward compatibility)
+    4. Application directory config.yaml
+    
+    Args:
+        config_file (str, optional): Specific path to configuration file.
+                                   If None, searches in default locations.
+        args (argparse.Namespace, optional): Parsed command line arguments
+                                           used to override config file settings.
+    
+    Returns:
+        dict: Merged configuration dictionary with all settings
+    
+    Raises:
+        SystemExit: If no configuration file is found or if the configuration
+                   is invalid (missing required sections like 'matrix' or 'meshtastic')
+    
+    Example:
+        >>> config = load_config('/path/to/config.yaml', args)
+        >>> matrix_settings = config['matrix']
+    """
 
     Args:
         config_file (str, optional): Path to the config file. If None, search for it.
