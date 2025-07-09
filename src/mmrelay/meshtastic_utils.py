@@ -688,44 +688,34 @@ async def check_connection():
         f"Starting connection heartbeat monitor (interval: {heartbeat_interval}s)"
     )
 
-    # Track if we've logged the BLE skip message to avoid spam
-    ble_skip_logged = False
-
     while not shutting_down:
         if meshtastic_client and not reconnecting:
-            # BLE has real-time disconnection detection in the library
-            # Skip periodic health checks to avoid duplicate reconnection attempts
-            if connection_type == "ble":
-                if not ble_skip_logged:
-                    logger.info("BLE connection uses real-time disconnection detection - health checks disabled")
-                    ble_skip_logged = True
-            else:
-                try:
-                    logger.debug(
-                        f"Checking {connection_type} connection health using getMetadata()"
+            try:
+                logger.debug(
+                    f"Checking {connection_type} connection health using getMetadata()"
+                )
+                output_capture = io.StringIO()
+                with contextlib.redirect_stdout(
+                    output_capture
+                ), contextlib.redirect_stderr(output_capture):
+                    meshtastic_client.localNode.getMetadata()
+
+                console_output = output_capture.getvalue()
+                if "firmware_version" not in console_output:
+                    raise Exception("No firmware_version in getMetadata output.")
+
+                logger.debug(f"{connection_type.capitalize()} connection healthy")
+
+            except Exception as e:
+                # Only trigger reconnection if we're not already reconnecting
+                if not reconnecting:
+                    logger.warning(
+                        f"{connection_type.capitalize()} connection health check failed: {e}"
                     )
-                    output_capture = io.StringIO()
-                    with contextlib.redirect_stdout(
-                        output_capture
-                    ), contextlib.redirect_stderr(output_capture):
-                        meshtastic_client.localNode.getMetadata()
-
-                    console_output = output_capture.getvalue()
-                    if "firmware_version" not in console_output:
-                        raise Exception("No firmware_version in getMetadata output.")
-
-                    logger.debug(f"{connection_type.capitalize()} connection healthy")
-
-                except Exception as e:
-                    # Only trigger reconnection if we're not already reconnecting
-                    if not reconnecting:
-                        logger.warning(
-                            f"{connection_type.capitalize()} connection health check failed: {e}"
-                        )
-                        # Use existing handler with health check reason
-                        on_lost_meshtastic_connection(detection_source=f"health check failed: {str(e)}")
-                    else:
-                        logger.debug("Skipping reconnection trigger - already reconnecting")
+                    # Use existing handler with health check reason
+                    on_lost_meshtastic_connection(detection_source=f"health check failed: {str(e)}")
+                else:
+                    logger.debug("Skipping reconnection trigger - already reconnecting")
         elif reconnecting:
             logger.debug("Skipping connection check - reconnection in progress")
         elif not meshtastic_client:
