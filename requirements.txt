@@ -1,7 +1,7 @@
 # TEMPORARY: Using fork with BLE shutdown stability fixes until upstream merge
-# Commit: b3bf0b2 - CRITICAL FIX: Race condition in BLE shutdown sequence
+# Commit: 19bb531 - Aggressive pending operation cancellation during shutdown
 # For PyPI compatibility, setup.py uses upstream meshtastic>=2.6.4
-meshtastic @ git+https://github.com/jeremiah-k/meshtastic-python.git@b3bf0b2
+meshtastic @ git+https://github.com/jeremiah-k/meshtastic-python.git@19bb531
 Pillow==11.3.0
 matrix-nio==0.25.2
 matplotlib==3.10.1
