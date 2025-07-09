@@ -55,10 +55,10 @@ subscribed_to_connection_established = False
 
 def is_running_as_service():
     """
-    Determine if the application is running as a systemd service.
-
+    Check if the application is running as a systemd service.
+    
     Returns:
-        bool: True if running under systemd (either via environment variable or parent process), False otherwise.
+        True if the process is running under systemd, either by detecting the INVOCATION_ID environment variable or by verifying that the parent process is systemd; otherwise, False.
     """
     # Check for INVOCATION_ID environment variable (set by systemd)
     if os.environ.get("INVOCATION_ID"):
@@ -89,14 +89,14 @@ def serial_port_exists(port_name):
 
 def connect_meshtastic(passed_config=None, force_connect=False):
     """
-    Establishes and manages a connection to a Meshtastic device using the configured connection type (serial, BLE, or TCP).
-
-    If a configuration is provided, updates the global configuration and Matrix room mappings. Handles reconnection logic, including closing any existing connection if `force_connect` is True. Retries connection attempts with exponential backoff until successful or shutdown is initiated. Subscribes to message and connection lost events only once per process to avoid duplicate subscriptions.
-
+    Establishes and manages a connection to a Meshtastic device using the specified connection type (serial, BLE, or TCP).
+    
+    If a configuration is provided, updates the global configuration and Matrix room mappings. Handles reconnection logic, including closing any existing connection if `force_connect` is True. Retries connection attempts with exponential backoff until successful or shutdown is initiated. Subscribes to message and connection events only once per process to avoid duplicate subscriptions.
+    
     Parameters:
         passed_config (dict, optional): Configuration dictionary to use for the connection. If provided, updates the global configuration.
         force_connect (bool, optional): If True, forces a new connection even if one already exists.
-
+    
     Returns:
         Meshtastic interface client if the connection is successful, or None if the connection fails or shutdown is in progress.
     """
@@ -251,12 +251,11 @@ def connect_meshtastic(passed_config=None, force_connect=False):
 
 def on_lost_meshtastic_connection(interface=None, detection_source="detected by library"):
     """
-    Callback invoked when the Meshtastic connection is lost.
-    Initiates a reconnect sequence unless shutting_down is True.
-
-    Args:
-        interface: The interface that lost connection (unused but kept for compatibility)
-        detection_source: String describing how the disconnection was detected
+    Handles Meshtastic connection loss by initiating a reconnection sequence unless a shutdown is in progress or a reconnection is already underway.
+    
+    Parameters:
+        interface: The interface that lost connection (unused; present for compatibility).
+        detection_source (str): Description of how the disconnection was detected.
     """
     global meshtastic_client, reconnecting, shutting_down, event_loop, reconnect_task
     with meshtastic_lock:
@@ -290,8 +289,9 @@ def on_lost_meshtastic_connection(interface=None, detection_source="detected by 
 
 async def reconnect():
     """
-    Asynchronously attempts to reconnect with exponential backoff.
-    Stops if shutting_down is set.
+    Asynchronously attempts to reconnect to the Meshtastic device using exponential backoff, stopping if a shutdown is initiated.
+    
+    The function increases the wait time between attempts up to a maximum of 5 minutes and provides a progress bar if not running as a service. The reconnection process halts immediately if the shutdown flag is set or if reconnection succeeds.
     """
     global meshtastic_client, reconnecting, shutting_down
     backoff_time = 10
@@ -348,8 +348,9 @@ async def reconnect():
 
 def on_established_meshtastic_connection(interface=None):
     """
-    Callback invoked when the Meshtastic connection is established.
-    This helps track connection state and can be used for logging/monitoring.
+    Callback triggered when a Meshtastic connection is successfully established.
+    
+    Clears the reconnecting flag and logs the connection event.
     """
     global reconnecting
     with meshtastic_lock:
@@ -359,9 +360,9 @@ def on_established_meshtastic_connection(interface=None):
 
 def on_meshtastic_message(packet, interface):
     """
-    Processes incoming Meshtastic messages and relays them to Matrix rooms or plugins based on message type and interaction settings.
-
-    Handles reactions and replies by relaying them to Matrix if enabled in the interaction settings. Normal text messages are relayed to all mapped Matrix rooms unless handled by a plugin or directed to the relay node. Non-text messages are passed to plugins for processing. Filters out messages from unmapped channels or disabled detection sensors, and ensures sender information is retrieved or stored as needed.
+    Process incoming Meshtastic messages and relay them to Matrix rooms or plugins according to message type and interaction settings.
+    
+    Handles reactions and replies by relaying them to Matrix if enabled. Normal text messages are relayed to all mapped Matrix rooms unless handled by a plugin or directed to the relay node. Non-text messages are passed to plugins for processing. Messages from unmapped channels or disabled detection sensors are filtered out, and sender information is retrieved or stored as needed.
     """
     global config, matrix_rooms
 
@@ -666,10 +667,11 @@ def on_meshtastic_message(packet, interface):
 
 async def check_connection():
     """
-    Periodically checks the Meshtastic connection by calling localNode.getMetadata().
-    This creates an admin message to verify the connection is alive for all interface types.
-    If it fails or doesn't return the firmware version, we assume the connection is lost
-    and attempt to reconnect.
+    Periodically verifies the health of the Meshtastic connection and triggers reconnection if needed.
+    
+    For non-BLE connections, this coroutine calls `localNode.getMetadata()` at a configurable interval to confirm the connection is alive. If the health check fails or does not return expected metadata, it invokes the connection lost handler to initiate reconnection. BLE connections are excluded from periodic checks, as their library provides real-time disconnection detection.
+    
+    This coroutine runs continuously until shutdown is requested.
     """
     global meshtastic_client, shutting_down, config, reconnecting
 
