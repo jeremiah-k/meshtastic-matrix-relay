@@ -188,6 +188,7 @@ async def main(config):
             meshtastic_utils.cleanup_subscriptions()
             try:
                 meshtastic_utils.meshtastic_client.close()
+                meshtastic_logger.info("Meshtastic client closed successfully")
             except Exception as e:
                 meshtastic_logger.warning(f"Error closing Meshtastic client: {e}")
 

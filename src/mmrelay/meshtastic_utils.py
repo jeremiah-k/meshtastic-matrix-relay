@@ -813,6 +813,7 @@ def cleanup_subscriptions():
         logger.warning(f"Error unsubscribing from meshtastic.connection.established: {e}")
 
 
+
 if __name__ == "__main__":
     # If running this standalone (normally the main.py does the loop), just try connecting and run forever.
     meshtastic_client = connect_meshtastic()
