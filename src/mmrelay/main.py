@@ -121,6 +121,8 @@ async def main(config):
     async def shutdown():
         matrix_logger.info("Shutdown signal received. Closing down...")
         meshtastic_utils.shutting_down = True  # Set the shutting_down flag
+        # Clean up pub/sub subscriptions to prevent hanging during shutdown
+        meshtastic_utils.cleanup_subscriptions()
         shutdown_event.set()
 
     loop = asyncio.get_running_loop()
@@ -182,6 +184,8 @@ async def main(config):
         await matrix_client.close()
         if meshtastic_utils.meshtastic_client:
             meshtastic_logger.info("Closing Meshtastic client...")
+            # Ensure pub/sub subscriptions are cleaned up before closing
+            meshtastic_utils.cleanup_subscriptions()
             try:
                 meshtastic_utils.meshtastic_client.close()
             except Exception as e:

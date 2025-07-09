@@ -779,6 +779,40 @@ def sendTextReply(
     )
 
 
+def cleanup_subscriptions():
+    """
+    Unsubscribes from all Meshtastic pub/sub events to ensure clean shutdown.
+
+    This function removes all event subscriptions that were created during the connection process,
+    preventing hanging during shutdown due to active callbacks or event handlers.
+    """
+    global subscribed_to_messages, subscribed_to_connection_lost, subscribed_to_connection_established
+
+    try:
+        if subscribed_to_messages:
+            pub.unsubscribe(on_meshtastic_message, "meshtastic.receive")
+            subscribed_to_messages = False
+            logger.debug("Unsubscribed from meshtastic.receive")
+    except Exception as e:
+        logger.warning(f"Error unsubscribing from meshtastic.receive: {e}")
+
+    try:
+        if subscribed_to_connection_lost:
+            pub.unsubscribe(on_lost_meshtastic_connection, "meshtastic.connection.lost")
+            subscribed_to_connection_lost = False
+            logger.debug("Unsubscribed from meshtastic.connection.lost")
+    except Exception as e:
+        logger.warning(f"Error unsubscribing from meshtastic.connection.lost: {e}")
+
+    try:
+        if subscribed_to_connection_established:
+            pub.unsubscribe(on_established_meshtastic_connection, "meshtastic.connection.established")
+            subscribed_to_connection_established = False
+            logger.debug("Unsubscribed from meshtastic.connection.established")
+    except Exception as e:
+        logger.warning(f"Error unsubscribing from meshtastic.connection.established: {e}")
+
+
 if __name__ == "__main__":
     # If running this standalone (normally the main.py does the loop), just try connecting and run forever.
     meshtastic_client = connect_meshtastic()
