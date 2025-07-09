@@ -688,21 +688,15 @@ async def check_connection():
         f"Starting connection heartbeat monitor (interval: {heartbeat_interval}s)"
     )
 
-    # Track if we've logged the BLE skip message to avoid spam
-    ble_skip_logged = False
+    # The ble_skip_logged variable is removed as the specific BLE skip logic is removed.
 
     while not shutting_down:
         if meshtastic_client and not reconnecting:
-            # BLE has real-time disconnection detection in the library
-            # Skip periodic health checks to avoid duplicate reconnection attempts
-            if connection_type == "ble":
-                if not ble_skip_logged:
-                    logger.info("BLE connection uses real-time disconnection detection - health checks disabled")
-                    ble_skip_logged = True
-            else:
-                try:
-                    logger.debug(
-                        f"Checking {connection_type} connection health using getMetadata()"
+            # The following health check now applies to all connection types, including BLE.
+            # The existing 'reconnecting' flag handles prevention of duplicate reconnection attempts.
+            try:
+                logger.debug(
+                    f"Checking {connection_type} connection health using getMetadata()"
                     )
                     output_capture = io.StringIO()
                     with contextlib.redirect_stdout(
