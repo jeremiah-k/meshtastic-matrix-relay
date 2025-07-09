@@ -1,7 +1,7 @@
 # TEMPORARY: Using fork with BLE shutdown stability fixes until upstream merge
-# Commit: 1108f09 - CRITICAL: Fix disconnect message ordering in shutdown sequence
+# Commit: 800d4d0 - CRITICAL: Stop GATT notifications before disconnect to prevent hanging
 # For PyPI compatibility, setup.py uses upstream meshtastic>=2.6.4
-meshtastic @ git+https://github.com/jeremiah-k/meshtastic-python.git@1108f09
+meshtastic @ git+https://github.com/jeremiah-k/meshtastic-python.git@800d4d0
 Pillow==11.3.0
 matrix-nio==0.25.2
 matplotlib==3.10.1
