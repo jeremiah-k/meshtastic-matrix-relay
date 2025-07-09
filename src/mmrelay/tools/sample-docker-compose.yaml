@@ -1,6 +1,10 @@
 services:
   mmrelay:
-    build: .
+    build:
+      context: .
+      # Use host network during build to avoid IPv6 DNS resolution issues
+      # This helps with apt-get operations in Debian-based images
+      network: host
     container_name: meshtastic-matrix-relay
     restart: unless-stopped
     user: "${UID:-1000}:${GID:-1000}"
@@ -9,6 +13,12 @@ services:
       - TZ=UTC
       - PYTHONUNBUFFERED=1
       - MPLCONFIGDIR=/tmp/matplotlib
+
+    # Network configuration options for IPv6 compatibility
+    # Uncomment these if you experience IPv6-related connectivity issues:
+    # sysctls:
+    #   - net.ipv6.conf.all.disable_ipv6=0  # Enable IPv6 (default)
+    #   - net.ipv6.conf.all.disable_ipv6=1  # Disable IPv6 if causing issues
 
     volumes:
       # Configuration - uses standard ~/.mmrelay/config.yaml location
@@ -37,3 +47,21 @@ services:
     #   - /sys/bus/usb:/sys/bus/usb:ro
     #   - /sys/class/bluetooth:/sys/class/bluetooth:ro
     #   - /sys/devices:/sys/devices:ro
+
+    # Alternative network troubleshooting options:
+    # If you experience network connectivity issues, try one of these approaches:
+
+    # Option 1: Use host networking (bypasses Docker's network isolation)
+    # network_mode: host
+    # Note: This disables port mapping and may affect security isolation
+
+    # Option 2: Add custom DNS servers if experiencing DNS resolution issues
+    # dns:
+    #   - 8.8.8.8
+    #   - 8.8.4.4
+    #   - 1.1.1.1
+
+    # Option 3: Disable IPv6 if causing connectivity problems
+    # sysctls:
+    #   - net.ipv6.conf.all.disable_ipv6=1
+    #   - net.ipv6.conf.default.disable_ipv6=1

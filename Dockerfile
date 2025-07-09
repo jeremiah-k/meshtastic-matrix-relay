@@ -2,6 +2,8 @@
 FROM python:3.11-slim as builder
 
 # Install build dependencies with pinned versions
+# Note: If you experience IPv6/DNS issues during build, use: docker build --network=host
+# or run: make build-host
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential=12.9 \
     git=1:2.39.5-0+deb12u2 \

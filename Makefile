@@ -3,7 +3,7 @@
 # Detect docker compose command (prefer newer 'docker compose' over 'docker-compose')
 DOCKER_COMPOSE := $(shell docker compose version >/dev/null 2>&1 && echo "docker compose" || echo "docker-compose")
 
-.PHONY: help build build-nocache rebuild run stop logs shell clean config edit setup update-compose
+.PHONY: help build build-nocache build-host rebuild run stop logs shell clean config edit setup update-compose
 
 # Default target
 help:
@@ -14,6 +14,7 @@ help:
 	@echo "  update-compose - Update docker-compose.yaml with latest sample"
 	@echo "  build   - Build Docker image (uses layer caching for faster builds)"
 	@echo "  build-nocache - Build Docker image with --no-cache for fresh builds"
+	@echo "  build-host - Build with host networking (for IPv6/DNS issues)"
 	@echo "  rebuild - Stop, rebuild with --no-cache, and restart container (for updates)"
 	@echo "  run     - Start the container"
 	@echo "  stop    - Stop the container (keeps container for restart)"
@@ -113,6 +114,10 @@ build:
 # Build the Docker image with --no-cache for fresh builds
 build-nocache:
 	$(DOCKER_COMPOSE) --progress=plain build --no-cache
+
+# Build with host networking (for IPv6/DNS issues during build)
+build-host:
+	docker build --network=host --progress=plain -t meshtastic-matrix-relay .
 
 # Stop, rebuild with --no-cache, and restart container (for updates)
 rebuild:
