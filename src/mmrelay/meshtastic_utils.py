@@ -663,7 +663,14 @@ async def check_connection():
 
     while not shutting_down:
         if meshtastic_client and not reconnecting:
-            try:
+            # Check if BLE health checks are enabled (disabled by default for BLE)
+            enable_ble_health_check = config["meshtastic"].get("enable_ble_health_check", False)
+
+            # Skip health check for BLE unless explicitly enabled
+            if connection_type == "ble" and not enable_ble_health_check:
+                logger.debug("BLE health check disabled - skipping periodic check")
+            else:
+                try:
                     output_capture = io.StringIO()
                     with contextlib.redirect_stdout(
                         output_capture
