@@ -191,9 +191,26 @@ async def main(config):
             meshtastic_utils.cleanup_subscriptions()
             print("SHUTDOWN: cleanup_subscriptions() completed, about to call meshtastic_client.close()")
             try:
-                meshtastic_utils.meshtastic_client.close()
-                print("SHUTDOWN: meshtastic_client.close() completed")
+                # Use timeout wrapper to prevent infinite hanging
+                import concurrent.futures
+                import threading
+
+                def _close_with_timeout():
+                    thread_name = threading.current_thread().name
+                    print(f"[{thread_name}] Starting meshtastic_client.close()")
+                    meshtastic_utils.meshtastic_client.close()
+                    print(f"[{thread_name}] meshtastic_client.close() completed")
+
+                # Use ThreadPoolExecutor with aggressive timeout
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="MeshtasticClose") as executor:
+                    future = executor.submit(_close_with_timeout)
+                    future.result(timeout=10.0)  # 10-second timeout for close operation
+
+                print("SHUTDOWN: meshtastic_client.close() completed successfully")
                 meshtastic_logger.info("Meshtastic client closed successfully")
+            except concurrent.futures.TimeoutError:
+                print("SHUTDOWN: meshtastic_client.close() timed out after 10 seconds")
+                meshtastic_logger.warning("Meshtastic client close timed out - forcing shutdown")
             except Exception as e:
                 print(f"SHUTDOWN: Error in meshtastic_client.close(): {e}")
                 meshtastic_logger.warning(f"Error closing Meshtastic client: {e}")
