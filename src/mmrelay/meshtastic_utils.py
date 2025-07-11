@@ -688,44 +688,34 @@ async def check_connection():
         f"Starting connection heartbeat monitor (interval: {heartbeat_interval}s)"
     )
 
-    # Track if we've logged the BLE skip message to avoid spam
-    ble_skip_logged = False
-
     while not shutting_down:
         if meshtastic_client and not reconnecting:
-            # BLE has real-time disconnection detection in the library
-            # Skip periodic health checks to avoid duplicate reconnection attempts
-            if connection_type == "ble":
-                if not ble_skip_logged:
-                    logger.info("BLE connection uses real-time disconnection detection - health checks disabled")
-                    ble_skip_logged = True
-            else:
-                try:
-                    logger.debug(
-                        f"Checking {connection_type} connection health using getMetadata()"
+            try:
+                logger.debug(
+                    f"Checking {connection_type} connection health using getMetadata()"
+                )
+                output_capture = io.StringIO()
+                with contextlib.redirect_stdout(
+                    output_capture
+                ), contextlib.redirect_stderr(output_capture):
+                    meshtastic_client.localNode.getMetadata()
+
+                console_output = output_capture.getvalue()
+                if "firmware_version" not in console_output:
+                    raise Exception("No firmware_version in getMetadata output.")
+
+                logger.debug(f"{connection_type.capitalize()} connection healthy")
+
+            except Exception as e:
+                # Only trigger reconnection if we're not already reconnecting
+                if not reconnecting:
+                    logger.warning(
+                        f"{connection_type.capitalize()} connection health check failed: {e}"
                     )
-                    output_capture = io.StringIO()
-                    with contextlib.redirect_stdout(
-                        output_capture
-                    ), contextlib.redirect_stderr(output_capture):
-                        meshtastic_client.localNode.getMetadata()
-
-                    console_output = output_capture.getvalue()
-                    if "firmware_version" not in console_output:
-                        raise Exception("No firmware_version in getMetadata output.")
-
-                    logger.debug(f"{connection_type.capitalize()} connection healthy")
-
-                except Exception as e:
-                    # Only trigger reconnection if we're not already reconnecting
-                    if not reconnecting:
-                        logger.warning(
-                            f"{connection_type.capitalize()} connection health check failed: {e}"
-                        )
-                        # Use existing handler with health check reason
-                        on_lost_meshtastic_connection(detection_source=f"health check failed: {str(e)}")
-                    else:
-                        logger.debug("Skipping reconnection trigger - already reconnecting")
+                    # Use existing handler with health check reason
+                    on_lost_meshtastic_connection(detection_source=f"health check failed: {str(e)}")
+                else:
+                    logger.debug("Skipping reconnection trigger - already reconnecting")
         elif reconnecting:
             logger.debug("Skipping connection check - reconnection in progress")
         elif not meshtastic_client:
@@ -777,6 +767,56 @@ def sendTextReply(
     return interface._sendPacket(
         mesh_packet, destinationId=destinationId, wantAck=wantAck
     )
+
+
+def cleanup_subscriptions():
+    """
+    Unsubscribes from all Meshtastic pub/sub events to ensure clean shutdown.
+
+    This function removes all event subscriptions that were created during the connection process,
+    preventing hanging during shutdown due to active callbacks or event handlers.
+    """
+    global subscribed_to_messages, subscribed_to_connection_lost, subscribed_to_connection_established
+
+    print("cleanup_subscriptions() CALLED")
+    logger.debug("cleanup_subscriptions() CALLED")
+
+    try:
+        if subscribed_to_messages:
+            print("Unsubscribing from meshtastic.receive")
+            logger.debug("Unsubscribing from meshtastic.receive")
+            pub.unsubscribe(on_meshtastic_message, "meshtastic.receive")
+            subscribed_to_messages = False
+            print("Unsubscribed from meshtastic.receive successfully")
+            logger.debug("Unsubscribed from meshtastic.receive successfully")
+    except Exception as e:
+        logger.warning(f"Error unsubscribing from meshtastic.receive: {e}")
+
+    try:
+        if subscribed_to_connection_lost:
+            print("Unsubscribing from meshtastic.connection.lost")
+            logger.debug("Unsubscribing from meshtastic.connection.lost")
+            pub.unsubscribe(on_lost_meshtastic_connection, "meshtastic.connection.lost")
+            subscribed_to_connection_lost = False
+            print("Unsubscribed from meshtastic.connection.lost successfully")
+            logger.debug("Unsubscribed from meshtastic.connection.lost successfully")
+    except Exception as e:
+        logger.warning(f"Error unsubscribing from meshtastic.connection.lost: {e}")
+
+    try:
+        if subscribed_to_connection_established:
+            print("Unsubscribing from meshtastic.connection.established")
+            logger.debug("Unsubscribing from meshtastic.connection.established")
+            pub.unsubscribe(on_established_meshtastic_connection, "meshtastic.connection.established")
+            subscribed_to_connection_established = False
+            print("Unsubscribed from meshtastic.connection.established successfully")
+            logger.debug("Unsubscribed from meshtastic.connection.established successfully")
+    except Exception as e:
+        logger.warning(f"Error unsubscribing from meshtastic.connection.established: {e}")
+
+    print("cleanup_subscriptions() COMPLETED")
+    logger.debug("cleanup_subscriptions() COMPLETED")
+
 
 
 if __name__ == "__main__":

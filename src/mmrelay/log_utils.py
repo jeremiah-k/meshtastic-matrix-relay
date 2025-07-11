@@ -149,9 +149,9 @@ def get_logger(name):
 
 def setup_upstream_logging_capture():
     """
-    Redirects warning and error log messages from upstream libraries and the root logger into the application's formatted logging system.
+    Redirects all log messages from upstream libraries and the root logger into the application's formatted logging system.
 
-    This ensures that log output from external dependencies (such as "meshtastic", "bleak", and "asyncio") appears with consistent formatting alongside the application's own logs. Only messages at WARNING level or higher are captured, and messages originating from the application's own loggers are excluded to prevent recursion.
+    This ensures that log output from external dependencies (such as "meshtastic", "bleak", and "asyncio") appears with consistent formatting alongside the application's own logs. All log levels including DEBUG are captured to enable detailed troubleshooting of library behavior. Messages originating from the application's own loggers are excluded to prevent recursion.
     """
     # Get our main logger
     main_logger = get_logger("Upstream")
@@ -181,12 +181,12 @@ def setup_upstream_logging_capture():
     # Add our handler to the root logger
     root_logger = logging.getLogger()
     upstream_handler = UpstreamLogHandler()
-    upstream_handler.setLevel(logging.WARNING)  # Only capture warnings and errors
+    upstream_handler.setLevel(logging.DEBUG)  # Capture all log levels including debug
     root_logger.addHandler(upstream_handler)
 
     # Also set up specific loggers for known upstream libraries
     for logger_name in ["meshtastic", "bleak", "asyncio"]:
         upstream_logger = logging.getLogger(logger_name)
         upstream_logger.addHandler(upstream_handler)
-        upstream_logger.setLevel(logging.WARNING)
+        upstream_logger.setLevel(logging.DEBUG)  # Enable debug logging for meshtastic library
         upstream_logger.propagate = False  # Prevent duplicate messages via root logger

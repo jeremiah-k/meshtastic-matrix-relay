@@ -20,7 +20,7 @@ from mmrelay.db_utils import (
     update_shortnames,
     wipe_message_map,
 )
-from mmrelay.log_utils import get_logger, setup_upstream_logging_capture
+from mmrelay.log_utils import get_logger
 from mmrelay.matrix_utils import connect_matrix, join_matrix_room
 from mmrelay.matrix_utils import logger as matrix_logger
 from mmrelay.matrix_utils import on_room_member, on_room_message
@@ -67,9 +67,6 @@ async def main(config):
 
     # Initialize the SQLite database
     initialize_database()
-
-    # Set up upstream logging capture to format library messages consistently
-    setup_upstream_logging_capture()
 
     # Check database config for wipe_on_restart (preferred format)
     database_config = config.get("database", {})
@@ -178,13 +175,36 @@ async def main(config):
         await shutdown()
     finally:
         # Cleanup
+        print("SHUTDOWN: Starting cleanup sequence")
         matrix_logger.info("Closing Matrix client...")
         await matrix_client.close()
+        print("SHUTDOWN: Matrix client closed")
         if meshtastic_utils.meshtastic_client:
             meshtastic_logger.info("Closing Meshtastic client...")
+            print("SHUTDOWN: About to call meshtastic_client.close()")
             try:
-                meshtastic_utils.meshtastic_client.close()
+                # Use timeout wrapper to prevent infinite hanging
+                import concurrent.futures
+                import threading
+
+                def _close_with_timeout():
+                    thread_name = threading.current_thread().name
+                    print(f"[{thread_name}] Starting meshtastic_client.close()")
+                    meshtastic_utils.meshtastic_client.close()
+                    print(f"[{thread_name}] meshtastic_client.close() completed")
+
+                # Use ThreadPoolExecutor with aggressive timeout
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="MeshtasticClose") as executor:
+                    future = executor.submit(_close_with_timeout)
+                    future.result(timeout=10.0)  # 10-second timeout for close operation
+
+                print("SHUTDOWN: meshtastic_client.close() completed successfully")
+                meshtastic_logger.info("Meshtastic client closed successfully")
+            except concurrent.futures.TimeoutError:
+                print("SHUTDOWN: meshtastic_client.close() timed out after 10 seconds")
+                meshtastic_logger.warning("Meshtastic client close timed out - forcing shutdown")
             except Exception as e:
+                print(f"SHUTDOWN: Error in meshtastic_client.close(): {e}")
                 meshtastic_logger.warning(f"Error closing Meshtastic client: {e}")
 
         # Attempt to wipe message_map on shutdown if enabled
