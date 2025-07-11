@@ -1,7 +1,7 @@
 # TEMPORARY: Using fork with BLE shutdown stability fixes until upstream merge
 # Commit: 5ba94b9 - Prevent duplicate disconnection events across all interfaces
 # For PyPI compatibility, setup.py uses upstream meshtastic>=2.6.4
-meshtastic @ git+https://github.com/jeremiah-k/meshtastic-python.git@9b9cde967136f10b36639fb3252bf3e41a7f3951
+meshtastic @ git+https://github.com/jeremiah-k/meshtastic-python.git@e057b4eb74be2cfd67cbd7c917ef84bc5f70d80e
 Pillow==11.3.0
 matrix-nio==0.25.2
 matplotlib==3.10.1
