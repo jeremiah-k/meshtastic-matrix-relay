@@ -180,16 +180,22 @@ async def main(config):
         await shutdown()
     finally:
         # Cleanup
+        print("SHUTDOWN: Starting cleanup sequence")
         matrix_logger.info("Closing Matrix client...")
         await matrix_client.close()
+        print("SHUTDOWN: Matrix client closed")
         if meshtastic_utils.meshtastic_client:
             meshtastic_logger.info("Closing Meshtastic client...")
+            print("SHUTDOWN: About to call cleanup_subscriptions()")
             # Ensure pub/sub subscriptions are cleaned up before closing
             meshtastic_utils.cleanup_subscriptions()
+            print("SHUTDOWN: cleanup_subscriptions() completed, about to call meshtastic_client.close()")
             try:
                 meshtastic_utils.meshtastic_client.close()
+                print("SHUTDOWN: meshtastic_client.close() completed")
                 meshtastic_logger.info("Meshtastic client closed successfully")
             except Exception as e:
+                print(f"SHUTDOWN: Error in meshtastic_client.close(): {e}")
                 meshtastic_logger.warning(f"Error closing Meshtastic client: {e}")
 
         # Attempt to wipe message_map on shutdown if enabled

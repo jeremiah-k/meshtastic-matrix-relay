@@ -778,29 +778,44 @@ def cleanup_subscriptions():
     """
     global subscribed_to_messages, subscribed_to_connection_lost, subscribed_to_connection_established
 
+    print("cleanup_subscriptions() CALLED")
+    logger.debug("cleanup_subscriptions() CALLED")
+
     try:
         if subscribed_to_messages:
+            print("Unsubscribing from meshtastic.receive")
+            logger.debug("Unsubscribing from meshtastic.receive")
             pub.unsubscribe(on_meshtastic_message, "meshtastic.receive")
             subscribed_to_messages = False
-            logger.debug("Unsubscribed from meshtastic.receive")
+            print("Unsubscribed from meshtastic.receive successfully")
+            logger.debug("Unsubscribed from meshtastic.receive successfully")
     except Exception as e:
         logger.warning(f"Error unsubscribing from meshtastic.receive: {e}")
 
     try:
         if subscribed_to_connection_lost:
+            print("Unsubscribing from meshtastic.connection.lost")
+            logger.debug("Unsubscribing from meshtastic.connection.lost")
             pub.unsubscribe(on_lost_meshtastic_connection, "meshtastic.connection.lost")
             subscribed_to_connection_lost = False
-            logger.debug("Unsubscribed from meshtastic.connection.lost")
+            print("Unsubscribed from meshtastic.connection.lost successfully")
+            logger.debug("Unsubscribed from meshtastic.connection.lost successfully")
     except Exception as e:
         logger.warning(f"Error unsubscribing from meshtastic.connection.lost: {e}")
 
     try:
         if subscribed_to_connection_established:
+            print("Unsubscribing from meshtastic.connection.established")
+            logger.debug("Unsubscribing from meshtastic.connection.established")
             pub.unsubscribe(on_established_meshtastic_connection, "meshtastic.connection.established")
             subscribed_to_connection_established = False
-            logger.debug("Unsubscribed from meshtastic.connection.established")
+            print("Unsubscribed from meshtastic.connection.established successfully")
+            logger.debug("Unsubscribed from meshtastic.connection.established successfully")
     except Exception as e:
         logger.warning(f"Error unsubscribing from meshtastic.connection.established: {e}")
+
+    print("cleanup_subscriptions() COMPLETED")
+    logger.debug("cleanup_subscriptions() COMPLETED")
 
 
 
