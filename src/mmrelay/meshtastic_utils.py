@@ -651,7 +651,7 @@ async def check_connection():
 
     If the metadata retrieval fails or does not include the firmware version, logs the error and triggers reconnection logic.
     """
-    global meshtastic_client, shutting_down, config
+    global meshtastic_client, shutting_down, config, reconnecting
 
     # Check if config is available
     if config is None:
