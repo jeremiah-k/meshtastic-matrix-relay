@@ -47,18 +47,17 @@ reconnecting = False
 shutting_down = False
 reconnect_task = None  # To keep track of the reconnect task
 
-# Track pubsub subscription state to prevent duplicate subscriptions during reconnections
+# Subscription flags to prevent duplicate subscriptions
 subscribed_to_messages = False
 subscribed_to_connection_lost = False
-subscribed_to_connection_established = False
 
 
 def is_running_as_service():
     """
-    Check if the application is running as a systemd service.
-    
+    Determine if the application is running as a systemd service.
+
     Returns:
-        True if the process is running under systemd, either by detecting the INVOCATION_ID environment variable or by verifying that the parent process is systemd; otherwise, False.
+        bool: True if running under systemd (as indicated by the INVOCATION_ID environment variable or parent process), False otherwise.
     """
     # Check for INVOCATION_ID environment variable (set by systemd)
     if os.environ.get("INVOCATION_ID"):
@@ -89,16 +88,16 @@ def serial_port_exists(port_name):
 
 def connect_meshtastic(passed_config=None, force_connect=False):
     """
-    Establishes and manages a connection to a Meshtastic device using the specified connection type (serial, BLE, or TCP).
-    
-    If a configuration is provided, updates the global configuration and Matrix room mappings. Handles reconnection logic, including closing any existing connection if `force_connect` is True. Retries connection attempts with exponential backoff until successful or shutdown is initiated. Subscribes to message and connection events only once per process to avoid duplicate subscriptions.
-    
+    Establishes and manages a connection to a Meshtastic device using serial, BLE, or TCP, with automatic retries and event subscriptions.
+
+    If a configuration is provided, updates the global configuration and Matrix room mappings. If already connected and not forced, returns the existing client. Handles reconnection logic with exponential backoff, verifies serial port existence, and subscribes to message and connection lost events upon successful connection.
+
     Parameters:
-        passed_config (dict, optional): Configuration dictionary to use for the connection. If provided, updates the global configuration.
+        passed_config (dict, optional): Configuration dictionary to use for the connection.
         force_connect (bool, optional): If True, forces a new connection even if one already exists.
-    
+
     Returns:
-        Meshtastic interface client if the connection is successful, or None if the connection fails or shutdown is in progress.
+        meshtastic_client: The connected Meshtastic client instance, or None if connection fails or shutdown is in progress.
     """
     global meshtastic_client, shutting_down, config, matrix_rooms
     if shutting_down:
@@ -203,8 +202,8 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                     f"Connected to {nodeInfo['user']['shortName']} / {nodeInfo['user']['hwModel']}"
                 )
 
-                # Subscribe to message and connection events (only if not already subscribed)
-                global subscribed_to_messages, subscribed_to_connection_lost, subscribed_to_connection_established
+                # Subscribe to message and connection lost events (only once per application run)
+                global subscribed_to_messages, subscribed_to_connection_lost
                 if not subscribed_to_messages:
                     pub.subscribe(on_meshtastic_message, "meshtastic.receive")
                     subscribed_to_messages = True
@@ -216,13 +215,6 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                     )
                     subscribed_to_connection_lost = True
                     logger.debug("Subscribed to meshtastic.connection.lost")
-
-                if not subscribed_to_connection_established:
-                    pub.subscribe(
-                        on_established_meshtastic_connection, "meshtastic.connection.established"
-                    )
-                    subscribed_to_connection_established = True
-                    logger.debug("Subscribed to meshtastic.connection.established")
 
             except (
                 serial.SerialException,
@@ -249,13 +241,13 @@ def connect_meshtastic(passed_config=None, force_connect=False):
     return meshtastic_client
 
 
-def on_lost_meshtastic_connection(interface=None, detection_source="detected by library"):
+def on_lost_meshtastic_connection(interface=None, detection_source="unknown"):
     """
-    Handles Meshtastic connection loss by initiating a reconnection sequence unless a shutdown is in progress or a reconnection is already underway.
-    
-    Parameters:
-        interface: The interface that lost connection (unused; present for compatibility).
-        detection_source (str): Description of how the disconnection was detected.
+    Handles loss of Meshtastic connection by initiating a reconnection sequence unless the system is shutting down or already reconnecting.
+
+    Args:
+        interface: The Meshtastic interface (optional, for compatibility)
+        detection_source: Source that detected the connection loss (for debugging)
     """
     global meshtastic_client, reconnecting, shutting_down, event_loop, reconnect_task
     with meshtastic_lock:
@@ -290,8 +282,8 @@ def on_lost_meshtastic_connection(interface=None, detection_source="detected by 
 async def reconnect():
     """
     Asynchronously attempts to reconnect to the Meshtastic device using exponential backoff, stopping if a shutdown is initiated.
-    
-    The function increases the wait time between attempts up to a maximum of 5 minutes and provides a progress bar if not running as a service. The reconnection process halts immediately if the shutdown flag is set or if reconnection succeeds.
+
+    Reconnection attempts start with a 10-second delay, doubling up to a maximum of 5 minutes between attempts. If not running as a service, a progress bar is displayed during the wait. The process stops immediately if `shutting_down` is set to True or upon successful reconnection.
     """
     global meshtastic_client, reconnecting, shutting_down
     backoff_time = 10
@@ -346,23 +338,11 @@ async def reconnect():
         reconnecting = False
 
 
-def on_established_meshtastic_connection(interface=None):
-    """
-    Callback triggered when a Meshtastic connection is successfully established.
-    
-    Clears the reconnecting flag and logs the connection event.
-    """
-    global reconnecting
-    with meshtastic_lock:
-        logger.info("Connection established (detected by library)")
-        reconnecting = False  # Clear reconnecting flag when connection is confirmed
-
-
 def on_meshtastic_message(packet, interface):
     """
-    Process incoming Meshtastic messages and relay them to Matrix rooms or plugins according to message type and interaction settings.
-    
-    Handles reactions and replies by relaying them to Matrix if enabled. Normal text messages are relayed to all mapped Matrix rooms unless handled by a plugin or directed to the relay node. Non-text messages are passed to plugins for processing. Messages from unmapped channels or disabled detection sensors are filtered out, and sender information is retrieved or stored as needed.
+    Process incoming Meshtastic messages and relay them to Matrix rooms or plugins according to message type and configuration.
+
+    Handles reactions and replies by relaying them to Matrix if enabled. Normal text messages are relayed to all mapped Matrix rooms unless handled by a plugin or directed to the relay node. Non-text messages are passed to plugins for processing. Messages from unmapped channels or disabled detection sensors are ignored. Ensures sender information is retrieved or stored as needed.
     """
     global config, matrix_rooms
 
@@ -667,28 +647,19 @@ def on_meshtastic_message(packet, interface):
 
 async def check_connection():
     """
-    Periodically verifies the health of the Meshtastic connection and triggers reconnection if needed.
-    
-    For non-BLE connections, this coroutine calls `localNode.getMetadata()` at a configurable interval to confirm the connection is alive. If the health check fails or does not return expected metadata, it invokes the connection lost handler to initiate reconnection. BLE connections are excluded from periodic checks, as their library provides real-time disconnection detection.
-    
-    This coroutine runs continuously until shutdown is requested.
+    Periodically verifies the Meshtastic connection by invoking `localNode.getMetadata()` every 30 seconds.
+
+    If the metadata retrieval fails or does not include the firmware version, logs the error and triggers reconnection logic.
     """
-    global meshtastic_client, shutting_down, config, reconnecting
+    global meshtastic_client, shutting_down, config
 
     # Check if config is available
     if config is None:
         logger.error("No configuration available. Cannot check connection.")
         return
 
-    # Get heartbeat interval from config, default to 180 seconds
-    heartbeat_interval = config["meshtastic"].get("heartbeat_interval", 180)
     connection_type = config["meshtastic"]["connection_type"]
-
-    logger.info(
-        f"Starting connection heartbeat monitor (interval: {heartbeat_interval}s)"
-    )
-
-    # Track if we've logged the BLE skip message to avoid spam
+    heartbeat_interval = config["meshtastic"].get("heartbeat_interval", 30)
     ble_skip_logged = False
 
     while not shutting_down:
@@ -701,9 +672,6 @@ async def check_connection():
                     ble_skip_logged = True
             else:
                 try:
-                    logger.debug(
-                        f"Checking {connection_type} connection health using getMetadata()"
-                    )
                     output_capture = io.StringIO()
                     with contextlib.redirect_stdout(
                         output_capture
@@ -714,16 +682,16 @@ async def check_connection():
                     if "firmware_version" not in console_output:
                         raise Exception("No firmware_version in getMetadata output.")
 
-                    logger.debug(f"{connection_type.capitalize()} connection healthy")
-
                 except Exception as e:
                     # Only trigger reconnection if we're not already reconnecting
                     if not reconnecting:
-                        logger.warning(
+                        logger.error(
                             f"{connection_type.capitalize()} connection health check failed: {e}"
                         )
-                        # Use existing handler with health check reason
-                        on_lost_meshtastic_connection(detection_source=f"health check failed: {str(e)}")
+                        on_lost_meshtastic_connection(
+                            interface=meshtastic_client,
+                            detection_source=f"health check failed: {str(e)}",
+                        )
                     else:
                         logger.debug("Skipping reconnection trigger - already reconnecting")
         elif reconnecting:
@@ -743,21 +711,20 @@ def sendTextReply(
     channelIndex: int = 0,
 ):
     """
-    Send a text message as a reply to a previous message.
+    Send a Meshtastic text message as a reply to a specific previous message.
 
-    This function creates a proper Meshtastic reply by setting the reply_id field
-    in the Data protobuf message, which the standard sendText() method doesn't support.
+    Creates and sends a reply message by setting the `reply_id` field in the Meshtastic Data protobuf, enabling proper reply threading. Returns the sent packet with its ID populated.
 
-    Args:
-        interface: The Meshtastic interface to send through
-        text: The text message to send
-        reply_id: The ID of the message this is replying to
-        destinationId: Where to send the message (default: broadcast)
-        wantAck: Whether to request acknowledgment
-        channelIndex: Which channel to send on
+    Parameters:
+        interface: The Meshtastic interface to send through.
+        text (str): The message content to send.
+        reply_id (int): The ID of the message being replied to.
+        destinationId: The recipient address (defaults to broadcast).
+        wantAck (bool): Whether to request acknowledgment for the message.
+        channelIndex (int): The channel index to send the message on.
 
     Returns:
-        The sent packet with populated ID field
+        The sent MeshPacket with its ID field populated.
     """
     logger.debug(f"Sending text reply: '{text}' replying to message ID {reply_id}")
 

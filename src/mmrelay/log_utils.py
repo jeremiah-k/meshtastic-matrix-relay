@@ -31,13 +31,13 @@ log_file_path = None
 
 def get_logger(name):
     """
-    Create and configure a logger with console and optional file output, supporting colorized output and log rotation.
-
-    The logger's level, color usage, and file logging behavior are determined by global configuration and command line arguments. Console output uses rich formatting if enabled. File logging supports log rotation and stores logs in a configurable or default location. The log file path is stored globally if the logger name is "M<>M Relay".
-
+    Create and configure a logger with console and optional file logging, using settings from global configuration and command-line arguments.
+    
+    The logger supports colorized console output via Rich if enabled, and writes logs to a rotating file if configured or requested via command-line. Log file location and rotation parameters are determined by priority: command-line argument, configuration file, or default directory. The function ensures the log directory exists and stores the log file path globally if the logger name is "M<>M Relay".
+    
     Parameters:
-        name (str): The name of the logger to create.
-
+        name (str): The name of the logger to create and configure.
+    
     Returns:
         logging.Logger: The configured logger instance.
     """
@@ -145,48 +145,3 @@ def get_logger(name):
         logger.addHandler(file_handler)
 
     return logger
-
-
-def setup_upstream_logging_capture():
-    """
-    Redirects warning and error log messages from upstream libraries and the root logger into the application's formatted logging system.
-
-    This ensures that log output from external dependencies (such as "meshtastic", "bleak", and "asyncio") appears with consistent formatting alongside the application's own logs. Only messages at WARNING level or higher are captured, and messages originating from the application's own loggers are excluded to prevent recursion.
-    """
-    # Get our main logger
-    main_logger = get_logger("Upstream")
-
-    # Create a custom handler that redirects root logger messages
-    class UpstreamLogHandler(logging.Handler):
-        def emit(self, record):
-            # Skip if this is already from our logger to avoid recursion
-            """
-            Redirects log records from external sources to the main logger, mapping their severity and prefixing with the original logger name.
-
-            Skips records originating from the application's own loggers to prevent recursion.
-            """
-            if record.name.startswith("mmrelay") or record.name == "Upstream":
-                return
-
-            # Map the log level and emit through our logger
-            if record.levelno >= logging.ERROR:
-                main_logger.error(f"[{record.name}] {record.getMessage()}")
-            elif record.levelno >= logging.WARNING:
-                main_logger.warning(f"[{record.name}] {record.getMessage()}")
-            elif record.levelno >= logging.INFO:
-                main_logger.info(f"[{record.name}] {record.getMessage()}")
-            else:
-                main_logger.debug(f"[{record.name}] {record.getMessage()}")
-
-    # Add our handler to the root logger
-    root_logger = logging.getLogger()
-    upstream_handler = UpstreamLogHandler()
-    upstream_handler.setLevel(logging.WARNING)  # Only capture warnings and errors
-    root_logger.addHandler(upstream_handler)
-
-    # Also set up specific loggers for known upstream libraries
-    for logger_name in ["meshtastic", "bleak", "asyncio"]:
-        upstream_logger = logging.getLogger(logger_name)
-        upstream_logger.addHandler(upstream_handler)
-        upstream_logger.setLevel(logging.WARNING)
-        upstream_logger.propagate = False  # Prevent duplicate messages via root logger

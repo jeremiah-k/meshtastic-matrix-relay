@@ -4,6 +4,7 @@ It uses Meshtastic-python and Matrix nio client library to interface with the ra
 """
 
 import asyncio
+import concurrent.futures
 import logging
 import signal
 import sys
@@ -20,7 +21,7 @@ from mmrelay.db_utils import (
     update_shortnames,
     wipe_message_map,
 )
-from mmrelay.log_utils import get_logger, setup_upstream_logging_capture
+from mmrelay.log_utils import get_logger
 from mmrelay.matrix_utils import connect_matrix, join_matrix_room
 from mmrelay.matrix_utils import logger as matrix_logger
 from mmrelay.matrix_utils import on_room_member, on_room_message
@@ -50,12 +51,9 @@ def print_banner():
 
 async def main(config):
     """
-    Sets up and runs the asynchronous relay between Meshtastic and Matrix, managing connections, event handling, and graceful shutdown.
+    Run the main asynchronous relay loop, managing connections between Meshtastic and Matrix, event handling, and graceful shutdown.
 
-    This function initializes the database, configures logging, loads plugins, connects to both Meshtastic and Matrix, joins specified Matrix rooms, and registers event callbacks for message and membership events. It periodically updates node names from the Meshtastic network and manages the Matrix sync loop, handling reconnections and shutdown signals. If configured, it wipes the message map on startup and shutdown.
-
-    Parameters:
-        config: The loaded configuration dictionary containing Matrix, Meshtastic, and database settings.
+    Initializes the database, loads plugins, connects to Meshtastic and Matrix, joins configured Matrix rooms, and registers event callbacks for message and membership events. Periodically updates node names from the Meshtastic network and manages the Matrix sync loop, handling reconnections and shutdown signals. If configured, wipes the message map on both startup and shutdown.
     """
     # Extract Matrix configuration
     from typing import List
@@ -67,9 +65,6 @@ async def main(config):
 
     # Initialize the SQLite database
     initialize_database()
-
-    # Set up upstream logging capture to format library messages consistently
-    setup_upstream_logging_capture()
 
     # Check database config for wipe_on_restart (preferred format)
     database_config = config.get("database", {})
@@ -183,9 +178,31 @@ async def main(config):
         if meshtastic_utils.meshtastic_client:
             meshtastic_logger.info("Closing Meshtastic client...")
             try:
-                meshtastic_utils.meshtastic_client.close()
+                # Timeout wrapper to prevent infinite hanging during shutdown
+                # The meshtastic library can sometimes hang indefinitely during close()
+                # operations, especially with BLE connections. This timeout ensures
+                # the application can shut down gracefully within 10 seconds.
+
+                def _close_meshtastic():
+                    """
+                    Closes the Meshtastic client connection synchronously.
+                    """
+                    meshtastic_utils.meshtastic_client.close()
+
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(_close_meshtastic)
+                    future.result(timeout=10.0)  # 10-second timeout
+
+                meshtastic_logger.info("Meshtastic client closed successfully")
+            except concurrent.futures.TimeoutError:
+                meshtastic_logger.warning(
+                    "Meshtastic client close timed out - forcing shutdown"
+                )
             except Exception as e:
-                meshtastic_logger.warning(f"Error closing Meshtastic client: {e}")
+                meshtastic_logger.error(
+                    f"Unexpected error during Meshtastic client close: {e}",
+                    exc_info=True,
+                )
 
         # Attempt to wipe message_map on shutdown if enabled
         if wipe_on_restart:
