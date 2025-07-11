@@ -49,6 +49,33 @@ def print_banner():
         _banner_printed = True
 
 
+def close_meshtastic_client():
+    """
+    Closes the Meshtastic client connection with timeout protection.
+
+    Uses a ThreadPoolExecutor with a 10-second timeout to prevent
+    the application from hanging during shutdown, especially with
+    BLE connections which can hang indefinitely.
+    """
+    meshtastic_logger.info("Closing Meshtastic client...")
+    try:
+        def _close_meshtastic():
+            """
+            Closes the Meshtastic client connection synchronously.
+            """
+            meshtastic_utils.meshtastic_client.close()
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_close_meshtastic)
+            future.result(timeout=10.0)  # 10-second timeout
+
+        meshtastic_logger.info("Meshtastic client closed successfully")
+    except concurrent.futures.TimeoutError:
+        meshtastic_logger.warning("Meshtastic client close timed out - forcing shutdown")
+    except Exception as e:
+        meshtastic_logger.error(f"Unexpected error during Meshtastic client close: {e}", exc_info=True)
+
+
 async def main(config):
     """
     Run the main asynchronous relay loop, managing connections between Meshtastic and Matrix, event handling, and graceful shutdown.
@@ -176,33 +203,7 @@ async def main(config):
         matrix_logger.info("Closing Matrix client...")
         await matrix_client.close()
         if meshtastic_utils.meshtastic_client:
-            meshtastic_logger.info("Closing Meshtastic client...")
-            try:
-                # Timeout wrapper to prevent infinite hanging during shutdown
-                # The meshtastic library can sometimes hang indefinitely during close()
-                # operations, especially with BLE connections. This timeout ensures
-                # the application can shut down gracefully within 10 seconds.
-
-                def _close_meshtastic():
-                    """
-                    Closes the Meshtastic client connection synchronously.
-                    """
-                    meshtastic_utils.meshtastic_client.close()
-
-                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                    future = executor.submit(_close_meshtastic)
-                    future.result(timeout=10.0)  # 10-second timeout
-
-                meshtastic_logger.info("Meshtastic client closed successfully")
-            except concurrent.futures.TimeoutError:
-                meshtastic_logger.warning(
-                    "Meshtastic client close timed out - forcing shutdown"
-                )
-            except Exception as e:
-                meshtastic_logger.error(
-                    f"Unexpected error during Meshtastic client close: {e}",
-                    exc_info=True,
-                )
+            close_meshtastic_client()
 
         # Attempt to wipe message_map on shutdown if enabled
         if wipe_on_restart:
