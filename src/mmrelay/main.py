@@ -41,7 +41,9 @@ _banner_printed = False
 
 
 def print_banner():
-    """Print a simple startup message with version information."""
+    """
+    Logs the startup banner with the current version, ensuring it is printed only once per process.
+    """
     global _banner_printed
     # Only print the banner once
     if not _banner_printed:
@@ -51,11 +53,9 @@ def print_banner():
 
 def close_meshtastic_client():
     """
-    Closes the Meshtastic client connection with timeout protection.
-
-    Uses a ThreadPoolExecutor with a 10-second timeout to prevent
-    the application from hanging during shutdown, especially with
-    BLE connections which can hang indefinitely.
+    Safely closes the Meshtastic client connection, enforcing a 10-second timeout to avoid indefinite blocking during shutdown.
+    
+    Logs the outcome of the closure, including timeouts or unexpected errors.
     """
     meshtastic_logger.info("Closing Meshtastic client...")
     try:
@@ -73,8 +73,11 @@ def close_meshtastic_client():
 async def main(config):
     """
     Run the main asynchronous relay loop, managing connections between Meshtastic and Matrix, event handling, and graceful shutdown.
-
+    
     Initializes the database, loads plugins, connects to Meshtastic and Matrix, joins configured Matrix rooms, and registers event callbacks for message and membership events. Periodically updates node names from the Meshtastic network and manages the Matrix sync loop, handling reconnections and shutdown signals. If configured, wipes the message map on both startup and shutdown.
+    
+    Parameters:
+        config (dict): Application configuration containing Matrix, Meshtastic, and database settings.
     """
     # Extract Matrix configuration
     from typing import List
