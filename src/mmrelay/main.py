@@ -4,6 +4,7 @@ It uses Meshtastic-python and Matrix nio client library to interface with the ra
 """
 
 import asyncio
+import concurrent.futures
 import logging
 import signal
 import sys
@@ -20,7 +21,7 @@ from mmrelay.db_utils import (
     update_shortnames,
     wipe_message_map,
 )
-from mmrelay.log_utils import get_logger, setup_upstream_logging_capture
+from mmrelay.log_utils import get_logger
 from mmrelay.matrix_utils import connect_matrix, join_matrix_room
 from mmrelay.matrix_utils import logger as matrix_logger
 from mmrelay.matrix_utils import on_room_member, on_room_message
@@ -40,7 +41,9 @@ _banner_printed = False
 
 
 def print_banner():
-    """Print a simple startup message with version information."""
+    """
+    Logs the startup banner with the current version, ensuring it is printed only once per process.
+    """
     global _banner_printed
     # Only print the banner once
     if not _banner_printed:
@@ -48,14 +51,33 @@ def print_banner():
         _banner_printed = True
 
 
+def close_meshtastic_client():
+    """
+    Safely closes the Meshtastic client connection, enforcing a 10-second timeout to avoid indefinite blocking during shutdown.
+    
+    Logs the outcome of the closure, including timeouts or unexpected errors.
+    """
+    meshtastic_logger.info("Closing Meshtastic client...")
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(meshtastic_utils.meshtastic_client.close)
+            future.result(timeout=10.0)  # 10-second timeout
+
+        meshtastic_logger.info("Meshtastic client closed successfully")
+    except concurrent.futures.TimeoutError:
+        meshtastic_logger.warning("Meshtastic client close timed out - forcing shutdown")
+    except Exception as e:
+        meshtastic_logger.error(f"Unexpected error during Meshtastic client close: {e}", exc_info=True)
+
+
 async def main(config):
     """
-    Sets up and runs the asynchronous relay between Meshtastic and Matrix, managing connections, event handling, and graceful shutdown.
-
-    This function initializes the database, configures logging, loads plugins, connects to both Meshtastic and Matrix, joins specified Matrix rooms, and registers event callbacks for message and membership events. It periodically updates node names from the Meshtastic network and manages the Matrix sync loop, handling reconnections and shutdown signals. If configured, it wipes the message map on startup and shutdown.
-
+    Run the main asynchronous relay loop, managing connections between Meshtastic and Matrix, event handling, and graceful shutdown.
+    
+    Initializes the database, loads plugins, connects to Meshtastic and Matrix, joins configured Matrix rooms, and registers event callbacks for message and membership events. Periodically updates node names from the Meshtastic network and manages the Matrix sync loop, handling reconnections and shutdown signals. If configured, wipes the message map on both startup and shutdown.
+    
     Parameters:
-        config: The loaded configuration dictionary containing Matrix, Meshtastic, and database settings.
+        config (dict): Application configuration containing Matrix, Meshtastic, and database settings.
     """
     # Extract Matrix configuration
     from typing import List
@@ -67,9 +89,6 @@ async def main(config):
 
     # Initialize the SQLite database
     initialize_database()
-
-    # Set up upstream logging capture to format library messages consistently
-    setup_upstream_logging_capture()
 
     # Check database config for wipe_on_restart (preferred format)
     database_config = config.get("database", {})
@@ -181,11 +200,7 @@ async def main(config):
         matrix_logger.info("Closing Matrix client...")
         await matrix_client.close()
         if meshtastic_utils.meshtastic_client:
-            meshtastic_logger.info("Closing Meshtastic client...")
-            try:
-                meshtastic_utils.meshtastic_client.close()
-            except Exception as e:
-                meshtastic_logger.warning(f"Error closing Meshtastic client: {e}")
+            close_meshtastic_client()
 
         # Attempt to wipe message_map on shutdown if enabled
         if wipe_on_restart:

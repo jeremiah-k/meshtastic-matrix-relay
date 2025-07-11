@@ -1,5 +1,5 @@
 # Build stage
-FROM python:3.11-slim as builder
+FROM python:3.11-slim AS builder
 
 # Install build dependencies with pinned versions
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -17,11 +17,9 @@ COPY requirements.txt setup.py ./
 COPY README.md ./
 COPY src/ ./src/
 
-# Install dependencies from requirements.txt first (includes BLE fixes fork)
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Install application package (without dependencies since they're already installed)
-RUN pip install --no-cache-dir --no-deps .
+# Install dependencies and application package
+RUN pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir --no-deps .
 
 # Runtime stage
 FROM python:3.11-slim

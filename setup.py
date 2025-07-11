@@ -6,7 +6,7 @@ with open("README.md", encoding="utf-8") as f:
 
 setup(
     name="mmrelay",
-    version="1.1.1",
+    version="1.1.2",
     author="Geoff Whittington, Jeremiah K., and contributors",
     author_email="jeremiahk@gmx.com",
     description="Bridge between Meshtastic mesh networks and Matrix chat rooms",
