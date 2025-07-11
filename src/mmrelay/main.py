@@ -59,14 +59,8 @@ def close_meshtastic_client():
     """
     meshtastic_logger.info("Closing Meshtastic client...")
     try:
-        def _close_meshtastic():
-            """
-            Closes the Meshtastic client connection synchronously.
-            """
-            meshtastic_utils.meshtastic_client.close()
-
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(_close_meshtastic)
+            future = executor.submit(meshtastic_utils.meshtastic_client.close)
             future.result(timeout=10.0)  # 10-second timeout
 
         meshtastic_logger.info("Meshtastic client closed successfully")
