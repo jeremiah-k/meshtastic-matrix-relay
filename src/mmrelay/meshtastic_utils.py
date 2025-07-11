@@ -24,6 +24,9 @@ from mmrelay.db_utils import (
 )
 from mmrelay.log_utils import get_logger
 
+# Constants
+DEFAULT_HEARTBEAT_INTERVAL = 30  # seconds
+
 # Global config variable that will be set from config.py
 config = None
 
@@ -656,7 +659,7 @@ async def check_connection():
         return
 
     connection_type = config["meshtastic"]["connection_type"]
-    heartbeat_interval = config["meshtastic"].get("heartbeat_interval", 30)
+    heartbeat_interval = config["meshtastic"].get("heartbeat_interval", DEFAULT_HEARTBEAT_INTERVAL)
 
     while not shutting_down:
         if meshtastic_client and not reconnecting:
