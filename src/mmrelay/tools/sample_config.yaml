@@ -18,10 +18,16 @@ meshtastic:
   broadcast_enabled: true # Must be set to true to enable Matrix to Meshtastic messages
   detection_sensor: true # Must be set to true to forward messages of Meshtastic's detection sensor module
   plugin_response_delay: 3 # Default response delay in seconds for plugins that respond on the mesh;
-  # heartbeat_interval: 180 # Interval in seconds to check connection health using getMetadata() (default: 180)
   message_interactions: # Configure reactions and replies (both require message storage in database)
     reactions: false # Enable reaction relaying between platforms
     replies: false   # Enable reply relaying between platforms
+
+  # Connection health monitoring configuration
+  #health_check:
+  #  enabled: true                    # Enable/disable periodic health checks (default: true)
+  #  heartbeat_interval: 60           # Interval in seconds between health checks (default: 60)
+  #                                   # Note: BLE connections use real-time disconnection detection and skip periodic checks
+  #                                   # Legacy: heartbeat_interval at meshtastic level still supported but deprecated
 
 logging:
   level: info
@@ -30,6 +36,12 @@ logging:
   #max_log_size: 10485760                     # 10 MB default if omitted
   #backup_count: 1                            # Keeps 1 backup as the default if omitted
   #color_enabled: true                        # Set to false to disable colored console output
+
+  # Component-specific debug logging (useful for troubleshooting)
+  #debug:
+  #  matrix_nio: false                         # Enable matrix-nio debug logging for Matrix client issues
+  #  bleak: false                              # Enable BLE (bleak) debug logging for Bluetooth connection issues
+  #  meshtastic: false                         # Enable meshtastic library debug logging for device communication issues
 
 #database:
 #  path: ~/.mmrelay/data/meshtastic.sqlite   # Default location

@@ -28,16 +28,53 @@ config = None
 # Global variable to store the log file path
 log_file_path = None
 
+# Track if component debug logging has been configured
+_component_debug_configured = False
+
+# Component logger mapping for data-driven configuration
+_COMPONENT_LOGGERS = {
+    "matrix_nio": ["nio", "nio.client", "nio.http", "nio.crypto"],
+    "bleak": ["bleak", "bleak.backends"],
+    "meshtastic": [
+        "meshtastic",
+        "meshtastic.serial_interface",
+        "meshtastic.tcp_interface",
+        "meshtastic.ble_interface",
+    ],
+}
+
+
+def configure_component_debug_logging():
+    """
+    Enables debug-level logging for selected external components based on configuration settings.
+
+    This function sets the log level to DEBUG for specific libraries (matrix_nio, bleak, meshtastic) if enabled in the global configuration under `logging.debug`. It ensures that component debug logging is configured only once per application run.
+    """
+    global _component_debug_configured, config
+
+    # Only configure once
+    if _component_debug_configured or config is None:
+        return
+
+    debug_config = config.get("logging", {}).get("debug", {})
+
+    for component, loggers in _COMPONENT_LOGGERS.items():
+        if debug_config.get(component, False):
+            for logger_name in loggers:
+                logging.getLogger(logger_name).setLevel(logging.DEBUG)
+
+    _component_debug_configured = True
+
 
 def get_logger(name):
     """
-    Create and configure a logger with console and optional file logging, using settings from global configuration and command-line arguments.
-    
-    The logger supports colorized console output via Rich if enabled, and writes logs to a rotating file if configured or requested via command-line. Log file location and rotation parameters are determined by priority: command-line argument, configuration file, or default directory. The function ensures the log directory exists and stores the log file path globally if the logger name is "M<>M Relay".
-    
+    Create and configure a logger with console and optional rotating file output, using global configuration and command-line arguments.
+
+    The logger supports colorized console output via Rich if enabled, and writes logs to a rotating file if configured or requested via command-line arguments. Log file location and rotation parameters are determined by priority: command-line argument, configuration file, or a default directory. The function ensures the log directory exists and stores the log file path globally if the logger name is "M<>M Relay".
+
     Parameters:
         name (str): The name of the logger to create and configure.
-    
+
     Returns:
         logging.Logger: The configured logger instance.
     """
