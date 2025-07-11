@@ -31,9 +31,9 @@ log_file_path = None
 
 def get_logger(name):
     """
-    Create and configure a logger with console and optional file logging, using settings from global configuration and command-line arguments.
+    Create and configure a logger with console and optional rotating file output, using global configuration and command-line arguments.
     
-    The logger supports colorized console output via Rich if enabled, and writes logs to a rotating file if configured or requested via command-line. Log file location and rotation parameters are determined by priority: command-line argument, configuration file, or default directory. The function ensures the log directory exists and stores the log file path globally if the logger name is "M<>M Relay".
+    The logger supports colorized console output via Rich if enabled, and writes logs to a rotating file if configured or requested via command-line. Log file location and rotation parameters are determined in the following priority: command-line argument, configuration file, or default directory (`~/.mmrelay/logs/mmrelay.log`). The function ensures the log directory exists and, if the logger name is "M<>M Relay", stores the log file path globally.
     
     Parameters:
         name (str): The name of the logger to create and configure.
