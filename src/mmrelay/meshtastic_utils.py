@@ -647,9 +647,9 @@ def on_meshtastic_message(packet, interface):
 
 async def check_connection():
     """
-    Periodically verifies the Meshtastic connection by invoking `localNode.getMetadata()` every 30 seconds.
-
-    If the metadata retrieval fails or does not include the firmware version, logs the error and triggers reconnection logic.
+    Periodically checks the health of the Meshtastic connection and triggers reconnection if the connection is lost.
+    
+    For non-BLE connections, invokes `localNode.getMetadata()` at regular intervals (default 30 seconds) to verify connectivity. If the check fails or the firmware version is missing, initiates reconnection logic. BLE connections rely on real-time disconnection detection and skip periodic health checks. The function runs continuously until shutdown is requested.
     """
     global meshtastic_client, shutting_down, config
 
