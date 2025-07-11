@@ -50,11 +50,10 @@ reconnect_task = None  # To keep track of the reconnect task
 
 def is_running_as_service():
     """
-    Check if the application is running as a systemd service.
-    This is used to determine whether to show Rich progress indicators.
-
+    Determine if the application is running as a systemd service.
+    
     Returns:
-        bool: True if running as a service, False otherwise
+        bool: True if running under systemd (as indicated by the INVOCATION_ID environment variable or parent process), False otherwise.
     """
     # Check for INVOCATION_ID environment variable (set by systemd)
     if os.environ.get("INVOCATION_ID"):
@@ -85,14 +84,16 @@ def serial_port_exists(port_name):
 
 def connect_meshtastic(passed_config=None, force_connect=False):
     """
-    Establish a connection to the Meshtastic device.
-    Attempts a connection based on connection_type (serial/ble/network).
-    Retries until successful or shutting_down is set.
-    If already connected and not force_connect, returns the existing client.
-
-    Args:
-        passed_config: The configuration dictionary to use (will update global config)
-        force_connect: Whether to force a new connection even if one exists
+    Establishes and manages a connection to a Meshtastic device using serial, BLE, or TCP, with automatic retries and event subscriptions.
+    
+    If a configuration is provided, updates the global configuration and Matrix room mappings. If already connected and not forced, returns the existing client. Handles reconnection logic with exponential backoff, verifies serial port existence, and subscribes to message and connection lost events upon successful connection.
+    
+    Parameters:
+        passed_config (dict, optional): Configuration dictionary to use for the connection.
+        force_connect (bool, optional): If True, forces a new connection even if one already exists.
+    
+    Returns:
+        meshtastic_client: The connected Meshtastic client instance, or None if connection fails or shutdown is in progress.
     """
     global meshtastic_client, shutting_down, config, matrix_rooms
     if shutting_down:
@@ -230,8 +231,7 @@ def connect_meshtastic(passed_config=None, force_connect=False):
 
 def on_lost_meshtastic_connection(interface=None):
     """
-    Callback invoked when the Meshtastic connection is lost.
-    Initiates a reconnect sequence unless shutting_down is True.
+    Handles loss of Meshtastic connection by initiating a reconnection sequence unless the system is shutting down or already reconnecting.
     """
     global meshtastic_client, reconnecting, shutting_down, event_loop, reconnect_task
     with meshtastic_lock:
@@ -265,8 +265,9 @@ def on_lost_meshtastic_connection(interface=None):
 
 async def reconnect():
     """
-    Asynchronously attempts to reconnect with exponential backoff.
-    Stops if shutting_down is set.
+    Asynchronously attempts to reconnect to the Meshtastic device using exponential backoff, stopping if a shutdown is initiated.
+    
+    Reconnection attempts start with a 10-second delay, doubling up to a maximum of 5 minutes between attempts. If not running as a service, a progress bar is displayed during the wait. The process stops immediately if `shutting_down` is set to True or upon successful reconnection.
     """
     global meshtastic_client, reconnecting, shutting_down
     backoff_time = 10
@@ -323,9 +324,9 @@ async def reconnect():
 
 def on_meshtastic_message(packet, interface):
     """
-    Processes incoming Meshtastic messages and relays them to Matrix rooms or plugins based on message type and interaction settings.
-
-    Handles reactions and replies by relaying them to Matrix if enabled in the interaction settings. Normal text messages are relayed to all mapped Matrix rooms unless handled by a plugin or directed to the relay node. Non-text messages are passed to plugins for processing. Filters out messages from unmapped channels or disabled detection sensors, and ensures sender information is retrieved or stored as needed.
+    Process incoming Meshtastic messages and relay them to Matrix rooms or plugins according to message type and configuration.
+    
+    Handles reactions and replies by relaying them to Matrix if enabled. Normal text messages are relayed to all mapped Matrix rooms unless handled by a plugin or directed to the relay node. Non-text messages are passed to plugins for processing. Messages from unmapped channels or disabled detection sensors are ignored. Ensures sender information is retrieved or stored as needed.
     """
     global config, matrix_rooms
 
@@ -630,9 +631,9 @@ def on_meshtastic_message(packet, interface):
 
 async def check_connection():
     """
-    Periodically checks the Meshtastic connection by calling localNode.getMetadata().
-    If it fails or doesn't return the firmware version, we assume the connection is lost
-    and attempt to reconnect.
+    Periodically verifies the Meshtastic connection by invoking `localNode.getMetadata()` every 30 seconds.
+    
+    If the metadata retrieval fails or does not include the firmware version, logs the error and triggers reconnection logic.
     """
     global meshtastic_client, shutting_down, config
 
@@ -670,21 +671,19 @@ def sendTextReply(
     channelIndex: int = 0,
 ):
     """
-    Send a text message as a reply to a previous message.
-
-    This function creates a proper Meshtastic reply by setting the reply_id field
-    in the Data protobuf message, which the standard sendText() method doesn't support.
-
-    Args:
-        interface: The Meshtastic interface to send through
-        text: The text message to send
-        reply_id: The ID of the message this is replying to
-        destinationId: Where to send the message (default: broadcast)
-        wantAck: Whether to request acknowledgment
-        channelIndex: Which channel to send on
-
+    Send a Meshtastic text message as a reply to a specific previous message.
+    
+    Creates and sends a reply message by setting the `reply_id` field in the Meshtastic Data protobuf, enabling proper reply threading. Returns the sent packet with its ID populated.
+    
+    Parameters:
+        text (str): The message content to send.
+        reply_id (int): The ID of the message being replied to.
+        destinationId: The recipient address (defaults to broadcast).
+        wantAck (bool): Whether to request acknowledgment for the message.
+        channelIndex (int): The channel index to send the message on.
+    
     Returns:
-        The sent packet with populated ID field
+        The sent MeshPacket with its ID field populated.
     """
     logger.debug(f"Sending text reply: '{text}' replying to message ID {reply_id}")
 
