@@ -660,18 +660,10 @@ async def check_connection():
 
     connection_type = config["meshtastic"]["connection_type"]
     heartbeat_interval = config["meshtastic"].get("heartbeat_interval", 30)
-    ble_skip_logged = False
 
     while not shutting_down:
         if meshtastic_client and not reconnecting:
-            # BLE has real-time disconnection detection in the library
-            # Skip periodic health checks to avoid duplicate reconnection attempts
-            if connection_type == "ble":
-                if not ble_skip_logged:
-                    logger.info("BLE connection uses real-time disconnection detection - health checks disabled")
-                    ble_skip_logged = True
-            else:
-                try:
+            try:
                     output_capture = io.StringIO()
                     with contextlib.redirect_stdout(
                         output_capture
