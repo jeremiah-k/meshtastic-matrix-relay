@@ -58,7 +58,7 @@ class Plugin(BasePlugin):
                     except (ValueError, TypeError):
                         distance_km = 1000
                     radius_km = (
-                        self.config[ConfigKeys.RADIUS_KM.value]
+                        self.config.get(ConfigKeys.RADIUS_KM.value)
                         if ConfigKeys.RADIUS_KM.value in self.config
                         else 5
                     )

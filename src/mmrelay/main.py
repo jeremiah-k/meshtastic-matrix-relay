@@ -15,6 +15,7 @@ from nio.events.room_events import RoomMemberEvent
 # Import version from package
 # Import meshtastic_utils as a module to set event_loop
 from mmrelay import __version__, meshtastic_utils
+from mmrelay.constants import ConfigKeys, DeprecatedConfigKeys
 from mmrelay.db_utils import (
     initialize_database,
     update_longnames,
@@ -28,8 +29,6 @@ from mmrelay.matrix_utils import on_room_member, on_room_message
 from mmrelay.meshtastic_utils import connect_meshtastic
 from mmrelay.meshtastic_utils import logger as meshtastic_logger
 from mmrelay.plugin_loader import load_plugins
-
-from mmrelay.constants import ConfigKeys
 
 # Initialize logger
 logger = get_logger(name="M<>M Relay")
@@ -75,7 +74,7 @@ async def main(config):
 
     # If not found in database config, check legacy db config
     if not wipe_on_restart:
-        db_config = config.get(ConfigKeys.DB.value, {})
+        db_config = config.get(DeprecatedConfigKeys.DB.value, {})
         legacy_msg_map_config = db_config.get(ConfigKeys.MSG_MAP.value, {})
         legacy_wipe_on_restart = legacy_msg_map_config.get(
             ConfigKeys.WIPE_ON_RESTART.value, False
@@ -88,9 +87,7 @@ async def main(config):
             )
 
     if wipe_on_restart:
-        logger.debug(
-            f"{ConfigKeys.WIPE_ON_RESTART.value} enabled. Wiping message_map now (startup)."
-        )
+        logger.debug("wipe_on_restart enabled. Wiping message_map now (startup).")
         wipe_message_map()
 
     # Load plugins early

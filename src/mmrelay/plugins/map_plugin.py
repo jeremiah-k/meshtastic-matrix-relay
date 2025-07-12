@@ -311,7 +311,7 @@ class Plugin(BasePlugin):
         try:
             zoom = int(zoom)
         except:
-            zoom = self.config["zoom"] if "zoom" in self.config else 8
+            zoom = self.config.get(ConfigKeys.ZOOM.value, 8)
 
         if zoom < 0 or zoom > 30:
             zoom = 8
@@ -320,8 +320,8 @@ class Plugin(BasePlugin):
             image_size = (int(image_size[0]), int(image_size[1]))
         except:
             image_size = (
-                self.config["image_width"] if "image_width" in self.config else 1000,
-                self.config["image_height"] if "image_height" in self.config else 1000,
+                self.config.get(ConfigKeys.IMAGE_WIDTH.value, 1000),
+                self.config.get(ConfigKeys.IMAGE_HEIGHT.value, 1000),
             )
 
         if image_size[0] > 1000 or image_size[1] > 1000:
@@ -338,8 +338,8 @@ class Plugin(BasePlugin):
                     }
                 )
 
-        anonymize = self.config["anonymize"] if "anonymize" in self.config else True
-        radius = self.config["radius"] if "radius" in self.config else 1000
+        anonymize = self.config.get(ConfigKeys.ANONYMIZE.value, True)
+        radius = self.config.get(ConfigKeys.RADIUS.value, 1000)
 
         pillow_image = get_map(
             locations=locations,

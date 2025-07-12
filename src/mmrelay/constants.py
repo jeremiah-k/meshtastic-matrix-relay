@@ -2,11 +2,11 @@ from enum import Enum
 
 
 class MatrixMsgTypes(Enum):
-    TEXT = "m.text"
     EMOTE = "m.emote"
     IMAGE = "m.image"
-    NOTICE = "m.notice"
     MESSAGE = "m.room.message"
+    NOTICE = "m.notice"
+    TEXT = "m.text"
 
 
 class MatrixHTML(Enum):
@@ -14,78 +14,84 @@ class MatrixHTML(Enum):
 
 
 class MeshtasticPorts(Enum):
-    TEXT_MESSAGE_APP = "TEXT_MESSAGE_APP"
     DETECTION_SENSOR_APP = "DETECTION_SENSOR_APP"
     TELEMETRY_APP = "TELEMETRY_APP"
+    TEXT_MESSAGE_APP = "TEXT_MESSAGE_APP"
 
 
 class App(Enum):
-    NAME = "mmrelay"
     AUTHOR = None
+    NAME = "mmrelay"
 
 
 class ConfigKeys(Enum):
-    MATRIX = "matrix"
-    MESHTASTIC = "meshtastic"
-    MATRIX_ROOMS = "matrix_rooms"
-    LOGGING = "logging"
-    LEVEL = "level"
-    PLUGINS = "plugins"
-    COMMUNITY_PLUGINS = "community-plugins"
-    CUSTOM_PLUGINS = "custom-plugins"
-    ACTIVE = "active"
-    CHANNELS = "channels"
-    SCHEDULE = "schedule"
-    AT = "at"
-    HOURS = "hours"
-    MINUTES = "minutes"
-    PLUGIN_RESPONSE_DELAY = "plugin_response_delay"
-    RADIUS_KM = "radius_km"
-    ZOOM = "zoom"
-    IMAGE_WIDTH = "image_width"
-    IMAGE_HEIGHT = "image_height"
-    ANONYMIZE = "anonymize"
-    RADIUS = "radius"
-    UNITS = "units"
-    DATABASE = "database"
-    MSG_MAP = "msg_map"
-    WIPE_ON_RESTART = "wipe_on_restart"
-    DB = "db"
-    MSGS_TO_KEEP = "msgs_to_keep"
-    HOMESERVER = "homeserver"
     ACCESS_TOKEN = "access_token"
-    BOT_USER_ID = "bot_user_id"
-    MESSAGE_INTERACTIONS = "message_interactions"
-    REACTIONS = "reactions"
-    REPLIES = "replies"
-    RELAY_REACTIONS = "relay_reactions"
-    BROADCAST_ENABLED = "broadcast_enabled"
-    DETECTION_SENSOR = "detection_sensor"
-    CONNECTION_TYPE = "connection_type"
-    SERIAL_PORT = "serial_port"
+    ACTIVE = "active"
+    ANONYMIZE = "anonymize"
+    AT = "at"
     BLE_ADDRESS = "ble_address"
-    HOST = "host"
-    HEALTH_CHECK = "health_check"
+    BOT_USER_ID = "bot_user_id"
+    BROADCAST_ENABLED = "broadcast_enabled"
+    CHANNELS = "channels"
+    COMMUNITY_PLUGINS = "community-plugins"
+    CONNECTION_TYPE = "connection_type"
+    CUSTOM_PLUGINS = "custom-plugins"
+    DATABASE = "database"
+    DB = "db"  # Deprecated in favor of DATABASE
+    DETECTION_SENSOR = "detection_sensor"
     ENABLED = "enabled"
+    HEALTH_CHECK = "health_check"
     HEARTBEAT_INTERVAL = "heartbeat_interval"
+    HOST = "host"
+    HOMESERVER = "homeserver"
+    HOURS = "hours"
+    IMAGE_HEIGHT = "image_height"
+    IMAGE_WIDTH = "image_width"
+    LEVEL = "level"
+    LOGGING = "logging"
+    MATRIX = "matrix"
+    MATRIX_ROOMS = "matrix_rooms"
+    MESSAGE_INTERACTIONS = "message_interactions"
+    MESHTASTIC = "meshtastic"
     MESHNET_NAME = "meshnet_name"
+    MINUTES = "minutes"
+    MSGS_TO_KEEP = "msgs_to_keep"
+    MSG_MAP = "msg_map"
+    PLUGINS = "plugins"
+    PLUGIN_RESPONSE_DELAY = "plugin_response_delay"
+    RADIUS = "radius"
+    RADIUS_KM = "radius_km"
+    REACTIONS = "reactions"
+    RELAY_REACTIONS = "relay_reactions"  # Deprecated in favor of MESSAGE_INTERACTIONS
+    REPLIES = "replies"
+    SCHEDULE = "schedule"
+    SERIAL_PORT = "serial_port"
+    UNITS = "units"
+    WIPE_ON_RESTART = "wipe_on_restart"
+    ZOOM = "zoom"
+
+
+class DeprecatedConfigKeys(Enum):
+    DB = "db"
+    NETWORK = "network"
+    RELAY_REACTIONS = "relay_reactions"
 
 
 class ConnectionTypes(Enum):
-    SERIAL = "serial"
     BLE = "ble"
+    NETWORK = "network"  # Deprecated in favor of TCP
+    SERIAL = "serial"
     TCP = "tcp"
-    NETWORK = "network"
 
 
 class Telemetry(Enum):
+    AIR_UTIL_TX = "airUtilTx"
     BATTERY_LEVEL = "batteryLevel"
     VOLTAGE = "voltage"
-    AIR_UTIL_TX = "airUtilTx"
 
 
 class Weather(Enum):
-    UNITS_METRIC = "metric"
-    UNITS_IMPERIAL = "imperial"
     TEMP_C = "°C"
     TEMP_F = "°F"
+    UNITS_IMPERIAL = "imperial"
+    UNITS_METRIC = "metric"

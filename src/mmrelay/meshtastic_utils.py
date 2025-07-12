@@ -15,7 +15,12 @@ from bleak.exc import BleakDBusError, BleakError
 from meshtastic.protobuf import mesh_pb2, portnums_pb2
 from pubsub import pub
 
-from mmrelay.constants import ConfigKeys, ConnectionTypes, MeshtasticPorts
+from mmrelay.constants import (
+    ConfigKeys,
+    ConnectionTypes,
+    DeprecatedConfigKeys,
+    MeshtasticPorts,
+)
 from mmrelay.db_utils import (
     get_longname,
     get_message_map_by_meshtastic_id,
@@ -136,7 +141,7 @@ def connect_meshtastic(passed_config=None, force_connect=False):
         ]
 
         # Support legacy "network" connection type (now "tcp")
-        if connection_type == ConnectionTypes.NETWORK.value:
+        if connection_type == DeprecatedConfigKeys.NETWORK.value:
             connection_type = ConnectionTypes.TCP.value
             logger.warning(
                 "Using 'network' connection type (legacy). 'tcp' is now the preferred name and 'network' will be deprecated in a future version."
@@ -473,7 +478,7 @@ def on_meshtastic_message(packet, interface):
 
     # Reply handling (Meshtastic -> Matrix)
     # If replyId is present but emoji is not (or not 1), this is a reply
-    if replyId and not emoji_flag and interactions[ConfigKeys.REPLIES.value]:
+    if replyId and not emoji_flag and interactions["replies"]:
         longname = get_longname(sender) or str(sender)
         shortname = get_shortname(sender) or str(sender)
         orig = get_message_map_by_meshtastic_id(replyId)
@@ -510,19 +515,15 @@ def on_meshtastic_message(packet, interface):
     # Normal text messages or detection sensor messages
     if text:
         # Determine the channel for this message
-        channel = packet.get(ConfigKeys.CHANNELS.value)
+        channel = packet.get("channel")
         if channel is None:
             # If channel not specified, deduce from portnum
             if (
-                decoded.get("portnum")
-                == MeshtasticPorts.TEXT_MESSAGE_APP.value
+                decoded.get("portnum") == "TEXT_MESSAGE_APP"
                 or decoded.get("portnum") == 1
             ):
                 channel = 0
-            elif (
-                decoded.get("portnum")
-                == MeshtasticPorts.DETECTION_SENSOR_APP.value
-            ):
+            elif decoded.get("portnum") == "DETECTION_SENSOR_APP":
                 channel = 0
             else:
                 logger.debug(
@@ -542,13 +543,9 @@ def on_meshtastic_message(packet, interface):
             return
 
         # If detection_sensor is disabled and this is a detection sensor packet, skip it
-        if (
-            decoded.get("portnum")
-            == MeshtasticPorts.DETECTION_SENSOR_APP.value
-            and not config[ConfigKeys.MESHTASTIC.value].get(
-                ConfigKeys.DETECTION_SENSOR.value, False
-            )
-        ):
+        if decoded.get("portnum") == "DETECTION_SENSOR_APP" and not config[
+            "meshtastic"
+        ].get("detection_sensor", False):
             logger.debug(
                 "Detection sensor packet received, but detection sensor processing is disabled."
             )
@@ -690,17 +687,13 @@ async def check_connection():
     connection_type = config["meshtastic"]["connection_type"]
 
     # Get health check configuration
-    health_config = config[ConfigKeys.MESHTASTIC.value].get(
-        ConfigKeys.HEALTH_CHECK.value, {}
-    )
-    health_check_enabled = health_config.get(ConfigKeys.ENABLED.value, True)
-    heartbeat_interval = health_config.get(ConfigKeys.HEARTBEAT_INTERVAL.value, 60)
+    health_config = config["meshtastic"].get("health_check", {})
+    health_check_enabled = health_config.get("enabled", True)
+    heartbeat_interval = health_config.get("heartbeat_interval", 60)
 
     # Support legacy heartbeat_interval configuration for backward compatibility
-    if ConfigKeys.HEARTBEAT_INTERVAL.value in config[ConfigKeys.MESHTASTIC.value]:
-        heartbeat_interval = config[ConfigKeys.MESHTASTIC.value][
-            ConfigKeys.HEARTBEAT_INTERVAL.value
-        ]
+    if "heartbeat_interval" in config["meshtastic"]:
+        heartbeat_interval = config["meshtastic"]["heartbeat_interval"]
 
     # Exit early if health checks are disabled
     if not health_check_enabled:
@@ -713,7 +706,7 @@ async def check_connection():
         if meshtastic_client and not reconnecting:
             # BLE has real-time disconnection detection in the library
             # Skip periodic health checks to avoid duplicate reconnection attempts
-            if connection_type == ConnectionTypes.BLE.value:
+            if connection_type == "ble":
                 if not ble_skip_logged:
                     logger.info(
                         "BLE connection uses real-time disconnection detection - health checks disabled"

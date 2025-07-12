@@ -21,7 +21,12 @@ from nio import (
 from nio.events.room_events import RoomMemberEvent
 from PIL import Image
 
-from mmrelay.constants import ConfigKeys, MatrixHTML, MatrixMsgTypes
+from mmrelay.constants import (
+    ConfigKeys,
+    DeprecatedConfigKeys,
+    MatrixHTML,
+    MatrixMsgTypes,
+)
 from mmrelay.db_utils import (
     get_message_map_by_matrix_event_id,
     prune_message_map,
@@ -55,8 +60,8 @@ def get_interaction_settings(config):
         }
 
     # Fall back to legacy relay_reactions setting
-    if ConfigKeys.RELAY_REACTIONS.value in meshtastic_config:
-        enabled = meshtastic_config[ConfigKeys.RELAY_REACTIONS.value]
+    if DeprecatedConfigKeys.RELAY_REACTIONS.value in meshtastic_config:
+        enabled = meshtastic_config[DeprecatedConfigKeys.RELAY_REACTIONS.value]
         logger.warning(
             "Configuration setting 'relay_reactions' is deprecated. "
             "Please use 'message_interactions: {reactions: bool, replies: bool}' instead. "
@@ -81,7 +86,10 @@ def message_storage_enabled(interactions):
     Returns:
         bool: True if reactions or replies are enabled; otherwise, False.
     """
-    return interactions[ConfigKeys.REACTIONS.value] or interactions[ConfigKeys.REPLIES.value]
+    return (
+        interactions[ConfigKeys.REACTIONS.value]
+        or interactions[ConfigKeys.REPLIES.value]
+    )
 
 
 # Global config variable that will be set from config.py
@@ -298,7 +306,7 @@ async def matrix_relay(
 
     # If not found in database config, check legacy db config
     if not msg_map_config:
-        db_config = config.get(ConfigKeys.DB.value, {})
+        db_config = config.get(DeprecatedConfigKeys.DB.value, {})
         legacy_msg_map_config = db_config.get(ConfigKeys.MSG_MAP.value, {})
 
         if legacy_msg_map_config:
@@ -569,14 +577,14 @@ async def send_reply_to_meshtastic(
                     meshtastic_meshnet=local_meshnet_name,
                 )
                 # Prune old messages if configured
-                database_config = config.get(ConfigKeys.DATABASE.value, {})
-                msg_map_config = database_config.get(ConfigKeys.MSG_MAP.value, {})
+                database_config = config.get("database", {})
+                msg_map_config = database_config.get("msg_map", {})
                 if not msg_map_config:
-                    db_config = config.get(ConfigKeys.DB.value, {})
-                    legacy_msg_map_config = db_config.get(ConfigKeys.MSG_MAP.value, {})
+                    db_config = config.get("db", {})
+                    legacy_msg_map_config = db_config.get("msg_map", {})
                     if legacy_msg_map_config:
                         msg_map_config = legacy_msg_map_config
-                msgs_to_keep = msg_map_config.get(ConfigKeys.MSGS_TO_KEEP.value, 500)
+                msgs_to_keep = msg_map_config.get("msgs_to_keep", 500)
                 if msgs_to_keep > 0:
                     prune_message_map(msgs_to_keep)
 
@@ -730,15 +738,13 @@ async def on_room_message(
         return
 
     # If this is a reaction and reactions are disabled, do nothing
-    if is_reaction and not interactions[ConfigKeys.REACTIONS.value]:
+    if is_reaction and not interactions["reactions"]:
         logger.debug(
             "Reaction event encountered but reactions are disabled. Doing nothing."
         )
         return
 
-    local_meshnet_name = config[ConfigKeys.MESHTASTIC.value][
-        ConfigKeys.MESHNET_NAME.value
-    ]
+    local_meshnet_name = config["meshtastic"]["meshnet_name"]
 
     # Check if this is a Matrix reply (not a reaction)
     is_reply = False
@@ -880,7 +886,7 @@ async def on_room_message(
             return
 
     # Handle Matrix replies to Meshtastic messages (only if replies are enabled)
-    if is_reply and reply_to_event_id and interactions[ConfigKeys.REPLIES.value]:
+    if is_reply and reply_to_event_id and interactions["replies"]:
         reply_handled = await handle_matrix_reply(
             room,
             event,
@@ -978,13 +984,11 @@ async def on_room_message(
     # Note: If relay_reactions is False, we won't store message_map, but we can still relay.
     # The lack of message_map storage just means no reaction bridging will occur.
     if not found_matching_plugin:
-        if config[ConfigKeys.MESHTASTIC.value][ConfigKeys.BROADCAST_ENABLED.value]:
+        if config["meshtastic"]["broadcast_enabled"]:
             portnum = event.source["content"].get("meshtastic_portnum")
-            if portnum == MeshtasticPorts.DETECTION_SENSOR_APP.value:
+            if portnum == "DETECTION_SENSOR_APP":
                 # If detection_sensor is enabled, forward this data as detection sensor data
-                if config[ConfigKeys.MESHTASTIC.value].get(
-                    ConfigKeys.DETECTION_SENSOR.value, False
-                ):
+                if config["meshtastic"].get("detection_sensor", False):
                     try:
                         meshtastic_logger.debug(
                             f"Attempting to send detection sensor data to Meshtastic: '{full_message}' on channel {meshtastic_channel}"
@@ -1040,24 +1044,20 @@ async def on_room_message(
                         meshtastic_meshnet=local_meshnet_name,
                     )
                     # Check database config for message map settings (preferred format)
-                    database_config = config.get(ConfigKeys.DATABASE.value, {})
-                    msg_map_config = database_config.get(ConfigKeys.MSG_MAP.value, {})
+                    database_config = config.get("database", {})
+                    msg_map_config = database_config.get("msg_map", {})
 
                     # If not found in database config, check legacy db config
                     if not msg_map_config:
-                        db_config = config.get(ConfigKeys.DB.value, {})
-                        legacy_msg_map_config = db_config.get(
-                            ConfigKeys.MSG_MAP.value, {}
-                        )
+                        db_config = config.get("db", {})
+                        legacy_msg_map_config = db_config.get("msg_map", {})
 
                         if legacy_msg_map_config:
                             msg_map_config = legacy_msg_map_config
                             logger.warning(
                                 "Using 'db.msg_map' configuration (legacy). 'database.msg_map' is now the preferred format and 'db.msg_map' will be deprecated in a future version."
                             )
-                    msgs_to_keep = msg_map_config.get(
-                        ConfigKeys.MSGS_TO_KEEP.value, 500
-                    )
+                    msgs_to_keep = msg_map_config.get("msgs_to_keep", 500)
                     if msgs_to_keep > 0:
                         prune_message_map(msgs_to_keep)
         else:

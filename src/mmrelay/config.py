@@ -6,7 +6,7 @@ import platformdirs
 import yaml
 from yaml.loader import SafeLoader
 
-from mmrelay.constants import App
+from mmrelay.constants import App, ConfigKeys
 
 # Define custom base directory for Unix systems
 APP_NAME = App.NAME.value
@@ -103,9 +103,6 @@ def get_data_dir():
 
     os.makedirs(data_dir, exist_ok=True)
     return data_dir
-
-
-from mmrelay.constants import ConfigKeys
 
 
 def get_plugin_data_dir(plugin_name=None):
