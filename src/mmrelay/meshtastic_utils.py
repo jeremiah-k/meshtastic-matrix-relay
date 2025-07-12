@@ -15,6 +15,7 @@ from bleak.exc import BleakDBusError, BleakError
 from meshtastic.protobuf import mesh_pb2, portnums_pb2
 from pubsub import pub
 
+from mmrelay.constants import ConfigKeys, ConnectionTypes, MeshtasticPorts
 from mmrelay.db_utils import (
     get_longname,
     get_message_map_by_meshtastic_id,
@@ -109,8 +110,8 @@ def connect_meshtastic(passed_config=None, force_connect=False):
         config = passed_config
 
         # If config is valid, extract matrix_rooms
-        if config and "matrix_rooms" in config:
-            matrix_rooms = config["matrix_rooms"]
+        if config and ConfigKeys.MATRIX_ROOMS.value in config:
+            matrix_rooms = config[ConfigKeys.MATRIX_ROOMS.value]
 
     with meshtastic_lock:
         if meshtastic_client and not force_connect:
@@ -130,11 +131,13 @@ def connect_meshtastic(passed_config=None, force_connect=False):
             return None
 
         # Determine connection type and attempt connection
-        connection_type = config["meshtastic"]["connection_type"]
+        connection_type = config[ConfigKeys.MESHTASTIC.value][
+            ConfigKeys.CONNECTION_TYPE.value
+        ]
 
         # Support legacy "network" connection type (now "tcp")
-        if connection_type == "network":
-            connection_type = "tcp"
+        if connection_type == ConnectionTypes.NETWORK.value:
+            connection_type = ConnectionTypes.TCP.value
             logger.warning(
                 "Using 'network' connection type (legacy). 'tcp' is now the preferred name and 'network' will be deprecated in a future version."
             )
@@ -148,9 +151,11 @@ def connect_meshtastic(passed_config=None, force_connect=False):
             and not shutting_down
         ):
             try:
-                if connection_type == "serial":
+                if connection_type == ConnectionTypes.SERIAL.value:
                     # Serial connection
-                    serial_port = config["meshtastic"]["serial_port"]
+                    serial_port = config[ConfigKeys.MESHTASTIC.value][
+                        ConfigKeys.SERIAL_PORT.value
+                    ]
                     logger.info(f"Connecting to serial port {serial_port}")
 
                     # Check if serial port exists before connecting
@@ -166,9 +171,11 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                         serial_port
                     )
 
-                elif connection_type == "ble":
+                elif connection_type == ConnectionTypes.BLE.value:
                     # BLE connection
-                    ble_address = config["meshtastic"].get("ble_address")
+                    ble_address = config[ConfigKeys.MESHTASTIC.value].get(
+                        ConfigKeys.BLE_ADDRESS.value
+                    )
                     if ble_address:
                         logger.info(f"Connecting to BLE address {ble_address}")
 
@@ -183,9 +190,11 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                         logger.error("No BLE address provided.")
                         return None
 
-                elif connection_type == "tcp":
+                elif connection_type == ConnectionTypes.TCP.value:
                     # TCP connection
-                    target_host = config["meshtastic"]["host"]
+                    target_host = config[ConfigKeys.MESHTASTIC.value][
+                        ConfigKeys.HOST.value
+                    ]
                     logger.info(f"Connecting to host {target_host}")
 
                     # Connect without progress indicator
@@ -367,11 +376,14 @@ def on_meshtastic_message(packet, interface):
     message_storage_enabled(interactions)
 
     # Filter packets based on interaction settings
-    if packet.get("decoded", {}).get("portnum") == "TEXT_MESSAGE_APP":
+    if (
+        packet.get("decoded", {}).get("portnum")
+        == MeshtasticPorts.TEXT_MESSAGE_APP.value
+    ):
         decoded = packet.get("decoded", {})
         # Filter out reactions if reactions are disabled
         if (
-            not interactions["reactions"]
+            not interactions[ConfigKeys.REACTIONS.value]
             and "emoji" in decoded
             and decoded.get("emoji") == 1
         ):
@@ -419,7 +431,7 @@ def on_meshtastic_message(packet, interface):
 
     # Reaction handling (Meshtastic -> Matrix)
     # If replyId and emoji_flag are present and reactions are enabled, we relay as text reactions in Matrix
-    if replyId and emoji_flag and interactions["reactions"]:
+    if replyId and emoji_flag and interactions[ConfigKeys.REACTIONS.value]:
         longname = get_longname(sender) or str(sender)
         shortname = get_shortname(sender) or str(sender)
         orig = get_message_map_by_meshtastic_id(replyId)
@@ -461,7 +473,7 @@ def on_meshtastic_message(packet, interface):
 
     # Reply handling (Meshtastic -> Matrix)
     # If replyId is present but emoji is not (or not 1), this is a reply
-    if replyId and not emoji_flag and interactions["replies"]:
+    if replyId and not emoji_flag and interactions[ConfigKeys.REPLIES.value]:
         longname = get_longname(sender) or str(sender)
         shortname = get_shortname(sender) or str(sender)
         orig = get_message_map_by_meshtastic_id(replyId)
@@ -498,15 +510,19 @@ def on_meshtastic_message(packet, interface):
     # Normal text messages or detection sensor messages
     if text:
         # Determine the channel for this message
-        channel = packet.get("channel")
+        channel = packet.get(ConfigKeys.CHANNELS.value)
         if channel is None:
             # If channel not specified, deduce from portnum
             if (
-                decoded.get("portnum") == "TEXT_MESSAGE_APP"
+                decoded.get("portnum")
+                == MeshtasticPorts.TEXT_MESSAGE_APP.value
                 or decoded.get("portnum") == 1
             ):
                 channel = 0
-            elif decoded.get("portnum") == "DETECTION_SENSOR_APP":
+            elif (
+                decoded.get("portnum")
+                == MeshtasticPorts.DETECTION_SENSOR_APP.value
+            ):
                 channel = 0
             else:
                 logger.debug(
@@ -526,9 +542,13 @@ def on_meshtastic_message(packet, interface):
             return
 
         # If detection_sensor is disabled and this is a detection sensor packet, skip it
-        if decoded.get("portnum") == "DETECTION_SENSOR_APP" and not config[
-            "meshtastic"
-        ].get("detection_sensor", False):
+        if (
+            decoded.get("portnum")
+            == MeshtasticPorts.DETECTION_SENSOR_APP.value
+            and not config[ConfigKeys.MESHTASTIC.value].get(
+                ConfigKeys.DETECTION_SENSOR.value, False
+            )
+        ):
             logger.debug(
                 "Detection sensor packet received, but detection sensor processing is disabled."
             )
@@ -670,13 +690,17 @@ async def check_connection():
     connection_type = config["meshtastic"]["connection_type"]
 
     # Get health check configuration
-    health_config = config["meshtastic"].get("health_check", {})
-    health_check_enabled = health_config.get("enabled", True)
-    heartbeat_interval = health_config.get("heartbeat_interval", 60)
+    health_config = config[ConfigKeys.MESHTASTIC.value].get(
+        ConfigKeys.HEALTH_CHECK.value, {}
+    )
+    health_check_enabled = health_config.get(ConfigKeys.ENABLED.value, True)
+    heartbeat_interval = health_config.get(ConfigKeys.HEARTBEAT_INTERVAL.value, 60)
 
     # Support legacy heartbeat_interval configuration for backward compatibility
-    if "heartbeat_interval" in config["meshtastic"]:
-        heartbeat_interval = config["meshtastic"]["heartbeat_interval"]
+    if ConfigKeys.HEARTBEAT_INTERVAL.value in config[ConfigKeys.MESHTASTIC.value]:
+        heartbeat_interval = config[ConfigKeys.MESHTASTIC.value][
+            ConfigKeys.HEARTBEAT_INTERVAL.value
+        ]
 
     # Exit early if health checks are disabled
     if not health_check_enabled:
@@ -689,7 +713,7 @@ async def check_connection():
         if meshtastic_client and not reconnecting:
             # BLE has real-time disconnection detection in the library
             # Skip periodic health checks to avoid duplicate reconnection attempts
-            if connection_type == "ble":
+            if connection_type == ConnectionTypes.BLE.value:
                 if not ble_skip_logged:
                     logger.info(
                         "BLE connection uses real-time disconnection detection - health checks disabled"

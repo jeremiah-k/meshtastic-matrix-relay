@@ -4,6 +4,7 @@ import string
 
 from meshtastic.mesh_interface import BROADCAST_NUM
 
+from mmrelay.constants import ConfigKeys
 from mmrelay.plugins.base_plugin import BasePlugin
 
 
@@ -29,7 +30,9 @@ class Plugin(BasePlugin):
     ):
         if "decoded" in packet and "text" in packet["decoded"]:
             message = packet["decoded"]["text"].strip()
-            channel = packet.get("channel", 0)  # Default to channel 0 if not provided
+            channel = packet.get(
+                ConfigKeys.CHANNELS.value, 0
+            )  # Default to channel 0 if not provided
 
             from mmrelay.meshtastic_utils import connect_meshtastic
 

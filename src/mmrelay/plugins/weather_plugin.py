@@ -3,6 +3,7 @@ import asyncio
 import requests
 from meshtastic.mesh_interface import BROADCAST_NUM
 
+from mmrelay.constants import ConfigKeys, MeshtasticPorts, Weather
 from mmrelay.plugins.base_plugin import BasePlugin
 
 
@@ -17,8 +18,14 @@ class Plugin(BasePlugin):
         return "Show weather forecast for a radio node using GPS location"
 
     def generate_forecast(self, latitude, longitude):
-        units = self.config.get("units", "metric")  # Default to metric
-        temperature_unit = "°C" if units == "metric" else "°F"
+        units = self.config.get(
+            ConfigKeys.UNITS.value, Weather.UNITS_METRIC.value
+        )  # Default to metric
+        temperature_unit = (
+            Weather.TEMP_C.value
+            if units == Weather.UNITS_METRIC.value
+            else Weather.TEMP_F.value
+        )
 
         url = (
             f"https://api.open-meteo.com/v1/forecast?"
@@ -53,7 +60,7 @@ class Plugin(BasePlugin):
             ]
             forecast_5h_weather_code = data["hourly"]["weathercode"][forecast_5h_index]
 
-            if units == "imperial":
+            if units == Weather.UNITS_IMPERIAL.value:
                 # Convert temperatures from Celsius to Fahrenheit
                 current_temp = current_temp * 9 / 5 + 32
                 forecast_2h_temp = forecast_2h_temp * 9 / 5 + 32
@@ -125,11 +132,14 @@ class Plugin(BasePlugin):
         if (
             "decoded" in packet
             and "portnum" in packet["decoded"]
-            and packet["decoded"]["portnum"] == "TEXT_MESSAGE_APP"
+            and packet["decoded"]["portnum"]
+            == MeshtasticPorts.TEXT_MESSAGE_APP.value
             and "text" in packet["decoded"]
         ):
             message = packet["decoded"]["text"].strip()
-            channel = packet.get("channel", 0)  # Default to channel 0 if not provided
+            channel = packet.get(
+                ConfigKeys.CHANNELS.value, 0
+            )  # Default to channel 0 if not provided
 
             from mmrelay.meshtastic_utils import connect_meshtastic
 

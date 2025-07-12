@@ -6,9 +6,11 @@ import platformdirs
 import yaml
 from yaml.loader import SafeLoader
 
+from mmrelay.constants import App
+
 # Define custom base directory for Unix systems
-APP_NAME = "mmrelay"
-APP_AUTHOR = None  # No author directory
+APP_NAME = App.NAME.value
+APP_AUTHOR = App.AUTHOR.value
 
 
 # Global variable to store the custom data directory
@@ -103,6 +105,9 @@ def get_data_dir():
     return data_dir
 
 
+from mmrelay.constants import ConfigKeys
+
+
 def get_plugin_data_dir(plugin_name=None):
     """
     Returns the directory for storing plugin-specific data files.
@@ -117,7 +122,7 @@ def get_plugin_data_dir(plugin_name=None):
     base_data_dir = get_data_dir()
 
     # Create the plugins directory
-    plugins_data_dir = os.path.join(base_data_dir, "plugins")
+    plugins_data_dir = os.path.join(base_data_dir, ConfigKeys.PLUGINS.value)
     os.makedirs(plugins_data_dir, exist_ok=True)
 
     # If a plugin name is provided, create and return a plugin-specific directory
@@ -181,16 +186,28 @@ def set_config(module, passed_config):
 
     if module_name == "matrix_utils":
         # Set Matrix-specific configuration
-        if hasattr(module, "matrix_homeserver") and "matrix" in passed_config:
-            module.matrix_homeserver = passed_config["matrix"]["homeserver"]
-            module.matrix_rooms = passed_config["matrix_rooms"]
-            module.matrix_access_token = passed_config["matrix"]["access_token"]
-            module.bot_user_id = passed_config["matrix"]["bot_user_id"]
+        if (
+            hasattr(module, "matrix_homeserver")
+            and ConfigKeys.MATRIX.value in passed_config
+        ):
+            module.matrix_homeserver = passed_config[ConfigKeys.MATRIX.value][
+                ConfigKeys.HOMESERVER.value
+            ]
+            module.matrix_rooms = passed_config[ConfigKeys.MATRIX_ROOMS.value]
+            module.matrix_access_token = passed_config[ConfigKeys.MATRIX.value][
+                ConfigKeys.ACCESS_TOKEN.value
+            ]
+            module.bot_user_id = passed_config[ConfigKeys.MATRIX.value][
+                ConfigKeys.BOT_USER_ID.value
+            ]
 
     elif module_name == "meshtastic_utils":
         # Set Meshtastic-specific configuration
-        if hasattr(module, "matrix_rooms") and "matrix_rooms" in passed_config:
-            module.matrix_rooms = passed_config["matrix_rooms"]
+        if (
+            hasattr(module, "matrix_rooms")
+            and ConfigKeys.MATRIX_ROOMS.value in passed_config
+        ):
+            module.matrix_rooms = passed_config[ConfigKeys.MATRIX_ROOMS.value]
 
     # If the module still has a setup_config function, call it for backward compatibility
     if hasattr(module, "setup_config") and callable(module.setup_config):

@@ -7,6 +7,7 @@ import markdown
 import schedule
 
 from mmrelay.config import get_plugin_data_dir
+from mmrelay.constants import ConfigKeys, MatrixHTML, MatrixMsgTypes
 from mmrelay.db_utils import (
     delete_plugin_data,
     get_plugin_data,
@@ -97,9 +98,13 @@ class BasePlugin(ABC):
                 )
 
         self.logger = get_logger(f"Plugin:{self.plugin_name}")
-        self.config = {"active": False}
+        self.config = {ConfigKeys.ACTIVE.value: False}
         global config
-        plugin_levels = ["plugins", "community-plugins", "custom-plugins"]
+        plugin_levels = [
+            ConfigKeys.PLUGINS.value,
+            ConfigKeys.COMMUNITY_PLUGINS.value,
+            ConfigKeys.CUSTOM_PLUGINS.value,
+        ]
 
         # Check if config is available
         if config is not None:
@@ -111,13 +116,15 @@ class BasePlugin(ABC):
             # Get the list of mapped channels
             self.mapped_channels = [
                 room.get("meshtastic_channel")
-                for room in config.get("matrix_rooms", [])
+                for room in config.get(ConfigKeys.MATRIX_ROOMS.value, [])
             ]
         else:
             self.mapped_channels = []
 
         # Get the channels specified for this plugin, or default to all mapped channels
-        self.channels = self.config.get("channels", self.mapped_channels)
+        self.channels = self.config.get(
+            ConfigKeys.CHANNELS.value, self.mapped_channels
+        )
 
         # Ensure channels is a list
         if not isinstance(self.channels, list):
@@ -135,8 +142,8 @@ class BasePlugin(ABC):
         # Get the response delay from the meshtastic config only
         self.response_delay = 3  # Default value
         if config is not None:
-            self.response_delay = config.get("meshtastic", {}).get(
-                "plugin_response_delay", self.response_delay
+            self.response_delay = config.get(ConfigKeys.MESHTASTIC.value, {}).get(
+                ConfigKeys.PLUGIN_RESPONSE_DELAY.value, self.response_delay
             )
 
     def start(self):
@@ -153,31 +160,41 @@ class BasePlugin(ABC):
 
         Creates a daemon thread to run the scheduler if any schedule is configured.
         """
-        if "schedule" not in self.config or (
-            "at" not in self.config["schedule"]
-            and "hours" not in self.config["schedule"]
-            and "minutes" not in self.config["schedule"]
+        if ConfigKeys.SCHEDULE.value not in self.config or (
+            ConfigKeys.AT.value not in self.config[ConfigKeys.SCHEDULE.value]
+            and ConfigKeys.HOURS.value not in self.config[ConfigKeys.SCHEDULE.value]
+            and ConfigKeys.MINUTES.value not in self.config[ConfigKeys.SCHEDULE.value]
         ):
             self.logger.debug(f"Started with priority={self.priority}")
             return
 
         # Schedule the background job based on the configuration
-        if "at" in self.config["schedule"] and "hours" in self.config["schedule"]:
-            schedule.every(self.config["schedule"]["hours"]).hours.at(
-                self.config["schedule"]["at"]
-            ).do(self.background_job)
-        elif "at" in self.config["schedule"] and "minutes" in self.config["schedule"]:
-            schedule.every(self.config["schedule"]["minutes"]).minutes.at(
-                self.config["schedule"]["at"]
-            ).do(self.background_job)
-        elif "hours" in self.config["schedule"]:
-            schedule.every(self.config["schedule"]["hours"]).hours.do(
+        if (
+            ConfigKeys.AT.value in self.config[ConfigKeys.SCHEDULE.value]
+            and ConfigKeys.HOURS.value in self.config[ConfigKeys.SCHEDULE.value]
+        ):
+            schedule.every(
+                self.config[ConfigKeys.SCHEDULE.value][ConfigKeys.HOURS.value]
+            ).hours.at(self.config[ConfigKeys.SCHEDULE.value][ConfigKeys.AT.value]).do(
                 self.background_job
             )
-        elif "minutes" in self.config["schedule"]:
-            schedule.every(self.config["schedule"]["minutes"]).minutes.do(
+        elif (
+            ConfigKeys.AT.value in self.config[ConfigKeys.SCHEDULE.value]
+            and ConfigKeys.MINUTES.value in self.config[ConfigKeys.SCHEDULE.value]
+        ):
+            schedule.every(
+                self.config[ConfigKeys.SCHEDULE.value][ConfigKeys.MINUTES.value]
+            ).minutes.at(self.config[ConfigKeys.SCHEDULE.value][ConfigKeys.AT.value]).do(
                 self.background_job
             )
+        elif ConfigKeys.HOURS.value in self.config[ConfigKeys.SCHEDULE.value]:
+            schedule.every(
+                self.config[ConfigKeys.SCHEDULE.value][ConfigKeys.HOURS.value]
+            ).hours.do(self.background_job)
+        elif ConfigKeys.MINUTES.value in self.config[ConfigKeys.SCHEDULE.value]:
+            schedule.every(
+                self.config[ConfigKeys.SCHEDULE.value][ConfigKeys.MINUTES.value]
+            ).minutes.do(self.background_job)
 
         # Function to execute the scheduled tasks
         def run_schedule():
@@ -283,10 +300,10 @@ class BasePlugin(ABC):
 
         return await matrix_client.room_send(
             room_id=room_id,
-            message_type="m.room.message",
+            message_type=MatrixMsgTypes.MESSAGE.value,
             content={
-                "msgtype": "m.text",
-                "format": "org.matrix.custom.html" if formatted else None,
+                "msgtype": MatrixMsgTypes.TEXT.value,
+                "format": MatrixHTML.FORMAT.value if formatted else None,
                 "body": message,
                 "formatted_body": markdown.markdown(message) if formatted else None,
             },

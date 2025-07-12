@@ -6,6 +6,7 @@ import re
 
 from meshtastic import mesh_pb2
 
+from mmrelay.constants import ConfigKeys, MatrixMsgTypes
 from mmrelay.plugins.base_plugin import BasePlugin, config
 
 
@@ -71,6 +72,12 @@ class Plugin(BasePlugin):
 
         return packet
 
+
+def get_matrix_rooms(config):
+    if config is not None:
+        return config.get(ConfigKeys.MATRIX_ROOMS.value, [])
+    return []
+
     def get_matrix_commands(self):
         """Get Matrix commands handled by this plugin.
 
@@ -111,18 +118,17 @@ class Plugin(BasePlugin):
         matrix_client = await connect_matrix()
 
         packet_type = packet["decoded"]["portnum"]
-        if "channel" in packet:
-            channel = packet["channel"]
+        if ConfigKeys.CHANNELS.value in packet:
+            channel = packet[ConfigKeys.CHANNELS.value]
         else:
             channel = 0
 
         channel_mapped = False
-        if config is not None:
-            matrix_rooms = config.get("matrix_rooms", [])
-            for room in matrix_rooms:
-                if room["meshtastic_channel"] == channel:
-                    channel_mapped = True
-                    break
+        matrix_rooms = get_matrix_rooms(config)
+        for room in matrix_rooms:
+            if room["meshtastic_channel"] == channel:
+                channel_mapped = True
+                break
 
         if not channel_mapped:
             self.logger.debug(f"Skipping message from unmapped channel {channel}")
@@ -130,9 +136,9 @@ class Plugin(BasePlugin):
 
         await matrix_client.room_send(
             room_id=room["id"],
-            message_type="m.room.message",
+            message_type=MatrixMsgTypes.MESSAGE.value,
             content={
-                "msgtype": "m.text",
+                "msgtype": MatrixMsgTypes.TEXT.value,
                 "mmrelay_suppress": True,
                 "meshtastic_packet": json.dumps(packet),
                 "body": f"Processed {packet_type} radio packet",
@@ -182,11 +188,10 @@ class Plugin(BasePlugin):
             return False
 
         channel = None
-        if config is not None:
-            matrix_rooms = config.get("matrix_rooms", [])
-            for room_config in matrix_rooms:
-                if room_config["id"] == room.room_id:
-                    channel = room_config["meshtastic_channel"]
+        matrix_rooms = get_matrix_rooms(config)
+        for room_config in matrix_rooms:
+            if room_config["id"] == room.room_id:
+                channel = room_config["meshtastic_channel"]
 
         if not channel:
             self.logger.debug(f"Skipping message from unmapped channel {channel}")

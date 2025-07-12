@@ -9,6 +9,7 @@ import staticmaps
 from nio import AsyncClient, UploadResponse
 from PIL import Image
 
+from mmrelay.constants import ConfigKeys, MatrixMsgTypes
 from mmrelay.plugins.base_plugin import BasePlugin
 
 
@@ -231,9 +232,9 @@ async def send_room_image(
 ):
     await client.room_send(
         room_id=room_id,
-        message_type="m.room.message",
+        message_type=MatrixMsgTypes.MESSAGE.value,
         content={
-            "msgtype": "m.image",
+            "msgtype": MatrixMsgTypes.IMAGE.value,
             "url": upload_response.content_uri,
             "body": "image.png",
         },

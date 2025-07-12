@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
 from PIL import Image
 
+from mmrelay.constants import MeshtasticPorts, Telemetry
 from mmrelay.plugins.base_plugin import BasePlugin
 
 
@@ -14,7 +15,11 @@ class Plugin(BasePlugin):
     max_data_rows_per_node = 50
 
     def commands(self):
-        return ["batteryLevel", "voltage", "airUtilTx"]
+        return [
+            Telemetry.BATTERY_LEVEL.value,
+            Telemetry.VOLTAGE.value,
+            Telemetry.AIR_UTIL_TX.value,
+        ]
 
     def description(self):
         return "Graph of avg Mesh telemetry value for last 12 hours"
@@ -39,7 +44,7 @@ class Plugin(BasePlugin):
         if (
             "decoded" in packet
             and "portnum" in packet["decoded"]
-            and packet["decoded"]["portnum"] == "TELEMETRY_APP"
+            and packet["decoded"]["portnum"] == MeshtasticPorts.TELEMETRY_APP.value
             and "telemetry" in packet["decoded"]
             and "deviceMetrics" in packet["decoded"]["telemetry"]
         ):
@@ -52,19 +57,21 @@ class Plugin(BasePlugin):
             telemetry_data.append(
                 {
                     "time": packet_data["time"],
-                    "batteryLevel": (
-                        packet_data["deviceMetrics"]["batteryLevel"]
-                        if "batteryLevel" in packet_data["deviceMetrics"]
+                    Telemetry.BATTERY_LEVEL.value: (
+                        packet_data["deviceMetrics"][Telemetry.BATTERY_LEVEL.value]
+                        if Telemetry.BATTERY_LEVEL.value
+                        in packet_data["deviceMetrics"]
                         else 0
                     ),
-                    "voltage": (
-                        packet_data["deviceMetrics"]["voltage"]
-                        if "voltage" in packet_data["deviceMetrics"]
+                    Telemetry.VOLTAGE.value: (
+                        packet_data["deviceMetrics"][Telemetry.VOLTAGE.value]
+                        if Telemetry.VOLTAGE.value in packet_data["deviceMetrics"]
                         else 0
                     ),
-                    "airUtilTx": (
-                        packet_data["deviceMetrics"]["airUtilTx"]
-                        if "airUtilTx" in packet_data["deviceMetrics"]
+                    Telemetry.AIR_UTIL_TX.value: (
+                        packet_data["deviceMetrics"][Telemetry.AIR_UTIL_TX.value]
+                        if Telemetry.AIR_UTIL_TX.value
+                        in packet_data["deviceMetrics"]
                         else 0
                     ),
                 }
@@ -73,7 +80,11 @@ class Plugin(BasePlugin):
             return False
 
     def get_matrix_commands(self):
-        return ["batteryLevel", "voltage", "airUtilTx"]
+        return [
+            Telemetry.BATTERY_LEVEL.value,
+            Telemetry.VOLTAGE.value,
+            Telemetry.AIR_UTIL_TX.value,
+        ]
 
     def get_mesh_commands(self):
         return []

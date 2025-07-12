@@ -2,6 +2,7 @@ import re
 
 from haversine import haversine
 
+from mmrelay.constants import ConfigKeys, MeshtasticPorts
 from mmrelay.meshtastic_utils import connect_meshtastic
 from mmrelay.plugins.base_plugin import BasePlugin
 
@@ -57,7 +58,9 @@ class Plugin(BasePlugin):
                     except (ValueError, TypeError):
                         distance_km = 1000
                     radius_km = (
-                        self.config["radius_km"] if "radius_km" in self.config else 5
+                        self.config[ConfigKeys.RADIUS_KM.value]
+                        if ConfigKeys.RADIUS_KM.value in self.config
+                        else 5
                     )
                     if distance_km <= radius_km:
                         target_node = packet["fromId"]
@@ -76,7 +79,8 @@ class Plugin(BasePlugin):
         if (
             "decoded" in packet
             and "portnum" in packet["decoded"]
-            and packet["decoded"]["portnum"] == "TEXT_MESSAGE_APP"
+            and packet["decoded"]["portnum"]
+            == MeshtasticPorts.TEXT_MESSAGE_APP.value
         ):
             text = packet["decoded"]["text"] if "text" in packet["decoded"] else None
             if f"!{self.plugin_name}" not in text:
