@@ -281,6 +281,9 @@ def run_main(args):
     set_config(db_utils, config)
     set_config(base_plugin, config)
 
+    # Configure component debug logging now that config is available
+    log_utils.configure_component_debug_logging()
+
     # Get config path and log file path for logging
     from mmrelay.config import config_path
     from mmrelay.log_utils import log_file_path
