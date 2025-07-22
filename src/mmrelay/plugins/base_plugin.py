@@ -59,20 +59,16 @@ class BasePlugin(ABC):
         return ""
 
     def __init__(self, plugin_name=None) -> None:
-        """Initialize the plugin with configuration and logging.
-
-        Args:
-            plugin_name (str, optional): Plugin name override. If not provided,
-                                       uses class-level plugin_name attribute.
-
+        """
+        Initializes the plugin instance with configuration, logging, channel mapping, and response delay settings.
+        
+        Parameters:
+            plugin_name (str, optional): Overrides the plugin's name. If not provided, uses the class-level `plugin_name` attribute.
+        
         Raises:
-            ValueError: If plugin_name is not set via parameter or class attribute
-
-        Sets up:
-        - Plugin-specific logger
-        - Configuration from global config
-        - Channel mapping and validation
-        - Response delay settings
+            ValueError: If the plugin name is not set via parameter or class attribute.
+        
+        Sets up a plugin-specific logger, loads configuration from the global config, validates and assigns channels, and determines the response delay based on configuration, enforcing a minimum of 2.0 seconds due to firmware constraints.
         """
         # Allow plugin_name to be passed as a parameter for simpler initialization
         # This maintains backward compatibility while providing a cleaner API
@@ -161,18 +157,10 @@ class BasePlugin(ABC):
                     self.response_delay = 2.0
 
     def start(self):
-        """Start the plugin and set up scheduled tasks if configured.
-
-        Called automatically when the plugin is loaded. Checks plugin configuration
-        for scheduling settings and sets up background jobs accordingly.
-
-        Supported schedule formats in config:
-        - schedule.hours + schedule.at: Run every N hours at specific time
-        - schedule.minutes + schedule.at: Run every N minutes at specific time
-        - schedule.hours: Run every N hours
-        - schedule.minutes: Run every N minutes
-
-        Creates a daemon thread to run the scheduler if any schedule is configured.
+        """
+        Starts the plugin and configures scheduled background tasks based on plugin settings.
+        
+        If scheduling options are present in the plugin configuration, sets up periodic execution of the `background_job` method using the specified schedule. Runs scheduled jobs in a separate daemon thread. If no scheduling is configured, the plugin starts without background tasks.
         """
         if "schedule" not in self.config or (
             "at" not in self.config["schedule"]
@@ -245,17 +233,13 @@ class BasePlugin(ABC):
         return data
 
     def get_response_delay(self):
-        """Get the configured response delay for meshtastic messages.
-
+        """
+        Return the configured delay in seconds before sending Meshtastic responses.
+        
+        The delay is set via the `meshtastic.message_delay` configuration option, with a default of 2.1 seconds and a minimum enforced value of 2.0 seconds due to firmware requirements. The deprecated `meshtastic.plugin_response_delay` option is still supported but will be removed in a future version.
+        
         Returns:
-            float: Delay in seconds before sending responses (default: 2.1, minimum: 2.0)
-
-        Used to prevent message flooding and ensure proper radio etiquette.
-        Delay is configured via meshtastic.message_delay in config.
-        Minimum delay of 2.0 seconds is enforced due to firmware constraints.
-
-        Note: The deprecated meshtastic.plugin_response_delay is still supported
-        but will be removed in a future version.
+            float: The response delay in seconds.
         """
         return self.response_delay
 

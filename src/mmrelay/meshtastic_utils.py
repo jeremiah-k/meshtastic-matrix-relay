@@ -340,8 +340,8 @@ async def reconnect():
 
 def on_meshtastic_message(packet, interface):
     """
-    Process incoming Meshtastic messages and relay them to Matrix rooms or plugins according to message type and configuration.
-
+    Processes incoming Meshtastic messages and relays them to Matrix rooms or plugins based on message type and configuration.
+    
     Handles reactions and replies by relaying them to Matrix if enabled. Normal text messages are relayed to all mapped Matrix rooms unless handled by a plugin or directed to the relay node. Non-text messages are passed to plugins for processing. Messages from unmapped channels or disabled detection sensors are ignored. Ensures sender information is retrieved or stored as needed.
     """
     global config, matrix_rooms

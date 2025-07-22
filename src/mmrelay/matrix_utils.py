@@ -70,29 +70,19 @@ def get_interaction_settings(config):
 
 def message_storage_enabled(interactions):
     """
-    Return True if message storage is required for enabled message interactions.
-
-    Parameters:
-        interactions (dict): Dictionary with 'reactions' and 'replies' boolean flags.
-
+    Determine if message storage is needed based on enabled message interactions.
+    
     Returns:
-        bool: True if reactions or replies are enabled; otherwise, False.
+        True if either reactions or replies are enabled in the interactions dictionary; otherwise, False.
     """
     return interactions["reactions"] or interactions["replies"]
 
 
 def get_meshtastic_prefix(config, display_name, user_id=None):
     """
-    Returns the Meshtastic prefix for messages based on the configuration.
-
-    Args:
-        config (dict): The application configuration dictionary.
-        display_name (str): The user's display name (room-specific or global).
-        user_id (str, optional): The user's Matrix ID (@user:server.com).
-
-    Returns:
-        str: The formatted prefix string if enabled, empty string otherwise.
-    """
+    Generate a Meshtastic message prefix using the configured format, supporting variable-length truncation and user-specific variables.
+    
+    If prefix formatting is enabled in the configuration, returns a formatted prefix string for Meshtastic messages using the user's display name and optional Matrix user ID. Supports custom format strings with placeholders for the full name, truncated name segments (e.g., `{name5}`), user ID, and a platform indicator. Falls back to a default format if the custom format is invalid or missing. Returns an empty string if prefixing is disabled.
     meshtastic_config = config.get("meshtastic", {})
 
     # Check if prefixes are enabled
@@ -124,16 +114,15 @@ def get_meshtastic_prefix(config, display_name, user_id=None):
 
 def get_matrix_prefix(config, longname, shortname, meshnet_name):
     """
-    Returns the Matrix prefix for Meshtastic messages based on configuration.
-
-    Args:
-        config (dict): The application configuration dictionary.
-        longname (str): The long name of the Meshtastic sender.
-        shortname (str): The short name of the Meshtastic sender.
-        meshnet_name (str): The name of the mesh network.
-
+    Generate a formatted prefix for Meshtastic messages relayed to Matrix, using configurable templates and variable-length truncation for sender and mesh network names.
+    
+    Parameters:
+        longname (str): Full Meshtastic sender name.
+        shortname (str): Short Meshtastic sender name.
+        meshnet_name (str): Name of the mesh network.
+    
     Returns:
-        str: The formatted prefix string if enabled, empty string otherwise.
+        str: The formatted prefix string if prefixing is enabled; otherwise, an empty string.
     """
     matrix_config = config.get("matrix", {})
 
@@ -549,16 +538,14 @@ async def get_user_display_name(room, event):
 
 def format_reply_message(config, full_display_name, text):
     """
-    Format a reply message by prefixing a truncated display name and removing quoted lines.
-
-    The resulting message is prefixed with the first five characters of the user's display name followed by "[M]: ", has quoted lines removed, and is truncated to fit within the allowed message length.
-
+    Formats a reply message for Meshtastic by prefixing it with a configurable display name, removing quoted lines, and truncating to the allowed length.
+    
     Parameters:
-        full_display_name (str): The user's full display name to be truncated for the prefix.
-        text (str): The reply text, possibly containing quoted lines.
-
+        full_display_name (str): The user's full display name used for prefix generation.
+        text (str): The reply text, which may include quoted lines.
+    
     Returns:
-        str: The formatted and truncated reply message.
+        str: The formatted reply message ready for Meshtastic transmission.
     """
     prefix = get_meshtastic_prefix(config, full_display_name)
 
@@ -723,9 +710,9 @@ async def on_room_message(
     event: Union[RoomMessageText, RoomMessageNotice, ReactionEvent, RoomMessageEmote],
 ) -> None:
     """
-    Handles incoming Matrix room messages, reactions, and replies, relaying them to Meshtastic as appropriate.
-
-    Processes events from Matrix rooms, including text messages, reactions, and replies. Relays supported messages to Meshtastic if broadcasting is enabled, applying message mapping for cross-referencing when reactions or replies are enabled. Prevents relaying of reactions to reactions and avoids processing messages from the bot itself or messages sent before the bot started. Integrates with plugins for command and message handling, and ensures that only supported messages are forwarded to Meshtastic.
+    Handle incoming Matrix room messages, reactions, and replies, relaying them to Meshtastic as appropriate.
+    
+    Processes Matrix events including text messages, reactions, and replies. Relays supported messages to Meshtastic if broadcasting is enabled, manages message mapping for cross-referencing when reactions or replies are enabled, and integrates with plugins for command and message handling. Filters out messages from the bot itself, messages sent before the bot started, and suppressed or unsupported events. Handles special cases for remote meshnet messages, detection sensor data, and prevents relaying of reactions to reactions or commands.
     """
     # Importing here to avoid circular imports and to keep logic consistent
     # Note: We do not call store_message_map directly here for inbound matrix->mesh messages.
