@@ -32,9 +32,7 @@ def test_matrix_to_meshtastic_prefixes():
     print("✓ Disabled prefixes")
 
     # Test 3: Variable length truncation
-    config3 = {
-        "meshtastic": {"prefix_enabled": True, "prefix_format": "{display3}[M]: "}
-    }
+    config3 = {"meshtastic": {"prefix_enabled": True, "prefix_format": "{display3}[M]: "}}
     prefix3 = get_meshtastic_prefix(config3, full_name)
     assert prefix3 == "Ali[M]: ", f"3-char display name failed: got '{prefix3}'"
     print("✓ 3-char display name")
@@ -42,9 +40,7 @@ def test_matrix_to_meshtastic_prefixes():
     # Test 4: Custom format with full display name
     config4 = {"meshtastic": {"prefix_enabled": True, "prefix_format": "[{display}]: "}}
     prefix4 = get_meshtastic_prefix(config4, full_name)
-    assert (
-        prefix4 == "[Alice Smith]: "
-    ), f"Full display name brackets failed: got '{prefix4}'"
+    assert prefix4 == "[Alice Smith]: ", f"Full display name brackets failed: got '{prefix4}'"
     print("✓ Full display name brackets")
 
     # Test 5: Custom format with user ID
@@ -54,13 +50,9 @@ def test_matrix_to_meshtastic_prefixes():
     print("✓ 8-char prompt")
 
     # Test 6: Username and server variables
-    config6 = {
-        "meshtastic": {"prefix_enabled": True, "prefix_format": "{username}@{server}: "}
-    }
+    config6 = {"meshtastic": {"prefix_enabled": True, "prefix_format": "{username}@{server}: "}}
     prefix6 = get_meshtastic_prefix(config6, full_name, "@alice:matrix.org")
-    assert (
-        prefix6 == "alice@matrix.org: "
-    ), f"Username/server format failed: got '{prefix6}'"
+    assert prefix6 == "alice@matrix.org: ", f"Username/server format failed: got '{prefix6}'"
     print("✓ Username/server format")
 
     # Test 7: Invalid format (should fallback)
