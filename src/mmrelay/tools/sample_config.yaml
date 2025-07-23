@@ -33,7 +33,7 @@ meshtastic:
   # Additional configuration options (commented out with defaults)
   #broadcast_enabled: true # Must be set to true to enable Matrix to Meshtastic messages
   #detection_sensor: true # Must be set to true to forward messages of Meshtastic's detection sensor module
-  #message_delay: 2.2 # Delay in seconds before sending messages to mesh (minimum: 2.0 due to firmware)
+  #message_delay: 2.2 # Delay in seconds between messages sent to mesh (minimum: 2.0 due to firmware)
 
   # Message prefix customization (Matrix → Meshtastic direction)
   #prefix_enabled: true # Enable username prefixes on messages sent to mesh (e.g., "Alice[M]: message")

@@ -14,6 +14,7 @@ from mmrelay.db_utils import (
     store_plugin_data,
 )
 from mmrelay.log_utils import get_logger
+from mmrelay.message_queue import queue_message, DEFAULT_MESSAGE_DELAY
 
 # Global config variable that will be set from main.py
 config = None
@@ -129,9 +130,7 @@ class BasePlugin(ABC):
             )
 
         # Get the response delay from the meshtastic config
-        self.response_delay = (
-            2.1  # Default value (minimum 2 seconds due to firmware delay)
-        )
+        self.response_delay = DEFAULT_MESSAGE_DELAY
         if config is not None:
             meshtastic_config = config.get("meshtastic", {})
 
@@ -238,12 +237,56 @@ class BasePlugin(ABC):
         """
         Return the configured delay in seconds before sending Meshtastic responses.
 
-        The delay is set via the `meshtastic.message_delay` configuration option, with a default of 2.1 seconds and a minimum enforced value of 2.0 seconds due to firmware requirements. The deprecated `meshtastic.plugin_response_delay` option is still supported but will be removed in a future version.
+        The delay is set via the `meshtastic.message_delay` configuration option, with a default of 2.2 seconds and a minimum enforced value of 2.0 seconds due to firmware requirements. The deprecated `meshtastic.plugin_response_delay` option is still supported but will be removed in a future version.
 
         Returns:
             float: The response delay in seconds.
         """
         return self.response_delay
+
+    def send_message(self, text: str, channel: int = 0, destination_id=None) -> bool:
+        """
+        Send a message to the Meshtastic network through the message queue.
+
+        This method automatically queues the message and respects the configured
+        rate limiting. It's the recommended way for plugins to send messages.
+
+        Args:
+            text: Message text to send
+            channel: Channel index to send on (default: 0)
+            destination_id: Specific destination ID, or None for broadcast
+
+        Returns:
+            bool: True if message was queued successfully, False otherwise
+        """
+        from mmrelay.meshtastic_utils import connect_meshtastic
+
+        meshtastic_client = connect_meshtastic()
+        if not meshtastic_client:
+            self.logger.error("No Meshtastic client available")
+            return False
+
+        description = (
+            f"Plugin {self.plugin_name}: {text[:50]}{'...' if len(text) > 50 else ''}"
+        )
+
+        if destination_id:
+            # Direct message
+            return queue_message(
+                meshtastic_client.sendText,
+                text=text,
+                destinationId=destination_id,
+                channelIndex=channel,
+                description=description,
+            )
+        else:
+            # Broadcast message
+            return queue_message(
+                meshtastic_client.sendText,
+                text=text,
+                channelIndex=channel,
+                description=description,
+            )
 
     def is_channel_enabled(self, channel, is_direct_message=False):
         """Check if the plugin should respond on a specific channel.
