@@ -340,7 +340,7 @@ async def reconnect():
 
 def on_meshtastic_message(packet, interface):
     """
-    Process incoming Meshtastic messages and relay them to Matrix rooms or plugins according to message type and configuration.
+    Processes incoming Meshtastic messages and relays them to Matrix rooms or plugins based on message type and configuration.
 
     Handles reactions and replies by relaying them to Matrix if enabled. Normal text messages are relayed to all mapped Matrix rooms unless handled by a plugin or directed to the relay node. Non-text messages are passed to plugins for processing. Messages from unmapped channels or disabled detection sensors are ignored. Ensures sender information is retrieved or stored as needed.
     """
@@ -432,11 +432,16 @@ def on_meshtastic_message(packet, interface):
                 else meshtastic_text
             )
 
-            # Ensure that meshnet_name is always included, using our own meshnet for accuracy.
-            full_display_name = f"{longname}/{meshnet_name}"
+            # Import the matrix prefix function
+            from mmrelay.matrix_utils import get_matrix_prefix
+
+            # Get the formatted prefix for the reaction
+            prefix = get_matrix_prefix(config, longname, shortname, meshnet_name)
 
             reaction_symbol = text.strip() if (text and text.strip()) else "⚠️"
-            reaction_message = f'\n [{full_display_name}] reacted {reaction_symbol} to "{abbreviated_text}"'
+            reaction_message = (
+                f'\n {prefix}reacted {reaction_symbol} to "{abbreviated_text}"'
+            )
 
             # Relay the reaction as emote to Matrix, preserving the original meshnet name
             asyncio.run_coroutine_threadsafe(
@@ -469,9 +474,12 @@ def on_meshtastic_message(packet, interface):
             # orig = (matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet)
             matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet = orig
 
-            # Format the reply message for Matrix
-            full_display_name = f"{longname}/{meshnet_name}"
-            formatted_message = f"[{full_display_name}]: {text}"
+            # Import the matrix prefix function
+            from mmrelay.matrix_utils import get_matrix_prefix
+
+            # Get the formatted prefix for the reply
+            prefix = get_matrix_prefix(config, longname, shortname, meshnet_name)
+            formatted_message = f"{prefix}{text}"
 
             logger.info(f"Relaying Meshtastic reply from {longname} to Matrix")
 
@@ -562,7 +570,12 @@ def on_meshtastic_message(packet, interface):
         if not shortname:
             shortname = str(sender)
 
-        formatted_message = f"[{longname}/{meshnet_name}]: {text}"
+        # Import the matrix prefix function
+        from mmrelay.matrix_utils import get_matrix_prefix
+
+        # Get the formatted prefix
+        prefix = get_matrix_prefix(config, longname, shortname, meshnet_name)
+        formatted_message = f"{prefix}{text}"
 
         # Plugin functionality - Check if any plugin handles this message before relaying
         from mmrelay.plugin_loader import load_plugins

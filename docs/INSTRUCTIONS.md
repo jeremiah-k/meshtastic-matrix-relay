@@ -63,6 +63,7 @@ This command will:
 - Review the comments in the sample configuration file for detailed explanations
 - At minimum, you'll need to configure your Matrix credentials and Meshtastic connection
 - For advanced setups, check the plugin configuration options
+- For advanced features like message prefix customization and debug logging, see the [Extra Configuration Guide](EXTRA_CONFIGURATION.md)
 
 ## Running MMRelay
 

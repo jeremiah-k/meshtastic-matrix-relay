@@ -3,6 +3,10 @@ matrix:
   access_token: reaalllllyloooooongsecretttttcodeeeeeeforrrrbot # See: https://t2bot.io/docs/access_tokens/
   bot_user_id: "@botuser:example.matrix.org"
 
+  # Message prefix customization (Meshtastic → Matrix direction)
+  #prefix_enabled: true # Enable prefixes on messages from mesh (e.g., "[Alice/MyMesh]: message")
+  #prefix_format: "[{long}/{mesh}]: " # Default format. Variables: {long1-20}, {long}, {short}, {mesh1-20}, {mesh}
+
 matrix_rooms: # Needs at least 1 room & channel, but supports all Meshtastic channels
   - id: "#someroomalias:example.matrix.org" # Matrix room aliases & IDs supported
     meshtastic_channel: 0
@@ -15,13 +19,9 @@ meshtastic:
   serial_port: /dev/ttyUSB0 # Only used when connection is "serial"
   ble_address: AA:BB:CC:DD:EE:FF # Only used when connection is "ble" - Uses either an address or name from a `meshtastic --ble-scan`
   meshnet_name: Your Meshnet Name # This is displayed in full on Matrix, but is truncated when sent to a Meshnet
-  broadcast_enabled: true # Must be set to true to enable Matrix to Meshtastic messages
-  detection_sensor: true # Must be set to true to forward messages of Meshtastic's detection sensor module
-  plugin_response_delay: 3 # Default response delay in seconds for plugins that respond on the mesh;
   message_interactions: # Configure reactions and replies (both require message storage in database)
     reactions: false # Enable reaction relaying between platforms
     replies: false   # Enable reply relaying between platforms
-  prefix_enabled: true
 
   # Connection health monitoring configuration
   #health_check:
@@ -29,6 +29,15 @@ meshtastic:
   #  heartbeat_interval: 60           # Interval in seconds between health checks (default: 60)
   #                                   # Note: BLE connections use real-time disconnection detection and skip periodic checks
   #                                   # Legacy: heartbeat_interval at meshtastic level still supported but deprecated
+
+  # Additional configuration options (commented out with defaults)
+  #broadcast_enabled: true # Must be set to true to enable Matrix to Meshtastic messages
+  #detection_sensor: true # Must be set to true to forward messages of Meshtastic's detection sensor module
+  #message_delay: 2.2 # Delay in seconds before sending messages to mesh (minimum: 2.0 due to firmware)
+
+  # Message prefix customization (Matrix → Meshtastic direction)
+  #prefix_enabled: true # Enable username prefixes on messages sent to mesh (e.g., "Alice[M]: message")
+  #prefix_format: "{display5}[M]: " # Default format. See EXTRA_CONFIGURATION.md for all variables.
 
 logging:
   level: info
