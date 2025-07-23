@@ -187,64 +187,70 @@ class MessageQueue:
     async def _process_queue(self):
         """Process messages from the queue with rate limiting."""
         logger.debug("Message queue processor started")
+        current_message = None
 
         while self._running:
             try:
-                # Check if we need to wait for message delay
-                time_since_last = time.time() - self._last_send_time
-                if time_since_last < self._message_delay:
-                    wait_time = self._message_delay - time_since_last
-                    await asyncio.sleep(wait_time)
+                # Get next message if we don't have one waiting
+                if current_message is None:
+                    # Monitor queue depth for operational awareness
+                    queue_size = self._queue.qsize()
+                    if queue_size > 100:  # High queue depth threshold
+                        logger.warning(f"Queue depth high: {queue_size} messages pending")
+                    elif queue_size > 50:  # Medium queue depth threshold
+                        logger.info(f"Queue depth moderate: {queue_size} messages pending")
 
-                # Monitor queue depth for operational awareness
-                queue_size = self._queue.qsize()
-                if queue_size > 100:  # High queue depth threshold
-                    logger.warning(f"Queue depth high: {queue_size} messages pending")
-                elif queue_size > 50:  # Medium queue depth threshold
-                    logger.info(f"Queue depth moderate: {queue_size} messages pending")
-
-                # Get next message (non-blocking)
-                try:
-                    message = self._queue.get_nowait()
-                except Empty:
-                    # No messages, wait a bit and continue
-                    await asyncio.sleep(0.1)
-                    continue
+                    # Get next message (non-blocking)
+                    try:
+                        current_message = self._queue.get_nowait()
+                    except Empty:
+                        # No messages, wait a bit and continue
+                        await asyncio.sleep(0.1)
+                        continue
 
                 # Check if we should send (connection state, etc.)
                 if not self._should_send_message():
-                    # Put message back and wait
-                    logger.debug(f"Connection not ready, requeueing message: {message.description}")
-                    self._queue.put(message)
+                    # Keep the message and wait - don't requeue to maintain FIFO order
+                    logger.debug(f"Connection not ready, waiting to send: {current_message.description}")
                     await asyncio.sleep(1.0)
                     continue
 
+                # Check if we need to wait for message delay (only if we've sent before)
+                if self._last_send_time > 0:
+                    time_since_last = time.time() - self._last_send_time
+                    if time_since_last < self._message_delay:
+                        wait_time = self._message_delay - time_since_last
+                        logger.debug(f"Rate limiting: waiting {wait_time:.1f}s before sending")
+                        await asyncio.sleep(wait_time)
+                        continue
+
                 # Send the message
                 try:
-                    logger.info(f"Sending queued message: {message.description}")
-                    result = message.send_function(*message.args, **message.kwargs)
+                    logger.info(f"Sending queued message: {current_message.description}")
+                    result = current_message.send_function(*current_message.args, **current_message.kwargs)
 
                     # Update last send time
                     self._last_send_time = time.time()
 
                     if result is None:
                         logger.warning(
-                            f"Message send returned None: {message.description}"
+                            f"Message send returned None: {current_message.description}"
                         )
                     else:
-                        logger.info(f"Successfully sent queued message: {message.description}")
+                        logger.info(f"Successfully sent queued message: {current_message.description}")
 
                         # Handle message mapping if provided
-                        if message.mapping_info and hasattr(result, "id"):
-                            self._handle_message_mapping(result, message.mapping_info)
+                        if current_message.mapping_info and hasattr(result, "id"):
+                            self._handle_message_mapping(result, current_message.mapping_info)
 
                 except Exception as e:
                     logger.error(
-                        f"Error sending queued message '{message.description}': {e}"
+                        f"Error sending queued message '{current_message.description}': {e}"
                     )
 
-                # Mark task as done
+                # Mark task as done and clear current message
                 self._queue.task_done()
+                current_message = None
 
             except asyncio.CancelledError:
                 logger.debug("Message queue processor cancelled")
@@ -285,10 +291,10 @@ class MessageQueue:
             logger.debug("Connection check passed - ready to send")
             return True
 
-        except ImportError:
-            # If we can't check connection state, assume it's okay
-            logger.debug("Cannot check connection state - assuming OK")
-            return True
+        except ImportError as e:
+            # ImportError indicates a serious problem with application structure
+            logger.error(f"Cannot import meshtastic_utils - serious application error: {e}")
+            return False
 
     def _handle_message_mapping(self, result, mapping_info):
         """

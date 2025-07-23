@@ -31,7 +31,6 @@ from mmrelay.log_utils import get_logger
 # Do not import plugin_loader here to avoid circular imports
 from mmrelay.meshtastic_utils import connect_meshtastic, sendTextReply
 from mmrelay.message_queue import queue_message
-from mmrelay.db_utils import strip_quoted_lines
 
 
 def _create_mapping_info(matrix_event_id, room_id, text, meshnet=None, msgs_to_keep=500):
