@@ -29,6 +29,8 @@ class TestMessageQueue(unittest.TestCase):
         """Set up test fixtures."""
         self.queue = MessageQueue()
         self.sent_messages = []
+        # Mock the _should_send_message method to always return True for tests
+        self.queue._should_send_message = lambda: True
 
     def tearDown(self):
         """Clean up after tests."""
@@ -63,8 +65,8 @@ class TestMessageQueue(unittest.TestCase):
                 )
                 self.assertTrue(success)
 
-            # Wait for processing (need enough time for all 3 messages with 0.1s rate limiting)
-            await asyncio.sleep(0.5)  # 3 messages * 0.1s + buffer
+            # Wait for processing (need enough time for all 3 messages with 2.0s rate limiting)
+            await asyncio.sleep(6.5)  # 3 messages * 2.0s + buffer
 
             # Check that messages were sent in order
             self.assertEqual(len(self.sent_messages), len(messages))
