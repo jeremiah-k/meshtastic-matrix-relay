@@ -19,6 +19,9 @@ from mmrelay.message_queue import queue_message, DEFAULT_MESSAGE_DELAY
 # Global config variable that will be set from main.py
 config = None
 
+# Track if we've already shown the deprecated warning
+_deprecated_warning_shown = False
+
 
 class BasePlugin(ABC):
     """Abstract base class for all mmrelay plugins.
@@ -143,10 +146,14 @@ class BasePlugin(ABC):
             elif "plugin_response_delay" in meshtastic_config:
                 delay = meshtastic_config["plugin_response_delay"]
                 delay_key = "plugin_response_delay"
-                self.logger.warning(
-                    "Configuration option 'plugin_response_delay' is deprecated. "
-                    "Please use 'message_delay' instead. Support for 'plugin_response_delay' will be removed in a future version."
-                )
+                # Show deprecated warning only once globally
+                global _deprecated_warning_shown
+                if not _deprecated_warning_shown:
+                    self.logger.warning(
+                        "Configuration option 'plugin_response_delay' is deprecated. "
+                        "Please use 'message_delay' instead. Support for 'plugin_response_delay' will be removed in a future version."
+                    )
+                    _deprecated_warning_shown = True
 
             if delay is not None:
                 self.response_delay = delay

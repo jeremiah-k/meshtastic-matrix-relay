@@ -134,8 +134,8 @@ class MessageQueue:
         self.ensure_processor_started()
 
         # Check queue size to prevent memory issues
-        if self._queue.qsize() >= 500:  # Increased limit for better throughput
-            logger.warning(f"Message queue full ({self._queue.qsize()}/500), dropping message: {description}")
+        if self._queue.qsize() >= 100:  # Reasonable limit for mesh network usage
+            logger.warning(f"Message queue full ({self._queue.qsize()}/100), dropping message: {description}")
             return False
 
         message = QueuedMessage(
@@ -148,7 +148,10 @@ class MessageQueue:
         )
 
         self._queue.put(message)
-        logger.info(f"Queued message ({self._queue.qsize()}/500): {description}")
+        # Only log queue status when there are multiple messages
+        queue_size = self._queue.qsize()
+        if queue_size >= 2:
+            logger.debug(f"Queued message ({queue_size}/100): {description}")
         return True
 
     def get_queue_size(self) -> int:
@@ -195,9 +198,9 @@ class MessageQueue:
                 if current_message is None:
                     # Monitor queue depth for operational awareness
                     queue_size = self._queue.qsize()
-                    if queue_size > 100:  # High queue depth threshold
+                    if queue_size > 75:  # High queue depth threshold (75% of 100)
                         logger.warning(f"Queue depth high: {queue_size} messages pending")
-                    elif queue_size > 50:  # Medium queue depth threshold
+                    elif queue_size > 50:  # Medium queue depth threshold (50% of 100)
                         logger.info(f"Queue depth moderate: {queue_size} messages pending")
 
                     # Get next message (non-blocking)
@@ -226,7 +229,7 @@ class MessageQueue:
 
                 # Send the message
                 try:
-                    logger.info(f"Sending queued message: {current_message.description}")
+                    logger.debug(f"Sending queued message: {current_message.description}")
                     result = current_message.send_function(*current_message.args, **current_message.kwargs)
 
                     # Update last send time
@@ -237,7 +240,7 @@ class MessageQueue:
                             f"Message send returned None: {current_message.description}"
                         )
                     else:
-                        logger.info(f"Successfully sent queued message: {current_message.description}")
+                        logger.debug(f"Successfully sent queued message: {current_message.description}")
 
                         # Handle message mapping if provided
                         if current_message.mapping_info and hasattr(result, "id"):
