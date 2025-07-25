@@ -135,41 +135,43 @@ class MessageQueue:
         Returns:
             bool: True if the message was successfully enqueued; False if the queue is not running or is full.
         """
-        if not self._running:
-            # Refuse to send to prevent blocking the event loop
-            logger.error(f"Queue not running, cannot send message: {description}")
-            logger.error(
-                "Application is in invalid state - message queue should be started before sending messages"
-            )
-            return False
-
-        # Ensure processor is started if event loop is now available
+        # Ensure processor is started if event loop is now available.
+        # This is called outside the lock to prevent potential deadlocks.
         self.ensure_processor_started()
 
-        # Check queue size to prevent memory issues
-        if self._queue.qsize() >= MAX_QUEUE_SIZE:
-            logger.warning(
-                f"Message queue full ({self._queue.qsize()}/{MAX_QUEUE_SIZE}), dropping message: {description}"
-            )
-            return False
+        with self._lock:
+            if not self._running:
+                # Refuse to send to prevent blocking the event loop
+                logger.error(f"Queue not running, cannot send message: {description}")
+                logger.error(
+                    "Application is in invalid state - message queue should be started before sending messages"
+                )
+                return False
 
-        message = QueuedMessage(
-            timestamp=time.time(),
-            send_function=send_function,
-            args=args,
-            kwargs=kwargs,
-            description=description,
-            mapping_info=mapping_info,
-        )
+            # Check queue size to prevent memory issues
+            if self._queue.qsize() >= MAX_QUEUE_SIZE:
+                logger.warning(
+                    f"Message queue full ({self._queue.qsize()}/{MAX_QUEUE_SIZE}), dropping message: {description}"
+                )
+                return False
 
-        self._queue.put(message)
-        # Only log queue status when there are multiple messages
-        queue_size = self._queue.qsize()
-        if queue_size >= 2:
-            logger.debug(
-                f"Queued message ({queue_size}/{MAX_QUEUE_SIZE}): {description}"
+            message = QueuedMessage(
+                timestamp=time.time(),
+                send_function=send_function,
+                args=args,
+                kwargs=kwargs,
+                description=description,
+                mapping_info=mapping_info,
             )
-        return True
+
+            self._queue.put(message)
+            # Only log queue status when there are multiple messages
+            queue_size = self._queue.qsize()
+            if queue_size >= 2:
+                logger.debug(
+                    f"Queued message ({queue_size}/{MAX_QUEUE_SIZE}): {description}"
+                )
+            return True
 
     def get_queue_size(self) -> int:
         """
@@ -211,17 +213,18 @@ class MessageQueue:
 
         This method checks if the queue is active and, if so, attempts to create and start the asynchronous processor task within the current event loop.
         """
-        if self._running and self._processor_task is None:
-            try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    self._processor_task = loop.create_task(self._process_queue())
-                    logger.info(
-                        f"Message queue processor started with {self._message_delay}s message delay"
-                    )
-            except RuntimeError:
-                # Still no event loop available
-                pass
+        with self._lock:
+            if self._running and self._processor_task is None:
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        self._processor_task = loop.create_task(self._process_queue())
+                        logger.info(
+                            f"Message queue processor started with {self._message_delay}s message delay"
+                        )
+                except RuntimeError:
+                    # Still no event loop available
+                    pass
 
     async def _process_queue(self):
         """
@@ -363,7 +366,7 @@ class MessageQueue:
             logger.error(
                 f"Cannot import meshtastic_utils - serious application error: {e}"
             )
-            return False
+            raise  # Re-raise the exception to halt execution
 
     def _handle_message_mapping(self, result, mapping_info):
         """
