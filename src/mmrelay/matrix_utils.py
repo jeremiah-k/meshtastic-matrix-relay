@@ -763,12 +763,20 @@ async def send_reply_to_meshtastic(
                 )
 
                 if success:
-                    meshtastic_logger.info(
-                        f"Queued Matrix reply from {full_display_name} to radio broadcast as structured reply to message {reply_id}"
-                    )
+                    # Get queue size to determine logging approach
+                    queue_size = get_message_queue().get_queue_size()
+
+                    if queue_size > 1:
+                        meshtastic_logger.info(
+                            f"Relaying Matrix reply from {full_display_name} to radio broadcast as structured reply (queued: {queue_size} messages)"
+                        )
+                    else:
+                        meshtastic_logger.info(
+                            f"Relaying Matrix reply from {full_display_name} to radio broadcast as structured reply"
+                        )
                 else:
                     meshtastic_logger.error(
-                        "Failed to queue structured reply to Meshtastic"
+                        "Failed to relay structured reply to Meshtastic"
                     )
                     return
             else:
@@ -782,12 +790,20 @@ async def send_reply_to_meshtastic(
                 )
 
                 if success:
-                    meshtastic_logger.info(
-                        f"Queued Matrix reply from {full_display_name} to radio broadcast as regular message"
-                    )
+                    # Get queue size to determine logging approach
+                    queue_size = get_message_queue().get_queue_size()
+
+                    if queue_size > 1:
+                        meshtastic_logger.info(
+                            f"Relaying Matrix reply from {full_display_name} to radio broadcast (queued: {queue_size} messages)"
+                        )
+                    else:
+                        meshtastic_logger.info(
+                            f"Relaying Matrix reply from {full_display_name} to radio broadcast"
+                        )
                 else:
                     meshtastic_logger.error(
-                        "Failed to queue reply message to Meshtastic"
+                        "Failed to relay reply message to Meshtastic"
                     )
                     return
 
@@ -865,6 +881,7 @@ async def on_room_message(
     """
     # Importing here to avoid circular imports and to keep logic consistent
     # Note: We do not call store_message_map directly here for inbound matrix->mesh messages.
+    from mmrelay.message_queue import get_message_queue
     # That logic occurs inside matrix_relay if needed.
     full_display_name = "Unknown user"
     message_timestamp = event.server_timestamp
@@ -1021,7 +1038,7 @@ async def on_room_message(
                         f"Queued remote reaction to Meshtastic: {reaction_message}"
                     )
                 else:
-                    logger.error("Failed to queue remote reaction to Meshtastic")
+                    logger.error("Failed to relay remote reaction to Meshtastic")
                     return
             # We've relayed the remote reaction to our local mesh, so we're done.
             return
@@ -1094,7 +1111,7 @@ async def on_room_message(
                         f"Queued local reaction to Meshtastic: {reaction_message}"
                     )
                 else:
-                    logger.error("Failed to queue local reaction to Meshtastic")
+                    logger.error("Failed to relay local reaction to Meshtastic")
                     return
             return
 
@@ -1221,14 +1238,22 @@ async def on_room_message(
                     )
 
                     if success:
-                        meshtastic_logger.debug(
-                            f"Queued detection sensor data from {full_display_name}"
-                        )
+                        # Get queue size to determine logging approach
+                        queue_size = get_message_queue().get_queue_size()
+
+                        if queue_size > 1:
+                            meshtastic_logger.info(
+                                f"Relaying detection sensor data from {full_display_name} to radio broadcast (queued: {queue_size} messages)"
+                            )
+                        else:
+                            meshtastic_logger.info(
+                                f"Relaying detection sensor data from {full_display_name} to radio broadcast"
+                            )
                         # Note: Detection sensor messages are not stored in message_map because they are never replied to
                         # Only TEXT_MESSAGE_APP messages need to be stored for reaction handling
                     else:
                         meshtastic_logger.error(
-                            "Failed to queue detection sensor data to Meshtastic"
+                            "Failed to relay detection sensor data to Meshtastic"
                         )
                         return
                 else:
@@ -1236,9 +1261,8 @@ async def on_room_message(
                         f"Detection sensor packet received from {full_display_name}, but detection sensor processing is disabled."
                     )
             else:
-                meshtastic_logger.info(
-                    f"Relaying message from {full_display_name} to radio broadcast"
-                )
+                # Regular text message - logging will be handled by queue success handler
+                pass
 
                 # Create mapping info if storage is enabled
                 mapping_info = None
@@ -1263,11 +1287,19 @@ async def on_room_message(
                 )
 
                 if success:
-                    meshtastic_logger.info(
-                        f"Queued message from {full_display_name} to radio broadcast"
-                    )
+                    # Get queue size to determine logging approach
+                    queue_size = get_message_queue().get_queue_size()
+
+                    if queue_size > 1:
+                        meshtastic_logger.info(
+                            f"Relaying message from {full_display_name} to radio broadcast (queued: {queue_size} messages)"
+                        )
+                    else:
+                        meshtastic_logger.info(
+                            f"Relaying message from {full_display_name} to radio broadcast"
+                        )
                 else:
-                    meshtastic_logger.error("Failed to queue message to Meshtastic")
+                    meshtastic_logger.error("Failed to relay message to Meshtastic")
                     return
                 # Message mapping is now handled automatically by the queue system
         else:
