@@ -362,11 +362,13 @@ class MessageQueue:
             return True
 
         except ImportError as e:
-            # ImportError indicates a serious problem with application structure
-            logger.error(
-                f"Cannot import meshtastic_utils - serious application error: {e}"
+            # ImportError indicates a serious problem with application structure,
+            # often during shutdown as modules are unloaded.
+            logger.critical(
+                f"Cannot import meshtastic_utils - serious application error: {e}. Stopping message queue."
             )
-            raise  # Re-raise the exception to halt execution
+            self.stop()
+            return False
 
     def _handle_message_mapping(self, result, mapping_info):
         """
