@@ -32,8 +32,38 @@ from mmrelay.log_utils import get_logger
 from mmrelay.meshtastic_utils import connect_meshtastic, sendTextReply
 from mmrelay.message_queue import queue_message
 
+logger = get_logger(name="matrix_utils")
 
-def _create_mapping_info(matrix_event_id, room_id, text, meshnet=None, msgs_to_keep=500):
+
+def _get_msgs_to_keep_config():
+    """
+    Get msgs_to_keep configuration value with legacy fallback.
+
+    Returns:
+        int: Number of messages to keep in database (default: 500)
+    """
+    global config
+    if not config:
+        return 500
+
+    database_config = config.get("database", {})
+    msg_map_config = database_config.get("msg_map", {})
+
+    # If not found in database config, check legacy db config
+    if not msg_map_config:
+        db_config = config.get("db", {})
+        legacy_msg_map_config = db_config.get("msg_map", {})
+
+        if legacy_msg_map_config:
+            msg_map_config = legacy_msg_map_config
+            logger.warning(
+                "Using 'db.msg_map' configuration (legacy). 'database.msg_map' is now the preferred format and 'db.msg_map' will be deprecated in a future version."
+            )
+
+    return msg_map_config.get("msgs_to_keep", 500)
+
+
+def _create_mapping_info(matrix_event_id, room_id, text, meshnet=None, msgs_to_keep=None):
     """
     Create mapping info dict for message queue.
 
@@ -42,13 +72,16 @@ def _create_mapping_info(matrix_event_id, room_id, text, meshnet=None, msgs_to_k
         room_id: Matrix room ID
         text: Message text (will be cleaned of quoted lines)
         meshnet: Meshnet name
-        msgs_to_keep: Number of messages to keep in database
+        msgs_to_keep: Number of messages to keep in database (if None, uses config)
 
     Returns:
         dict: Mapping info for queue_message
     """
     if not matrix_event_id or not room_id or not text:
         return None
+
+    if msgs_to_keep is None:
+        msgs_to_keep = _get_msgs_to_keep_config()
 
     return {
         "matrix_event_id": matrix_event_id,
@@ -710,14 +743,7 @@ async def send_reply_to_meshtastic(
             mapping_info = None
             if storage_enabled:
                 # Get message map configuration
-                database_config = config.get("database", {})
-                msg_map_config = database_config.get("msg_map", {})
-                if not msg_map_config:
-                    db_config = config.get("db", {})
-                    legacy_msg_map_config = db_config.get("msg_map", {})
-                    if legacy_msg_map_config:
-                        msg_map_config = legacy_msg_map_config
-                msgs_to_keep = msg_map_config.get("msgs_to_keep", 500)
+                msgs_to_keep = _get_msgs_to_keep_config()
 
                 mapping_info = _create_mapping_info(
                     event.event_id,
@@ -1222,20 +1248,7 @@ async def on_room_message(
                 mapping_info = None
                 if storage_enabled:
                     # Check database config for message map settings (preferred format)
-                    database_config = config.get("database", {})
-                    msg_map_config = database_config.get("msg_map", {})
-
-                    # If not found in database config, check legacy db config
-                    if not msg_map_config:
-                        db_config = config.get("db", {})
-                        legacy_msg_map_config = db_config.get("msg_map", {})
-
-                        if legacy_msg_map_config:
-                            msg_map_config = legacy_msg_map_config
-                            logger.warning(
-                                "Using 'db.msg_map' configuration (legacy). 'database.msg_map' is now the preferred format and 'db.msg_map' will be deprecated in a future version."
-                            )
-                    msgs_to_keep = msg_map_config.get("msgs_to_keep", 500)
+                    msgs_to_keep = _get_msgs_to_keep_config()
 
                     mapping_info = _create_mapping_info(
                         event.event_id,

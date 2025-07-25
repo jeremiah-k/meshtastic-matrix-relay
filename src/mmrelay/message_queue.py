@@ -230,6 +230,10 @@ class MessageQueue:
                 # Send the message
                 try:
                     logger.debug(f"Sending queued message: {current_message.description}")
+                    # Note: This is a synchronous call that may block the event loop briefly.
+                    # In practice, Meshtastic send operations are typically fast enough
+                    # that this doesn't cause noticeable issues, but could be moved to
+                    # an executor if blocking becomes a problem.
                     result = current_message.send_function(*current_message.args, **current_message.kwargs)
 
                     # Update last send time
@@ -257,6 +261,10 @@ class MessageQueue:
 
             except asyncio.CancelledError:
                 logger.debug("Message queue processor cancelled")
+                if current_message:
+                    logger.warning(
+                        f"Message in flight was dropped during shutdown: {current_message.description}"
+                    )
                 break
             except Exception as e:
                 logger.error(f"Error in message queue processor: {e}")
