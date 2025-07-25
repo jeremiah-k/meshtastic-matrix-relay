@@ -284,11 +284,10 @@ class MessageQueue:
                         f"Sending queued message: {current_message.description}"
                     )
                     # Run synchronous Meshtastic I/O operations in executor to prevent blocking event loop
+                    # Use lambda to handle both args and kwargs properly
                     result = await asyncio.get_running_loop().run_in_executor(
                         None,
-                        current_message.send_function,
-                        *current_message.args,
-                        **current_message.kwargs,
+                        lambda: current_message.send_function(*current_message.args, **current_message.kwargs)
                     )
 
                     # Update last send time
