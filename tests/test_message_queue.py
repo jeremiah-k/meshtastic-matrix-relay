@@ -15,24 +15,24 @@ import os
 import sys
 import time
 import unittest
-import threading
+from unittest.mock import patch, MagicMock
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from mmrelay.message_queue import MessageQueue, QueuedMessage, queue_message
+from mmrelay.message_queue import MessageQueue, QueuedMessage, queue_message, MAX_QUEUE_SIZE
 
-# Global list to store sent messages (thread-safe)
-_sent_messages = []
-_sent_messages_lock = threading.Lock()
 
 def mock_send_function(text, **kwargs):
-    """Mock function to simulate sending a message (executor-compatible)."""
-    with _sent_messages_lock:
-        _sent_messages.append(
-            {"text": text, "kwargs": kwargs, "timestamp": time.time()}
-        )
-    return {"id": len(_sent_messages)}
+    """Mock function to simulate sending a message."""
+    # This will be called synchronously due to executor mocking
+    mock_send_function.calls.append(
+        {"text": text, "kwargs": kwargs, "timestamp": time.time()}
+    )
+    return {"id": len(mock_send_function.calls)}
+
+# Initialize calls list
+mock_send_function.calls = []
 
 
 class TestMessageQueue(unittest.TestCase):
@@ -40,24 +40,36 @@ class TestMessageQueue(unittest.TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        global _sent_messages
         self.queue = MessageQueue()
-        # Clear global sent messages for each test
-        with _sent_messages_lock:
-            _sent_messages.clear()
+        # Clear mock function calls for each test
+        mock_send_function.calls.clear()
         # Mock the _should_send_message method to always return True for tests
         self.queue._should_send_message = lambda: True
+
+        # Mock asyncio.get_running_loop to make executor run synchronously
+        self.loop_patcher = patch('asyncio.get_running_loop')
+        mock_get_loop = self.loop_patcher.start()
+
+        # Create a mock loop that runs executor functions synchronously
+        mock_loop = MagicMock()
+
+        async def sync_executor(executor, func, *args, **kwargs):
+            """Run function synchronously instead of in executor."""
+            return func(*args, **kwargs)
+
+        mock_loop.run_in_executor = sync_executor
+        mock_get_loop.return_value = mock_loop
 
     def tearDown(self):
         """Clean up after tests."""
         if self.queue.is_running():
             self.queue.stop()
+        self.loop_patcher.stop()
 
     @property
     def sent_messages(self):
-        """Get sent messages in a thread-safe way."""
-        with _sent_messages_lock:
-            return _sent_messages.copy()
+        """Get sent messages for testing."""
+        return mock_send_function.calls
 
     def test_fifo_ordering(self):
         """Test that messages are sent in FIFO order."""
@@ -123,7 +135,7 @@ class TestMessageQueue(unittest.TestCase):
         self.queue._running = True  # Manually set running to prevent immediate sending
 
         # Fill queue to limit
-        for i in range(100):  # Queue limit is 100
+        for i in range(MAX_QUEUE_SIZE):
             success = self.queue.enqueue(mock_send_function, text=f"Message {i}")
             self.assertTrue(success)
 
@@ -192,12 +204,8 @@ class TestGlobalFunctions(unittest.TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        self.sent_messages = []
-
-    def mock_send_function(self, text, **kwargs):
-        """Mock function to simulate sending a message."""
-        self.sent_messages.append({"text": text, "kwargs": kwargs})
-        return {"id": len(self.sent_messages)}
+        # Clear mock function calls for each test
+        mock_send_function.calls.clear()
 
     def test_queue_message_function(self):
         """Test the global queue_message function."""
@@ -209,8 +217,8 @@ class TestGlobalFunctions(unittest.TestCase):
         )
 
         self.assertTrue(success)
-        self.assertEqual(len(self.sent_messages), 1)
-        self.assertEqual(self.sent_messages[0]["text"], "Test message")
+        self.assertEqual(len(mock_send_function.calls), 1)
+        self.assertEqual(mock_send_function.calls[0]["text"], "Test message")
 
 
 class TestQueuedMessage(unittest.TestCase):

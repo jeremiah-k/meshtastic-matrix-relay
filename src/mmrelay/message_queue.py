@@ -20,6 +20,11 @@ logger = get_logger(name="MessageQueue")
 # Default message delay in seconds (minimum 2.0 due to firmware constraints)
 DEFAULT_MESSAGE_DELAY = 2.2
 
+# Queue size configuration
+MAX_QUEUE_SIZE = 100
+QUEUE_HIGH_WATER_MARK = 75  # 75% of MAX_QUEUE_SIZE
+QUEUE_MEDIUM_WATER_MARK = 50  # 50% of MAX_QUEUE_SIZE
+
 
 @dataclass
 class QueuedMessage:
@@ -134,8 +139,8 @@ class MessageQueue:
         self.ensure_processor_started()
 
         # Check queue size to prevent memory issues
-        if self._queue.qsize() >= 100:  # Reasonable limit for mesh network usage
-            logger.warning(f"Message queue full ({self._queue.qsize()}/100), dropping message: {description}")
+        if self._queue.qsize() >= MAX_QUEUE_SIZE:
+            logger.warning(f"Message queue full ({self._queue.qsize()}/{MAX_QUEUE_SIZE}), dropping message: {description}")
             return False
 
         message = QueuedMessage(
@@ -151,7 +156,7 @@ class MessageQueue:
         # Only log queue status when there are multiple messages
         queue_size = self._queue.qsize()
         if queue_size >= 2:
-            logger.debug(f"Queued message ({queue_size}/100): {description}")
+            logger.debug(f"Queued message ({queue_size}/{MAX_QUEUE_SIZE}): {description}")
         return True
 
     def get_queue_size(self) -> int:
@@ -198,9 +203,9 @@ class MessageQueue:
                 if current_message is None:
                     # Monitor queue depth for operational awareness
                     queue_size = self._queue.qsize()
-                    if queue_size > 75:  # High queue depth threshold (75% of 100)
+                    if queue_size > QUEUE_HIGH_WATER_MARK:
                         logger.warning(f"Queue depth high: {queue_size} messages pending")
-                    elif queue_size > 50:  # Medium queue depth threshold (50% of 100)
+                    elif queue_size > QUEUE_MEDIUM_WATER_MARK:
                         logger.info(f"Queue depth moderate: {queue_size} messages pending")
 
                     # Get next message (non-blocking)
@@ -292,8 +297,8 @@ class MessageQueue:
 
             # Check if client is connected
             if (
-                hasattr(meshtastic_client, "isConnected")
-                and not meshtastic_client.isConnected.is_set()
+                hasattr(meshtastic_client, "is_connected")
+                and not meshtastic_client.is_connected
             ):
                 logger.debug("Not sending - client not connected")
                 return False
