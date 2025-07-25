@@ -27,6 +27,12 @@ from mmrelay.matrix_utils import logger as matrix_logger
 from mmrelay.matrix_utils import on_room_member, on_room_message
 from mmrelay.meshtastic_utils import connect_meshtastic
 from mmrelay.meshtastic_utils import logger as meshtastic_logger
+from mmrelay.message_queue import (
+    DEFAULT_MESSAGE_DELAY,
+    get_message_queue,
+    start_message_queue,
+    stop_message_queue,
+)
 from mmrelay.plugin_loader import load_plugins
 
 # Initialize logger
@@ -51,9 +57,9 @@ def print_banner():
 
 async def main(config):
     """
-    Run the main asynchronous relay loop, managing connections between Meshtastic and Matrix, event handling, and graceful shutdown.
+    Runs the main asynchronous relay loop, managing the lifecycle and coordination between Meshtastic and Matrix clients.
 
-    Initializes the database, loads plugins, connects to Meshtastic and Matrix, joins configured Matrix rooms, and registers event callbacks for message and membership events. Periodically updates node names from the Meshtastic network and manages the Matrix sync loop, handling reconnections and shutdown signals. If configured, wipes the message map on both startup and shutdown.
+    Initializes the database, loads plugins, starts the message queue, and establishes connections to both Meshtastic and Matrix. Joins configured Matrix rooms, registers event callbacks for message and membership events, and periodically updates node names from the Meshtastic network. Monitors connection health, manages the Matrix sync loop with reconnection and shutdown handling, and ensures graceful shutdown of all components, including optional message map wiping on startup and shutdown if configured.
     """
     # Extract Matrix configuration
     from typing import List
@@ -89,6 +95,12 @@ async def main(config):
 
     # Load plugins early
     load_plugins(passed_config=config)
+
+    # Start message queue with configured message delay
+    message_delay = config.get("meshtastic", {}).get(
+        "message_delay", DEFAULT_MESSAGE_DELAY
+    )
+    start_message_queue(message_delay=message_delay)
 
     # Connect to Meshtastic
     meshtastic_utils.meshtastic_client = connect_meshtastic(passed_config=config)
@@ -132,6 +144,9 @@ async def main(config):
     # This provides proactive connection detection for all interface types
     _ = asyncio.create_task(meshtastic_utils.check_connection())
 
+    # Ensure message queue processor is started now that event loop is running
+    get_message_queue().ensure_processor_started()
+
     # Start the Matrix client sync loop
     try:
         while not shutdown_event.is_set():
@@ -173,6 +188,9 @@ async def main(config):
         await shutdown()
     finally:
         # Cleanup
+        matrix_logger.info("Stopping message queue...")
+        stop_message_queue()
+
         matrix_logger.info("Closing Matrix client...")
         await matrix_client.close()
         if meshtastic_utils.meshtastic_client:

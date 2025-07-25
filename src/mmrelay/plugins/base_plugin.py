@@ -14,9 +14,13 @@ from mmrelay.db_utils import (
     store_plugin_data,
 )
 from mmrelay.log_utils import get_logger
+from mmrelay.message_queue import DEFAULT_MESSAGE_DELAY, queue_message
 
 # Global config variable that will be set from main.py
 config = None
+
+# Track if we've already shown the deprecated warning
+_deprecated_warning_shown = False
 
 
 class BasePlugin(ABC):
@@ -60,7 +64,7 @@ class BasePlugin(ABC):
 
     def __init__(self, plugin_name=None) -> None:
         """
-        Initializes the plugin instance with configuration, logging, channel mapping, and response delay settings.
+        Initialize the plugin instance, setting its name, logger, configuration, mapped channels, and response delay.
 
         Parameters:
             plugin_name (str, optional): Overrides the plugin's name. If not provided, uses the class-level `plugin_name` attribute.
@@ -68,7 +72,7 @@ class BasePlugin(ABC):
         Raises:
             ValueError: If the plugin name is not set via parameter or class attribute.
 
-        Sets up a plugin-specific logger, loads configuration from the global config, validates and assigns channels, and determines the response delay based on configuration, enforcing a minimum of 2.0 seconds due to firmware constraints.
+        Loads plugin-specific configuration from the global config, validates assigned channels, and determines the response delay, enforcing a minimum of 2.0 seconds. Logs a warning if deprecated configuration options are used or if channels are not mapped.
         """
         # Allow plugin_name to be passed as a parameter for simpler initialization
         # This maintains backward compatibility while providing a cleaner API
@@ -129,9 +133,7 @@ class BasePlugin(ABC):
             )
 
         # Get the response delay from the meshtastic config
-        self.response_delay = (
-            2.1  # Default value (minimum 2 seconds due to firmware delay)
-        )
+        self.response_delay = DEFAULT_MESSAGE_DELAY
         if config is not None:
             meshtastic_config = config.get("meshtastic", {})
 
@@ -144,10 +146,14 @@ class BasePlugin(ABC):
             elif "plugin_response_delay" in meshtastic_config:
                 delay = meshtastic_config["plugin_response_delay"]
                 delay_key = "plugin_response_delay"
-                self.logger.warning(
-                    "Configuration option 'plugin_response_delay' is deprecated. "
-                    "Please use 'message_delay' instead. Support for 'plugin_response_delay' will be removed in a future version."
-                )
+                # Show deprecated warning only once globally
+                global _deprecated_warning_shown
+                if not _deprecated_warning_shown:
+                    self.logger.warning(
+                        "Configuration option 'plugin_response_delay' is deprecated. "
+                        "Please use 'message_delay' instead. Support for 'plugin_response_delay' will be removed in a future version."
+                    )
+                    _deprecated_warning_shown = True
 
             if delay is not None:
                 self.response_delay = delay
@@ -236,27 +242,63 @@ class BasePlugin(ABC):
 
     def get_response_delay(self):
         """
-        Return the configured delay in seconds before sending Meshtastic responses.
+        Return the configured delay in seconds before sending a Meshtastic response.
 
-        The delay is set via the `meshtastic.message_delay` configuration option, with a default of 2.1 seconds and a minimum enforced value of 2.0 seconds due to firmware requirements. The deprecated `meshtastic.plugin_response_delay` option is still supported but will be removed in a future version.
+        The delay is determined by the `meshtastic.message_delay` configuration option, defaulting to 2.2 seconds with a minimum of 2.0 seconds. The deprecated `plugin_response_delay` option is also supported for backward compatibility.
 
         Returns:
             float: The response delay in seconds.
         """
         return self.response_delay
 
-    def is_channel_enabled(self, channel, is_direct_message=False):
-        """Check if the plugin should respond on a specific channel.
+    def send_message(self, text: str, channel: int = 0, destination_id=None) -> bool:
+        """
+        Send a message to the Meshtastic network via the message queue.
 
-        Args:
-            channel: Channel identifier to check
-            is_direct_message (bool): Whether this is a direct message
+        Automatically queues the message for broadcast or direct delivery, applying rate limiting as configured. Returns True if the message was successfully queued, or False if the Meshtastic client is unavailable.
+
+        Parameters:
+            text (str): The message text to send.
+            channel (int, optional): Channel index to send the message on. Defaults to 0.
+            destination_id (optional): Destination node ID for direct messages; if None, the message is broadcast.
 
         Returns:
-            bool: True if plugin should respond, False otherwise
+            bool: True if the message was queued successfully, False otherwise.
+        """
+        from mmrelay.meshtastic_utils import connect_meshtastic
 
-        Direct messages always return True if the plugin is active.
-        For channel messages, checks if channel is in plugin's configured channels list.
+        meshtastic_client = connect_meshtastic()
+        if not meshtastic_client:
+            self.logger.error("No Meshtastic client available")
+            return False
+
+        description = (
+            f"Plugin {self.plugin_name}: {text[:50]}{'...' if len(text) > 50 else ''}"
+        )
+
+        send_kwargs = {
+            "text": text,
+            "channelIndex": channel,
+        }
+        if destination_id:
+            send_kwargs["destinationId"] = destination_id
+
+        return queue_message(
+            meshtastic_client.sendText,
+            description=description,
+            **send_kwargs,
+        )
+
+    def is_channel_enabled(self, channel, is_direct_message=False):
+        """
+        Determine whether the plugin should respond to a message on the specified channel or direct message.
+
+        Parameters:
+            channel: The channel identifier to check.
+            is_direct_message (bool): Set to True if the message is a direct message.
+
+        Returns:
+            bool: True if the plugin should respond on the given channel or to a direct message; False otherwise.
         """
         if is_direct_message:
             return True  # Always respond to DMs if the plugin is active

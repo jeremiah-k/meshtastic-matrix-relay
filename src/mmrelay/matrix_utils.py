@@ -29,7 +29,70 @@ from mmrelay.db_utils import (
 from mmrelay.log_utils import get_logger
 
 # Do not import plugin_loader here to avoid circular imports
-from mmrelay.meshtastic_utils import connect_meshtastic
+from mmrelay.meshtastic_utils import connect_meshtastic, sendTextReply
+from mmrelay.message_queue import queue_message
+
+logger = get_logger(name="matrix_utils")
+
+
+def _get_msgs_to_keep_config():
+    """
+    Retrieve the configured number of messages to retain for message mapping, supporting both current and legacy configuration formats.
+
+    Returns:
+        int: The number of messages to keep in the database for message mapping (default is 500).
+    """
+    global config
+    if not config:
+        return 500
+
+    msg_map_config = config.get("database", {}).get("msg_map", {})
+
+    # If not found in database config, check legacy db config
+    if not msg_map_config:
+        legacy_msg_map_config = config.get("db", {}).get("msg_map", {})
+
+        if legacy_msg_map_config:
+            msg_map_config = legacy_msg_map_config
+            logger.warning(
+                "Using 'db.msg_map' configuration (legacy). 'database.msg_map' is now the preferred format and 'db.msg_map' will be deprecated in a future version."
+            )
+
+    return msg_map_config.get("msgs_to_keep", 500)
+
+
+def _create_mapping_info(
+    matrix_event_id, room_id, text, meshnet=None, msgs_to_keep=None
+):
+    """
+    Constructs a dictionary containing metadata for mapping a Matrix event to a Meshtastic message in the message queue.
+
+    Removes quoted lines from the message text and includes relevant identifiers and configuration for message retention. Returns `None` if required parameters are missing.
+
+    Parameters:
+        matrix_event_id: The Matrix event ID to map.
+        room_id: The Matrix room ID where the event occurred.
+        text: The message text to be mapped; quoted lines are removed.
+        meshnet: Optional name of the target mesh network.
+        msgs_to_keep: Optional number of messages to retain for mapping; uses configuration default if not provided.
+
+    Returns:
+        dict: A dictionary with mapping information for use by the message queue, or `None` if required fields are missing.
+    """
+    if not matrix_event_id or not room_id or not text:
+        return None
+
+    if msgs_to_keep is None:
+        msgs_to_keep = _get_msgs_to_keep_config()
+
+    return {
+        "matrix_event_id": matrix_event_id,
+        "room_id": room_id,
+        "text": strip_quoted_lines(text),
+        "meshnet": meshnet,
+        "msgs_to_keep": msgs_to_keep,
+    }
+
 
 # Default prefix format constants
 DEFAULT_MESHTASTIC_PREFIX = "{display5}[M]: "
@@ -665,82 +728,86 @@ async def send_reply_to_meshtastic(
     reply_id=None,
 ):
     """
-    Sends a reply message from Matrix to Meshtastic and optionally stores the message mapping for future interactions.
+    Queues a reply message from Matrix to be sent to Meshtastic, optionally as a structured reply, and includes message mapping metadata if storage is enabled.
 
-    If message storage is enabled and the message is successfully sent, stores a mapping between the Meshtastic packet ID and the Matrix event ID, after removing quoted lines from the reply text. Prunes old message mappings based on configuration to limit storage size. Logs errors if sending fails.
-
-    Args:
-        reply_id: If provided, sends as a structured Meshtastic reply to this message ID
+    If a `reply_id` is provided, the message is sent as a structured reply to the referenced Meshtastic message; otherwise, it is sent as a regular message. When message storage is enabled, mapping information is attached for future interaction tracking. The function logs the outcome of the queuing operation.
     """
     meshtastic_interface = connect_meshtastic()
     from mmrelay.meshtastic_utils import logger as meshtastic_logger
-    from mmrelay.meshtastic_utils import sendTextReply
 
     meshtastic_channel = room_config["meshtastic_channel"]
 
     if config["meshtastic"]["broadcast_enabled"]:
         try:
+            # Create mapping info once if storage is enabled
+            mapping_info = None
+            if storage_enabled:
+                # Get message map configuration
+                msgs_to_keep = _get_msgs_to_keep_config()
+
+                mapping_info = _create_mapping_info(
+                    event.event_id, room.room_id, text, local_meshnet_name, msgs_to_keep
+                )
+
             if reply_id is not None:
                 # Send as a structured reply using our custom function
-                try:
-                    sent_packet = sendTextReply(
-                        meshtastic_interface,
-                        text=reply_message,
-                        reply_id=reply_id,
-                        channelIndex=meshtastic_channel,
-                    )
-                    meshtastic_logger.info(
-                        f"Relaying Matrix reply from {full_display_name} to radio broadcast as structured reply to message {reply_id}"
-                    )
-                    meshtastic_logger.debug(
-                        f"sendTextReply returned packet: {sent_packet}"
-                    )
-                except Exception as e:
+                # Queue the reply message
+                success = queue_message(
+                    sendTextReply,
+                    meshtastic_interface,
+                    text=reply_message,
+                    reply_id=reply_id,
+                    channelIndex=meshtastic_channel,
+                    description=f"Reply from {full_display_name} to message {reply_id}",
+                    mapping_info=mapping_info,
+                )
+
+                if success:
+                    # Get queue size to determine logging approach
+                    queue_size = get_message_queue().get_queue_size()
+
+                    if queue_size > 1:
+                        meshtastic_logger.info(
+                            f"Relaying Matrix reply from {full_display_name} to radio broadcast as structured reply (queued: {queue_size} messages)"
+                        )
+                    else:
+                        meshtastic_logger.info(
+                            f"Relaying Matrix reply from {full_display_name} to radio broadcast as structured reply"
+                        )
+                else:
                     meshtastic_logger.error(
-                        f"Error sending structured reply to Meshtastic: {e}"
+                        "Failed to relay structured reply to Meshtastic"
                     )
                     return
             else:
                 # Send as regular message (fallback for when no reply_id is available)
-                try:
-                    meshtastic_logger.debug(
-                        f"Attempting to send text to Meshtastic: '{reply_message}' on channel {meshtastic_channel}"
-                    )
-                    sent_packet = meshtastic_interface.sendText(
-                        text=reply_message, channelIndex=meshtastic_channel
-                    )
-                    meshtastic_logger.info(
-                        f"Relaying Matrix reply from {full_display_name} to radio broadcast as regular message"
-                    )
-                    meshtastic_logger.debug(f"sendText returned packet: {sent_packet}")
-                except Exception as e:
+                success = queue_message(
+                    meshtastic_interface.sendText,
+                    text=reply_message,
+                    channelIndex=meshtastic_channel,
+                    description=f"Reply from {full_display_name} (fallback to regular message)",
+                    mapping_info=mapping_info,
+                )
+
+                if success:
+                    # Get queue size to determine logging approach
+                    queue_size = get_message_queue().get_queue_size()
+
+                    if queue_size > 1:
+                        meshtastic_logger.info(
+                            f"Relaying Matrix reply from {full_display_name} to radio broadcast (queued: {queue_size} messages)"
+                        )
+                    else:
+                        meshtastic_logger.info(
+                            f"Relaying Matrix reply from {full_display_name} to radio broadcast"
+                        )
+                else:
                     meshtastic_logger.error(
-                        f"Error sending reply message to Meshtastic: {e}"
+                        "Failed to relay reply message to Meshtastic"
                     )
                     return
 
-            # Store the reply in message map if storage is enabled
-            if storage_enabled and sent_packet and hasattr(sent_packet, "id"):
-                # Strip quoted lines from text before storing to prevent issues with reactions to replies
-                cleaned_text = strip_quoted_lines(text)
-                store_message_map(
-                    sent_packet.id,
-                    event.event_id,
-                    room.room_id,
-                    cleaned_text,
-                    meshtastic_meshnet=local_meshnet_name,
-                )
-                # Prune old messages if configured
-                database_config = config.get("database", {})
-                msg_map_config = database_config.get("msg_map", {})
-                if not msg_map_config:
-                    db_config = config.get("db", {})
-                    legacy_msg_map_config = db_config.get("msg_map", {})
-                    if legacy_msg_map_config:
-                        msg_map_config = legacy_msg_map_config
-                msgs_to_keep = msg_map_config.get("msgs_to_keep", 500)
-                if msgs_to_keep > 0:
-                    prune_message_map(msgs_to_keep)
+            # Message mapping is now handled automatically by the queue system
 
         except Exception as e:
             meshtastic_logger.error(f"Error sending Matrix reply to Meshtastic: {e}")
@@ -808,12 +875,13 @@ async def on_room_message(
     event: Union[RoomMessageText, RoomMessageNotice, ReactionEvent, RoomMessageEmote],
 ) -> None:
     """
-    Handles incoming Matrix room messages, reactions, and replies, relaying them to Meshtastic as appropriate.
+    Handle incoming Matrix room messages, reactions, and replies, relaying them to Meshtastic as appropriate.
 
-    Processes events from Matrix rooms, including text messages, reactions, and replies. Relays supported messages to Meshtastic if broadcasting is enabled, applying message mapping for cross-referencing when reactions or replies are enabled. Prevents relaying of reactions to reactions and avoids processing messages from the bot itself or messages sent before the bot started. Integrates with plugins for command and message handling, and ensures that only supported messages are forwarded to Meshtastic.
+    This function processes Matrix events—including text messages, reactions, and replies—received in configured Matrix rooms. It relays supported messages to the Meshtastic mesh network if broadcasting is enabled, applying message mapping for cross-referencing when reactions or replies are enabled. The function prevents relaying of reactions to reactions, ignores messages from the bot itself or those sent before the bot started, and integrates with plugins for command and message handling. Only messages that are not commands or handled by plugins are forwarded to Meshtastic, with proper formatting and truncation as needed.
     """
     # Importing here to avoid circular imports and to keep logic consistent
     # Note: We do not call store_message_map directly here for inbound matrix->mesh messages.
+    from mmrelay.message_queue import get_message_queue
     # That logic occurs inside matrix_relay if needed.
     full_display_name = "Unknown user"
     message_timestamp = event.server_timestamp
@@ -958,15 +1026,19 @@ async def on_room_message(
                 logger.debug(
                     f"Sending reaction to Meshtastic with meshnet={local_meshnet_name}: {reaction_message}"
                 )
-                try:
-                    sent_packet = meshtastic_interface.sendText(
-                        text=reaction_message, channelIndex=meshtastic_channel
-                    )
+                success = queue_message(
+                    meshtastic_interface.sendText,
+                    text=reaction_message,
+                    channelIndex=meshtastic_channel,
+                    description=f"Remote reaction from {meshnet_name}",
+                )
+
+                if success:
                     logger.debug(
-                        f"Remote reaction sendText returned packet: {sent_packet}"
+                        f"Queued remote reaction to Meshtastic: {reaction_message}"
                     )
-                except Exception as e:
-                    logger.error(f"Error sending remote reaction to Meshtastic: {e}")
+                else:
+                    logger.error("Failed to relay remote reaction to Meshtastic")
                     return
             # We've relayed the remote reaction to our local mesh, so we're done.
             return
@@ -1027,15 +1099,19 @@ async def on_room_message(
                 logger.debug(
                     f"Sending reaction to Meshtastic with meshnet={local_meshnet_name}: {reaction_message}"
                 )
-                try:
-                    sent_packet = meshtastic_interface.sendText(
-                        text=reaction_message, channelIndex=meshtastic_channel
-                    )
+                success = queue_message(
+                    meshtastic_interface.sendText,
+                    text=reaction_message,
+                    channelIndex=meshtastic_channel,
+                    description=f"Local reaction from {full_display_name}",
+                )
+
+                if success:
                     logger.debug(
-                        f"Local reaction sendText returned packet: {sent_packet}"
+                        f"Queued local reaction to Meshtastic: {reaction_message}"
                     )
-                except Exception as e:
-                    logger.error(f"Error sending local reaction to Meshtastic: {e}")
+                else:
+                    logger.error("Failed to relay local reaction to Meshtastic")
                     return
             return
 
@@ -1153,23 +1229,31 @@ async def on_room_message(
             if portnum == "DETECTION_SENSOR_APP":
                 # If detection_sensor is enabled, forward this data as detection sensor data
                 if config["meshtastic"].get("detection_sensor", False):
-                    try:
-                        meshtastic_logger.debug(
-                            f"Attempting to send detection sensor data to Meshtastic: '{full_message}' on channel {meshtastic_channel}"
-                        )
-                        sent_packet = meshtastic_interface.sendData(
-                            data=full_message.encode("utf-8"),
-                            channelIndex=meshtastic_channel,
-                            portNum=meshtastic.protobuf.portnums_pb2.PortNum.DETECTION_SENSOR_APP,
-                        )
-                        meshtastic_logger.debug(
-                            f"sendData returned packet: {sent_packet}"
-                        )
+                    success = queue_message(
+                        meshtastic_interface.sendData,
+                        data=full_message.encode("utf-8"),
+                        channelIndex=meshtastic_channel,
+                        portNum=meshtastic.protobuf.portnums_pb2.PortNum.DETECTION_SENSOR_APP,
+                        description=f"Detection sensor data from {full_display_name}",
+                    )
+
+                    if success:
+                        # Get queue size to determine logging approach
+                        queue_size = get_message_queue().get_queue_size()
+
+                        if queue_size > 1:
+                            meshtastic_logger.info(
+                                f"Relaying detection sensor data from {full_display_name} to radio broadcast (queued: {queue_size} messages)"
+                            )
+                        else:
+                            meshtastic_logger.info(
+                                f"Relaying detection sensor data from {full_display_name} to radio broadcast"
+                            )
                         # Note: Detection sensor messages are not stored in message_map because they are never replied to
                         # Only TEXT_MESSAGE_APP messages need to be stored for reaction handling
-                    except Exception as e:
+                    else:
                         meshtastic_logger.error(
-                            f"Error sending detection sensor data to Meshtastic: {e}"
+                            "Failed to relay detection sensor data to Meshtastic"
                         )
                         return
                 else:
@@ -1177,53 +1261,47 @@ async def on_room_message(
                         f"Detection sensor packet received from {full_display_name}, but detection sensor processing is disabled."
                     )
             else:
-                meshtastic_logger.info(
-                    f"Relaying message from {full_display_name} to radio broadcast"
-                )
+                # Regular text message - logging will be handled by queue success handler
+                pass
 
-                try:
-                    sent_packet = meshtastic_interface.sendText(
-                        text=full_message, channelIndex=meshtastic_channel
-                    )
-                    if not sent_packet:
-                        meshtastic_logger.warning(
-                            "sendText returned None - message may not have been sent"
-                        )
-                except Exception as e:
-                    meshtastic_logger.error(f"Error sending message to Meshtastic: {e}")
-                    import traceback
+                # Create mapping info if storage is enabled
+                mapping_info = None
+                if storage_enabled:
+                    # Check database config for message map settings (preferred format)
+                    msgs_to_keep = _get_msgs_to_keep_config()
 
-                    meshtastic_logger.error(f"Full traceback: {traceback.format_exc()}")
-                    return
-                # Store message_map only if storage is enabled and only for TEXT_MESSAGE_APP
-                # (these are the only messages that can be replied to and thus need reaction handling)
-                if storage_enabled and sent_packet and hasattr(sent_packet, "id"):
-                    # Strip quoted lines from text before storing to prevent issues with reactions to replies
-                    cleaned_text = strip_quoted_lines(text)
-                    store_message_map(
-                        sent_packet.id,
+                    mapping_info = _create_mapping_info(
                         event.event_id,
                         room.room_id,
-                        cleaned_text,
-                        meshtastic_meshnet=local_meshnet_name,
+                        text,
+                        local_meshnet_name,
+                        msgs_to_keep,
                     )
-                    # Check database config for message map settings (preferred format)
-                    database_config = config.get("database", {})
-                    msg_map_config = database_config.get("msg_map", {})
 
-                    # If not found in database config, check legacy db config
-                    if not msg_map_config:
-                        db_config = config.get("db", {})
-                        legacy_msg_map_config = db_config.get("msg_map", {})
+                success = queue_message(
+                    meshtastic_interface.sendText,
+                    text=full_message,
+                    channelIndex=meshtastic_channel,
+                    description=f"Message from {full_display_name}",
+                    mapping_info=mapping_info,
+                )
 
-                        if legacy_msg_map_config:
-                            msg_map_config = legacy_msg_map_config
-                            logger.warning(
-                                "Using 'db.msg_map' configuration (legacy). 'database.msg_map' is now the preferred format and 'db.msg_map' will be deprecated in a future version."
-                            )
-                    msgs_to_keep = msg_map_config.get("msgs_to_keep", 500)
-                    if msgs_to_keep > 0:
-                        prune_message_map(msgs_to_keep)
+                if success:
+                    # Get queue size to determine logging approach
+                    queue_size = get_message_queue().get_queue_size()
+
+                    if queue_size > 1:
+                        meshtastic_logger.info(
+                            f"Relaying message from {full_display_name} to radio broadcast (queued: {queue_size} messages)"
+                        )
+                    else:
+                        meshtastic_logger.info(
+                            f"Relaying message from {full_display_name} to radio broadcast"
+                        )
+                else:
+                    meshtastic_logger.error("Failed to relay message to Meshtastic")
+                    return
+                # Message mapping is now handled automatically by the queue system
         else:
             logger.debug(
                 f"Broadcast not supported: Message from {full_display_name} dropped."
