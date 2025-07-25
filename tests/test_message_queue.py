@@ -15,11 +15,24 @@ import os
 import sys
 import time
 import unittest
+import threading
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.message_queue import MessageQueue, QueuedMessage, queue_message
+
+# Global list to store sent messages (thread-safe)
+_sent_messages = []
+_sent_messages_lock = threading.Lock()
+
+def mock_send_function(text, **kwargs):
+    """Mock function to simulate sending a message (executor-compatible)."""
+    with _sent_messages_lock:
+        _sent_messages.append(
+            {"text": text, "kwargs": kwargs, "timestamp": time.time()}
+        )
+    return {"id": len(_sent_messages)}
 
 
 class TestMessageQueue(unittest.TestCase):
@@ -27,8 +40,11 @@ class TestMessageQueue(unittest.TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
+        global _sent_messages
         self.queue = MessageQueue()
-        self.sent_messages = []
+        # Clear global sent messages for each test
+        with _sent_messages_lock:
+            _sent_messages.clear()
         # Mock the _should_send_message method to always return True for tests
         self.queue._should_send_message = lambda: True
 
@@ -37,12 +53,11 @@ class TestMessageQueue(unittest.TestCase):
         if self.queue.is_running():
             self.queue.stop()
 
-    def mock_send_function(self, text, **kwargs):
-        """Mock function to simulate sending a message."""
-        self.sent_messages.append(
-            {"text": text, "kwargs": kwargs, "timestamp": time.time()}
-        )
-        return {"id": len(self.sent_messages)}
+    @property
+    def sent_messages(self):
+        """Get sent messages in a thread-safe way."""
+        with _sent_messages_lock:
+            return _sent_messages.copy()
 
     def test_fifo_ordering(self):
         """Test that messages are sent in FIFO order."""
@@ -59,7 +74,7 @@ class TestMessageQueue(unittest.TestCase):
             messages = ["First", "Second", "Third"]
             for msg in messages:
                 success = self.queue.enqueue(
-                    self.mock_send_function,
+                    mock_send_function,
                     text=msg,
                     description=f"Test message: {msg}",
                 )
@@ -85,8 +100,8 @@ class TestMessageQueue(unittest.TestCase):
             self.queue.ensure_processor_started()
 
             # Queue two messages
-            self.queue.enqueue(self.mock_send_function, text="First")
-            self.queue.enqueue(self.mock_send_function, text="Second")
+            self.queue.enqueue(mock_send_function, text="First")
+            self.queue.enqueue(mock_send_function, text="Second")
 
             # Wait for first message
             await asyncio.sleep(1.0)
@@ -109,17 +124,17 @@ class TestMessageQueue(unittest.TestCase):
 
         # Fill queue to limit
         for i in range(100):  # Queue limit is 100
-            success = self.queue.enqueue(self.mock_send_function, text=f"Message {i}")
+            success = self.queue.enqueue(mock_send_function, text=f"Message {i}")
             self.assertTrue(success)
 
         # Next message should be rejected
-        success = self.queue.enqueue(self.mock_send_function, text="Overflow message")
+        success = self.queue.enqueue(mock_send_function, text="Overflow message")
         self.assertFalse(success)
 
     def test_fallback_when_not_running(self):
         """Test immediate sending when queue is not running."""
         # Don't start the queue
-        success = self.queue.enqueue(self.mock_send_function, text="Immediate message")
+        success = self.queue.enqueue(mock_send_function, text="Immediate message")
 
         # Should send immediately
         self.assertTrue(success)
@@ -138,7 +153,7 @@ class TestMessageQueue(unittest.TestCase):
             self.queue.ensure_processor_started()
 
             # Queue a message
-            success = self.queue.enqueue(self.mock_send_function, text="Test message")
+            success = self.queue.enqueue(mock_send_function, text="Test message")
             self.assertTrue(success)
 
             # Wait - message should not be sent due to connection state
@@ -188,7 +203,7 @@ class TestGlobalFunctions(unittest.TestCase):
         """Test the global queue_message function."""
         # Test with queue not running (should send immediately)
         success = queue_message(
-            self.mock_send_function,
+            mock_send_function,
             text="Test message",
             description="Global function test",
         )

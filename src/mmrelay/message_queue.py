@@ -230,11 +230,10 @@ class MessageQueue:
                 # Send the message
                 try:
                     logger.debug(f"Sending queued message: {current_message.description}")
-                    # Note: This is a synchronous call that may block the event loop briefly.
-                    # In practice, Meshtastic send operations are typically fast enough
-                    # that this doesn't cause noticeable issues, but could be moved to
-                    # an executor if blocking becomes a problem.
-                    result = current_message.send_function(*current_message.args, **current_message.kwargs)
+                    # Run synchronous Meshtastic I/O operations in executor to prevent blocking event loop
+                    result = await asyncio.get_running_loop().run_in_executor(
+                        None, current_message.send_function, *current_message.args, **current_message.kwargs
+                    )
 
                     # Update last send time
                     self._last_send_time = time.time()
