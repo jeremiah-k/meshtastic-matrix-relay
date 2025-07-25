@@ -49,6 +49,9 @@ class MessageQueue:
     """
 
     def __init__(self):
+        """
+        Initialize the MessageQueue with an empty queue, state variables, and a thread lock for safe operation.
+        """
         self._queue = Queue()
         self._processor_task = None
         self._running = False
@@ -58,10 +61,9 @@ class MessageQueue:
 
     def start(self, message_delay: float = DEFAULT_MESSAGE_DELAY):
         """
-        Start the message queue processor.
-
-        Args:
-            message_delay: Minimum seconds between messages (default: 2.2)
+        Starts the message queue processor with the specified minimum delay between messages.
+        
+        Enforces a minimum delay of 2.0 seconds due to firmware requirements. If the event loop is running, the processor task is started immediately; otherwise, startup is deferred until the event loop becomes available.
         """
         with self._lock:
             if self._running:
@@ -97,7 +99,9 @@ class MessageQueue:
                 )
 
     def stop(self):
-        """Stop the message queue processor."""
+        """
+        Stops the message queue processor and cancels the processing task if active.
+        """
         with self._lock:
             if not self._running:
                 return
@@ -119,17 +123,17 @@ class MessageQueue:
         **kwargs,
     ) -> bool:
         """
-        Enqueue a message for sending.
-
-        Args:
-            send_function: Function to call to send the message
-            *args: Arguments to pass to send_function
-            description: Human-readable description for logging
-            mapping_info: Optional dict with message mapping info for replies/reactions
-            **kwargs: Keyword arguments to pass to send_function
-
+        Adds a message to the queue for rate-limited, ordered sending.
+        
+        Parameters:
+            send_function (Callable): The function to call to send the message.
+            *args: Positional arguments for the send function.
+            description (str, optional): Human-readable description for logging purposes.
+            mapping_info (dict, optional): Optional metadata for message mapping (e.g., replies or reactions).
+            **kwargs: Keyword arguments for the send function.
+        
         Returns:
-            bool: True if message was queued, False if queue is full
+            bool: True if the message was successfully enqueued; False if the queue is not running or is full.
         """
         if not self._running:
             # Refuse to send to prevent blocking the event loop
@@ -168,15 +172,27 @@ class MessageQueue:
         return True
 
     def get_queue_size(self) -> int:
-        """Get current number of messages in queue."""
+        """
+        Return the number of messages currently in the queue.
+        
+        Returns:
+            int: The current queue size.
+        """
         return self._queue.qsize()
 
     def is_running(self) -> bool:
-        """Check if queue processor is running."""
+        """
+        Return whether the message queue processor is currently active.
+        """
         return self._running
 
     def get_status(self) -> dict:
-        """Get detailed queue status for debugging."""
+        """
+        Return a dictionary with the current status of the message queue, including running state, queue size, message delay, processor activity, last send time, and time since last send.
+        
+        Returns:
+            dict: Status information about the message queue for debugging and monitoring.
+        """
         return {
             "running": self._running,
             "queue_size": self._queue.qsize(),
@@ -193,7 +209,11 @@ class MessageQueue:
         }
 
     def ensure_processor_started(self):
-        """Ensure the processor task is started if the queue is running."""
+        """
+        Start the queue processor task if the queue is running and no processor task exists.
+        
+        This method checks if the queue is active and, if so, attempts to create and start the asynchronous processor task within the current event loop.
+        """
         if self._running and self._processor_task is None:
             try:
                 loop = asyncio.get_event_loop()
@@ -207,7 +227,11 @@ class MessageQueue:
                 pass
 
     async def _process_queue(self):
-        """Process messages from the queue with rate limiting."""
+        """
+        Asynchronously processes messages from the queue, sending each in order while enforcing rate limiting and connection readiness.
+        
+        This method runs as a background task, monitoring the queue, waiting for the connection to be ready, and ensuring a minimum delay between sends. Messages are sent using their provided callable, and optional message mapping is handled after successful sends. The processor logs queue depth warnings, handles errors gracefully, and maintains FIFO order even when waiting for connection or rate limits.
+        """
         logger.debug("Message queue processor started")
         current_message = None
 
@@ -307,10 +331,10 @@ class MessageQueue:
 
     def _should_send_message(self) -> bool:
         """
-        Check if we should send a message now.
-
+        Determine whether it is currently safe to send a message based on Meshtastic client connection and reconnection state.
+        
         Returns:
-            bool: True if it's safe to send, False if we should wait
+            bool: True if the client is connected and not reconnecting; False otherwise.
         """
         # Import here to avoid circular imports
         try:
@@ -346,11 +370,13 @@ class MessageQueue:
 
     def _handle_message_mapping(self, result, mapping_info):
         """
-        Handle message mapping after successful send.
-
-        Args:
-            result: The result from the send function (should have .id attribute)
-            mapping_info: Dict containing mapping information
+        Stores and prunes message mapping information after a message is sent.
+        
+        Parameters:
+            result: The result object from the send function, expected to have an `id` attribute.
+            mapping_info (dict): Dictionary containing mapping details such as `matrix_event_id`, `room_id`, `text`, and optional `meshnet` and `msgs_to_keep`.
+        
+        This method updates the message mapping database with the new mapping and prunes old mappings if configured.
         """
         try:
             # Import here to avoid circular imports
@@ -387,17 +413,26 @@ _message_queue = MessageQueue()
 
 
 def get_message_queue() -> MessageQueue:
-    """Get the global message queue instance."""
+    """
+    Return the global instance of the message queue used for managing and rate-limiting message sending.
+    """
     return _message_queue
 
 
 def start_message_queue(message_delay: float = DEFAULT_MESSAGE_DELAY):
-    """Start the global message queue with the specified message delay."""
+    """
+    Start the global message queue processor with the given minimum delay between messages.
+    
+    Parameters:
+        message_delay (float): Minimum number of seconds to wait between sending messages.
+    """
     _message_queue.start(message_delay)
 
 
 def stop_message_queue():
-    """Stop the global message queue."""
+    """
+    Stops the global message queue processor, preventing further message processing until restarted.
+    """
     _message_queue.stop()
 
 
@@ -409,17 +444,15 @@ def queue_message(
     **kwargs,
 ) -> bool:
     """
-    Queue a message for sending through the global message queue.
-
-    Args:
-        send_function: Function to call to send the message
-        *args: Arguments to pass to send_function
-        description: Human-readable description for logging
-        mapping_info: Optional dict with message mapping info for replies/reactions
-        **kwargs: Keyword arguments to pass to send_function
-
+    Enqueues a message for sending via the global message queue.
+    
+    Parameters:
+        send_function (Callable): The function to execute for sending the message.
+        description (str, optional): Human-readable description of the message for logging purposes.
+        mapping_info (dict, optional): Additional metadata for message mapping, such as reply or reaction information.
+    
     Returns:
-        bool: True if message was queued, False if failed
+        bool: True if the message was successfully enqueued; False if the queue is not running or full.
     """
     return _message_queue.enqueue(
         send_function,
@@ -431,5 +464,10 @@ def queue_message(
 
 
 def get_queue_status() -> dict:
-    """Get detailed status of the global message queue for debugging."""
+    """
+    Return detailed status information about the global message queue.
+    
+    Returns:
+        dict: A dictionary containing the running state, queue size, message delay, processor task activity, last send time, and time since last send.
+    """
     return _message_queue.get_status()

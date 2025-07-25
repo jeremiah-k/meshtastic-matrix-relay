@@ -37,10 +37,10 @@ logger = get_logger(name="matrix_utils")
 
 def _get_msgs_to_keep_config():
     """
-    Get msgs_to_keep configuration value with legacy fallback.
-
+    Retrieve the configured number of messages to retain for message mapping, supporting both current and legacy configuration formats.
+    
     Returns:
-        int: Number of messages to keep in database (default: 500)
+        int: The number of messages to keep in the database for message mapping (default is 500).
     """
     global config
     if not config:
@@ -67,17 +67,19 @@ def _create_mapping_info(
     matrix_event_id, room_id, text, meshnet=None, msgs_to_keep=None
 ):
     """
-    Create mapping info dict for message queue.
-
-    Args:
-        matrix_event_id: Matrix event ID
-        room_id: Matrix room ID
-        text: Message text (will be cleaned of quoted lines)
-        meshnet: Meshnet name
-        msgs_to_keep: Number of messages to keep in database (if None, uses config)
-
+    Constructs a dictionary containing metadata for mapping a Matrix event to a Meshtastic message in the message queue.
+    
+    Removes quoted lines from the message text and includes relevant identifiers and configuration for message retention. Returns `None` if required parameters are missing.
+    
+    Parameters:
+        matrix_event_id: The Matrix event ID to map.
+        room_id: The Matrix room ID where the event occurred.
+        text: The message text to be mapped; quoted lines are removed.
+        meshnet: Optional name of the target mesh network.
+        msgs_to_keep: Optional number of messages to retain for mapping; uses configuration default if not provided.
+    
     Returns:
-        dict: Mapping info for queue_message
+        dict: A dictionary with mapping information for use by the message queue, or `None` if required fields are missing.
     """
     if not matrix_event_id or not room_id or not text:
         return None
@@ -728,12 +730,9 @@ async def send_reply_to_meshtastic(
     reply_id=None,
 ):
     """
-    Sends a reply message from Matrix to Meshtastic and optionally stores the message mapping for future interactions.
-
-    If message storage is enabled and the message is successfully sent, stores a mapping between the Meshtastic packet ID and the Matrix event ID, after removing quoted lines from the reply text. Prunes old message mappings based on configuration to limit storage size. Logs errors if sending fails.
-
-    Args:
-        reply_id: If provided, sends as a structured Meshtastic reply to this message ID
+    Queues a reply message from Matrix to be sent to Meshtastic, optionally as a structured reply, and includes message mapping metadata if storage is enabled.
+    
+    If a `reply_id` is provided, the message is sent as a structured reply to the referenced Meshtastic message; otherwise, it is sent as a regular message. When message storage is enabled, mapping information is attached for future interaction tracking. The function logs the outcome of the queuing operation.
     """
     meshtastic_interface = connect_meshtastic()
     from mmrelay.meshtastic_utils import logger as meshtastic_logger
@@ -862,9 +861,9 @@ async def on_room_message(
     event: Union[RoomMessageText, RoomMessageNotice, ReactionEvent, RoomMessageEmote],
 ) -> None:
     """
-    Handles incoming Matrix room messages, reactions, and replies, relaying them to Meshtastic as appropriate.
-
-    Processes events from Matrix rooms, including text messages, reactions, and replies. Relays supported messages to Meshtastic if broadcasting is enabled, applying message mapping for cross-referencing when reactions or replies are enabled. Prevents relaying of reactions to reactions and avoids processing messages from the bot itself or messages sent before the bot started. Integrates with plugins for command and message handling, and ensures that only supported messages are forwarded to Meshtastic.
+    Handle incoming Matrix room messages, reactions, and replies, relaying them to Meshtastic as appropriate.
+    
+    This function processes Matrix events—including text messages, reactions, and replies—received in configured Matrix rooms. It relays supported messages to the Meshtastic mesh network if broadcasting is enabled, applying message mapping for cross-referencing when reactions or replies are enabled. The function prevents relaying of reactions to reactions, ignores messages from the bot itself or those sent before the bot started, and integrates with plugins for command and message handling. Only messages that are not commands or handled by plugins are forwarded to Meshtastic, with proper formatting and truncation as needed.
     """
     # Importing here to avoid circular imports and to keep logic consistent
     # Note: We do not call store_message_map directly here for inbound matrix->mesh messages.
