@@ -351,12 +351,11 @@ class MessageQueue:
                 return False
 
             # Check if client is connected
-            if (
-                hasattr(meshtastic_client, "is_connected")
-                and not meshtastic_client.is_connected
-            ):
-                logger.debug("Not sending - client not connected")
-                return False
+            if hasattr(meshtastic_client, "is_connected"):
+                is_conn = meshtastic_client.is_connected
+                if not (is_conn() if callable(is_conn) else is_conn):
+                    logger.debug("Not sending - client not connected")
+                    return False
 
             logger.debug("Connection check passed - ready to send")
             return True

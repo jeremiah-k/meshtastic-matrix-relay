@@ -91,6 +91,9 @@ class TestMessageQueue(unittest.TestCase):
         Stops the message queue and restores the original asyncio event loop behavior after each test.
         """
         if self.queue.is_running():
+            # Wait a bit for any in-flight messages to complete
+            import time
+            time.sleep(0.1)
             self.queue.stop()
         self.loop_patcher.stop()
 
@@ -131,8 +134,12 @@ class TestMessageQueue(unittest.TestCase):
                 )
                 self.assertTrue(success)
 
-            # Wait for processing (need enough time for all 3 messages with 2.0s rate limiting)
-            await asyncio.sleep(6.5)  # 3 messages * 2.0s + buffer
+            # Wait for processing to complete with a timeout
+            end_time = time.time() + 15.0  # 15 second timeout (3 messages * 2s + buffer)
+            while self.queue.get_queue_size() > 0 or len(self.sent_messages) < len(messages):
+                if time.time() > end_time:
+                    self.fail(f"Queue processing timed out. Sent {len(self.sent_messages)}/{len(messages)} messages, queue size: {self.queue.get_queue_size()}")
+                await asyncio.sleep(0.1)
 
             # Check that messages were sent in order
             self.assertEqual(len(self.sent_messages), len(messages))
