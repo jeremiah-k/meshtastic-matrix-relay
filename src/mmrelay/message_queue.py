@@ -69,7 +69,9 @@ class MessageQueue:
 
             # Validate and enforce firmware minimum
             if message_delay < 2.0:
-                logger.warning(f"Message delay {message_delay}s below firmware minimum (2.0s), using 2.0s")
+                logger.warning(
+                    f"Message delay {message_delay}s below firmware minimum (2.0s), using 2.0s"
+                )
                 self._message_delay = 2.0
             else:
                 self._message_delay = message_delay
@@ -109,7 +111,12 @@ class MessageQueue:
             logger.info("Message queue stopped")
 
     def enqueue(
-        self, send_function: Callable, *args, description: str = "", mapping_info: dict = None, **kwargs
+        self,
+        send_function: Callable,
+        *args,
+        description: str = "",
+        mapping_info: dict = None,
+        **kwargs,
     ) -> bool:
         """
         Enqueue a message for sending.
@@ -125,22 +132,21 @@ class MessageQueue:
             bool: True if message was queued, False if queue is full
         """
         if not self._running:
-            # Queue not started, send immediately as fallback
-            logger.warning(f"Queue not running, sending message immediately: {description}")
-            try:
-                result = send_function(*args, **kwargs)
-                logger.info(f"Immediate send {'successful' if result else 'failed'}: {description}")
-                return result is not None
-            except Exception as e:
-                logger.error(f"Error sending message immediately: {e}")
-                return False
+            # Refuse to send to prevent blocking the event loop
+            logger.error(f"Queue not running, cannot send message: {description}")
+            logger.error(
+                "Application is in invalid state - message queue should be started before sending messages"
+            )
+            return False
 
         # Ensure processor is started if event loop is now available
         self.ensure_processor_started()
 
         # Check queue size to prevent memory issues
         if self._queue.qsize() >= MAX_QUEUE_SIZE:
-            logger.warning(f"Message queue full ({self._queue.qsize()}/{MAX_QUEUE_SIZE}), dropping message: {description}")
+            logger.warning(
+                f"Message queue full ({self._queue.qsize()}/{MAX_QUEUE_SIZE}), dropping message: {description}"
+            )
             return False
 
         message = QueuedMessage(
@@ -156,7 +162,9 @@ class MessageQueue:
         # Only log queue status when there are multiple messages
         queue_size = self._queue.qsize()
         if queue_size >= 2:
-            logger.debug(f"Queued message ({queue_size}/{MAX_QUEUE_SIZE}): {description}")
+            logger.debug(
+                f"Queued message ({queue_size}/{MAX_QUEUE_SIZE}): {description}"
+            )
         return True
 
     def get_queue_size(self) -> int:
@@ -173,9 +181,15 @@ class MessageQueue:
             "running": self._running,
             "queue_size": self._queue.qsize(),
             "message_delay": self._message_delay,
-            "processor_task_active": self._processor_task is not None and not self._processor_task.done() if self._processor_task else False,
+            "processor_task_active": (
+                self._processor_task is not None and not self._processor_task.done()
+                if self._processor_task
+                else False
+            ),
             "last_send_time": self._last_send_time,
-            "time_since_last_send": time.time() - self._last_send_time if self._last_send_time > 0 else None
+            "time_since_last_send": (
+                time.time() - self._last_send_time if self._last_send_time > 0 else None
+            ),
         }
 
     def ensure_processor_started(self):
@@ -204,9 +218,13 @@ class MessageQueue:
                     # Monitor queue depth for operational awareness
                     queue_size = self._queue.qsize()
                     if queue_size > QUEUE_HIGH_WATER_MARK:
-                        logger.warning(f"Queue depth high: {queue_size} messages pending")
+                        logger.warning(
+                            f"Queue depth high: {queue_size} messages pending"
+                        )
                     elif queue_size > QUEUE_MEDIUM_WATER_MARK:
-                        logger.info(f"Queue depth moderate: {queue_size} messages pending")
+                        logger.info(
+                            f"Queue depth moderate: {queue_size} messages pending"
+                        )
 
                     # Get next message (non-blocking)
                     try:
@@ -219,7 +237,9 @@ class MessageQueue:
                 # Check if we should send (connection state, etc.)
                 if not self._should_send_message():
                     # Keep the message and wait - don't requeue to maintain FIFO order
-                    logger.debug(f"Connection not ready, waiting to send: {current_message.description}")
+                    logger.debug(
+                        f"Connection not ready, waiting to send: {current_message.description}"
+                    )
                     await asyncio.sleep(1.0)
                     continue
 
@@ -228,16 +248,23 @@ class MessageQueue:
                     time_since_last = time.time() - self._last_send_time
                     if time_since_last < self._message_delay:
                         wait_time = self._message_delay - time_since_last
-                        logger.debug(f"Rate limiting: waiting {wait_time:.1f}s before sending")
+                        logger.debug(
+                            f"Rate limiting: waiting {wait_time:.1f}s before sending"
+                        )
                         await asyncio.sleep(wait_time)
                         continue
 
                 # Send the message
                 try:
-                    logger.debug(f"Sending queued message: {current_message.description}")
+                    logger.debug(
+                        f"Sending queued message: {current_message.description}"
+                    )
                     # Run synchronous Meshtastic I/O operations in executor to prevent blocking event loop
                     result = await asyncio.get_running_loop().run_in_executor(
-                        None, current_message.send_function, *current_message.args, **current_message.kwargs
+                        None,
+                        current_message.send_function,
+                        *current_message.args,
+                        **current_message.kwargs,
                     )
 
                     # Update last send time
@@ -248,11 +275,15 @@ class MessageQueue:
                             f"Message send returned None: {current_message.description}"
                         )
                     else:
-                        logger.debug(f"Successfully sent queued message: {current_message.description}")
+                        logger.debug(
+                            f"Successfully sent queued message: {current_message.description}"
+                        )
 
                         # Handle message mapping if provided
                         if current_message.mapping_info and hasattr(result, "id"):
-                            self._handle_message_mapping(result, current_message.mapping_info)
+                            self._handle_message_mapping(
+                                result, current_message.mapping_info
+                            )
 
                 except Exception as e:
                     logger.error(
@@ -308,7 +339,9 @@ class MessageQueue:
 
         except ImportError as e:
             # ImportError indicates a serious problem with application structure
-            logger.error(f"Cannot import meshtastic_utils - serious application error: {e}")
+            logger.error(
+                f"Cannot import meshtastic_utils - serious application error: {e}"
+            )
             return False
 
     def _handle_message_mapping(self, result, mapping_info):
@@ -321,7 +354,7 @@ class MessageQueue:
         """
         try:
             # Import here to avoid circular imports
-            from mmrelay.db_utils import store_message_map, prune_message_map
+            from mmrelay.db_utils import prune_message_map, store_message_map
 
             # Extract mapping information
             matrix_event_id = mapping_info.get("matrix_event_id")
@@ -369,7 +402,11 @@ def stop_message_queue():
 
 
 def queue_message(
-    send_function: Callable, *args, description: str = "", mapping_info: dict = None, **kwargs
+    send_function: Callable,
+    *args,
+    description: str = "",
+    mapping_info: dict = None,
+    **kwargs,
 ) -> bool:
     """
     Queue a message for sending through the global message queue.
@@ -385,7 +422,11 @@ def queue_message(
         bool: True if message was queued, False if failed
     """
     return _message_queue.enqueue(
-        send_function, *args, description=description, mapping_info=mapping_info, **kwargs
+        send_function,
+        *args,
+        description=description,
+        mapping_info=mapping_info,
+        **kwargs,
     )
 
 

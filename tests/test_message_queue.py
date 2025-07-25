@@ -15,12 +15,17 @@ import os
 import sys
 import time
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from mmrelay.message_queue import MessageQueue, QueuedMessage, queue_message, MAX_QUEUE_SIZE
+from mmrelay.message_queue import (
+    MAX_QUEUE_SIZE,
+    MessageQueue,
+    QueuedMessage,
+    queue_message,
+)
 
 
 def mock_send_function(text, **kwargs):
@@ -30,6 +35,7 @@ def mock_send_function(text, **kwargs):
         {"text": text, "kwargs": kwargs, "timestamp": time.time()}
     )
     return {"id": len(mock_send_function.calls)}
+
 
 # Initialize calls list
 mock_send_function.calls = []
@@ -47,7 +53,7 @@ class TestMessageQueue(unittest.TestCase):
         self.queue._should_send_message = lambda: True
 
         # Mock asyncio.get_running_loop to make executor run synchronously
-        self.loop_patcher = patch('asyncio.get_running_loop')
+        self.loop_patcher = patch("asyncio.get_running_loop")
         mock_get_loop = self.loop_patcher.start()
 
         # Create a mock loop that runs executor functions synchronously
@@ -144,14 +150,13 @@ class TestMessageQueue(unittest.TestCase):
         self.assertFalse(success)
 
     def test_fallback_when_not_running(self):
-        """Test immediate sending when queue is not running."""
+        """Test that queue refuses to send when not running to prevent event loop blocking."""
         # Don't start the queue
         success = self.queue.enqueue(mock_send_function, text="Immediate message")
 
-        # Should send immediately
-        self.assertTrue(success)
-        self.assertEqual(len(self.sent_messages), 1)
-        self.assertEqual(self.sent_messages[0]["text"], "Immediate message")
+        # Should refuse to send to prevent blocking event loop
+        self.assertFalse(success)
+        self.assertEqual(len(self.sent_messages), 0)
 
     def test_connection_state_awareness(self):
         """Test that queue respects connection state."""
@@ -209,16 +214,16 @@ class TestGlobalFunctions(unittest.TestCase):
 
     def test_queue_message_function(self):
         """Test the global queue_message function."""
-        # Test with queue not running (should send immediately)
+        # Test with queue not running (should refuse to send)
         success = queue_message(
             mock_send_function,
             text="Test message",
             description="Global function test",
         )
 
-        self.assertTrue(success)
-        self.assertEqual(len(mock_send_function.calls), 1)
-        self.assertEqual(mock_send_function.calls[0]["text"], "Test message")
+        # Should refuse to send when queue not running to prevent event loop blocking
+        self.assertFalse(success)
+        self.assertEqual(len(mock_send_function.calls), 0)
 
 
 class TestQueuedMessage(unittest.TestCase):

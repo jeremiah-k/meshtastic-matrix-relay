@@ -63,7 +63,9 @@ def _get_msgs_to_keep_config():
     return msg_map_config.get("msgs_to_keep", 500)
 
 
-def _create_mapping_info(matrix_event_id, room_id, text, meshnet=None, msgs_to_keep=None):
+def _create_mapping_info(
+    matrix_event_id, room_id, text, meshnet=None, msgs_to_keep=None
+):
     """
     Create mapping info dict for message queue.
 
@@ -90,6 +92,7 @@ def _create_mapping_info(matrix_event_id, room_id, text, meshnet=None, msgs_to_k
         "meshnet": meshnet,
         "msgs_to_keep": msgs_to_keep,
     }
+
 
 # Default prefix format constants
 DEFAULT_MESHTASTIC_PREFIX = "{display5}[M]: "
@@ -746,11 +749,7 @@ async def send_reply_to_meshtastic(
                 msgs_to_keep = _get_msgs_to_keep_config()
 
                 mapping_info = _create_mapping_info(
-                    event.event_id,
-                    room.room_id,
-                    text,
-                    local_meshnet_name,
-                    msgs_to_keep
+                    event.event_id, room.room_id, text, local_meshnet_name, msgs_to_keep
                 )
 
             if reply_id is not None:
@@ -1255,7 +1254,7 @@ async def on_room_message(
                         room.room_id,
                         text,
                         local_meshnet_name,
-                        msgs_to_keep
+                        msgs_to_keep,
                     )
 
                 success = queue_message(

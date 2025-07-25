@@ -97,7 +97,9 @@ async def main(config):
     load_plugins(passed_config=config)
 
     # Start message queue with configured message delay
-    message_delay = config.get("meshtastic", {}).get("message_delay", DEFAULT_MESSAGE_DELAY)
+    message_delay = config.get("meshtastic", {}).get(
+        "message_delay", DEFAULT_MESSAGE_DELAY
+    )
     start_message_queue(message_delay=message_delay)
 
     # Connect to Meshtastic
