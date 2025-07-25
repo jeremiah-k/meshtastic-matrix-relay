@@ -62,7 +62,7 @@ class MessageQueue:
     def start(self, message_delay: float = DEFAULT_MESSAGE_DELAY):
         """
         Starts the message queue processor with the specified minimum delay between messages.
-        
+
         Enforces a minimum delay of 2.0 seconds due to firmware requirements. If the event loop is running, the processor task is started immediately; otherwise, startup is deferred until the event loop becomes available.
         """
         with self._lock:
@@ -124,14 +124,14 @@ class MessageQueue:
     ) -> bool:
         """
         Adds a message to the queue for rate-limited, ordered sending.
-        
+
         Parameters:
             send_function (Callable): The function to call to send the message.
             *args: Positional arguments for the send function.
             description (str, optional): Human-readable description for logging purposes.
             mapping_info (dict, optional): Optional metadata for message mapping (e.g., replies or reactions).
             **kwargs: Keyword arguments for the send function.
-        
+
         Returns:
             bool: True if the message was successfully enqueued; False if the queue is not running or is full.
         """
@@ -174,7 +174,7 @@ class MessageQueue:
     def get_queue_size(self) -> int:
         """
         Return the number of messages currently in the queue.
-        
+
         Returns:
             int: The current queue size.
         """
@@ -189,7 +189,7 @@ class MessageQueue:
     def get_status(self) -> dict:
         """
         Return a dictionary with the current status of the message queue, including running state, queue size, message delay, processor activity, last send time, and time since last send.
-        
+
         Returns:
             dict: Status information about the message queue for debugging and monitoring.
         """
@@ -197,11 +197,8 @@ class MessageQueue:
             "running": self._running,
             "queue_size": self._queue.qsize(),
             "message_delay": self._message_delay,
-            "processor_task_active": (
-                self._processor_task is not None and not self._processor_task.done()
-                if self._processor_task
-                else False
-            ),
+            "processor_task_active": self._processor_task is not None
+            and not self._processor_task.done(),
             "last_send_time": self._last_send_time,
             "time_since_last_send": (
                 time.time() - self._last_send_time if self._last_send_time > 0 else None
@@ -211,7 +208,7 @@ class MessageQueue:
     def ensure_processor_started(self):
         """
         Start the queue processor task if the queue is running and no processor task exists.
-        
+
         This method checks if the queue is active and, if so, attempts to create and start the asynchronous processor task within the current event loop.
         """
         if self._running and self._processor_task is None:
@@ -229,7 +226,7 @@ class MessageQueue:
     async def _process_queue(self):
         """
         Asynchronously processes messages from the queue, sending each in order while enforcing rate limiting and connection readiness.
-        
+
         This method runs as a background task, monitoring the queue, waiting for the connection to be ready, and ensuring a minimum delay between sends. Messages are sent using their provided callable, and optional message mapping is handled after successful sends. The processor logs queue depth warnings, handles errors gracefully, and maintains FIFO order even when waiting for connection or rate limits.
         """
         logger.debug("Message queue processor started")
@@ -332,7 +329,7 @@ class MessageQueue:
     def _should_send_message(self) -> bool:
         """
         Determine whether it is currently safe to send a message based on Meshtastic client connection and reconnection state.
-        
+
         Returns:
             bool: True if the client is connected and not reconnecting; False otherwise.
         """
@@ -371,11 +368,11 @@ class MessageQueue:
     def _handle_message_mapping(self, result, mapping_info):
         """
         Stores and prunes message mapping information after a message is sent.
-        
+
         Parameters:
             result: The result object from the send function, expected to have an `id` attribute.
             mapping_info (dict): Dictionary containing mapping details such as `matrix_event_id`, `room_id`, `text`, and optional `meshnet` and `msgs_to_keep`.
-        
+
         This method updates the message mapping database with the new mapping and prunes old mappings if configured.
         """
         try:
@@ -422,7 +419,7 @@ def get_message_queue() -> MessageQueue:
 def start_message_queue(message_delay: float = DEFAULT_MESSAGE_DELAY):
     """
     Start the global message queue processor with the given minimum delay between messages.
-    
+
     Parameters:
         message_delay (float): Minimum number of seconds to wait between sending messages.
     """
@@ -445,12 +442,12 @@ def queue_message(
 ) -> bool:
     """
     Enqueues a message for sending via the global message queue.
-    
+
     Parameters:
         send_function (Callable): The function to execute for sending the message.
         description (str, optional): Human-readable description of the message for logging purposes.
         mapping_info (dict, optional): Additional metadata for message mapping, such as reply or reaction information.
-    
+
     Returns:
         bool: True if the message was successfully enqueued; False if the queue is not running or full.
     """
@@ -466,7 +463,7 @@ def queue_message(
 def get_queue_status() -> dict:
     """
     Return detailed status information about the global message queue.
-    
+
     Returns:
         dict: A dictionary containing the running state, queue size, message delay, processor task activity, last send time, and time since last send.
     """

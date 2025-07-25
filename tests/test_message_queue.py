@@ -31,10 +31,10 @@ from mmrelay.message_queue import (
 def mock_send_function(text, **kwargs):
     """
     Simulates sending a message and records the call details for testing purposes.
-    
+
     Parameters:
         text (str): The message text to send.
-    
+
     Returns:
         dict: A dictionary containing a unique 'id' for the sent message.
     """
@@ -72,14 +72,14 @@ class TestMessageQueue(unittest.TestCase):
         async def sync_executor(executor, func, *args, **kwargs):
             """
             Executes a function synchronously, bypassing the executor.
-            
+
             Parameters:
-            	func (callable): The function to execute.
-            	*args: Positional arguments to pass to the function.
-            	**kwargs: Keyword arguments to pass to the function.
-            
+                func (callable): The function to execute.
+                *args: Positional arguments to pass to the function.
+                **kwargs: Keyword arguments to pass to the function.
+
             Returns:
-            	The result of the executed function.
+                The result of the executed function.
             """
             return func(*args, **kwargs)
 
@@ -104,7 +104,7 @@ class TestMessageQueue(unittest.TestCase):
     def test_fifo_ordering(self):
         """
         Verifies that the message queue sends messages in the order they were enqueued (FIFO).
-        
+
         This test enqueues multiple messages, waits for them to be processed, and asserts that they are sent in the same order as they were added to the queue.
         """
 
@@ -113,7 +113,7 @@ class TestMessageQueue(unittest.TestCase):
             # Start queue with fast rate for testing
             """
             Asynchronously tests that messages are processed and sent in FIFO order by the message queue.
-            
+
             This test enqueues multiple messages, waits for them to be processed, and asserts that they are sent in the order they were enqueued.
             """
             self.queue.start(message_delay=0.1)
@@ -192,7 +192,7 @@ class TestMessageQueue(unittest.TestCase):
     def test_fallback_when_not_running(self):
         """
         Test that enqueuing a message is rejected when the queue is not running.
-        
+
         Verifies that the queue does not accept messages unless it has been started, ensuring the event loop is not blocked and no messages are sent in this state.
         """
         # Don't start the queue
@@ -205,7 +205,7 @@ class TestMessageQueue(unittest.TestCase):
     def test_connection_state_awareness(self):
         """
         Verifies that the message queue does not send messages when the connection state indicates it should not send.
-        
+
         Ensures that messages remain unsent if the queue's connection check fails, and restores the original connection check after the test.
         """
 
@@ -213,7 +213,7 @@ class TestMessageQueue(unittest.TestCase):
             # Mock the _should_send_message method to return False
             """
             Asynchronously tests that messages are not sent when the queue's connection state prevents sending.
-            
+
             This function mocks the queue's connection check to simulate a disconnected state, enqueues a message, and verifies that the message is not sent while disconnected. The original connection check is restored after the test.
             """
             original_should_send = self.queue._should_send_message
@@ -244,6 +244,7 @@ class TestMessageQueue(unittest.TestCase):
             """
             Tests that the message queue continues running after a send function raises an exception.
             """
+
             def failing_send_function(text, **kwargs):
                 raise Exception("Send failed")
 
@@ -275,7 +276,7 @@ class TestGlobalFunctions(unittest.TestCase):
     def test_queue_message_function(self):
         """
         Test that the global queue_message function refuses to enqueue messages when the queue is not running.
-        
+
         Verifies that queue_message returns False and does not send messages if the message queue is inactive.
         """
         # Test with queue not running (should refuse to send)
