@@ -13,7 +13,11 @@ from mmrelay.matrix_utils import get_matrix_prefix, get_meshtastic_prefix
 
 
 def test_matrix_to_meshtastic_prefixes():
-    """Test Matrix to Meshtastic prefix customization."""
+    """
+    Test various configurations for generating message prefixes from Matrix to Meshtastic.
+    
+    Verifies correct prefix formatting for default, disabled, custom, truncated, and invalid format scenarios using different configuration options and user data.
+    """
     print("=== Matrix → Meshtastic Prefix Tests ===\n")
 
     # Test data

@@ -64,15 +64,15 @@ class BasePlugin(ABC):
 
     def __init__(self, plugin_name=None) -> None:
         """
-        Initializes the plugin instance with configuration, logging, channel mapping, and response delay settings.
-
+        Initialize the plugin instance, setting its name, logger, configuration, mapped channels, and response delay.
+        
         Parameters:
             plugin_name (str, optional): Overrides the plugin's name. If not provided, uses the class-level `plugin_name` attribute.
-
+        
         Raises:
             ValueError: If the plugin name is not set via parameter or class attribute.
-
-        Sets up a plugin-specific logger, loads configuration from the global config, validates and assigns channels, and determines the response delay based on configuration, enforcing a minimum of 2.0 seconds due to firmware constraints.
+        
+        Loads plugin-specific configuration from the global config, validates assigned channels, and determines the response delay, enforcing a minimum of 2.0 seconds. Logs a warning if deprecated configuration options are used or if channels are not mapped.
         """
         # Allow plugin_name to be passed as a parameter for simpler initialization
         # This maintains backward compatibility while providing a cleaner API
@@ -242,10 +242,10 @@ class BasePlugin(ABC):
 
     def get_response_delay(self):
         """
-        Return the configured delay in seconds before sending Meshtastic responses.
-
-        The delay is set via the `meshtastic.message_delay` configuration option, with a default of 2.2 seconds and a minimum enforced value of 2.0 seconds due to firmware requirements. The deprecated `meshtastic.plugin_response_delay` option is still supported but will be removed in a future version.
-
+        Return the configured delay in seconds before sending a Meshtastic response.
+        
+        The delay is determined by the `meshtastic.message_delay` configuration option, defaulting to 2.2 seconds with a minimum of 2.0 seconds. The deprecated `plugin_response_delay` option is also supported for backward compatibility.
+        
         Returns:
             float: The response delay in seconds.
         """
@@ -253,18 +253,17 @@ class BasePlugin(ABC):
 
     def send_message(self, text: str, channel: int = 0, destination_id=None) -> bool:
         """
-        Send a message to the Meshtastic network through the message queue.
-
-        This method automatically queues the message and respects the configured
-        rate limiting. It's the recommended way for plugins to send messages.
-
-        Args:
-            text: Message text to send
-            channel: Channel index to send on (default: 0)
-            destination_id: Specific destination ID, or None for broadcast
-
+        Send a message to the Meshtastic network via the message queue.
+        
+        Automatically queues the message for broadcast or direct delivery, applying rate limiting as configured. Returns True if the message was successfully queued, or False if the Meshtastic client is unavailable.
+        
+        Parameters:
+            text (str): The message text to send.
+            channel (int, optional): Channel index to send the message on. Defaults to 0.
+            destination_id (optional): Destination node ID for direct messages; if None, the message is broadcast.
+        
         Returns:
-            bool: True if message was queued successfully, False otherwise
+            bool: True if the message was queued successfully, False otherwise.
         """
         from mmrelay.meshtastic_utils import connect_meshtastic
 
@@ -296,17 +295,15 @@ class BasePlugin(ABC):
             )
 
     def is_channel_enabled(self, channel, is_direct_message=False):
-        """Check if the plugin should respond on a specific channel.
-
-        Args:
-            channel: Channel identifier to check
-            is_direct_message (bool): Whether this is a direct message
-
+        """
+        Determine whether the plugin should respond to a message on the specified channel or direct message.
+        
+        Parameters:
+            channel: The channel identifier to check.
+            is_direct_message (bool): Set to True if the message is a direct message.
+        
         Returns:
-            bool: True if plugin should respond, False otherwise
-
-        Direct messages always return True if the plugin is active.
-        For channel messages, checks if channel is in plugin's configured channels list.
+            bool: True if the plugin should respond on the given channel or to a direct message; False otherwise.
         """
         if is_direct_message:
             return True  # Always respond to DMs if the plugin is active
