@@ -46,13 +46,11 @@ def _get_msgs_to_keep_config():
     if not config:
         return 500
 
-    database_config = config.get("database", {})
-    msg_map_config = database_config.get("msg_map", {})
+    msg_map_config = config.get("database", {}).get("msg_map", {})
 
     # If not found in database config, check legacy db config
     if not msg_map_config:
-        db_config = config.get("db", {})
-        legacy_msg_map_config = db_config.get("msg_map", {})
+        legacy_msg_map_config = config.get("db", {}).get("msg_map", {})
 
         if legacy_msg_map_config:
             msg_map_config = legacy_msg_map_config
