@@ -35,7 +35,11 @@ class TestConfigChecker(unittest.TestCase):
                 "bot_user_id": "@bot:matrix.org",
             },
             "matrix_rooms": [{"id": "!room1:matrix.org", "meshtastic_channel": 0}],
-            "meshtastic": {"connection_type": "tcp", "host": "192.168.1.100"},
+            "meshtastic": {
+                "connection_type": "tcp",
+                "host": "192.168.1.100",
+                "broadcast_enabled": True
+            },
         }
 
     def test_get_config_paths(self):
@@ -72,7 +76,7 @@ class TestConfigChecker(unittest.TestCase):
 
         self.assertTrue(result)
         mock_print.assert_any_call("Found configuration file at: /test/config.yaml")
-        mock_print.assert_any_call("Configuration file is valid!")
+        mock_print.assert_any_call("\nConfiguration file is valid!")
 
     @patch("mmrelay.config_checker.get_config_paths")
     @patch("os.path.isfile")
@@ -89,6 +93,7 @@ class TestConfigChecker(unittest.TestCase):
         serial_config["meshtastic"] = {
             "connection_type": "serial",
             "serial_port": "/dev/ttyUSB0",
+            "broadcast_enabled": True,
         }
 
         mock_get_paths.return_value = ["/test/config.yaml"]
@@ -98,7 +103,7 @@ class TestConfigChecker(unittest.TestCase):
         result = check_config()
 
         self.assertTrue(result)
-        mock_print.assert_any_call("Configuration file is valid!")
+        mock_print.assert_any_call("\nConfiguration file is valid!")
 
     @patch("mmrelay.config_checker.get_config_paths")
     @patch("os.path.isfile")
@@ -117,6 +122,7 @@ class TestConfigChecker(unittest.TestCase):
         ble_config["meshtastic"] = {
             "connection_type": "ble",
             "ble_address": "AA:BB:CC:DD:EE:FF",
+            "broadcast_enabled": True,
         }
 
         mock_get_paths.return_value = ["/test/config.yaml"]
@@ -126,7 +132,7 @@ class TestConfigChecker(unittest.TestCase):
         result = check_config()
 
         self.assertTrue(result)
-        mock_print.assert_any_call("Configuration file is valid!")
+        mock_print.assert_any_call("\nConfiguration file is valid!")
 
     @patch("mmrelay.config_checker.get_config_paths")
     @patch("os.path.isfile")

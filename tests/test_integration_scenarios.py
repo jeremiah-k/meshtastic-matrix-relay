@@ -333,6 +333,7 @@ matrix_rooms:
 meshtastic:
   connection_type: serial
   serial_port: /dev/ttyUSB0
+  broadcast_enabled: true
 
 plugins:
   debug:
