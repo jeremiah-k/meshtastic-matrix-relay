@@ -128,6 +128,111 @@ def print_version():
     print(f"MMRelay v{__version__}")
 
 
+def validate_yaml_syntax(config_content, config_path):
+    """
+    Validate YAML syntax and provide detailed error messages for common issues.
+
+    Args:
+        config_content (str): The raw YAML content
+        config_path (str): Path to the config file for error reporting
+
+    Returns:
+        tuple: (is_valid, error_message, parsed_config)
+    """
+    import re
+
+    lines = config_content.split("\n")
+
+    # Check for common YAML syntax issues
+    syntax_issues = []
+
+    for line_num, line in enumerate(lines, 1):
+        # Skip empty lines and comments
+        if not line.strip() or line.strip().startswith("#"):
+            continue
+
+        # Check for unclosed quotes
+        if line.count('"') % 2 != 0:
+            syntax_issues.append(
+                f"Line {line_num}: Unclosed double quote - {line.strip()}"
+            )
+        if line.count("'") % 2 != 0:
+            syntax_issues.append(
+                f"Line {line_num}: Unclosed single quote - {line.strip()}"
+            )
+
+        # Check for missing colons in key-value pairs
+        if ":" not in line and "=" in line:
+            syntax_issues.append(
+                f"Line {line_num}: Use ':' instead of '=' for YAML - {line.strip()}"
+            )
+
+        # Check for non-standard boolean values (style warning)
+        bool_pattern = r":\s*(yes|no|on|off|Yes|No|YES|NO)\s*$"
+        if re.search(bool_pattern, line):
+            match = re.search(bool_pattern, line)
+            non_standard_bool = match.group(1)
+            syntax_issues.append(
+                f"Line {line_num}: Style warning - Consider using 'true' or 'false' instead of '{non_standard_bool}' for clarity - {line.strip()}"
+            )
+
+    # Try to parse YAML and catch specific errors
+    try:
+        parsed_config = yaml.load(config_content, Loader=SafeLoader)
+        if syntax_issues:
+            # Separate warnings from errors
+            warnings = [issue for issue in syntax_issues if "Style warning" in issue]
+            errors = [issue for issue in syntax_issues if "Style warning" not in issue]
+
+            if errors:
+                return False, "\n".join(errors), None
+            elif warnings:
+                # Return success but with warnings
+                return True, "\n".join(warnings), parsed_config
+        return True, None, parsed_config
+    except yaml.YAMLError as e:
+        error_msg = f"YAML parsing error in {config_path}:\n"
+
+        # Extract line and column information if available
+        if hasattr(e, "problem_mark"):
+            mark = e.problem_mark
+            error_line = mark.line + 1
+            error_column = mark.column + 1
+            error_msg += f"  Line {error_line}, Column {error_column}: "
+
+            # Show the problematic line
+            if error_line <= len(lines):
+                problematic_line = lines[error_line - 1]
+                error_msg += f"\n  Problematic line: {problematic_line}\n"
+                error_msg += f"  Error position: {' ' * (error_column - 1)}^\n"
+
+        # Add the original error message
+        error_msg += f"  {str(e)}\n"
+
+        # Provide helpful suggestions based on error type
+        error_str = str(e).lower()
+        if "mapping values are not allowed" in error_str:
+            error_msg += "\n  Suggestion: Check for missing quotes around values containing special characters"
+        elif "could not find expected" in error_str:
+            error_msg += "\n  Suggestion: Check for unclosed quotes or brackets"
+        elif "found character that cannot start any token" in error_str:
+            error_msg += (
+                "\n  Suggestion: Check for invalid characters or incorrect indentation"
+            )
+        elif "expected <block end>" in error_str:
+            error_msg += (
+                "\n  Suggestion: Check indentation - YAML uses spaces, not tabs"
+            )
+
+        # Add syntax issues if found
+        if syntax_issues:
+            error_msg += "\n\nAdditional syntax issues found:\n" + "\n".join(
+                syntax_issues
+            )
+
+        return False, error_msg, None
+
+
 def check_config(args=None):
     """
     Validates the application's configuration file for required structure and fields.
@@ -155,11 +260,23 @@ def check_config(args=None):
             print(f"Found configuration file at: {config_path}")
             try:
                 with open(config_path, "r") as f:
-                    config = yaml.load(f, Loader=SafeLoader)
+                    config_content = f.read()
+
+                # Validate YAML syntax first
+                is_valid, message, config = validate_yaml_syntax(
+                    config_content, config_path
+                )
+                if not is_valid:
+                    print(f"YAML Syntax Error:\n{message}")
+                    return False
+                elif message:  # Warnings
+                    print(f"YAML Style Warnings:\n{message}\n")
 
                 # Check if config is empty
                 if not config:
-                    print("Error: Configuration file is empty or invalid")
+                    print(
+                        "Error: Configuration file is empty or contains only comments"
+                    )
                     return False
 
                 # Check matrix section
@@ -262,30 +379,36 @@ def check_config(args=None):
 
                 # Check for broadcast_enabled - required for Matrix to Meshtastic message flow
                 if "broadcast_enabled" not in meshtastic_section:
-                    print("Warning: Missing 'broadcast_enabled' in 'meshtastic' section")
-                    print("  This option must be set to 'true' to enable Matrix to Meshtastic messages")
+                    print(
+                        "Warning: Missing 'broadcast_enabled' in 'meshtastic' section"
+                    )
+                    print(
+                        "  This option must be set to 'true' to enable Matrix to Meshtastic messages"
+                    )
                     print("  Add 'broadcast_enabled: true' to your meshtastic section")
                     return False
 
                 broadcast_enabled = meshtastic_section["broadcast_enabled"]
                 if not isinstance(broadcast_enabled, bool):
-                    print(f"Error: 'broadcast_enabled' must be a boolean (true/false), got: {broadcast_enabled}")
+                    print(
+                        f"Error: 'broadcast_enabled' must be a boolean (true/false), got: {broadcast_enabled}"
+                    )
                     return False
 
                 # Check for other important optional configurations and provide guidance
                 optional_configs = {
                     "detection_sensor": {
                         "type": bool,
-                        "description": "Enable forwarding of Meshtastic detection sensor messages"
+                        "description": "Enable forwarding of Meshtastic detection sensor messages",
                     },
                     "message_delay": {
                         "type": (int, float),
-                        "description": "Delay in seconds between messages sent to mesh (minimum: 2.0)"
+                        "description": "Delay in seconds between messages sent to mesh (minimum: 2.0)",
                     },
                     "meshnet_name": {
                         "type": str,
-                        "description": "Name displayed for your meshnet in Matrix messages"
-                    }
+                        "description": "Name displayed for your meshnet in Matrix messages",
+                    },
                 }
 
                 warnings = []
@@ -294,13 +417,21 @@ def check_config(args=None):
                         value = meshtastic_section[option]
                         expected_type = config_info["type"]
                         if not isinstance(value, expected_type):
-                            type_name = expected_type.__name__ if hasattr(expected_type, '__name__') else str(expected_type)
-                            print(f"Error: '{option}' must be of type {type_name}, got: {value}")
+                            type_name = (
+                                expected_type.__name__
+                                if hasattr(expected_type, "__name__")
+                                else str(expected_type)
+                            )
+                            print(
+                                f"Error: '{option}' must be of type {type_name}, got: {value}"
+                            )
                             return False
 
                         # Special validation for message_delay
                         if option == "message_delay" and value < 2.0:
-                            print(f"Error: 'message_delay' must be at least 2.0 seconds (firmware limitation), got: {value}")
+                            print(
+                                f"Error: 'message_delay' must be at least 2.0 seconds (firmware limitation), got: {value}"
+                            )
                             return False
                     else:
                         warnings.append(f"  - {option}: {config_info['description']}")
@@ -321,9 +452,6 @@ def check_config(args=None):
 
                 print("Configuration file is valid!")
                 return True
-            except yaml.YAMLError as e:
-                print(f"Error parsing YAML in {config_path}: {e}")
-                return False
             except Exception as e:
                 print(f"Error checking configuration: {e}")
                 return False

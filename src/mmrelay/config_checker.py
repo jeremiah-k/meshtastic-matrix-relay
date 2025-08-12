@@ -148,30 +148,36 @@ def check_config():
 
                 # Check for broadcast_enabled - required for Matrix to Meshtastic message flow
                 if "broadcast_enabled" not in meshtastic_section:
-                    print("Warning: Missing 'broadcast_enabled' in 'meshtastic' section")
-                    print("  This option must be set to 'true' to enable Matrix to Meshtastic messages")
+                    print(
+                        "Warning: Missing 'broadcast_enabled' in 'meshtastic' section"
+                    )
+                    print(
+                        "  This option must be set to 'true' to enable Matrix to Meshtastic messages"
+                    )
                     print("  Add 'broadcast_enabled: true' to your meshtastic section")
                     return False
 
                 broadcast_enabled = meshtastic_section["broadcast_enabled"]
                 if not isinstance(broadcast_enabled, bool):
-                    print(f"Error: 'broadcast_enabled' must be a boolean (true/false), got: {broadcast_enabled}")
+                    print(
+                        f"Error: 'broadcast_enabled' must be a boolean (true/false), got: {broadcast_enabled}"
+                    )
                     return False
 
                 # Check for other important optional configurations and provide guidance
                 optional_configs = {
                     "detection_sensor": {
                         "type": bool,
-                        "description": "Enable forwarding of Meshtastic detection sensor messages"
+                        "description": "Enable forwarding of Meshtastic detection sensor messages",
                     },
                     "message_delay": {
                         "type": (int, float),
-                        "description": "Delay in seconds between messages sent to mesh (minimum: 2.0)"
+                        "description": "Delay in seconds between messages sent to mesh (minimum: 2.0)",
                     },
                     "meshnet_name": {
                         "type": str,
-                        "description": "Name displayed for your meshnet in Matrix messages"
-                    }
+                        "description": "Name displayed for your meshnet in Matrix messages",
+                    },
                 }
 
                 warnings = []
@@ -180,13 +186,21 @@ def check_config():
                         value = meshtastic_section[option]
                         expected_type = config_info["type"]
                         if not isinstance(value, expected_type):
-                            type_name = expected_type.__name__ if hasattr(expected_type, '__name__') else str(expected_type)
-                            print(f"Error: '{option}' must be of type {type_name}, got: {value}")
+                            type_name = (
+                                expected_type.__name__
+                                if hasattr(expected_type, "__name__")
+                                else str(expected_type)
+                            )
+                            print(
+                                f"Error: '{option}' must be of type {type_name}, got: {value}"
+                            )
                             return False
 
                         # Special validation for message_delay
                         if option == "message_delay" and value < 2.0:
-                            print(f"Error: 'message_delay' must be at least 2.0 seconds (firmware limitation), got: {value}")
+                            print(
+                                f"Error: 'message_delay' must be at least 2.0 seconds (firmware limitation), got: {value}"
+                            )
                             return False
                     else:
                         warnings.append(f"  - {option}: {config_info['description']}")

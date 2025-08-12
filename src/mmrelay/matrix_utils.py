@@ -76,7 +76,7 @@ def get_meshtastic_config_value(key, default=None, required=False):
             raise KeyError(
                 f"Required configuration 'meshtastic.{key}' is missing. "
                 f"Add '{key}: {default if default is not None else 'VALUE'}' to your meshtastic section."
-            )
+            ) from None
         return default
 
 
@@ -789,7 +789,9 @@ async def send_reply_to_meshtastic(
 
     meshtastic_channel = room_config["meshtastic_channel"]
 
-    if get_meshtastic_config_value("broadcast_enabled", DEFAULT_BROADCAST_ENABLED, required=True):
+    if get_meshtastic_config_value(
+        "broadcast_enabled", DEFAULT_BROADCAST_ENABLED, required=True
+    ):
         try:
             # Create mapping info once if storage is enabled
             mapping_info = None
@@ -1072,7 +1074,9 @@ async def on_room_message(
 
             meshtastic_channel = room_config["meshtastic_channel"]
 
-            if get_meshtastic_config_value("broadcast_enabled", DEFAULT_BROADCAST_ENABLED, required=True):
+            if get_meshtastic_config_value(
+                "broadcast_enabled", DEFAULT_BROADCAST_ENABLED, required=True
+            ):
                 meshtastic_logger.info(
                     f"Relaying reaction from remote meshnet {meshnet_name} to radio broadcast"
                 )
@@ -1145,7 +1149,9 @@ async def on_room_message(
 
             meshtastic_channel = room_config["meshtastic_channel"]
 
-            if get_meshtastic_config_value("broadcast_enabled", DEFAULT_BROADCAST_ENABLED, required=True):
+            if get_meshtastic_config_value(
+                "broadcast_enabled", DEFAULT_BROADCAST_ENABLED, required=True
+            ):
                 meshtastic_logger.info(
                     f"Relaying reaction from {full_display_name} to radio broadcast"
                 )
@@ -1277,11 +1283,15 @@ async def on_room_message(
     # Note: If relay_reactions is False, we won't store message_map, but we can still relay.
     # The lack of message_map storage just means no reaction bridging will occur.
     if not found_matching_plugin:
-        if get_meshtastic_config_value("broadcast_enabled", DEFAULT_BROADCAST_ENABLED, required=True):
+        if get_meshtastic_config_value(
+            "broadcast_enabled", DEFAULT_BROADCAST_ENABLED, required=True
+        ):
             portnum = event.source["content"].get("meshtastic_portnum")
             if portnum == DETECTION_SENSOR_APP:
                 # If detection_sensor is enabled, forward this data as detection sensor data
-                if get_meshtastic_config_value("detection_sensor", DEFAULT_DETECTION_SENSOR):
+                if get_meshtastic_config_value(
+                    "detection_sensor", DEFAULT_DETECTION_SENSOR
+                ):
                     success = queue_message(
                         meshtastic_interface.sendData,
                         data=full_message.encode("utf-8"),
