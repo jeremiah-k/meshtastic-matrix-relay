@@ -377,26 +377,21 @@ def check_config(args=None):
                     print("Error: Missing 'ble_address' for 'ble' connection type")
                     return False
 
-                # Check for broadcast_enabled - required for Matrix to Meshtastic message flow
-                if "broadcast_enabled" not in meshtastic_section:
-                    print(
-                        "Warning: Missing 'broadcast_enabled' in 'meshtastic' section"
-                    )
-                    print(
-                        "  This option must be set to 'true' to enable Matrix to Meshtastic messages"
-                    )
-                    print("  Add 'broadcast_enabled: true' to your meshtastic section")
-                    return False
-
-                broadcast_enabled = meshtastic_section["broadcast_enabled"]
-                if not isinstance(broadcast_enabled, bool):
-                    print(
-                        f"Error: 'broadcast_enabled' must be a boolean (true/false), got: {broadcast_enabled}"
-                    )
-                    return False
+                # Validate broadcast_enabled if present
+                if "broadcast_enabled" in meshtastic_section:
+                    broadcast_enabled = meshtastic_section["broadcast_enabled"]
+                    if not isinstance(broadcast_enabled, bool):
+                        print(
+                            f"Error: 'broadcast_enabled' must be a boolean (true/false), got: {broadcast_enabled}"
+                        )
+                        return False
 
                 # Check for other important optional configurations and provide guidance
                 optional_configs = {
+                    "broadcast_enabled": {
+                        "type": bool,
+                        "description": "Enable Matrix to Meshtastic message forwarding (required for two-way communication)",
+                    },
                     "detection_sensor": {
                         "type": bool,
                         "description": "Enable forwarding of Meshtastic detection sensor messages",

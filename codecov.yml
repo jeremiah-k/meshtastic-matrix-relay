@@ -27,8 +27,8 @@ component_management:
     - component_id: configuration
       name: Configuration
       paths:
-        - src/mmrelay/config_checker.py
         - src/mmrelay/config.py
+        - src/mmrelay/cli.py
       statuses:
         - type: project
           target: 70%

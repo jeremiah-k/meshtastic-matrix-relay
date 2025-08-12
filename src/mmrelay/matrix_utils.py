@@ -790,7 +790,7 @@ async def send_reply_to_meshtastic(
     meshtastic_channel = room_config["meshtastic_channel"]
 
     if get_meshtastic_config_value(
-        "broadcast_enabled", DEFAULT_BROADCAST_ENABLED, required=True
+        "broadcast_enabled", DEFAULT_BROADCAST_ENABLED, required=False
     ):
         try:
             # Create mapping info once if storage is enabled
@@ -1075,7 +1075,7 @@ async def on_room_message(
             meshtastic_channel = room_config["meshtastic_channel"]
 
             if get_meshtastic_config_value(
-                "broadcast_enabled", DEFAULT_BROADCAST_ENABLED, required=True
+                "broadcast_enabled", DEFAULT_BROADCAST_ENABLED, required=False
             ):
                 meshtastic_logger.info(
                     f"Relaying reaction from remote meshnet {meshnet_name} to radio broadcast"
@@ -1150,7 +1150,7 @@ async def on_room_message(
             meshtastic_channel = room_config["meshtastic_channel"]
 
             if get_meshtastic_config_value(
-                "broadcast_enabled", DEFAULT_BROADCAST_ENABLED, required=True
+                "broadcast_enabled", DEFAULT_BROADCAST_ENABLED, required=False
             ):
                 meshtastic_logger.info(
                     f"Relaying reaction from {full_display_name} to radio broadcast"
@@ -1284,7 +1284,7 @@ async def on_room_message(
     # The lack of message_map storage just means no reaction bridging will occur.
     if not found_matching_plugin:
         if get_meshtastic_config_value(
-            "broadcast_enabled", DEFAULT_BROADCAST_ENABLED, required=True
+            "broadcast_enabled", DEFAULT_BROADCAST_ENABLED, required=False
         ):
             portnum = event.source["content"].get("meshtastic_portnum")
             if portnum == DETECTION_SENSOR_APP:
