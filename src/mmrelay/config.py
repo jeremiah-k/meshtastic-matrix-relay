@@ -317,7 +317,7 @@ def validate_yaml_syntax(config_content, config_path):
 
     # Try to parse YAML and catch specific errors
     try:
-        parsed_config = yaml.load(config_content, Loader=SafeLoader)
+        parsed_config = yaml.safe_load(config_content)
         if syntax_issues:
             # Separate warnings from errors
             warnings = [issue for issue in syntax_issues if "Style warning" in issue]
