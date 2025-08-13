@@ -7,12 +7,9 @@ import importlib.resources
 import os
 import sys
 
-import yaml
-from yaml.loader import SafeLoader
-
 # Import version from package
 from mmrelay import __version__
-from mmrelay.config import get_config_paths
+from mmrelay.config import get_config_paths, validate_yaml_syntax
 from mmrelay.constants.app import WINDOWS_PLATFORM
 from mmrelay.constants.config import (
     CONFIG_KEY_ACCESS_TOKEN,
@@ -79,11 +76,6 @@ def parse_arguments():
         action="store_true",
         help="Check if the configuration file is valid",
     )
-    parser.add_argument(
-        "--auth",
-        action="store_true",
-        help="Authenticate with Matrix and save credentials for E2EE support",
-    )
 
     # Windows-specific handling for backward compatibility
     # On Windows, add a positional argument for the config file path
@@ -135,15 +127,28 @@ def print_version():
 
 def check_config(args=None):
     """
-    Validates the application's configuration file for required structure and fields.
+    Validate the application's YAML configuration file for required sections and fields.
 
-    If a configuration file is found, checks for the presence and correctness of required sections and keys, including Matrix and Meshtastic settings, and validates the format of matrix rooms. Prints errors or warnings for missing or deprecated fields. Returns True if the configuration is valid, otherwise False.
+    Reads candidate config files (from get_config_paths), validates YAML syntax via validate_yaml_syntax, and performs structural and semantic checks:
+    - Ensures the config is not empty.
+    - Verifies the 'matrix' section contains HOMESERVER, ACCESS_TOKEN, and BOT_USER_ID.
+    - Verifies 'matrix_rooms' exists, is a non-empty list, and each room is a dict containing an 'id'.
+    - Verifies the 'meshtastic' section contains a valid connection_type and the connection-type-specific fields:
+      - serial -> serial_port
+      - tcp/network -> host
+      - ble -> ble_address
+      - warns if connection_type == 'network' (deprecated)
+    - Validates optional meshtastic fields and types: broadcast_enabled (bool), detection_sensor (bool), message_delay (int|float, >= 2.0), meshnet_name (str); reports missing optional fields as guidance.
+    - Warns if a deprecated 'db' section is present.
+
+    Side effects:
+    - Prints validation errors, warnings, and status messages to stdout.
 
     Parameters:
-        args: Parsed command-line arguments. If None, arguments are parsed internally.
+        args (argparse.Namespace | None): Parsed CLI arguments; if None, CLI args are parsed internally.
 
     Returns:
-        bool: True if the configuration file is valid, False otherwise.
+        bool: True if a configuration file was found and passed all checks; False otherwise.
     """
 
     # If args is None, parse them now
@@ -160,11 +165,23 @@ def check_config(args=None):
             print(f"Found configuration file at: {config_path}")
             try:
                 with open(config_path, "r") as f:
-                    config = yaml.load(f, Loader=SafeLoader)
+                    config_content = f.read()
+
+                # Validate YAML syntax first
+                is_valid, message, config = validate_yaml_syntax(
+                    config_content, config_path
+                )
+                if not is_valid:
+                    print(f"YAML Syntax Error:\n{message}")
+                    return False
+                elif message:  # Warnings
+                    print(f"YAML Style Warnings:\n{message}\n")
 
                 # Check if config is empty
                 if not config:
-                    print("Error: Configuration file is empty or invalid")
+                    print(
+                        "Error: Configuration file is empty or contains only comments"
+                    )
                     return False
 
                 # Check matrix section
@@ -265,6 +282,61 @@ def check_config(args=None):
                     print("Error: Missing 'ble_address' for 'ble' connection type")
                     return False
 
+                # Check for other important optional configurations and provide guidance
+                optional_configs = {
+                    "broadcast_enabled": {
+                        "type": bool,
+                        "description": "Enable Matrix to Meshtastic message forwarding (required for two-way communication)",
+                    },
+                    "detection_sensor": {
+                        "type": bool,
+                        "description": "Enable forwarding of Meshtastic detection sensor messages",
+                    },
+                    "message_delay": {
+                        "type": (int, float),
+                        "description": "Delay in seconds between messages sent to mesh (minimum: 2.0)",
+                    },
+                    "meshnet_name": {
+                        "type": str,
+                        "description": "Name displayed for your meshnet in Matrix messages",
+                    },
+                }
+
+                warnings = []
+                for option, config_info in optional_configs.items():
+                    if option in meshtastic_section:
+                        value = meshtastic_section[option]
+                        expected_type = config_info["type"]
+                        if not isinstance(value, expected_type):
+                            if isinstance(expected_type, tuple):
+                                type_name = " or ".join(
+                                    t.__name__ for t in expected_type
+                                )
+                            else:
+                                type_name = (
+                                    expected_type.__name__
+                                    if hasattr(expected_type, "__name__")
+                                    else str(expected_type)
+                                )
+                            print(
+                                f"Error: '{option}' must be of type {type_name}, got: {value}"
+                            )
+                            return False
+
+                        # Special validation for message_delay
+                        if option == "message_delay" and value < 2.0:
+                            print(
+                                f"Error: 'message_delay' must be at least 2.0 seconds (firmware limitation), got: {value}"
+                            )
+                            return False
+                    else:
+                        warnings.append(f"  - {option}: {config_info['description']}")
+
+                if warnings:
+                    print("\nOptional configurations not found (using defaults):")
+                    for warning in warnings:
+                        print(warning)
+
                 # Check for deprecated db section
                 if "db" in config:
                     print(
@@ -276,9 +348,6 @@ def check_config(args=None):
 
                 print("Configuration file is valid!")
                 return True
-            except yaml.YAMLError as e:
-                print(f"Error parsing YAML in {config_path}: {e}")
-                return False
             except Exception as e:
                 print(f"Error checking configuration: {e}")
                 return False
@@ -323,35 +392,6 @@ def main():
             print_version()
             return 0
 
-        # Handle --auth
-        if args.auth:
-            import asyncio
-
-            from mmrelay.matrix_utils import login_matrix_bot
-
-            # Show different header based on platform
-            if sys.platform == WINDOWS_PLATFORM:
-                print("Matrix Bot Authentication")
-                print("=========================")
-                print("Note: E2EE features are not available on Windows due to library limitations.")
-                print("These credentials will work for regular Matrix communication on Windows,")
-                print("and can be used with E2EE features if you later use Linux or macOS.")
-                print("")
-            else:
-                print("Matrix Bot Login for E2EE")
-                print("=========================")
-
-            try:
-                # Run the login function
-                result = asyncio.run(login_matrix_bot())
-                return 0 if result else 1
-            except KeyboardInterrupt:
-                print("\nLogin cancelled by user.")
-                return 1
-            except Exception as e:
-                print(f"\nError during login: {e}")
-                return 1
-
         # If no command was specified, run the main functionality
         try:
             from mmrelay.main import run_main
@@ -362,11 +402,7 @@ def main():
             return 1
 
     except Exception as e:
-        import traceback
-
         print(f"Unexpected error: {e}")
-        print("Full traceback:")
-        traceback.print_exc()
         return 1
 
 
