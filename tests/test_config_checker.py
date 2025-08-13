@@ -28,12 +28,12 @@ class TestConfigChecker(unittest.TestCase):
     def setUp(self):
         """
         Prepare a representative, valid configuration dict used by each test.
-        
+
         The dict is stored as self.valid_config and includes:
         - matrix: minimal required fields for Matrix (homeserver, access_token, bot_user_id)
         - matrix_rooms: a list with one room dict containing an 'id' and 'meshtastic_channel'
         - meshtastic: a meshtastic connection with connection_type 'tcp', a host, and broadcast_enabled flag
-        
+
         This runs before each test method to provide a reusable valid configuration fixture.
         """
         self.valid_config = {
@@ -194,7 +194,7 @@ class TestConfigChecker(unittest.TestCase):
     ):
         """
         Test that check_config returns False and reports an error when the configuration is missing the required 'matrix' section.
-        
+
         Sets up a configuration containing only a 'meshtastic' section, patches file discovery and YAML loading to return that config, calls check_config(), and asserts the function fails and prints the expected error message "Error: Missing 'matrix' section in config".
         """
         invalid_config = {"meshtastic": {"connection_type": "tcp"}}
@@ -315,7 +315,7 @@ class TestConfigChecker(unittest.TestCase):
     ):
         """
         Test that check_config fails when an entry in 'matrix_rooms' is not a dictionary.
-        
+
         Verifies check_config returns False and emits the error message
         "Error: Room 1 in 'matrix_rooms' must be a dictionary" when a non-dictionary
         item appears in the 'matrix_rooms' list.

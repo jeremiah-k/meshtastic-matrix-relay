@@ -466,19 +466,19 @@ async def reconnect():
 def on_meshtastic_message(packet, interface):
     """
     Handle an incoming Meshtastic packet and relay it to Matrix rooms or plugins as configured.
-    
+
     This function inspects a Meshtastic `packet` (expected as a dict), applies interaction rules (reactions, replies, replies storage, detection-sensor filtering), and either:
     - relays reactions or replies as appropriate to the mapped Matrix event/room,
     - relays normal text messages to all Matrix rooms mapped to the message's Meshtastic channel (unless the message is a direct message to the relay node or a plugin handles it),
     - or dispatches non-text or unhandled packets to plugins for processing.
-    
+
     Behavior notes:
     - Uses global configuration and matrix_rooms mappings; returns immediately if configuration or event loop is missing or if shutdown is in progress.
     - Resolves sender display names from a local DB or node info and persists them when found.
     - Honors interaction settings for reactions and replies, and the meshtastic `detection_sensor` configuration when handling detection sensor packets.
     - Uses _submit_coro to schedule Matrix/plugin coroutines on the configured event loop.
     - Side effects: schedules Matrix relays, may call plugin handlers, and may store sender metadata and message->Matrix mappings via other utilities.
-    
+
     No return value.
     """
     global config, matrix_rooms

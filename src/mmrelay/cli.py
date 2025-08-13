@@ -128,7 +128,7 @@ def print_version():
 def check_config(args=None):
     """
     Validate the application's YAML configuration file for required sections and fields.
-    
+
     Reads candidate config files (from get_config_paths), validates YAML syntax via validate_yaml_syntax, and performs structural and semantic checks:
     - Ensures the config is not empty.
     - Verifies the 'matrix' section contains HOMESERVER, ACCESS_TOKEN, and BOT_USER_ID.
@@ -140,13 +140,13 @@ def check_config(args=None):
       - warns if connection_type == 'network' (deprecated)
     - Validates optional meshtastic fields and types: broadcast_enabled (bool), detection_sensor (bool), message_delay (int|float, >= 2.0), meshnet_name (str); reports missing optional fields as guidance.
     - Warns if a deprecated 'db' section is present.
-    
+
     Side effects:
     - Prints validation errors, warnings, and status messages to stdout.
-    
+
     Parameters:
         args (argparse.Namespace | None): Parsed CLI arguments; if None, CLI args are parsed internally.
-    
+
     Returns:
         bool: True if a configuration file was found and passed all checks; False otherwise.
     """
@@ -282,15 +282,6 @@ def check_config(args=None):
                     print("Error: Missing 'ble_address' for 'ble' connection type")
                     return False
 
-                # Validate broadcast_enabled if present
-                if "broadcast_enabled" in meshtastic_section:
-                    broadcast_enabled = meshtastic_section["broadcast_enabled"]
-                    if not isinstance(broadcast_enabled, bool):
-                        print(
-                            f"Error: 'broadcast_enabled' must be a boolean (true/false), got: {broadcast_enabled}"
-                        )
-                        return False
-
                 # Check for other important optional configurations and provide guidance
                 optional_configs = {
                     "broadcast_enabled": {
@@ -317,11 +308,16 @@ def check_config(args=None):
                         value = meshtastic_section[option]
                         expected_type = config_info["type"]
                         if not isinstance(value, expected_type):
-                            type_name = (
-                                expected_type.__name__
-                                if hasattr(expected_type, "__name__")
-                                else str(expected_type)
-                            )
+                            if isinstance(expected_type, tuple):
+                                type_name = " or ".join(
+                                    t.__name__ for t in expected_type
+                                )
+                            else:
+                                type_name = (
+                                    expected_type.__name__
+                                    if hasattr(expected_type, "__name__")
+                                    else str(expected_type)
+                                )
                             print(
                                 f"Error: '{option}' must be of type {type_name}, got: {value}"
                             )

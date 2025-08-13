@@ -274,16 +274,16 @@ def load_config(config_file=None, args=None):
 def validate_yaml_syntax(config_content, config_path):
     """
     Validate YAML content and return parsing results plus human-readable syntax feedback.
-    
+
     Performs lightweight line-based checks for common mistakes (unclosed quotes, use of '=' instead of ':',
     and non-standard boolean words like 'yes'/'no') and then attempts to parse the content with PyYAML.
     If only style warnings are found the parser result is returned with warnings; if syntax errors are detected
     or YAML parsing fails, a detailed error message is returned.
-    
+
     Parameters:
         config_content (str): Raw YAML text to validate.
         config_path (str): Path used in error messages to identify the source file.
-    
+
     Returns:
         tuple:
             is_valid (bool): True if parsing succeeded (even if style warnings exist), False on syntax/parsing error.
@@ -299,16 +299,6 @@ def validate_yaml_syntax(config_content, config_path):
         # Skip empty lines and comments
         if not line.strip() or line.strip().startswith("#"):
             continue
-
-        # Check for unclosed quotes
-        if line.count('"') % 2 != 0:
-            syntax_issues.append(
-                f"Line {line_num}: Unclosed double quote - {line.strip()}"
-            )
-        if line.count("'") % 2 != 0:
-            syntax_issues.append(
-                f"Line {line_num}: Unclosed single quote - {line.strip()}"
-            )
 
         # Check for missing colons in key-value pairs
         if ":" not in line and "=" in line:
@@ -385,20 +375,20 @@ def validate_yaml_syntax(config_content, config_path):
 def get_meshtastic_config_value(config, key, default=None, required=False):
     """
     Return a value from the `meshtastic` section of the given config dict.
-    
+
     If the key exists under `config["meshtastic"]`, that value is returned. If the key is missing:
     - If `required` is False, `default` is returned.
     - If `required` is True, a KeyError is raised and an error is logged with guidance to add the missing setting.
-    
+
     Parameters:
         config (dict): Parsed configuration mapping.
         key (str): Key to retrieve from the `meshtastic` section.
         default: Value to return when the key is absent and not required.
         required (bool): If True, missing key raises KeyError; otherwise returns `default`.
-    
+
     Returns:
         The value from `config["meshtastic"][key]` or `default` when not required.
-    
+
     Raises:
         KeyError: If `required` is True and the requested key is not present.
     """
