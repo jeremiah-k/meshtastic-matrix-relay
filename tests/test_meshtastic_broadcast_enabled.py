@@ -1,6 +1,8 @@
+import importlib
 import os
 import sys
-import importlib
+
+import pytest
 
 # Ensure src is importable if project uses a src layout similar to the provided script
 THIS_DIR = os.path.dirname(__file__)
@@ -8,9 +10,8 @@ CANDIDATE_SRC = os.path.join(THIS_DIR, "src")
 if os.path.isdir(CANDIDATE_SRC) and CANDIDATE_SRC not in sys.path:
     sys.path.insert(0, CANDIDATE_SRC)
 
-import pytest
-
 pytestmark = pytest.mark.unit
+
 
 def _import_targets():
     """
@@ -25,6 +26,7 @@ def _import_targets():
     default_val = const_mod.DEFAULT_BROADCAST_ENABLED
     return func, default_val
 
+
 def _base_config_no_broadcast():
     return {
         "meshtastic": {
@@ -33,10 +35,12 @@ def _base_config_no_broadcast():
         }
     }
 
+
 def _base_config_with(value):
     cfg = _base_config_no_broadcast()
     cfg["meshtastic"]["broadcast_enabled"] = value
     return cfg
+
 
 class TestBroadcastEnabledConfig:
     def test_missing_key_required_false_returns_default(self):
@@ -45,14 +49,18 @@ class TestBroadcastEnabledConfig:
 
         # Per PR: missing broadcast_enabled should not raise when required=False
         result = get_val(cfg, "broadcast_enabled", DEFAULT, required=False)
-        assert result == DEFAULT, "Expected missing broadcast_enabled to return the default value"
+        assert (
+            result == DEFAULT
+        ), "Expected missing broadcast_enabled to return the default value"
 
     def test_missing_key_without_required_param_uses_passed_default(self):
         get_val, DEFAULT = _import_targets()
         cfg = _base_config_no_broadcast()
         custom_default = not DEFAULT  # flip the default to detect which was used
         result = get_val(cfg, "broadcast_enabled", custom_default)
-        assert result == custom_default, "Expected missing key to use the provided default when required not explicitly True"
+        assert (
+            result == custom_default
+        ), "Expected missing key to use the provided default when required not explicitly True"
 
     def test_missing_key_with_required_true_raises(self):
         get_val, DEFAULT = _import_targets()
@@ -98,11 +106,15 @@ class TestBroadcastEnabledConfig:
 
     def test_default_constant_is_boolean(self):
         _, DEFAULT = _import_targets()
-        assert isinstance(DEFAULT, bool), "DEFAULT_BROADCAST_ENABLED should be a boolean"
+        assert isinstance(
+            DEFAULT, bool
+        ), "DEFAULT_BROADCAST_ENABLED should be a boolean"
 
     def test_override_default_parameter_is_respected(self):
         get_val, DEFAULT = _import_targets()
         cfg = _base_config_no_broadcast()
         override = not DEFAULT
         result = get_val(cfg, "broadcast_enabled", override, required=False)
-        assert result == override, "Explicit default passed to function should be returned when key is absent and required=False"
+        assert (
+            result == override
+        ), "Explicit default passed to function should be returned when key is absent and required=False"

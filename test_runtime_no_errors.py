@@ -6,6 +6,8 @@ Test that runtime no longer throws errors for missing broadcast_enabled.
 import os
 import sys
 
+import pytest
+
 # Add the src directory to the path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
@@ -33,9 +35,6 @@ def test_runtime_no_errors():
         return False
 
 
-import pytest
-
-
 def test_runtime_no_errors_pytest_wrapper():
     from mmrelay.config import get_meshtastic_config_value
     from mmrelay.constants.config import DEFAULT_BROADCAST_ENABLED
@@ -50,11 +49,14 @@ def test_runtime_no_errors_pytest_wrapper():
     )
     assert result == DEFAULT_BROADCAST_ENABLED
 
+
 def test_runtime_missing_broadcast_enabled_required_true_raises():
     from mmrelay.config import get_meshtastic_config_value
     from mmrelay.constants.config import DEFAULT_BROADCAST_ENABLED
 
-    config = {"meshtastic": {"connection_type": "serial", "serial_port": "/dev/ttyUSB0"}}
+    config = {
+        "meshtastic": {"connection_type": "serial", "serial_port": "/dev/ttyUSB0"}
+    }
 
     try:
         get_meshtastic_config_value(
@@ -64,4 +66,6 @@ def test_runtime_missing_broadcast_enabled_required_true_raises():
         # Expected: an exception is raised when required=True and key missing
         pass
     else:
-        pytest.fail("Expected exception when 'broadcast_enabled' is required but missing")
+        pytest.fail(
+            "Expected exception when 'broadcast_enabled' is required but missing"
+        )
