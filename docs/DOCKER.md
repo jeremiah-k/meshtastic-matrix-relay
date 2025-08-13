@@ -22,13 +22,6 @@ MMRelay supports Docker deployment with two image options and multiple deploymen
 
 You need Docker installed on your system. Follow the [official Docker installation guide](https://docs.docker.com/engine/install/).
 
-Verify installation:
-
-```bash
-docker --version
-docker compose version
-```
-
 ## Quick Start (Recommended)
 
 **Most users should start here** - prebuilt images without cloning the repository:
