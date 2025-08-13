@@ -20,49 +20,13 @@ MMRelay supports Docker deployment with two image options and multiple deploymen
 
 ## Prerequisites
 
-Before starting, you need Docker installed on your system:
+You need Docker installed on your system. Follow the [official Docker installation guide](https://docs.docker.com/engine/install/).
 
-### Windows & Mac (Recommended)
-
-**Docker Desktop** - Easiest option with GUI:
-
-- Download: [Docker Desktop](https://www.docker.com/products/docker-desktop/)
-- Includes Docker Engine, Docker Compose, and a user-friendly interface
-- **Windows**: Requires Windows 10/11 with WSL2 enabled
-- **Mac**: Supports both Intel and Apple Silicon Macs
-
-### Linux
-
-**Option 1: Docker Desktop for Linux** (GUI + CLI):
-
-- Download: [Docker Desktop for Linux](https://docs.docker.com/desktop/install/linux-install/)
-- Provides the same GUI experience as Windows/Mac
-
-**Option 2: Docker Engine only** (CLI only):
-
-- Ubuntu/Debian: `sudo apt update && sudo apt install docker.io docker-compose-plugin`
-- RHEL/Fedora: `sudo dnf install docker docker-compose-plugin`
-- Or follow: [Official Docker Engine installation](https://docs.docker.com/engine/install/)
-
-### Verify Installation
-
-After installation, verify Docker is working:
+Verify installation:
 
 ```bash
 docker --version
 docker compose version
-```
-
-You should see version numbers for both commands.
-
-### Permissions (Linux only)
-
-Add your user to the docker group to run Docker without `sudo`:
-
-```bash
-sudo usermod -aG docker $USER
-# Log out and back in, or run:
-newgrp docker
 ```
 
 ## Quick Start (Recommended)
