@@ -750,9 +750,27 @@ async def send_reply_to_meshtastic(
     reply_id=None,
 ):
     """
-    Queues a reply message from Matrix to be sent to Meshtastic, optionally as a structured reply, and includes message mapping metadata if storage is enabled.
-
-    If a `reply_id` is provided, the message is sent as a structured reply to the referenced Meshtastic message; otherwise, it is sent as a regular message. When message storage is enabled, mapping information is attached for future interaction tracking. The function logs the outcome of the queuing operation.
+    Queue a Matrix-origin reply to be sent to Meshtastic, optionally as a structured reply.
+    
+    If broadcasting is enabled in the Meshtastic configuration, this function enqueues either a structured reply (when `reply_id` is provided) or a regular text message. When `storage_enabled` is true, mapping metadata is generated and attached so the message can be correlated back to the originating Matrix event for future interactions.
+    
+    Parameters:
+        reply_message (str): The text to send to Meshtastic (already formatted/truncated as needed).
+        full_display_name (str): Human-readable name of the Matrix sender used in descriptions.
+        room_config (dict): Room-specific configuration (must include Meshtastic channel selection).
+        room: Matrix room object where the original event occurred.
+        event: Matrix event object being replied to (used for mapping metadata).
+        text (str): Original text of the Matrix event (used when creating mapping metadata).
+        storage_enabled (bool): If true, attach mapping metadata so replies/reactions can be correlated later.
+        local_meshnet_name (str): Optional meshnet identifier to include in mapping metadata.
+        reply_id (optional): Meshtastic message ID to target as a structured reply; if None, a regular message is sent.
+    
+    Returns:
+        None
+    
+    Notes:
+        - Errors encountered while enqueueing are caught and logged; the function does not raise.
+        - Actual sending is performed by the Meshtastic queue system; message mapping retention respects configured limits.
     """
     meshtastic_interface = connect_meshtastic()
     from mmrelay.meshtastic_utils import logger as meshtastic_logger
