@@ -1289,3 +1289,134 @@ async def test_send_room_image():
     content = call_args[1]["content"]
     assert content["msgtype"] == "m.image"
     assert content["url"] == "mxc://matrix.org/test123"
+
+# ---------------- Additional tests appended for broader coverage ----------------
+
+@pytest.mark.parametrize(
+    "text,max_bytes,expected",
+    [
+        ("", 0, ""),  # zero limit, empty string
+        ("A", 0, ""),  # zero limit, non-empty
+        ("é", 1, ""),  # multi-byte char cannot fit in 1 byte
+        ("é", 2, "é"),  # fits exactly in 2 bytes for 'é' in UTF-8
+        ("Hello", 5, "Hello"),  # exact fit
+    ],
+)
+def test_truncate_message_edge_cases(text, max_bytes, expected):
+    result = truncate_message(text, max_bytes=max_bytes)
+    assert result == expected
+    assert len(result.encode("utf-8")) <= max_bytes
+
+def test_truncate_message_multi_emoji_boundary():
+    # '😀' is 4 bytes in UTF-8; ensure boundary cut does not split the emoji
+    text = "Hi 😀😀😀 there"
+    # Allow room for "Hi " (3 bytes) + two emojis (8 bytes) = 11; limit at 11 should keep two emojis intact
+    result = truncate_message(text, max_bytes=11)
+    assert result == "Hi 😀😀"
+    assert len(result.encode("utf-8")) <= 11
+
+def test_validate_prefix_format_malformed_braces():
+    # Missing closing brace should be detected; function should return (False, error_message)
+    format_string = "{display5[M]: "  # malformed
+    available_vars = {"display5": "Alice"}
+    is_valid, error = validate_prefix_format(format_string, available_vars)
+    assert not is_valid
+    assert isinstance(error, str) and error
+
+def test_add_truncated_vars_with_short_text_and_alt_label():
+    # Shorter than many truncation lengths; ensure all expected keys exist and values equal original up to length
+    fmt = {}
+    _add_truncated_vars(fmt, "long", "Bo")
+    assert fmt["long1"] == "B"
+    assert fmt["long5"] == "Bo"
+    assert fmt["long10"] == "Bo"
+    assert fmt["long20"] == "Bo"
+
+def test_bot_command_ignores_leading_spaces_and_uses_body_when_formatted_missing():
+    event = MagicMock()
+    event.body = "   !status all"
+    event.source = {"content": {}}  # formatted_body missing
+    with patch("mmrelay.matrix_utils.bot_user_id", "@bot:matrix.org"), patch(
+        "mmrelay.matrix_utils.bot_user_name", "Bot"
+    ):
+        assert bot_command("status", event)
+
+def test_bot_command_not_triggered_without_bang_prefix():
+    event = MagicMock()
+    event.body = "status"
+    event.source = {"content": {"formatted_body": "status"}}
+    with patch("mmrelay.matrix_utils.bot_user_id", "@bot:matrix.org"), patch(
+        "mmrelay.matrix_utils.bot_user_name", "Bot"
+    ):
+        assert not bot_command("status", event)
+
+@patch("mmrelay.matrix_utils.connect_meshtastic")
+@patch("mmrelay.matrix_utils.queue_message")
+@patch("mmrelay.matrix_utils.bot_start_time", 2000)
+async def test_on_room_message_ignores_old_events(mock_queue, mock_connect, mock_room, mock_event, test_config):
+    # server_timestamp older than bot_start_time should be ignored
+    mock_event.server_timestamp = 1000
+    with patch("mmrelay.matrix_utils.config", test_config), patch(
+        "mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]
+    ), patch("mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]):
+        mock_matrix_client = MagicMock()
+        with patch("mmrelay.matrix_utils.matrix_client", mock_matrix_client):
+            await on_room_message(mock_room, mock_event)
+            mock_queue.assert_not_called()
+
+@patch("mmrelay.matrix_utils.config", {"meshtastic": {"meshnet_name": "TestMesh"}})
+@patch("mmrelay.matrix_utils.connect_matrix")
+@patch("mmrelay.matrix_utils.get_interaction_settings")
+@patch("mmrelay.matrix_utils.message_storage_enabled")
+@patch("mmrelay.matrix_utils.store_message_map")
+@patch("mmrelay.matrix_utils.prune_message_map")
+@patch("mmrelay.matrix_utils.logger")
+async def test_matrix_relay_stores_message_map_when_enabled(
+    mock_logger, mock_prune, mock_store, mock_storage_enabled, mock_get_interactions, mock_connect_matrix
+):
+    # Enable interactions -> storage enabled -> should store and prune message map
+    mock_get_interactions.return_value = {"reactions": True, "replies": False}
+    mock_storage_enabled.return_value = True
+
+    mock_matrix_client = MagicMock()
+    mock_matrix_client.room_send = AsyncMock()
+    mock_response = MagicMock()
+    mock_response.event_id = "$abc"
+    mock_matrix_client.room_send.return_value = mock_response
+    mock_connect_matrix.return_value = mock_matrix_client
+
+    await matrix_relay(
+        room_id="!room:matrix.org",
+        message="Hello world",
+        longname="Alice",
+        shortname="A",
+        meshnet_name="TestMesh",
+        portnum=1,
+    )
+
+    mock_matrix_client.room_send.assert_called_once()
+    mock_store.assert_called_once()
+    mock_prune.assert_called_once()
+
+@patch("mmrelay.matrix_utils.matrix_client")
+@patch("mmrelay.matrix_utils.logger")
+async def test_get_user_display_name_handles_api_exception(mock_logger, mock_matrix_client):
+    mock_room = MagicMock()
+    mock_room.user_name.return_value = None
+    mock_event = MagicMock()
+    mock_event.sender = "@user:matrix.org"
+    async def failing_get_displayname(user_id):
+        raise Exception("network error")
+    mock_matrix_client.get_displayname = AsyncMock(side_effect=failing_get_displayname)
+
+    result = await get_user_display_name(mock_room, mock_event)
+    # Should fall back to sender ID on exception
+    assert result == "@user:matrix.org"
+    mock_matrix_client.get_displayname.assert_called_once_with("@user:matrix.org")
+
+def test_strip_quoted_lines_strips_leading_and_inline_quotes():
+    text = "> quoted\nNormal line\nAnother > inline starts with gt?\n>again"
+    result = strip_quoted_lines(text)
+    # Lines starting with '>' removed; remaining lines joined with spaces
+    assert result == "Normal line Another > inline starts with gt?"
+

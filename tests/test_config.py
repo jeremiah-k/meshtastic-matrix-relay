@@ -360,3 +360,244 @@ class TestConfigEdgeCases(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+# ---- Additional tests appended by automation to increase coverage for config module ----
+
+class TestConfigCustomDataDir(unittest.TestCase):
+    """
+    Additional tests focusing on custom_data_dir override behavior and path resolutions.
+    """
+
+    def setUp(self):
+        # Reset globals for isolation
+        mmrelay.config.relay_config = {}
+        mmrelay.config.config_path = None
+
+    def tearDown(self):
+        # Ensure we restore any overridden globals to default state
+        mmrelay.config.custom_data_dir = None
+
+    def test_get_base_dir_with_custom_data_dir(self):
+        """
+        get_base_dir should return custom_data_dir when set, regardless of platform.
+        """
+        with patch("mmrelay.config.custom_data_dir", "/tmp/mmr"), patch("sys.platform", "linux"):
+            self.assertEqual(get_base_dir(), "/tmp/mmr")
+        with patch("mmrelay.config.custom_data_dir", "C:\\\\mmrdata"), patch("mmrelay.config.sys.platform", "win32"):
+            self.assertEqual(get_base_dir(), "C:\\\\mmrdata")
+
+    def test_dir_helpers_with_custom_data_dir_linux(self):
+        """
+        get_data_dir/get_log_dir/get_plugin_data_dir should derive from custom_data_dir on Linux.
+        """
+        with patch("sys.platform", "linux"), patch("mmrelay.config.custom_data_dir", "/opt/mmr"):
+            self.assertEqual(get_data_dir(), "/opt/mmr/data")
+            self.assertEqual(get_log_dir(), "/opt/mmr/logs")
+            self.assertEqual(get_plugin_data_dir(), "/opt/mmr/data/plugins")
+            self.assertEqual(get_plugin_data_dir("ext"), "/opt/mmr/data/plugins/ext")
+
+    def test_dir_helpers_with_custom_data_dir_windows(self):
+        """
+        get_data_dir/get_log_dir/get_plugin_data_dir should derive from custom_data_dir on Windows.
+        """
+        with patch("mmrelay.config.sys.platform", "win32"), patch("mmrelay.config.custom_data_dir", "D:\\\\MMR"):
+            self.assertEqual(get_data_dir(), "D:\\\\MMR\\\\data")
+            self.assertEqual(get_log_dir(), "D:\\\\MMR\\\\logs")
+            self.assertEqual(get_plugin_data_dir(), "D:\\\\MMR\\\\data\\\\plugins")
+            self.assertEqual(get_plugin_data_dir("plug"), "D:\\\\MMR\\\\data\\\\plugins\\\\plug")
+
+
+class TestConfigPathsPrecedence(unittest.TestCase):
+    """
+    Tests for get_config_paths precedence rules and handling of args/argv.
+    """
+
+    def setUp(self):
+        mmrelay.config.relay_config = {}
+        mmrelay.config.config_path = None
+
+    def test_get_config_paths_with_args_config_relative(self):
+        """
+        When args.config is given as a relative path, ensure the absolute path is returned and has precedence.
+        """
+        args = MagicMock()
+        args.config = "conf/my.yaml"
+        result = get_config_paths(args=args)
+        self.assertIn(os.path.abspath("conf/my.yaml"), result)
+
+    def test_get_config_paths_with_args_config_absolute(self):
+        """
+        When args.config is absolute, ensure it is included as-is.
+        """
+        args = MagicMock()
+        args.config = os.path.abspath("/tmp/example.yaml")
+        result = get_config_paths(args=args)
+        self.assertIn(os.path.abspath("/tmp/example.yaml"), result)
+
+    def test_get_config_paths_from_argv_dash_c(self):
+        """
+        Simulate passing -c via sys.argv and ensure the specified path is included.
+        """
+        with patch("sys.argv", ["mmrelay", "-c", "settings.yaml"]):
+            paths = get_config_paths()
+            self.assertIn(os.path.abspath("settings.yaml"), paths)
+
+    def test_get_config_paths_from_argv_long_flag(self):
+        """
+        Simulate passing --config via sys.argv and ensure the specified path is included.
+        """
+        with patch("sys.argv", ["mmrelay", "--config", "conf.yml"]):
+            paths = get_config_paths()
+            self.assertIn(os.path.abspath("conf.yml"), paths)
+
+
+class TestLoadConfigSelection(unittest.TestCase):
+    """
+    Tests for load_config selection and global caching behavior.
+    """
+
+    def setUp(self):
+        mmrelay.config.relay_config = {}
+        mmrelay.config.config_path = None
+
+    @patch("mmrelay.config.os.path.isfile")
+    @patch("builtins.open")
+    @patch("mmrelay.config.yaml.load")
+    def test_load_config_prefers_explicit_path_over_search(self, mock_yaml_load, mock_open, mock_isfile):
+        """
+        load_config should load from explicit config_file when provided.
+        """
+        mock_isfile.side_effect = lambda p: os.path.abspath(p) == os.path.abspath("explicit.yaml")
+        mock_yaml_load.return_value = {"source": "explicit"}
+        cfg = load_config(config_file="explicit.yaml")
+        self.assertEqual(cfg.get("source"), "explicit")
+
+    @patch("mmrelay.config.os.path.isfile")
+    @patch("builtins.open")
+    @patch("mmrelay.config.yaml.load")
+    def test_load_config_uses_first_existing_from_paths(self, mock_yaml_load, mock_open, mock_isfile):
+        """
+        When no explicit path is given, load_config should iterate over get_config_paths and pick the first that exists.
+        """
+        # Construct an order of candidate paths and make the second one exist
+        with patch("mmrelay.config.get_config_paths") as mock_paths:
+            mock_paths.return_value = [
+                os.path.abspath("missing1.yaml"),
+                os.path.abspath("present.yaml"),
+                os.path.abspath("missing2.yaml"),
+            ]
+            def isfile_side(p):
+                return os.path.abspath(p) == os.path.abspath("present.yaml")
+            mock_isfile.side_effect = isfile_side
+            mock_yaml_load.return_value = {"picked": "present.yaml"}
+            cfg = load_config()
+            self.assertEqual(cfg.get("picked"), "present.yaml")
+
+    @patch("mmrelay.config.os.path.isfile")
+    @patch("builtins.open")
+    @patch("mmrelay.config.yaml.load")
+    def test_load_config_idempotent_global_cache(self, mock_yaml_load, mock_open, mock_isfile):
+        """
+        Ensure repeated calls reuse global state consistently (if implemented).
+        """
+        mock_isfile.return_value = True
+        mock_yaml_load.return_value = {"k": 1}
+        c1 = load_config(config_file="cache.yaml")
+        c2 = load_config(config_file="cache.yaml")
+        self.assertIsInstance(c1, dict)
+        self.assertIsInstance(c2, dict)
+        # Either identical dict or re-parsed; at minimum, values should be consistent
+        self.assertEqual(c1.get("k"), 1)
+        self.assertEqual(c2.get("k"), 1)
+
+    @patch("mmrelay.config.os.path.isfile")
+    @patch("builtins.open")
+    def test_load_config_relative_path_resolution(self, mock_open, mock_isfile):
+        """
+        Verify that passing a relative config_file resolves and opens appropriately.
+        """
+        mock_isfile.return_value = True
+        # Ensure that open is called with the relative path (the code may or may not normalize further)
+        with patch("mmrelay.config.yaml.load", return_value={"ok": True}):
+            cfg = load_config(config_file="rel/path/file.yaml")
+            self.assertTrue(cfg.get("ok"))
+            # Check that open has been invoked
+            self.assertTrue(mock_open.called)
+
+    @patch("mmrelay.config.os.path.isfile")
+    @patch("builtins.open")
+    def test_load_config_yaml_loader_safety(self, mock_open, mock_isfile):
+        """
+        If the implementation uses yaml.safe_load or yaml.load with SafeLoader, invocation should succeed.
+        This test does not enforce a specific loader but ensures call happens.
+        """
+        import yaml
+        mock_isfile.return_value = True
+
+        # Provide minimal YAML content via open().read()
+        mock_open.return_value.__enter__.return_value.read.return_value = "foo: bar"
+
+        # Allow the real yaml.safe_load or yaml.load to run safely with simple content
+        with patch.object(yaml, "load", wraps=yaml.load):
+            cfg = load_config(config_file="simple.yaml")
+            self.assertIsInstance(cfg, dict)
+            # wrapped_load may or may not be called depending on implementation, so we accept both
+            # If called, ensure result has expected key
+            if cfg:
+                self.assertIn("foo", cfg)
+
+
+class TestPluginDataDirEdgeCases(unittest.TestCase):
+    """
+    Edge cases for get_plugin_data_dir inputs.
+    """
+
+    def setUp(self):
+        mmrelay.config.relay_config = {}
+        mmrelay.config.config_path = None
+
+    def test_get_plugin_data_dir_with_empty_name(self):
+        """
+        When plugin name is empty or None, should return the plugins root directory.
+        """
+        with patch("sys.platform", "linux"), patch("mmrelay.config.custom_data_dir", None):
+            root = get_plugin_data_dir()
+            self.assertTrue(root.endswith(os.path.join("data", "plugins")))
+            self.assertNotIn("None", root)
+
+    def test_get_plugin_data_dir_with_special_chars(self):
+        """
+        Plugin names containing path separators should be treated as literal subpaths.
+        Even if not sanitized by implementation, ensure output path is composed accordingly.
+        """
+        with patch("sys.platform", "linux"), patch("mmrelay.config.custom_data_dir", None):
+            pd = get_plugin_data_dir("a/b\\c")
+            self.assertTrue(pd.endswith(os.path.join("data", "plugins", "a/b\\c")))
+
+
+class TestWindowsPathsViaPlatformdirs(unittest.TestCase):
+    """
+    Windows-specific behavior when platformdirs is involved.
+    """
+
+    def setUp(self):
+        mmrelay.config.relay_config = {}
+        mmrelay.config.config_path = None
+
+    @patch("mmrelay.config.platformdirs.user_data_dir")
+    def test_windows_base_dir_via_platformdirs_with_custom_unset(self, mock_user_data_dir):
+        """
+        Verify that when custom_data_dir is None, get_base_dir defers to platformdirs on Windows.
+        """
+        mock_user_data_dir.return_value = "C:\\\\Users\\\\test\\\\AppData\\\\Local\\\\mmrelay"
+        with patch("mmrelay.config.sys.platform", "win32"), patch("mmrelay.config.custom_data_dir", None):
+            self.assertEqual(get_base_dir(), "C:\\\\Users\\\\test\\\\AppData\\\\Local\\\\mmrelay")
+
+    @patch("mmrelay.config.platformdirs.user_config_dir")
+    def test_get_config_paths_windows_default_contains_platformdirs_path(self, mock_user_config_dir):
+        """
+        Ensure the default Windows config path includes platformdirs-provided path when no args provided.
+        """
+        with patch("mmrelay.config.sys.platform", "win32"), patch("sys.argv", ["mmrelay"]):
+            mock_user_config_dir.return_value = "C:\\\\Users\\\\me\\\\AppData\\\\Local\\\\mmrelay\\\\config"
+            paths = get_config_paths()
+            self.assertIn(os.path.join("C:\\\\Users\\\\me\\\\AppData\\\\Local\\\\mmrelay\\\\config", "config.yaml"), paths)

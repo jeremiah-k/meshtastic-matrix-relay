@@ -620,3 +620,174 @@ class TestConfigChecker(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+    @patch("mmrelay.cli.get_config_paths")
+    @patch("os.path.isfile")
+    @patch("builtins.open", new_callable=mock_open)
+    @patch("yaml.load")
+    @patch("builtins.print")
+    def test_check_config_missing_matrix_homeserver(
+        self, mock_print, mock_yaml_load, mock_file, mock_isfile, mock_get_paths
+    ):
+        """
+        Validate failure when 'homeserver' is missing from the 'matrix' section.
+        We assert failure and check printed output contains the expected hint about the missing field.
+        """
+        invalid_config = {
+            "matrix": {
+                # "homeserver": "https://matrix.org",  # intentionally omitted
+                "access_token": "test_token",
+                "bot_user_id": "@bot:matrix.org",
+            },
+            "matrix_rooms": [{"id": "!room1:matrix.org", "meshtastic_channel": 0}],
+            "meshtastic": {"connection_type": "tcp", "host": "192.168.1.100"},
+        }
+
+        mock_get_paths.return_value = ["/test/config.yaml"]
+        mock_isfile.return_value = True
+        mock_yaml_load.return_value = invalid_config
+
+        result = check_config()
+
+        self.assertFalse(result)
+        # Use substring search across printed calls to avoid brittleness on exact phrasing
+        printed = " | ".join(str(args) for args, _ in mock_print.call_args_list)
+        self.assertIn("matrix", printed.lower())
+        self.assertIn("missing", printed.lower())
+        self.assertIn("homeserver", printed.lower())
+
+    @patch("mmrelay.cli.get_config_paths")
+    @patch("os.path.isfile")
+    @patch("builtins.open", new_callable=mock_open)
+    @patch("yaml.load")
+    @patch("builtins.print")
+    def test_check_config_empty_matrix_rooms(
+        self, mock_print, mock_yaml_load, mock_file, mock_isfile, mock_get_paths
+    ):
+        """
+        Validate failure when 'matrix_rooms' exists but is an empty list.
+        Expected behavior aligns with 'missing or empty' semantics.
+        """
+        invalid_config = {
+            "matrix": {
+                "homeserver": "https://matrix.org",
+                "access_token": "test_token",
+                "bot_user_id": "@bot:matrix.org",
+            },
+            "matrix_rooms": [],
+            "meshtastic": {"connection_type": "tcp", "host": "192.168.1.100"},
+        }
+
+        mock_get_paths.return_value = ["/test/config.yaml"]
+        mock_isfile.return_value = True
+        mock_yaml_load.return_value = invalid_config
+
+        result = check_config()
+
+        self.assertFalse(result)
+        mock_print.assert_any_call(
+            "Error: Missing or empty 'matrix_rooms' section in config"
+        )
+
+    @patch("mmrelay.cli.get_config_paths")
+    @patch("os.path.isfile")
+    @patch("builtins.open", new_callable=mock_open)
+    @patch("yaml.load")
+    @patch("builtins.print")
+    def test_check_config_missing_meshtastic_channel(
+        self, mock_print, mock_yaml_load, mock_file, mock_isfile, mock_get_paths
+    ):
+        """
+        Validate failure when a room dict is missing the required 'meshtastic_channel' field.
+        """
+        invalid_config = {
+            "matrix": {
+                "homeserver": "https://matrix.org",
+                "access_token": "test_token",
+                "bot_user_id": "@bot:matrix.org",
+            },
+            "matrix_rooms": [{"id": "!room1:matrix.org"}],  # Missing meshtastic_channel
+            "meshtastic": {"connection_type": "tcp", "host": "192.168.1.100"},
+        }
+
+        mock_get_paths.return_value = ["/test/config.yaml"]
+        mock_isfile.return_value = True
+        mock_yaml_load.return_value = invalid_config
+
+        result = check_config()
+
+        self.assertFalse(result)
+        # Be tolerant to exact phrasing, but ensure the message mentions room index and meshtastic_channel
+        printed = [str(call) for call in mock_print.call_args_list]
+        chan_error = any("meshtastic_channel" in c for c in printed)
+        self.assertTrue(
+            chan_error,
+            f"Expected message mentioning 'meshtastic_channel' not found in: {printed}",
+        )
+
+    @patch("mmrelay.cli.get_config_paths")
+    @patch("os.path.isfile")
+    @patch("builtins.open", new_callable=mock_open)
+    @patch("yaml.load")
+    @patch("builtins.print")
+    def test_check_config_meshtastic_channel_not_int(
+        self, mock_print, mock_yaml_load, mock_file, mock_isfile, mock_get_paths
+    ):
+        """
+        Validate failure when 'meshtastic_channel' is present but not an integer.
+        """
+        invalid_config = {
+            "matrix": {
+                "homeserver": "https://matrix.org",
+                "access_token": "test_token",
+                "bot_user_id": "@bot:matrix.org",
+            },
+            "matrix_rooms": [
+                {"id": "!room1:matrix.org", "meshtastic_channel": "zero"}  # wrong type
+            ],
+            "meshtastic": {"connection_type": "tcp", "host": "192.168.1.100"},
+        }
+
+        mock_get_paths.return_value = ["/test/config.yaml"]
+        mock_isfile.return_value = True
+        mock_yaml_load.return_value = invalid_config
+
+        result = check_config()
+
+        self.assertFalse(result)
+        # Use partial matching to avoid tight coupling to exact wording
+        printed = " | ".join(str(args) for args, _ in mock_print.call_args_list)
+        self.assertIn("meshtastic_channel", printed)
+        self.assertTrue(
+            ("integer" in printed.lower()) or ("int" in printed.lower()),
+            f"Expected type mention for meshtastic_channel not found in: {printed}",
+        )
+
+    @patch("mmrelay.cli.get_config_paths")
+    @patch("os.path.isfile")
+    @patch("builtins.open", new_callable=mock_open)
+    @patch("yaml.load")
+    @patch("builtins.print")
+    def test_check_config_uses_first_existing_path_and_skips_missing(
+        self, mock_print, mock_yaml_load, mock_file, mock_isfile, mock_get_paths
+    ):
+        """
+        When multiple config paths are returned, ensure check_config tries them in order,
+        skipping non-existent files, and succeeds when encountering the first valid file.
+        """
+        valid_config = self.valid_config.copy()
+        mock_get_paths.return_value = ["/missing/config.yaml", "/present/config.yaml"]
+
+        def isfile_side_effect(path):
+            return path == "/present/config.yaml"
+
+        mock_isfile.side_effect = isfile_side_effect
+        mock_yaml_load.return_value = valid_config
+
+        result = check_config()
+
+        self.assertTrue(result)
+        # Confirm it announces the discovered, existing path
+        mock_print.assert_any_call("Found configuration file at: /present/config.yaml")
+        mock_print.assert_any_call("Configuration file is valid!")
+
