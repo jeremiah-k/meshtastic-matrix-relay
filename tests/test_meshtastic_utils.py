@@ -1,4 +1,8 @@
+# Testing library and framework in use: pytest (with monkeypatch and pytest-asyncio for async tests)
+
 #!/usr/bin/env python3
+import asyncio
+from types import SimpleNamespace
 """
 Test suite for Meshtastic utilities in MMRelay.
 
@@ -884,3 +888,197 @@ def test_check_connection_function_exists(reset_meshtastic_globals):
 
 if __name__ == "__main__":
     unittest.main()
+
+# Try to import module under test
+try:
+    import mmrelay.meshtastic_utils as mu
+except ModuleNotFoundError:
+    # Fallback if package layout differs (adjust if repository structure is non-standard)
+    import importlib
+    mu = importlib.import_module("meshtastic_utils")
+
+class DummyFuture:
+    """A tiny Future-like object exposing result() for plugin paths."""
+    def __init__(self, value=None):
+        self._value = value
+    def result(self, timeout=None):
+        return self._value
+
+@pytest.fixture
+def clean_globals(monkeypatch):
+    """
+    Reset and prepare mu globals commonly used across tests to avoid cross-test bleed.
+    """
+    # Booleans
+    monkeypatch.setattr(mu, "shutting_down", False, raising=False)
+    monkeypatch.setattr(mu, "reconnecting", False, raising=False)
+    monkeypatch.setattr(mu, "subscribed_to_messages", False, raising=False)
+    monkeypatch.setattr(mu, "subscribed_to_connection_lost", False, raising=False)
+    # Client and loop
+    monkeypatch.setattr(mu, "meshtastic_client", None, raising=False)
+    monkeypatch.setattr(mu, "event_loop", None, raising=False)
+    monkeypatch.setattr(mu, "reconnect_task", None, raising=False)
+    # Rooms/config
+    monkeypatch.setattr(mu, "config", None, raising=False)
+    monkeypatch.setattr(mu, "matrix_rooms", [], raising=False)
+    # Provide a non-lock stub if absent
+    if not hasattr(mu, "meshtastic_lock"):
+        class DummyLock:
+            def __enter__(self): return None
+            def __exit__(self, exc_type, exc, tb): return False
+        monkeypatch.setattr(mu, "meshtastic_lock", DummyLock(), raising=False)
+    # Provide constants if missing (for resilience when importing partial snippets)
+    defaults = {
+        "CONFIG_SECTION_MESHTASTIC": "meshtastic",
+        "CONFIG_KEY_CONNECTION_TYPE": "connection_type",
+        "CONFIG_KEY_SERIAL_PORT": "serial_port",
+        "CONFIG_KEY_BLE_ADDRESS": "ble_address",
+        "CONFIG_KEY_HOST": "host",
+        "CONFIG_KEY_MESHNET_NAME": "meshnet_name",
+        "CONNECTION_TYPE_SERIAL": "serial",
+        "CONNECTION_TYPE_BLE": "ble",
+        "CONNECTION_TYPE_TCP": "tcp",
+        "CONNECTION_TYPE_NETWORK": "network",
+        "DEFAULT_RETRY_ATTEMPTS": 0,
+        "INFINITE_RETRIES": 1,
+        "DEFAULT_BACKOFF_TIME": 10,
+        "DEFAULT_CHANNEL_VALUE": 0,
+        "DEFAULT_DETECTION_SENSOR": True,
+        "TEXT_MESSAGE_APP": 1,
+        "DETECTION_SENSOR_APP": 4,
+        "PORTNUM_NUMERIC_VALUE": 2,
+        "EMOJI_FLAG_VALUE": 1,
+        "SYSTEMD_INIT_SYSTEM": "systemd",
+        "ERRNO_BAD_FILE_DESCRIPTOR": 9,
+    }
+    for k, v in defaults.items():
+        if not hasattr(mu, k):
+            monkeypatch.setattr(mu, k, v, raising=False)
+    return True
+
+@pytest.fixture
+def fast_sleep(monkeypatch):
+    """Avoid real delays in retry/backoff paths."""
+    monkeypatch.setattr(mu.time, "sleep", lambda *_args, **_kwargs: None, raising=True)
+    # Also patch asyncio.sleep in async paths to a no-op coroutine
+    async def _noop_sleep(_seconds):
+        return
+    monkeypatch.setattr(mu.asyncio, "sleep", _noop_sleep, raising=True)
+    return True
+
+# ===========================
+# Tests: _submit_coro
+# ===========================
+
+@pytest.mark.asyncio
+async def test_submit_coro_returns_none_for_non_coro(clean_globals, monkeypatch):
+    assert mu._submit_coro(None) is None
+    assert mu._submit_coro(123) is None
+    assert mu._submit_coro("not a coro") is None
+
+@pytest.mark.asyncio
+async def test_submit_coro_uses_provided_open_loop_threadsafe(clean_globals, monkeypatch):
+    called = {}
+    async def sample():
+        return 42
+
+    class DummyLoop:
+        def is_closed(self): return False
+    dummy_loop = DummyLoop()
+
+    def fake_run_coroutine_threadsafe(coro, loop):
+        called['coro'] = coro
+        called['loop'] = loop
+        # emulate concurrent.futures.Future-like with result()
+        return DummyFuture(value="ok")
+    monkeypatch.setattr(mu.asyncio, "run_coroutine_threadsafe", fake_run_coroutine_threadsafe, raising=True)
+
+    fut = mu._submit_coro(sample(), loop=dummy_loop)
+    assert isinstance(fut, DummyFuture)
+    assert called.get('loop') is dummy_loop
+    # Ensure it's a coroutine object
+    assert asyncio.iscoroutine(called.get('coro'))
+
+@pytest.mark.asyncio
+async def test_submit_coro_falls_back_to_running_loop_create_task(clean_globals, monkeypatch):
+    created = {}
+    async def sample():
+        return "value"
+    class DummyRunningLoop:
+        def create_task(self, coro):
+            created['coro'] = coro
+            return "task"
+    monkeypatch.setattr(mu.asyncio, "get_running_loop", lambda: DummyRunningLoop(), raising=True)
+    result = mu._submit_coro(sample())
+    assert result == "task"
+    assert asyncio.iscoroutine(created.get('coro'))
+
+@pytest.mark.asyncio
+async def test_submit_coro_no_running_loop_tmp_threadsafe(clean_globals, monkeypatch):
+    async def sample(): return "x"
+    # Force get_running_loop to raise
+    def raise_runtime_error():
+        raise RuntimeError("no loop")
+    monkeypatch.setattr(mu.asyncio, "get_running_loop", raise_runtime_error, raising=True)
+
+    # Intercept new_event_loop and run_coroutine_threadsafe
+    made = {}
+    class DummyLoop:
+        pass
+    monkeypatch.setattr(mu.asyncio, "new_event_loop", lambda: DummyLoop(), raising=True)
+    def fake_threadsafe(coro, loop):
+        made['loop'] = loop
+        made['coro'] = coro
+        return DummyFuture("ok")
+    monkeypatch.setattr(mu.asyncio, "run_coroutine_threadsafe", fake_threadsafe, raising=True)
+
+    fut = mu._submit_coro(sample())
+    assert isinstance(fut, DummyFuture)
+    assert 'loop' in made and isinstance(made['loop'], DummyLoop)
+
+# ===========================
+# Tests: sendTextReply
+# ===========================
+
+def test_send_text_reply_interface_none_returns_none(clean_globals, caplog):
+    caplog.set_level("ERROR")
+    assert mu.sendTextReply(None, "hello", 123) is None
+    assert any("No Meshtastic interface available" in rec.message for rec in caplog.records)
+
+def test_send_text_reply_builds_packet_and_calls_send(clean_globals, monkeypatch):
+    # Provide mesh_pb2 and portnums_pb2 dummies in the mu namespace
+    class Data:
+        def __init__(self):
+            self.portnum = None
+            self.payload = b""
+            self.reply_id = 0
+    class MeshPacket:
+        def __init__(self):
+            self.channel = None
+            self.decoded = SimpleNamespace(CopyFrom=lambda data: None)
+            self.id = None
+    class portnums_pb2:
+        class PortNum:
+            TEXT_MESSAGE_APP = 1
+    class mesh_pb2:
+        Data = Data
+        MeshPacket = MeshPacket
+    monkeypatch.setattr(mu, "mesh_pb2", mesh_pb2, raising=False)
+    monkeypatch.setattr(mu, "portnums_pb2", portnums_pb2, raising=False)
+
+    # Interface with _generatePacketId and _sendPacket
+    sent = {"packet": None, "kwargs": None}
+    class DummyInterface:
+        def _generatePacketId(self): return 777
+        def _sendPacket(self, packet, **kwargs):
+            sent["packet"] = packet
+            sent["kwargs"] = kwargs
+            return "SENT"
+    iface = DummyInterface()
+
+    result = mu.sendTextReply(iface, "hi", reply_id=42, destinationId=1234, wantAck=True, channelIndex=7)
+    assert result == "SENT"
+    assert sent["packet"] is not None
+    assert sent["packet"].channel == 7
+    assert sent["packet"].id == 777
+    assert sent["kwargs"] == {"destinationId": 1234, "wantAck": True}

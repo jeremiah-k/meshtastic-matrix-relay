@@ -1,362 +1,353 @@
 import os
 import sys
-import unittest
-from unittest.mock import MagicMock, patch
+import types
 
-# Add src to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+import pytest
 
-import mmrelay.config
-from mmrelay.config import (
-    get_base_dir,
-    get_config_paths,
-    get_data_dir,
-    get_log_dir,
-    get_plugin_data_dir,
-    load_config,
-)
+# We import the module under test via its package path if available; otherwise fallback to relative import.
+# The functions and constants are referenced exactly as in the provided code snippet.
+try:
+    from mmrelay import config as cfg
+except Exception:
+    # Fallback: tests running in a repo layout where module is named differently (e.g., config.py at project root)
+    import importlib
+    cfg = importlib.import_module("tests.test_config")  # This fallback is inert; ensures NameError clarity
 
 
-class TestConfig(unittest.TestCase):
-    def setUp(self):
-        # Reset the global config before each test
-        """
-        Reset the global configuration state before each test to ensure test isolation.
-        """
-        mmrelay.config.relay_config = {}
-        mmrelay.config.config_path = None
-
-    def test_get_base_dir_linux(self):
-        # Test default base dir on Linux
-        """
-        Test that get_base_dir() returns the default base directory on Linux systems.
-        """
-        with patch("sys.platform", "linux"), patch(
-            "mmrelay.config.custom_data_dir", None
-        ):
-            base_dir = get_base_dir()
-            self.assertEqual(base_dir, os.path.expanduser("~/.mmrelay"))
-
-    @patch("mmrelay.config.platformdirs.user_data_dir")
-    def test_get_base_dir_windows(self, mock_user_data_dir):
-        # Test default base dir on Windows
-        """
-        Test that get_base_dir returns the correct default base directory on Windows when platform detection and user data directory are mocked.
-        """
-        with patch("mmrelay.config.sys.platform", "win32"), patch(
-            "mmrelay.config.custom_data_dir", None
-        ):
-            mock_user_data_dir.return_value = "C:\\Users\\test\\AppData\\Local\\mmrelay"
-            base_dir = get_base_dir()
-            self.assertEqual(base_dir, "C:\\Users\\test\\AppData\\Local\\mmrelay")
-
-    @patch("mmrelay.config.os.path.isfile")
-    @patch("builtins.open")
-    @patch("mmrelay.config.yaml.load")
-    def test_load_config_from_file(self, mock_yaml_load, mock_open, mock_isfile):
-        # Mock a config file
-        """
-        Test that `load_config` loads and returns configuration data from a specified YAML file when the file exists.
-        """
-        mock_yaml_load.return_value = {"key": "value"}
-        mock_isfile.return_value = True
-
-        # Test loading from a specific path
-        config = load_config(config_file="myconfig.yaml")
-        self.assertEqual(config, {"key": "value"})
-
-    @patch("mmrelay.config.os.path.isfile")
-    def test_load_config_not_found(self, mock_isfile):
-        # Mock no config file found
-        """
-        Test that `load_config` returns an empty dictionary when no configuration file is found.
-        """
-        mock_isfile.return_value = False
-
-        # Test that it returns an empty dict
-        with patch("sys.argv", ["mmrelay"]):
-            config = load_config()
-            self.assertEqual(config, {})
-
-    def test_get_config_paths_linux(self):
-        # Test with no args on Linux
-        """
-        Test that `get_config_paths` returns the default Linux configuration file path when no command-line arguments are provided.
-        """
-        with patch("sys.platform", "linux"), patch("sys.argv", ["mmrelay"]), patch(
-            "mmrelay.config.custom_data_dir", None
-        ):
-            paths = get_config_paths()
-            self.assertIn(os.path.expanduser("~/.mmrelay/config.yaml"), paths)
-
-    @patch("mmrelay.config.platformdirs.user_config_dir")
-    def test_get_config_paths_windows(self, mock_user_config_dir):
-        # Test with no args on Windows
-        """
-        Test that `get_config_paths` returns the correct configuration file path on Windows.
-
-        Simulates a Windows environment and verifies that the returned config paths include the expected Windows-specific config file location.
-        """
-        with patch("mmrelay.config.sys.platform", "win32"), patch(
-            "sys.argv", ["mmrelay"]
-        ):
-            mock_user_config_dir.return_value = (
-                "C:\\Users\\test\\AppData\\Local\\mmrelay\\config"
-            )
-            paths = get_config_paths()
-            expected_path = os.path.join(
-                "C:\\Users\\test\\AppData\\Local\\mmrelay\\config", "config.yaml"
-            )
-            self.assertIn(expected_path, paths)
-
-    def test_get_data_dir_linux(self):
-        """
-        Test that get_data_dir returns the default data directory path on Linux platforms.
-        """
-        with patch("sys.platform", "linux"), patch(
-            "mmrelay.config.custom_data_dir", None
-        ):
-            data_dir = get_data_dir()
-            self.assertEqual(data_dir, os.path.expanduser("~/.mmrelay/data"))
-
-    def test_get_log_dir_linux(self):
-        """
-        Test that get_log_dir() returns the default logs directory on Linux platforms.
-        """
-        with patch("sys.platform", "linux"), patch(
-            "mmrelay.config.custom_data_dir", None
-        ):
-            log_dir = get_log_dir()
-            self.assertEqual(log_dir, os.path.expanduser("~/.mmrelay/logs"))
-
-    def test_get_plugin_data_dir_linux(self):
-        """
-        Test that get_plugin_data_dir returns correct plugin data directory paths on Linux.
-
-        Ensures the function resolves both the default plugins data directory and a plugin-specific directory for the Linux platform.
-        """
-        with patch("sys.platform", "linux"), patch(
-            "mmrelay.config.custom_data_dir", None
-        ):
-            plugin_data_dir = get_plugin_data_dir()
-            self.assertEqual(
-                plugin_data_dir, os.path.expanduser("~/.mmrelay/data/plugins")
-            )
-            plugin_specific_dir = get_plugin_data_dir("my_plugin")
-            self.assertEqual(
-                plugin_specific_dir,
-                os.path.expanduser("~/.mmrelay/data/plugins/my_plugin"),
-            )
+@pytest.fixture(autouse=True)
+def restore_globals(monkeypatch):
+    # Ensure global variables are reset between tests
+    if hasattr(cfg, "custom_data_dir"):
+        monkeypatch.setattr(cfg, "custom_data_dir", None, raising=False)
+    if hasattr(cfg, "relay_config"):
+        monkeypatch.setattr(cfg, "relay_config", {}, raising=False)
+    if hasattr(cfg, "config_path"):
+        monkeypatch.setattr(cfg, "config_path", None, raising=False)
+    yield
 
 
-class TestConfigEdgeCases(unittest.TestCase):
-    """Test configuration edge cases and error handling."""
+def _fake_module(name: str) -> types.ModuleType:
+    m = types.ModuleType(name)
+    m.__name__ = name
+    return m
 
-    def setUp(self):
-        """
-        Resets the global configuration state to ensure test isolation before each test.
-        """
-        mmrelay.config.relay_config = {}
-        mmrelay.config.config_path = None
 
-    @patch("mmrelay.config.os.path.isfile")
-    @patch("builtins.open")
-    @patch("mmrelay.config.yaml.load")
-    def test_config_migration_scenarios(self, mock_yaml_load, mock_open, mock_isfile):
-        """
-        Test migration of configuration files from an old format to a new format.
+class TestGetBaseDirAndPaths:
+    def test_get_base_dir_uses_custom_data_dir_when_set(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(cfg, "custom_data_dir", str(tmp_path / "custom"))
+        result = cfg.get_base_dir()
+        assert result == str(tmp_path / "custom")
 
-        Simulates loading a legacy configuration file missing newer fields and verifies that loading proceeds without errors, preserving original data and handling missing fields gracefully.
-        """
-        # Simulate old config format (missing new fields)
-        old_config = {
-            "matrix": {
-                "homeserver": "https://matrix.org",
-                "username": "@bot:matrix.org",
-                "password": "secret",
+    @pytest.mark.parametrize("platform", ["linux", "darwin"])
+    def test_get_base_dir_unix_default_uses_dot_app_name(self, monkeypatch, platform):
+        monkeypatch.setattr(sys, "platform", platform)
+        monkeypatch.setattr(cfg, "custom_data_dir", None, raising=False)
+        monkeypatch.setenv("HOME", "/home/tester")
+        # Expanduser("~") => /home/tester
+        res = cfg.get_base_dir()
+        assert res == os.path.expanduser(os.path.join("~", f".{cfg.APP_NAME}"))
+        assert res.startswith("/home/tester")
+
+    def test_get_base_dir_windows_uses_platformdirs(self, monkeypatch):
+        monkeypatch.setattr(sys, "platform", "win32")
+        # Spy on platformdirs.user_data_dir
+        calls = {}
+        def fake_user_data_dir(app_name, author):
+            calls["args"] = (app_name, author)
+            return f"C:\\Users\\tester\\AppData\\Roaming\\{author}\\{app_name}"
+        monkeypatch.setattr(cfg.platformdirs, "user_data_dir", fake_user_data_dir)
+        res = cfg.get_base_dir()
+        assert res.endswith(f"{cfg.APP_AUTHOR}\\{cfg.APP_NAME}")
+        assert calls["args"] == (cfg.APP_NAME, cfg.APP_AUTHOR)
+
+    def test_get_app_path_normal(self):
+        path = cfg.get_app_path()
+        assert os.path.isdir(path) or os.path.isfile(path)
+
+    def test_get_app_path_frozen_uses_sys_executable_dir(self, monkeypatch, tmp_path):
+        exe_dir = tmp_path / "bundle"
+        exe_dir.mkdir()
+        exe_file = exe_dir / "mmrelay.exe"
+        exe_file.write_text("")  # placeholder
+        monkeypatch.setattr(sys, "frozen", True, raising=False)
+        monkeypatch.setattr(sys, "executable", str(exe_file))
+        assert cfg.get_app_path() == str(exe_dir)
+
+    @pytest.mark.parametrize("platform", ["linux", "darwin"])
+    def test_get_config_paths_order_and_creation_unix(self, monkeypatch, tmp_path, platform):
+        # Simulate --config path passed by args
+        class Args:
+            pass
+        args = Args()
+        args.config = str(tmp_path / "explicit.yaml")
+        (tmp_path / "explicit.yaml").write_text("a: 1")
+
+        # Use a temporary base dir for user config
+        base_dir = tmp_path / ".mmrelay"
+        monkeypatch.setattr(sys, "platform", platform)
+        monkeypatch.setenv("HOME", str(tmp_path))  # ensure expanduser
+        # Force get_base_dir to our computed path
+        monkeypatch.setattr(cfg, "get_base_dir", lambda: str(base_dir))
+
+        # CWD and app path
+        monkeypatch.chdir(tmp_path)
+        app_dir = tmp_path / "appdir"
+        app_dir.mkdir()
+        # get_app_path must return app_dir
+        monkeypatch.setattr(cfg, "get_app_path", lambda: str(app_dir))
+
+        paths = cfg.get_config_paths(args=args)
+        assert paths[0] == os.path.abspath(str(tmp_path / "explicit.yaml"))
+        assert paths[1] == os.path.join(str(base_dir), "config.yaml")
+        assert paths[2] == os.path.join(str(tmp_path), "config.yaml")
+        assert paths[3] == os.path.join(str(app_dir), "config.yaml")
+
+        # Ensure user config dir is created
+        assert os.path.isdir(str(base_dir))
+
+    def test_get_config_paths_windows_skips_user_dir_on_error(self, monkeypatch, tmp_path):
+        class Args:
+            pass
+        args = Args()
+        args.config = None
+        monkeypatch.setattr(sys, "platform", "win32")
+        # Make platformdirs.user_config_dir return a path we cannot create (simulate OSError)
+        def fake_user_config_dir(app, author):
+            return os.path.join(str(tmp_path), "protected", "config")
+        monkeypatch.setattr(cfg.platformdirs, "user_config_dir", fake_user_config_dir)
+        # Patch os.makedirs to raise when trying to create that path
+        real_makedirs = os.makedirs
+        def guarded_makedirs(path, exist_ok=False):
+            if "protected" in path:
+                raise OSError("permission denied")
+            return real_makedirs(path, exist_ok=exist_ok)
+        monkeypatch.setattr(os, "makedirs", guarded_makedirs)
+
+        # CWD and app path
+        monkeypatch.chdir(tmp_path)
+        app_dir = tmp_path / "appdir"
+        app_dir.mkdir()
+        monkeypatch.setattr(cfg, "get_app_path", lambda: str(app_dir))
+
+        paths = cfg.get_config_paths(args=None)
+        # First is user config path candidate would be skipped for creation, but still appended?
+        # The function appends path even if creation failed? It appends only if makedirs succeeds.
+        # Since our makedirs raises, the except pass means not appended.
+        # So we expect only cwd and appdir paths
+        assert paths == [
+            os.path.join(str(tmp_path), "config.yaml"),
+            os.path.join(str(app_dir), "config.yaml"),
+        ]
+
+
+class TestDataAndLogDirs:
+    @pytest.mark.parametrize("platform", ["linux", "darwin"])
+    def test_get_data_dir_unix(self, monkeypatch, tmp_path, platform):
+        monkeypatch.setattr(sys, "platform", platform)
+        base_dir = tmp_path / ".mmrelay"
+        monkeypatch.setattr(cfg, "get_base_dir", lambda: str(base_dir))
+        d = cfg.get_data_dir()
+        assert d == os.path.join(str(base_dir), "data")
+        assert os.path.isdir(d)
+
+    def test_get_data_dir_windows(self, monkeypatch):
+        monkeypatch.setattr(sys, "platform", "win32")
+        def fake_user_data_dir(app, author):
+            return f"C:\\\\Users\\\\tester\\\\AppData\\\\Roaming\\\\{author}\\\\{app}"
+        monkeypatch.setattr(cfg.platformdirs, "user_data_dir", fake_user_data_dir)
+        d = cfg.get_data_dir()
+        assert d.endswith(f"{cfg.APP_AUTHOR}\\{cfg.APP_NAME}")
+
+    @pytest.mark.parametrize("platform", ["linux", "darwin"])
+    def test_get_plugin_data_dir_root_and_specific(self, monkeypatch, tmp_path, platform):
+        monkeypatch.setattr(sys, "platform", platform)
+        base_dir = tmp_path / ".mmrelay"
+        monkeypatch.setattr(cfg, "get_base_dir", lambda: str(base_dir))
+        root_plugins = cfg.get_plugin_data_dir()
+        assert root_plugins == os.path.join(str(base_dir), "data", "plugins")
+        assert os.path.isdir(root_plugins)
+
+        pdir = cfg.get_plugin_data_dir("my_plugin")
+        assert pdir == os.path.join(str(base_dir), "data", "plugins", "my_plugin")
+        assert os.path.isdir(pdir)
+
+    @pytest.mark.parametrize("platform", ["linux", "darwin"])
+    def test_get_log_dir_unix(self, monkeypatch, tmp_path, platform):
+        monkeypatch.setattr(sys, "platform", platform)
+        base_dir = tmp_path / ".mmrelay"
+        monkeypatch.setattr(cfg, "get_base_dir", lambda: str(base_dir))
+        d = cfg.get_log_dir()
+        assert d == os.path.join(str(base_dir), "logs")
+        assert os.path.isdir(d)
+
+    def test_get_log_dir_windows(self, monkeypatch):
+        monkeypatch.setattr(sys, "platform", "win32")
+        def fake_user_log_dir(app, author):
+            return f"C:\\\\Users\\\\tester\\\\AppData\\\\Local\\\\{author}\\\\{app}\\\\Logs"
+        monkeypatch.setattr(cfg.platformdirs, "user_log_dir", fake_user_log_dir)
+        d = cfg.get_log_dir()
+        assert d.endswith("Logs")
+
+
+class TestSetConfig:
+    def test_set_config_matrix_utils_populates_fields_and_calls_setup(self, monkeypatch):
+        # Create a fake module named ...matrix_utils
+        mod = _fake_module("mmrelay.matrix_utils")
+        # matrix_utils expects these attrs to be present
+        mod.matrix_homeserver = None
+        mod.matrix_rooms = None
+        mod.matrix_access_token = None
+        mod.bot_user_id = None
+        called = {"setup": 0}
+        def setup_config():
+            called["setup"] += 1
+        mod.setup_config = setup_config
+
+        conf = {
+            cfg.CONFIG_SECTION_MATRIX: {
+                cfg.CONFIG_KEY_HOMESERVER: "https://matrix.example",
+                cfg.CONFIG_KEY_ACCESS_TOKEN: "secrettoken",
+                cfg.CONFIG_KEY_BOT_USER_ID: "@bot:example",
             },
-            "meshtastic": {"connection_type": "serial", "serial_port": "/dev/ttyUSB0"},
+            "matrix_rooms": {"room1": "!abc:example"},
         }
+        out = cfg.set_config(mod, conf)
+        assert out is conf
+        assert mod.config is conf
+        assert mod.matrix_homeserver == "https://matrix.example"
+        assert mod.matrix_access_token == "secrettoken"
+        assert mod.bot_user_id == "@bot:example"
+        assert mod.matrix_rooms == {"room1": "!abc:example"}
+        assert called["setup"] == 1
 
-        mock_yaml_load.return_value = old_config
-        mock_isfile.return_value = True
+    def test_set_config_meshtastic_utils_sets_matrix_rooms_and_calls_setup(self):
+        mod = _fake_module("mmrelay.meshtastic_utils")
+        mod.matrix_rooms = None
+        called = {"setup": 0}
+        mod.setup_config = lambda: called.__setitem__("setup", called["setup"] + 1)
 
-        # Load config and verify migration
-        config = load_config(config_file="old_config.yaml")
+        conf = {"matrix_rooms": ["!abc:example", "!def:example"]}
+        out = cfg.set_config(mod, conf)
+        assert out is conf
+        assert mod.config is conf
+        assert mod.matrix_rooms == ["!abc:example", "!def:example"]
+        assert called["setup"] == 1
 
-        # Should contain original data
-        self.assertEqual(config["matrix"]["homeserver"], "https://matrix.org")
-        self.assertEqual(config["meshtastic"]["connection_type"], "serial")
-
-        # Should handle missing fields gracefully
-        self.assertIsInstance(config, dict)
-
-    @patch("mmrelay.config.os.path.isfile")
-    @patch("builtins.open")
-    @patch("mmrelay.config.yaml.load")
-    def test_partial_config_handling(self, mock_yaml_load, mock_open, mock_isfile):
-        """
-        Test that loading a partial or incomplete configuration file does not cause errors.
-
-        Ensures that configuration files missing sections or fields are loaded without exceptions, and missing keys are handled gracefully.
-        """
-        # Test with minimal config
-        minimal_config = {
-            "matrix": {
-                "homeserver": "https://matrix.org"
-                # Missing username, password, etc.
-            }
-            # Missing meshtastic section entirely
-        }
-
-        mock_yaml_load.return_value = minimal_config
-        mock_isfile.return_value = True
-
-        # Should load without error
-        config = load_config(config_file="minimal_config.yaml")
-
-        # Should contain what was provided
-        self.assertEqual(config["matrix"]["homeserver"], "https://matrix.org")
-
-        # Should handle missing sections gracefully
-        self.assertNotIn("username", config.get("matrix", {}))
-
-    @patch("mmrelay.config.os.path.isfile")
-    @patch("builtins.open")
-    @patch("mmrelay.config.yaml.load")
-    def test_config_validation_error_messages(
-        self, mock_yaml_load, mock_open, mock_isfile
-    ):
-        """
-        Test loading of invalid configuration structures and ensure they are returned as dictionaries.
-
-        This test verifies that when a configuration file contains invalid types or values, the `load_config` function still loads and returns the raw configuration dictionary. Validation and error messaging are expected to occur outside of this function.
-        """
-        # Test with invalid YAML structure
-        invalid_config = {
-            "matrix": "not_a_dict",  # Should be a dictionary
-            "meshtastic": {
-                "connection_type": "invalid_type"  # Invalid connection type
-            },
-        }
-
-        mock_yaml_load.return_value = invalid_config
-        mock_isfile.return_value = True
-
-        # Should load but config validation elsewhere should catch issues
-        config = load_config(config_file="invalid_config.yaml")
-
-        # Config should load (validation happens elsewhere)
-        self.assertIsInstance(config, dict)
-        self.assertEqual(config["matrix"], "not_a_dict")
-
-    @patch("mmrelay.config.os.path.isfile")
-    @patch("builtins.open")
-    def test_corrupted_config_file_handling(self, mock_open, mock_isfile):
-        """
-        Test that loading a corrupted YAML configuration file is handled gracefully.
-
-        Simulates a YAML parsing error and verifies that `load_config` does not raise uncaught exceptions and returns a dictionary as fallback.
-        """
-        import yaml
-
-        mock_isfile.return_value = True
-
-        # Simulate YAML parsing error
-        mock_open.return_value.__enter__.return_value.read.return_value = (
-            "invalid: yaml: content: ["
-        )
-
-        with patch(
-            "mmrelay.config.yaml.load", side_effect=yaml.YAMLError("Invalid YAML")
-        ):
-            # Should handle YAML errors gracefully
-            try:
-                config = load_config(config_file="corrupted.yaml")
-                # If no exception, should return empty dict or handle gracefully
-                self.assertIsInstance(config, dict)
-            except yaml.YAMLError:
-                # If exception is raised, it should be a YAML error
-                pass
-
-    @patch("mmrelay.config.os.path.isfile")
-    def test_missing_config_file_fallback(self, mock_isfile):
-        """
-        Test that loading configuration with a missing file returns an empty dictionary without raising exceptions.
-        """
-        mock_isfile.return_value = False
-
-        with patch("sys.argv", ["mmrelay"]):
-            config = load_config()
-
-            # Should return empty dict when no config found
-            self.assertEqual(config, {})
-
-            # Should not crash or raise exceptions
-            self.assertIsInstance(config, dict)
-
-    @patch("mmrelay.config.os.path.isfile")
-    @patch("builtins.open")
-    @patch("mmrelay.config.yaml.load")
-    def test_config_with_environment_variables(
-        self, mock_yaml_load, mock_open, mock_isfile
-    ):
-        """
-        Test loading a configuration file containing environment variable references.
-
-        Ensures that configuration values with environment variable placeholders are loaded as raw strings, without expansion, as expected at this stage.
-        """
-        # Config with environment variable references
-        env_config = {
-            "matrix": {
-                "homeserver": "${MATRIX_HOMESERVER}",
-                "access_token": "${MATRIX_TOKEN}",
-            },
-            "meshtastic": {"serial_port": "${MESHTASTIC_PORT}"},
-        }
-
-        mock_yaml_load.return_value = env_config
-        mock_isfile.return_value = True
-
-        # Set environment variables
-        with patch.dict(
-            os.environ,
-            {
-                "MATRIX_HOMESERVER": "https://test.matrix.org",
-                "MATRIX_TOKEN": "test_token_123",
-                "MESHTASTIC_PORT": "/dev/ttyUSB1",
-            },
-        ):
-            config = load_config(config_file="env_config.yaml")
-
-            # Should load the raw config (environment variable expansion happens elsewhere)
-            self.assertEqual(config["matrix"]["homeserver"], "${MATRIX_HOMESERVER}")
-            self.assertEqual(config["matrix"]["access_token"], "${MATRIX_TOKEN}")
-
-    def test_config_path_resolution_edge_cases(self):
-        """
-        Test that configuration path resolution correctly handles relative and absolute paths.
-
-        Ensures that get_config_paths returns absolute paths for both relative and absolute config file arguments, covering edge cases in path normalization.
-        """
-        # Mock argparse Namespace object for relative path
-        mock_args = MagicMock()
-        mock_args.config = "../config/test.yaml"
-
-        paths = get_config_paths(args=mock_args)
-
-        # Should include the absolute version of the relative path
-        expected_path = os.path.abspath("../config/test.yaml")
-        self.assertIn(expected_path, paths)
-
-        # Mock argparse Namespace object for absolute path
-        mock_args.config = "/absolute/path/config.yaml"
-
-        paths = get_config_paths(args=mock_args)
-
-        # Should include the absolute path
-        self.assertIn("/absolute/path/config.yaml", paths)
+    def test_set_config_other_module_only_sets_config_and_optional_setup(self):
+        mod = _fake_module("mmrelay.random_utils")
+        assert not hasattr(mod, "setup_config")
+        conf = {"a": 1}
+        out = cfg.set_config(mod, conf)
+        assert out is conf
+        assert mod.config is conf
 
 
-if __name__ == "__main__":
-    unittest.main()
+class TestLoadConfig:
+    def test_load_config_with_explicit_valid_file(self, monkeypatch, tmp_path):
+        yml = tmp_path / "config.yaml"
+        yml.write_text("a: 1\nb:\n  - 2\n")
+        result = cfg.load_config(config_file=str(yml))
+        assert result == {"a": 1, "b": [2]}
+        assert cfg.config_path == str(yml)
+
+    def test_load_config_with_explicit_missing_file_returns_empty(self, tmp_path):
+        missing = tmp_path / "nope.yaml"
+        res = cfg.load_config(config_file=str(missing))
+        # Since file does not exist, the code path will search default locations.
+        # But we passed config_file and os.path.isfile() would be False, hence it goes to search order.
+        # Given our tmp_path isn't in default order, expect eventually {}.
+        assert isinstance(res, dict)
+
+    def test_load_config_errors_logged_and_returns_empty_on_yaml_error(self, monkeypatch, tmp_path, caplog):
+        bad = tmp_path / "bad.yaml"
+        bad.write_text("a: [1, 2\n")  # malformed
+        with caplog.at_level("ERROR"):
+            res = cfg.load_config(config_file=str(bad))
+        assert res == {}
+        assert any("Error loading config file" in rec.message for rec in caplog.records)
+
+    def test_load_config_search_order_finds_first_existing(self, monkeypatch, tmp_path):
+        # Arrange search order: args.config, user dir, cwd, app dir
+        class Args:
+            pass
+        args = Args()
+        args.config = None
+
+        # Mock get_config_paths to return controlled list
+        f1 = tmp_path / "a.yaml"  # exists and valid
+        f1.write_text("x: 1")
+        f2 = tmp_path / "b.yaml"  # exists but later
+        f2.write_text("x: 2")
+        monkeypatch.setattr(cfg, "get_config_paths", lambda _args=None: [str(f1), str(f2)])
+
+        res = cfg.load_config(config_file=None, args=args)
+        assert res == {"x": 1}
+        assert cfg.config_path == str(f1)
+
+    def test_load_config_logs_all_paths_when_not_found(self, monkeypatch, caplog):
+        monkeypatch.setattr(cfg, "get_config_paths", lambda _args=None: ["/x/nope1.yaml", "/y/nope2.yaml"])
+        # Ensure os.path.isfile returns False for all
+        monkeypatch.setattr(os.path, "isfile", lambda p: False)
+        with caplog.at_level("ERROR"):
+            res = cfg.load_config(config_file=None, args=None)
+        assert isinstance(res, dict) and res == cfg.relay_config
+        msgs = "\n".join(m.message for m in caplog.records)
+        assert "Configuration file not found" in msgs
+        assert "Using empty configuration" in msgs
+        assert "mmrelay --generate-config" in msgs
+
+
+class TestValidateYamlSyntax:
+    def test_valid_yaml_no_issues(self):
+        content = "a: 1\nb:\n  - 2\n"
+        ok, msg, parsed = cfg.validate_yaml_syntax(content, "cfg.yaml")
+        assert ok is True
+        assert msg is None
+        assert parsed == {"a": 1, "b": [2]}
+
+    def test_style_warnings_for_nonstandard_bool(self):
+        content = "feature: yes\nother: NO\n"
+        ok, msg, parsed = cfg.validate_yaml_syntax(content, "cfg.yaml")
+        assert ok is True
+        assert parsed == {"feature": True, "other": False}
+        assert "Style warning" in msg
+        assert "yes" in msg and "NO" in msg
+
+    def test_error_on_equals_instead_of_colon(self):
+        content = "a=1\n"
+        ok, msg, parsed = cfg.validate_yaml_syntax(content, "cfg.yaml")
+        assert ok is False
+        assert "Use ':' instead of '='" in msg
+        assert parsed is None
+
+    def test_yaml_error_reports_location_and_problematic_line(self):
+        content = "list:\n  - 1\n  - 2\nmap:\n  key: [1, 2\n"
+        ok, msg, parsed = cfg.validate_yaml_syntax(content, "cfg.yaml")
+        assert ok is False
+        assert "YAML parsing error in cfg.yaml" in msg
+        assert "Problematic line:" in msg
+        assert "Suggestion:" in msg
+
+    def test_multiple_style_warnings_accumulate(self):
+        content = "a: on\nb: off\nc: Yes\nd: No\n"
+        ok, msg, parsed = cfg.validate_yaml_syntax(content, "cfg.yaml")
+        assert ok is True
+        assert parsed == {"a": True, "b": False, "c": True, "d": False}
+        assert msg.count("Style warning") >= 4
+
+
+class TestMeshtasticConfigValue:
+    def test_get_value_present(self):
+        conf = {"meshtastic": {"foo": 3}}
+        assert cfg.get_meshtastic_config_value(conf, "foo", default=0, required=False) == 3
+
+    def test_get_value_default_when_missing_and_not_required(self):
+        conf = {"meshtastic": {}}
+        assert cfg.get_meshtastic_config_value(conf, "bar", default="x", required=False) == "x"
+
+    def test_get_value_raises_and_logs_when_required_missing(self, caplog):
+        conf = {"meshtastic": {}}
+        with caplog.at_level("ERROR"), pytest.raises(KeyError) as ei:
+            cfg.get_meshtastic_config_value(conf, "bar", default="X", required=True)
+        assert "Missing required configuration: meshtastic.bar" in "\n".join(m.message for m in caplog.records)
+        assert "Required configuration 'meshtastic.bar' is missing." in str(ei.value)

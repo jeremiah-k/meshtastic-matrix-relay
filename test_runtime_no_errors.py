@@ -33,6 +33,35 @@ def test_runtime_no_errors():
         return False
 
 
-if __name__ == "__main__":
-    success = test_runtime_no_errors()
-    sys.exit(0 if success else 1)
+import pytest
+
+
+def test_runtime_no_errors_pytest_wrapper():
+    from mmrelay.config import get_meshtastic_config_value
+    from mmrelay.constants.config import DEFAULT_BROADCAST_ENABLED
+
+    config = {
+        "meshtastic": {"connection_type": "serial", "serial_port": "/dev/ttyUSB0"}
+    }
+
+    # This should NOT raise an error anymore (required=False)
+    result = get_meshtastic_config_value(
+        config, "broadcast_enabled", DEFAULT_BROADCAST_ENABLED, required=False
+    )
+    assert result == DEFAULT_BROADCAST_ENABLED
+
+def test_runtime_missing_broadcast_enabled_required_true_raises():
+    from mmrelay.config import get_meshtastic_config_value
+    from mmrelay.constants.config import DEFAULT_BROADCAST_ENABLED
+
+    config = {"meshtastic": {"connection_type": "serial", "serial_port": "/dev/ttyUSB0"}}
+
+    try:
+        get_meshtastic_config_value(
+            config, "broadcast_enabled", DEFAULT_BROADCAST_ENABLED, required=True
+        )
+    except Exception:
+        # Expected: an exception is raised when required=True and key missing
+        pass
+    else:
+        pytest.fail("Expected exception when 'broadcast_enabled' is required but missing")

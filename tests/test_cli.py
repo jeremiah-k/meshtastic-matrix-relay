@@ -215,11 +215,12 @@ class TestCLI(unittest.TestCase):
         """
         Verify that unknown CLI arguments do not produce warnings when running in a test environment.
         """
-        with patch("sys.argv", ["pytest", "mmrelay", "--unknown-arg"]):
-            with patch("builtins.print") as mock_print:
-                parse_arguments()
-                # Should not print warning in test environment
-                mock_print.assert_not_called()
+        with patch("sys.argv", ["pytest", "mmrelay", "--unknown-arg"]), patch(
+            "builtins.print"
+        ) as mock_print:
+            parse_arguments()
+            # Should not print warning in test environment
+            mock_print.assert_not_called()
 
 
 class TestGenerateSampleConfig(unittest.TestCase):
@@ -306,9 +307,8 @@ class TestGenerateSampleConfig(unittest.TestCase):
         mock_resource.read_text.return_value = "sample config content"
         mock_files.return_value.joinpath.return_value = mock_resource
 
-        with patch("builtins.open", mock_open()) as mock_file:
-            with patch("builtins.print"):
-                result = generate_sample_config()
+        with patch("builtins.open", mock_open()) as mock_file, patch("builtins.print"):
+            result = generate_sample_config()
 
         self.assertTrue(result)
         mock_file.assert_called_once()
@@ -575,3 +575,268 @@ class TestMainFunction(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class TestCLIAdditional(unittest.TestCase):
+    """
+    Additional unit tests for CLI to expand coverage of edge cases and precedence rules.
+    Test framework: Python unittest with unittest.mock
+    """
+
+    @patch("builtins.print")
+    def test_parse_arguments_no_args_no_warnings(self, mock_print):
+        """
+        Ensure parse_arguments with no args returns defaults and does not emit warnings.
+        """
+        with patch("sys.argv", ["mmrelay"]):
+            args = parse_arguments()
+            self.assertIsNone(getattr(args, "config", None))
+            self.assertIsNone(getattr(args, "data_dir", None))
+            self.assertIsNone(getattr(args, "log_level", None))
+            self.assertIsNone(getattr(args, "logfile", None))
+            self.assertFalse(bool(getattr(args, "version", False)))
+            self.assertFalse(bool(getattr(args, "generate_config", False)))
+            self.assertFalse(bool(getattr(args, "install_service", False)))
+            self.assertFalse(bool(getattr(args, "check_config", False)))
+            mock_print.assert_not_called()
+
+    @patch("builtins.print")
+    @patch("sys.platform", "linux")
+    def test_parse_arguments_positional_non_windows_warns(self, mock_print):
+        """
+        On non-Windows platforms, positional args should not be treated as config
+        and should trigger an unknown argument warning.
+        """
+        with patch("sys.argv", ["mmrelay", "positional.yaml"]):
+            args = parse_arguments()
+            # Some implementations may ignore the positional or set it to None;
+            # we assert that we did not pick it up as --config.
+            self.assertNotEqual(getattr(args, "config", None), "positional.yaml")
+            mock_print.assert_called()
+            msg = mock_print.call_args[0][0]
+            self.assertIn("Warning", msg)
+            self.assertIn("positional.yaml", msg)
+
+    @patch("builtins.print")
+    def test_parse_arguments_multiple_unknown_args_reported(self, mock_print):
+        """
+        Unknown flags list should include the offending flags in the warning.
+        """
+        with patch("sys.argv", ["mmrelay", "--foo", "--bar", "baz"]):
+            parse_arguments()
+            mock_print.assert_called()
+            printed = mock_print.call_args[0][0]
+            self.assertIn("Warning", printed)
+            self.assertIn("--foo", printed)
+            self.assertIn("--bar", printed)
+
+    @patch("mmrelay.cli.os.path.isfile", return_value=False)
+    def test_check_config_missing_file(self, mock_isfile):
+        """
+        When the specified config file does not exist, check_config should return False.
+        """
+        with patch("sys.argv", ["mmrelay", "--config", "/no/such/file.yaml"]):
+            self.assertFalse(check_config())
+
+    @patch("mmrelay.cli.os.path.isfile", return_value=True)
+    @patch("builtins.open")
+    @patch("mmrelay.config.yaml.load")
+    def test_check_config_missing_matrix_rooms(self, mock_yaml, mock_open, mock_isfile):
+        """
+        Missing matrix_rooms section should cause check_config to return False.
+        """
+        mock_yaml.return_value = {
+            "matrix": {
+                "homeserver": "https://matrix.org",
+                "access_token": "token",
+                "bot_user_id": "@bot:matrix.org",
+            },
+            "meshtastic": {"connection_type": "serial", "serial_port": "/dev/ttyUSB0"},
+        }
+        with patch("sys.argv", ["mmrelay", "--config", "cfg.yaml"]):
+            self.assertFalse(check_config())
+
+    @patch("mmrelay.cli.os.path.isfile", return_value=True)
+    @patch("builtins.open")
+    @patch("mmrelay.config.yaml.load")
+    def test_check_config_serial_missing_port(self, mock_yaml, mock_open, mock_isfile):
+        """
+        If connection_type is 'serial' but 'serial_port' is missing, validation should fail.
+        """
+        mock_yaml.return_value = {
+            "matrix": {
+                "homeserver": "https://matrix.org",
+                "access_token": "token",
+                "bot_user_id": "@bot:matrix.org",
+            },
+            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+            "meshtastic": {"connection_type": "serial"},
+        }
+        with patch("sys.argv", ["mmrelay", "--config", "cfg.yaml"]):
+            self.assertFalse(check_config())
+
+    @patch("mmrelay.cli.os.path.isfile", return_value=True)
+    @patch("builtins.open")
+    @patch("mmrelay.config.yaml.load")
+    def test_check_config_tcp_missing_host_port(self, mock_yaml, mock_open, mock_isfile):
+        """
+        If connection_type is 'tcp' but host/port keys are not present, validation should fail.
+        """
+        mock_yaml.return_value = {
+            "matrix": {
+                "homeserver": "https://matrix.org",
+                "access_token": "token",
+                "bot_user_id": "@bot:matrix.org",
+            },
+            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+            "meshtastic": {"connection_type": "tcp"},
+        }
+        with patch("sys.argv", ["mmrelay", "--config", "cfg.yaml"]):
+            self.assertFalse(check_config())
+
+class TestGenerateSampleConfigAdditional(unittest.TestCase):
+    """
+    Additional tests for generate_sample_config covering negative/failure paths.
+    Test framework: Python unittest with unittest.mock
+    """
+
+    @patch("mmrelay.config.get_config_paths", return_value=[])
+    def test_generate_sample_config_no_paths(self, mock_paths):
+        """
+        If get_config_paths returns empty list, generation should fail gracefully.
+        """
+        with patch("builtins.print") as mock_print:
+            result = generate_sample_config()
+        self.assertFalse(result)
+        mock_print.assert_called()
+
+    @patch("mmrelay.config.get_config_paths", return_value=["/home/user/.mmrelay/config.yaml"])
+    @patch("os.path.isfile", return_value=False)
+    @patch("mmrelay.tools.get_sample_config_path", return_value="/path/to/sample.yaml")
+    @patch("os.path.exists", return_value=True)
+    @patch("shutil.copy2", side_effect=Exception("copy failed"))
+    def test_generate_sample_config_copy_failure(self, mock_copy, mock_exists, mock_get_sample, mock_isfile, mock_paths):
+        """
+        If copying the sample config fails, function should return False and report the error.
+        """
+        with patch("builtins.print") as mock_print:
+            result = generate_sample_config()
+        self.assertFalse(result)
+        mock_print.assert_called()
+        self.assertIn("copy failed", mock_print.call_args[0][0])
+
+    @patch("mmrelay.config.get_config_paths", return_value=["/home/user/.mmrelay/config.yaml"])
+    @patch("os.path.isfile", return_value=False)
+    @patch("mmrelay.tools.get_sample_config_path", return_value="/nonexistent/sample.yaml")
+    @patch("os.path.exists", return_value=False)
+    @patch("importlib.resources.files")
+    def test_generate_sample_config_importlib_failure(self, mock_files, mock_exists, mock_get_sample, mock_isfile, mock_paths):
+        """
+        If importlib.resources also cannot provide a sample, generation should fail.
+        """
+        # Simulate importlib path not containing resource
+        mock_files.side_effect = Exception("resource not found")
+        with patch("builtins.print") as mock_print:
+            result = generate_sample_config()
+        self.assertFalse(result)
+        mock_print.assert_called()
+        self.assertIn("resource not found", mock_print.call_args[0][0])
+
+class TestHandleCLICommandsPrecedence(unittest.TestCase):
+    """
+    Tests to ensure precedence among CLI command flags is correct.
+    Test framework: Python unittest with unittest.mock
+    """
+
+    @patch("mmrelay.cli.print_version")
+    @patch("mmrelay.cli.generate_sample_config")
+    @patch("mmrelay.cli.check_config")
+    @patch("mmrelay.setup_utils.install_service")
+    def test_handle_cli_precedence_version_over_others(self, mock_install, mock_check, mock_generate, mock_print_version):
+        """
+        If multiple flags are set, --version should take precedence and only print_version should be called.
+        """
+        args = MagicMock()
+        args.version = True
+        args.install_service = True
+        args.generate_config = True
+        args.check_config = True
+
+        result = handle_cli_commands(args)
+
+        self.assertTrue(result)
+        mock_print_version.assert_called_once()
+        mock_install.assert_not_called()
+        mock_generate.assert_not_called()
+        mock_check.assert_not_called()
+
+    @patch("mmrelay.setup_utils.install_service", return_value=True)
+    @patch("mmrelay.cli.generate_sample_config")
+    @patch("mmrelay.cli.check_config")
+    def test_handle_cli_precedence_install_over_generate_and_check(self, mock_check, mock_generate, mock_install):
+        """
+        If both --install-service and other flags are set (excluding --version), installation should be handled first.
+        """
+        args = MagicMock()
+        args.version = False
+        args.install_service = True
+        args.generate_config = True
+        args.check_config = True
+
+        with patch("sys.exit") as mock_exit:
+            handle_cli_commands(args)
+
+        mock_install.assert_called_once()
+        mock_exit.assert_called_once()  # Should exit after install path
+        mock_generate.assert_not_called()
+        mock_check.assert_not_called()
+
+class TestMainAdditional(unittest.TestCase):
+    """
+    Additional tests for main to verify failure codes propagation and precedence.
+    Test framework: Python unittest with unittest.mock
+    """
+
+    @patch("mmrelay.cli.parse_arguments")
+    @patch("mmrelay.setup_utils.install_service", return_value=False)
+    def test_main_install_service_failure(self, mock_install, mock_parse):
+        args = MagicMock()
+        args.check_config = False
+        args.install_service = True
+        args.generate_config = False
+        args.version = False
+        mock_parse.return_value = args
+
+        result = main()
+        self.assertEqual(result, 1)
+        mock_install.assert_called_once()
+
+    @patch("mmrelay.cli.parse_arguments")
+    @patch("mmrelay.cli.generate_sample_config", return_value=False)
+    def test_main_generate_config_failure(self, mock_generate, mock_parse):
+        args = MagicMock()
+        args.check_config = False
+        args.install_service = False
+        args.generate_config = True
+        args.version = False
+        mock_parse.return_value = args
+
+        result = main()
+        self.assertEqual(result, 1)
+        mock_generate.assert_called_once()
+
+    @patch("mmrelay.cli.parse_arguments")
+    @patch("mmrelay.main.run_main", return_value=3)
+    def test_main_run_main_nonzero_propagation(self, mock_run_main, mock_parse):
+        """
+        Ensure main propagates non-zero exit codes from run_main when no special flags are set.
+        """
+        args = MagicMock()
+        args.check_config = False
+        args.install_service = False
+        args.generate_config = False
+        args.version = False
+        mock_parse.return_value = args
+
+        result = main()
+        self.assertEqual(result, 3)
+        mock_run_main.assert_called_once_with(args)
