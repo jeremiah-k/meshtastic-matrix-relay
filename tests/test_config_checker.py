@@ -39,7 +39,7 @@ class TestConfigChecker(unittest.TestCase):
             "meshtastic": {
                 "connection_type": "tcp",
                 "host": "192.168.1.100",
-                "broadcast_enabled": True
+                "broadcast_enabled": True,
             },
         }
 
@@ -173,7 +173,9 @@ class TestConfigChecker(unittest.TestCase):
         result = check_config()
 
         self.assertFalse(result)
-        mock_print.assert_any_call("Error: Configuration file is empty or contains only comments")
+        mock_print.assert_any_call(
+            "Error: Configuration file is empty or contains only comments"
+        )
 
     @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
@@ -577,8 +579,14 @@ class TestConfigChecker(unittest.TestCase):
         self.assertFalse(result)
         # Check that YAML error message is printed (CLI version has more detailed format)
         printed_calls = [str(call) for call in mock_print.call_args_list]
-        yaml_error_found = any("YAML Syntax Error" in call and "Invalid YAML syntax" in call for call in printed_calls)
-        self.assertTrue(yaml_error_found, f"Expected YAML error message not found in: {printed_calls}")
+        yaml_error_found = any(
+            "YAML Syntax Error" in call and "Invalid YAML syntax" in call
+            for call in printed_calls
+        )
+        self.assertTrue(
+            yaml_error_found,
+            f"Expected YAML error message not found in: {printed_calls}",
+        )
 
     @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")

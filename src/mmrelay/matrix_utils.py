@@ -50,8 +50,6 @@ from mmrelay.message_queue import get_message_queue, queue_message
 logger = get_logger(name="matrix_utils")
 
 
-
-
 def _get_msgs_to_keep_config():
     """
     Returns the configured number of messages to retain for message mapping, supporting both current and legacy configuration sections.

@@ -7,9 +7,6 @@ import importlib.resources
 import os
 import sys
 
-import yaml
-from yaml.loader import SafeLoader
-
 # Import version from package
 from mmrelay import __version__
 from mmrelay.config import get_config_paths, validate_yaml_syntax
@@ -126,7 +123,6 @@ def print_version():
     Print the version in a simple format.
     """
     print(f"MMRelay v{__version__}")
-
 
 
 def check_config(args=None):

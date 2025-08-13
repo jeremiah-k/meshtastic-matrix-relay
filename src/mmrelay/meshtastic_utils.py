@@ -79,9 +79,6 @@ matrix_rooms: List[dict] = []
 logger = get_logger(name="Meshtastic")
 
 
-
-
-
 # Global variables for the Meshtastic connection and event loop management
 meshtastic_client = None
 event_loop = None  # Will be set from main.py
