@@ -273,14 +273,22 @@ def load_config(config_file=None, args=None):
 
 def validate_yaml_syntax(config_content, config_path):
     """
-    Validate YAML syntax and provide detailed error messages for common issues.
-
-    Args:
-        config_content (str): The raw YAML content
-        config_path (str): Path to the config file for error reporting
-
+    Validate YAML content and return parsing results plus human-readable syntax feedback.
+    
+    Performs lightweight line-based checks for common mistakes (unclosed quotes, use of '=' instead of ':',
+    and non-standard boolean words like 'yes'/'no') and then attempts to parse the content with PyYAML.
+    If only style warnings are found the parser result is returned with warnings; if syntax errors are detected
+    or YAML parsing fails, a detailed error message is returned.
+    
+    Parameters:
+        config_content (str): Raw YAML text to validate.
+        config_path (str): Path used in error messages to identify the source file.
+    
     Returns:
-        tuple: (is_valid, error_message, parsed_config)
+        tuple:
+            is_valid (bool): True if parsing succeeded (even if style warnings exist), False on syntax/parsing error.
+            error_message (str|None): Human-readable warnings or error details. None when parsing succeeded with no issues.
+            parsed_config (dict|list|None): The parsed YAML structure on success; None when parsing failed.
     """
     lines = config_content.split("\n")
 
@@ -376,19 +384,23 @@ def validate_yaml_syntax(config_content, config_path):
 
 def get_meshtastic_config_value(config, key, default=None, required=False):
     """
-    Safely get a meshtastic configuration value with proper error handling.
-
-    Args:
-        config (dict): The configuration dictionary
-        key (str): Configuration key to retrieve
-        default: Default value if key is missing
-        required (bool): Whether this configuration is required
-
+    Return a value from the `meshtastic` section of the given config dict.
+    
+    If the key exists under `config["meshtastic"]`, that value is returned. If the key is missing:
+    - If `required` is False, `default` is returned.
+    - If `required` is True, a KeyError is raised and an error is logged with guidance to add the missing setting.
+    
+    Parameters:
+        config (dict): Parsed configuration mapping.
+        key (str): Key to retrieve from the `meshtastic` section.
+        default: Value to return when the key is absent and not required.
+        required (bool): If True, missing key raises KeyError; otherwise returns `default`.
+    
     Returns:
-        The configuration value or default
-
+        The value from `config["meshtastic"][key]` or `default` when not required.
+    
     Raises:
-        KeyError: If required=True and key is missing
+        KeyError: If `required` is True and the requested key is not present.
     """
     try:
         return config["meshtastic"][key]

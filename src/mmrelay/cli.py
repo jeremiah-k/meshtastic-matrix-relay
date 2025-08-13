@@ -127,15 +127,28 @@ def print_version():
 
 def check_config(args=None):
     """
-    Validates the application's configuration file for required structure and fields.
-
-    If a configuration file is found, checks for the presence and correctness of required sections and keys, including Matrix and Meshtastic settings, and validates the format of matrix rooms. Prints errors or warnings for missing or deprecated fields. Returns True if the configuration is valid, otherwise False.
-
+    Validate the application's YAML configuration file for required sections and fields.
+    
+    Reads candidate config files (from get_config_paths), validates YAML syntax via validate_yaml_syntax, and performs structural and semantic checks:
+    - Ensures the config is not empty.
+    - Verifies the 'matrix' section contains HOMESERVER, ACCESS_TOKEN, and BOT_USER_ID.
+    - Verifies 'matrix_rooms' exists, is a non-empty list, and each room is a dict containing an 'id'.
+    - Verifies the 'meshtastic' section contains a valid connection_type and the connection-type-specific fields:
+      - serial -> serial_port
+      - tcp/network -> host
+      - ble -> ble_address
+      - warns if connection_type == 'network' (deprecated)
+    - Validates optional meshtastic fields and types: broadcast_enabled (bool), detection_sensor (bool), message_delay (int|float, >= 2.0), meshnet_name (str); reports missing optional fields as guidance.
+    - Warns if a deprecated 'db' section is present.
+    
+    Side effects:
+    - Prints validation errors, warnings, and status messages to stdout.
+    
     Parameters:
-        args: Parsed command-line arguments. If None, arguments are parsed internally.
-
+        args (argparse.Namespace | None): Parsed CLI arguments; if None, CLI args are parsed internally.
+    
     Returns:
-        bool: True if the configuration file is valid, False otherwise.
+        bool: True if a configuration file was found and passed all checks; False otherwise.
     """
 
     # If args is None, parse them now
