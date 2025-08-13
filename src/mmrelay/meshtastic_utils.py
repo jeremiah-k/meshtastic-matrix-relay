@@ -15,9 +15,11 @@ import serial.tools.list_ports  # Import serial tools for port listing
 from meshtastic.protobuf import mesh_pb2, portnums_pb2
 from pubsub import pub
 
+from mmrelay.config import get_meshtastic_config_value
 from mmrelay.constants.config import (
     CONFIG_KEY_MESHNET_NAME,
     CONFIG_SECTION_MESHTASTIC,
+    DEFAULT_DETECTION_SENSOR,
 )
 from mmrelay.constants.formats import (
     DETECTION_SENSOR_APP,
@@ -75,6 +77,7 @@ matrix_rooms: List[dict] = []
 
 # Initialize logger for Meshtastic
 logger = get_logger(name="Meshtastic")
+
 
 # Global variables for the Meshtastic connection and event loop management
 meshtastic_client = None
@@ -462,9 +465,21 @@ async def reconnect():
 
 def on_meshtastic_message(packet, interface):
     """
-    Processes an incoming Meshtastic message and relays it to Matrix rooms or plugins according to message type and configuration.
+    Handle an incoming Meshtastic packet and relay it to Matrix rooms or plugins as configured.
 
-    Handles reactions and replies by relaying them to Matrix if enabled. Normal text messages are relayed to all mapped Matrix rooms unless handled by a plugin or directed to the relay node. Non-text messages are passed to plugins for processing. Messages from unmapped channels, disabled detection sensors, or during shutdown are ignored. Ensures sender information is retrieved or stored as needed.
+    This function inspects a Meshtastic `packet` (expected as a dict), applies interaction rules (reactions, replies, replies storage, detection-sensor filtering), and either:
+    - relays reactions or replies as appropriate to the mapped Matrix event/room,
+    - relays normal text messages to all Matrix rooms mapped to the message's Meshtastic channel (unless the message is a direct message to the relay node or a plugin handles it),
+    - or dispatches non-text or unhandled packets to plugins for processing.
+
+    Behavior notes:
+    - Uses global configuration and matrix_rooms mappings; returns immediately if configuration or event loop is missing or if shutdown is in progress.
+    - Resolves sender display names from a local DB or node info and persists them when found.
+    - Honors interaction settings for reactions and replies, and the meshtastic `detection_sensor` configuration when handling detection sensor packets.
+    - Uses _submit_coro to schedule Matrix/plugin coroutines on the configured event loop.
+    - Side effects: schedules Matrix relays, may call plugin handlers, and may store sender metadata and message->Matrix mappings via other utilities.
+
+    No return value.
     """
     global config, matrix_rooms
 
@@ -659,9 +674,11 @@ def on_meshtastic_message(packet, interface):
             return
 
         # If detection_sensor is disabled and this is a detection sensor packet, skip it
-        if decoded.get("portnum") == DETECTION_SENSOR_APP and not config[
-            "meshtastic"
-        ].get("detection_sensor", False):
+        if decoded.get(
+            "portnum"
+        ) == DETECTION_SENSOR_APP and not get_meshtastic_config_value(
+            config, "detection_sensor", DEFAULT_DETECTION_SENSOR
+        ):
             logger.debug(
                 "Detection sensor packet received, but detection sensor processing is disabled."
             )

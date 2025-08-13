@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import sys
 
 import platformdirs
@@ -268,3 +269,140 @@ def load_config(config_file=None, args=None):
     )
 
     return relay_config
+
+
+def validate_yaml_syntax(config_content, config_path):
+    """
+    Validate YAML content and return parsing results plus human-readable syntax feedback.
+
+    Performs lightweight line-based checks for common mistakes (unclosed quotes, use of '=' instead of ':',
+    and non-standard boolean words like 'yes'/'no') and then attempts to parse the content with PyYAML.
+    If only style warnings are found the parser result is returned with warnings; if syntax errors are detected
+    or YAML parsing fails, a detailed error message is returned.
+
+    Parameters:
+        config_content (str): Raw YAML text to validate.
+        config_path (str): Path used in error messages to identify the source file.
+
+    Returns:
+        tuple:
+            is_valid (bool): True if parsing succeeded (even if style warnings exist), False on syntax/parsing error.
+            error_message (str|None): Human-readable warnings or error details. None when parsing succeeded with no issues.
+            parsed_config (dict|list|None): The parsed YAML structure on success; None when parsing failed.
+    """
+    lines = config_content.split("\n")
+
+    # Check for common YAML syntax issues
+    syntax_issues = []
+
+    for line_num, line in enumerate(lines, 1):
+        # Skip empty lines and comments
+        if not line.strip() or line.strip().startswith("#"):
+            continue
+
+        # Check for missing colons in key-value pairs
+        if ":" not in line and "=" in line:
+            syntax_issues.append(
+                f"Line {line_num}: Use ':' instead of '=' for YAML - {line.strip()}"
+            )
+
+        # Check for non-standard boolean values (style warning)
+        bool_pattern = r":\s*(yes|no|on|off|Yes|No|YES|NO)\s*$"
+        if re.search(bool_pattern, line):
+            match = re.search(bool_pattern, line)
+            non_standard_bool = match.group(1)
+            syntax_issues.append(
+                f"Line {line_num}: Style warning - Consider using 'true' or 'false' instead of '{non_standard_bool}' for clarity - {line.strip()}"
+            )
+
+    # Try to parse YAML and catch specific errors
+    try:
+        parsed_config = yaml.safe_load(config_content)
+        if syntax_issues:
+            # Separate warnings from errors
+            warnings = [issue for issue in syntax_issues if "Style warning" in issue]
+            errors = [issue for issue in syntax_issues if "Style warning" not in issue]
+
+            if errors:
+                return False, "\n".join(errors), None
+            elif warnings:
+                # Return success but with warnings
+                return True, "\n".join(warnings), parsed_config
+        return True, None, parsed_config
+    except yaml.YAMLError as e:
+        error_msg = f"YAML parsing error in {config_path}:\n"
+
+        # Extract line and column information if available
+        if hasattr(e, "problem_mark"):
+            mark = e.problem_mark
+            error_line = mark.line + 1
+            error_column = mark.column + 1
+            error_msg += f"  Line {error_line}, Column {error_column}: "
+
+            # Show the problematic line
+            if error_line <= len(lines):
+                problematic_line = lines[error_line - 1]
+                error_msg += f"\n  Problematic line: {problematic_line}\n"
+                error_msg += f"  Error position: {' ' * (error_column - 1)}^\n"
+
+        # Add the original error message
+        error_msg += f"  {str(e)}\n"
+
+        # Provide helpful suggestions based on error type
+        error_str = str(e).lower()
+        if "mapping values are not allowed" in error_str:
+            error_msg += "\n  Suggestion: Check for missing quotes around values containing special characters"
+        elif "could not find expected" in error_str:
+            error_msg += "\n  Suggestion: Check for unclosed quotes or brackets"
+        elif "found character that cannot start any token" in error_str:
+            error_msg += (
+                "\n  Suggestion: Check for invalid characters or incorrect indentation"
+            )
+        elif "expected <block end>" in error_str:
+            error_msg += (
+                "\n  Suggestion: Check indentation - YAML uses spaces, not tabs"
+            )
+
+        # Add syntax issues if found
+        if syntax_issues:
+            error_msg += "\n\nAdditional syntax issues found:\n" + "\n".join(
+                syntax_issues
+            )
+
+        return False, error_msg, None
+
+
+def get_meshtastic_config_value(config, key, default=None, required=False):
+    """
+    Return a value from the `meshtastic` section of the given config dict.
+
+    If the key exists under `config["meshtastic"]`, that value is returned. If the key is missing:
+    - If `required` is False, `default` is returned.
+    - If `required` is True, a KeyError is raised and an error is logged with guidance to add the missing setting.
+
+    Parameters:
+        config (dict): Parsed configuration mapping.
+        key (str): Key to retrieve from the `meshtastic` section.
+        default: Value to return when the key is absent and not required.
+        required (bool): If True, missing key raises KeyError; otherwise returns `default`.
+
+    Returns:
+        The value from `config["meshtastic"][key]` or `default` when not required.
+
+    Raises:
+        KeyError: If `required` is True and the requested key is not present.
+    """
+    try:
+        return config["meshtastic"][key]
+    except KeyError:
+        if required:
+            logger.error(
+                f"Missing required configuration: meshtastic.{key}\n"
+                f"Please add '{key}: {default if default is not None else 'VALUE'}' to your meshtastic section in config.yaml\n"
+                f"Run 'mmrelay --check-config' to validate your configuration."
+            )
+            raise KeyError(
+                f"Required configuration 'meshtastic.{key}' is missing. "
+                f"Add '{key}: {default if default is not None else 'VALUE'}' to your meshtastic section."
+            ) from None
+        return default
