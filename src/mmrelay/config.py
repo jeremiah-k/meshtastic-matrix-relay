@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import re
@@ -153,6 +154,43 @@ def get_log_dir():
 
     os.makedirs(log_dir, exist_ok=True)
     return log_dir
+
+
+def get_e2ee_store_dir():
+    """
+    Returns the directory for storing E2EE data (encryption keys, etc.).
+    Creates the directory if it doesn't exist.
+    """
+    if sys.platform in ["linux", "darwin"]:
+        # Use ~/.mmrelay/store/ for Linux and Mac
+        store_dir = os.path.join(get_base_dir(), "store")
+    else:
+        # Use platformdirs default for Windows
+        store_dir = os.path.join(
+            platformdirs.user_data_dir(APP_NAME, APP_AUTHOR), "store"
+        )
+
+    os.makedirs(store_dir, exist_ok=True)
+    return store_dir
+
+
+def save_credentials(credentials):
+    """
+    Save Matrix credentials to credentials.json file.
+
+    Args:
+        credentials (dict): Credentials dictionary to save.
+    """
+    try:
+        config_dir = get_base_dir()
+        credentials_path = os.path.join(config_dir, "credentials.json")
+
+        with open(credentials_path, "w") as f:
+            json.dump(credentials, f, indent=2)
+
+        logger.info(f"Saved credentials to {credentials_path}")
+    except (OSError, PermissionError) as e:
+        logger.error(f"Error saving credentials.json: {e}")
 
 
 # Set up a basic logger for config
