@@ -67,7 +67,7 @@ class TestCLI(unittest.TestCase):
 
     @patch("mmrelay.cli.os.path.isfile")
     @patch("builtins.open")
-    @patch("mmrelay.cli.yaml.load")
+    @patch("mmrelay.config.yaml.load")
     def test_check_config_valid(self, mock_yaml_load, mock_open, mock_isfile):
         # Mock a valid config
         """
@@ -91,7 +91,7 @@ class TestCLI(unittest.TestCase):
 
     @patch("mmrelay.cli.os.path.isfile")
     @patch("builtins.open")
-    @patch("mmrelay.cli.yaml.load")
+    @patch("mmrelay.config.yaml.load")
     def test_check_config_invalid_missing_matrix(
         self, mock_yaml_load, mock_open, mock_isfile
     ):
@@ -110,7 +110,7 @@ class TestCLI(unittest.TestCase):
 
     @patch("mmrelay.cli.os.path.isfile")
     @patch("builtins.open")
-    @patch("mmrelay.cli.yaml.load")
+    @patch("mmrelay.config.yaml.load")
     def test_check_config_invalid_missing_meshtastic(
         self, mock_yaml_load, mock_open, mock_isfile
     ):
@@ -133,7 +133,7 @@ class TestCLI(unittest.TestCase):
 
     @patch("mmrelay.cli.os.path.isfile")
     @patch("builtins.open")
-    @patch("mmrelay.cli.yaml.load")
+    @patch("mmrelay.config.yaml.load")
     def test_check_config_invalid_connection_type(
         self, mock_yaml_load, mock_open, mock_isfile
     ):
