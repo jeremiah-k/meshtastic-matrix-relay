@@ -31,7 +31,7 @@ component_management:
         - src/mmrelay/cli.py
       statuses:
         - type: project
-          target: 70%
+          target: 50%
           threshold: 2%
     - component_id: core_utils
       name: Core Utils

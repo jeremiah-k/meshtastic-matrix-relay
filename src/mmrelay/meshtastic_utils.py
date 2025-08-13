@@ -15,6 +15,7 @@ import serial.tools.list_ports  # Import serial tools for port listing
 from meshtastic.protobuf import mesh_pb2, portnums_pb2
 from pubsub import pub
 
+from mmrelay.config import get_meshtastic_config_value
 from mmrelay.constants.config import (
     CONFIG_KEY_MESHNET_NAME,
     CONFIG_SECTION_MESHTASTIC,
@@ -78,35 +79,7 @@ matrix_rooms: List[dict] = []
 logger = get_logger(name="Meshtastic")
 
 
-def get_meshtastic_config_value(key, default=None, required=False):
-    """
-    Safely get a meshtastic configuration value with proper error handling.
 
-    Args:
-        key (str): Configuration key to retrieve
-        default: Default value if key is missing
-        required (bool): Whether this configuration is required
-
-    Returns:
-        The configuration value or default
-
-    Raises:
-        KeyError: If required=True and key is missing
-    """
-    try:
-        return config["meshtastic"][key]
-    except KeyError:
-        if required:
-            logger.error(
-                f"Missing required configuration: meshtastic.{key}\n"
-                f"Please add '{key}: {default if default is not None else 'VALUE'}' to your meshtastic section in config.yaml\n"
-                f"Run 'mmrelay --check-config' to validate your configuration."
-            )
-            raise KeyError(
-                f"Required configuration 'meshtastic.{key}' is missing. "
-                f"Add '{key}: {default if default is not None else 'VALUE'}' to your meshtastic section."
-            ) from None
-        return default
 
 
 # Global variables for the Meshtastic connection and event loop management
@@ -695,7 +668,7 @@ def on_meshtastic_message(packet, interface):
         if decoded.get(
             "portnum"
         ) == DETECTION_SENSOR_APP and not get_meshtastic_config_value(
-            "detection_sensor", DEFAULT_DETECTION_SENSOR
+            config, "detection_sensor", DEFAULT_DETECTION_SENSOR
         ):
             logger.debug(
                 "Detection sensor packet received, but detection sensor processing is disabled."
