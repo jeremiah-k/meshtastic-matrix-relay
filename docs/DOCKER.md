@@ -4,15 +4,12 @@ MMRelay supports Docker deployment with two image options and multiple deploymen
 
 ## Table of Contents
 
-- [Quick Start](#quick-start)
+- [Quick Start (Recommended)](#quick-start-recommended)
 - [Deployment Methods](#deployment-methods)
-  - [Method 1: Prebuilt Images (Recommended)](#method-1-prebuilt-images-recommended)
-    - [Option A: With Make (from cloned repository)](#option-a-with-make-from-cloned-repository)
-    - [Option B: Direct Docker Compose (no repo needed)](#option-b-direct-docker-compose-no-repo-needed)
-    - [Option C: Portainer/GUI Tools](#option-c-portainergui-tools)
-  - [Method 2: Build from Source](#method-2-build-from-source)
-    - [Option A: With Make (build from source)](#option-a-with-make-build-from-source)
-    - [Option B: Without Make](#option-b-without-make)
+  - [Prebuilt Images with Make](#prebuilt-images-with-make)
+  - [Portainer/GUI Tools](#portainergui-tools)
+  - [Build from Source with Make](#build-from-source-with-make)
+  - [Build from Source without Make](#build-from-source-without-make)
 - [Environment Variables](#environment-variables)
 - [Make Commands Reference](#make-commands-reference)
 - [Connection Types](#connection-types)
@@ -20,9 +17,9 @@ MMRelay supports Docker deployment with two image options and multiple deploymen
 - [Troubleshooting](#troubleshooting)
 - [Updates](#updates)
 
-## Quick Start
+## Quick Start (Recommended)
 
-**Most users should use Method 1, Option B** (prebuilt images without cloning):
+**Most users should start here** - prebuilt images without cloning the repository:
 
 ```bash
 # 1. Create directories and get config
@@ -35,21 +32,18 @@ nano ~/.mmrelay/config.yaml
 # 3. Get docker-compose file and start
 curl -o docker-compose.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/src/mmrelay/tools/sample-docker-compose-prebuilt.yaml
 docker compose up -d
+
+# 4. View logs
+docker compose logs -f
 ```
+
+**That's it!** Your MMRelay is now running with the official prebuilt image.
 
 ## Deployment Methods
 
-Choose the method that best fits your needs:
+If the Quick Start above doesn't work for your setup, choose from these alternatives:
 
-### Method 1: Prebuilt Images (Recommended)
-
-**Fast setup with official images** - no building required, perfect for most users.
-
-- **Image**: `ghcr.io/jeremiah-k/mmrelay:latest`
-- **Benefits**: Fastest setup, multi-platform (amd64/arm64), automatic updates
-- **Best for**: Most users who want to run MMRelay quickly
-
-#### Option A: With Make (from cloned repository)
+### Prebuilt Images with Make
 
 If you've cloned the repository locally, use the convenient Make commands:
 
@@ -59,41 +53,7 @@ make run             # Start container (pulls official image)
 make logs            # View logs
 ```
 
-#### Option B: Direct Docker Compose (no repo needed)
-
-**Complete setup without cloning the repository:**
-
-```bash
-# Step 1: Create directories
-mkdir -p ~/.mmrelay/data ~/.mmrelay/logs
-
-# Step 2: Download and edit config
-curl -o ~/.mmrelay/config.yaml \
-  https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/src/mmrelay/tools/sample_config.yaml
-nano ~/.mmrelay/config.yaml  # Edit with your Matrix/Meshtastic settings
-
-# Step 3: Download docker-compose file
-curl -o docker-compose.yaml \
-  https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/src/mmrelay/tools/sample-docker-compose-prebuilt.yaml
-
-# Step 4: (Optional) Download .env for customization
-curl -o .env \
-  https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/src/mmrelay/tools/sample.env
-
-# Step 5: Start the container
-docker compose up -d
-
-# View logs
-docker compose logs -f
-```
-
-**Notes:**
-
-- Skip the .env file if you want to use defaults (UID=1000, GID=1000, MMRELAY_HOME=$HOME)
-- For BLE or Watchtower features, uncomment relevant sections in the docker-compose.yaml
-- The container will automatically pull the latest official image
-
-#### Option C: Portainer/GUI Tools
+### Portainer/GUI Tools
 
 For users who prefer web-based Docker management:
 
@@ -130,17 +90,9 @@ For users who prefer web-based Docker management:
    ```
    Replace `/home/yourusername` with your actual home directory.
 
-### Method 2: Build from Source
+### Build from Source with Make
 
-**Full control with local compilation** - build your own image for development or customization.
-
-- **Build**: Local compilation from source code
-- **Benefits**: Full control, local modifications, development, latest features
-- **Best for**: Developers, contributors, users who want customization
-
-#### Option A: With Make (build from source)
-
-If you've cloned the repository locally, use the convenient Make commands:
+For developers who want to build their own image:
 
 ```bash
 make setup    # Copy config, .env, and docker-compose.yaml, then opens editor
@@ -149,9 +101,9 @@ make run      # Start container
 make logs     # View logs
 ```
 
-#### Option B: Without Make
+### Build from Source without Make
 
-If you prefer not to use Make commands, you can use the standard Docker Compose workflow:
+If you prefer not to use Make commands:
 
 ```bash
 # After cloning the repository:
