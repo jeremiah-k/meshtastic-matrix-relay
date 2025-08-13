@@ -23,16 +23,14 @@ def test_runtime_no_errors():
 
     print("Testing runtime behavior for missing broadcast_enabled...")
 
-    try:
-        # This should NOT raise an error anymore (required=False)
-        result = get_meshtastic_config_value(
-            config, "broadcast_enabled", DEFAULT_BROADCAST_ENABLED, required=False
-        )
-        print(f"SUCCESS: No error thrown, got default value: {result}")
-        return True
-    except Exception as e:
-        print(f"ERROR: Still throwing exception: {e}")
-        return False
+    # This should NOT raise an error anymore (required=False)
+    result = get_meshtastic_config_value(
+        config, "broadcast_enabled", DEFAULT_BROADCAST_ENABLED, required=False
+    )
+    print(f"SUCCESS: No error thrown, got default value: {result}")
+
+    # Assert that we got the expected default value
+    assert result == DEFAULT_BROADCAST_ENABLED
 
 
 def test_runtime_no_errors_pytest_wrapper():
@@ -58,14 +56,8 @@ def test_runtime_missing_broadcast_enabled_required_true_raises():
         "meshtastic": {"connection_type": "serial", "serial_port": "/dev/ttyUSB0"}
     }
 
-    try:
+    # Use pytest.raises to properly test for expected exceptions
+    with pytest.raises(Exception):
         get_meshtastic_config_value(
             config, "broadcast_enabled", DEFAULT_BROADCAST_ENABLED, required=True
-        )
-    except Exception:
-        # Expected: an exception is raised when required=True and key missing
-        pass
-    else:
-        pytest.fail(
-            "Expected exception when 'broadcast_enabled' is required but missing"
         )
