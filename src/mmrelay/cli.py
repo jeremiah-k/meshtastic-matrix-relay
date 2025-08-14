@@ -130,6 +130,104 @@ def print_version():
     print(f"MMRelay v{__version__}")
 
 
+def _validate_e2ee_dependencies():
+    """Check if E2EE dependencies are available."""
+    if sys.platform == WINDOWS_PLATFORM:
+        print("❌ Error: E2EE is not supported on Windows")
+        print("   Reason: python-olm library requires native C libraries")
+        print("   Solution: Use Linux or macOS for E2EE support")
+        return False
+
+    # Check if python-olm is available
+    try:
+        import olm  # noqa: F401
+        print("✅ E2EE dependencies are installed")
+        return True
+    except ImportError:
+        print("❌ Error: E2EE enabled but dependencies not installed")
+        print("   Install E2EE support: pipx install mmrelay[e2e]")
+        return False
+
+
+def _validate_matrix_authentication(config_path, matrix_section):
+    """Validate Matrix authentication configuration."""
+    config_dir = os.path.dirname(config_path)
+    credentials_path = os.path.join(config_dir, "credentials.json")
+
+    has_credentials = os.path.exists(credentials_path)
+    has_access_token = "access_token" in matrix_section
+
+    if has_credentials:
+        print("✅ Using credentials.json for Matrix authentication")
+        if sys.platform != WINDOWS_PLATFORM:
+            print("   E2EE support available (if enabled)")
+
+    elif has_access_token:
+        print("✅ Using access_token for Matrix authentication")
+        print("   For E2EE support: run 'mmrelay --auth'")
+
+    else:
+        print("❌ Error: No Matrix authentication configured")
+        print("   Setup: mmrelay --auth")
+        return False
+
+    return True
+
+
+def _validate_e2ee_config(config, matrix_section, config_path):
+    """Validate E2EE configuration and authentication."""
+    # First validate authentication
+    if not _validate_matrix_authentication(config_path, matrix_section):
+        return False
+
+    # Check for E2EE configuration
+    e2ee_config = matrix_section.get("e2ee", {})
+    encryption_config = matrix_section.get("encryption", {})  # Legacy support
+
+    e2ee_enabled = (
+        e2ee_config.get("enabled", False) or
+        encryption_config.get("enabled", False)
+    )
+
+    if e2ee_enabled:
+        # Platform and dependency check
+        if not _validate_e2ee_dependencies():
+            return False
+
+        # Store path validation
+        store_path = (
+            e2ee_config.get("store_path") or
+            encryption_config.get("store_path")
+        )
+        if store_path:
+            expanded_path = os.path.expanduser(store_path)
+            if not os.path.exists(os.path.dirname(expanded_path)):
+                print(f"ℹ️  Note: E2EE store directory will be created: {expanded_path}")
+
+        print("✅ E2EE configuration is valid")
+
+    return True
+
+
+def _print_environment_summary():
+    """Print environment and capability summary."""
+    print("\n🖥️  Environment Summary:")
+    print(f"   Platform: {sys.platform}")
+    print(f"   Python: {sys.version.split()[0]}")
+
+    # E2EE capability check
+    if sys.platform == WINDOWS_PLATFORM:
+        print("   E2EE Support: ❌ Not available (Windows limitation)")
+        print("   Matrix Support: ✅ Available")
+    else:
+        try:
+            import olm  # noqa: F401
+            print("   E2EE Support: ✅ Available and installed")
+        except ImportError:
+            print("   E2EE Support: ⚠️  Available but not installed")
+            print("   Install: pipx install mmrelay[e2e]")
+
+
 def check_config(args=None):
     """
     Validate the application's YAML configuration file for required sections and fields.
@@ -210,6 +308,10 @@ def check_config(args=None):
                     print(
                         f"Error: Missing required fields in 'matrix' section: {', '.join(missing_matrix_fields)}"
                     )
+                    return False
+
+                # Validate E2EE configuration and authentication
+                if not _validate_e2ee_config(config, matrix_section, config_path):
                     return False
 
                 # Check matrix_rooms section
@@ -351,7 +453,10 @@ def check_config(args=None):
                         "This option still works but may be removed in future versions.\n"
                     )
 
-                print("Configuration file is valid!")
+                # Print environment summary
+                _print_environment_summary()
+
+                print("\n✅ Configuration file is valid!")
                 return True
             except Exception as e:
                 print(f"Error checking configuration: {e}")
