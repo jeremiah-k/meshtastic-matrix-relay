@@ -46,31 +46,6 @@ class TestCLIEdgeCases(unittest.TestCase):
         # Restore original sys.argv
         sys.argv = self.original_argv
 
-    def test_parse_arguments_windows_positional_config(self):
-        """
-        Tests that on Windows, providing a positional config argument sets the config path and triggers a deprecation warning.
-        """
-        with patch("sys.platform", "win32"):
-            with patch("sys.argv", ["mmrelay", "config.yaml"]):
-                with patch("builtins.print") as mock_print:
-                    args = parse_arguments()
-                    self.assertEqual(args.config, "config.yaml")
-                    # Should print deprecation warning
-                    mock_print.assert_called()
-
-    def test_parse_arguments_windows_both_positional_and_flag(self):
-        """
-        Test that on Windows, the --config flag takes precedence over a positional config argument when both are provided.
-        """
-        with patch("sys.platform", "win32"):
-            with patch(
-                "sys.argv",
-                ["mmrelay", "--config", "flag_config.yaml", "pos_config.yaml"],
-            ):
-                args = parse_arguments()
-                # Flag should take precedence
-                self.assertEqual(args.config, "flag_config.yaml")
-
     def test_parse_arguments_invalid_log_level(self):
         """
         Test that providing an invalid log level argument causes argument parsing to exit with SystemExit.
@@ -83,7 +58,7 @@ class TestCLIEdgeCases(unittest.TestCase):
         """
         Verify that unknown CLI arguments do not trigger warnings when running in a pytest environment.
         """
-        with patch("sys.argv", ["mmrelay", "--unknown-arg", "pytest"]):
+        with patch("sys.argv", ["pytest", "--unknown-arg"]):
             with patch("builtins.print") as mock_print:
                 parse_arguments()
                 # Should not print warning in test environment

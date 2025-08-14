@@ -123,33 +123,11 @@ def parse_arguments():
         description="Install or update the systemd user service for MMRelay"
     )
 
-    # Windows-specific handling for backward compatibility
-    # On Windows, add a positional argument for the config file path
-    if sys.platform == WINDOWS_PLATFORM:
-        parser.add_argument(
-            "config_path", nargs="?", help=argparse.SUPPRESS, default=None
-        )
-
     # Use parse_known_args to handle unknown arguments gracefully (e.g., pytest args)
     args, unknown = parser.parse_known_args()
     # If there are unknown arguments and we're not in a test environment, warn about them
     if unknown and not any("pytest" in arg or "test" in arg for arg in sys.argv):
         print(f"Warning: Unknown arguments ignored: {unknown}")
-
-    # If on Windows and a positional config path is provided but --config is not, use the positional one
-    if (
-        sys.platform == WINDOWS_PLATFORM
-        and hasattr(args, "config_path")
-        and args.config_path
-        and not args.config
-    ):
-        args.config = args.config_path
-        # Print a deprecation warning
-        print("Warning: Using positional argument for config file is deprecated.")
-        print(f"Please use --config {args.config_path} instead.")
-        # Remove the positional argument from sys.argv to avoid issues with other argument parsers
-        if args.config_path in sys.argv:
-            sys.argv.remove(args.config_path)
 
     return args
 

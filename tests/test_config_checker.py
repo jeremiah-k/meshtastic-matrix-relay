@@ -13,7 +13,7 @@ Tests the configuration validation functionality including:
 import os
 import sys
 import unittest
-from unittest.mock import mock_open, patch
+from unittest.mock import MagicMock, mock_open, patch
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -67,38 +67,48 @@ class TestConfigChecker(unittest.TestCase):
         for path in paths:
             self.assertTrue(path.endswith("config.yaml"))
 
+    @patch("mmrelay.cli.parse_arguments")
     @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
-    @patch("builtins.open", new_callable=mock_open)
-    @patch("yaml.load")
+    @patch("mmrelay.cli.validate_yaml_syntax")
+    @patch("mmrelay.cli._validate_e2ee_config")
     @patch("builtins.print")
     def test_check_config_valid_tcp(
-        self, mock_print, mock_yaml_load, mock_file, mock_isfile, mock_get_paths
+        self, mock_print, mock_validate_e2ee, mock_validate_yaml, mock_isfile, mock_get_paths, mock_parse_args
     ):
         """
         Test that `check_config` returns True and prints success messages when provided with a valid TCP configuration.
         """
+        args = MagicMock()
+        args.config = None
+        mock_parse_args.return_value = args
         mock_get_paths.return_value = ["/test/config.yaml"]
         mock_isfile.return_value = True
-        mock_yaml_load.return_value = self.valid_config
+        mock_validate_yaml.return_value = (True, None, self.valid_config)
+        mock_validate_e2ee.return_value = True
 
-        result = check_config()
+        with patch("mmrelay.cli._validate_credentials_json", return_value=False):
+            result = check_config()
 
         self.assertTrue(result)
         mock_print.assert_any_call("Found configuration file at: /test/config.yaml")
-        mock_print.assert_any_call("Configuration file is valid!")
+        mock_print.assert_any_call("\n✅ Configuration file is valid!")
 
+    @patch("mmrelay.cli.parse_arguments")
     @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
-    @patch("builtins.open", new_callable=mock_open)
-    @patch("yaml.load")
+    @patch("mmrelay.cli.validate_yaml_syntax")
+    @patch("mmrelay.cli._validate_e2ee_config")
     @patch("builtins.print")
     def test_check_config_valid_serial(
-        self, mock_print, mock_yaml_load, mock_file, mock_isfile, mock_get_paths
+        self, mock_print, mock_validate_e2ee, mock_validate_yaml, mock_isfile, mock_get_paths, mock_parse_args
     ):
         """
         Test that `check_config` returns True and prints a success message when provided with a valid serial meshtastic configuration.
         """
+        args = MagicMock()
+        args.config = None
+        mock_parse_args.return_value = args
         serial_config = self.valid_config.copy()
         serial_config["meshtastic"] = {
             "connection_type": "serial",
@@ -108,26 +118,32 @@ class TestConfigChecker(unittest.TestCase):
 
         mock_get_paths.return_value = ["/test/config.yaml"]
         mock_isfile.return_value = True
-        mock_yaml_load.return_value = serial_config
+        mock_validate_yaml.return_value = (True, None, serial_config)
+        mock_validate_e2ee.return_value = True
 
-        result = check_config()
+        with patch("mmrelay.cli._validate_credentials_json", return_value=False):
+            result = check_config()
 
         self.assertTrue(result)
-        mock_print.assert_any_call("Configuration file is valid!")
+        mock_print.assert_any_call("\n✅ Configuration file is valid!")
 
+    @patch("mmrelay.cli.parse_arguments")
     @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
-    @patch("builtins.open", new_callable=mock_open)
-    @patch("yaml.load")
+    @patch("mmrelay.cli.validate_yaml_syntax")
+    @patch("mmrelay.cli._validate_e2ee_config")
     @patch("builtins.print")
     def test_check_config_valid_ble(
-        self, mock_print, mock_yaml_load, mock_file, mock_isfile, mock_get_paths
+        self, mock_print, mock_validate_e2ee, mock_validate_yaml, mock_isfile, mock_get_paths, mock_parse_args
     ):
         """
         Test that `check_config` successfully validates a configuration with a valid BLE connection type.
 
         Simulates a configuration file specifying a BLE connection and asserts that validation passes and the correct success message is printed.
         """
+        args = MagicMock()
+        args.config = None
+        mock_parse_args.return_value = args
         ble_config = self.valid_config.copy()
         ble_config["meshtastic"] = {
             "connection_type": "ble",
@@ -137,12 +153,14 @@ class TestConfigChecker(unittest.TestCase):
 
         mock_get_paths.return_value = ["/test/config.yaml"]
         mock_isfile.return_value = True
-        mock_yaml_load.return_value = ble_config
+        mock_validate_yaml.return_value = (True, None, ble_config)
+        mock_validate_e2ee.return_value = True
 
-        result = check_config()
+        with patch("mmrelay.cli._validate_credentials_json", return_value=False):
+            result = check_config()
 
         self.assertTrue(result)
-        mock_print.assert_any_call("Configuration file is valid!")
+        mock_print.assert_any_call("\n✅ Configuration file is valid!")
 
     @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
@@ -154,7 +172,8 @@ class TestConfigChecker(unittest.TestCase):
         mock_get_paths.return_value = ["/test/config.yaml", "/test2/config.yaml"]
         mock_isfile.return_value = False
 
-        result = check_config()
+        with patch("mmrelay.cli.parse_arguments"):
+            result = check_config()
 
         self.assertFalse(result)
         mock_print.assert_any_call(
@@ -163,65 +182,78 @@ class TestConfigChecker(unittest.TestCase):
         mock_print.assert_any_call("  - /test/config.yaml")
         mock_print.assert_any_call("  - /test2/config.yaml")
 
+    @patch("mmrelay.cli.parse_arguments")
     @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
     @patch("builtins.open", new_callable=mock_open)
     @patch("yaml.load")
     @patch("builtins.print")
     def test_check_config_empty_config(
-        self, mock_print, mock_yaml_load, mock_file, mock_isfile, mock_get_paths
+        self, mock_print, mock_yaml_load, mock_file, mock_isfile, mock_get_paths, mock_parse_args
     ):
         """
         Test that check_config returns False and prints an error when the configuration file is empty or invalid.
         """
+        args = MagicMock()
+        args.config = None
+        mock_parse_args.return_value = args
         mock_get_paths.return_value = ["/test/config.yaml"]
         mock_isfile.return_value = True
         mock_yaml_load.return_value = None
 
-        result = check_config()
+        with patch("mmrelay.cli.validate_yaml_syntax", return_value=(True, None, None)):
+            result = check_config()
 
         self.assertFalse(result)
         mock_print.assert_any_call(
             "Error: Configuration file is empty or contains only comments"
         )
 
+    @patch("mmrelay.cli.parse_arguments")
     @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
     @patch("builtins.open", new_callable=mock_open)
     @patch("yaml.load")
     @patch("builtins.print")
     def test_check_config_missing_matrix_section(
-        self, mock_print, mock_yaml_load, mock_file, mock_isfile, mock_get_paths
+        self, mock_print, mock_yaml_load, mock_file, mock_isfile, mock_get_paths, mock_parse_args
     ):
         """
         Test that check_config returns False and reports an error when the configuration is missing the required 'matrix' section.
 
         Sets up a configuration containing only a 'meshtastic' section, patches file discovery and YAML loading to return that config, calls check_config(), and asserts the function fails and prints the expected error message "Error: Missing 'matrix' section in config".
         """
+        args = MagicMock()
+        args.config = None
+        mock_parse_args.return_value = args
         invalid_config = {"meshtastic": {"connection_type": "tcp"}}
 
         mock_get_paths.return_value = ["/test/config.yaml"]
         mock_isfile.return_value = True
-        mock_yaml_load.return_value = invalid_config
 
-        result = check_config()
+        with patch("mmrelay.cli.validate_yaml_syntax", return_value=(True, None, invalid_config)):
+            result = check_config()
 
         self.assertFalse(result)
         mock_print.assert_any_call("Error: Missing 'matrix' section in config")
 
+    @patch("mmrelay.cli.parse_arguments")
     @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
     @patch("builtins.open", new_callable=mock_open)
     @patch("yaml.load")
     @patch("builtins.print")
     def test_check_config_missing_matrix_fields(
-        self, mock_print, mock_yaml_load, mock_file, mock_isfile, mock_get_paths
+        self, mock_print, mock_yaml_load, mock_file, mock_isfile, mock_get_paths, mock_parse_args
     ):
         """
         Test that check_config fails when required fields are missing from the 'matrix' section.
 
         Simulates a configuration missing 'access_token' and 'bot_user_id' in the 'matrix' section and asserts that validation fails with the appropriate error message.
         """
+        args = MagicMock()
+        args.config = None
+        mock_parse_args.return_value = args
         invalid_config = {
             "matrix": {
                 "homeserver": "https://matrix.org"
@@ -232,28 +264,33 @@ class TestConfigChecker(unittest.TestCase):
 
         mock_get_paths.return_value = ["/test/config.yaml"]
         mock_isfile.return_value = True
-        mock_yaml_load.return_value = invalid_config
 
-        result = check_config()
+        with patch("mmrelay.cli.validate_yaml_syntax", return_value=(True, None, invalid_config)):
+            with patch("mmrelay.cli._validate_credentials_json", return_value=False):
+                result = check_config()
 
         self.assertFalse(result)
         mock_print.assert_any_call(
             "Error: Missing required fields in 'matrix' section: access_token, bot_user_id"
         )
 
+    @patch("mmrelay.cli.parse_arguments")
     @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
     @patch("builtins.open", new_callable=mock_open)
     @patch("yaml.load")
     @patch("builtins.print")
     def test_check_config_missing_matrix_rooms(
-        self, mock_print, mock_yaml_load, mock_file, mock_isfile, mock_get_paths
+        self, mock_print, mock_yaml_load, mock_file, mock_isfile, mock_get_paths, mock_parse_args
     ):
         """
         Test that `check_config` fails when the 'matrix_rooms' section is missing from the configuration.
 
         Asserts that the function returns False and prints an appropriate error message.
         """
+        args = MagicMock()
+        args.config = None
+        mock_parse_args.return_value = args
         invalid_config = {
             "matrix": {
                 "homeserver": "https://matrix.org",
@@ -265,28 +302,34 @@ class TestConfigChecker(unittest.TestCase):
 
         mock_get_paths.return_value = ["/test/config.yaml"]
         mock_isfile.return_value = True
-        mock_yaml_load.return_value = invalid_config
 
-        result = check_config()
+        with patch("mmrelay.cli.validate_yaml_syntax", return_value=(True, None, invalid_config)):
+            with patch("mmrelay.cli._validate_e2ee_config", return_value=True):
+                with patch("mmrelay.cli._validate_credentials_json", return_value=False):
+                    result = check_config()
 
         self.assertFalse(result)
         mock_print.assert_any_call(
             "Error: Missing or empty 'matrix_rooms' section in config"
         )
 
+    @patch("mmrelay.cli.parse_arguments")
     @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
     @patch("builtins.open", new_callable=mock_open)
     @patch("yaml.load")
     @patch("builtins.print")
     def test_check_config_invalid_matrix_rooms_type(
-        self, mock_print, mock_yaml_load, mock_file, mock_isfile, mock_get_paths
+        self, mock_print, mock_yaml_load, mock_file, mock_isfile, mock_get_paths, mock_parse_args
     ):
         """
         Test that check_config fails when the 'matrix_rooms' field is not a list.
 
         Asserts that the function returns False and prints an appropriate error message when 'matrix_rooms' is of an invalid type.
         """
+        args = MagicMock()
+        args.config = None
+        mock_parse_args.return_value = args
         invalid_config = {
             "matrix": {
                 "homeserver": "https://matrix.org",
@@ -299,20 +342,23 @@ class TestConfigChecker(unittest.TestCase):
 
         mock_get_paths.return_value = ["/test/config.yaml"]
         mock_isfile.return_value = True
-        mock_yaml_load.return_value = invalid_config
 
-        result = check_config()
+        with patch("mmrelay.cli.validate_yaml_syntax", return_value=(True, None, invalid_config)):
+            with patch("mmrelay.cli._validate_e2ee_config", return_value=True):
+                with patch("mmrelay.cli._validate_credentials_json", return_value=False):
+                    result = check_config()
 
         self.assertFalse(result)
         mock_print.assert_any_call("Error: 'matrix_rooms' must be a list")
 
+    @patch("mmrelay.cli.parse_arguments")
     @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
     @patch("builtins.open", new_callable=mock_open)
     @patch("yaml.load")
     @patch("builtins.print")
     def test_check_config_invalid_room_format(
-        self, mock_print, mock_yaml_load, mock_file, mock_isfile, mock_get_paths
+        self, mock_print, mock_yaml_load, mock_file, mock_isfile, mock_get_paths, mock_parse_args
     ):
         """
         Test that check_config fails when an entry in 'matrix_rooms' is not a dictionary.
@@ -321,6 +367,9 @@ class TestConfigChecker(unittest.TestCase):
         "Error: Room 1 in 'matrix_rooms' must be a dictionary" when a non-dictionary
         item appears in the 'matrix_rooms' list.
         """
+        args = MagicMock()
+        args.config = None
+        mock_parse_args.return_value = args
         invalid_config = {
             "matrix": {
                 "homeserver": "https://matrix.org",
@@ -333,28 +382,34 @@ class TestConfigChecker(unittest.TestCase):
 
         mock_get_paths.return_value = ["/test/config.yaml"]
         mock_isfile.return_value = True
-        mock_yaml_load.return_value = invalid_config
 
-        result = check_config()
+        with patch("mmrelay.cli.validate_yaml_syntax", return_value=(True, None, invalid_config)):
+            with patch("mmrelay.cli._validate_e2ee_config", return_value=True):
+                with patch("mmrelay.cli._validate_credentials_json", return_value=False):
+                    result = check_config()
 
         self.assertFalse(result)
         mock_print.assert_any_call(
             "Error: Room 1 in 'matrix_rooms' must be a dictionary"
         )
 
+    @patch("mmrelay.cli.parse_arguments")
     @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
     @patch("builtins.open", new_callable=mock_open)
     @patch("yaml.load")
     @patch("builtins.print")
     def test_check_config_missing_room_id(
-        self, mock_print, mock_yaml_load, mock_file, mock_isfile, mock_get_paths
+        self, mock_print, mock_yaml_load, mock_file, mock_isfile, mock_get_paths, mock_parse_args
     ):
         """
         Test that check_config fails when a room in 'matrix_rooms' lacks the required 'id' field.
 
         Simulates a configuration where a room dictionary in 'matrix_rooms' is missing the 'id' key and asserts that check_config returns False and prints the appropriate error message.
         """
+        args = MagicMock()
+        args.config = None
+        mock_parse_args.return_value = args
         invalid_config = {
             "matrix": {
                 "homeserver": "https://matrix.org",
@@ -367,26 +422,32 @@ class TestConfigChecker(unittest.TestCase):
 
         mock_get_paths.return_value = ["/test/config.yaml"]
         mock_isfile.return_value = True
-        mock_yaml_load.return_value = invalid_config
 
-        result = check_config()
+        with patch("mmrelay.cli.validate_yaml_syntax", return_value=(True, None, invalid_config)):
+            with patch("mmrelay.cli._validate_e2ee_config", return_value=True):
+                with patch("mmrelay.cli._validate_credentials_json", return_value=False):
+                    result = check_config()
 
         self.assertFalse(result)
         mock_print.assert_any_call(
             "Error: Room 1 in 'matrix_rooms' is missing the 'id' field"
         )
 
+    @patch("mmrelay.cli.parse_arguments")
     @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
     @patch("builtins.open", new_callable=mock_open)
     @patch("yaml.load")
     @patch("builtins.print")
     def test_check_config_missing_meshtastic_section(
-        self, mock_print, mock_yaml_load, mock_file, mock_isfile, mock_get_paths
+        self, mock_print, mock_yaml_load, mock_file, mock_isfile, mock_get_paths, mock_parse_args
     ):
         """
         Test that `check_config` fails and prints an error when the 'meshtastic' section is missing from the configuration.
         """
+        args = MagicMock()
+        args.config = None
+        mock_parse_args.return_value = args
         invalid_config = {
             "matrix": {
                 "homeserver": "https://matrix.org",
@@ -398,26 +459,32 @@ class TestConfigChecker(unittest.TestCase):
 
         mock_get_paths.return_value = ["/test/config.yaml"]
         mock_isfile.return_value = True
-        mock_yaml_load.return_value = invalid_config
 
-        result = check_config()
+        with patch("mmrelay.cli.validate_yaml_syntax", return_value=(True, None, invalid_config)):
+            with patch("mmrelay.cli._validate_e2ee_config", return_value=True):
+                with patch("mmrelay.cli._validate_credentials_json", return_value=False):
+                    result = check_config()
 
         self.assertFalse(result)
         mock_print.assert_any_call("Error: Missing 'meshtastic' section in config")
 
+    @patch("mmrelay.cli.parse_arguments")
     @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
     @patch("builtins.open", new_callable=mock_open)
     @patch("yaml.load")
     @patch("builtins.print")
     def test_check_config_missing_connection_type(
-        self, mock_print, mock_yaml_load, mock_file, mock_isfile, mock_get_paths
+        self, mock_print, mock_yaml_load, mock_file, mock_isfile, mock_get_paths, mock_parse_args
     ):
         """
         Test that check_config fails when the 'connection_type' field is missing from the 'meshtastic' section of the configuration.
 
         Asserts that the function returns False and prints the appropriate error message.
         """
+        args = MagicMock()
+        args.config = None
+        mock_parse_args.return_value = args
         invalid_config = {
             "matrix": {
                 "homeserver": "https://matrix.org",
@@ -430,26 +497,32 @@ class TestConfigChecker(unittest.TestCase):
 
         mock_get_paths.return_value = ["/test/config.yaml"]
         mock_isfile.return_value = True
-        mock_yaml_load.return_value = invalid_config
 
-        result = check_config()
+        with patch("mmrelay.cli.validate_yaml_syntax", return_value=(True, None, invalid_config)):
+            with patch("mmrelay.cli._validate_e2ee_config", return_value=True):
+                with patch("mmrelay.cli._validate_credentials_json", return_value=False):
+                    result = check_config()
 
         self.assertFalse(result)
         mock_print.assert_any_call(
             "Error: Missing 'connection_type' in 'meshtastic' section"
         )
 
+    @patch("mmrelay.cli.parse_arguments")
     @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
     @patch("builtins.open", new_callable=mock_open)
     @patch("yaml.load")
     @patch("builtins.print")
     def test_check_config_invalid_connection_type(
-        self, mock_print, mock_yaml_load, mock_file, mock_isfile, mock_get_paths
+        self, mock_print, mock_yaml_load, mock_file, mock_isfile, mock_get_paths, mock_parse_args
     ):
         """
         Test that check_config returns False and prints an error when the meshtastic connection_type is invalid.
         """
+        args = MagicMock()
+        args.config = None
+        mock_parse_args.return_value = args
         invalid_config = {
             "matrix": {
                 "homeserver": "https://matrix.org",
@@ -462,26 +535,32 @@ class TestConfigChecker(unittest.TestCase):
 
         mock_get_paths.return_value = ["/test/config.yaml"]
         mock_isfile.return_value = True
-        mock_yaml_load.return_value = invalid_config
 
-        result = check_config()
+        with patch("mmrelay.cli.validate_yaml_syntax", return_value=(True, None, invalid_config)):
+            with patch("mmrelay.cli._validate_e2ee_config", return_value=True):
+                with patch("mmrelay.cli._validate_credentials_json", return_value=False):
+                    result = check_config()
 
         self.assertFalse(result)
         mock_print.assert_any_call(
             "Error: Invalid 'connection_type': invalid_type. Must be 'tcp', 'serial', or 'ble'"
         )
 
+    @patch("mmrelay.cli.parse_arguments")
     @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
     @patch("builtins.open", new_callable=mock_open)
     @patch("yaml.load")
     @patch("builtins.print")
     def test_check_config_missing_serial_port(
-        self, mock_print, mock_yaml_load, mock_file, mock_isfile, mock_get_paths
+        self, mock_print, mock_yaml_load, mock_file, mock_isfile, mock_get_paths, mock_parse_args
     ):
         """
         Test that check_config fails when 'serial_port' is missing for a serial connection type in the configuration.
         """
+        args = MagicMock()
+        args.config = None
+        mock_parse_args.return_value = args
         invalid_config = {
             "matrix": {
                 "homeserver": "https://matrix.org",
@@ -494,28 +573,34 @@ class TestConfigChecker(unittest.TestCase):
 
         mock_get_paths.return_value = ["/test/config.yaml"]
         mock_isfile.return_value = True
-        mock_yaml_load.return_value = invalid_config
 
-        result = check_config()
+        with patch("mmrelay.cli.validate_yaml_syntax", return_value=(True, None, invalid_config)):
+            with patch("mmrelay.cli._validate_e2ee_config", return_value=True):
+                with patch("mmrelay.cli._validate_credentials_json", return_value=False):
+                    result = check_config()
 
         self.assertFalse(result)
         mock_print.assert_any_call(
             "Error: Missing 'serial_port' for 'serial' connection type"
         )
 
+    @patch("mmrelay.cli.parse_arguments")
     @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
     @patch("builtins.open", new_callable=mock_open)
     @patch("yaml.load")
     @patch("builtins.print")
     def test_check_config_missing_tcp_host(
-        self, mock_print, mock_yaml_load, mock_file, mock_isfile, mock_get_paths
+        self, mock_print, mock_yaml_load, mock_file, mock_isfile, mock_get_paths, mock_parse_args
     ):
         """
         Test that `check_config` fails when the 'host' field is missing for a TCP meshtastic connection.
 
         Asserts that the function returns False and prints the appropriate error message.
         """
+        args = MagicMock()
+        args.config = None
+        mock_parse_args.return_value = args
         invalid_config = {
             "matrix": {
                 "homeserver": "https://matrix.org",
@@ -528,24 +613,30 @@ class TestConfigChecker(unittest.TestCase):
 
         mock_get_paths.return_value = ["/test/config.yaml"]
         mock_isfile.return_value = True
-        mock_yaml_load.return_value = invalid_config
 
-        result = check_config()
+        with patch("mmrelay.cli.validate_yaml_syntax", return_value=(True, None, invalid_config)):
+            with patch("mmrelay.cli._validate_e2ee_config", return_value=True):
+                with patch("mmrelay.cli._validate_credentials_json", return_value=False):
+                    result = check_config()
 
         self.assertFalse(result)
         mock_print.assert_any_call("Error: Missing 'host' for 'tcp' connection type")
 
+    @patch("mmrelay.cli.parse_arguments")
     @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
     @patch("builtins.open", new_callable=mock_open)
     @patch("yaml.load")
     @patch("builtins.print")
     def test_check_config_missing_ble_address(
-        self, mock_print, mock_yaml_load, mock_file, mock_isfile, mock_get_paths
+        self, mock_print, mock_yaml_load, mock_file, mock_isfile, mock_get_paths, mock_parse_args
     ):
         """
         Test that check_config fails when the 'ble_address' field is missing for a BLE connection type in the configuration.
         """
+        args = MagicMock()
+        args.config = None
+        mock_parse_args.return_value = args
         invalid_config = {
             "matrix": {
                 "homeserver": "https://matrix.org",
@@ -558,33 +649,40 @@ class TestConfigChecker(unittest.TestCase):
 
         mock_get_paths.return_value = ["/test/config.yaml"]
         mock_isfile.return_value = True
-        mock_yaml_load.return_value = invalid_config
 
-        result = check_config()
+        with patch("mmrelay.cli.validate_yaml_syntax", return_value=(True, None, invalid_config)):
+            with patch("mmrelay.cli._validate_e2ee_config", return_value=True):
+                with patch("mmrelay.cli._validate_credentials_json", return_value=False):
+                    result = check_config()
 
         self.assertFalse(result)
         mock_print.assert_any_call(
             "Error: Missing 'ble_address' for 'ble' connection type"
         )
 
+    @patch("mmrelay.cli.parse_arguments")
     @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
     @patch("builtins.open", new_callable=mock_open)
     @patch("yaml.load")
     @patch("builtins.print")
     def test_check_config_yaml_error(
-        self, mock_print, mock_yaml_load, mock_file, mock_isfile, mock_get_paths
+        self, mock_print, mock_yaml_load, mock_file, mock_isfile, mock_get_paths, mock_parse_args
     ):
         """
         Test that check_config returns False and prints an error message when a YAML parsing error occurs.
         """
         from yaml import YAMLError
 
+        args = MagicMock()
+        args.config = None
+        mock_parse_args.return_value = args
         mock_get_paths.return_value = ["/test/config.yaml"]
         mock_isfile.return_value = True
         mock_yaml_load.side_effect = YAMLError("Invalid YAML syntax")
 
-        result = check_config()
+        with patch("mmrelay.cli.validate_yaml_syntax", side_effect=YAMLError("Invalid YAML syntax")):
+            result = check_config()
 
         self.assertFalse(result)
         # Check that YAML error message is printed (CLI version has more detailed format)
@@ -598,22 +696,27 @@ class TestConfigChecker(unittest.TestCase):
             f"Expected YAML error message not found in: {printed_calls}",
         )
 
+    @patch("mmrelay.cli.parse_arguments")
     @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
     @patch("builtins.open", new_callable=mock_open)
     @patch("yaml.load")
     @patch("builtins.print")
     def test_check_config_general_exception(
-        self, mock_print, mock_yaml_load, mock_file, mock_isfile, mock_get_paths
+        self, mock_print, mock_yaml_load, mock_file, mock_isfile, mock_get_paths, mock_parse_args
     ):
         """
         Test that check_config returns False and prints an error message when a general exception occurs during configuration checking.
         """
+        args = MagicMock()
+        args.config = None
+        mock_parse_args.return_value = args
         mock_get_paths.return_value = ["/test/config.yaml"]
         mock_isfile.return_value = True
         mock_yaml_load.side_effect = Exception("General error")
 
-        result = check_config()
+        with patch("mmrelay.cli.validate_yaml_syntax", side_effect=Exception("General error")):
+            result = check_config()
 
         self.assertFalse(result)
         mock_print.assert_any_call("Error checking configuration: General error")
