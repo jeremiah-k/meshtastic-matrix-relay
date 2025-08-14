@@ -1296,12 +1296,14 @@ async def test_send_room_image():
 # E2EE Configuration Tests
 
 
-def test_get_e2ee_store_dir():
+@patch("mmrelay.config.os.makedirs")
+def test_get_e2ee_store_dir(mock_makedirs):
     """Test E2EE store directory creation."""
     store_dir = get_e2ee_store_dir()
     assert store_dir is not None
     assert "store" in store_dir
-    assert os.path.exists(store_dir)
+    # Verify makedirs was called but don't check if directory actually exists
+    mock_makedirs.assert_called_once()
 
 
 @patch("mmrelay.config.get_base_dir")

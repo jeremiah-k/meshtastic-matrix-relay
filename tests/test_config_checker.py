@@ -50,7 +50,8 @@ class TestConfigChecker(unittest.TestCase):
             },
         }
 
-    def test_get_config_paths(self):
+    @patch("mmrelay.config.os.makedirs")
+    def test_get_config_paths(self, mock_makedirs):
         """
         Test that get_config_paths returns a list of configuration file paths.
 
