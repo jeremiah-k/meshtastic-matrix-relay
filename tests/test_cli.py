@@ -71,22 +71,37 @@ class TestCLI(unittest.TestCase):
     @patch("mmrelay.cli.os.path.isfile")
     @patch("builtins.open")
     @patch("mmrelay.cli.validate_yaml_syntax")
-    def test_check_config_valid(self, mock_validate_yaml, mock_open, mock_isfile, mock_validate_e2ee, mock_makedirs, mock_validate_credentials):
+    def test_check_config_valid(
+        self,
+        mock_validate_yaml,
+        mock_open,
+        mock_isfile,
+        mock_validate_e2ee,
+        mock_makedirs,
+        mock_validate_credentials,
+    ):
         # Mock a valid config
         """
         Test that check_config returns True for a valid configuration file.
 
         Mocks a configuration containing all required sections and valid values, simulates the presence of the config file, and verifies that check_config() recognizes it as valid.
         """
-        mock_validate_yaml.return_value = (True, None, {
-            "matrix": {
-                "homeserver": "https://matrix.org",
-                "access_token": "token",
-                "bot_user_id": "@bot:matrix.org",
+        mock_validate_yaml.return_value = (
+            True,
+            None,
+            {
+                "matrix": {
+                    "homeserver": "https://matrix.org",
+                    "access_token": "token",
+                    "bot_user_id": "@bot:matrix.org",
+                },
+                "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+                "meshtastic": {
+                    "connection_type": "serial",
+                    "serial_port": "/dev/ttyUSB0",
+                },
             },
-            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
-            "meshtastic": {"connection_type": "serial", "serial_port": "/dev/ttyUSB0"},
-        })
+        )
         mock_isfile.return_value = True
         mock_validate_e2ee.return_value = True
         mock_validate_credentials.return_value = False  # No valid credentials.json
@@ -100,16 +115,28 @@ class TestCLI(unittest.TestCase):
     @patch("builtins.open")
     @patch("mmrelay.cli.validate_yaml_syntax")
     def test_check_config_invalid_missing_matrix(
-        self, mock_validate_yaml, mock_open, mock_isfile, mock_makedirs, mock_validate_credentials
+        self,
+        mock_validate_yaml,
+        mock_open,
+        mock_isfile,
+        mock_makedirs,
+        mock_validate_credentials,
     ):
         # Mock an invalid config (missing matrix section)
         """
         Test that check_config returns False when the configuration is missing the 'matrix' section.
         """
-        mock_validate_yaml.return_value = (True, None, {
-            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
-            "meshtastic": {"connection_type": "serial", "serial_port": "/dev/ttyUSB0"},
-        })
+        mock_validate_yaml.return_value = (
+            True,
+            None,
+            {
+                "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+                "meshtastic": {
+                    "connection_type": "serial",
+                    "serial_port": "/dev/ttyUSB0",
+                },
+            },
+        )
         mock_isfile.return_value = True
         mock_validate_credentials.return_value = False  # No valid credentials.json
 
@@ -122,20 +149,29 @@ class TestCLI(unittest.TestCase):
     @patch("builtins.open")
     @patch("mmrelay.cli.validate_yaml_syntax")
     def test_check_config_invalid_missing_meshtastic(
-        self, mock_validate_yaml, mock_open, mock_isfile, mock_makedirs, mock_validate_credentials
+        self,
+        mock_validate_yaml,
+        mock_open,
+        mock_isfile,
+        mock_makedirs,
+        mock_validate_credentials,
     ):
         # Mock an invalid config (missing meshtastic section)
         """
         Test that check_config returns False when the configuration is missing the 'meshtastic' section.
         """
-        mock_validate_yaml.return_value = (True, None, {
-            "matrix": {
-                "homeserver": "https://matrix.org",
-                "access_token": "token",
-                "bot_user_id": "@bot:matrix.org",
+        mock_validate_yaml.return_value = (
+            True,
+            None,
+            {
+                "matrix": {
+                    "homeserver": "https://matrix.org",
+                    "access_token": "token",
+                    "bot_user_id": "@bot:matrix.org",
+                },
+                "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
             },
-            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
-        })
+        )
         mock_isfile.return_value = True
         mock_validate_credentials.return_value = False  # No valid credentials.json
 
@@ -148,21 +184,30 @@ class TestCLI(unittest.TestCase):
     @patch("builtins.open")
     @patch("mmrelay.cli.validate_yaml_syntax")
     def test_check_config_invalid_connection_type(
-        self, mock_validate_yaml, mock_open, mock_isfile, mock_makedirs, mock_validate_credentials
+        self,
+        mock_validate_yaml,
+        mock_open,
+        mock_isfile,
+        mock_makedirs,
+        mock_validate_credentials,
     ):
         # Mock an invalid config (invalid connection type)
         """
         Test that check_config() returns False when the configuration specifies an invalid Meshtastic connection type.
         """
-        mock_validate_yaml.return_value = (True, None, {
-            "matrix": {
-                "homeserver": "https://matrix.org",
-                "access_token": "token",
-                "bot_user_id": "@bot:matrix.org",
+        mock_validate_yaml.return_value = (
+            True,
+            None,
+            {
+                "matrix": {
+                    "homeserver": "https://matrix.org",
+                    "access_token": "token",
+                    "bot_user_id": "@bot:matrix.org",
+                },
+                "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+                "meshtastic": {"connection_type": "invalid"},
             },
-            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
-            "meshtastic": {"connection_type": "invalid"},
-        })
+        )
         mock_isfile.return_value = True
         mock_validate_credentials.return_value = False  # No valid credentials.json
 

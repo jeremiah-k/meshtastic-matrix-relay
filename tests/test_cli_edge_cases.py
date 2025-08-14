@@ -68,44 +68,59 @@ class TestCLIEdgeCases(unittest.TestCase):
         """
         Test that check_config returns False and prints an error when a file permission error occurs while opening the config file.
         """
-        with patch("mmrelay.cli.get_config_paths") as mock_get_paths:
-            mock_get_paths.return_value = ["/test/config.yaml"]
-            with patch("os.path.isfile", return_value=True):
-                with patch(
-                    "builtins.open", side_effect=PermissionError("Permission denied")
-                ):
-                    with patch("builtins.print") as mock_print:
-                        result = check_config()
-                        self.assertFalse(result)
-                        mock_print.assert_called()
+        with patch("mmrelay.cli.parse_arguments") as mock_parse_args:
+            args = MagicMock()
+            args.config = None
+            mock_parse_args.return_value = args
+            with patch("mmrelay.cli.get_config_paths") as mock_get_paths:
+                mock_get_paths.return_value = ["/test/config.yaml"]
+                with patch("os.path.isfile", return_value=True):
+                    with patch(
+                        "builtins.open",
+                        side_effect=PermissionError("Permission denied"),
+                    ):
+                        with patch("builtins.print") as mock_print:
+                            result = check_config()
+                            self.assertFalse(result)
+                            mock_print.assert_called()
 
     def test_check_config_yaml_syntax_error(self):
         """
         Test that check_config returns False and prints an error when the config file contains invalid YAML syntax.
         """
-        with patch("mmrelay.cli.get_config_paths") as mock_get_paths:
-            mock_get_paths.return_value = ["/test/config.yaml"]
-            with patch("os.path.isfile", return_value=True):
-                with patch("builtins.open", mock_open(read_data="invalid: yaml: [")):
-                    with patch("builtins.print") as mock_print:
-                        result = check_config()
-                        self.assertFalse(result)
-                        # Should print YAML error
-                        mock_print.assert_called()
+        with patch("mmrelay.cli.parse_arguments") as mock_parse_args:
+            args = MagicMock()
+            args.config = None
+            mock_parse_args.return_value = args
+            with patch("mmrelay.cli.get_config_paths") as mock_get_paths:
+                mock_get_paths.return_value = ["/test/config.yaml"]
+                with patch("os.path.isfile", return_value=True):
+                    with patch(
+                        "builtins.open", mock_open(read_data="invalid: yaml: [")
+                    ):
+                        with patch("builtins.print") as mock_print:
+                            result = check_config()
+                            self.assertFalse(result)
+                            # Should print YAML error
+                            mock_print.assert_called()
 
     def test_check_config_empty_file(self):
         """
         Test that check_config returns False and prints an error when the configuration file is empty.
         """
-        with patch("mmrelay.cli.get_config_paths") as mock_get_paths:
-            mock_get_paths.return_value = ["/test/config.yaml"]
-            with patch("os.path.isfile", return_value=True):
-                with patch("builtins.open", mock_open(read_data="")):
-                    with patch("yaml.load", return_value=None):
-                        with patch("builtins.print") as mock_print:
-                            result = check_config()
-                            self.assertFalse(result)
-                            mock_print.assert_called()
+        with patch("mmrelay.cli.parse_arguments") as mock_parse_args:
+            args = MagicMock()
+            args.config = None
+            mock_parse_args.return_value = args
+            with patch("mmrelay.cli.get_config_paths") as mock_get_paths:
+                mock_get_paths.return_value = ["/test/config.yaml"]
+                with patch("os.path.isfile", return_value=True):
+                    with patch("builtins.open", mock_open(read_data="")):
+                        with patch("yaml.load", return_value=None):
+                            with patch("builtins.print") as mock_print:
+                                result = check_config()
+                                self.assertFalse(result)
+                                mock_print.assert_called()
 
     def test_check_config_missing_required_sections(self):
         """
@@ -131,14 +146,18 @@ class TestCLIEdgeCases(unittest.TestCase):
 
         for config in invalid_configs:
             with self.subTest(config=config):
-                with patch("mmrelay.cli.get_config_paths") as mock_get_paths:
-                    mock_get_paths.return_value = ["/test/config.yaml"]
-                    with patch("os.path.isfile", return_value=True):
-                        with patch("builtins.open", mock_open()):
-                            with patch("yaml.load", return_value=config):
-                                with patch("builtins.print"):
-                                    result = check_config()
-                                    self.assertFalse(result)
+                with patch("mmrelay.cli.parse_arguments") as mock_parse_args:
+                    args = MagicMock()
+                    args.config = None
+                    mock_parse_args.return_value = args
+                    with patch("mmrelay.cli.get_config_paths") as mock_get_paths:
+                        mock_get_paths.return_value = ["/test/config.yaml"]
+                        with patch("os.path.isfile", return_value=True):
+                            with patch("builtins.open", mock_open()):
+                                with patch("yaml.load", return_value=config):
+                                    with patch("builtins.print"):
+                                        result = check_config()
+                                        self.assertFalse(result)
 
     def test_check_config_invalid_connection_types(self):
         """
@@ -154,15 +173,19 @@ class TestCLIEdgeCases(unittest.TestCase):
             "meshtastic": {"connection_type": "invalid_type"},
         }
 
-        with patch("mmrelay.cli.get_config_paths") as mock_get_paths:
-            mock_get_paths.return_value = ["/test/config.yaml"]
-            with patch("os.path.isfile", return_value=True):
-                with patch("builtins.open", mock_open()):
-                    with patch("yaml.load", return_value=config):
-                        with patch("builtins.print") as mock_print:
-                            result = check_config()
-                            self.assertFalse(result)
-                            mock_print.assert_called()
+        with patch("mmrelay.cli.parse_arguments") as mock_parse_args:
+            args = MagicMock()
+            args.config = None
+            mock_parse_args.return_value = args
+            with patch("mmrelay.cli.get_config_paths") as mock_get_paths:
+                mock_get_paths.return_value = ["/test/config.yaml"]
+                with patch("os.path.isfile", return_value=True):
+                    with patch("builtins.open", mock_open()):
+                        with patch("yaml.load", return_value=config):
+                            with patch("builtins.print") as mock_print:
+                                result = check_config()
+                                self.assertFalse(result)
+                                mock_print.assert_called()
 
     def test_check_config_missing_connection_specific_fields(self):
         """
@@ -188,14 +211,18 @@ class TestCLIEdgeCases(unittest.TestCase):
                     "meshtastic": meshtastic_config,
                 }
 
-                with patch("mmrelay.cli.get_config_paths") as mock_get_paths:
-                    mock_get_paths.return_value = ["/test/config.yaml"]
-                    with patch("os.path.isfile", return_value=True):
-                        with patch("builtins.open", mock_open()):
-                            with patch("yaml.load", return_value=config):
-                                with patch("builtins.print"):
-                                    result = check_config()
-                                    self.assertFalse(result)
+                with patch("mmrelay.cli.parse_arguments") as mock_parse_args:
+                    args = MagicMock()
+                    args.config = None
+                    mock_parse_args.return_value = args
+                    with patch("mmrelay.cli.get_config_paths") as mock_get_paths:
+                        mock_get_paths.return_value = ["/test/config.yaml"]
+                        with patch("os.path.isfile", return_value=True):
+                            with patch("builtins.open", mock_open()):
+                                with patch("yaml.load", return_value=config):
+                                    with patch("builtins.print"):
+                                        result = check_config()
+                                        self.assertFalse(result)
 
     def test_generate_sample_config_existing_file(self):
         """

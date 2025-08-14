@@ -31,7 +31,12 @@ from nio import (
 from nio.events.room_events import RoomMemberEvent
 from PIL import Image
 
-from mmrelay.config import get_base_dir, get_e2ee_store_dir, get_meshtastic_config_value, save_credentials
+from mmrelay.config import (
+    get_base_dir,
+    get_e2ee_store_dir,
+    get_meshtastic_config_value,
+    save_credentials,
+)
 from mmrelay.constants.app import WINDOWS_PLATFORM
 from mmrelay.constants.config import (
     CONFIG_SECTION_MATRIX,

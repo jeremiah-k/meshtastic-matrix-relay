@@ -15,10 +15,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 try:
-    from .test_e2ee_encryption import E2EEDebugUtilities
-
     from mmrelay.config import load_config
     from mmrelay.matrix_utils import connect_matrix, matrix_client, matrix_relay
+
+    from .test_e2ee_encryption import E2EEDebugUtilities
 
     IMPORTS_AVAILABLE = True
 except ImportError as e:

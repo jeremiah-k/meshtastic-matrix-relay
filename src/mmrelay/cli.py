@@ -89,38 +89,38 @@ def parse_arguments():
     auth_parser = subparsers.add_parser(
         "auth",
         help="Authentication management",
-        description="Manage Matrix authentication and credentials"
+        description="Manage Matrix authentication and credentials",
     )
     auth_parser.add_argument(
         "--status-only",
         action="store_true",
-        help="Only check authentication status, don't prompt for re-authentication"
+        help="Only check authentication status, don't prompt for re-authentication",
     )
     auth_parser.add_argument(
         "--force",
         action="store_true",
-        help="Skip status check and force new authentication"
+        help="Skip status check and force new authentication",
     )
 
     # Check-config subcommand
-    check_parser = subparsers.add_parser(
+    subparsers.add_parser(
         "check-config",
         help="Check configuration file validity",
-        description="Validate configuration file syntax and completeness"
+        description="Validate configuration file syntax and completeness",
     )
 
     # Generate-config subcommand
-    generate_parser = subparsers.add_parser(
+    subparsers.add_parser(
         "generate-config",
         help="Generate sample configuration file",
-        description="Create a sample config.yaml file with default settings"
+        description="Create a sample config.yaml file with default settings",
     )
 
     # Install-service subcommand
-    service_parser = subparsers.add_parser(
+    subparsers.add_parser(
         "install-service",
         help="Install systemd user service",
-        description="Install or update the systemd user service for MMRelay"
+        description="Install or update the systemd user service for MMRelay",
     )
 
     # Use parse_known_args to handle unknown arguments gracefully (e.g., pytest args)
@@ -160,6 +160,7 @@ def _validate_e2ee_dependencies():
     # Check if python-olm is available
     try:
         import olm  # noqa: F401
+
         print("✅ E2EE dependencies are installed")
         return True
     except ImportError:
@@ -180,6 +181,7 @@ def _validate_credentials_json(config_path):
         if not os.path.exists(credentials_path):
             # Also try the standard location
             from mmrelay.config import get_base_dir
+
             standard_credentials_path = os.path.join(get_base_dir(), "credentials.json")
             if os.path.exists(standard_credentials_path):
                 credentials_path = standard_credentials_path
@@ -192,10 +194,16 @@ def _validate_credentials_json(config_path):
 
         # Check for required fields
         required_fields = ["access_token", "user_id", "device_id"]
-        missing_fields = [field for field in required_fields if field not in credentials or not credentials[field]]
+        missing_fields = [
+            field
+            for field in required_fields
+            if field not in credentials or not credentials[field]
+        ]
 
         if missing_fields:
-            print(f"❌ Error: credentials.json missing required fields: {', '.join(missing_fields)}")
+            print(
+                f"❌ Error: credentials.json missing required fields: {', '.join(missing_fields)}"
+            )
             print("   Run 'mmrelay auth' to regenerate credentials")
             return False
 
@@ -240,9 +248,8 @@ def _validate_e2ee_config(config, matrix_section, config_path):
     e2ee_config = matrix_section.get("e2ee", {})
     encryption_config = matrix_section.get("encryption", {})  # Legacy support
 
-    e2ee_enabled = (
-        e2ee_config.get("enabled", False) or
-        encryption_config.get("enabled", False)
+    e2ee_enabled = e2ee_config.get("enabled", False) or encryption_config.get(
+        "enabled", False
     )
 
     if e2ee_enabled:
@@ -251,9 +258,8 @@ def _validate_e2ee_config(config, matrix_section, config_path):
             return False
 
         # Store path validation
-        store_path = (
-            e2ee_config.get("store_path") or
-            encryption_config.get("store_path")
+        store_path = e2ee_config.get("store_path") or encryption_config.get(
+            "store_path"
         )
         if store_path:
             expanded_path = os.path.expanduser(store_path)
@@ -278,6 +284,7 @@ def _print_environment_summary():
     else:
         try:
             import olm  # noqa: F401
+
             print("   E2EE Support: ✅ Available and installed")
         except ImportError:
             print("   E2EE Support: ⚠️  Available but not installed")
@@ -358,10 +365,12 @@ def check_config(args=None):
 
                 # If no valid credentials.json, require traditional auth fields
                 if not has_valid_credentials:
-                    required_matrix_fields.extend([
-                        CONFIG_KEY_ACCESS_TOKEN,
-                        CONFIG_KEY_BOT_USER_ID,
-                    ])
+                    required_matrix_fields.extend(
+                        [
+                            CONFIG_KEY_ACCESS_TOKEN,
+                            CONFIG_KEY_BOT_USER_ID,
+                        ]
+                    )
 
                 missing_matrix_fields = [
                     field
@@ -374,7 +383,9 @@ def check_config(args=None):
                         print(
                             f"Error: Missing required fields in 'matrix' section: {', '.join(missing_matrix_fields)}"
                         )
-                        print("   Note: credentials.json provides authentication, only homeserver needed in config")
+                        print(
+                            "   Note: credentials.json provides authentication, only homeserver needed in config"
+                        )
                     else:
                         print(
                             f"Error: Missing required fields in 'matrix' section: {', '.join(missing_matrix_fields)}"
@@ -552,16 +563,20 @@ def main():
         args = parse_arguments()
 
         # Handle subcommands first (modern interface)
-        if hasattr(args, 'command') and args.command:
+        if hasattr(args, "command") and args.command:
             return handle_subcommand(args)
 
         # Handle legacy flags (with deprecation warnings)
         if args.check_config:
-            print("Warning: --check-config is deprecated. Use 'mmrelay check-config' instead.")
+            print(
+                "Warning: --check-config is deprecated. Use 'mmrelay check-config' instead."
+            )
             return 0 if check_config(args) else 1
 
         if args.install_service:
-            print("Warning: --install-service is deprecated. Use 'mmrelay install-service' instead.")
+            print(
+                "Warning: --install-service is deprecated. Use 'mmrelay install-service' instead."
+            )
             try:
                 from mmrelay.setup_utils import install_service
 
@@ -571,7 +586,9 @@ def main():
                 return 1
 
         if args.generate_config:
-            print("Warning: --generate-config is deprecated. Use 'mmrelay generate-config' instead.")
+            print(
+                "Warning: --generate-config is deprecated. Use 'mmrelay generate-config' instead."
+            )
             return 0 if generate_sample_config() else 1
 
         if args.version:
@@ -614,6 +631,7 @@ def handle_subcommand(args):
     elif args.command == "install-service":
         try:
             from mmrelay.setup_utils import install_service
+
             return 0 if install_service() else 1
         except ImportError as e:
             print(f"Error importing setup utilities: {e}")
@@ -633,11 +651,12 @@ def handle_auth_command(args):
         int: Exit code (0 for success, non-zero for failure)
     """
     import asyncio
+
     from mmrelay.matrix_utils import login_matrix_bot
 
     # Check for subcommand-specific flags
-    status_only = getattr(args, 'status_only', False)
-    force_auth = getattr(args, 'force', False)
+    getattr(args, "status_only", False)
+    getattr(args, "force", False)
 
     # Show header
     print("Matrix Bot Authentication for E2EE")
