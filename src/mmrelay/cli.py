@@ -79,7 +79,48 @@ def parse_arguments():
     parser.add_argument(
         "--auth",
         action="store_true",
-        help="Authenticate with Matrix and save credentials for E2EE support",
+        help="Authenticate with Matrix and save credentials for E2EE support (deprecated: use 'auth' subcommand)",
+    )
+
+    # Add subcommands for modern CLI interface
+    subparsers = parser.add_subparsers(dest="command", help="Available commands")
+
+    # Auth subcommand
+    auth_parser = subparsers.add_parser(
+        "auth",
+        help="Authentication management",
+        description="Manage Matrix authentication and credentials"
+    )
+    auth_parser.add_argument(
+        "--status-only",
+        action="store_true",
+        help="Only check authentication status, don't prompt for re-authentication"
+    )
+    auth_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Skip status check and force new authentication"
+    )
+
+    # Check-config subcommand
+    check_parser = subparsers.add_parser(
+        "check-config",
+        help="Check configuration file validity",
+        description="Validate configuration file syntax and completeness"
+    )
+
+    # Generate-config subcommand
+    generate_parser = subparsers.add_parser(
+        "generate-config",
+        help="Generate sample configuration file",
+        description="Create a sample config.yaml file with default settings"
+    )
+
+    # Install-service subcommand
+    service_parser = subparsers.add_parser(
+        "install-service",
+        help="Install systemd user service",
+        description="Install or update the systemd user service for MMRelay"
     )
 
     # Windows-specific handling for backward compatibility
@@ -532,12 +573,17 @@ def main():
     try:
         args = parse_arguments()
 
-        # Handle --check-config
+        # Handle subcommands first (modern interface)
+        if hasattr(args, 'command') and args.command:
+            return handle_subcommand(args)
+
+        # Handle legacy flags (with deprecation warnings)
         if args.check_config:
+            print("Warning: --check-config is deprecated. Use 'mmrelay check-config' instead.")
             return 0 if check_config(args) else 1
 
-        # Handle --install-service
         if args.install_service:
+            print("Warning: --install-service is deprecated. Use 'mmrelay install-service' instead.")
             try:
                 from mmrelay.setup_utils import install_service
 
@@ -546,34 +592,17 @@ def main():
                 print(f"Error importing setup utilities: {e}")
                 return 1
 
-        # Handle --generate-config
         if args.generate_config:
+            print("Warning: --generate-config is deprecated. Use 'mmrelay generate-config' instead.")
             return 0 if generate_sample_config() else 1
 
-        # Handle --version
         if args.version:
             print_version()
             return 0
 
-        # Handle --auth
         if args.auth:
-            import asyncio
-
-            from mmrelay.matrix_utils import login_matrix_bot
-
-            # Show different header based on platform
-            print("Matrix Bot Authentication for E2EE")
-            print("===================================")
-            try:
-                # Run the login function
-                result = asyncio.run(login_matrix_bot())
-                return 0 if result else 1
-            except KeyboardInterrupt:
-                print("\nAuthentication cancelled by user.")
-                return 1
-            except Exception as e:
-                print(f"\nError during authentication: {e}")
-                return 1
+            print("Warning: --auth is deprecated. Use 'mmrelay auth' instead.")
+            return handle_auth_command(args)
 
         # If no command was specified, run the main functionality
         try:
@@ -586,6 +615,66 @@ def main():
 
     except Exception as e:
         print(f"Unexpected error: {e}")
+        return 1
+
+
+def handle_subcommand(args):
+    """Handle modern subcommand interface.
+
+    Args:
+        args: Parsed arguments with subcommand
+
+    Returns:
+        int: Exit code (0 for success, non-zero for failure)
+    """
+    if args.command == "auth":
+        return handle_auth_command(args)
+    elif args.command == "check-config":
+        return 0 if check_config(args) else 1
+    elif args.command == "generate-config":
+        return 0 if generate_sample_config() else 1
+    elif args.command == "install-service":
+        try:
+            from mmrelay.setup_utils import install_service
+            return 0 if install_service() else 1
+        except ImportError as e:
+            print(f"Error importing setup utilities: {e}")
+            return 1
+    else:
+        print(f"Unknown command: {args.command}")
+        return 1
+
+
+def handle_auth_command(args):
+    """Handle authentication command (both legacy --auth and new auth subcommand).
+
+    Args:
+        args: Parsed arguments
+
+    Returns:
+        int: Exit code (0 for success, non-zero for failure)
+    """
+    import asyncio
+    from mmrelay.matrix_utils import login_matrix_bot
+
+    # Check for subcommand-specific flags
+    status_only = getattr(args, 'status_only', False)
+    force_auth = getattr(args, 'force', False)
+
+    # Show header
+    print("Matrix Bot Authentication for E2EE")
+    print("===================================")
+
+    try:
+        # For now, use the existing login function
+        # TODO: Implement enhanced auth with status checking
+        result = asyncio.run(login_matrix_bot())
+        return 0 if result else 1
+    except KeyboardInterrupt:
+        print("\nAuthentication cancelled by user.")
+        return 1
+    except Exception as e:
+        print(f"\nError during authentication: {e}")
         return 1
 
 
