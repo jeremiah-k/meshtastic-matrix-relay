@@ -11,7 +11,11 @@ Welcome to the MMRelay documentation! This directory contains comprehensive guid
 ## Advanced Configuration
 
 - **[Extra Configuration](EXTRA_CONFIGURATION.md)** - Advanced features like message prefixes, debug logging, and plugins
-- **[Constants Reference](dev/CONSTANTS.md)** - Configuration constants and values
+
+## Developer Documentation
+
+- **[Constants Reference](dev/CONSTANTS.md)** - Internal configuration constants and values
+- **[E2EE Implementation Notes](dev/E2EE_IMPLEMENTATION_NOTES.md)** - Technical details of E2EE implementation
 
 ## Quick Reference
 
