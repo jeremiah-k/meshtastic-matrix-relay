@@ -29,7 +29,12 @@ cd meshtastic-matrix-relay
 
 # Install in development mode using pipx (recommended)
 pipx install -e .
-pipx uninstall mmrelay # each time before testing new changes
+
+# For E2EE development (Linux/macOS only)
+pipx install -e '.[e2e]'
+
+# Uninstall before testing new changes
+pipx uninstall mmrelay
 ```
 
 ## Configuration

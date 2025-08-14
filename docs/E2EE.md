@@ -16,11 +16,11 @@ End-to-End Encryption ensures that only you and the intended recipients can read
 ### 1. Install E2EE Support
 
 ```bash
-# Install MMRelay with E2EE support
-pip install mmrelay[e2e]
-
-# Or if using pipx
+# Install MMRelay with E2EE support (recommended)
 pipx install mmrelay[e2e]
+
+# Or using pip
+pip install mmrelay[e2e]
 ```
 
 ### 2. Enable E2EE in Configuration
@@ -63,7 +63,7 @@ That's it! MMRelay will automatically encrypt messages for encrypted rooms and d
 
 - **Python 3.9 or higher**
 - **Linux or macOS** (E2EE is not supported on Windows due to library limitations)
-- **MMRelay v1.2+** with E2EE support: `pip install mmrelay[e2e]`
+- **MMRelay v1.2+** with E2EE support: `pipx install mmrelay[e2e]`
 - **Matrix homeserver** that supports E2EE (most modern servers do)
 - **Dedicated bot account** recommended (don't use your personal Matrix account)
 
@@ -258,7 +258,7 @@ The `credentials.json` file contains:
 **Solution**: Install E2EE dependencies (Linux/macOS only):
 
 ```bash
-pip install mmrelay[e2e]
+pipx install mmrelay[e2e]
 ```
 
 #### "Failed to decrypt event" error in logs
