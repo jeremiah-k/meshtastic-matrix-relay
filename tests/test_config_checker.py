@@ -18,7 +18,8 @@ from unittest.mock import mock_open, patch
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from mmrelay.config_checker import check_config, get_config_paths
+from mmrelay.cli import check_config
+from mmrelay.config import get_config_paths
 
 
 class TestConfigChecker(unittest.TestCase):
@@ -26,7 +27,14 @@ class TestConfigChecker(unittest.TestCase):
 
     def setUp(self):
         """
-        Initializes a valid configuration dictionary for use in test cases.
+        Prepare a representative, valid configuration dict used by each test.
+
+        The dict is stored as self.valid_config and includes:
+        - matrix: minimal required fields for Matrix (homeserver, access_token, bot_user_id)
+        - matrix_rooms: a list with one room dict containing an 'id' and 'meshtastic_channel'
+        - meshtastic: a meshtastic connection with connection_type 'tcp', a host, and broadcast_enabled flag
+
+        This runs before each test method to provide a reusable valid configuration fixture.
         """
         self.valid_config = {
             "matrix": {
@@ -35,7 +43,11 @@ class TestConfigChecker(unittest.TestCase):
                 "bot_user_id": "@bot:matrix.org",
             },
             "matrix_rooms": [{"id": "!room1:matrix.org", "meshtastic_channel": 0}],
-            "meshtastic": {"connection_type": "tcp", "host": "192.168.1.100"},
+            "meshtastic": {
+                "connection_type": "tcp",
+                "host": "192.168.1.100",
+                "broadcast_enabled": True,
+            },
         }
 
     def test_get_config_paths(self):
@@ -44,16 +56,17 @@ class TestConfigChecker(unittest.TestCase):
 
         Asserts that the returned value is a list of the expected length and that the function is called exactly once.
         """
-        with patch("mmrelay.config.get_config_paths") as mock_get_paths:
-            mock_get_paths.return_value = ["/path1/config.yaml", "/path2/config.yaml"]
+        # Test the actual function behavior
+        paths = get_config_paths()
 
-            paths = get_config_paths()
+        self.assertIsInstance(paths, list)
+        self.assertGreaterEqual(len(paths), 3)  # Should return at least 3 paths
 
-            self.assertIsInstance(paths, list)
-            self.assertEqual(len(paths), 2)
-            mock_get_paths.assert_called_once()
+        # Verify all paths end with config.yaml
+        for path in paths:
+            self.assertTrue(path.endswith("config.yaml"))
 
-    @patch("mmrelay.config_checker.get_config_paths")
+    @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
     @patch("builtins.open", new_callable=mock_open)
     @patch("yaml.load")
@@ -74,7 +87,7 @@ class TestConfigChecker(unittest.TestCase):
         mock_print.assert_any_call("Found configuration file at: /test/config.yaml")
         mock_print.assert_any_call("Configuration file is valid!")
 
-    @patch("mmrelay.config_checker.get_config_paths")
+    @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
     @patch("builtins.open", new_callable=mock_open)
     @patch("yaml.load")
@@ -89,6 +102,7 @@ class TestConfigChecker(unittest.TestCase):
         serial_config["meshtastic"] = {
             "connection_type": "serial",
             "serial_port": "/dev/ttyUSB0",
+            "broadcast_enabled": True,
         }
 
         mock_get_paths.return_value = ["/test/config.yaml"]
@@ -100,7 +114,7 @@ class TestConfigChecker(unittest.TestCase):
         self.assertTrue(result)
         mock_print.assert_any_call("Configuration file is valid!")
 
-    @patch("mmrelay.config_checker.get_config_paths")
+    @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
     @patch("builtins.open", new_callable=mock_open)
     @patch("yaml.load")
@@ -117,6 +131,7 @@ class TestConfigChecker(unittest.TestCase):
         ble_config["meshtastic"] = {
             "connection_type": "ble",
             "ble_address": "AA:BB:CC:DD:EE:FF",
+            "broadcast_enabled": True,
         }
 
         mock_get_paths.return_value = ["/test/config.yaml"]
@@ -128,7 +143,7 @@ class TestConfigChecker(unittest.TestCase):
         self.assertTrue(result)
         mock_print.assert_any_call("Configuration file is valid!")
 
-    @patch("mmrelay.config_checker.get_config_paths")
+    @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
     @patch("builtins.print")
     def test_check_config_no_file_found(self, mock_print, mock_isfile, mock_get_paths):
@@ -147,7 +162,7 @@ class TestConfigChecker(unittest.TestCase):
         mock_print.assert_any_call("  - /test/config.yaml")
         mock_print.assert_any_call("  - /test2/config.yaml")
 
-    @patch("mmrelay.config_checker.get_config_paths")
+    @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
     @patch("builtins.open", new_callable=mock_open)
     @patch("yaml.load")
@@ -165,9 +180,11 @@ class TestConfigChecker(unittest.TestCase):
         result = check_config()
 
         self.assertFalse(result)
-        mock_print.assert_any_call("Error: Configuration file is empty or invalid")
+        mock_print.assert_any_call(
+            "Error: Configuration file is empty or contains only comments"
+        )
 
-    @patch("mmrelay.config_checker.get_config_paths")
+    @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
     @patch("builtins.open", new_callable=mock_open)
     @patch("yaml.load")
@@ -176,9 +193,9 @@ class TestConfigChecker(unittest.TestCase):
         self, mock_print, mock_yaml_load, mock_file, mock_isfile, mock_get_paths
     ):
         """
-        Test that check_config fails when the 'matrix' section is missing from the configuration.
+        Test that check_config returns False and reports an error when the configuration is missing the required 'matrix' section.
 
-        Asserts that the function returns False and prints the appropriate error message.
+        Sets up a configuration containing only a 'meshtastic' section, patches file discovery and YAML loading to return that config, calls check_config(), and asserts the function fails and prints the expected error message "Error: Missing 'matrix' section in config".
         """
         invalid_config = {"meshtastic": {"connection_type": "tcp"}}
 
@@ -191,7 +208,7 @@ class TestConfigChecker(unittest.TestCase):
         self.assertFalse(result)
         mock_print.assert_any_call("Error: Missing 'matrix' section in config")
 
-    @patch("mmrelay.config_checker.get_config_paths")
+    @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
     @patch("builtins.open", new_callable=mock_open)
     @patch("yaml.load")
@@ -223,7 +240,7 @@ class TestConfigChecker(unittest.TestCase):
             "Error: Missing required fields in 'matrix' section: access_token, bot_user_id"
         )
 
-    @patch("mmrelay.config_checker.get_config_paths")
+    @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
     @patch("builtins.open", new_callable=mock_open)
     @patch("yaml.load")
@@ -256,7 +273,7 @@ class TestConfigChecker(unittest.TestCase):
             "Error: Missing or empty 'matrix_rooms' section in config"
         )
 
-    @patch("mmrelay.config_checker.get_config_paths")
+    @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
     @patch("builtins.open", new_callable=mock_open)
     @patch("yaml.load")
@@ -288,7 +305,7 @@ class TestConfigChecker(unittest.TestCase):
         self.assertFalse(result)
         mock_print.assert_any_call("Error: 'matrix_rooms' must be a list")
 
-    @patch("mmrelay.config_checker.get_config_paths")
+    @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
     @patch("builtins.open", new_callable=mock_open)
     @patch("yaml.load")
@@ -299,7 +316,9 @@ class TestConfigChecker(unittest.TestCase):
         """
         Test that check_config fails when an entry in 'matrix_rooms' is not a dictionary.
 
-        Asserts that the function returns False and prints an appropriate error message when a non-dictionary object is present in the 'matrix_rooms' list.
+        Verifies check_config returns False and emits the error message
+        "Error: Room 1 in 'matrix_rooms' must be a dictionary" when a non-dictionary
+        item appears in the 'matrix_rooms' list.
         """
         invalid_config = {
             "matrix": {
@@ -322,7 +341,7 @@ class TestConfigChecker(unittest.TestCase):
             "Error: Room 1 in 'matrix_rooms' must be a dictionary"
         )
 
-    @patch("mmrelay.config_checker.get_config_paths")
+    @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
     @patch("builtins.open", new_callable=mock_open)
     @patch("yaml.load")
@@ -356,7 +375,7 @@ class TestConfigChecker(unittest.TestCase):
             "Error: Room 1 in 'matrix_rooms' is missing the 'id' field"
         )
 
-    @patch("mmrelay.config_checker.get_config_paths")
+    @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
     @patch("builtins.open", new_callable=mock_open)
     @patch("yaml.load")
@@ -385,7 +404,7 @@ class TestConfigChecker(unittest.TestCase):
         self.assertFalse(result)
         mock_print.assert_any_call("Error: Missing 'meshtastic' section in config")
 
-    @patch("mmrelay.config_checker.get_config_paths")
+    @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
     @patch("builtins.open", new_callable=mock_open)
     @patch("yaml.load")
@@ -419,7 +438,7 @@ class TestConfigChecker(unittest.TestCase):
             "Error: Missing 'connection_type' in 'meshtastic' section"
         )
 
-    @patch("mmrelay.config_checker.get_config_paths")
+    @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
     @patch("builtins.open", new_callable=mock_open)
     @patch("yaml.load")
@@ -451,7 +470,7 @@ class TestConfigChecker(unittest.TestCase):
             "Error: Invalid 'connection_type': invalid_type. Must be 'tcp', 'serial', or 'ble'"
         )
 
-    @patch("mmrelay.config_checker.get_config_paths")
+    @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
     @patch("builtins.open", new_callable=mock_open)
     @patch("yaml.load")
@@ -483,7 +502,7 @@ class TestConfigChecker(unittest.TestCase):
             "Error: Missing 'serial_port' for 'serial' connection type"
         )
 
-    @patch("mmrelay.config_checker.get_config_paths")
+    @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
     @patch("builtins.open", new_callable=mock_open)
     @patch("yaml.load")
@@ -515,7 +534,7 @@ class TestConfigChecker(unittest.TestCase):
         self.assertFalse(result)
         mock_print.assert_any_call("Error: Missing 'host' for 'tcp' connection type")
 
-    @patch("mmrelay.config_checker.get_config_paths")
+    @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
     @patch("builtins.open", new_callable=mock_open)
     @patch("yaml.load")
@@ -547,7 +566,7 @@ class TestConfigChecker(unittest.TestCase):
             "Error: Missing 'ble_address' for 'ble' connection type"
         )
 
-    @patch("mmrelay.config_checker.get_config_paths")
+    @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
     @patch("builtins.open", new_callable=mock_open)
     @patch("yaml.load")
@@ -567,11 +586,18 @@ class TestConfigChecker(unittest.TestCase):
         result = check_config()
 
         self.assertFalse(result)
-        mock_print.assert_any_call(
-            "Error parsing YAML in /test/config.yaml: Invalid YAML syntax"
+        # Check that YAML error message is printed (CLI version has more detailed format)
+        printed_calls = [str(call) for call in mock_print.call_args_list]
+        yaml_error_found = any(
+            "YAML Syntax Error" in call and "Invalid YAML syntax" in call
+            for call in printed_calls
+        )
+        self.assertTrue(
+            yaml_error_found,
+            f"Expected YAML error message not found in: {printed_calls}",
         )
 
-    @patch("mmrelay.config_checker.get_config_paths")
+    @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
     @patch("builtins.open", new_callable=mock_open)
     @patch("yaml.load")

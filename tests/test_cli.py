@@ -68,7 +68,7 @@ class TestCLI(unittest.TestCase):
     @patch("mmrelay.cli._validate_e2ee_config")
     @patch("mmrelay.cli.os.path.isfile")
     @patch("builtins.open")
-    @patch("mmrelay.cli.validate_yaml_syntax")
+    @patch("mmrelay.config.validate_yaml_syntax")
     def test_check_config_valid(self, mock_validate_yaml, mock_open, mock_isfile, mock_validate_e2ee):
         # Mock a valid config
         """
@@ -93,7 +93,7 @@ class TestCLI(unittest.TestCase):
 
     @patch("mmrelay.cli.os.path.isfile")
     @patch("builtins.open")
-    @patch("mmrelay.cli.validate_yaml_syntax")
+    @patch("mmrelay.config.validate_yaml_syntax")
     def test_check_config_invalid_missing_matrix(
         self, mock_validate_yaml, mock_open, mock_isfile
     ):
@@ -112,7 +112,7 @@ class TestCLI(unittest.TestCase):
 
     @patch("mmrelay.cli.os.path.isfile")
     @patch("builtins.open")
-    @patch("mmrelay.cli.validate_yaml_syntax")
+    @patch("mmrelay.config.validate_yaml_syntax")
     def test_check_config_invalid_missing_meshtastic(
         self, mock_validate_yaml, mock_open, mock_isfile
     ):
@@ -135,7 +135,7 @@ class TestCLI(unittest.TestCase):
 
     @patch("mmrelay.cli.os.path.isfile")
     @patch("builtins.open")
-    @patch("mmrelay.cli.validate_yaml_syntax")
+    @patch("mmrelay.config.validate_yaml_syntax")
     def test_check_config_invalid_connection_type(
         self, mock_validate_yaml, mock_open, mock_isfile
     ):

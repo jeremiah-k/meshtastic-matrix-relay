@@ -31,10 +31,12 @@ from nio import (
 from nio.events.room_events import RoomMemberEvent
 from PIL import Image
 
-from mmrelay.config import get_base_dir, get_e2ee_store_dir, save_credentials
+from mmrelay.config import get_base_dir, get_e2ee_store_dir, get_meshtastic_config_value, save_credentials
 from mmrelay.constants.app import WINDOWS_PLATFORM
 from mmrelay.constants.config import (
     CONFIG_SECTION_MATRIX,
+    DEFAULT_BROADCAST_ENABLED,
+    DEFAULT_DETECTION_SENSOR,
 )
 from mmrelay.constants.database import DEFAULT_MSGS_TO_KEEP
 from mmrelay.constants.formats import (
@@ -1206,16 +1208,36 @@ async def send_reply_to_meshtastic(
     reply_id=None,
 ):
     """
-    Queues a reply message from Matrix to be sent to Meshtastic, optionally as a structured reply, and includes message mapping metadata if storage is enabled.
+    Queue a Matrix-origin reply to be sent to Meshtastic, optionally as a structured reply.
 
-    If a `reply_id` is provided, the message is sent as a structured reply to the referenced Meshtastic message; otherwise, it is sent as a regular message. When message storage is enabled, mapping information is attached for future interaction tracking. The function logs the outcome of the queuing operation.
+    If broadcasting is enabled in the Meshtastic configuration, this function enqueues either a structured reply (when `reply_id` is provided) or a regular text message. When `storage_enabled` is true, mapping metadata is generated and attached so the message can be correlated back to the originating Matrix event for future interactions.
+
+    Parameters:
+        reply_message (str): The text to send to Meshtastic (already formatted/truncated as needed).
+        full_display_name (str): Human-readable name of the Matrix sender used in descriptions.
+        room_config (dict): Room-specific configuration (must include Meshtastic channel selection).
+        room: Matrix room object where the original event occurred.
+        event: Matrix event object being replied to (used for mapping metadata).
+        text (str): Original text of the Matrix event (used when creating mapping metadata).
+        storage_enabled (bool): If true, attach mapping metadata so replies/reactions can be correlated later.
+        local_meshnet_name (str): Optional meshnet identifier to include in mapping metadata.
+        reply_id (optional): Meshtastic message ID to target as a structured reply; if None, a regular message is sent.
+
+    Returns:
+        None
+
+    Notes:
+        - Errors encountered while enqueueing are caught and logged; the function does not raise.
+        - Actual sending is performed by the Meshtastic queue system; message mapping retention respects configured limits.
     """
     meshtastic_interface = connect_meshtastic()
     from mmrelay.meshtastic_utils import logger as meshtastic_logger
 
     meshtastic_channel = room_config["meshtastic_channel"]
 
-    if config["meshtastic"]["broadcast_enabled"]:
+    if get_meshtastic_config_value(
+        config, "broadcast_enabled", DEFAULT_BROADCAST_ENABLED, required=False
+    ):
         try:
             # Create mapping info once if storage is enabled
             mapping_info = None
@@ -1539,7 +1561,9 @@ async def on_room_message(
 
             meshtastic_channel = room_config["meshtastic_channel"]
 
-            if config["meshtastic"]["broadcast_enabled"]:
+            if get_meshtastic_config_value(
+                config, "broadcast_enabled", DEFAULT_BROADCAST_ENABLED, required=False
+            ):
                 meshtastic_logger.info(
                     f"Relaying reaction from remote meshnet {meshnet_name} to radio broadcast"
                 )
@@ -1612,7 +1636,9 @@ async def on_room_message(
 
             meshtastic_channel = room_config["meshtastic_channel"]
 
-            if config["meshtastic"]["broadcast_enabled"]:
+            if get_meshtastic_config_value(
+                config, "broadcast_enabled", DEFAULT_BROADCAST_ENABLED, required=False
+            ):
                 meshtastic_logger.info(
                     f"Relaying reaction from {full_display_name} to radio broadcast"
                 )
@@ -1744,11 +1770,15 @@ async def on_room_message(
     # Note: If relay_reactions is False, we won't store message_map, but we can still relay.
     # The lack of message_map storage just means no reaction bridging will occur.
     if not found_matching_plugin:
-        if config["meshtastic"]["broadcast_enabled"]:
+        if get_meshtastic_config_value(
+            config, "broadcast_enabled", DEFAULT_BROADCAST_ENABLED, required=False
+        ):
             portnum = event.source["content"].get("meshtastic_portnum")
             if portnum == DETECTION_SENSOR_APP:
                 # If detection_sensor is enabled, forward this data as detection sensor data
-                if config["meshtastic"].get("detection_sensor", False):
+                if get_meshtastic_config_value(
+                    config, "detection_sensor", DEFAULT_DETECTION_SENSOR
+                ):
                     success = queue_message(
                         meshtastic_interface.sendData,
                         data=full_message.encode("utf-8"),

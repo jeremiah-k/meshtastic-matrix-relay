@@ -45,7 +45,7 @@ meshtastic:
   #                                   # Legacy: heartbeat_interval at meshtastic level still supported but deprecated
 
   # Additional configuration options (commented out with defaults)
-  #broadcast_enabled: true # Must be set to true to enable Matrix to Meshtastic messages
+  broadcast_enabled: true # Must be set to true to enable Matrix to Meshtastic messages
   #detection_sensor: true # Must be set to true to forward messages of Meshtastic's detection sensor module
   #message_delay: 2.2 # Delay in seconds between messages sent to mesh (minimum: 2.0 due to firmware)
 

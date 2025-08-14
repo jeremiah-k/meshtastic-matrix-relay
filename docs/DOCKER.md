@@ -4,10 +4,13 @@ MMRelay supports Docker deployment with two image options and multiple deploymen
 
 ## Table of Contents
 
+- [Prerequisites](#prerequisites)
+- [Quick Start (Recommended)](#quick-start-recommended)
 - [Deployment Methods](#deployment-methods)
-  - [Method A: Prebuilt Images (Recommended)](#method-a-prebuilt-images-recommended)
-  - [Method B: Build from Source (Easy with Make Commands)](#method-b-build-from-source-easy-with-make-commands)
-  - [Method C: Manual Setup / Portainer](#method-c-manual-setup--portainer)
+  - [Prebuilt Images with Make](#prebuilt-images-with-make)
+  - [Portainer/GUI Tools](#portainergui-tools)
+  - [Build from Source with Make](#build-from-source-with-make)
+  - [Build from Source without Make](#build-from-source-without-make)
 - [Environment Variables](#environment-variables)
 - [Make Commands Reference](#make-commands-reference)
 - [Connection Types](#connection-types)
@@ -15,144 +18,110 @@ MMRelay supports Docker deployment with two image options and multiple deploymen
 - [Troubleshooting](#troubleshooting)
 - [Updates](#updates)
 
+## Prerequisites
+
+You need Docker installed on your system. Follow the [official Docker installation guide](https://docs.docker.com/engine/install/).
+
+## Quick Start (Recommended)
+
+**Most users should start here** - prebuilt images without cloning the repository:
+
+```bash
+# 1. Create directories and get config
+mkdir -p ~/.mmrelay/data ~/.mmrelay/logs
+curl -Lo ~/.mmrelay/config.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/src/mmrelay/tools/sample_config.yaml
+
+# 2. Edit your config
+nano ~/.mmrelay/config.yaml
+
+# 3. Get docker-compose file and start
+curl -o docker-compose.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/src/mmrelay/tools/sample-docker-compose-prebuilt.yaml
+docker compose up -d
+
+# 4. View logs
+docker compose logs -f
+```
+
+**That's it!** Your MMRelay is now running with the official prebuilt image.
+
 ## Deployment Methods
 
-Choose the method that best fits your needs:
+If the Quick Start above doesn't work for your setup, choose from these alternatives:
 
-### Method A: Prebuilt Images (Recommended)
+### Prebuilt Images with Make
 
-**Fast setup with official images** - no building required, perfect for most users.
-
-- **Image**: `ghcr.io/jeremiah-k/mmrelay:latest`
-- **Benefits**: Fastest setup, multi-platform (amd64/arm64), automatic updates
-- **Best for**: Most users who want to run MMRelay quickly
-
-**With make commands (if you have the repo):**
+If you've cloned the repository locally, use the convenient Make commands:
 
 ```bash
 make setup-prebuilt  # Copy config, .env, and docker-compose.yaml, then opens editor
 make run             # Start container (pulls official image)
+make logs            # View logs
 ```
 
-### Method B: Build from Source (Easy with Make Commands)
+### Portainer/GUI Tools
 
-**Full control with convenient tooling** - build your own image with simple commands.
+For users who prefer web-based Docker management:
 
-- **Build**: Local compilation from source code
-- **Benefits**: Full control, local modifications, development, latest features
-- **Best for**: Developers, contributors, users who want customization
+1. **Create config file on your host:**
 
-**With make commands:**
+   ```bash
+   mkdir -p ~/.mmrelay/data ~/.mmrelay/logs
+   curl -o ~/.mmrelay/config.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/src/mmrelay/tools/sample_config.yaml
+   nano ~/.mmrelay/config.yaml
+   ```
+
+2. **In Portainer, create a new Stack with this compose:**
+   - Copy content from: [sample-docker-compose-prebuilt.yaml](https://github.com/jeremiah-k/meshtastic-matrix-relay/blob/main/src/mmrelay/tools/sample-docker-compose-prebuilt.yaml)
+   - **Important:** Replace `${MMRELAY_HOME}` with your actual home directory path (e.g., `/home/username`)
+   - Set environment variables in Portainer if needed (UID, GID, etc.)
+
+3. **Minimal Portainer compose (if you prefer to start simple):**
+   ```yaml
+   services:
+     mmrelay:
+       image: ghcr.io/jeremiah-k/mmrelay:latest
+       container_name: meshtastic-matrix-relay
+       restart: unless-stopped
+       user: "1000:1000" # May need to match your user's UID/GID. See the Troubleshooting section.
+       environment:
+         - TZ=UTC
+         - PYTHONUNBUFFERED=1
+         - MPLCONFIGDIR=/tmp/matplotlib
+       volumes:
+         - /home/yourusername/.mmrelay/config.yaml:/app/config.yaml:ro
+         - /home/yourusername/.mmrelay:/app/data
+       ports:
+         - "4403:4403"
+   ```
+   Replace `/home/yourusername` with your actual home directory.
+
+### Build from Source with Make
+
+For developers who want to build their own image:
 
 ```bash
 make setup    # Copy config, .env, and docker-compose.yaml, then opens editor
-make build    # Build Docker image from source (convenient and fast)
+make build    # Build Docker image from source (uses layer caching)
 make run      # Start container
+make logs     # View logs
 ```
 
-### Method B: Manual Setup (Any Platform)
+### Build from Source without Make
 
-#### Step 1: Create directories
-
-```bash
-mkdir -p ~/.mmrelay/data ~/.mmrelay/logs
-```
-
-#### Step 2: Copy configuration files
+If you prefer not to use Make commands:
 
 ```bash
-# Copy sample config
-cp src/mmrelay/tools/sample_config.yaml ~/.mmrelay/config.yaml
+# After cloning the repository:
+make config  # Creates ~/.mmrelay/config.yaml, .env, and docker-compose.yaml
+nano ~/.mmrelay/config.yaml  # Edit your settings
 
-# Copy environment file
-cp src/mmrelay/tools/sample.env .env
-
-# Copy docker-compose file (choose one):
-# For prebuilt images:
-cp src/mmrelay/tools/sample-docker-compose-prebuilt.yaml docker-compose.yaml
-# OR for building from source:
-cp src/mmrelay/tools/sample-docker-compose.yaml docker-compose.yaml
-```
-
-#### Step 3: Edit configuration
-
-```bash
-# Edit the config file with your preferred editor
-nano ~/.mmrelay/config.yaml
-```
-
-#### Step 4: Start container
-
-```bash
-# For prebuilt images:
-docker compose up -d
-
-# For building from source:
+# Build and start:
 docker compose build
 docker compose up -d
+docker compose logs -f
 ```
 
-### Method C: Manual Setup / Portainer
-
-#### Step 1: Prepare configuration
-
-Create the MMRelay configuration directory on your host:
-
-```bash
-mkdir -p ~/.mmrelay/data ~/.mmrelay/logs
-```
-
-Download and edit the configuration file:
-
-```bash
-# Download sample config
-curl -o ~/.mmrelay/config.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/src/mmrelay/tools/sample_config.yaml
-
-# Edit with your settings
-nano ~/.mmrelay/config.yaml
-```
-
-#### Step 2: Create stack in Portainer
-
-##### Option A: Use the official sample file (recommended)
-
-Copy the latest docker-compose content from our official sample file:
-
-- **View online**: [sample-docker-compose-prebuilt.yaml](https://github.com/jeremiah-k/meshtastic-matrix-relay/blob/main/src/mmrelay/tools/sample-docker-compose-prebuilt.yaml)
-- **Download directly**:
-  ```bash
-  curl -o docker-compose.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/src/mmrelay/tools/sample-docker-compose-prebuilt.yaml
-  ```
-
-##### Option B: Manual compose file
-
-If you prefer to create your own, use this minimal configuration:
-
-```yaml
-services:
-  mmrelay:
-    image: ghcr.io/jeremiah-k/mmrelay:latest
-    container_name: meshtastic-matrix-relay
-    restart: unless-stopped
-    user: "1000:1000" # May need to match your user's UID/GID. See the Troubleshooting section.
-    environment:
-      - TZ=UTC
-      - PYTHONUNBUFFERED=1
-      - MPLCONFIGDIR=/tmp/matplotlib
-    volumes:
-      # Replace /home/yourusername with your actual home directory
-      - /home/yourusername/.mmrelay/config.yaml:/app/config.yaml:ro
-      - /home/yourusername/.mmrelay/data:/app/data
-      - /home/yourusername/.mmrelay/logs:/app/logs
-    ports:
-      - "4403:4403"
-```
-
-**Important for Portainer users:**
-
-- Replace `/home/yourusername/.mmrelay/` with your actual home directory path
-- For additional features (BLE, Watchtower), use the official sample file
-- The official sample file is always up-to-date with the latest configuration options
+**Note:** The `make config` command is still the easiest way to set up the files correctly. Building from source without any Make commands would require manually creating all configuration files and is not recommended.
 
 ## Environment Variables
 
@@ -238,9 +207,11 @@ docker compose exec mmrelay bash
 
 Uses the same directories as standalone installation:
 
-- **Config**: `~/.mmrelay/config.yaml` (mounted read-only)
-- **Database**: `~/.mmrelay/data/` (persistent)
-- **Logs**: `~/.mmrelay/logs/` (persistent)
+- **Config**: `~/.mmrelay/config.yaml` (mounted read-only to `/app/config.yaml`)
+- **Data Directory**: `~/.mmrelay/` (mounted to `/app/data`). This directory on your host will contain subdirectories for the database (`data/`), logs (`logs/`), and plugins.
+
+**Volume Mounting Explanation:**
+The Docker compose files mount `~/.mmrelay/` to `/app/data` which contains all persistent data (database, logs, plugins). The config file is also mounted separately to `/app/config.yaml` for clarity, even though it's technically accessible via the data mount. This dual mounting ensures the container can find the config file at the expected location.
 
 This means your Docker and standalone installations share the same data!
 
