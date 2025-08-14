@@ -65,11 +65,12 @@ class TestCLI(unittest.TestCase):
             self.assertTrue(args.install_service)
             self.assertTrue(args.check_config)
 
+    @patch("mmrelay.config.os.makedirs")
     @patch("mmrelay.cli._validate_e2ee_config")
     @patch("mmrelay.cli.os.path.isfile")
     @patch("builtins.open")
     @patch("mmrelay.config.validate_yaml_syntax")
-    def test_check_config_valid(self, mock_validate_yaml, mock_open, mock_isfile, mock_validate_e2ee):
+    def test_check_config_valid(self, mock_validate_yaml, mock_open, mock_isfile, mock_validate_e2ee, mock_makedirs):
         # Mock a valid config
         """
         Test that check_config returns True for a valid configuration file.
@@ -91,11 +92,12 @@ class TestCLI(unittest.TestCase):
         with patch("sys.argv", ["mmrelay", "--config", "valid_config.yaml"]):
             self.assertTrue(check_config())
 
+    @patch("mmrelay.config.os.makedirs")
     @patch("mmrelay.cli.os.path.isfile")
     @patch("builtins.open")
     @patch("mmrelay.config.validate_yaml_syntax")
     def test_check_config_invalid_missing_matrix(
-        self, mock_validate_yaml, mock_open, mock_isfile
+        self, mock_validate_yaml, mock_open, mock_isfile, mock_makedirs
     ):
         # Mock an invalid config (missing matrix section)
         """
@@ -110,11 +112,12 @@ class TestCLI(unittest.TestCase):
         with patch("sys.argv", ["mmrelay", "--config", "invalid_config.yaml"]):
             self.assertFalse(check_config())
 
+    @patch("mmrelay.config.os.makedirs")
     @patch("mmrelay.cli.os.path.isfile")
     @patch("builtins.open")
     @patch("mmrelay.config.validate_yaml_syntax")
     def test_check_config_invalid_missing_meshtastic(
-        self, mock_validate_yaml, mock_open, mock_isfile
+        self, mock_validate_yaml, mock_open, mock_isfile, mock_makedirs
     ):
         # Mock an invalid config (missing meshtastic section)
         """
@@ -133,11 +136,12 @@ class TestCLI(unittest.TestCase):
         with patch("sys.argv", ["mmrelay", "--config", "invalid_config.yaml"]):
             self.assertFalse(check_config())
 
+    @patch("mmrelay.config.os.makedirs")
     @patch("mmrelay.cli.os.path.isfile")
     @patch("builtins.open")
     @patch("mmrelay.config.validate_yaml_syntax")
     def test_check_config_invalid_connection_type(
-        self, mock_validate_yaml, mock_open, mock_isfile
+        self, mock_validate_yaml, mock_open, mock_isfile, mock_makedirs
     ):
         # Mock an invalid config (invalid connection type)
         """
