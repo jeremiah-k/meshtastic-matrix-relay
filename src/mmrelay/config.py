@@ -174,6 +174,30 @@ def get_e2ee_store_dir():
     return store_dir
 
 
+def load_credentials():
+    """
+    Load Matrix credentials from credentials.json file.
+
+    Returns:
+        dict: Credentials dictionary if found, None otherwise.
+    """
+    try:
+        config_dir = get_base_dir()
+        credentials_path = os.path.join(config_dir, "credentials.json")
+
+        if os.path.exists(credentials_path):
+            with open(credentials_path, "r") as f:
+                credentials = json.load(f)
+            logger.debug(f"Loaded credentials from {credentials_path}")
+            return credentials
+        else:
+            logger.debug(f"No credentials file found at {credentials_path}")
+            return None
+    except (OSError, PermissionError, json.JSONDecodeError) as e:
+        logger.error(f"Error loading credentials.json: {e}")
+        return None
+
+
 def save_credentials(credentials):
     """
     Save Matrix credentials to credentials.json file.

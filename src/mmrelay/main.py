@@ -30,7 +30,10 @@ from mmrelay.db_utils import (
     wipe_message_map,
 )
 from mmrelay.log_utils import get_logger
-from mmrelay.matrix_utils import connect_matrix, join_matrix_room
+from mmrelay.matrix_utils import (
+    connect_matrix,
+    join_matrix_room,
+)
 from mmrelay.matrix_utils import logger as matrix_logger
 from mmrelay.matrix_utils import (
     on_decryption_failure,

@@ -10,7 +10,6 @@ import sys
 import time
 from typing import Union
 from urllib.parse import urlparse
-from uuid import uuid4
 
 import certifi
 import markdown
@@ -27,11 +26,8 @@ from nio import (
     RoomMessageEmote,
     RoomMessageNotice,
     RoomMessageText,
-    SyncError,
     UploadResponse,
-    WhoamiError,
 )
-from nio.event_builders import ToDeviceMessage
 from nio.events.room_events import RoomMemberEvent
 from PIL import Image
 
@@ -58,7 +54,6 @@ from mmrelay.constants.messages import (
 from mmrelay.constants.network import (
     MATRIX_EARLY_SYNC_TIMEOUT,
     MATRIX_LOGIN_TIMEOUT,
-    MATRIX_MAIN_SYNC_TIMEOUT,
     MATRIX_ROOM_SEND_TIMEOUT,
     MATRIX_SYNC_OPERATION_TIMEOUT,
     MILLISECONDS_PER_SECOND,
@@ -501,9 +496,15 @@ async def connect_matrix(passed_config=None):
         ):
             # Check if running on Windows
             if sys.platform == WINDOWS_PLATFORM:
-                logger.error("E2EE is not supported on Windows due to library limitations.")
-                logger.error("The python-olm library requires native C libraries that are difficult to install on Windows.")
-                logger.error("Please disable E2EE in your configuration or use a Linux/macOS system for E2EE support.")
+                logger.error(
+                    "E2EE is not supported on Windows due to library limitations."
+                )
+                logger.error(
+                    "The python-olm library requires native C libraries that are difficult to install on Windows."
+                )
+                logger.error(
+                    "Please disable E2EE in your configuration or use a Linux/macOS system for E2EE support."
+                )
                 e2ee_enabled = False
             else:
                 # Check if python-olm is installed
@@ -638,22 +639,25 @@ async def connect_matrix(passed_config=None):
     try:
         # A full_state=True sync is required to get room encryption state
         sync_response = await asyncio.wait_for(
-            matrix_client.sync(
-                timeout=MATRIX_EARLY_SYNC_TIMEOUT, full_state=True
-            ),
+            matrix_client.sync(timeout=MATRIX_EARLY_SYNC_TIMEOUT, full_state=True),
             timeout=MATRIX_SYNC_OPERATION_TIMEOUT,
         )
         # Check if sync failed by looking for error class name
-        if hasattr(sync_response, '__class__') and 'Error' in sync_response.__class__.__name__:
+        if (
+            hasattr(sync_response, "__class__")
+            and "Error" in sync_response.__class__.__name__
+        ):
             logger.error(f"Initial sync failed: {sync_response}")
             raise ConnectionError(f"Matrix sync failed: {sync_response}")
         else:
-            logger.info(f"Initial sync completed. Found {len(matrix_client.rooms)} rooms.")
+            logger.info(
+                f"Initial sync completed. Found {len(matrix_client.rooms)} rooms."
+            )
     except asyncio.TimeoutError:
-        logger.error(f"Initial sync timed out after {MATRIX_SYNC_OPERATION_TIMEOUT} seconds")
+        logger.error(
+            f"Initial sync timed out after {MATRIX_SYNC_OPERATION_TIMEOUT} seconds"
+        )
         raise
-
-
 
     # Fetch the bot's display name
     response = await matrix_client.get_displayname(bot_user_id)
@@ -661,12 +665,6 @@ async def connect_matrix(passed_config=None):
         bot_user_name = response.displayname
     else:
         bot_user_name = bot_user_id  # Fallback if display name is not set
-
-
-
-
-
-
 
     return matrix_client
 
@@ -1072,12 +1070,16 @@ async def matrix_relay(
             # Debug logging for encryption status
             if room:
                 encrypted_status = getattr(room, "encrypted", "unknown")
-                logger.debug(f"Room {room_id} encryption status: encrypted={encrypted_status}")
+                logger.debug(
+                    f"Room {room_id} encryption status: encrypted={encrypted_status}"
+                )
             else:
                 logger.warning(f"Room {room_id} not found in client.rooms")
 
             # Always use ignore_unverified_devices=True for text messages (like matrix-nio-send)
-            logger.debug(f"Sending message with ignore_unverified_devices=True (always for text messages)")
+            logger.debug(
+                "Sending message with ignore_unverified_devices=True (always for text messages)"
+            )
 
             response = await asyncio.wait_for(
                 matrix_client.room_send(
@@ -1363,9 +1365,7 @@ async def on_decryption_failure(room: MatrixRoom, event: MegolmEvent) -> None:
         # Monkey-patch the event object with the correct room_id
         event.room_id = room.room_id
 
-        request = event.as_key_request(
-            matrix_client.user_id, matrix_client.device_id
-        )
+        request = event.as_key_request(matrix_client.user_id, matrix_client.device_id)
         await matrix_client.to_device(request)
         logger.info(f"Requested keys for failed decryption of event {event.event_id}")
     except Exception as e:
