@@ -61,7 +61,14 @@ class TestConfigChecker(unittest.TestCase):
     @patch("mmrelay.cli._validate_e2ee_config")
     @patch("builtins.print")
     def test_check_config_missing_matrix_section_with_credentials(
-        self, mock_print, mock_validate_e2ee, mock_validate_yaml, mock_isfile, mock_get_paths, mock_parse_args, mock_validate_credentials
+        self,
+        mock_print,
+        mock_validate_e2ee,
+        mock_validate_yaml,
+        mock_isfile,
+        mock_get_paths,
+        mock_parse_args,
+        mock_validate_credentials,
     ):
         """
         Test that check_config passes when matrix section is missing but credentials.json exists.
@@ -75,15 +82,13 @@ class TestConfigChecker(unittest.TestCase):
 
         # Config with minimal matrix section (only homeserver) plus matrix_rooms and meshtastic
         config_with_minimal_matrix = {
-            "matrix": {
-                "homeserver": "https://matrix.org"
-            },
+            "matrix": {"homeserver": "https://matrix.org"},
             "matrix_rooms": [{"id": "!room1:matrix.org", "meshtastic_channel": 0}],
             "meshtastic": {
                 "connection_type": "tcp",
                 "host": "localhost",
                 "broadcast_enabled": True,
-            }
+            },
         }
 
         mock_get_paths.return_value = ["/test/config.yaml"]
@@ -106,7 +111,14 @@ class TestConfigChecker(unittest.TestCase):
     @patch("mmrelay.cli._validate_e2ee_config")
     @patch("builtins.print")
     def test_check_config_missing_matrix_section_with_credentials_fails(
-        self, mock_print, mock_validate_e2ee, mock_validate_yaml, mock_isfile, mock_get_paths, mock_parse_args, mock_validate_credentials
+        self,
+        mock_print,
+        mock_validate_e2ee,
+        mock_validate_yaml,
+        mock_isfile,
+        mock_get_paths,
+        mock_parse_args,
+        mock_validate_credentials,
     ):
         """
         Test that check_config fails with helpful message when matrix section is completely missing even with credentials.json.
@@ -125,7 +137,7 @@ class TestConfigChecker(unittest.TestCase):
                 "connection_type": "tcp",
                 "host": "localhost",
                 "broadcast_enabled": True,
-            }
+            },
         }
 
         mock_get_paths.return_value = ["/test/config.yaml"]
@@ -139,7 +151,9 @@ class TestConfigChecker(unittest.TestCase):
 
         self.assertFalse(result)
         mock_print.assert_any_call("Error: Missing 'matrix' section in config")
-        mock_print.assert_any_call("   With credentials.json, you still need a matrix section with 'homeserver'")
+        mock_print.assert_any_call(
+            "   With credentials.json, you still need a matrix section with 'homeserver'"
+        )
 
     @patch("mmrelay.config.os.makedirs")
     def test_get_config_paths(self, mock_makedirs):

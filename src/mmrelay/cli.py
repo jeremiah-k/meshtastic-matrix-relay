@@ -358,7 +358,9 @@ def check_config(args=None):
                     # With credentials.json, we only need homeserver in matrix section
                     if CONFIG_SECTION_MATRIX not in config:
                         print("Error: Missing 'matrix' section in config")
-                        print("   With credentials.json, you still need a matrix section with 'homeserver'")
+                        print(
+                            "   With credentials.json, you still need a matrix section with 'homeserver'"
+                        )
                         print("   Example:")
                         print("   matrix:")
                         print("     homeserver: https://matrix.org")
@@ -369,7 +371,9 @@ def check_config(args=None):
                     # Without credentials.json, require full matrix section
                     if CONFIG_SECTION_MATRIX not in config:
                         print("Error: Missing 'matrix' section in config")
-                        print("   Either add matrix section with access_token and bot_user_id,")
+                        print(
+                            "   Either add matrix section with access_token and bot_user_id,"
+                        )
                         print("   or run 'mmrelay auth' to set up credentials.json")
                         return False
 
