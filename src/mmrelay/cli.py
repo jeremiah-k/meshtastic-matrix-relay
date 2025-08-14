@@ -155,7 +155,7 @@ def _validate_matrix_authentication(config_path, matrix_section):
     credentials_path = os.path.join(config_dir, "credentials.json")
 
     has_credentials = os.path.exists(credentials_path)
-    has_access_token = "access_token" in matrix_section
+    has_access_token = matrix_section and "access_token" in matrix_section
 
     if has_credentials:
         print("✅ Using credentials.json for Matrix authentication")
@@ -181,6 +181,9 @@ def _validate_e2ee_config(config, matrix_section, config_path):
         return False
 
     # Check for E2EE configuration
+    if not matrix_section:
+        return True  # No matrix section means no E2EE config to validate
+
     e2ee_config = matrix_section.get("e2ee", {})
     encryption_config = matrix_section.get("encryption", {})  # Legacy support
 
