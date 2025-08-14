@@ -19,10 +19,16 @@ try:
 
     from mmrelay.config import load_config
     from mmrelay.matrix_utils import connect_matrix, matrix_client, matrix_relay
+
+    IMPORTS_AVAILABLE = True
 except ImportError as e:
     print(f"❌ Import error: {e}")
     print("Make sure you're running from the project root directory")
-    sys.exit(1)
+    IMPORTS_AVAILABLE = False
+
+    # Create dummy classes to prevent further import errors
+    class E2EEDebugUtilities:
+        pass
 
 
 class E2EEIntegrationTester:
@@ -50,7 +56,7 @@ class E2EEIntegrationTester:
             print(f"❌ Setup failed: {e}")
             return False
 
-    async def test_matrix_connection(self):
+    async def check_matrix_connection(self):
         """Test Matrix connection with E2EE"""
         print("\n🔍 Testing Matrix connection...")
 
@@ -91,7 +97,7 @@ class E2EEIntegrationTester:
             self.test_results["connection"] = {"success": False, "error": str(e)}
             return False
 
-    async def test_room_encryption_detection(self):
+    async def check_room_encryption_detection(self):
         """Test room encryption state detection"""
         print("\n🔍 Testing room encryption detection...")
 
@@ -161,7 +167,7 @@ class E2EEIntegrationTester:
             self.test_results["room_detection"] = {"success": False, "error": str(e)}
             return False
 
-    async def test_message_sending_parameters(self):
+    async def check_message_sending_parameters(self):
         """Test message sending parameter detection (without actually sending)"""
         print("\n🔍 Testing message sending parameters...")
 
@@ -239,9 +245,9 @@ class E2EEIntegrationTester:
 
         # Run tests
         tests = [
-            ("Matrix Connection", self.test_matrix_connection),
-            ("Room Encryption Detection", self.test_room_encryption_detection),
-            ("Message Sending Parameters", self.test_message_sending_parameters),
+            ("Matrix Connection", self.check_matrix_connection),
+            ("Room Encryption Detection", self.check_room_encryption_detection),
+            ("Message Sending Parameters", self.check_message_sending_parameters),
         ]
 
         passed = 0
@@ -334,4 +340,8 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    if IMPORTS_AVAILABLE:
+        asyncio.run(main())
+    else:
+        print("❌ Required imports not available, skipping integration test")
+        sys.exit(1)
