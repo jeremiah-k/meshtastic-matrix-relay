@@ -149,29 +149,63 @@ def _validate_e2ee_dependencies():
         return False
 
 
+def _validate_credentials_json(config_path):
+    """Validate credentials.json file exists and has required fields."""
+    try:
+        import json
+
+        # Look for credentials.json in the same directory as the config file
+        config_dir = os.path.dirname(config_path)
+        credentials_path = os.path.join(config_dir, "credentials.json")
+
+        if not os.path.exists(credentials_path):
+            # Also try the standard location
+            from mmrelay.config import get_base_dir
+            standard_credentials_path = os.path.join(get_base_dir(), "credentials.json")
+            if os.path.exists(standard_credentials_path):
+                credentials_path = standard_credentials_path
+            else:
+                return False
+
+        # Load and validate credentials
+        with open(credentials_path, "r") as f:
+            credentials = json.load(f)
+
+        # Check for required fields
+        required_fields = ["access_token", "user_id", "device_id"]
+        missing_fields = [field for field in required_fields if field not in credentials or not credentials[field]]
+
+        if missing_fields:
+            print(f"❌ Error: credentials.json missing required fields: {', '.join(missing_fields)}")
+            print("   Run 'mmrelay --auth' to regenerate credentials")
+            return False
+
+        return True
+    except Exception as e:
+        print(f"❌ Error: Could not validate credentials.json: {e}")
+        return False
+
+
 def _validate_matrix_authentication(config_path, matrix_section):
     """Validate Matrix authentication configuration."""
-    config_dir = os.path.dirname(config_path)
-    credentials_path = os.path.join(config_dir, "credentials.json")
-
-    has_credentials = os.path.exists(credentials_path)
+    has_valid_credentials = _validate_credentials_json(config_path)
     has_access_token = matrix_section and "access_token" in matrix_section
 
-    if has_credentials:
+    if has_valid_credentials:
         print("✅ Using credentials.json for Matrix authentication")
         if sys.platform != WINDOWS_PLATFORM:
             print("   E2EE support available (if enabled)")
+        return True
 
     elif has_access_token:
         print("✅ Using access_token for Matrix authentication")
         print("   For E2EE support: run 'mmrelay --auth'")
+        return True
 
     else:
         print("❌ Error: No Matrix authentication configured")
         print("   Setup: mmrelay --auth")
         return False
-
-    return True
 
 
 def _validate_e2ee_config(config, matrix_section, config_path):
@@ -296,11 +330,20 @@ def check_config(args=None):
                     return False
 
                 matrix_section = config[CONFIG_SECTION_MATRIX]
-                required_matrix_fields = [
-                    CONFIG_KEY_HOMESERVER,
-                    CONFIG_KEY_ACCESS_TOKEN,
-                    CONFIG_KEY_BOT_USER_ID,
-                ]
+
+                # Check if we have valid credentials.json
+                has_valid_credentials = _validate_credentials_json(config_path)
+
+                # Always require homeserver
+                required_matrix_fields = [CONFIG_KEY_HOMESERVER]
+
+                # If no valid credentials.json, require traditional auth fields
+                if not has_valid_credentials:
+                    required_matrix_fields.extend([
+                        CONFIG_KEY_ACCESS_TOKEN,
+                        CONFIG_KEY_BOT_USER_ID,
+                    ])
+
                 missing_matrix_fields = [
                     field
                     for field in required_matrix_fields
@@ -308,9 +351,16 @@ def check_config(args=None):
                 ]
 
                 if missing_matrix_fields:
-                    print(
-                        f"Error: Missing required fields in 'matrix' section: {', '.join(missing_matrix_fields)}"
-                    )
+                    if has_valid_credentials:
+                        print(
+                            f"Error: Missing required fields in 'matrix' section: {', '.join(missing_matrix_fields)}"
+                        )
+                        print("   Note: credentials.json provides authentication, only homeserver needed in config")
+                    else:
+                        print(
+                            f"Error: Missing required fields in 'matrix' section: {', '.join(missing_matrix_fields)}"
+                        )
+                        print("   Setup authentication: mmrelay --auth")
                     return False
 
                 # Validate E2EE configuration and authentication
