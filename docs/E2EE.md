@@ -41,10 +41,11 @@ matrix:
 Use the built-in authentication command to create your bot's E2EE-enabled credentials:
 
 ```bash
-mmrelay --bot_login
+mmrelay --auth
 ```
 
 This interactive command will:
+
 - Prompt for your Matrix homeserver, username, and password
 - Create secure credentials with E2EE support
 - Save authentication details to `~/.mmrelay/credentials.json`
@@ -70,7 +71,7 @@ That's it! MMRelay will automatically encrypt messages for encrypted rooms and d
 
 **E2EE is not available on Windows** due to technical limitations with the required cryptographic libraries. The `python-olm` library requires native C libraries that are difficult to compile and install on Windows systems.
 
-**Windows users can still use MMRelay** for regular (unencrypted) Matrix communication by configuring Matrix credentials directly in `config.yaml` instead of using the `--bot_login` command.
+**Windows users can still use MMRelay** for regular (unencrypted) Matrix communication by configuring Matrix credentials directly in `config.yaml` instead of using the `--auth` command.
 
 ### Step 2: Create E2EE Credentials
 
@@ -78,10 +79,11 @@ Use the authentication command to create E2EE credentials:
 
 ```bash
 # Create E2EE credentials (interactive)
-mmrelay --bot_login
+mmrelay --auth
 ```
 
-**What the `--bot_login` command does:**
+**What the `--auth` command does:**
+
 1. Prompts for your Matrix homeserver, username, and password
 2. Creates a new Matrix session with E2EE support
 3. Generates a unique device ID for MMRelay
@@ -89,6 +91,7 @@ mmrelay --bot_login
 5. Sets up encryption key storage in `~/.mmrelay/store/`
 
 **Interactive prompts:**
+
 ```
 Matrix Bot Login for E2EE
 =========================
@@ -106,21 +109,23 @@ mmrelay
 ```
 
 MMRelay will automatically:
+
 - Load E2EE credentials from `credentials.json`
 - Initialize encryption keys and device trust
 - Connect to Matrix with full E2EE support
 
-## The `--bot_login` Command
+## The `--auth` Command
 
-The `--bot_login` command is the recommended way to set up Matrix authentication for MMRelay v1.2+. It provides secure credential management with full E2EE support.
+The `--auth` command is the recommended way to set up Matrix authentication for MMRelay v1.2+. It provides secure credential management with full E2EE support.
 
 ### What It Does
 
 ```bash
-mmrelay --bot_login
+mmrelay --auth
 ```
 
 **The authentication process:**
+
 1. **Interactive Setup**: Prompts for Matrix homeserver, username, and password
 2. **Secure Login**: Creates a new Matrix session with encryption enabled
 3. **Device Registration**: Generates a unique, persistent device ID for MMRelay
@@ -130,7 +135,7 @@ mmrelay --bot_login
 ### Example Session
 
 ```
-$ mmrelay --bot_login
+$ mmrelay --auth
 Matrix Bot Login for E2EE
 =========================
 Matrix homeserver (e.g., https://matrix.org): https://matrix.example.org
@@ -148,6 +153,7 @@ You can now start MMRelay with: mmrelay
 ### Files Created
 
 **`~/.mmrelay/credentials.json`** - Contains your Matrix session:
+
 ```json
 {
   "homeserver": "https://matrix.example.org",
@@ -215,7 +221,7 @@ The `credentials.json` file contains:
 ```json
 {
   "homeserver": "https://your-matrix-server.org",
-  "user_id": "@your-bot:your-matrix-server.org", 
+  "user_id": "@your-bot:your-matrix-server.org",
   "access_token": "your_access_token_here",
   "device_id": "MMRELAY_DEVICE_ID"
 }
@@ -229,13 +235,14 @@ The `credentials.json` file contains:
 
 #### "E2EE features not available on Windows"
 
-**Problem**: E2EE features don't work on Windows even with `mmrelay --bot_login`.
+**Problem**: E2EE features don't work on Windows even with `mmrelay --auth`.
 
 **Explanation**: E2EE requires the `python-olm` library, which depends on native C libraries that are difficult to compile on Windows.
 
 **Solutions**:
+
 - **Use Linux or macOS** for full E2EE support
-- **On Windows**: `mmrelay --bot_login` still works for regular Matrix communication
+- **On Windows**: `mmrelay --auth` still works for regular Matrix communication
 - **Alternative**: Configure credentials manually in `config.yaml`:
   ```yaml
   matrix:
@@ -244,11 +251,12 @@ The `credentials.json` file contains:
     bot_user_id: @yourbot:your-matrix-server.org
   ```
 
-**Note**: Credentials created with `mmrelay --bot_login` on Windows will work with E2EE if you later use them on Linux/macOS.
+**Note**: Credentials created with `mmrelay --auth` on Windows will work with E2EE if you later use them on Linux/macOS.
 
 #### "No E2EE dependencies found"
 
 **Solution**: Install E2EE dependencies (Linux/macOS only):
+
 ```bash
 pip install mmrelay[e2e]
 ```
@@ -260,15 +268,17 @@ pip install mmrelay[e2e]
 **Explanation**: This is usually normal, temporary behavior. It happens when another user sends a message in an encrypted room and the relay doesn't have the decryption key for it yet.
 
 **Solution**:
+
 - **Wait**: The relay will automatically request the key in the background. The message should be successfully decrypted within the next minute during the next sync from the server.
 - **If the error persists for a long time**: This might indicate a de-synchronized session. The best way to fix this is to regenerate your credentials and key store.
+
   ```bash
   # Remove old credentials and store
   rm ~/.mmrelay/credentials.json
   rm -rf ~/.mmrelay/store/
 
   # Create new credentials
-  mmrelay --bot_login
+  mmrelay --auth
   ```
 
 ### Verification and Testing
@@ -289,6 +299,7 @@ INFO Matrix: Initial sync completed. Found X rooms.
 #### Verify Message Encryption
 
 In your Matrix client (Element, etc.):
+
 - **Encrypted messages**: Show with a lock icon or green shield.
 - **Unencrypted messages**: Show with a red shield and "Not encrypted" warning.
 
@@ -299,6 +310,7 @@ If messages from MMRelay show as unencrypted in encrypted rooms, check your MMRe
 ### Device Verification
 
 MMRelay uses `ignore_unverified_devices=True` for automated bot operation:
+
 - Interactive device verification is not practical for automated bots
 - This setting allows reliable operation while maintaining encryption
 
@@ -334,6 +346,7 @@ E2EE support is fully backward compatible:
 ### Performance Impact
 
 E2EE adds minimal overhead:
+
 - **Startup time**: Slightly longer due to key synchronization
 - **Message latency**: Negligible encryption/decryption time
 - **Memory usage**: Small increase for key storage

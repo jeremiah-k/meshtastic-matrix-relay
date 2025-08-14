@@ -69,16 +69,19 @@ mmrelay --auth
 ```
 
 This interactive command will:
+
 - Prompt for your Matrix homeserver, username, and password
 - Create secure credentials and save to `~/.mmrelay/credentials.json`
 - Set up encryption keys for secure communication (Linux/macOS)
 - Work for regular Matrix communication on all platforms
 
 **Platform Notes**:
+
 - **Linux/macOS**: Full E2EE support with automatic encryption
 - **Windows**: Regular Matrix communication (E2EE not available due to library limitations)
 
 **Alternative Method**: You can manually configure Matrix credentials in `config.yaml`:
+
 ```yaml
 matrix:
   homeserver: https://your-matrix-server.org

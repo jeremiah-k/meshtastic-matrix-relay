@@ -16,6 +16,7 @@ Welcome to the MMRelay documentation! This directory contains comprehensive guid
 ## Quick Reference
 
 ### New in v1.2
+
 - **Full Matrix E2EE Support** - Secure communication in encrypted rooms
 - **`--auth` Command** - Simplified authentication setup
 - **Automatic Encryption** - Seamless handling of encrypted/unencrypted rooms
@@ -38,12 +39,12 @@ mmrelay
 
 ### File Locations
 
-| File | Purpose | Location |
-|------|---------|----------|
-| Configuration | Main settings | `~/.mmrelay/config.yaml` |
-| Credentials | Matrix authentication | `~/.mmrelay/credentials.json` |
-| E2EE Store | Encryption keys | `~/.mmrelay/store/` |
-| Logs | Application logs | `~/.mmrelay/logs/` |
+| File          | Purpose               | Location                      |
+| ------------- | --------------------- | ----------------------------- |
+| Configuration | Main settings         | `~/.mmrelay/config.yaml`      |
+| Credentials   | Matrix authentication | `~/.mmrelay/credentials.json` |
+| E2EE Store    | Encryption keys       | `~/.mmrelay/store/`           |
+| Logs          | Application logs      | `~/.mmrelay/logs/`            |
 
 ## Documentation Structure
 
