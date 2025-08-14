@@ -350,27 +350,35 @@ def check_config(args=None):
                     )
                     return False
 
-                # Check matrix section
-                if CONFIG_SECTION_MATRIX not in config:
-                    print("Error: Missing 'matrix' section in config")
-                    return False
-
-                matrix_section = config[CONFIG_SECTION_MATRIX]
-
-                # Check if we have valid credentials.json
+                # Check if we have valid credentials.json first
                 has_valid_credentials = _validate_credentials_json(config_path)
 
-                # Always require homeserver
-                required_matrix_fields = [CONFIG_KEY_HOMESERVER]
+                # Check matrix section requirements based on credentials.json availability
+                if has_valid_credentials:
+                    # With credentials.json, we only need homeserver in matrix section
+                    if CONFIG_SECTION_MATRIX not in config:
+                        print("Error: Missing 'matrix' section in config")
+                        print("   With credentials.json, you still need a matrix section with 'homeserver'")
+                        print("   Example:")
+                        print("   matrix:")
+                        print("     homeserver: https://matrix.org")
+                        return False
+                    matrix_section = config[CONFIG_SECTION_MATRIX]
+                    required_matrix_fields = [CONFIG_KEY_HOMESERVER]
+                else:
+                    # Without credentials.json, require full matrix section
+                    if CONFIG_SECTION_MATRIX not in config:
+                        print("Error: Missing 'matrix' section in config")
+                        print("   Either add matrix section with access_token and bot_user_id,")
+                        print("   or run 'mmrelay auth' to set up credentials.json")
+                        return False
 
-                # If no valid credentials.json, require traditional auth fields
-                if not has_valid_credentials:
-                    required_matrix_fields.extend(
-                        [
-                            CONFIG_KEY_ACCESS_TOKEN,
-                            CONFIG_KEY_BOT_USER_ID,
-                        ]
-                    )
+                    matrix_section = config[CONFIG_SECTION_MATRIX]
+                    required_matrix_fields = [
+                        CONFIG_KEY_HOMESERVER,
+                        CONFIG_KEY_ACCESS_TOKEN,
+                        CONFIG_KEY_BOT_USER_ID,
+                    ]
 
                 missing_matrix_fields = [
                     field

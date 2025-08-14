@@ -53,6 +53,94 @@ class TestConfigChecker(unittest.TestCase):
         self.mock_args = MagicMock()
         self.mock_args.config = "/test/config.yaml"
 
+    @patch("mmrelay.cli._validate_credentials_json")
+    @patch("mmrelay.cli.parse_arguments")
+    @patch("mmrelay.cli.get_config_paths")
+    @patch("os.path.isfile")
+    @patch("mmrelay.cli.validate_yaml_syntax")
+    @patch("mmrelay.cli._validate_e2ee_config")
+    @patch("builtins.print")
+    def test_check_config_missing_matrix_section_with_credentials(
+        self, mock_print, mock_validate_e2ee, mock_validate_yaml, mock_isfile, mock_get_paths, mock_parse_args, mock_validate_credentials
+    ):
+        """
+        Test that check_config passes when matrix section is missing but credentials.json exists.
+
+        This simulates the scenario where the user has commented out the matrix section
+        but has valid credentials.json file.
+        """
+        args = MagicMock()
+        args.config = None
+        mock_parse_args.return_value = args
+
+        # Config with minimal matrix section (only homeserver) plus matrix_rooms and meshtastic
+        config_with_minimal_matrix = {
+            "matrix": {
+                "homeserver": "https://matrix.org"
+            },
+            "matrix_rooms": [{"id": "!room1:matrix.org", "meshtastic_channel": 0}],
+            "meshtastic": {
+                "connection_type": "tcp",
+                "host": "localhost",
+                "broadcast_enabled": True,
+            }
+        }
+
+        mock_get_paths.return_value = ["/test/config.yaml"]
+        mock_isfile.return_value = True
+        mock_validate_yaml.return_value = (True, None, config_with_minimal_matrix)
+        mock_validate_e2ee.return_value = True
+        mock_validate_credentials.return_value = True  # Valid credentials.json exists
+
+        with patch("builtins.open", mock_open(read_data="test")):
+            result = check_config()
+
+        self.assertTrue(result)
+        mock_print.assert_any_call("\n✅ Configuration file is valid!")
+
+    @patch("mmrelay.cli._validate_credentials_json")
+    @patch("mmrelay.cli.parse_arguments")
+    @patch("mmrelay.cli.get_config_paths")
+    @patch("os.path.isfile")
+    @patch("mmrelay.cli.validate_yaml_syntax")
+    @patch("mmrelay.cli._validate_e2ee_config")
+    @patch("builtins.print")
+    def test_check_config_missing_matrix_section_with_credentials_fails(
+        self, mock_print, mock_validate_e2ee, mock_validate_yaml, mock_isfile, mock_get_paths, mock_parse_args, mock_validate_credentials
+    ):
+        """
+        Test that check_config fails with helpful message when matrix section is completely missing even with credentials.json.
+
+        This simulates the scenario where the user has commented out the entire matrix section
+        but has valid credentials.json file. Should fail and provide helpful guidance.
+        """
+        args = MagicMock()
+        args.config = None
+        mock_parse_args.return_value = args
+
+        # Config with no matrix section at all
+        config_without_matrix = {
+            "matrix_rooms": [{"id": "!room1:matrix.org", "meshtastic_channel": 0}],
+            "meshtastic": {
+                "connection_type": "tcp",
+                "host": "localhost",
+                "broadcast_enabled": True,
+            }
+        }
+
+        mock_get_paths.return_value = ["/test/config.yaml"]
+        mock_isfile.return_value = True
+        mock_validate_yaml.return_value = (True, None, config_without_matrix)
+        mock_validate_e2ee.return_value = True
+        mock_validate_credentials.return_value = True  # Valid credentials.json exists
+
+        with patch("builtins.open", mock_open(read_data="test")):
+            result = check_config()
+
+        self.assertFalse(result)
+        mock_print.assert_any_call("Error: Missing 'matrix' section in config")
+        mock_print.assert_any_call("   With credentials.json, you still need a matrix section with 'homeserver'")
+
     @patch("mmrelay.config.os.makedirs")
     def test_get_config_paths(self, mock_makedirs):
         """
