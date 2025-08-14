@@ -445,7 +445,7 @@ async def connect_matrix(passed_config=None):
                 f"Device ID is missing from credentials.json! Contents: {credentials}"
             )
             logger.error(
-                "Please run 'mmrelay --auth' again to regenerate credentials with device_id"
+                "Please run 'mmrelay auth' again to regenerate credentials with device_id"
             )
             return None
 
@@ -1353,7 +1353,7 @@ async def on_decryption_failure(room: MatrixRoom, event: MegolmEvent) -> None:
         f"Failed to decrypt event '{event.event_id}' in room '{room.room_id}'! "
         f"This is usually temporary and resolves on its own. "
         f"If this persists, the bot's session may be corrupt. "
-        f"Try logging in again with 'mmrelay --auth'."
+        f"Try logging in again with 'mmrelay auth'."
     )
 
     # Attempt to request the keys for the failed event

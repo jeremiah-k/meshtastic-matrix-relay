@@ -182,7 +182,7 @@ MMRelay includes built-in configuration validation:
 
 ```bash
 # Check your configuration for errors
-mmrelay --check-config
+mmrelay check-config
 ```
 
 This will validate your prefix formats and other configuration options before starting the relay.

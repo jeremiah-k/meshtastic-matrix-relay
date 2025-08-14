@@ -218,7 +218,7 @@ def _validate_credentials_json(config_path):
 
         if missing_fields:
             print(f"❌ Error: credentials.json missing required fields: {', '.join(missing_fields)}")
-            print("   Run 'mmrelay --auth' to regenerate credentials")
+            print("   Run 'mmrelay auth' to regenerate credentials")
             return False
 
         return True
@@ -240,12 +240,12 @@ def _validate_matrix_authentication(config_path, matrix_section):
 
     elif has_access_token:
         print("✅ Using access_token for Matrix authentication")
-        print("   For E2EE support: run 'mmrelay --auth'")
+        print("   For E2EE support: run 'mmrelay auth'")
         return True
 
     else:
         print("❌ Error: No Matrix authentication configured")
-        print("   Setup: mmrelay --auth")
+        print("   Setup: mmrelay auth")
         return False
 
 
@@ -401,7 +401,7 @@ def check_config(args=None):
                         print(
                             f"Error: Missing required fields in 'matrix' section: {', '.join(missing_matrix_fields)}"
                         )
-                        print("   Setup authentication: mmrelay --auth")
+                        print("   Setup authentication: mmrelay auth")
                     return False
 
                 # Validate E2EE configuration and authentication
@@ -559,7 +559,7 @@ def check_config(args=None):
     print("Error: No configuration file found in any of the following locations:")
     for path in config_paths:
         print(f"  - {path}")
-    print("\nRun 'mmrelay --generate-config' to generate a sample configuration file.")
+    print("\nRun 'mmrelay generate-config' to generate a sample configuration file.")
     return False
 
 

@@ -41,7 +41,7 @@ matrix:
 Use the built-in authentication command to create your bot's E2EE-enabled credentials:
 
 ```bash
-mmrelay --auth
+mmrelay auth
 ```
 
 This interactive command will:
@@ -79,7 +79,7 @@ Use the authentication command to create E2EE credentials:
 
 ```bash
 # Create E2EE credentials (interactive)
-mmrelay --auth
+mmrelay auth
 ```
 
 **What the `--auth` command does:**
@@ -121,7 +121,7 @@ The `--auth` command is the recommended way to set up Matrix authentication for 
 ### What It Does
 
 ```bash
-mmrelay --auth
+mmrelay auth
 ```
 
 **The authentication process:**
@@ -135,7 +135,7 @@ mmrelay --auth
 ### Example Session
 
 ```
-$ mmrelay --auth
+$ mmrelay auth
 Matrix Bot Login for E2EE
 =========================
 Matrix homeserver (e.g., https://matrix.org): https://matrix.example.org
@@ -235,14 +235,14 @@ The `credentials.json` file contains:
 
 #### "E2EE features not available on Windows"
 
-**Problem**: E2EE features don't work on Windows even with `mmrelay --auth`.
+**Problem**: E2EE features don't work on Windows even with `mmrelay auth`.
 
 **Explanation**: E2EE requires the `python-olm` library, which depends on native C libraries that are difficult to compile on Windows.
 
 **Solutions**:
 
 - **Use Linux or macOS** for full E2EE support
-- **On Windows**: `mmrelay --auth` still works for regular Matrix communication
+- **On Windows**: `mmrelay auth` still works for regular Matrix communication
 - **Alternative**: Configure credentials manually in `config.yaml`:
   ```yaml
   matrix:
@@ -251,7 +251,7 @@ The `credentials.json` file contains:
     bot_user_id: @yourbot:your-matrix-server.org
   ```
 
-**Note**: Credentials created with `mmrelay --auth` on Windows will work with E2EE if you later use them on Linux/macOS.
+**Note**: Credentials created with `mmrelay auth` on Windows will work with E2EE if you later use them on Linux/macOS.
 
 #### "No E2EE dependencies found"
 
@@ -278,7 +278,7 @@ pipx install mmrelay[e2e]
   rm -rf ~/.mmrelay/store/
 
   # Create new credentials
-  mmrelay --auth
+  mmrelay auth
   ```
 
 ### Verification and Testing

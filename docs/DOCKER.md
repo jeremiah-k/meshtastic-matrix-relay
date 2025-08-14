@@ -291,7 +291,7 @@ MMRELAY_HOME=/path/to/your/data
 **Container won't start:**
 
 - Check logs: `docker compose logs mmrelay`
-- Verify config file syntax: `mmrelay --config ~/.mmrelay/config.yaml --validate`
+- Verify config file syntax: `mmrelay check-config --config ~/.mmrelay/config.yaml`
 - Ensure all required config fields are set
 
 **Connection issues:**

@@ -53,7 +53,7 @@ MMRelay includes a built-in command to generate a sample configuration file in t
 
 ```bash
 # Generate a sample configuration file
-mmrelay --generate-config
+mmrelay generate-config
 
 # Edit the generated configuration file with your preferred editor
 nano ~/.mmrelay/config.yaml
@@ -70,7 +70,7 @@ This command will:
 **Recommended Method (v1.2+)**: Use the built-in authentication command:
 
 ```bash
-mmrelay --auth
+mmrelay auth
 ```
 
 This interactive command will:
@@ -97,7 +97,7 @@ matrix:
 ### Configuration Tips
 
 - Review the comments in the sample configuration file for detailed explanations
-- Use `mmrelay --auth` for Matrix authentication (recommended)
+- Use `mmrelay auth` for Matrix authentication (recommended)
 - Configure your Meshtastic connection details in the config file
 - For advanced setups, check the plugin configuration options
 - For advanced features like message prefix customization and debug logging, see the [Extra Configuration Guide](EXTRA_CONFIGURATION.md)
@@ -142,16 +142,16 @@ Options:
 
 ```bash
 # Generate a sample configuration file
-mmrelay --generate-config
+mmrelay generate-config
 
 # Validate your configuration
-mmrelay --check-config
+mmrelay check-config
 
 # Install as a systemd user service (Linux only)
-mmrelay --install-service
+mmrelay install-service
 
 # Set up Matrix E2EE authentication (for encrypted rooms)
-mmrelay --auth
+mmrelay auth
 ```
 
 ## Running as a Service
@@ -161,7 +161,7 @@ mmrelay --auth
 For automatic startup and management on Linux systems, MMRelay includes a built-in command to set up a systemd user service:
 
 ```bash
-mmrelay --install-service
+mmrelay install-service
 ```
 
 This command will:

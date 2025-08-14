@@ -29,13 +29,13 @@ Welcome to the MMRelay documentation! This directory contains comprehensive guid
 
 ```bash
 # Generate configuration file
-mmrelay --generate-config
+mmrelay generate-config
 
 # Set up Matrix authentication (recommended)
-mmrelay --auth
+mmrelay auth
 
 # Validate configuration
-mmrelay --check-config
+mmrelay check-config
 
 # Start MMRelay
 mmrelay
@@ -68,7 +68,7 @@ docs/
 
 1. **Check the relevant guide** for your specific use case
 2. **Review troubleshooting sections** in each guide
-3. **Validate your configuration** with `mmrelay --check-config`
+3. **Validate your configuration** with `mmrelay check-config`
 4. **Enable debug logging** for detailed diagnostics
 5. **Ask for help** in the MMRelay Matrix room with your configuration and log excerpts
 

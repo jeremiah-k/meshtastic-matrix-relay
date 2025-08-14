@@ -158,5 +158,5 @@ def check_config():
     print("Error: No configuration file found in any of the following locations:")
     for path in config_paths:
         print(f"  - {path}")
-    print("\nRun 'mmrelay --generate-config' to generate a sample configuration file.")
+    print("\nRun 'mmrelay generate-config' to generate a sample configuration file.")
     return False
