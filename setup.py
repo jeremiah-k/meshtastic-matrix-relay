@@ -50,6 +50,7 @@ setup(
         "schedule==1.2.2",
         "platformdirs==4.3.8",
         "py-staticmaps>=0.4.0",
+        "psutil>=5.8.0",
         "rich==14.1.0",
         "setuptools==80.9.0",
     ],
