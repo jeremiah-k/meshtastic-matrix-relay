@@ -332,7 +332,8 @@ class E2EEDebugUtilities:
             "prerequisites": {
                 "has_device_id": bool(getattr(client, "device_id", None)),
                 # Better heuristic: encryption enabled if we have encrypted rooms or device_id
-                "encryption_enabled": bool(encrypted_rooms) or bool(getattr(client, "device_id", None)),
+                "encryption_enabled": bool(encrypted_rooms)
+                or bool(getattr(client, "device_id", None)),
             },
             "room_analysis": {},
             "recommendations": [],

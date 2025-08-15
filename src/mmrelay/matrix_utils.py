@@ -361,7 +361,6 @@ bot_start_time = int(
 )  # Timestamp when the bot starts, used to filter out old messages
 
 
-
 matrix_client = None
 
 
@@ -502,7 +501,9 @@ async def connect_matrix(passed_config=None):
     # Get matrix rooms from config
     if "matrix_rooms" not in config:
         logger.error("Configuration is missing 'matrix_rooms' section")
-        logger.error("Please ensure your config.yaml includes matrix_rooms configuration")
+        logger.error(
+            "Please ensure your config.yaml includes matrix_rooms configuration"
+        )
         raise ValueError("Missing required 'matrix_rooms' configuration")
     matrix_rooms = config["matrix_rooms"]
 

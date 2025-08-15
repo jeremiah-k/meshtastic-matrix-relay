@@ -88,6 +88,7 @@ mmrelay auth login
 - Creates a new Matrix session with E2EE support
 - Generates a unique device ID for MMRelay
 - Saves credentials to `~/.mmrelay/credentials.json`
+
 5. Sets up encryption key storage in `~/.mmrelay/store/`
 
 **Interactive prompts:**

@@ -357,13 +357,17 @@ def run_main(args):
         if credentials:
             logger.error(f"Configuration is missing required keys: {missing_keys}")
             logger.error("Matrix authentication will use credentials.json")
-            logger.error(f"Next steps:")
-            logger.error(f"  • Create a valid config.yaml file or {msg_suggest_generate_config()}")
+            logger.error("Next steps:")
+            logger.error(
+                f"  • Create a valid config.yaml file or {msg_suggest_generate_config()}"
+            )
             logger.error(f"  • {msg_suggest_check_config()}")
         else:
             logger.error(f"Configuration is missing required keys: {missing_keys}")
-            logger.error(f"Next steps:")
-            logger.error(f"  • Create a valid config.yaml file or {msg_suggest_generate_config()}")
+            logger.error("Next steps:")
+            logger.error(
+                f"  • Create a valid config.yaml file or {msg_suggest_generate_config()}"
+            )
             logger.error(f"  • {msg_suggest_check_config()}")
         return 1
 
