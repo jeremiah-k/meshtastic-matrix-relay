@@ -633,7 +633,7 @@ class TestConfigChecker(unittest.TestCase):
 
         self.assertFalse(result)
         mock_print.assert_any_call(
-            "Error: Invalid 'connection_type': invalid_type. Must be 'tcp', 'serial', or 'ble'"
+            "Error: Invalid 'connection_type': invalid_type. Must be 'tcp', 'serial', 'ble' or 'network' (deprecated)"
         )
 
     @patch("mmrelay.cli.parse_arguments")

@@ -118,9 +118,9 @@ class TestE2EEEncryption:
         ), "Unencrypted room should be detected as unencrypted"
 
     @patch("mmrelay.matrix_utils.config")
-    @patch("mmrelay.matrix_utils.matrix_client")
+    @patch("mmrelay.matrix_utils.connect_matrix")
     async def test_message_to_encrypted_room_uses_ignore_unverified(
-        self, mock_matrix_client, mock_config
+        self, mock_connect_matrix, mock_config
     ):
         """Test that messages to encrypted rooms use ignore_unverified_devices=True"""
         framework = E2EETestFramework()
@@ -143,7 +143,7 @@ class TestE2EEEncryption:
             )
         }
         mock_client = framework.create_mock_client(rooms=rooms)
-        mock_matrix_client.return_value = mock_client
+        mock_connect_matrix.return_value = mock_client
 
         # Send message to encrypted room
         await matrix_relay(
@@ -169,9 +169,9 @@ class TestE2EEEncryption:
         ), "Should use correct message type"
 
     @patch("mmrelay.matrix_utils.config")
-    @patch("mmrelay.matrix_utils.matrix_client")
+    @patch("mmrelay.matrix_utils.connect_matrix")
     async def test_message_to_unencrypted_room_still_uses_ignore_unverified(
-        self, mock_matrix_client, mock_config
+        self, mock_connect_matrix, mock_config
     ):
         """Test that messages to unencrypted rooms also use ignore_unverified_devices=True (current implementation)"""
         framework = E2EETestFramework()
@@ -192,7 +192,7 @@ class TestE2EEEncryption:
             "!unencrypted:example.org": MockUnencryptedRoom("!unencrypted:example.org")
         }
         mock_client = framework.create_mock_client(rooms=rooms)
-        mock_matrix_client.return_value = mock_client
+        mock_connect_matrix.return_value = mock_client
 
         # Send message to unencrypted room
         await matrix_relay(
