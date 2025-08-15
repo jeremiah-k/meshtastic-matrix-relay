@@ -57,7 +57,7 @@ def test_runtime_missing_broadcast_enabled_required_true_raises():
     }
 
     # Use pytest.raises to properly test for expected exceptions
-    with pytest.raises(Exception):
+    with pytest.raises(KeyError):
         get_meshtastic_config_value(
             config, "broadcast_enabled", DEFAULT_BROADCAST_ENABLED, required=True
         )

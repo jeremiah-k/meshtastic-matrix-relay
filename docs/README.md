@@ -22,20 +22,20 @@ Welcome to the MMRelay documentation! This directory contains comprehensive guid
 ### New in v1.2
 
 - **Full Matrix E2EE Support** - Secure communication in encrypted rooms
-- **`--auth` Command** - Simplified authentication setup
+- **`auth login` Command** - Simplified authentication setup for E2EE
 - **Automatic Encryption** - Seamless handling of encrypted/unencrypted rooms
 
 ### Essential Commands
 
 ```bash
 # Generate configuration file
-mmrelay generate-config
+mmrelay config generate
 
 # Set up Matrix authentication (recommended)
-mmrelay auth
+mmrelay auth login
 
 # Validate configuration
-mmrelay check-config
+mmrelay config check
 
 # Start MMRelay
 mmrelay
@@ -52,7 +52,7 @@ mmrelay
 
 ## Documentation Structure
 
-```
+```bash
 docs/
 ├── README.md              # This file - documentation index
 ├── INSTRUCTIONS.md        # Main installation and setup guide
@@ -68,7 +68,7 @@ docs/
 
 1. **Check the relevant guide** for your specific use case
 2. **Review troubleshooting sections** in each guide
-3. **Validate your configuration** with `mmrelay check-config`
+3. **Validate your configuration** with `mmrelay config check`
 4. **Enable debug logging** for detailed diagnostics
 5. **Ask for help** in the MMRelay Matrix room with your configuration and log excerpts
 
@@ -76,5 +76,5 @@ docs/
 
 - **Current Version**: v1.2+
 - **Python Requirement**: 3.9+
-- **Supported Platforms**: Linux, macOS, Windows
+- **Supported Platforms**: Linux, macOS, Windows (E2EE not available on Windows)
 - **Key Features**: Meshtastic ↔ Matrix relay, E2EE support, Docker deployment, Plugin system

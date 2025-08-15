@@ -22,6 +22,7 @@ from nio.events.room_events import RoomMemberEvent
 # Import version from package
 # Import meshtastic_utils as a module to set event_loop
 from mmrelay import __version__, meshtastic_utils
+from mmrelay.cli_utils import msg_suggest_check_config, msg_suggest_generate_config
 from mmrelay.constants.app import APP_DISPLAY_NAME, WINDOWS_PLATFORM
 from mmrelay.db_utils import (
     initialize_database,
@@ -262,13 +263,16 @@ async def main(config):
 
 
 def run_main(args):
-    """Run the main functionality of the application.
-
-    Args:
-        args: The parsed command-line arguments
-
+    """
+    Run the application's top-level startup sequence and invoke the main async runner.
+    
+    Performs initial setup (prints banner, optionally sets a custom data directory, loads and applies configuration and logging overrides), validates that required configuration sections are present (required keys differ if credentials.json is present), then runs the main coroutine. Returns an exit code: 0 for successful run or user interrupt, 1 for configuration errors or unhandled exceptions.
+    
+    Parameters:
+        args: Parsed command-line arguments (may be None). Recognized options used here include `data_dir` and `log_level`.
+    
     Returns:
-        int: Exit code (0 for success, non-zero for failure)
+        int: Exit code (0 on success or user-initiated interrupt, 1 on failure such as invalid config or runtime error).
     """
     # Print the banner at startup
     print_banner()
@@ -333,7 +337,17 @@ def run_main(args):
         config_rich_logger.info(f"Log file location: {log_file_path}")
 
     # Check if config exists and has the required keys
-    required_keys = ["matrix", "meshtastic", "matrix_rooms"]
+    # Note: matrix section is optional if credentials.json exists
+    from mmrelay.config import load_credentials
+
+    credentials = load_credentials()
+
+    if credentials:
+        # With credentials.json, only meshtastic and matrix_rooms are required
+        required_keys = ["meshtastic", "matrix_rooms"]
+    else:
+        # Without credentials.json, all sections are required
+        required_keys = ["matrix", "meshtastic", "matrix_rooms"]
 
     # Check each key individually for better debugging
     for key in required_keys:
@@ -343,10 +357,21 @@ def run_main(args):
     if not config or not all(key in config for key in required_keys):
         # Exit with error if no config exists
         missing_keys = [key for key in required_keys if key not in config]
-        logger.error(
-            f"Configuration is missing required keys: {missing_keys}. "
-            "Please create a valid config.yaml file or use --generate-config to create one."
-        )
+        if credentials:
+            logger.error(f"Configuration is missing required keys: {missing_keys}")
+            logger.error("Matrix authentication will use credentials.json")
+            logger.error("Next steps:")
+            logger.error(
+                f"  • Create a valid config.yaml file or {msg_suggest_generate_config()}"
+            )
+            logger.error(f"  • {msg_suggest_check_config()}")
+        else:
+            logger.error(f"Configuration is missing required keys: {missing_keys}")
+            logger.error("Next steps:")
+            logger.error(
+                f"  • Create a valid config.yaml file or {msg_suggest_generate_config()}"
+            )
+            logger.error(f"  • {msg_suggest_check_config()}")
         return 1
 
     try:

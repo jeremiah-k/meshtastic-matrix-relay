@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 try:
     from mmrelay.config import load_config
-    from mmrelay.matrix_utils import connect_matrix, matrix_client, matrix_relay
+    from mmrelay.matrix_utils import connect_matrix
 
     from .test_e2ee_encryption import E2EEDebugUtilities
 
@@ -98,7 +98,22 @@ class E2EEIntegrationTester:
             return False
 
     async def check_room_encryption_detection(self):
-        """Test room encryption state detection"""
+        """
+        Detect encryption status for rooms available on the configured Matrix client.
+        
+        Performs a best-effort inspection of the client's rooms (attempting a short sync if none are present),
+        counts encrypted vs unencrypted rooms, and records per-room metadata.
+        
+        Side effects:
+        - May perform a short, time-limited client.sync(...) to populate rooms.
+        - Writes a summary into self.test_results["room_detection"] with keys:
+          - success (bool), total_rooms (int), encrypted_rooms (int),
+            unencrypted_rooms (int), room_analysis (dict) on success;
+          - success (False) and error (str) on failure.
+        
+        Returns:
+            bool: True if detection completed and results were recorded, False on error or if no client is available.
+        """
         print("\n🔍 Testing room encryption detection...")
 
         if not self.client:
@@ -145,7 +160,7 @@ class E2EEIntegrationTester:
             print(f"   Unencrypted rooms: {unencrypted_count}")
 
             # Show first few rooms as examples
-            for i, (room_id, analysis) in enumerate(room_analysis.items()):
+            for i, (_, analysis) in enumerate(room_analysis.items()):
                 if i >= 3:  # Only show first 3
                     break
                 print(
@@ -235,7 +250,18 @@ class E2EEIntegrationTester:
             return False
 
     async def run_full_integration_test(self):
-        """Run complete integration test suite"""
+        """
+        Run the full E2EE integration test suite and return overall success.
+        
+        This orchestrates environment setup, executes the sequence of integration tests
+        (Matrix connection, room encryption detection, and message-sending parameter
+        analysis), prints per-test status and a final summary, and writes detailed test
+        results to self.test_results. Attempts best-effort cleanup by closing the Matrix
+        client if present.
+        
+        Returns:
+            bool: True if all tests passed (no failures), False otherwise.
+        """
         print("🚀 E2EE Integration Test Suite")
         print("=" * 50)
 
@@ -284,7 +310,7 @@ class E2EEIntegrationTester:
         if self.client:
             try:
                 await self.client.close()
-            except:
+            except Exception:
                 pass
 
         return failed == 0

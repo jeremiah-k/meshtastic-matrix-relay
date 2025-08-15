@@ -125,8 +125,14 @@ class TestE2EEEncryption:
         """Test that messages to encrypted rooms use ignore_unverified_devices=True"""
         framework = E2EETestFramework()
 
-        # Setup mock config
-        mock_config.get.return_value = {"meshtastic": {}}
+        # Setup mock config that supports both .get() and direct indexing
+        test_config = {
+            "meshtastic": {"meshnet_name": "TestNet"},
+            "matrix_rooms": {"!encrypted:example.org": {"meshtastic_channel": "general"}},
+        }
+        mock_config.get.return_value = test_config
+        mock_config.__getitem__.side_effect = test_config.__getitem__
+        mock_config.__contains__.side_effect = test_config.__contains__
 
         # Setup mock client with encrypted room
         rooms = {
@@ -137,17 +143,15 @@ class TestE2EEEncryption:
         mock_client = framework.create_mock_client(rooms=rooms)
         mock_matrix_client.return_value = mock_client
 
-        # Mock the global matrix_client variable
-        with patch("mmrelay.matrix_utils.matrix_client", mock_client):
-            # Send message to encrypted room
-            await matrix_relay(
-                room_id="!encrypted:example.org",
-                message="Test message",
-                longname="Test User",
-                shortname="TU",
-                meshnet_name="TestNet",
-                portnum=1,
-            )
+        # Send message to encrypted room
+        await matrix_relay(
+            room_id="!encrypted:example.org",
+            message="Test message",
+            longname="Test User",
+            shortname="TU",
+            meshnet_name="TestNet",
+            portnum=1,
+        )
 
         # Verify encryption parameters
         call_args, kwargs = framework.verify_encryption_parameters(
@@ -170,8 +174,14 @@ class TestE2EEEncryption:
         """Test that messages to unencrypted rooms also use ignore_unverified_devices=True (current implementation)"""
         framework = E2EETestFramework()
 
-        # Setup mock config
-        mock_config.get.return_value = {"meshtastic": {}}
+        # Setup mock config that supports both .get() and direct indexing
+        test_config = {
+            "meshtastic": {"meshnet_name": "TestNet"},
+            "matrix_rooms": {"!unencrypted:example.org": {"meshtastic_channel": "general"}},
+        }
+        mock_config.get.return_value = test_config
+        mock_config.__getitem__.side_effect = test_config.__getitem__
+        mock_config.__contains__.side_effect = test_config.__contains__
 
         # Setup mock client with unencrypted room
         rooms = {
@@ -180,17 +190,15 @@ class TestE2EEEncryption:
         mock_client = framework.create_mock_client(rooms=rooms)
         mock_matrix_client.return_value = mock_client
 
-        # Mock the global matrix_client variable
-        with patch("mmrelay.matrix_utils.matrix_client", mock_client):
-            # Send message to unencrypted room
-            await matrix_relay(
-                room_id="!unencrypted:example.org",
-                message="Test message",
-                longname="Test User",
-                shortname="TU",
-                meshnet_name="TestNet",
-                portnum=1,
-            )
+        # Send message to unencrypted room
+        await matrix_relay(
+            room_id="!unencrypted:example.org",
+            message="Test message",
+            longname="Test User",
+            shortname="TU",
+            meshnet_name="TestNet",
+            portnum=1,
+        )
 
         # Verify encryption parameters (should still use ignore_unverified=True based on current implementation)
         call_args, kwargs = framework.verify_encryption_parameters(
@@ -281,8 +289,14 @@ class TestE2EEIntegration:
         """Test complete flow from E2EE setup to encrypted message sending"""
         framework = E2EETestFramework()
 
-        # Setup mock config
-        mock_config.get.return_value = {"meshtastic": {}}
+        # Setup mock config that supports both .get() and direct indexing
+        test_config = {
+            "meshtastic": {"meshnet_name": "TestNet"},
+            "matrix_rooms": {"!encrypted:example.org": {"meshtastic_channel": "general"}},
+        }
+        mock_config.get.return_value = test_config
+        mock_config.__getitem__.side_effect = test_config.__getitem__
+        mock_config.__contains__.side_effect = test_config.__contains__
 
         # Create mock client with E2EE setup
         mock_client = framework.create_mock_client(should_upload_keys=True)
@@ -322,10 +336,37 @@ class E2EEDebugUtilities:
 
     @staticmethod
     async def diagnose_client_encryption_state(client):
-        """Comprehensive diagnosis of client encryption state"""
+        """
+        Analyze a Matrix-like client's end-to-end encryption state and return a structured diagnostic.
+        
+        Returns a dictionary with the following keys:
+        - client_info: {"encrypted_rooms": [room_id, ...]} — list of room IDs that appear to have encryption enabled.
+        - prerequisites: {
+            "has_device_id": bool,            # whether client.device_id is present/truthy
+            "encryption_enabled": bool        # True if there are encrypted rooms or a device_id is present
+          }
+        - room_analysis: {room_id: {"encrypted": True|False|"unknown", "display_name": str, "room_type": str}, ...}
+          — per-room details derived from client.rooms; uses safe defaults when attributes are missing.
+        - recommendations: [str, ...] — human-readable suggestions produced when device_id is missing, encryption is not enabled, or no encrypted rooms are detected.
+        
+        The function is defensive: it works with any object that exposes a .rooms mapping and optional .device_id, and it will populate safe defaults rather than raising if those attributes are absent.
+        """
+        # Initialize with safe defaults to avoid KeyError when tools are unavailable
+        encrypted_rooms = []
+        if hasattr(client, "rooms") and client.rooms:
+            encrypted_rooms = [
+                rid for rid, r in client.rooms.items() if getattr(r, "encrypted", False)
+            ]
         diagnosis = {
-            "client_info": E2EEDiagnosticTools.inspect_client_state(client),
-            "prerequisites": E2EEDiagnosticTools.verify_e2ee_prerequisites(client),
+            "client_info": {
+                "encrypted_rooms": encrypted_rooms,
+            },  # Fallback until E2EEDiagnosticTools is enabled
+            "prerequisites": {
+                "has_device_id": bool(getattr(client, "device_id", None)),
+                # Better heuristic: encryption enabled if we have encrypted rooms or device_id
+                "encryption_enabled": bool(encrypted_rooms)
+                or bool(getattr(client, "device_id", None)),
+            },
             "room_analysis": {},
             "recommendations": [],
         }
@@ -340,17 +381,17 @@ class E2EEDebugUtilities:
                 }
 
         # Generate recommendations
-        if not diagnosis["prerequisites"]["has_device_id"]:
+        if not diagnosis["prerequisites"].get("has_device_id", False):
             diagnosis["recommendations"].append(
                 "Missing device_id - E2EE will not work"
             )
 
-        if not diagnosis["prerequisites"]["encryption_enabled"]:
+        if not diagnosis["prerequisites"].get("encryption_enabled", False):
             diagnosis["recommendations"].append(
                 "Encryption not enabled in client config"
             )
 
-        if not diagnosis["client_info"]["encrypted_rooms"]:
+        if not diagnosis["client_info"].get("encrypted_rooms"):
             diagnosis["recommendations"].append(
                 "No encrypted rooms detected - may need full sync"
             )

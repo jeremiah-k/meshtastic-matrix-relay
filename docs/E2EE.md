@@ -41,7 +41,7 @@ matrix:
 Use the built-in authentication command to create your bot's E2EE-enabled credentials:
 
 ```bash
-mmrelay auth
+mmrelay auth login
 ```
 
 This interactive command will:
@@ -71,7 +71,7 @@ That's it! MMRelay will automatically encrypt messages for encrypted rooms and d
 
 **E2EE is not available on Windows** due to technical limitations with the required cryptographic libraries. The `python-olm` library requires native C libraries that are difficult to compile and install on Windows systems.
 
-**Windows users can still use MMRelay** for regular (unencrypted) Matrix communication by configuring Matrix credentials directly in `config.yaml` instead of using the `--auth` command.
+**Windows users can still use MMRelay** for regular (unencrypted) Matrix communication. You can use `mmrelay auth login` to create credentials on Windows (E2EE not available), or alternatively configure Matrix credentials directly in `config.yaml`.
 
 ### Step 2: Create E2EE Credentials
 
@@ -79,20 +79,21 @@ Use the authentication command to create E2EE credentials:
 
 ```bash
 # Create E2EE credentials (interactive)
-mmrelay auth
+mmrelay auth login
 ```
 
-**What the `--auth` command does:**
+**What the `auth login` command does:**
 
-1. Prompts for your Matrix homeserver, username, and password
-2. Creates a new Matrix session with E2EE support
-3. Generates a unique device ID for MMRelay
-4. Saves credentials to `~/.mmrelay/credentials.json`
+- Prompts for your Matrix homeserver, username, and password
+- Creates a new Matrix session with E2EE support
+- Generates a unique device ID for MMRelay
+- Saves credentials to `~/.mmrelay/credentials.json`
+
 5. Sets up encryption key storage in `~/.mmrelay/store/`
 
 **Interactive prompts:**
 
-```
+```text
 Matrix Bot Login for E2EE
 =========================
 Matrix homeserver (e.g., https://matrix.org): https://your-server.org
@@ -114,14 +115,14 @@ MMRelay will automatically:
 - Initialize encryption keys and device trust
 - Connect to Matrix with full E2EE support
 
-## The `--auth` Command
+## The `auth login` Command
 
-The `--auth` command is the recommended way to set up Matrix authentication for MMRelay v1.2+. It provides secure credential management with full E2EE support.
+The `auth login` command is the recommended way to set up Matrix authentication for MMRelay v1.2+. It provides secure credential management with full E2EE support.
 
 ### What It Does
 
 ```bash
-mmrelay auth
+mmrelay auth login
 ```
 
 **The authentication process:**
@@ -134,8 +135,8 @@ mmrelay auth
 
 ### Example Session
 
-```
-$ mmrelay auth
+```bash
+$ mmrelay auth login
 Matrix Bot Login for E2EE
 =========================
 Matrix homeserver (e.g., https://matrix.org): https://matrix.example.org
@@ -235,14 +236,14 @@ The `credentials.json` file contains:
 
 #### "E2EE features not available on Windows"
 
-**Problem**: E2EE features don't work on Windows even with `mmrelay auth`.
+**Problem**: E2EE features don't work on Windows even with `mmrelay auth login`.
 
 **Explanation**: E2EE requires the `python-olm` library, which depends on native C libraries that are difficult to compile on Windows.
 
 **Solutions**:
 
 - **Use Linux or macOS** for full E2EE support
-- **On Windows**: `mmrelay auth` still works for regular Matrix communication
+- **On Windows**: `mmrelay auth login` still works for regular Matrix communication
 - **Alternative**: Configure credentials manually in `config.yaml`:
   ```yaml
   matrix:
@@ -251,7 +252,7 @@ The `credentials.json` file contains:
     bot_user_id: @yourbot:your-matrix-server.org
   ```
 
-**Note**: Credentials created with `mmrelay auth` on Windows will work with E2EE if you later use them on Linux/macOS.
+**Note**: Credentials created with `mmrelay auth login` on Windows will work with E2EE if you later use them on Linux/macOS.
 
 #### "No E2EE dependencies found"
 
@@ -278,7 +279,7 @@ pipx install mmrelay[e2e]
   rm -rf ~/.mmrelay/store/
 
   # Create new credentials
-  mmrelay auth
+  mmrelay auth login
   ```
 
 ### Verification and Testing
@@ -287,7 +288,7 @@ pipx install mmrelay[e2e]
 
 Look for these log messages when MMRelay starts:
 
-```
+```bash
 INFO Matrix: Found credentials at ~/.mmrelay/credentials.json
 INFO Matrix: Using device ID: YOUR_DEVICE_ID
 INFO Matrix: Setting up End-to-End Encryption...

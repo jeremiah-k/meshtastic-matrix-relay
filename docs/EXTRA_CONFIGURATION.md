@@ -192,6 +192,6 @@ This will validate your prefix formats and other configuration options before st
 If you encounter issues with these advanced features:
 
 1. **Check the logs** for warning messages about invalid configurations
-2. **Use `--check-config`** to validate your settings
+2. **Use `mmrelay config check`** to validate your settings
 3. **Enable debug logging** for the relevant component
 4. **Ask for help** in the MMRelay Matrix room with your configuration and log excerpts

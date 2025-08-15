@@ -30,7 +30,7 @@ lint:
     - osv-scanner@2.0.3
     - prettier@3.6.2
     - ruff@0.12.7
-    - trufflehog@3.90.3
+    - trufflehog@3.90.5
     - yamllint@1.37.1
   # Remove map_plugin.py after staticmaps is updated and we're able to work on it again
   # For more info: https://github.com/geoffwhittington/meshtastic-matrix-relay/issues/117
