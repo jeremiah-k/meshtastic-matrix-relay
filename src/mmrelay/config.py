@@ -237,12 +237,16 @@ config_path = None
 
 def set_config(module, passed_config):
     """
-    Assigns the provided configuration dictionary to a module and sets additional attributes for known module types.
-
-    For modules named "matrix_utils" or "meshtastic_utils", sets specific configuration attributes if present. Calls the module's `setup_config()` method if it exists for backward compatibility.
-
+    Assign the given configuration to a module and apply known, optional module-specific settings.
+    
+    This function sets module.config = passed_config and, for known module names, applies additional configuration when present:
+    - For a module named "matrix_utils": if `matrix_rooms` exists on the module and in the config, it is assigned; if the config contains a `matrix` section with `homeserver`, `access_token`, and `bot_user_id`, those values are assigned to module.matrix_homeserver, module.matrix_access_token, and module.bot_user_id respectively.
+    - For a module named "meshtastic_utils": if `matrix_rooms` exists on the module and in the config, it is assigned.
+    
+    If the module exposes a callable setup_config() it will be invoked (kept for backward compatibility).
+    
     Returns:
-        dict: The configuration dictionary that was assigned to the module.
+        dict: The same configuration dictionary that was assigned to the module.
     """
     # Set the module's config variable
     module.config = passed_config
@@ -442,21 +446,21 @@ def validate_yaml_syntax(config_content, config_path):
 
 def get_meshtastic_config_value(config, key, default=None, required=False):
     """
-    Return a value from the `meshtastic` section of the given config dict.
-
-    If the key exists under `config["meshtastic"]`, that value is returned. If the key is missing:
-    - If `required` is False, `default` is returned.
-    - If `required` is True, a KeyError is raised and an error is logged with guidance to add the missing setting.
-
+    Return a value from the "meshtastic" section of the provided configuration.
+    
+    Looks up `config["meshtastic"][key]` and returns it if present. If the meshtastic section or the key is missing:
+    - If `required` is False, returns `default`.
+    - If `required` is True, logs an error with guidance to update the configuration and raises KeyError.
+    
     Parameters:
-        config (dict): Parsed configuration mapping.
-        key (str): Key to retrieve from the `meshtastic` section.
+        config (dict): Parsed configuration mapping containing a "meshtastic" section.
+        key (str): Name of the setting to retrieve from the meshtastic section.
         default: Value to return when the key is absent and not required.
-        required (bool): If True, missing key raises KeyError; otherwise returns `default`.
-
+        required (bool): When True, a missing key raises KeyError; otherwise returns `default`.
+    
     Returns:
-        The value from `config["meshtastic"][key]` or `default` when not required.
-
+        The value of `config["meshtastic"][key]` if present, otherwise `default`.
+    
     Raises:
         KeyError: If `required` is True and the requested key is not present.
     """

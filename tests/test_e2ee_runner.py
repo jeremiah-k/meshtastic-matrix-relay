@@ -102,7 +102,17 @@ async def test_room_send_parameters():
 
 
 async def run_all_tests():
-    """Run all quick tests"""
+    """
+    Run the suite of quick E2EE tests and report results.
+    
+    This coroutine executes the predefined quick tests sequentially, awaiting each async test function.
+    It prints progress and a per-test summary to stdout, captures exceptions per test (marking them as failures),
+    and returns an overall boolean success indicator. If the environment variable MMR_WITH_DIAG == "1",
+    the runner is prepared to include diagnostic tests (currently not enabled by default).
+    
+    Returns:
+        bool: True if all tests passed, False if any test failed.
+    """
     print("🚀 Running E2EE Quick Tests")
     print("=" * 50)
 
