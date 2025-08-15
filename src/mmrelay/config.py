@@ -9,6 +9,7 @@ import yaml
 from yaml.loader import SafeLoader
 
 # Import application constants
+from mmrelay.constants import msg_suggest_check_config, msg_suggest_generate_config
 from mmrelay.constants.app import APP_AUTHOR, APP_NAME
 from mmrelay.constants.config import (
     CONFIG_KEY_ACCESS_TOKEN,
@@ -333,9 +334,7 @@ def load_config(config_file=None, args=None):
     for path in config_paths:
         logger.error(f"  - {path}")
     logger.error("Using empty configuration. This will likely cause errors.")
-    logger.error(
-        "Run 'mmrelay config generate' to generate a sample configuration file."
-    )
+    logger.error(msg_suggest_generate_config())
 
     return relay_config
 
@@ -468,7 +467,7 @@ def get_meshtastic_config_value(config, key, default=None, required=False):
             logger.error(
                 f"Missing required configuration: meshtastic.{key}\n"
                 f"Please add '{key}: {default if default is not None else 'VALUE'}' to your meshtastic section in config.yaml\n"
-                f"Run 'mmrelay config check' to validate your configuration."
+                f"{msg_suggest_check_config()}"
             )
             raise KeyError(
                 f"Required configuration 'meshtastic.{key}' is missing. "

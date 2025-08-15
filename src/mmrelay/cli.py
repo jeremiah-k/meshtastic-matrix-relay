@@ -10,6 +10,7 @@ import sys
 # Import version from package
 from mmrelay import __version__
 from mmrelay.config import get_config_paths, validate_yaml_syntax
+from mmrelay.constants import get_deprecation_warning, msg_suggest_generate_config
 from mmrelay.constants.app import WINDOWS_PLATFORM
 from mmrelay.constants.config import (
     CONFIG_KEY_ACCESS_TOKEN,
@@ -574,7 +575,7 @@ def check_config(args=None):
     print("Error: No configuration file found in any of the following locations:")
     for path in config_paths:
         print(f"  - {path}")
-    print("\nRun 'mmrelay config generate' to generate a sample configuration file.")
+    print(f"\n{msg_suggest_generate_config()}")
     return False
 
 
@@ -594,15 +595,11 @@ def main():
 
         # Handle legacy flags (with deprecation warnings)
         if args.check_config:
-            print(
-                "Warning: --check-config is deprecated. Use 'mmrelay config check' instead."
-            )
+            print(get_deprecation_warning('--check-config'))
             return 0 if check_config(args) else 1
 
         if args.install_service:
-            print(
-                "Warning: --install-service is deprecated. Use 'mmrelay service install' instead."
-            )
+            print(get_deprecation_warning('--install-service'))
             try:
                 from mmrelay.setup_utils import install_service
 
@@ -612,9 +609,7 @@ def main():
                 return 1
 
         if args.generate_config:
-            print(
-                "Warning: --generate-config is deprecated. Use 'mmrelay config generate' instead."
-            )
+            print(get_deprecation_warning('--generate-config'))
             return 0 if generate_sample_config() else 1
 
         if args.version:
@@ -622,7 +617,7 @@ def main():
             return 0
 
         if args.auth:
-            print("Warning: --auth is deprecated. Use 'mmrelay auth login' instead.")
+            print(get_deprecation_warning('--auth'))
             return handle_auth_command(args)
 
         # If no command was specified, run the main functionality
@@ -756,8 +751,9 @@ def handle_auth_status(args):
                 print(f"❌ Error reading credentials.json: {e}")
                 return 1
 
+    from mmrelay.constants import cmd_auth_login
     print("❌ No credentials.json found")
-    print("Run 'mmrelay auth login' to authenticate")
+    print(f"Run '{cmd_auth_login()}' to authenticate")
     return 1
 
 

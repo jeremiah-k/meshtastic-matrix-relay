@@ -18,6 +18,23 @@ Usage:
 
 # Re-export commonly used constants for convenience
 from .app import APP_AUTHOR, APP_NAME
+from .commands import (
+    get_command,
+    get_deprecation_warning,
+    suggest_command,
+    require_command,
+    retry_command,
+    validate_command,
+    cmd_generate_config,
+    cmd_check_config,
+    cmd_auth_login,
+    cmd_auth_status,
+    cmd_service_install,
+    msg_suggest_generate_config,
+    msg_suggest_check_config,
+    msg_require_auth_login,
+    msg_retry_auth_login,
+)
 from .config import (
     CONFIG_KEY_LEVEL,
     CONFIG_SECTION_LOGGING,
@@ -37,6 +54,22 @@ __all__ = [
     # App constants
     "APP_NAME",
     "APP_AUTHOR",
+    # Command constants and utilities
+    "get_command",
+    "get_deprecation_warning",
+    "suggest_command",
+    "require_command",
+    "retry_command",
+    "validate_command",
+    "cmd_generate_config",
+    "cmd_check_config",
+    "cmd_auth_login",
+    "cmd_auth_status",
+    "cmd_service_install",
+    "msg_suggest_generate_config",
+    "msg_suggest_check_config",
+    "msg_require_auth_login",
+    "msg_retry_auth_login",
     # Config constants
     "CONFIG_SECTION_MATRIX",
     "CONFIG_SECTION_MESHTASTIC",
