@@ -239,7 +239,7 @@ def _validate_credentials_json(config_path):
             print(
                 f"❌ Error: credentials.json missing required fields: {', '.join(missing_fields)}"
             )
-            print("   Run 'mmrelay auth' to regenerate credentials")
+            print("   Run 'mmrelay auth login' to regenerate credentials")
             return False
 
         return True
@@ -261,12 +261,12 @@ def _validate_matrix_authentication(config_path, matrix_section):
 
     elif has_access_token:
         print("✅ Using access_token for Matrix authentication")
-        print("   For E2EE support: run 'mmrelay auth'")
+        print("   For E2EE support: run 'mmrelay auth login'")
         return True
 
     else:
         print("❌ Error: No Matrix authentication configured")
-        print("   Setup: mmrelay auth")
+        print("   Setup: mmrelay auth login")
         return False
 
 
@@ -406,7 +406,7 @@ def check_config(args=None):
                         print(
                             "   Either add matrix section with access_token and bot_user_id,"
                         )
-                        print("   or run 'mmrelay auth' to set up credentials.json")
+                        print("   or run 'mmrelay auth login' to set up credentials.json")
                         return False
 
                     matrix_section = config[CONFIG_SECTION_MATRIX]
@@ -434,7 +434,7 @@ def check_config(args=None):
                         print(
                             f"Error: Missing required fields in 'matrix' section: {', '.join(missing_matrix_fields)}"
                         )
-                        print("   Setup authentication: mmrelay auth")
+                        print("   Setup authentication: mmrelay auth login")
                     return False
 
                 # Validate E2EE configuration and authentication
@@ -723,7 +723,9 @@ def handle_auth_login(args):
     print("===================================")
 
     try:
-        result = asyncio.run(login_matrix_bot())
+        # Pass --force flag as logout_others parameter if provided
+        logout_others = getattr(args, 'force', False)
+        result = asyncio.run(login_matrix_bot(logout_others=logout_others))
         return 0 if result else 1
     except KeyboardInterrupt:
         print("\nAuthentication cancelled by user.")

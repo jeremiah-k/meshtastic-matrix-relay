@@ -40,6 +40,12 @@ pipx install mmrelay
 # Generate a sample configuration file & then edit it
 mmrelay config generate
 
+# (Recommended) Validate your configuration
+mmrelay config check
+
+# (Optional) If you plan to use E2EE with encrypted Matrix rooms:
+# mmrelay auth login
+
 # Install the service (or run manually without this step)
 mmrelay service install
 ```

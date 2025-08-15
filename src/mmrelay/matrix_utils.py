@@ -449,11 +449,11 @@ async def connect_matrix(passed_config=None):
 
         # Check if device_id is missing or None
         if not e2ee_device_id:
+            logger.error("Device ID is missing from credentials.json!")
+            # Log available keys for debugging without exposing sensitive data
+            logger.debug(f"credentials.json keys present: {list(credentials.keys())}")
             logger.error(
-                f"Device ID is missing from credentials.json! Contents: {credentials}"
-            )
-            logger.error(
-                "Please run 'mmrelay auth' again to regenerate credentials with device_id"
+                "Please run 'mmrelay auth login' again to regenerate credentials with device_id"
             )
             return None
 
@@ -487,7 +487,7 @@ async def connect_matrix(passed_config=None):
         if missing_fields:
             logger.error(f"Matrix section is missing required fields: {missing_fields}")
             logger.error(
-                "Please run 'mmrelay auth' to set up credentials.json, or add missing fields to config.yaml"
+                "Please run 'mmrelay auth login' to set up credentials.json, or add missing fields to config.yaml"
             )
             return None
 
