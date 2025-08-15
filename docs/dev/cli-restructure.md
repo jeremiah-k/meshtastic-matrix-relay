@@ -6,28 +6,28 @@ This document outlines the restructuring of MMRelay's CLI from a flat command st
 
 ## Current State Analysis
 
-### Existing CLI Structure
+### Existing CLI Structure (Main Branch)
 
 **Current Commands:**
 - `mmrelay` - Start the relay (main functionality)
 - `mmrelay --version` - Show version
-- `mmrelay --generate-config` - Generate sample config (deprecated flag)
-- `mmrelay --check-config` - Validate config (deprecated flag)
-- `mmrelay --install-service` - Install systemd service (deprecated flag)
-- `mmrelay --auth` - Matrix authentication (deprecated flag)
+- `mmrelay --generate-config` - Generate sample config
+- `mmrelay --check-config` - Validate config
+- `mmrelay --install-service` - Install systemd service
 
-**Modern Subcommands (partially implemented):**
-- `mmrelay auth` - Authentication management
-- `mmrelay check-config` - Config validation
-- `mmrelay generate-config` - Config generation
-- `mmrelay install-service` - Service installation
+**Global Options:**
+- `--config` - Configuration file path
+- `--data-dir` - Data directory path
+- `--log-level` - Logging level
+- `--logfile` - Log file path
 
 ### Problems with Current Structure
 
-1. **Mixed paradigms** - Both flags (`--generate-config`) and subcommands (`auth`) coexist
-2. **Deprecated options in help** - Confuses new users with outdated syntax
-3. **Poor extensibility** - Flat structure doesn't scale well
-4. **Inconsistent with industry standards** - Modern CLI tools use grouped commands
+1. **Flat command structure** - All commands are top-level flags
+2. **Poor extensibility** - Difficult to add related commands (e.g., service start/stop)
+3. **Inconsistent with industry standards** - Modern CLI tools use grouped commands
+4. **Limited service management** - Only install, no start/stop/status/logs
+5. **No authentication management** - E2EE requires auth commands not yet implemented
 
 ## Proposed Grouped Command Structure
 
@@ -50,18 +50,16 @@ mmrelay config check       # Validate configuration file
 **Current Mapping:**
 - `mmrelay --generate-config` → `mmrelay config generate`
 - `mmrelay --check-config` → `mmrelay config check`
-- `mmrelay generate-config` → `mmrelay config generate`
-- `mmrelay check-config` → `mmrelay config check`
 
 #### 2. AUTH Group
 ```bash
-mmrelay auth login         # Authenticate with Matrix (renamed from 'auth')
-mmrelay auth status        # Check authentication status
+mmrelay auth login         # Authenticate with Matrix (new for E2EE)
+mmrelay auth status        # Check authentication status (new)
 ```
 
-**Current Mapping:**
-- `mmrelay --auth` → `mmrelay auth login`
-- `mmrelay auth` → `mmrelay auth login`
+**New Commands:**
+- Authentication management for E2EE support
+- No current equivalent - this is new functionality
 
 #### 3. SERVICE Group
 ```bash
@@ -75,7 +73,6 @@ mmrelay service logs       # View service logs
 
 **Current Mapping:**
 - `mmrelay --install-service` → `mmrelay service install`
-- `mmrelay install-service` → `mmrelay service install`
 
 **New Commands:**
 - `mmrelay service start/stop/status/restart/logs` - Full service management
@@ -330,7 +327,7 @@ def check_auth_status():
 - **Extensible architecture** - Easy to add new command groups
 - **Maintainable code** - Clear separation of concerns
 - **Consistent patterns** - Standardized command handling
-- **Future-proof design** - Ready for plugin system, diagnostics, etc.
+- **Future-proof design** - Ready for additional functionality as needed
 
 ## Testing Strategy
 
