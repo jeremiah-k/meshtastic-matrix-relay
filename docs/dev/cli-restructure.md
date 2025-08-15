@@ -78,6 +78,8 @@ mmrelay service restart    # Restart the service
 mmrelay service logs       # View service logs
 ```
 
+_Note: As of this initial implementation, only the `install` subcommand is available. The other service management commands are planned for future releases._
+
 **Current Mapping:**
 
 - `mmrelay --install-service` → `mmrelay service install`

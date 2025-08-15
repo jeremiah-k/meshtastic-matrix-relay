@@ -31,6 +31,7 @@ from nio import (
 from nio.events.room_events import RoomMemberEvent
 from PIL import Image
 
+from mmrelay.cli_utils import msg_require_auth_login, msg_retry_auth_login
 from mmrelay.config import (
     get_base_dir,
     get_e2ee_store_dir,
@@ -472,9 +473,7 @@ async def connect_matrix(passed_config=None):
             logger.error(
                 "No Matrix authentication available. Neither credentials.json nor matrix section in config found."
             )
-            logger.error(
-                "Please run 'mmrelay auth login' to set up credentials.json, or add matrix section to config.yaml"
-            )
+            logger.error(msg_require_auth_login())
             return None
 
         matrix_section = config["matrix"]
@@ -1408,7 +1407,7 @@ async def on_decryption_failure(room: MatrixRoom, event: MegolmEvent) -> None:
         f"Failed to decrypt event '{event.event_id}' in room '{room.room_id}'! "
         f"This is usually temporary and resolves on its own. "
         f"If this persists, the bot's session may be corrupt. "
-        f"Try logging in again with 'mmrelay auth login'."
+        f"{msg_retry_auth_login()}."
     )
 
     # Attempt to request the keys for the failed event
