@@ -100,17 +100,17 @@ class E2EEIntegrationTester:
     async def check_room_encryption_detection(self):
         """
         Detect encryption status for rooms available on the configured Matrix client.
-        
+
         Performs a best-effort inspection of the client's rooms (attempting a short sync if none are present),
         counts encrypted vs unencrypted rooms, and records per-room metadata.
-        
+
         Side effects:
         - May perform a short, time-limited client.sync(...) to populate rooms.
         - Writes a summary into self.test_results["room_detection"] with keys:
           - success (bool), total_rooms (int), encrypted_rooms (int),
             unencrypted_rooms (int), room_analysis (dict) on success;
           - success (False) and error (str) on failure.
-        
+
         Returns:
             bool: True if detection completed and results were recorded, False on error or if no client is available.
         """
@@ -252,13 +252,13 @@ class E2EEIntegrationTester:
     async def run_full_integration_test(self):
         """
         Run the full E2EE integration test suite and return overall success.
-        
+
         This orchestrates environment setup, executes the sequence of integration tests
         (Matrix connection, room encryption detection, and message-sending parameter
         analysis), prints per-test status and a final summary, and writes detailed test
         results to self.test_results. Attempts best-effort cleanup by closing the Matrix
         client if present.
-        
+
         Returns:
             bool: True if all tests passed (no failures), False otherwise.
         """

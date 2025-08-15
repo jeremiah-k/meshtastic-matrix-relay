@@ -128,7 +128,9 @@ class TestE2EEEncryption:
         # Setup mock config that supports both .get() and direct indexing
         test_config = {
             "meshtastic": {"meshnet_name": "TestNet"},
-            "matrix_rooms": {"!encrypted:example.org": {"meshtastic_channel": "general"}},
+            "matrix_rooms": {
+                "!encrypted:example.org": {"meshtastic_channel": "general"}
+            },
         }
         mock_config.get.return_value = test_config
         mock_config.__getitem__.side_effect = test_config.__getitem__
@@ -177,7 +179,9 @@ class TestE2EEEncryption:
         # Setup mock config that supports both .get() and direct indexing
         test_config = {
             "meshtastic": {"meshnet_name": "TestNet"},
-            "matrix_rooms": {"!unencrypted:example.org": {"meshtastic_channel": "general"}},
+            "matrix_rooms": {
+                "!unencrypted:example.org": {"meshtastic_channel": "general"}
+            },
         }
         mock_config.get.return_value = test_config
         mock_config.__getitem__.side_effect = test_config.__getitem__
@@ -292,7 +296,9 @@ class TestE2EEIntegration:
         # Setup mock config that supports both .get() and direct indexing
         test_config = {
             "meshtastic": {"meshnet_name": "TestNet"},
-            "matrix_rooms": {"!encrypted:example.org": {"meshtastic_channel": "general"}},
+            "matrix_rooms": {
+                "!encrypted:example.org": {"meshtastic_channel": "general"}
+            },
         }
         mock_config.get.return_value = test_config
         mock_config.__getitem__.side_effect = test_config.__getitem__
@@ -338,7 +344,7 @@ class E2EEDebugUtilities:
     async def diagnose_client_encryption_state(client):
         """
         Analyze a Matrix-like client's end-to-end encryption state and return a structured diagnostic.
-        
+
         Returns a dictionary with the following keys:
         - client_info: {"encrypted_rooms": [room_id, ...]} — list of room IDs that appear to have encryption enabled.
         - prerequisites: {
@@ -348,7 +354,7 @@ class E2EEDebugUtilities:
         - room_analysis: {room_id: {"encrypted": True|False|"unknown", "display_name": str, "room_type": str}, ...}
           — per-room details derived from client.rooms; uses safe defaults when attributes are missing.
         - recommendations: [str, ...] — human-readable suggestions produced when device_id is missing, encryption is not enabled, or no encrypted rooms are detected.
-        
+
         The function is defensive: it works with any object that exposes a .rooms mapping and optional .device_id, and it will populate safe defaults rather than raising if those attributes are absent.
         """
         # Initialize with safe defaults to avoid KeyError when tools are unavailable
