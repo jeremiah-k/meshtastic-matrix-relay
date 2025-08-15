@@ -10,7 +10,6 @@ import sys
 # Import version from package
 from mmrelay import __version__
 from mmrelay.config import get_config_paths, validate_yaml_syntax
-from mmrelay.constants import get_deprecation_warning, msg_suggest_generate_config
 from mmrelay.constants.app import WINDOWS_PLATFORM
 from mmrelay.constants.config import (
     CONFIG_KEY_ACCESS_TOKEN,
@@ -30,6 +29,151 @@ from mmrelay.constants.network import (
     CONNECTION_TYPE_TCP,
 )
 from mmrelay.tools import get_sample_config_path
+
+
+# =============================================================================
+# CLI Command Registry - Single source of truth for all CLI command syntax
+# =============================================================================
+
+# Command registry - maps command purposes to their current syntax
+CLI_COMMANDS = {
+    # Config commands
+    'generate_config': 'mmrelay config generate',
+    'check_config': 'mmrelay config check',
+
+    # Auth commands
+    'auth_login': 'mmrelay auth login',
+    'auth_status': 'mmrelay auth status',
+
+    # Service commands
+    'service_install': 'mmrelay service install',
+
+    # Main commands
+    'start_relay': 'mmrelay',
+    'show_version': 'mmrelay --version',
+    'show_help': 'mmrelay --help'
+}
+
+# Deprecation mappings - maps old flags to new command keys
+DEPRECATED_COMMANDS = {
+    '--generate-config': 'generate_config',
+    '--check-config': 'check_config',
+    '--install-service': 'service_install',
+    '--auth': 'auth_login'
+}
+
+
+def get_command(command_key):
+    """Get the current command syntax for a given command key.
+
+    Args:
+        command_key (str): The command key (e.g., 'generate_config')
+
+    Returns:
+        str: The current command syntax (e.g., 'mmrelay config generate')
+    """
+    return CLI_COMMANDS.get(command_key, f"<unknown command: {command_key}>")
+
+
+def get_deprecation_warning(old_flag):
+    """Generate a deprecation warning message for an old command flag.
+
+    Args:
+        old_flag (str): The deprecated flag (e.g., '--generate-config')
+
+    Returns:
+        str: A formatted deprecation warning message
+    """
+    new_command_key = DEPRECATED_COMMANDS.get(old_flag)
+    if new_command_key:
+        new_command = get_command(new_command_key)
+        return f"Warning: {old_flag} is deprecated. Use '{new_command}' instead."
+    return f"Warning: {old_flag} is deprecated."
+
+
+def suggest_command(command_key, purpose):
+    """Generate a suggestion message for a command.
+
+    Args:
+        command_key (str): The command key
+        purpose (str): Description of what the command does (should start with 'to')
+
+    Returns:
+        str: A formatted suggestion message
+    """
+    command = get_command(command_key)
+    return f"Run '{command}' {purpose}."
+
+
+def require_command(command_key, purpose):
+    """Generate a requirement message for a command.
+
+    Args:
+        command_key (str): The command key
+        purpose (str): Description of what the command does (should start with 'to')
+
+    Returns:
+        str: A formatted requirement message
+    """
+    command = get_command(command_key)
+    return f"Please run '{command}' {purpose}."
+
+
+def retry_command(command_key, context=""):
+    """Generate a retry message for a command.
+
+    Args:
+        command_key (str): The command key
+        context (str): Optional context for why to retry
+
+    Returns:
+        str: A formatted retry message
+    """
+    command = get_command(command_key)
+    if context:
+        return f"Try running '{command}' again {context}."
+    else:
+        return f"Try running '{command}' again."
+
+
+def validate_command(command_key, purpose):
+    """Generate a validation message for a command.
+
+    Args:
+        command_key (str): The command key
+        purpose (str): Description of what to validate
+
+    Returns:
+        str: A formatted validation message
+    """
+    command = get_command(command_key)
+    return f"Use '{command}' {purpose}."
+
+
+# Common message templates for frequently used commands
+def msg_suggest_generate_config():
+    """Standard message suggesting config generation."""
+    return suggest_command('generate_config', 'to generate a sample configuration file')
+
+
+def msg_suggest_check_config():
+    """Standard message suggesting config validation."""
+    return validate_command('check_config', 'to validate your configuration')
+
+
+def msg_require_auth_login():
+    """Standard message requiring authentication."""
+    return require_command('auth_login', 'to set up credentials.json, or add matrix section to config.yaml')
+
+
+def msg_retry_auth_login():
+    """Standard message suggesting auth retry."""
+    return retry_command('auth_login')
+
+
+# =============================================================================
+# CLI Argument Parsing and Command Handling
+# =============================================================================
 
 
 def parse_arguments():
@@ -751,9 +895,8 @@ def handle_auth_status(args):
                 print(f"❌ Error reading credentials.json: {e}")
                 return 1
 
-    from mmrelay.constants import cmd_auth_login
     print("❌ No credentials.json found")
-    print(f"Run '{cmd_auth_login()}' to authenticate")
+    print(f"Run '{get_command('auth_login')}' to authenticate")
     return 1
 
 

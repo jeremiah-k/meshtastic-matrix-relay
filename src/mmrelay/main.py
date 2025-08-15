@@ -22,7 +22,6 @@ from nio.events.room_events import RoomMemberEvent
 # Import version from package
 # Import meshtastic_utils as a module to set event_loop
 from mmrelay import __version__, meshtastic_utils
-from mmrelay.constants import msg_suggest_generate_config
 from mmrelay.constants.app import APP_DISPLAY_NAME, WINDOWS_PLATFORM
 from mmrelay.db_utils import (
     initialize_database,
@@ -358,12 +357,12 @@ def run_main(args):
             logger.error(
                 f"Configuration is missing required keys: {missing_keys}. "
                 "Matrix authentication will use credentials.json. "
-                f"Please create a valid config.yaml file or {msg_suggest_generate_config().lower()}"
+Please create a valid config.yaml file or run 'mmrelay config generate' to create one.
             )
         else:
             logger.error(
                 f"Configuration is missing required keys: {missing_keys}. "
-                f"Please create a valid config.yaml file or {msg_suggest_generate_config().lower()}"
+Please create a valid config.yaml file or run 'mmrelay config generate' to create one.
             )
         return 1
 
