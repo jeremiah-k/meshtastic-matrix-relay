@@ -523,12 +523,13 @@ async def connect_matrix(passed_config=None):
 
     try:
         # Check both 'encryption' and 'e2ee' keys for backward compatibility
+        matrix_cfg = config.get("matrix", {}) or {}
         if (
-            "encryption" in config["matrix"]
-            and config["matrix"]["encryption"].get("enabled", False)
+            "encryption" in matrix_cfg
+            and matrix_cfg.get("encryption", {}).get("enabled", False)
         ) or (
-            "e2ee" in config["matrix"]
-            and config["matrix"]["e2ee"].get("enabled", False)
+            "e2ee" in matrix_cfg
+            and matrix_cfg.get("e2ee", {}).get("enabled", False)
         ):
             # Check if running on Windows
             if sys.platform == WINDOWS_PLATFORM:

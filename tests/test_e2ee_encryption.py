@@ -125,8 +125,14 @@ class TestE2EEEncryption:
         """Test that messages to encrypted rooms use ignore_unverified_devices=True"""
         framework = E2EETestFramework()
 
-        # Setup mock config
-        mock_config.get.return_value = {"meshtastic": {}}
+        # Setup mock config that supports both .get() and direct indexing
+        test_config = {
+            "meshtastic": {"meshnet_name": "TestNet"},
+            "matrix_rooms": {"!encrypted:example.org": {"meshtastic_channel": "general"}},
+        }
+        mock_config.get.return_value = test_config
+        mock_config.__getitem__.side_effect = test_config.__getitem__
+        mock_config.__contains__.side_effect = test_config.__contains__
 
         # Setup mock client with encrypted room
         rooms = {
@@ -168,8 +174,14 @@ class TestE2EEEncryption:
         """Test that messages to unencrypted rooms also use ignore_unverified_devices=True (current implementation)"""
         framework = E2EETestFramework()
 
-        # Setup mock config
-        mock_config.get.return_value = {"meshtastic": {}}
+        # Setup mock config that supports both .get() and direct indexing
+        test_config = {
+            "meshtastic": {"meshnet_name": "TestNet"},
+            "matrix_rooms": {"!unencrypted:example.org": {"meshtastic_channel": "general"}},
+        }
+        mock_config.get.return_value = test_config
+        mock_config.__getitem__.side_effect = test_config.__getitem__
+        mock_config.__contains__.side_effect = test_config.__contains__
 
         # Setup mock client with unencrypted room
         rooms = {
@@ -277,8 +289,14 @@ class TestE2EEIntegration:
         """Test complete flow from E2EE setup to encrypted message sending"""
         framework = E2EETestFramework()
 
-        # Setup mock config
-        mock_config.get.return_value = {"meshtastic": {}}
+        # Setup mock config that supports both .get() and direct indexing
+        test_config = {
+            "meshtastic": {"meshnet_name": "TestNet"},
+            "matrix_rooms": {"!encrypted:example.org": {"meshtastic_channel": "general"}},
+        }
+        mock_config.get.return_value = test_config
+        mock_config.__getitem__.side_effect = test_config.__getitem__
+        mock_config.__contains__.side_effect = test_config.__contains__
 
         # Create mock client with E2EE setup
         mock_client = framework.create_mock_client(should_upload_keys=True)
