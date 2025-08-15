@@ -71,7 +71,7 @@ That's it! MMRelay will automatically encrypt messages for encrypted rooms and d
 
 **E2EE is not available on Windows** due to technical limitations with the required cryptographic libraries. The `python-olm` library requires native C libraries that are difficult to compile and install on Windows systems.
 
-**Windows users can still use MMRelay** for regular (unencrypted) Matrix communication by configuring Matrix credentials directly in `config.yaml` instead of using the `--auth` command.
+**Windows users can still use MMRelay** for regular (unencrypted) Matrix communication by configuring Matrix credentials directly in `config.yaml` instead of using the `auth` command.
 
 ### Step 2: Create E2EE Credentials
 
@@ -82,7 +82,7 @@ Use the authentication command to create E2EE credentials:
 mmrelay auth
 ```
 
-**What the `--auth` command does:**
+**What the `auth` command does:**
 
 1. Prompts for your Matrix homeserver, username, and password
 2. Creates a new Matrix session with E2EE support
@@ -114,9 +114,9 @@ MMRelay will automatically:
 - Initialize encryption keys and device trust
 - Connect to Matrix with full E2EE support
 
-## The `--auth` Command
+## The `auth` Command
 
-The `--auth` command is the recommended way to set up Matrix authentication for MMRelay v1.2+. It provides secure credential management with full E2EE support.
+The `auth` command is the recommended way to set up Matrix authentication for MMRelay v1.2+. It provides secure credential management with full E2EE support.
 
 ### What It Does
 

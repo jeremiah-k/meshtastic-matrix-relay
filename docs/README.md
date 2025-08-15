@@ -22,7 +22,7 @@ Welcome to the MMRelay documentation! This directory contains comprehensive guid
 ### New in v1.2
 
 - **Full Matrix E2EE Support** - Secure communication in encrypted rooms
-- **`--auth` Command** - Simplified authentication setup
+- **`auth` Command** - Simplified authentication setup
 - **Automatic Encryption** - Seamless handling of encrypted/unencrypted rooms
 
 ### Essential Commands

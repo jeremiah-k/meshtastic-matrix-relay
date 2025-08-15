@@ -19,7 +19,7 @@ A powerful and easy-to-use relay between Meshtastic devices and Matrix chat room
 - ✨️ _Native Docker support_ ✨️
 - 🔐 **Matrix End-to-End Encryption (E2EE) support** 🔐 **NEW in v1.2!**
 
-**MMRelay v1.2** introduces full **Matrix End-to-End Encryption** support for secure communication in encrypted rooms. Messages are automatically encrypted/decrypted when communicating with encrypted Matrix rooms, with simple setup using `mmrelay --auth`.
+**MMRelay v1.2** introduces full **Matrix End-to-End Encryption** support for secure communication in encrypted rooms. Messages are automatically encrypted/decrypted when communicating with encrypted Matrix rooms, with simple setup using `mmrelay auth`.
 
 ## Documentation
 
@@ -38,10 +38,10 @@ MMRelay runs on Linux, macOS, and Windows.
 pipx install mmrelay
 
 # Generate a sample configuration file & then edit it
-mmrelay --generate-config
+mmrelay generate-config
 
-# Start the relay (without --install-service to run manually)
-mmrelay --install-service
+# Install the service (or run manually without this step)
+mmrelay install-service
 ```
 
 For detailed installation and configuration instructions, see the [Installation Guide](docs/INSTRUCTIONS.md).
