@@ -102,8 +102,6 @@ class TestConfigChecker(unittest.TestCase):
         self.assertTrue(result)
         mock_print.assert_any_call("\n✅ Configuration file is valid!")
 
-
-
     @patch("mmrelay.config.os.makedirs")
     def test_get_config_paths(self, mock_makedirs):
         """

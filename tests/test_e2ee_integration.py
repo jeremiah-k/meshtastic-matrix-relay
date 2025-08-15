@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 try:
     from mmrelay.config import load_config
-    from mmrelay.matrix_utils import connect_matrix, matrix_client, matrix_relay
+    from mmrelay.matrix_utils import connect_matrix, matrix_relay
 
     from .test_e2ee_encryption import E2EEDebugUtilities
 
@@ -145,7 +145,7 @@ class E2EEIntegrationTester:
             print(f"   Unencrypted rooms: {unencrypted_count}")
 
             # Show first few rooms as examples
-            for i, (room_id, analysis) in enumerate(room_analysis.items()):
+            for i, (_, analysis) in enumerate(room_analysis.items()):
                 if i >= 3:  # Only show first 3
                     break
                 print(
@@ -284,7 +284,7 @@ class E2EEIntegrationTester:
         if self.client:
             try:
                 await self.client.close()
-            except:
+            except Exception:
                 pass
 
         return failed == 0

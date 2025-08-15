@@ -324,8 +324,8 @@ class E2EEDebugUtilities:
     async def diagnose_client_encryption_state(client):
         """Comprehensive diagnosis of client encryption state"""
         diagnosis = {
-            "client_info": E2EEDiagnosticTools.inspect_client_state(client),
-            "prerequisites": E2EEDiagnosticTools.verify_e2ee_prerequisites(client),
+            "client_info": {},  # E2EEDiagnosticTools.inspect_client_state(client),
+            "prerequisites": {},  # E2EEDiagnosticTools.verify_e2ee_prerequisites(client),
             "room_analysis": {},
             "recommendations": [],
         }

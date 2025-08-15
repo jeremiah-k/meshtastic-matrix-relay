@@ -335,6 +335,7 @@ def run_main(args):
     # Check if config exists and has the required keys
     # Note: matrix section is optional if credentials.json exists
     from mmrelay.config import load_credentials
+
     credentials = load_credentials()
 
     if credentials:

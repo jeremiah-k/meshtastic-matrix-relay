@@ -361,7 +361,9 @@ def check_config(args=None):
                         # Create empty matrix section if missing - no fields required
                         config[CONFIG_SECTION_MATRIX] = {}
                     matrix_section = config[CONFIG_SECTION_MATRIX]
-                    required_matrix_fields = []  # No fields required from config when using credentials.json
+                    required_matrix_fields = (
+                        []
+                    )  # No fields required from config when using credentials.json
                 else:
                     # Without credentials.json, require full matrix section
                     if CONFIG_SECTION_MATRIX not in config:

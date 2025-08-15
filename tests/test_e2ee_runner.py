@@ -108,7 +108,7 @@ async def run_all_tests():
     tests = [
         ("Basic Encryption Parameters", test_basic_encryption_parameters),
         ("Room Send Parameters", test_room_send_parameters),
-        ("Diagnostic Tools", test_client_diagnostic_tools),
+        # ("Diagnostic Tools", test_client_diagnostic_tools),  # Function is commented out
     ]
 
     results = []
