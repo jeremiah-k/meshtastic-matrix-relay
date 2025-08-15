@@ -138,11 +138,7 @@ def parse_arguments():
         help="Authenticate with Matrix",
         description="Set up Matrix authentication for E2EE support",
     )
-    auth_login_parser.add_argument(
-        "--force",
-        action="store_true",
-        help="Skip status check and force new authentication",
-    )
+
     auth_subparsers.add_parser(
         "status",
         help="Check authentication status",
@@ -731,9 +727,8 @@ def handle_auth_login(args):
     print("===================================")
 
     try:
-        # Pass --force flag as logout_others parameter if provided
-        logout_others = getattr(args, 'force', False)
-        result = asyncio.run(login_matrix_bot(logout_others=logout_others))
+        # For now, use the existing login function
+        result = asyncio.run(login_matrix_bot())
         return 0 if result else 1
     except KeyboardInterrupt:
         print("\nAuthentication cancelled by user.")

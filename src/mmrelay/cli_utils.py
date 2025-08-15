@@ -176,4 +176,4 @@ def msg_setup_authentication():
 
 def msg_regenerate_credentials():
     """Standard message for regenerating credentials."""
-    return f"Please run '{get_command('auth_login')}' again to regenerate credentials with device_id"
+    return f"Please run '{get_command('auth_login')}' again to generate new credentials that include a device_id."
