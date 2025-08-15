@@ -12,6 +12,11 @@ from mmrelay import __version__
 from mmrelay.cli_utils import (
     get_command,
     get_deprecation_warning,
+    msg_for_e2ee_support,
+    msg_or_run_auth_login,
+    msg_run_auth_login,
+    msg_setup_auth,
+    msg_setup_authentication,
     msg_suggest_generate_config,
 )
 from mmrelay.config import get_config_paths, validate_yaml_syntax
@@ -239,7 +244,7 @@ def _validate_credentials_json(config_path):
             print(
                 f"❌ Error: credentials.json missing required fields: {', '.join(missing_fields)}"
             )
-            print("   Run 'mmrelay auth login' to regenerate credentials")
+            print(f"   {msg_run_auth_login()}")
             return False
 
         return True
@@ -261,12 +266,12 @@ def _validate_matrix_authentication(config_path, matrix_section):
 
     elif has_access_token:
         print("✅ Using access_token for Matrix authentication")
-        print("   For E2EE support: run 'mmrelay auth login'")
+        print(f"   {msg_for_e2ee_support()}")
         return True
 
     else:
         print("❌ Error: No Matrix authentication configured")
-        print("   Setup: mmrelay auth login")
+        print(f"   {msg_setup_auth()}")
         return False
 
 
@@ -406,7 +411,7 @@ def check_config(args=None):
                         print(
                             "   Either add matrix section with access_token and bot_user_id,"
                         )
-                        print("   or run 'mmrelay auth login' to set up credentials.json")
+                        print(f"   {msg_or_run_auth_login()}")
                         return False
 
                     matrix_section = config[CONFIG_SECTION_MATRIX]
@@ -434,7 +439,7 @@ def check_config(args=None):
                         print(
                             f"Error: Missing required fields in 'matrix' section: {', '.join(missing_matrix_fields)}"
                         )
-                        print("   Setup authentication: mmrelay auth login")
+                        print(f"   {msg_setup_authentication()}")
                     return False
 
                 # Validate E2EE configuration and authentication

@@ -31,7 +31,7 @@ from nio import (
 from nio.events.room_events import RoomMemberEvent
 from PIL import Image
 
-from mmrelay.cli_utils import msg_require_auth_login, msg_retry_auth_login
+from mmrelay.cli_utils import msg_regenerate_credentials, msg_require_auth_login, msg_retry_auth_login
 from mmrelay.config import (
     get_base_dir,
     get_e2ee_store_dir,
@@ -453,7 +453,7 @@ async def connect_matrix(passed_config=None):
             # Log available keys for debugging without exposing sensitive data
             logger.debug(f"credentials.json keys present: {list(credentials.keys())}")
             logger.error(
-                "Please run 'mmrelay auth login' again to regenerate credentials with device_id"
+                "                msg_regenerate_credentials()"
             )
             return None
 
@@ -487,7 +487,7 @@ async def connect_matrix(passed_config=None):
         if missing_fields:
             logger.error(f"Matrix section is missing required fields: {missing_fields}")
             logger.error(
-                "Please run 'mmrelay auth login' to set up credentials.json, or add missing fields to config.yaml"
+                "                msg_require_auth_login()"
             )
             return None
 

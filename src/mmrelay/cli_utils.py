@@ -147,3 +147,33 @@ def msg_require_auth_login():
 def msg_retry_auth_login():
     """Standard message suggesting auth retry."""
     return retry_command('auth_login')
+
+
+def msg_run_auth_login():
+    """Standard message for running auth login."""
+    return f"Run '{get_command('auth_login')}' to regenerate credentials"
+
+
+def msg_for_e2ee_support():
+    """Standard message for E2EE support setup."""
+    return f"For E2EE support: run '{get_command('auth_login')}'"
+
+
+def msg_setup_auth():
+    """Standard message for auth setup."""
+    return f"Setup: {get_command('auth_login')}"
+
+
+def msg_or_run_auth_login():
+    """Standard message suggesting auth login as alternative."""
+    return f"or run '{get_command('auth_login')}' to set up credentials.json"
+
+
+def msg_setup_authentication():
+    """Standard message for authentication setup."""
+    return f"Setup authentication: {get_command('auth_login')}"
+
+
+def msg_regenerate_credentials():
+    """Standard message for regenerating credentials."""
+    return f"Please run '{get_command('auth_login')}' again to regenerate credentials with device_id"
