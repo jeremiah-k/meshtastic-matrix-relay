@@ -524,13 +524,9 @@ async def connect_matrix(passed_config=None):
     try:
         # Check both 'encryption' and 'e2ee' keys for backward compatibility
         matrix_cfg = config.get("matrix", {}) or {}
-        if (
-            "encryption" in matrix_cfg
-            and matrix_cfg.get("encryption", {}).get("enabled", False)
-        ) or (
-            "e2ee" in matrix_cfg
-            and matrix_cfg.get("e2ee", {}).get("enabled", False)
-        ):
+        encryption_enabled = matrix_cfg.get("encryption", {}).get("enabled", False)
+        e2ee_enabled = matrix_cfg.get("e2ee", {}).get("enabled", False)
+        if encryption_enabled or e2ee_enabled:
             # Check if running on Windows
             if sys.platform == WINDOWS_PLATFORM:
                 logger.error(
@@ -1900,7 +1896,7 @@ async def on_room_message(
                 # Message mapping is now handled automatically by the queue system
         else:
             logger.debug(
-                f"broadcast_enabled is False - Message from {full_display_name} not relayed to Meshtastic"
+                f"broadcast_enabled is False - not relaying message from {full_display_name} to Meshtastic"
             )
 
 
