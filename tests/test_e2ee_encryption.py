@@ -137,17 +137,15 @@ class TestE2EEEncryption:
         mock_client = framework.create_mock_client(rooms=rooms)
         mock_matrix_client.return_value = mock_client
 
-        # Mock the global matrix_client variable
-        with patch("mmrelay.matrix_utils.matrix_client", mock_client):
-            # Send message to encrypted room
-            await matrix_relay(
-                room_id="!encrypted:example.org",
-                message="Test message",
-                longname="Test User",
-                shortname="TU",
-                meshnet_name="TestNet",
-                portnum=1,
-            )
+        # Send message to encrypted room
+        await matrix_relay(
+            room_id="!encrypted:example.org",
+            message="Test message",
+            longname="Test User",
+            shortname="TU",
+            meshnet_name="TestNet",
+            portnum=1,
+        )
 
         # Verify encryption parameters
         call_args, kwargs = framework.verify_encryption_parameters(
@@ -180,17 +178,15 @@ class TestE2EEEncryption:
         mock_client = framework.create_mock_client(rooms=rooms)
         mock_matrix_client.return_value = mock_client
 
-        # Mock the global matrix_client variable
-        with patch("mmrelay.matrix_utils.matrix_client", mock_client):
-            # Send message to unencrypted room
-            await matrix_relay(
-                room_id="!unencrypted:example.org",
-                message="Test message",
-                longname="Test User",
-                shortname="TU",
-                meshnet_name="TestNet",
-                portnum=1,
-            )
+        # Send message to unencrypted room
+        await matrix_relay(
+            room_id="!unencrypted:example.org",
+            message="Test message",
+            longname="Test User",
+            shortname="TU",
+            meshnet_name="TestNet",
+            portnum=1,
+        )
 
         # Verify encryption parameters (should still use ignore_unverified=True based on current implementation)
         call_args, kwargs = framework.verify_encryption_parameters(
@@ -335,8 +331,8 @@ class E2EEDebugUtilities:
             },  # Fallback until E2EEDiagnosticTools is enabled
             "prerequisites": {
                 "has_device_id": bool(getattr(client, "device_id", None)),
-                # Best-effort default; overridden by real diagnostics when available
-                "encryption_enabled": True,
+                # Better heuristic: encryption enabled if we have encrypted rooms or device_id
+                "encryption_enabled": bool(encrypted_rooms) or bool(getattr(client, "device_id", None)),
             },
             "room_analysis": {},
             "recommendations": [],

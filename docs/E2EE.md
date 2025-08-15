@@ -84,10 +84,10 @@ mmrelay auth login
 
 **What the `auth login` command does:**
 
-1. Prompts for your Matrix homeserver, username, and password
-2. Creates a new Matrix session with E2EE support
-3. Generates a unique device ID for MMRelay
-4. Saves credentials to `~/.mmrelay/credentials.json`
+- Prompts for your Matrix homeserver, username, and password
+- Creates a new Matrix session with E2EE support
+- Generates a unique device ID for MMRelay
+- Saves credentials to `~/.mmrelay/credentials.json`
 5. Sets up encryption key storage in `~/.mmrelay/store/`
 
 **Interactive prompts:**

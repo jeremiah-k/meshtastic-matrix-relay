@@ -157,7 +157,7 @@ config_subparsers.add_parser("check", help="Validate configuration file")
 auth_parser = subparsers.add_parser("auth", help="Authentication management")
 auth_subparsers = auth_parser.add_subparsers(dest="auth_command")
 auth_login_parser = auth_subparsers.add_parser("login", help="Authenticate with Matrix")
-auth_login_parser.add_argument("--force", action="store_true", help="Force re-authentication")
+# No additional arguments needed for basic authentication
 auth_subparsers.add_parser("status", help="Check authentication status")
 
 # SERVICE group

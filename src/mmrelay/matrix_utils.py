@@ -81,7 +81,7 @@ from mmrelay.log_utils import get_logger
 from mmrelay.meshtastic_utils import connect_meshtastic, sendTextReply
 from mmrelay.message_queue import get_message_queue, queue_message
 
-logger = get_logger(name="matrix_utils")
+logger = get_logger(name="Matrix")
 
 
 def _get_msgs_to_keep_config():
@@ -360,7 +360,7 @@ bot_start_time = int(
     time.time() * MILLISECONDS_PER_SECOND
 )  # Timestamp when the bot starts, used to filter out old messages
 
-logger = get_logger(name="Matrix")
+
 
 matrix_client = None
 
@@ -500,6 +500,10 @@ async def connect_matrix(passed_config=None):
         e2ee_device_id = matrix_section.get("device_id")
 
     # Get matrix rooms from config
+    if "matrix_rooms" not in config:
+        logger.error("Configuration is missing 'matrix_rooms' section")
+        logger.error("Please ensure your config.yaml includes matrix_rooms configuration")
+        raise ValueError("Missing required 'matrix_rooms' configuration")
     matrix_rooms = config["matrix_rooms"]
 
     # Create SSL context using certifi's certificates

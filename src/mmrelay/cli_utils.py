@@ -49,8 +49,13 @@ def get_command(command_key):
 
     Returns:
         str: The current command syntax (e.g., 'mmrelay config generate')
+
+    Raises:
+        KeyError: If the command key is not found in the registry
     """
-    return CLI_COMMANDS.get(command_key, f"<unknown command: {command_key}>")
+    if command_key not in CLI_COMMANDS:
+        raise KeyError(f"Unknown CLI command key: {command_key}")
+    return CLI_COMMANDS[command_key]
 
 
 def get_deprecation_warning(old_flag):
@@ -66,7 +71,7 @@ def get_deprecation_warning(old_flag):
     if new_command_key:
         new_command = get_command(new_command_key)
         return f"Warning: {old_flag} is deprecated. Use '{new_command}' instead."
-    return f"Warning: {old_flag} is deprecated."
+    return f"Warning: {old_flag} is deprecated. Run 'mmrelay --help' to see the current commands."
 
 
 def suggest_command(command_key, purpose):
@@ -153,7 +158,7 @@ def msg_retry_auth_login():
 
 def msg_run_auth_login():
     """Standard message for running auth login."""
-    return f"Run '{get_command('auth_login')}' to regenerate credentials"
+    return msg_regenerate_credentials()
 
 
 def msg_for_e2ee_support():
