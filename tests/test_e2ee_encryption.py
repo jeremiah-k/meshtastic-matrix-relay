@@ -336,7 +336,21 @@ class E2EEDebugUtilities:
 
     @staticmethod
     async def diagnose_client_encryption_state(client):
-        """Comprehensive diagnosis of client encryption state"""
+        """
+        Analyze a Matrix-like client's end-to-end encryption state and return a structured diagnostic.
+        
+        Returns a dictionary with the following keys:
+        - client_info: {"encrypted_rooms": [room_id, ...]} — list of room IDs that appear to have encryption enabled.
+        - prerequisites: {
+            "has_device_id": bool,            # whether client.device_id is present/truthy
+            "encryption_enabled": bool        # True if there are encrypted rooms or a device_id is present
+          }
+        - room_analysis: {room_id: {"encrypted": True|False|"unknown", "display_name": str, "room_type": str}, ...}
+          — per-room details derived from client.rooms; uses safe defaults when attributes are missing.
+        - recommendations: [str, ...] — human-readable suggestions produced when device_id is missing, encryption is not enabled, or no encrypted rooms are detected.
+        
+        The function is defensive: it works with any object that exposes a .rooms mapping and optional .device_id, and it will populate safe defaults rather than raising if those attributes are absent.
+        """
         # Initialize with safe defaults to avoid KeyError when tools are unavailable
         encrypted_rooms = []
         if hasattr(client, "rooms") and client.rooms:
