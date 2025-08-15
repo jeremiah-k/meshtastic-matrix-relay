@@ -334,7 +334,7 @@ def load_config(config_file=None, args=None):
         logger.error(f"  - {path}")
     logger.error("Using empty configuration. This will likely cause errors.")
     logger.error(
-        "Run 'mmrelay generate-config' to generate a sample configuration file."
+        "Run 'mmrelay config generate' to generate a sample configuration file."
     )
 
     return relay_config
@@ -468,7 +468,7 @@ def get_meshtastic_config_value(config, key, default=None, required=False):
             logger.error(
                 f"Missing required configuration: meshtastic.{key}\n"
                 f"Please add '{key}: {default if default is not None else 'VALUE'}' to your meshtastic section in config.yaml\n"
-                f"Run 'mmrelay check-config' to validate your configuration."
+                f"Run 'mmrelay config check' to validate your configuration."
             )
             raise KeyError(
                 f"Required configuration 'meshtastic.{key}' is missing. "

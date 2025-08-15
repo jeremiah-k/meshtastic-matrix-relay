@@ -61,64 +61,81 @@ def parse_arguments():
         default=None,
     )
     parser.add_argument("--version", action="store_true", help="Show version and exit")
+    # Deprecated flags (hidden from help but still functional)
     parser.add_argument(
         "--generate-config",
         action="store_true",
-        help="Generate a sample config.yaml file",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--install-service",
         action="store_true",
-        help="Install or update the systemd user service",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--check-config",
         action="store_true",
-        help="Check if the configuration file is valid",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--auth",
         action="store_true",
-        help="Authenticate with Matrix and save credentials for E2EE support (deprecated: use 'auth' subcommand)",
+        help=argparse.SUPPRESS,
     )
 
-    # Add subcommands for modern CLI interface
+    # Add grouped subcommands for modern CLI interface
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
-    # Auth subcommand
+    # CONFIG group
+    config_parser = subparsers.add_parser(
+        "config",
+        help="Configuration management",
+        description="Manage configuration files and validation",
+    )
+    config_subparsers = config_parser.add_subparsers(dest="config_command", help="Config commands")
+    config_subparsers.add_parser(
+        "generate",
+        help="Create sample config.yaml file",
+        description="Generate a sample configuration file with default settings",
+    )
+    config_subparsers.add_parser(
+        "check",
+        help="Validate configuration file",
+        description="Check configuration file syntax and completeness",
+    )
+
+    # AUTH group
     auth_parser = subparsers.add_parser(
         "auth",
         help="Authentication management",
         description="Manage Matrix authentication and credentials",
     )
-    auth_parser.add_argument(
-        "--status-only",
-        action="store_true",
-        help="Only check authentication status, don't prompt for re-authentication",
+    auth_subparsers = auth_parser.add_subparsers(dest="auth_command", help="Auth commands")
+    auth_login_parser = auth_subparsers.add_parser(
+        "login",
+        help="Authenticate with Matrix",
+        description="Set up Matrix authentication for E2EE support",
     )
-    auth_parser.add_argument(
+    auth_login_parser.add_argument(
         "--force",
         action="store_true",
         help="Skip status check and force new authentication",
     )
-
-    # Check-config subcommand
-    subparsers.add_parser(
-        "check-config",
-        help="Check configuration file validity",
-        description="Validate configuration file syntax and completeness",
+    auth_subparsers.add_parser(
+        "status",
+        help="Check authentication status",
+        description="Display current Matrix authentication status",
     )
 
-    # Generate-config subcommand
-    subparsers.add_parser(
-        "generate-config",
-        help="Generate sample configuration file",
-        description="Create a sample config.yaml file with default settings",
+    # SERVICE group
+    service_parser = subparsers.add_parser(
+        "service",
+        help="Service management",
+        description="Manage systemd user service for MMRelay",
     )
-
-    # Install-service subcommand
-    subparsers.add_parser(
-        "install-service",
+    service_subparsers = service_parser.add_subparsers(dest="service_command", help="Service commands")
+    service_subparsers.add_parser(
+        "install",
         help="Install systemd user service",
         description="Install or update the systemd user service for MMRelay",
     )
@@ -557,7 +574,7 @@ def check_config(args=None):
     print("Error: No configuration file found in any of the following locations:")
     for path in config_paths:
         print(f"  - {path}")
-    print("\nRun 'mmrelay generate-config' to generate a sample configuration file.")
+    print("\nRun 'mmrelay config generate' to generate a sample configuration file.")
     return False
 
 
@@ -578,13 +595,13 @@ def main():
         # Handle legacy flags (with deprecation warnings)
         if args.check_config:
             print(
-                "Warning: --check-config is deprecated. Use 'mmrelay check-config' instead."
+                "Warning: --check-config is deprecated. Use 'mmrelay config check' instead."
             )
             return 0 if check_config(args) else 1
 
         if args.install_service:
             print(
-                "Warning: --install-service is deprecated. Use 'mmrelay install-service' instead."
+                "Warning: --install-service is deprecated. Use 'mmrelay service install' instead."
             )
             try:
                 from mmrelay.setup_utils import install_service
@@ -596,7 +613,7 @@ def main():
 
         if args.generate_config:
             print(
-                "Warning: --generate-config is deprecated. Use 'mmrelay generate-config' instead."
+                "Warning: --generate-config is deprecated. Use 'mmrelay config generate' instead."
             )
             return 0 if generate_sample_config() else 1
 
@@ -605,7 +622,7 @@ def main():
             return 0
 
         if args.auth:
-            print("Warning: --auth is deprecated. Use 'mmrelay auth' instead.")
+            print("Warning: --auth is deprecated. Use 'mmrelay auth login' instead.")
             return handle_auth_command(args)
 
         # If no command was specified, run the main functionality
@@ -623,7 +640,7 @@ def main():
 
 
 def handle_subcommand(args):
-    """Handle modern subcommand interface.
+    """Handle modern grouped subcommand interface.
 
     Args:
         args: Parsed arguments with subcommand
@@ -631,27 +648,53 @@ def handle_subcommand(args):
     Returns:
         int: Exit code (0 for success, non-zero for failure)
     """
-    if args.command == "auth":
+    if args.command == "config":
+        return handle_config_command(args)
+    elif args.command == "auth":
         return handle_auth_command(args)
-    elif args.command == "check-config":
-        return 0 if check_config(args) else 1
-    elif args.command == "generate-config":
-        return 0 if generate_sample_config() else 1
-    elif args.command == "install-service":
-        try:
-            from mmrelay.setup_utils import install_service
-
-            return 0 if install_service() else 1
-        except ImportError as e:
-            print(f"Error importing setup utilities: {e}")
-            return 1
+    elif args.command == "service":
+        return handle_service_command(args)
     else:
         print(f"Unknown command: {args.command}")
         return 1
 
 
+def handle_config_command(args):
+    """Handle config subcommands.
+
+    Args:
+        args: Parsed arguments with config subcommand
+
+    Returns:
+        int: Exit code (0 for success, non-zero for failure)
+    """
+    if args.config_command == "generate":
+        return 0 if generate_sample_config() else 1
+    elif args.config_command == "check":
+        return 0 if check_config(args) else 1
+    else:
+        print(f"Unknown config command: {args.config_command}")
+        return 1
+
+
 def handle_auth_command(args):
-    """Handle authentication command (both legacy --auth and new auth subcommand).
+    """Handle auth subcommands.
+
+    Args:
+        args: Parsed arguments with auth subcommand
+
+    Returns:
+        int: Exit code (0 for success, non-zero for failure)
+    """
+    if hasattr(args, 'auth_command') and args.auth_command == "status":
+        return handle_auth_status(args)
+    else:
+        # Default to login for both legacy --auth and new auth login
+        return handle_auth_login(args)
+
+
+def handle_auth_login(args):
+    """Handle auth login command.
 
     Args:
         args: Parsed arguments
@@ -663,17 +706,11 @@ def handle_auth_command(args):
 
     from mmrelay.matrix_utils import login_matrix_bot
 
-    # Check for subcommand-specific flags
-    getattr(args, "status_only", False)
-    getattr(args, "force", False)
-
     # Show header
     print("Matrix Bot Authentication for E2EE")
     print("===================================")
 
     try:
-        # For now, use the existing login function
-        # TODO: Implement enhanced auth with status checking
         result = asyncio.run(login_matrix_bot())
         return 0 if result else 1
     except KeyboardInterrupt:
@@ -681,6 +718,67 @@ def handle_auth_command(args):
         return 1
     except Exception as e:
         print(f"\nError during authentication: {e}")
+        return 1
+
+
+def handle_auth_status(args):
+    """Handle auth status command.
+
+    Args:
+        args: Parsed arguments
+
+    Returns:
+        int: Exit code (0 for success, non-zero for failure)
+    """
+    from mmrelay.config import get_config_paths
+    import os
+    import json
+
+    print("Matrix Authentication Status")
+    print("============================")
+
+    # Check for credentials.json
+    config_paths = get_config_paths(args)
+    for config_path in config_paths:
+        config_dir = os.path.dirname(config_path)
+        credentials_path = os.path.join(config_dir, "credentials.json")
+        if os.path.exists(credentials_path):
+            try:
+                with open(credentials_path, 'r') as f:
+                    credentials = json.load(f)
+
+                print(f"✅ Found credentials.json at: {credentials_path}")
+                print(f"   Homeserver: {credentials.get('homeserver', 'Unknown')}")
+                print(f"   User ID: {credentials.get('user_id', 'Unknown')}")
+                print(f"   Device ID: {credentials.get('device_id', 'Unknown')}")
+                return 0
+            except Exception as e:
+                print(f"❌ Error reading credentials.json: {e}")
+                return 1
+
+    print("❌ No credentials.json found")
+    print("Run 'mmrelay auth login' to authenticate")
+    return 1
+
+
+def handle_service_command(args):
+    """Handle service subcommands.
+
+    Args:
+        args: Parsed arguments with service subcommand
+
+    Returns:
+        int: Exit code (0 for success, non-zero for failure)
+    """
+    if args.service_command == "install":
+        try:
+            from mmrelay.setup_utils import install_service
+            return 0 if install_service() else 1
+        except ImportError as e:
+            print(f"Error importing setup utilities: {e}")
+            return 1
+    else:
+        print(f"Unknown service command: {args.service_command}")
         return 1
 
 

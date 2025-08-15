@@ -470,7 +470,7 @@ async def connect_matrix(passed_config=None):
         # Check if matrix section exists in config
         if "matrix" not in config:
             logger.error("No Matrix authentication available. Neither credentials.json nor matrix section in config found.")
-            logger.error("Please run 'mmrelay auth' to set up credentials.json, or add matrix section to config.yaml")
+            logger.error("Please run 'mmrelay auth login' to set up credentials.json, or add matrix section to config.yaml")
             return None
 
         matrix_section = config["matrix"]
@@ -1400,7 +1400,7 @@ async def on_decryption_failure(room: MatrixRoom, event: MegolmEvent) -> None:
         f"Failed to decrypt event '{event.event_id}' in room '{room.room_id}'! "
         f"This is usually temporary and resolves on its own. "
         f"If this persists, the bot's session may be corrupt. "
-        f"Try logging in again with 'mmrelay auth'."
+        f"Try logging in again with 'mmrelay auth login'."
     )
 
     # Attempt to request the keys for the failed event

@@ -132,16 +132,15 @@ Options:
                         Set logging level
   --logfile PATH        Path to log file (can be overridden by --data-dir)
   --version             Show version and exit
-  --generate-config     Generate a sample config.yaml file (deprecated: use 'generate-config')
-  --check-config        Check if the configuration file is valid (deprecated: use 'check-config')
-  --install-service     Install or update the systemd user service (deprecated: use 'install-service')
-  --auth                Authenticate with Matrix and save credentials for E2EE support (deprecated: use 'auth')
-
 Commands:
-  auth                  Manage Matrix authentication and credentials
-  check-config          Validate configuration file syntax and completeness
-  generate-config       Create a sample config.yaml file with default settings
-  install-service       Install or update the systemd user service for MMRelay
+  config                Configuration management
+    generate            Create a sample config.yaml file with default settings
+    check               Validate configuration file syntax and completeness
+  auth                  Authentication management
+    login               Authenticate with Matrix and save credentials for E2EE support
+    status              Check current authentication status
+  service               Service management
+    install             Install or update the systemd user service for MMRelay
 ```
 
 #### Useful Commands

@@ -9,8 +9,8 @@ matrix:
   # SETUP INSTRUCTIONS:
   # 1. Install E2EE dependencies: pip install mmrelay[e2e]
   # 2. Enable E2EE in config: uncomment and set enabled: true below
-  # 3. Create credentials: mmrelay auth
-  # 4. The auth command will create credentials.json with your Matrix login
+  # 3. Create credentials: mmrelay auth login
+  # 4. The auth login command will create credentials.json with your Matrix login
   # 5. Restart mmrelay - it will use credentials.json and enable E2EE automatically
   #
   #e2ee:
