@@ -75,6 +75,7 @@ nio_mock = MagicMock()
 sys.modules["nio"] = nio_mock
 sys.modules["nio.events"] = MagicMock()
 sys.modules["nio.events.room_events"] = MagicMock()
+sys.modules["nio.event_builders"] = MagicMock()
 
 
 # Create proper mock classes for nio that can be used with isinstance()
@@ -98,6 +99,14 @@ class MockRoomMessageText:
     pass
 
 
+class MockRoomEncryptionEvent:
+    pass
+
+
+class MockMegolmEvent:
+    pass
+
+
 class MockWhoamiError(Exception):
     """Mock WhoamiError that inherits from Exception for isinstance checks."""
 
@@ -107,13 +116,14 @@ class MockWhoamiError(Exception):
 
 
 # Mock specific nio classes that are imported directly
-nio_mock.AsyncClient = MagicMock()
 nio_mock.AsyncClientConfig = MagicMock()
 nio_mock.MatrixRoom = MockMatrixRoom
 nio_mock.ReactionEvent = MockReactionEvent
 nio_mock.RoomMessageEmote = MockRoomMessageEmote
 nio_mock.RoomMessageNotice = MockRoomMessageNotice
 nio_mock.RoomMessageText = MockRoomMessageText
+nio_mock.RoomEncryptionEvent = MockRoomEncryptionEvent
+nio_mock.MegolmEvent = MockMegolmEvent
 nio_mock.UploadResponse = MagicMock()
 nio_mock.WhoamiError = MockWhoamiError
 

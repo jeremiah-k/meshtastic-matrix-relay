@@ -65,92 +65,151 @@ class TestCLI(unittest.TestCase):
             self.assertTrue(args.install_service)
             self.assertTrue(args.check_config)
 
+    @patch("mmrelay.cli._validate_credentials_json")
+    @patch("mmrelay.config.os.makedirs")
+    @patch("mmrelay.cli._validate_e2ee_config")
     @patch("mmrelay.cli.os.path.isfile")
     @patch("builtins.open")
-    @patch("mmrelay.config.yaml.load")
-    def test_check_config_valid(self, mock_yaml_load, mock_open, mock_isfile):
+    @patch("mmrelay.cli.validate_yaml_syntax")
+    def test_check_config_valid(
+        self,
+        mock_validate_yaml,
+        mock_open,
+        mock_isfile,
+        mock_validate_e2ee,
+        mock_makedirs,
+        mock_validate_credentials,
+    ):
         # Mock a valid config
         """
         Test that check_config returns True for a valid configuration file.
 
         Mocks a configuration containing all required sections and valid values, simulates the presence of the config file, and verifies that check_config() recognizes it as valid.
         """
-        mock_yaml_load.return_value = {
-            "matrix": {
-                "homeserver": "https://matrix.org",
-                "access_token": "token",
-                "bot_user_id": "@bot:matrix.org",
+        mock_validate_yaml.return_value = (
+            True,
+            None,
+            {
+                "matrix": {
+                    "homeserver": "https://matrix.org",
+                    "access_token": "token",
+                    "bot_user_id": "@bot:matrix.org",
+                },
+                "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+                "meshtastic": {
+                    "connection_type": "serial",
+                    "serial_port": "/dev/ttyUSB0",
+                },
             },
-            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
-            "meshtastic": {"connection_type": "serial", "serial_port": "/dev/ttyUSB0"},
-        }
+        )
         mock_isfile.return_value = True
+        mock_validate_e2ee.return_value = True
+        mock_validate_credentials.return_value = False  # No valid credentials.json
 
         with patch("sys.argv", ["mmrelay", "--config", "valid_config.yaml"]):
             self.assertTrue(check_config())
 
+    @patch("mmrelay.cli._validate_credentials_json")
+    @patch("mmrelay.config.os.makedirs")
     @patch("mmrelay.cli.os.path.isfile")
     @patch("builtins.open")
-    @patch("mmrelay.config.yaml.load")
+    @patch("mmrelay.cli.validate_yaml_syntax")
     def test_check_config_invalid_missing_matrix(
-        self, mock_yaml_load, mock_open, mock_isfile
+        self,
+        mock_validate_yaml,
+        mock_open,
+        mock_isfile,
+        mock_makedirs,
+        mock_validate_credentials,
     ):
         # Mock an invalid config (missing matrix section)
         """
         Test that check_config returns False when the configuration is missing the 'matrix' section.
         """
-        mock_yaml_load.return_value = {
-            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
-            "meshtastic": {"connection_type": "serial", "serial_port": "/dev/ttyUSB0"},
-        }
+        mock_validate_yaml.return_value = (
+            True,
+            None,
+            {
+                "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+                "meshtastic": {
+                    "connection_type": "serial",
+                    "serial_port": "/dev/ttyUSB0",
+                },
+            },
+        )
         mock_isfile.return_value = True
+        mock_validate_credentials.return_value = False  # No valid credentials.json
 
         with patch("sys.argv", ["mmrelay", "--config", "invalid_config.yaml"]):
             self.assertFalse(check_config())
 
+    @patch("mmrelay.cli._validate_credentials_json")
+    @patch("mmrelay.config.os.makedirs")
     @patch("mmrelay.cli.os.path.isfile")
     @patch("builtins.open")
-    @patch("mmrelay.config.yaml.load")
+    @patch("mmrelay.cli.validate_yaml_syntax")
     def test_check_config_invalid_missing_meshtastic(
-        self, mock_yaml_load, mock_open, mock_isfile
+        self,
+        mock_validate_yaml,
+        mock_open,
+        mock_isfile,
+        mock_makedirs,
+        mock_validate_credentials,
     ):
         # Mock an invalid config (missing meshtastic section)
         """
         Test that check_config returns False when the configuration is missing the 'meshtastic' section.
         """
-        mock_yaml_load.return_value = {
-            "matrix": {
-                "homeserver": "https://matrix.org",
-                "access_token": "token",
-                "bot_user_id": "@bot:matrix.org",
+        mock_validate_yaml.return_value = (
+            True,
+            None,
+            {
+                "matrix": {
+                    "homeserver": "https://matrix.org",
+                    "access_token": "token",
+                    "bot_user_id": "@bot:matrix.org",
+                },
+                "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
             },
-            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
-        }
+        )
         mock_isfile.return_value = True
+        mock_validate_credentials.return_value = False  # No valid credentials.json
 
         with patch("sys.argv", ["mmrelay", "--config", "invalid_config.yaml"]):
             self.assertFalse(check_config())
 
+    @patch("mmrelay.cli._validate_credentials_json")
+    @patch("mmrelay.config.os.makedirs")
     @patch("mmrelay.cli.os.path.isfile")
     @patch("builtins.open")
-    @patch("mmrelay.config.yaml.load")
+    @patch("mmrelay.cli.validate_yaml_syntax")
     def test_check_config_invalid_connection_type(
-        self, mock_yaml_load, mock_open, mock_isfile
+        self,
+        mock_validate_yaml,
+        mock_open,
+        mock_isfile,
+        mock_makedirs,
+        mock_validate_credentials,
     ):
         # Mock an invalid config (invalid connection type)
         """
         Test that check_config() returns False when the configuration specifies an invalid Meshtastic connection type.
         """
-        mock_yaml_load.return_value = {
-            "matrix": {
-                "homeserver": "https://matrix.org",
-                "access_token": "token",
-                "bot_user_id": "@bot:matrix.org",
+        mock_validate_yaml.return_value = (
+            True,
+            None,
+            {
+                "matrix": {
+                    "homeserver": "https://matrix.org",
+                    "access_token": "token",
+                    "bot_user_id": "@bot:matrix.org",
+                },
+                "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+                "meshtastic": {"connection_type": "invalid"},
             },
-            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
-            "meshtastic": {"connection_type": "invalid"},
-        }
+        )
         mock_isfile.return_value = True
+        mock_validate_credentials.return_value = False  # No valid credentials.json
 
         with patch("sys.argv", ["mmrelay", "--config", "invalid_config.yaml"]):
             self.assertFalse(check_config())
@@ -175,27 +234,6 @@ class TestCLI(unittest.TestCase):
         self.assertIn("MMRelay", call_args)
         self.assertIn("v", call_args)
 
-    @patch("sys.platform", "win32")
-    def test_parse_arguments_windows_positional(self):
-        """
-        Test that on Windows, a positional argument is interpreted as the config file path.
-        """
-        with patch("sys.argv", ["mmrelay", "config.yaml"]):
-            args = parse_arguments()
-            self.assertEqual(args.config, "config.yaml")
-
-    @patch("sys.platform", "win32")
-    def test_parse_arguments_windows_both_args(self):
-        """
-        Test that on Windows, the --config option takes precedence over a positional config file argument when both are provided.
-        """
-        with patch(
-            "sys.argv", ["mmrelay", "--config", "explicit.yaml", "positional.yaml"]
-        ):
-            args = parse_arguments()
-            # --config should take precedence
-            self.assertEqual(args.config, "explicit.yaml")
-
     @patch("builtins.print")
     def test_parse_arguments_unknown_args_warning(self, mock_print):
         """
@@ -203,7 +241,7 @@ class TestCLI(unittest.TestCase):
 
         Verifies that `parse_arguments()` triggers a warning message containing the unknown argument name when an unrecognized CLI argument is passed and the environment is not a test context.
         """
-        with patch("sys.argv", ["mmrelay", "--unknown-arg", "value"]):
+        with patch("sys.argv", ["mmrelay", "--unknown-arg"]):
             parse_arguments()
             # Should print warning about unknown arguments
             mock_print.assert_called()
@@ -215,7 +253,7 @@ class TestCLI(unittest.TestCase):
         """
         Verify that unknown CLI arguments do not produce warnings when running in a test environment.
         """
-        with patch("sys.argv", ["pytest", "mmrelay", "--unknown-arg"]):
+        with patch("sys.argv", ["pytest", "--unknown-arg"]):
             with patch("builtins.print") as mock_print:
                 parse_arguments()
                 # Should not print warning in test environment
@@ -467,6 +505,7 @@ class TestMainFunction(unittest.TestCase):
         Tests that the main function returns exit code 0 when the --check-config flag is set and the configuration check succeeds.
         """
         args = MagicMock()
+        args.command = None
         args.check_config = True
         args.install_service = False
         args.generate_config = False
@@ -486,6 +525,7 @@ class TestMainFunction(unittest.TestCase):
         Test that the main function returns exit code 1 when configuration check fails with --check-config.
         """
         args = MagicMock()
+        args.command = None
         args.check_config = True
         args.install_service = False
         args.generate_config = False
@@ -504,6 +544,7 @@ class TestMainFunction(unittest.TestCase):
         Test that the main function returns exit code 0 when the --install-service flag is set and service installation succeeds.
         """
         args = MagicMock()
+        args.command = None
         args.check_config = False
         args.install_service = True
         args.generate_config = False
@@ -523,6 +564,7 @@ class TestMainFunction(unittest.TestCase):
         Test that the main function returns exit code 0 when --generate-config is specified and sample config generation succeeds.
         """
         args = MagicMock()
+        args.command = None
         args.check_config = False
         args.install_service = False
         args.generate_config = True
@@ -542,6 +584,7 @@ class TestMainFunction(unittest.TestCase):
         Tests that the main function handles the --version flag by printing version information and returning exit code 0.
         """
         args = MagicMock()
+        args.command = None
         args.check_config = False
         args.install_service = False
         args.generate_config = False
@@ -560,10 +603,12 @@ class TestMainFunction(unittest.TestCase):
         Tests that the main function calls run_main with parsed arguments and returns its exit code when no special CLI commands are specified.
         """
         args = MagicMock()
+        args.command = None
         args.check_config = False
         args.install_service = False
         args.generate_config = False
         args.version = False
+        args.auth = False  # Add missing auth attribute
         mock_parse.return_value = args
         mock_run_main.return_value = 0
 

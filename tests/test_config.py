@@ -89,8 +89,9 @@ class TestConfig(unittest.TestCase):
             paths = get_config_paths()
             self.assertIn(os.path.expanduser("~/.mmrelay/config.yaml"), paths)
 
+    @patch("mmrelay.config.os.makedirs")
     @patch("mmrelay.config.platformdirs.user_config_dir")
-    def test_get_config_paths_windows(self, mock_user_config_dir):
+    def test_get_config_paths_windows(self, mock_user_config_dir, mock_makedirs):
         # Test with no args on Windows
         """
         Test that `get_config_paths` returns the correct configuration file path on Windows.
@@ -108,8 +109,11 @@ class TestConfig(unittest.TestCase):
                 "C:\\Users\\test\\AppData\\Local\\mmrelay\\config", "config.yaml"
             )
             self.assertIn(expected_path, paths)
+            # Verify makedirs was called but don't actually create directories
+            mock_makedirs.assert_called_once()
 
-    def test_get_data_dir_linux(self):
+    @patch("mmrelay.config.os.makedirs")
+    def test_get_data_dir_linux(self, mock_makedirs):
         """
         Test that get_data_dir returns the default data directory path on Linux platforms.
         """
@@ -119,7 +123,8 @@ class TestConfig(unittest.TestCase):
             data_dir = get_data_dir()
             self.assertEqual(data_dir, os.path.expanduser("~/.mmrelay/data"))
 
-    def test_get_log_dir_linux(self):
+    @patch("mmrelay.config.os.makedirs")
+    def test_get_log_dir_linux(self, mock_makedirs):
         """
         Test that get_log_dir() returns the default logs directory on Linux platforms.
         """
@@ -129,7 +134,8 @@ class TestConfig(unittest.TestCase):
             log_dir = get_log_dir()
             self.assertEqual(log_dir, os.path.expanduser("~/.mmrelay/logs"))
 
-    def test_get_plugin_data_dir_linux(self):
+    @patch("mmrelay.config.os.makedirs")
+    def test_get_plugin_data_dir_linux(self, mock_makedirs):
         """
         Test that get_plugin_data_dir returns correct plugin data directory paths on Linux.
 

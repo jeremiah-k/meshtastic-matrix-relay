@@ -25,6 +25,13 @@ DEFAULT_RETRY_ATTEMPTS = 1
 INFINITE_RETRIES = 0  # 0 means infinite retries
 MINIMUM_MESSAGE_DELAY = 2.0  # Minimum delay for message queue fallback
 
+# Matrix client timeouts
+MATRIX_EARLY_SYNC_TIMEOUT = 2000  # milliseconds
+MATRIX_MAIN_SYNC_TIMEOUT = 5000  # milliseconds
+MATRIX_ROOM_SEND_TIMEOUT = 10.0  # seconds
+MATRIX_LOGIN_TIMEOUT = 30.0  # seconds
+MATRIX_SYNC_OPERATION_TIMEOUT = 60.0  # seconds
+
 # Error codes
 ERRNO_BAD_FILE_DESCRIPTOR = 9
 

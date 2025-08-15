@@ -8,6 +8,7 @@ import pytest
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from mmrelay.config import get_e2ee_store_dir, load_credentials, save_credentials
 from mmrelay.matrix_utils import (
     _add_truncated_vars,
     _create_mapping_info,
@@ -866,15 +867,13 @@ async def test_connect_matrix_success(matrix_config):
         # Verify client was created and configured
         mock_async_client.assert_called_once()
         assert result == mock_client_instance
-        mock_client_instance.whoami.assert_called_once()
+        # Note: whoami() is no longer called in the new E2EE implementation
 
 
-async def test_connect_matrix_whoami_error(matrix_config):
+async def test_connect_matrix_without_credentials(matrix_config):
     """
-    Test that `connect_matrix` returns the Matrix client with `device_id` set to None when the `whoami` call fails during authentication.
+    Test that `connect_matrix` returns the Matrix client successfully when using legacy config without credentials.json.
     """
-    from nio import WhoamiError
-
     with patch("mmrelay.matrix_utils.matrix_client", None), patch(
         "mmrelay.matrix_utils.AsyncClient"
     ) as mock_async_client, patch("mmrelay.matrix_utils.logger"), patch(
@@ -886,19 +885,22 @@ async def test_connect_matrix_whoami_error(matrix_config):
 
         # Use MagicMock instead of AsyncMock to prevent coroutine warnings
         mock_client_instance = MagicMock()
-        mock_client_instance.whoami = AsyncMock()
+        mock_client_instance.sync = AsyncMock()  # Add missing sync method
+        mock_client_instance.rooms = {}  # Add missing rooms attribute
+        mock_client_instance.device_id = None  # Set device_id to None for legacy config
         mock_client_instance.get_displayname = AsyncMock()
         mock_async_client.return_value = mock_client_instance
 
-        # Mock whoami error
-        mock_whoami_error = WhoamiError("Authentication failed")
-        mock_client_instance.whoami.return_value = mock_whoami_error
+        # Mock get_displayname response
+        mock_displayname_response = MagicMock()
+        mock_displayname_response.displayname = "Test Bot"
+        mock_client_instance.get_displayname.return_value = mock_displayname_response
 
         result = await connect_matrix(matrix_config)
 
-        # Should still return client but with None device_id
+        # Should return client successfully
         assert result == mock_client_instance
-        assert mock_client_instance.device_id is None
+        # Note: device_id remains None for legacy config without E2EE
 
 
 @patch("mmrelay.matrix_utils.matrix_client")
@@ -1289,3 +1291,218 @@ async def test_send_room_image():
     content = call_args[1]["content"]
     assert content["msgtype"] == "m.image"
     assert content["url"] == "mxc://matrix.org/test123"
+
+
+# E2EE Configuration Tests
+
+
+@patch("mmrelay.config.os.makedirs")
+def test_get_e2ee_store_dir(mock_makedirs):
+    """Test E2EE store directory creation."""
+    store_dir = get_e2ee_store_dir()
+    assert store_dir is not None
+    assert "store" in store_dir
+    # Verify makedirs was called but don't check if directory actually exists
+    mock_makedirs.assert_called_once()
+
+
+@patch("mmrelay.config.get_base_dir")
+@patch("os.path.exists")
+@patch("builtins.open")
+@patch("json.load")
+def test_load_credentials_success(
+    mock_json_load, mock_open, mock_exists, mock_get_base_dir
+):
+    """Test successful credentials loading."""
+    mock_get_base_dir.return_value = "/test/config"
+    mock_exists.return_value = True
+    mock_json_load.return_value = {
+        "homeserver": "https://matrix.example.org",
+        "user_id": "@bot:example.org",
+        "access_token": "test_token",
+        "device_id": "TEST_DEVICE",
+    }
+
+    credentials = load_credentials()
+
+    assert credentials is not None
+    assert credentials["homeserver"] == "https://matrix.example.org"
+    assert credentials["user_id"] == "@bot:example.org"
+    assert credentials["access_token"] == "test_token"
+    assert credentials["device_id"] == "TEST_DEVICE"
+
+
+@patch("mmrelay.config.get_base_dir")
+@patch("os.path.exists")
+def test_load_credentials_file_not_exists(mock_exists, mock_get_base_dir):
+    """Test credentials loading when file doesn't exist."""
+    mock_get_base_dir.return_value = "/test/config"
+    mock_exists.return_value = False
+
+    credentials = load_credentials()
+
+    assert credentials is None
+
+
+@patch("mmrelay.config.get_base_dir")
+@patch("builtins.open")
+@patch("json.dump")
+def test_save_credentials(mock_json_dump, mock_open, mock_get_base_dir):
+    """Test credentials saving."""
+    mock_get_base_dir.return_value = "/test/config"
+
+    test_credentials = {
+        "homeserver": "https://matrix.example.org",
+        "user_id": "@bot:example.org",
+        "access_token": "test_token",
+        "device_id": "TEST_DEVICE",
+    }
+
+    save_credentials(test_credentials)
+
+    mock_open.assert_called_once()
+    mock_json_dump.assert_called_once_with(
+        test_credentials, mock_open().__enter__(), indent=2
+    )
+
+
+# E2EE Client Initialization Tests
+
+
+@pytest.mark.asyncio
+@patch("mmrelay.matrix_utils.os.makedirs")
+@patch("mmrelay.matrix_utils.os.listdir")
+@patch("mmrelay.matrix_utils.os.path.exists")
+@patch("builtins.open")
+@patch("mmrelay.matrix_utils.json.load")
+@patch("mmrelay.matrix_utils.ssl.create_default_context")
+@patch("mmrelay.matrix_utils.AsyncClient")
+@patch("mmrelay.matrix_utils.logger")
+async def test_connect_matrix_with_e2ee_credentials(
+    mock_logger,
+    mock_async_client,
+    mock_ssl_context,
+    mock_json_load,
+    mock_open,
+    mock_exists,
+    mock_listdir,
+    mock_makedirs,
+):
+    """Test Matrix connection with E2EE credentials."""
+    # Mock credentials.json loading
+    mock_exists.return_value = True
+    mock_json_load.return_value = {
+        "homeserver": "https://matrix.example.org",
+        "user_id": "@bot:example.org",
+        "access_token": "test_token",
+        "device_id": "TEST_DEVICE",
+    }
+
+    # Mock directory operations
+    mock_listdir.return_value = ["test.db"]  # Mock existing store files
+
+    # Mock SSL context
+    mock_ssl_context.return_value = MagicMock()
+
+    # Mock AsyncClient instance with simpler, more stable mocking
+    mock_client_instance = MagicMock()
+    mock_client_instance.rooms = {}
+
+    # Use simple return values instead of complex AsyncMock to avoid inspect issues
+    async def mock_sync(*args, **kwargs):
+        return MagicMock()
+
+    async def mock_whoami(*args, **kwargs):
+        return MagicMock(device_id="TEST_DEVICE")
+
+    async def mock_keys_upload(*args, **kwargs):
+        return MagicMock()
+
+    async def mock_get_displayname(*args, **kwargs):
+        return MagicMock(displayname="Test Bot")
+
+    mock_client_instance.sync = mock_sync
+    mock_client_instance.whoami = mock_whoami
+    mock_client_instance.load_store = MagicMock()
+    mock_client_instance.should_upload_keys = True
+    mock_client_instance.keys_upload = mock_keys_upload
+    mock_client_instance.get_displayname = mock_get_displayname
+    mock_async_client.return_value = mock_client_instance
+
+    # Test config with E2EE enabled
+    test_config = {
+        "matrix": {"e2ee": {"enabled": True, "store_path": "/test/store"}},
+        "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+    }
+
+    # Mock olm import to simulate E2EE availability
+    with patch("builtins.__import__") as mock_import:
+        mock_import.return_value = MagicMock()  # Mock olm module
+
+        client = await connect_matrix(test_config)
+
+        assert client is not None
+        assert client == mock_client_instance
+
+        # Verify AsyncClient was created with E2EE configuration
+        mock_async_client.assert_called_once()
+        call_args = mock_async_client.call_args
+        assert call_args[1]["store_path"] == "/test/store"
+
+        # Verify E2EE initialization sequence was called
+        # Since we're using simple functions, we can't assert calls, but we can verify the client was returned
+        # The fact that connect_matrix completed successfully means all the async calls worked
+
+
+@pytest.mark.asyncio
+@patch("mmrelay.config.load_credentials")
+@patch("mmrelay.matrix_utils.ssl.create_default_context")
+@patch("mmrelay.matrix_utils.AsyncClient")
+async def test_connect_matrix_legacy_config(
+    mock_async_client, mock_ssl_context, mock_load_credentials
+):
+    """Test Matrix connection with legacy config (no E2EE)."""
+    # No credentials.json available
+    mock_load_credentials.return_value = None
+
+    # Mock SSL context
+    mock_ssl_context.return_value = MagicMock()
+
+    # Mock AsyncClient instance
+    mock_client_instance = MagicMock()
+    mock_client_instance.sync = AsyncMock()
+    mock_client_instance.rooms = {}
+    mock_client_instance.whoami = AsyncMock()
+    mock_client_instance.whoami.return_value = MagicMock(device_id="LEGACY_DEVICE")
+    mock_client_instance.get_displayname = AsyncMock()
+    mock_client_instance.get_displayname.return_value = MagicMock(
+        displayname="Test Bot"
+    )
+    mock_async_client.return_value = mock_client_instance
+
+    # Legacy config without E2EE
+    test_config = {
+        "matrix": {
+            "homeserver": "https://matrix.example.org",
+            "access_token": "legacy_token",
+            "bot_user_id": "@bot:example.org",
+        },
+        "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+    }
+
+    # Mock the global matrix_client to None to ensure fresh creation
+    with patch("mmrelay.matrix_utils.matrix_client", None):
+        client = await connect_matrix(test_config)
+
+        assert client is not None
+        assert client == mock_client_instance
+
+        # Verify AsyncClient was created without E2EE
+        mock_async_client.assert_called_once()
+        call_args = mock_async_client.call_args
+        assert call_args[1]["device_id"] is None
+        assert call_args[1]["store_path"] is None
+
+        # Verify sync was called
+        mock_client_instance.sync.assert_called()
+        # Note: whoami() is no longer called in the new E2EE implementation

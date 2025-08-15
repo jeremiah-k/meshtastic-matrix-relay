@@ -3,6 +3,22 @@ matrix:
   access_token: reaalllllyloooooongsecretttttcodeeeeeeforrrrbot # See: https://t2bot.io/docs/access_tokens/
   bot_user_id: "@botuser:example.matrix.org"
 
+  # End-to-End Encryption (E2EE) configuration
+  # NOTE: E2EE requires credentials.json instead of access_token for new sessions
+  #
+  # SETUP INSTRUCTIONS:
+  # 1. Install E2EE dependencies: pip install mmrelay[e2e]
+  # 2. Enable E2EE in config: uncomment and set enabled: true below
+  # 3. Create credentials: mmrelay auth login
+  # 4. The auth login command will create credentials.json with your Matrix login
+  # 5. Restart mmrelay - it will use credentials.json and enable E2EE automatically
+  #
+  #e2ee:
+  #  # Optional: When credentials.json is present, MMRelay auto-enables E2EE.
+  #  # Configure this section only if you want to override defaults (e.g., store_path).
+  #  enabled: false                        # Explicit toggle if you need to force-enable/disable (usually not needed)
+  #  store_path: ~/.mmrelay/store          # Optional path for encryption keys storage
+
   # Message prefix customization (Meshtastic → Matrix direction)
   #prefix_enabled: true # Enable prefixes on messages from mesh (e.g., "[Alice/MyMesh]: message")
   #prefix_format: "[{long}/{mesh}]: " # Default format. Variables: {long1-20}, {long}, {short}, {mesh1-20}, {mesh}

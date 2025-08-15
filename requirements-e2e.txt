@@ -1,0 +1,6 @@
+# E2EE (End-to-End Encryption) requirements for mmrelay
+# Install with: pip install -r requirements-e2e.txt
+
+# Matrix E2EE support
+matrix-nio[e2e]==0.25.2
+python-olm

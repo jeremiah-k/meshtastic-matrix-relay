@@ -5,10 +5,21 @@ Command-line interface handling for the Meshtastic Matrix Relay.
 import argparse
 import importlib.resources
 import os
+import shutil
 import sys
 
 # Import version from package
 from mmrelay import __version__
+from mmrelay.cli_utils import (
+    get_command,
+    get_deprecation_warning,
+    msg_for_e2ee_support,
+    msg_or_run_auth_login,
+    msg_run_auth_login,
+    msg_setup_auth,
+    msg_setup_authentication,
+    msg_suggest_generate_config,
+)
 from mmrelay.config import get_config_paths, validate_yaml_syntax
 from mmrelay.constants.app import WINDOWS_PLATFORM
 from mmrelay.constants.config import (
@@ -30,15 +41,26 @@ from mmrelay.constants.network import (
 )
 from mmrelay.tools import get_sample_config_path
 
+# =============================================================================
+# CLI Argument Parsing and Command Handling
+# =============================================================================
+
 
 def parse_arguments():
     """
-    Parse and validate command-line arguments for the Meshtastic Matrix Relay CLI.
+    Parse command-line arguments for the Meshtastic Matrix Relay CLI.
 
-    Supports options for specifying configuration file, data directory, logging preferences, version display, sample configuration generation, service installation, and configuration validation. On Windows, also accepts a deprecated positional argument for the config file path with a warning. Ignores unknown arguments outside of test environments and warns if any are present.
+    Builds a modern grouped CLI with subcommands for config (generate, check), auth (login, status),
+    and service (install), while preserving hidden legacy flags (--generate-config, --install-service,
+    --check-config, --auth) for backward compatibility. Supports global options: --config,
+    --data-dir, --log-level, --logfile, and --version.
+
+    Unknown arguments are ignored when running outside of test environments (parsed via
+    parse_known_args); a warning is printed if unknown args are present and the process does not
+    appear to be a test run.
 
     Returns:
-        argparse.Namespace: Parsed command-line arguments.
+        argparse.Namespace: The parsed arguments namespace.
     """
     parser = argparse.ArgumentParser(
         description="Meshtastic Matrix Relay - Bridge between Meshtastic and Matrix"
@@ -61,49 +83,92 @@ def parse_arguments():
         default=None,
     )
     parser.add_argument("--version", action="store_true", help="Show version and exit")
+    # Deprecated flags (hidden from help but still functional)
     parser.add_argument(
         "--generate-config",
         action="store_true",
-        help="Generate a sample config.yaml file",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--install-service",
         action="store_true",
-        help="Install or update the systemd user service",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--check-config",
         action="store_true",
-        help="Check if the configuration file is valid",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--auth",
+        action="store_true",
+        help=argparse.SUPPRESS,
     )
 
-    # Windows-specific handling for backward compatibility
-    # On Windows, add a positional argument for the config file path
-    if sys.platform == WINDOWS_PLATFORM:
-        parser.add_argument(
-            "config_path", nargs="?", help=argparse.SUPPRESS, default=None
-        )
+    # Add grouped subcommands for modern CLI interface
+    subparsers = parser.add_subparsers(dest="command", help="Available commands")
+
+    # CONFIG group
+    config_parser = subparsers.add_parser(
+        "config",
+        help="Configuration management",
+        description="Manage configuration files and validation",
+    )
+    config_subparsers = config_parser.add_subparsers(
+        dest="config_command", help="Config commands", required=True
+    )
+    config_subparsers.add_parser(
+        "generate",
+        help="Create sample config.yaml file",
+        description="Generate a sample configuration file with default settings",
+    )
+    config_subparsers.add_parser(
+        "check",
+        help="Validate configuration file",
+        description="Check configuration file syntax and completeness",
+    )
+
+    # AUTH group
+    auth_parser = subparsers.add_parser(
+        "auth",
+        help="Authentication management",
+        description="Manage Matrix authentication and credentials",
+    )
+    auth_subparsers = auth_parser.add_subparsers(
+        dest="auth_command", help="Auth commands"
+    )
+    auth_subparsers.add_parser(
+        "login",
+        help="Authenticate with Matrix",
+        description="Set up Matrix authentication for E2EE support",
+    )
+
+    auth_subparsers.add_parser(
+        "status",
+        help="Check authentication status",
+        description="Display current Matrix authentication status",
+    )
+
+    # SERVICE group
+    service_parser = subparsers.add_parser(
+        "service",
+        help="Service management",
+        description="Manage systemd user service for MMRelay",
+    )
+    service_subparsers = service_parser.add_subparsers(
+        dest="service_command", help="Service commands", required=True
+    )
+    service_subparsers.add_parser(
+        "install",
+        help="Install systemd user service",
+        description="Install or update the systemd user service for MMRelay",
+    )
 
     # Use parse_known_args to handle unknown arguments gracefully (e.g., pytest args)
     args, unknown = parser.parse_known_args()
     # If there are unknown arguments and we're not in a test environment, warn about them
     if unknown and not any("pytest" in arg or "test" in arg for arg in sys.argv):
         print(f"Warning: Unknown arguments ignored: {unknown}")
-
-    # If on Windows and a positional config path is provided but --config is not, use the positional one
-    if (
-        sys.platform == WINDOWS_PLATFORM
-        and hasattr(args, "config_path")
-        and args.config_path
-        and not args.config
-    ):
-        args.config = args.config_path
-        # Print a deprecation warning
-        print("Warning: Using positional argument for config file is deprecated.")
-        print(f"Please use --config {args.config_path} instead.")
-        # Remove the positional argument from sys.argv to avoid issues with other argument parsers
-        if args.config_path in sys.argv:
-            sys.argv.remove(args.config_path)
 
     return args
 
@@ -125,27 +190,201 @@ def print_version():
     print(f"MMRelay v{__version__}")
 
 
-def check_config(args=None):
+def _validate_e2ee_dependencies():
+    """Check if E2EE dependencies are available."""
+    if sys.platform == WINDOWS_PLATFORM:
+        print("❌ Error: E2EE is not supported on Windows")
+        print("   Reason: python-olm library requires native C libraries")
+        print("   Solution: Use Linux or macOS for E2EE support")
+        return False
+
+    # Check if python-olm is available
+    try:
+        import olm  # noqa: F401
+
+        print("✅ E2EE dependencies are installed")
+        return True
+    except ImportError:
+        print("❌ Error: E2EE enabled but dependencies not installed")
+        print("   Install E2EE support: pipx install mmrelay[e2e]")
+        return False
+
+
+def _validate_credentials_json(config_path):
     """
-    Validate the application's YAML configuration file for required sections and fields.
+    Validate that a credentials.json file exists next to the given config and contains the required Matrix authentication fields.
 
-    Reads candidate config files (from get_config_paths), validates YAML syntax via validate_yaml_syntax, and performs structural and semantic checks:
-    - Ensures the config is not empty.
-    - Verifies the 'matrix' section contains HOMESERVER, ACCESS_TOKEN, and BOT_USER_ID.
-    - Verifies 'matrix_rooms' exists, is a non-empty list, and each room is a dict containing an 'id'.
-    - Verifies the 'meshtastic' section contains a valid connection_type and the connection-type-specific fields:
-      - serial -> serial_port
-      - tcp/network -> host
-      - ble -> ble_address
-      - warns if connection_type == 'network' (deprecated)
-    - Validates optional meshtastic fields and types: broadcast_enabled (bool), detection_sensor (bool), message_delay (int|float, >= 2.0), meshnet_name (str); reports missing optional fields as guidance.
-    - Warns if a deprecated 'db' section is present.
-
-    Side effects:
-    - Prints validation errors, warnings, and status messages to stdout.
+    Searches for credentials.json in the same directory as config_path, then falls back to the application's base directory. If found, the file is parsed as JSON and must include non-empty values for: "homeserver", "access_token", "user_id", and "device_id".
 
     Parameters:
-        args (argparse.Namespace | None): Parsed CLI arguments; if None, CLI args are parsed internally.
+        config_path (str): Path to the configuration file used to determine the primary search directory for credentials.json.
+
+    Returns:
+        bool: True if a valid credentials.json was found and contains all required fields; False otherwise. When invalid or missing fields are detected the function prints a short error and guidance to run the auth login flow.
+    """
+    try:
+        import json
+
+        # Look for credentials.json in the same directory as the config file
+        config_dir = os.path.dirname(config_path)
+        credentials_path = os.path.join(config_dir, "credentials.json")
+
+        if not os.path.exists(credentials_path):
+            # Also try the standard location
+            from mmrelay.config import get_base_dir
+
+            standard_credentials_path = os.path.join(get_base_dir(), "credentials.json")
+            if os.path.exists(standard_credentials_path):
+                credentials_path = standard_credentials_path
+            else:
+                return False
+
+        # Load and validate credentials
+        with open(credentials_path, "r") as f:
+            credentials = json.load(f)
+
+        # Check for required fields
+        required_fields = ["homeserver", "access_token", "user_id", "device_id"]
+        missing_fields = [
+            field
+            for field in required_fields
+            if field not in credentials or not credentials[field]
+        ]
+
+        if missing_fields:
+            print(
+                f"❌ Error: credentials.json missing required fields: {', '.join(missing_fields)}"
+            )
+            print(f"   {msg_run_auth_login()}")
+            return False
+
+        return True
+    except Exception as e:
+        print(f"❌ Error: Could not validate credentials.json: {e}")
+        return False
+
+
+def _validate_matrix_authentication(config_path, matrix_section):
+    """
+    Determine whether Matrix authentication is configured and usable.
+
+    Checks for a valid credentials.json (located relative to the provided config path) and, if not present,
+    falls back to an access_token in the provided matrix_section. Returns True when authentication
+    information is found and usable; returns False when no authentication is configured.
+
+    Parameters:
+        config_path (str | os.PathLike): Path to the application's YAML config file; used to locate a
+            credentials.json candidate in the same directory or standard locations.
+        matrix_section (Mapping | None): The parsed "matrix" configuration section (mapping-like). If
+            provided, an "access_token" key will be considered as a valid fallback when credentials.json
+            is absent.
+
+    Returns:
+        bool: True if a valid authentication method (credentials.json or access_token) is available,
+        False otherwise.
+
+    Notes:
+        - The function prefers credentials.json over an access_token if both are present.
+        - The function emits user-facing status messages describing which authentication source is used
+          and whether E2EE support is available.
+    """
+    has_valid_credentials = _validate_credentials_json(config_path)
+    has_access_token = matrix_section and "access_token" in matrix_section
+
+    if has_valid_credentials:
+        print("✅ Using credentials.json for Matrix authentication")
+        if sys.platform != WINDOWS_PLATFORM:
+            print("   E2EE support available (if enabled)")
+        return True
+
+    elif has_access_token:
+        print("✅ Using access_token for Matrix authentication")
+        print(f"   {msg_for_e2ee_support()}")
+        return True
+
+    else:
+        print("❌ Error: No Matrix authentication configured")
+        print(f"   {msg_setup_auth()}")
+        return False
+
+
+def _validate_e2ee_config(config, matrix_section, config_path):
+    """Validate E2EE configuration and authentication."""
+    # First validate authentication
+    if not _validate_matrix_authentication(config_path, matrix_section):
+        return False
+
+    # Check for E2EE configuration
+    if not matrix_section:
+        return True  # No matrix section means no E2EE config to validate
+
+    e2ee_config = matrix_section.get("e2ee", {})
+    encryption_config = matrix_section.get("encryption", {})  # Legacy support
+
+    e2ee_enabled = e2ee_config.get("enabled", False) or encryption_config.get(
+        "enabled", False
+    )
+
+    if e2ee_enabled:
+        # Platform and dependency check
+        if not _validate_e2ee_dependencies():
+            return False
+
+        # Store path validation
+        store_path = e2ee_config.get("store_path") or encryption_config.get(
+            "store_path"
+        )
+        if store_path:
+            expanded_path = os.path.expanduser(store_path)
+            if not os.path.exists(os.path.dirname(expanded_path)):
+                print(f"ℹ️  Note: E2EE store directory will be created: {expanded_path}")
+
+        print("✅ E2EE configuration is valid")
+
+    return True
+
+
+def _print_environment_summary():
+    """Print environment and capability summary."""
+    print("\n🖥️  Environment Summary:")
+    print(f"   Platform: {sys.platform}")
+    print(f"   Python: {sys.version.split()[0]}")
+
+    # E2EE capability check
+    if sys.platform == WINDOWS_PLATFORM:
+        print("   E2EE Support: ❌ Not available (Windows limitation)")
+        print("   Matrix Support: ✅ Available")
+    else:
+        try:
+            import olm  # noqa: F401
+
+            print("   E2EE Support: ✅ Available and installed")
+        except ImportError:
+            print("   E2EE Support: ⚠️  Available but not installed")
+            print("   Install: pipx install mmrelay[e2e]")
+
+
+def check_config(args=None):
+    """
+    Validate the application's YAML configuration file and its required sections.
+
+    Performs these checks:
+    - Locates the first existing config file from get_config_paths(args) (parses CLI args if args is None).
+    - Verifies YAML syntax and reports syntax errors or style warnings.
+    - Ensures the config is non-empty.
+    - Validates Matrix authentication: accepts credentials supplied via credentials.json or requires a matrix section with homeserver, access_token, and bot_user_id when credentials.json is absent.
+    - Validates end-to-end-encryption (E2EE) configuration and dependencies.
+    - Ensures matrix_rooms exists, is a non-empty list, and each room is a dict containing an id.
+    - Validates the meshtastic section: requires connection_type and the connection-specific fields (serial_port for serial, host for tcp/network, ble_address for ble). Warns about deprecated connection types.
+    - Validates optional meshtastic fields and types (broadcast_enabled, detection_sensor, message_delay >= 2.0, meshnet_name) and reports missing optional settings as guidance.
+    - Warns if a deprecated db section is present.
+    - Prints a short environment summary on success.
+
+    Side effects:
+    - Prints errors, warnings, and status messages to stdout.
+
+    Parameters:
+        args (argparse.Namespace | None): Parsed CLI arguments. If None, CLI arguments will be parsed internally.
 
     Returns:
         bool: True if a configuration file was found and passed all checks; False otherwise.
@@ -184,17 +423,37 @@ def check_config(args=None):
                     )
                     return False
 
-                # Check matrix section
-                if CONFIG_SECTION_MATRIX not in config:
-                    print("Error: Missing 'matrix' section in config")
-                    return False
+                # Check if we have valid credentials.json first
+                has_valid_credentials = _validate_credentials_json(config_path)
 
-                matrix_section = config[CONFIG_SECTION_MATRIX]
-                required_matrix_fields = [
-                    CONFIG_KEY_HOMESERVER,
-                    CONFIG_KEY_ACCESS_TOKEN,
-                    CONFIG_KEY_BOT_USER_ID,
-                ]
+                # Check matrix section requirements based on credentials.json availability
+                if has_valid_credentials:
+                    # With credentials.json, no matrix section fields are required
+                    # (homeserver, access_token, user_id, device_id all come from credentials.json)
+                    if CONFIG_SECTION_MATRIX not in config:
+                        # Create empty matrix section if missing - no fields required
+                        config[CONFIG_SECTION_MATRIX] = {}
+                    matrix_section = config[CONFIG_SECTION_MATRIX]
+                    required_matrix_fields = (
+                        []
+                    )  # No fields required from config when using credentials.json
+                else:
+                    # Without credentials.json, require full matrix section
+                    if CONFIG_SECTION_MATRIX not in config:
+                        print("Error: Missing 'matrix' section in config")
+                        print(
+                            "   Either add matrix section with access_token and bot_user_id,"
+                        )
+                        print(f"   {msg_or_run_auth_login()}")
+                        return False
+
+                    matrix_section = config[CONFIG_SECTION_MATRIX]
+                    required_matrix_fields = [
+                        CONFIG_KEY_HOMESERVER,
+                        CONFIG_KEY_ACCESS_TOKEN,
+                        CONFIG_KEY_BOT_USER_ID,
+                    ]
+
                 missing_matrix_fields = [
                     field
                     for field in required_matrix_fields
@@ -202,9 +461,22 @@ def check_config(args=None):
                 ]
 
                 if missing_matrix_fields:
-                    print(
-                        f"Error: Missing required fields in 'matrix' section: {', '.join(missing_matrix_fields)}"
-                    )
+                    if has_valid_credentials:
+                        print(
+                            f"Error: Missing required fields in 'matrix' section: {', '.join(missing_matrix_fields)}"
+                        )
+                        print(
+                            "   Note: credentials.json provides authentication; no matrix.* fields are required in config"
+                        )
+                    else:
+                        print(
+                            f"Error: Missing required fields in 'matrix' section: {', '.join(missing_matrix_fields)}"
+                        )
+                        print(f"   {msg_setup_authentication()}")
+                    return False
+
+                # Validate E2EE configuration and authentication
+                if not _validate_e2ee_config(config, matrix_section, config_path):
                     return False
 
                 # Check matrix_rooms section
@@ -247,7 +519,9 @@ def check_config(args=None):
                     CONNECTION_TYPE_NETWORK,
                 ]:
                     print(
-                        f"Error: Invalid 'connection_type': {connection_type}. Must be '{CONNECTION_TYPE_TCP}', '{CONNECTION_TYPE_SERIAL}', or '{CONNECTION_TYPE_BLE}'"
+                        f"Error: Invalid 'connection_type': {connection_type}. Must be "
+                        f"'{CONNECTION_TYPE_TCP}', '{CONNECTION_TYPE_SERIAL}', '{CONNECTION_TYPE_BLE}'"
+                        f" or '{CONNECTION_TYPE_NETWORK}' (deprecated)"
                     )
                     return False
 
@@ -346,7 +620,10 @@ def check_config(args=None):
                         "This option still works but may be removed in future versions.\n"
                     )
 
-                print("Configuration file is valid!")
+                # Print environment summary
+                _print_environment_summary()
+
+                print("\n✅ Configuration file is valid!")
                 return True
             except Exception as e:
                 print(f"Error checking configuration: {e}")
@@ -355,26 +632,38 @@ def check_config(args=None):
     print("Error: No configuration file found in any of the following locations:")
     for path in config_paths:
         print(f"  - {path}")
-    print("\nRun 'mmrelay --generate-config' to generate a sample configuration file.")
+    print(f"\n{msg_suggest_generate_config()}")
     return False
 
 
 def main():
     """
-    Runs the Meshtastic Matrix Relay CLI, handling argument parsing, command execution, and error reporting.
+    Entry point for the MMRelay command-line interface; parses arguments, dispatches commands, and returns an appropriate process exit code.
+
+    This function:
+    - Parses CLI arguments (modern grouped subcommands and hidden legacy flags).
+    - If a modern subcommand is provided, dispatches to the grouped subcommand handlers.
+    - If legacy flags are present, emits deprecation warnings and executes the corresponding legacy behavior (config check/generate, service install, auth, version).
+    - If no command flags are present, attempts to run the main runtime.
+    - Catches and reports import or unexpected errors and maps success/failure to exit codes.
 
     Returns:
-        int: Exit code indicating success (0) or failure (non-zero).
+        int: Exit code (0 on success, non-zero on failure).
     """
     try:
         args = parse_arguments()
 
-        # Handle --check-config
+        # Handle subcommands first (modern interface)
+        if hasattr(args, "command") and args.command:
+            return handle_subcommand(args)
+
+        # Handle legacy flags (with deprecation warnings)
         if args.check_config:
+            print(get_deprecation_warning("--check-config"))
             return 0 if check_config(args) else 1
 
-        # Handle --install-service
         if args.install_service:
+            print(get_deprecation_warning("--install-service"))
             try:
                 from mmrelay.setup_utils import install_service
 
@@ -383,14 +672,17 @@ def main():
                 print(f"Error importing setup utilities: {e}")
                 return 1
 
-        # Handle --generate-config
         if args.generate_config:
+            print(get_deprecation_warning("--generate-config"))
             return 0 if generate_sample_config() else 1
 
-        # Handle --version
         if args.version:
             print_version()
             return 0
+
+        if args.auth:
+            print(get_deprecation_warning("--auth"))
+            return handle_auth_command(args)
 
         # If no command was specified, run the main functionality
         try:
@@ -406,6 +698,164 @@ def main():
         return 1
 
 
+def handle_subcommand(args):
+    """
+    Dispatch the modern grouped CLI subcommand to its handler and return an exit code.
+
+    Parameters:
+        args (argparse.Namespace): Parsed CLI arguments (as produced by parse_arguments()). Must have a `command` attribute with one of: "config", "auth", or "service".
+
+    Returns:
+        int: Process exit code — 0 on success, non-zero on error or unknown command.
+    """
+    if args.command == "config":
+        return handle_config_command(args)
+    elif args.command == "auth":
+        return handle_auth_command(args)
+    elif args.command == "service":
+        return handle_service_command(args)
+    else:
+        print(f"Unknown command: {args.command}")
+        return 1
+
+
+def handle_config_command(args):
+    """
+    Dispatch the 'config' subgroup commands: "generate" and "check".
+
+    If `args.config_command` is "generate", writes a sample config to the default location.
+    If "check", validates the configuration referenced by `args` (see check_config).
+
+    Parameters:
+        args (argparse.Namespace): Parsed CLI namespace with a `config_command` attribute.
+
+    Returns:
+        int: Process exit code (0 on success, 1 on failure or unknown subcommand).
+    """
+    if args.config_command == "generate":
+        return 0 if generate_sample_config() else 1
+    elif args.config_command == "check":
+        return 0 if check_config(args) else 1
+    else:
+        print(f"Unknown config command: {args.config_command}")
+        return 1
+
+
+def handle_auth_command(args):
+    """
+    Dispatches the "auth" CLI subcommand to the appropriate handler.
+
+    If args.auth_command == "status" this calls handle_auth_status(args); otherwise it calls handle_auth_login(args). Returns the chosen handler's exit code (0 on success, non-zero on failure).
+
+    Parameters:
+        args (argparse.Namespace): Parsed CLI arguments; expected to have an `auth_command` attribute indicating the subcommand (e.g., "login" or "status").
+
+    Returns:
+        int: Exit code from the invoked subcommand handler (0 = success).
+    """
+    if hasattr(args, "auth_command") and args.auth_command == "status":
+        return handle_auth_status(args)
+    else:
+        # Default to login for both legacy --auth and new auth login
+        return handle_auth_login(args)
+
+
+def handle_auth_login(args):
+    """
+    Run the interactive Matrix bot login flow and return a CLI-style exit code.
+
+    Runs the login_matrix_bot coroutine to perform authentication for the Matrix/E2EE bot and prints a short header. Returns 0 on successful authentication; returns 1 if the login fails, is cancelled by the user (KeyboardInterrupt), or an unexpected error occurs.
+
+    Parameters:
+        args: Parsed command-line arguments (not used by this handler).
+    """
+    import asyncio
+
+    from mmrelay.matrix_utils import login_matrix_bot
+
+    # Show header
+    print("Matrix Bot Authentication for E2EE")
+    print("===================================")
+
+    try:
+        # For now, use the existing login function
+        result = asyncio.run(login_matrix_bot())
+        return 0 if result else 1
+    except KeyboardInterrupt:
+        print("\nAuthentication cancelled by user.")
+        return 1
+    except Exception as e:
+        print(f"\nError during authentication: {e}")
+        return 1
+
+
+def handle_auth_status(args):
+    """
+    Show Matrix authentication (credentials.json) status.
+
+    Searches candidate config directories (derived from the provided parsed-arguments namespace) for a credentials.json file and prints its path and key fields (homeserver, user_id, device_id) if found.
+
+    Parameters:
+        args (argparse.Namespace): Parsed CLI arguments used to determine config search paths.
+
+    Returns:
+        int: Exit code (0 if credentials.json was found and readable; 1 otherwise).
+    """
+    import json
+    import os
+
+    from mmrelay.config import get_config_paths
+
+    print("Matrix Authentication Status")
+    print("============================")
+
+    # Check for credentials.json
+    config_paths = get_config_paths(args)
+    for config_path in config_paths:
+        config_dir = os.path.dirname(config_path)
+        credentials_path = os.path.join(config_dir, "credentials.json")
+        if os.path.exists(credentials_path):
+            try:
+                with open(credentials_path, "r") as f:
+                    credentials = json.load(f)
+
+                print(f"✅ Found credentials.json at: {credentials_path}")
+                print(f"   Homeserver: {credentials.get('homeserver', 'Unknown')}")
+                print(f"   User ID: {credentials.get('user_id', 'Unknown')}")
+                print(f"   Device ID: {credentials.get('device_id', 'Unknown')}")
+                return 0
+            except Exception as e:
+                print(f"❌ Error reading credentials.json: {e}")
+                return 1
+
+    print("❌ No credentials.json found")
+    print(f"Run '{get_command('auth_login')}' to authenticate")
+    return 1
+
+
+def handle_service_command(args):
+    """
+    Handle the "service" CLI subcommands (currently: "install").
+
+    Parameters:
+        args (argparse.Namespace): Parsed CLI arguments; expected to have `service_command` set to the subcommand name.
+
+    Returns:
+        int: Exit code (0 on success, non-zero on failure).
+    """
+    if args.service_command == "install":
+        try:
+            from mmrelay.setup_utils import install_service
+
+            return 0 if install_service() else 1
+        except ImportError as e:
+            print(f"Error importing setup utilities: {e}")
+            return 1
+    else:
+        print(f"Unknown service command: {args.service_command}")
+        return 1
+
+
 if __name__ == "__main__":
     import sys
 
@@ -413,14 +863,18 @@ if __name__ == "__main__":
 
 
 def handle_cli_commands(args):
-    """Handle CLI commands like --generate-config, --install-service, and --check-config.
+    """
+    Handle legacy CLI flags (--version, --install-service, --generate-config, --check-config).
 
-    Args:
-        args: The parsed command-line arguments
+    This helper processes backward-compatible flags and may call sys.exit() for flags that perform an immediate action
+    (e.g., install service, check config). Prefer the modern grouped subcommands (e.g., `mmrelay config`, `mmrelay auth`)
+    when available.
+
+    Parameters:
+        args (argparse.Namespace): Parsed command-line arguments produced by parse_arguments().
 
     Returns:
-        bool: True if a command was handled and the program should exit,
-              False if normal execution should continue.
+        bool: True if a legacy command was handled (the process may have already exited), False to continue normal flow.
     """
     # Handle --version
     if args.version:
@@ -459,15 +913,15 @@ def handle_cli_commands(args):
 
 def generate_sample_config():
     """
-    Generate a sample configuration file (`config.yaml`) in the default location if one does not already exist.
+    Generate a sample configuration file (config.yaml) at the default config location if no config already exists.
 
-    Attempts to copy a sample config from various sources, handling directory creation and file system errors gracefully. Prints informative messages on success or failure.
+    If a config file already exists, the function prints the existing path and does nothing. Otherwise it attempts to create the sample config at the highest-priority candidate path returned by get_config_paths(). Sources tried, in order, are:
+    - a path returned by get_sample_config_path(),
+    - the packaged resource mmrelay.tools:sample_config.yaml via importlib.resources,
+    - a set of fallback filesystem locations relative to the package and the current working directory.
 
-    Returns:
-        bool: True if the sample config was generated successfully, False otherwise.
+    The function writes the sample file to disk (creating or overwriting only the target file) and prints success or failure messages. Returns True on successful generation, False on any failure.
     """
-
-    import shutil
 
     # Get the first config path (highest priority)
     config_paths = get_config_paths()
@@ -496,7 +950,6 @@ def generate_sample_config():
 
     if os.path.exists(sample_config_path):
         # Copy the sample config file to the target path
-        import shutil
 
         try:
             shutil.copy2(sample_config_path, target_path)

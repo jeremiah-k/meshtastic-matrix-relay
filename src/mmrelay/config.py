@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import re
@@ -8,6 +9,7 @@ import yaml
 from yaml.loader import SafeLoader
 
 # Import application constants
+from mmrelay.cli_utils import msg_suggest_check_config, msg_suggest_generate_config
 from mmrelay.constants.app import APP_AUTHOR, APP_NAME
 from mmrelay.constants.config import (
     CONFIG_KEY_ACCESS_TOKEN,
@@ -155,6 +157,67 @@ def get_log_dir():
     return log_dir
 
 
+def get_e2ee_store_dir():
+    """
+    Returns the directory for storing E2EE data (encryption keys, etc.).
+    Creates the directory if it doesn't exist.
+    """
+    if sys.platform in ["linux", "darwin"]:
+        # Use ~/.mmrelay/store/ for Linux and Mac
+        store_dir = os.path.join(get_base_dir(), "store")
+    else:
+        # Use platformdirs default for Windows
+        store_dir = os.path.join(
+            platformdirs.user_data_dir(APP_NAME, APP_AUTHOR), "store"
+        )
+
+    os.makedirs(store_dir, exist_ok=True)
+    return store_dir
+
+
+def load_credentials():
+    """
+    Load Matrix credentials from credentials.json file.
+
+    Returns:
+        dict: Credentials dictionary if found, None otherwise.
+    """
+    try:
+        config_dir = get_base_dir()
+        credentials_path = os.path.join(config_dir, "credentials.json")
+
+        if os.path.exists(credentials_path):
+            with open(credentials_path, "r") as f:
+                credentials = json.load(f)
+            logger.debug(f"Loaded credentials from {credentials_path}")
+            return credentials
+        else:
+            logger.debug(f"No credentials file found at {credentials_path}")
+            return None
+    except (OSError, PermissionError, json.JSONDecodeError) as e:
+        logger.error(f"Error loading credentials.json: {e}")
+        return None
+
+
+def save_credentials(credentials):
+    """
+    Save Matrix credentials to credentials.json file.
+
+    Args:
+        credentials (dict): Credentials dictionary to save.
+    """
+    try:
+        config_dir = get_base_dir()
+        credentials_path = os.path.join(config_dir, "credentials.json")
+
+        with open(credentials_path, "w") as f:
+            json.dump(credentials, f, indent=2)
+
+        logger.info(f"Saved credentials to {credentials_path}")
+    except (OSError, PermissionError) as e:
+        logger.error(f"Error saving credentials.json: {e}")
+
+
 # Set up a basic logger for config
 logger = logging.getLogger("Config")
 logger.setLevel(logging.INFO)
@@ -174,12 +237,16 @@ config_path = None
 
 def set_config(module, passed_config):
     """
-    Assigns the provided configuration dictionary to a module and sets additional attributes for known module types.
+    Assign the given configuration to a module and apply known, optional module-specific settings.
 
-    For modules named "matrix_utils" or "meshtastic_utils", sets specific configuration attributes if present. Calls the module's `setup_config()` method if it exists for backward compatibility.
+    This function sets module.config = passed_config and, for known module names, applies additional configuration when present:
+    - For a module named "matrix_utils": if `matrix_rooms` exists on the module and in the config, it is assigned; if the config contains a `matrix` section with `homeserver`, `access_token`, and `bot_user_id`, those values are assigned to module.matrix_homeserver, module.matrix_access_token, and module.bot_user_id respectively.
+    - For a module named "meshtastic_utils": if `matrix_rooms` exists on the module and in the config, it is assigned.
+
+    If the module exposes a callable setup_config() it will be invoked (kept for backward compatibility).
 
     Returns:
-        dict: The configuration dictionary that was assigned to the module.
+        dict: The same configuration dictionary that was assigned to the module.
     """
     # Set the module's config variable
     module.config = passed_config
@@ -189,14 +256,21 @@ def set_config(module, passed_config):
 
     if module_name == "matrix_utils":
         # Set Matrix-specific configuration
+        if hasattr(module, "matrix_rooms") and "matrix_rooms" in passed_config:
+            module.matrix_rooms = passed_config["matrix_rooms"]
+
+        # Only set matrix config variables if matrix section exists and has the required fields
+        # When using credentials.json, these will be loaded by connect_matrix() instead
         if (
             hasattr(module, "matrix_homeserver")
             and CONFIG_SECTION_MATRIX in passed_config
+            and CONFIG_KEY_HOMESERVER in passed_config[CONFIG_SECTION_MATRIX]
+            and CONFIG_KEY_ACCESS_TOKEN in passed_config[CONFIG_SECTION_MATRIX]
+            and CONFIG_KEY_BOT_USER_ID in passed_config[CONFIG_SECTION_MATRIX]
         ):
             module.matrix_homeserver = passed_config[CONFIG_SECTION_MATRIX][
                 CONFIG_KEY_HOMESERVER
             ]
-            module.matrix_rooms = passed_config["matrix_rooms"]
             module.matrix_access_token = passed_config[CONFIG_SECTION_MATRIX][
                 CONFIG_KEY_ACCESS_TOKEN
             ]
@@ -264,9 +338,7 @@ def load_config(config_file=None, args=None):
     for path in config_paths:
         logger.error(f"  - {path}")
     logger.error("Using empty configuration. This will likely cause errors.")
-    logger.error(
-        "Run 'mmrelay --generate-config' to generate a sample configuration file."
-    )
+    logger.error(msg_suggest_generate_config())
 
     return relay_config
 
@@ -374,20 +446,20 @@ def validate_yaml_syntax(config_content, config_path):
 
 def get_meshtastic_config_value(config, key, default=None, required=False):
     """
-    Return a value from the `meshtastic` section of the given config dict.
+    Return a value from the "meshtastic" section of the provided configuration.
 
-    If the key exists under `config["meshtastic"]`, that value is returned. If the key is missing:
-    - If `required` is False, `default` is returned.
-    - If `required` is True, a KeyError is raised and an error is logged with guidance to add the missing setting.
+    Looks up `config["meshtastic"][key]` and returns it if present. If the meshtastic section or the key is missing:
+    - If `required` is False, returns `default`.
+    - If `required` is True, logs an error with guidance to update the configuration and raises KeyError.
 
     Parameters:
-        config (dict): Parsed configuration mapping.
-        key (str): Key to retrieve from the `meshtastic` section.
+        config (dict): Parsed configuration mapping containing a "meshtastic" section.
+        key (str): Name of the setting to retrieve from the meshtastic section.
         default: Value to return when the key is absent and not required.
-        required (bool): If True, missing key raises KeyError; otherwise returns `default`.
+        required (bool): When True, a missing key raises KeyError; otherwise returns `default`.
 
     Returns:
-        The value from `config["meshtastic"][key]` or `default` when not required.
+        The value of `config["meshtastic"][key]` if present, otherwise `default`.
 
     Raises:
         KeyError: If `required` is True and the requested key is not present.
@@ -399,7 +471,7 @@ def get_meshtastic_config_value(config, key, default=None, required=False):
             logger.error(
                 f"Missing required configuration: meshtastic.{key}\n"
                 f"Please add '{key}: {default if default is not None else 'VALUE'}' to your meshtastic section in config.yaml\n"
-                f"Run 'mmrelay --check-config' to validate your configuration."
+                f"{msg_suggest_check_config()}"
             )
             raise KeyError(
                 f"Required configuration 'meshtastic.{key}' is missing. "

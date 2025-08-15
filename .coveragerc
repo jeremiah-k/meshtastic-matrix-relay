@@ -12,7 +12,6 @@ omit =
     */setup.py
     */conftest.py
 branch = True
-relative_files = True
 
 [report]
 exclude_lines =

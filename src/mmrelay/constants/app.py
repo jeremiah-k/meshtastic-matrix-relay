@@ -13,5 +13,8 @@ APP_AUTHOR = None  # No author directory for platformdirs
 APP_DISPLAY_NAME = "M<>M Relay"
 APP_FULL_NAME = "Meshtastic Matrix Relay"
 
+# Matrix client identification
+MATRIX_DEVICE_NAME = "MMRelay"
+
 # Platform-specific constants
 WINDOWS_PLATFORM = "win32"

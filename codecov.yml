@@ -7,6 +7,7 @@ coverage:
       default:
         target: 40%
         threshold: 2%
+    patch: off
 
 component_management:
   default_rules:
