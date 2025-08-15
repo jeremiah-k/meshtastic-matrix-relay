@@ -46,8 +46,6 @@ CLI_COMMANDS = {
     "service_install": "mmrelay service install",
     # Main commands
     "start_relay": "mmrelay",
-    "show_version": "mmrelay --version",
-    "show_help": "mmrelay --help",
 }
 
 # Deprecation mappings - maps old flags to new command keys
