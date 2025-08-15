@@ -333,7 +333,16 @@ def run_main(args):
         config_rich_logger.info(f"Log file location: {log_file_path}")
 
     # Check if config exists and has the required keys
-    required_keys = ["matrix", "meshtastic", "matrix_rooms"]
+    # Note: matrix section is optional if credentials.json exists
+    from mmrelay.config import load_credentials
+    credentials = load_credentials()
+
+    if credentials:
+        # With credentials.json, only meshtastic and matrix_rooms are required
+        required_keys = ["meshtastic", "matrix_rooms"]
+    else:
+        # Without credentials.json, all sections are required
+        required_keys = ["matrix", "meshtastic", "matrix_rooms"]
 
     # Check each key individually for better debugging
     for key in required_keys:
@@ -343,10 +352,17 @@ def run_main(args):
     if not config or not all(key in config for key in required_keys):
         # Exit with error if no config exists
         missing_keys = [key for key in required_keys if key not in config]
-        logger.error(
-            f"Configuration is missing required keys: {missing_keys}. "
-            "Please create a valid config.yaml file or use --generate-config to create one."
-        )
+        if credentials:
+            logger.error(
+                f"Configuration is missing required keys: {missing_keys}. "
+                "Matrix authentication will use credentials.json. "
+                "Please create a valid config.yaml file or use --generate-config to create one."
+            )
+        else:
+            logger.error(
+                f"Configuration is missing required keys: {missing_keys}. "
+                "Please create a valid config.yaml file or use --generate-config to create one."
+            )
         return 1
 
     try:

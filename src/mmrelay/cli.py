@@ -193,7 +193,7 @@ def _validate_credentials_json(config_path):
             credentials = json.load(f)
 
         # Check for required fields
-        required_fields = ["access_token", "user_id", "device_id"]
+        required_fields = ["homeserver", "access_token", "user_id", "device_id"]
         missing_fields = [
             field
             for field in required_fields
@@ -355,18 +355,13 @@ def check_config(args=None):
 
                 # Check matrix section requirements based on credentials.json availability
                 if has_valid_credentials:
-                    # With credentials.json, we only need homeserver in matrix section
+                    # With credentials.json, no matrix section fields are required
+                    # (homeserver, access_token, user_id, device_id all come from credentials.json)
                     if CONFIG_SECTION_MATRIX not in config:
-                        print("Error: Missing 'matrix' section in config")
-                        print(
-                            "   With credentials.json, you still need a matrix section with 'homeserver'"
-                        )
-                        print("   Example:")
-                        print("   matrix:")
-                        print("     homeserver: https://matrix.org")
-                        return False
+                        # Create empty matrix section if missing - no fields required
+                        config[CONFIG_SECTION_MATRIX] = {}
                     matrix_section = config[CONFIG_SECTION_MATRIX]
-                    required_matrix_fields = [CONFIG_KEY_HOMESERVER]
+                    required_matrix_fields = []  # No fields required from config when using credentials.json
                 else:
                     # Without credentials.json, require full matrix section
                     if CONFIG_SECTION_MATRIX not in config:

@@ -251,14 +251,21 @@ def set_config(module, passed_config):
 
     if module_name == "matrix_utils":
         # Set Matrix-specific configuration
+        if hasattr(module, "matrix_rooms") and "matrix_rooms" in passed_config:
+            module.matrix_rooms = passed_config["matrix_rooms"]
+
+        # Only set matrix config variables if matrix section exists and has the required fields
+        # When using credentials.json, these will be loaded by connect_matrix() instead
         if (
             hasattr(module, "matrix_homeserver")
             and CONFIG_SECTION_MATRIX in passed_config
+            and CONFIG_KEY_HOMESERVER in passed_config[CONFIG_SECTION_MATRIX]
+            and CONFIG_KEY_ACCESS_TOKEN in passed_config[CONFIG_SECTION_MATRIX]
+            and CONFIG_KEY_BOT_USER_ID in passed_config[CONFIG_SECTION_MATRIX]
         ):
             module.matrix_homeserver = passed_config[CONFIG_SECTION_MATRIX][
                 CONFIG_KEY_HOMESERVER
             ]
-            module.matrix_rooms = passed_config["matrix_rooms"]
             module.matrix_access_token = passed_config[CONFIG_SECTION_MATRIX][
                 CONFIG_KEY_ACCESS_TOKEN
             ]

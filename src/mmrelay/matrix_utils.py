@@ -467,13 +467,30 @@ async def connect_matrix(passed_config=None):
             logger.error("No configuration available. Cannot connect to Matrix.")
             return None
 
+        # Check if matrix section exists in config
+        if "matrix" not in config:
+            logger.error("No Matrix authentication available. Neither credentials.json nor matrix section in config found.")
+            logger.error("Please run 'mmrelay auth' to set up credentials.json, or add matrix section to config.yaml")
+            return None
+
+        matrix_section = config["matrix"]
+
+        # Check for required fields in matrix section
+        required_fields = ["homeserver", "access_token", "bot_user_id"]
+        missing_fields = [field for field in required_fields if field not in matrix_section]
+
+        if missing_fields:
+            logger.error(f"Matrix section is missing required fields: {missing_fields}")
+            logger.error("Please run 'mmrelay auth' to set up credentials.json, or add missing fields to config.yaml")
+            return None
+
         # Extract Matrix configuration from config
-        matrix_homeserver = config["matrix"]["homeserver"]
-        matrix_access_token = config["matrix"]["access_token"]
-        bot_user_id = config["matrix"]["bot_user_id"]
+        matrix_homeserver = matrix_section["homeserver"]
+        matrix_access_token = matrix_section["access_token"]
+        bot_user_id = matrix_section["bot_user_id"]
 
         # Set device_id for E2EE - only use config value if specified
-        e2ee_device_id = config["matrix"].get("device_id")
+        e2ee_device_id = matrix_section.get("device_id")
 
     # Get matrix rooms from config
     matrix_rooms = config["matrix_rooms"]
