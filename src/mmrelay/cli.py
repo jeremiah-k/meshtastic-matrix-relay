@@ -5,6 +5,7 @@ Command-line interface handling for the Meshtastic Matrix Relay.
 import argparse
 import importlib.resources
 import os
+import shutil
 import sys
 
 # Import version from package

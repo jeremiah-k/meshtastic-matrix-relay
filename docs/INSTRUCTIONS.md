@@ -53,7 +53,7 @@ MMRelay includes a built-in command to generate a sample configuration file in t
 
 ```bash
 # Generate a sample configuration file
-mmrelay generate-config
+mmrelay config generate
 
 # Edit the generated configuration file with your preferred editor
 nano ~/.mmrelay/config.yaml

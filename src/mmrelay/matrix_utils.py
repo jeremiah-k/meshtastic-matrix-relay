@@ -452,9 +452,7 @@ async def connect_matrix(passed_config=None):
             logger.error("Device ID is missing from credentials.json!")
             # Log available keys for debugging without exposing sensitive data
             logger.debug(f"credentials.json keys present: {list(credentials.keys())}")
-            logger.error(
-                "                msg_regenerate_credentials()"
-            )
+            logger.error(msg_regenerate_credentials())
             return None
 
         # If config also has Matrix login info, let the user know we're ignoring it
@@ -486,9 +484,7 @@ async def connect_matrix(passed_config=None):
 
         if missing_fields:
             logger.error(f"Matrix section is missing required fields: {missing_fields}")
-            logger.error(
-                "                msg_require_auth_login()"
-            )
+            logger.error(msg_require_auth_login())
             return None
 
         # Extract Matrix configuration from config
