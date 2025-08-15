@@ -70,12 +70,12 @@ mmrelay auth status        # Check authentication status (new)
 #### 3. SERVICE Group
 
 ```bash
-mmrelay service install    # Install systemd service
-mmrelay service start      # Start the service
-mmrelay service stop       # Stop the service
-mmrelay service status     # Check service status
-mmrelay service restart    # Restart the service
-mmrelay service logs       # View service logs
+mmrelay service install    # Install systemd service (IMPLEMENTED)
+mmrelay service start      # Start the service (PLANNED)
+mmrelay service stop       # Stop the service (PLANNED)
+mmrelay service status     # Check service status (PLANNED)
+mmrelay service restart    # Restart the service (PLANNED)
+mmrelay service logs       # View service logs (PLANNED)
 ```
 
 _Note: As of this initial implementation, only the `install` subcommand is available. The other service management commands are planned for future releases._
@@ -281,7 +281,7 @@ All user-facing documentation will be updated to use the new grouped command for
 def stop_service():
     """Stop the systemd user service."""
     try:
-        subprocess.run(["/usr/bin/systemctl", "--user", "stop", "mmrelay.service"], check=True)
+        subprocess.run(["systemctl", "--user", "stop", "mmrelay.service"], check=True)
         print("Service stopped successfully")
         return True
     except subprocess.CalledProcessError as e:
@@ -291,7 +291,7 @@ def stop_service():
 def restart_service():
     """Restart the systemd user service."""
     try:
-        subprocess.run(["/usr/bin/systemctl", "--user", "restart", "mmrelay.service"], check=True)
+        subprocess.run(["systemctl", "--user", "restart", "mmrelay.service"], check=True)
         print("Service restarted successfully")
         return True
     except subprocess.CalledProcessError as e:
@@ -302,7 +302,7 @@ def show_service_logs(lines=50):
     """Show recent service logs."""
     try:
         result = subprocess.run([
-            "/usr/bin/journalctl", "--user", "-u", "mmrelay.service",
+            "journalctl", "--user", "-u", "mmrelay.service",
             "-n", str(lines), "--no-pager"
         ], check=True, capture_output=True, text=True)
         print(result.stdout)
@@ -320,15 +320,23 @@ def check_auth_status():
     from mmrelay.config import get_config_paths
     import os
 
-    # Check for credentials.json
+    # Check for credentials.json near known config locations
     config_paths = get_config_paths()
+    searched = set()
     for config_path in config_paths:
         config_dir = os.path.dirname(config_path)
         credentials_path = os.path.join(config_dir, "credentials.json")
+        searched.add(credentials_path)
         if os.path.exists(credentials_path):
             print(f"✅ Found credentials.json at: {credentials_path}")
             # TODO: Validate credentials and check if they're still valid
             return True
+
+    # Fallback: default ~/.mmrelay/credentials.json
+    default_path = os.path.join(os.path.expanduser("~/.mmrelay"), "credentials.json")
+    if default_path not in searched and os.path.exists(default_path):
+        print(f"✅ Found credentials.json at: {default_path}")
+        return True
 
     print("❌ No credentials.json found")
     print("Run 'mmrelay auth login' to authenticate")
