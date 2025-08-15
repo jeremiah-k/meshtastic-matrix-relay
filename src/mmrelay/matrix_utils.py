@@ -1444,7 +1444,7 @@ async def on_room_message(
     Processes Matrix events—including text messages, reactions, and replies—in configured rooms. Relays supported messages to the Meshtastic mesh network if broadcasting is enabled, applying message mapping for cross-referencing when reactions or replies are enabled. Ignores messages from the bot itself, messages sent before the bot started, and reactions to reactions. Integrates with plugins for command and message handling; only messages not handled by plugins or identified as commands are forwarded to Meshtastic, with appropriate formatting and truncation. Handles special cases for relaying messages and reactions from remote mesh networks and detection sensor data.
     """
     # DEBUG: Log all Matrix message events to trace reception
-    logger.info(f"Received Matrix event in room {room.room_id}: {type(event).__name__}")
+    logger.debug(f"Received Matrix event in room {room.room_id}: {type(event).__name__}")
     logger.debug(
         f"Event details - sender: {event.sender}, timestamp: {event.server_timestamp}"
     )
@@ -1891,7 +1891,7 @@ async def on_room_message(
                     return
                 # Message mapping is now handled automatically by the queue system
         else:
-            logger.info(
+            logger.debug(
                 f"broadcast_enabled is False - Message from {full_display_name} not relayed to Meshtastic"
             )
 

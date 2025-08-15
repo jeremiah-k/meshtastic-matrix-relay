@@ -76,5 +76,5 @@ docs/
 
 - **Current Version**: v1.2+
 - **Python Requirement**: 3.9+
-- **Supported Platforms**: Linux, macOS, Windows
+- **Supported Platforms**: Linux, macOS, Windows (E2EE not available on Windows)
 - **Key Features**: Meshtastic ↔ Matrix relay, E2EE support, Docker deployment, Plugin system

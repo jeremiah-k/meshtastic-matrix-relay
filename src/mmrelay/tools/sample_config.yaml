@@ -14,8 +14,10 @@ matrix:
   # 5. Restart mmrelay - it will use credentials.json and enable E2EE automatically
   #
   #e2ee:
-  #  enabled: false                        # Enable E2EE support (default: false)
-  #  store_path: ~/.mmrelay/store          # Path for encryption keys storage (optional)
+  #  # Optional: When credentials.json is present, MMRelay auto-enables E2EE.
+  #  # Configure this section only if you want to override defaults (e.g., store_path).
+  #  enabled: false                        # Explicit toggle if you need to force-enable/disable (usually not needed)
+  #  store_path: ~/.mmrelay/store          # Optional path for encryption keys storage
 
   # Message prefix customization (Meshtastic → Matrix direction)
   #prefix_enabled: true # Enable prefixes on messages from mesh (e.g., "[Alice/MyMesh]: message")

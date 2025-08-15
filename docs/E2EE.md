@@ -71,7 +71,7 @@ That's it! MMRelay will automatically encrypt messages for encrypted rooms and d
 
 **E2EE is not available on Windows** due to technical limitations with the required cryptographic libraries. The `python-olm` library requires native C libraries that are difficult to compile and install on Windows systems.
 
-**Windows users can still use MMRelay** for regular (unencrypted) Matrix communication by configuring Matrix credentials directly in `config.yaml` instead of using the `auth login` command.
+**Windows users can still use MMRelay** for regular (unencrypted) Matrix communication. You can use `mmrelay auth login` to create credentials on Windows (E2EE not available), or alternatively configure Matrix credentials directly in `config.yaml`.
 
 ### Step 2: Create E2EE Credentials
 

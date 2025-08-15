@@ -110,7 +110,7 @@ def parse_arguments():
         description="Manage configuration files and validation",
     )
     config_subparsers = config_parser.add_subparsers(
-        dest="config_command", help="Config commands"
+        dest="config_command", help="Config commands", required=True
     )
     config_subparsers.add_parser(
         "generate",
@@ -155,7 +155,7 @@ def parse_arguments():
         description="Manage systemd user service for MMRelay",
     )
     service_subparsers = service_parser.add_subparsers(
-        dest="service_command", help="Service commands"
+        dest="service_command", help="Service commands", required=True
     )
     service_subparsers.add_parser(
         "install",
@@ -433,7 +433,7 @@ def check_config(args=None):
                             f"Error: Missing required fields in 'matrix' section: {', '.join(missing_matrix_fields)}"
                         )
                         print(
-                            "   Note: credentials.json provides authentication, only homeserver needed in config"
+                            "   Note: credentials.json provides authentication; no matrix.* fields are required in config"
                         )
                     else:
                         print(
@@ -486,7 +486,9 @@ def check_config(args=None):
                     CONNECTION_TYPE_NETWORK,
                 ]:
                     print(
-                        f"Error: Invalid 'connection_type': {connection_type}. Must be '{CONNECTION_TYPE_TCP}', '{CONNECTION_TYPE_SERIAL}', or '{CONNECTION_TYPE_BLE}'"
+                        f"Error: Invalid 'connection_type': {connection_type}. Must be "
+                        f"'{CONNECTION_TYPE_TCP}', '{CONNECTION_TYPE_SERIAL}', '{CONNECTION_TYPE_BLE}'"
+                        f" or '{CONNECTION_TYPE_NETWORK}' (deprecated)"
                     )
                     return False
 
@@ -810,13 +812,17 @@ if __name__ == "__main__":
 
 
 def handle_cli_commands(args):
-    """Handle CLI commands like --generate-config, --install-service, and --check-config.
+    """Handle legacy CLI flags like --generate-config, --install-service, and --check-config.
+
+    Note:
+        This helper may call sys.exit() for certain flags and is kept only for backward compatibility.
+        Prefer using the modern grouped subcommands via main()/handle_subcommand().
 
     Args:
         args: The parsed command-line arguments
 
     Returns:
-        bool: True if a command was handled and the program should exit,
+        bool: True if a command was handled (and process may already have exited),
               False if normal execution should continue.
     """
     # Handle --version
@@ -893,7 +899,6 @@ def generate_sample_config():
 
     if os.path.exists(sample_config_path):
         # Copy the sample config file to the target path
-        import shutil
 
         try:
             shutil.copy2(sample_config_path, target_path)

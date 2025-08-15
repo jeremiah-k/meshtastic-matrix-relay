@@ -7,6 +7,7 @@ Provides immediate feedback on encryption behavior.
 """
 
 import asyncio
+import os
 import sys
 from pathlib import Path
 
@@ -108,8 +109,11 @@ async def run_all_tests():
     tests = [
         ("Basic Encryption Parameters", test_basic_encryption_parameters),
         ("Room Send Parameters", test_room_send_parameters),
-        # ("Diagnostic Tools", test_client_diagnostic_tools),  # Function is commented out
     ]
+
+    if os.getenv("MMR_WITH_DIAG") == "1":
+        # from tests.test_e2ee_encryption import E2EEDiagnosticTools  # ensure import if needed
+        tests.append(("Diagnostic Tools", test_client_diagnostic_tools))
 
     results = []
     for test_name, test_func in tests:
