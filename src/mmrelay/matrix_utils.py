@@ -1400,7 +1400,7 @@ async def on_decryption_failure(room: MatrixRoom, event: MegolmEvent) -> None:
         f"Failed to decrypt event '{event.event_id}' in room '{room.room_id}'! "
         f"This is usually temporary and resolves on its own. "
         f"If this persists, the bot's session may be corrupt. "
-Try logging in again with 'mmrelay auth login'.
+        f"Try logging in again with 'mmrelay auth login'."
     )
 
     # Attempt to request the keys for the failed event

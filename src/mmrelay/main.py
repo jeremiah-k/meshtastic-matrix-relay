@@ -356,13 +356,13 @@ def run_main(args):
         if credentials:
             logger.error(
                 f"Configuration is missing required keys: {missing_keys}. "
-                "Matrix authentication will use credentials.json. "
-Please create a valid config.yaml file or run 'mmrelay config generate' to create one.
+                f"Matrix authentication will use credentials.json. "
+                f"Please create a valid config.yaml file or run 'mmrelay config generate' to create one."
             )
         else:
             logger.error(
                 f"Configuration is missing required keys: {missing_keys}. "
-Please create a valid config.yaml file or run 'mmrelay config generate' to create one.
+                f"Please create a valid config.yaml file or run 'mmrelay config generate' to create one."
             )
         return 1
 
