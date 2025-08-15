@@ -30,7 +30,6 @@ from mmrelay.constants.network import (
 )
 from mmrelay.tools import get_sample_config_path
 
-
 # =============================================================================
 # CLI Command Registry - Single source of truth for all CLI command syntax
 # =============================================================================
@@ -38,28 +37,25 @@ from mmrelay.tools import get_sample_config_path
 # Command registry - maps command purposes to their current syntax
 CLI_COMMANDS = {
     # Config commands
-    'generate_config': 'mmrelay config generate',
-    'check_config': 'mmrelay config check',
-
+    "generate_config": "mmrelay config generate",
+    "check_config": "mmrelay config check",
     # Auth commands
-    'auth_login': 'mmrelay auth login',
-    'auth_status': 'mmrelay auth status',
-
+    "auth_login": "mmrelay auth login",
+    "auth_status": "mmrelay auth status",
     # Service commands
-    'service_install': 'mmrelay service install',
-
+    "service_install": "mmrelay service install",
     # Main commands
-    'start_relay': 'mmrelay',
-    'show_version': 'mmrelay --version',
-    'show_help': 'mmrelay --help'
+    "start_relay": "mmrelay",
+    "show_version": "mmrelay --version",
+    "show_help": "mmrelay --help",
 }
 
 # Deprecation mappings - maps old flags to new command keys
 DEPRECATED_COMMANDS = {
-    '--generate-config': 'generate_config',
-    '--check-config': 'check_config',
-    '--install-service': 'service_install',
-    '--auth': 'auth_login'
+    "--generate-config": "generate_config",
+    "--check-config": "check_config",
+    "--install-service": "service_install",
+    "--auth": "auth_login",
 }
 
 
@@ -153,22 +149,24 @@ def validate_command(command_key, purpose):
 # Common message templates for frequently used commands
 def msg_suggest_generate_config():
     """Standard message suggesting config generation."""
-    return suggest_command('generate_config', 'to generate a sample configuration file')
+    return suggest_command("generate_config", "to generate a sample configuration file")
 
 
 def msg_suggest_check_config():
     """Standard message suggesting config validation."""
-    return validate_command('check_config', 'to validate your configuration')
+    return validate_command("check_config", "to validate your configuration")
 
 
 def msg_require_auth_login():
     """Standard message requiring authentication."""
-    return require_command('auth_login', 'to set up credentials.json, or add matrix section to config.yaml')
+    return require_command(
+        "auth_login", "to set up credentials.json, or add matrix section to config.yaml"
+    )
 
 
 def msg_retry_auth_login():
     """Standard message suggesting auth retry."""
-    return retry_command('auth_login')
+    return retry_command("auth_login")
 
 
 # =============================================================================
@@ -237,7 +235,9 @@ def parse_arguments():
         help="Configuration management",
         description="Manage configuration files and validation",
     )
-    config_subparsers = config_parser.add_subparsers(dest="config_command", help="Config commands")
+    config_subparsers = config_parser.add_subparsers(
+        dest="config_command", help="Config commands"
+    )
     config_subparsers.add_parser(
         "generate",
         help="Create sample config.yaml file",
@@ -255,7 +255,9 @@ def parse_arguments():
         help="Authentication management",
         description="Manage Matrix authentication and credentials",
     )
-    auth_subparsers = auth_parser.add_subparsers(dest="auth_command", help="Auth commands")
+    auth_subparsers = auth_parser.add_subparsers(
+        dest="auth_command", help="Auth commands"
+    )
     auth_login_parser = auth_subparsers.add_parser(
         "login",
         help="Authenticate with Matrix",
@@ -278,7 +280,9 @@ def parse_arguments():
         help="Service management",
         description="Manage systemd user service for MMRelay",
     )
-    service_subparsers = service_parser.add_subparsers(dest="service_command", help="Service commands")
+    service_subparsers = service_parser.add_subparsers(
+        dest="service_command", help="Service commands"
+    )
     service_subparsers.add_parser(
         "install",
         help="Install systemd user service",
@@ -739,11 +743,11 @@ def main():
 
         # Handle legacy flags (with deprecation warnings)
         if args.check_config:
-            print(get_deprecation_warning('--check-config'))
+            print(get_deprecation_warning("--check-config"))
             return 0 if check_config(args) else 1
 
         if args.install_service:
-            print(get_deprecation_warning('--install-service'))
+            print(get_deprecation_warning("--install-service"))
             try:
                 from mmrelay.setup_utils import install_service
 
@@ -753,7 +757,7 @@ def main():
                 return 1
 
         if args.generate_config:
-            print(get_deprecation_warning('--generate-config'))
+            print(get_deprecation_warning("--generate-config"))
             return 0 if generate_sample_config() else 1
 
         if args.version:
@@ -761,7 +765,7 @@ def main():
             return 0
 
         if args.auth:
-            print(get_deprecation_warning('--auth'))
+            print(get_deprecation_warning("--auth"))
             return handle_auth_command(args)
 
         # If no command was specified, run the main functionality
@@ -825,7 +829,7 @@ def handle_auth_command(args):
     Returns:
         int: Exit code (0 for success, non-zero for failure)
     """
-    if hasattr(args, 'auth_command') and args.auth_command == "status":
+    if hasattr(args, "auth_command") and args.auth_command == "status":
         return handle_auth_status(args)
     else:
         # Default to login for both legacy --auth and new auth login
@@ -869,9 +873,10 @@ def handle_auth_status(args):
     Returns:
         int: Exit code (0 for success, non-zero for failure)
     """
-    from mmrelay.config import get_config_paths
-    import os
     import json
+    import os
+
+    from mmrelay.config import get_config_paths
 
     print("Matrix Authentication Status")
     print("============================")
@@ -883,7 +888,7 @@ def handle_auth_status(args):
         credentials_path = os.path.join(config_dir, "credentials.json")
         if os.path.exists(credentials_path):
             try:
-                with open(credentials_path, 'r') as f:
+                with open(credentials_path, "r") as f:
                     credentials = json.load(f)
 
                 print(f"✅ Found credentials.json at: {credentials_path}")
@@ -912,6 +917,7 @@ def handle_service_command(args):
     if args.service_command == "install":
         try:
             from mmrelay.setup_utils import install_service
+
             return 0 if install_service() else 1
         except ImportError as e:
             print(f"Error importing setup utilities: {e}")

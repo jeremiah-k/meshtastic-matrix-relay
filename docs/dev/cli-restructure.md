@@ -9,6 +9,7 @@ This document outlines the restructuring of MMRelay's CLI from a flat command st
 ### Existing CLI Structure (Main Branch)
 
 **Current Commands:**
+
 - `mmrelay` - Start the relay (main functionality)
 - `mmrelay --version` - Show version
 - `mmrelay --generate-config` - Generate sample config
@@ -16,6 +17,7 @@ This document outlines the restructuring of MMRelay's CLI from a flat command st
 - `mmrelay --install-service` - Install systemd service
 
 **Global Options:**
+
 - `--config` - Configuration file path
 - `--data-dir` - Data directory path
 - `--log-level` - Logging level
@@ -42,26 +44,31 @@ This document outlines the restructuring of MMRelay's CLI from a flat command st
 ### Command Groups
 
 #### 1. CONFIG Group
+
 ```bash
 mmrelay config generate    # Create sample config.yaml
 mmrelay config check       # Validate configuration file
 ```
 
 **Current Mapping:**
+
 - `mmrelay --generate-config` → `mmrelay config generate`
 - `mmrelay --check-config` → `mmrelay config check`
 
 #### 2. AUTH Group
+
 ```bash
 mmrelay auth login         # Authenticate with Matrix (new for E2EE)
 mmrelay auth status        # Check authentication status (new)
 ```
 
 **New Commands:**
+
 - Authentication management for E2EE support
 - No current equivalent - this is new functionality
 
 #### 3. SERVICE Group
+
 ```bash
 mmrelay service install    # Install systemd service
 mmrelay service start      # Start the service
@@ -72,9 +79,11 @@ mmrelay service logs       # View service logs
 ```
 
 **Current Mapping:**
+
 - `mmrelay --install-service` → `mmrelay service install`
 
 **New Commands:**
+
 - `mmrelay service start/stop/status/restart/logs` - Full service management
 
 ### Global Commands
@@ -86,6 +95,7 @@ mmrelay --help             # Show help (unchanged)
 ```
 
 **Global Options (work with all commands):**
+
 - `--config` - Configuration file path
 - `--data-dir` - Data directory path
 - `--log-level` - Logging level
@@ -94,17 +104,20 @@ mmrelay --help             # Show help (unchanged)
 ## Implementation Strategy
 
 ### Phase 1: Infrastructure
+
 1. **Implement nested argparse subparsers** - Support grouped commands
 2. **Hide deprecated flags from help** - Keep functional but not visible
 3. **Add deprecation warnings** - Guide users to new commands
 4. **Maintain backward compatibility** - All existing commands still work
 
 ### Phase 2: Command Groups
+
 1. **CONFIG group** - Implement `mmrelay config generate/check`
 2. **AUTH group** - Implement `mmrelay auth login/status`
 3. **SERVICE group** - Implement full service management
 
 ### Phase 3: Documentation
+
 1. **Update all documentation** - Use new command format exclusively
 2. **Update error messages** - Suggest new commands
 3. **Migration guide** - Help users transition
@@ -206,12 +219,14 @@ def handle_service_command(args):
 The service group will leverage existing functionality in `setup_utils.py` and add new capabilities:
 
 **Existing Functions to Reuse:**
+
 - `install_service()` - For `mmrelay service install`
 - `is_service_active()` - For status checking
 - `show_service_status()` - For `mmrelay service status`
 - `start_service()` - For `mmrelay service start`
 
 **New Functions to Implement:**
+
 - `stop_service()` - Stop the systemd service
 - `restart_service()` - Restart the systemd service
 - `show_service_logs()` - Display recent service logs
@@ -227,13 +242,14 @@ The service group will leverage existing functionality in `setup_utils.py` and a
 
 ### Deprecation Warning Format
 
-```
+```bash
 Warning: --generate-config is deprecated. Use 'mmrelay config generate' instead.
 ```
 
 ### Documentation Updates
 
 All user-facing documentation will be updated to use the new grouped command format:
+
 - README.md quick start commands
 - docs/INSTRUCTIONS.md CLI reference
 - Error messages and help text
@@ -242,6 +258,7 @@ All user-facing documentation will be updated to use the new grouped command for
 ## File Structure Changes
 
 ### New Files to Create
+
 - `src/mmrelay/commands/` - Directory for command group modules
 - `src/mmrelay/commands/__init__.py` - Command module initialization
 - `src/mmrelay/commands/config.py` - Config command group implementation
@@ -249,6 +266,7 @@ All user-facing documentation will be updated to use the new grouped command for
 - `src/mmrelay/commands/service.py` - Service command group implementation
 
 ### Modified Files
+
 - `src/mmrelay/cli.py` - Main CLI parser restructure
 - `src/mmrelay/setup_utils.py` - Add new service management functions
 - All documentation files - Update command references
@@ -318,12 +336,14 @@ def check_auth_status():
 ## Benefits
 
 ### For Users
+
 - **Professional CLI experience** - Matches industry standards
 - **Better discoverability** - `mmrelay config --help` shows all config commands
 - **Logical organization** - Related commands grouped together
 - **Comprehensive service management** - Full control over systemd service
 
 ### For Developers
+
 - **Extensible architecture** - Easy to add new command groups
 - **Maintainable code** - Clear separation of concerns
 - **Consistent patterns** - Standardized command handling

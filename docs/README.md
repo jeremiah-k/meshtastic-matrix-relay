@@ -52,7 +52,7 @@ mmrelay
 
 ## Documentation Structure
 
-```
+```bash
 docs/
 ├── README.md              # This file - documentation index
 ├── INSTRUCTIONS.md        # Main installation and setup guide

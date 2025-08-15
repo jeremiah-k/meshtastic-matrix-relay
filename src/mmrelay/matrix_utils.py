@@ -469,19 +469,27 @@ async def connect_matrix(passed_config=None):
 
         # Check if matrix section exists in config
         if "matrix" not in config:
-            logger.error("No Matrix authentication available. Neither credentials.json nor matrix section in config found.")
-            logger.error("Please run 'mmrelay auth login' to set up credentials.json, or add matrix section to config.yaml")
+            logger.error(
+                "No Matrix authentication available. Neither credentials.json nor matrix section in config found."
+            )
+            logger.error(
+                "Please run 'mmrelay auth login' to set up credentials.json, or add matrix section to config.yaml"
+            )
             return None
 
         matrix_section = config["matrix"]
 
         # Check for required fields in matrix section
         required_fields = ["homeserver", "access_token", "bot_user_id"]
-        missing_fields = [field for field in required_fields if field not in matrix_section]
+        missing_fields = [
+            field for field in required_fields if field not in matrix_section
+        ]
 
         if missing_fields:
             logger.error(f"Matrix section is missing required fields: {missing_fields}")
-            logger.error("Please run 'mmrelay auth' to set up credentials.json, or add missing fields to config.yaml")
+            logger.error(
+                "Please run 'mmrelay auth' to set up credentials.json, or add missing fields to config.yaml"
+            )
             return None
 
         # Extract Matrix configuration from config
@@ -1438,7 +1446,9 @@ async def on_room_message(
     """
     # DEBUG: Log all Matrix message events to trace reception
     logger.info(f"Received Matrix event in room {room.room_id}: {type(event).__name__}")
-    logger.debug(f"Event details - sender: {event.sender}, timestamp: {event.server_timestamp}")
+    logger.debug(
+        f"Event details - sender: {event.sender}, timestamp: {event.server_timestamp}"
+    )
 
     # Importing here to avoid circular imports and to keep logic consistent
     # Note: We do not call store_message_map directly here for inbound matrix->mesh messages.

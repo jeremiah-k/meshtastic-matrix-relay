@@ -134,7 +134,7 @@ mmrelay auth
 
 ### Example Session
 
-```
+```bash
 $ mmrelay auth
 Matrix Bot Login for E2EE
 =========================
@@ -287,7 +287,7 @@ pipx install mmrelay[e2e]
 
 Look for these log messages when MMRelay starts:
 
-```
+```bash
 INFO Matrix: Found credentials at ~/.mmrelay/credentials.json
 INFO Matrix: Using device ID: YOUR_DEVICE_ID
 INFO Matrix: Setting up End-to-End Encryption...
