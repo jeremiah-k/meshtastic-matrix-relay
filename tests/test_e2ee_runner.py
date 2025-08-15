@@ -113,7 +113,8 @@ async def run_all_tests():
 
     if os.getenv("MMR_WITH_DIAG") == "1":
         # from tests.test_e2ee_encryption import E2EEDiagnosticTools  # ensure import if needed
-        tests.append(("Diagnostic Tools", test_client_diagnostic_tools))
+        # tests.append(("Diagnostic Tools", test_client_diagnostic_tools))  # Function is commented out
+        pass
 
     results = []
     for test_name, test_func in tests:

@@ -8,10 +8,10 @@ CLI commands.
 
 Usage:
     from mmrelay.cli_utils import get_command, suggest_command
-    
+
     # Get a command string
     cmd = get_command('generate_config')  # Returns "mmrelay config generate"
-    
+
     # Generate suggestion messages
     msg = suggest_command('generate_config', 'to create a sample configuration')
 """
@@ -21,7 +21,7 @@ CLI_COMMANDS = {
     # Config commands
     "generate_config": "mmrelay config generate",
     "check_config": "mmrelay config check",
-    # Auth commands  
+    # Auth commands
     "auth_login": "mmrelay auth login",
     "auth_status": "mmrelay auth status",
     # Service commands
@@ -43,10 +43,10 @@ DEPRECATED_COMMANDS = {
 
 def get_command(command_key):
     """Get the current command syntax for a given command key.
-    
+
     Args:
         command_key (str): The command key (e.g., 'generate_config')
-        
+
     Returns:
         str: The current command syntax (e.g., 'mmrelay config generate')
     """
@@ -55,10 +55,10 @@ def get_command(command_key):
 
 def get_deprecation_warning(old_flag):
     """Generate a deprecation warning message for an old command flag.
-    
+
     Args:
         old_flag (str): The deprecated flag (e.g., '--generate-config')
-        
+
     Returns:
         str: A formatted deprecation warning message
     """
@@ -71,11 +71,11 @@ def get_deprecation_warning(old_flag):
 
 def suggest_command(command_key, purpose):
     """Generate a suggestion message for a command.
-    
+
     Args:
         command_key (str): The command key
         purpose (str): Description of what the command does (should start with 'to')
-        
+
     Returns:
         str: A formatted suggestion message
     """
@@ -85,11 +85,11 @@ def suggest_command(command_key, purpose):
 
 def require_command(command_key, purpose):
     """Generate a requirement message for a command.
-    
+
     Args:
         command_key (str): The command key
         purpose (str): Description of what the command does (should start with 'to')
-        
+
     Returns:
         str: A formatted requirement message
     """
@@ -99,11 +99,11 @@ def require_command(command_key, purpose):
 
 def retry_command(command_key, context=""):
     """Generate a retry message for a command.
-    
+
     Args:
         command_key (str): The command key
         context (str): Optional context for why to retry
-        
+
     Returns:
         str: A formatted retry message
     """
@@ -116,11 +116,11 @@ def retry_command(command_key, context=""):
 
 def validate_command(command_key, purpose):
     """Generate a validation message for a command.
-    
+
     Args:
         command_key (str): The command key
         purpose (str): Description of what to validate
-        
+
     Returns:
         str: A formatted validation message
     """
@@ -131,22 +131,24 @@ def validate_command(command_key, purpose):
 # Common message templates for frequently used commands
 def msg_suggest_generate_config():
     """Standard message suggesting config generation."""
-    return suggest_command('generate_config', 'to generate a sample configuration file')
+    return suggest_command("generate_config", "to generate a sample configuration file")
 
 
 def msg_suggest_check_config():
     """Standard message suggesting config validation."""
-    return validate_command('check_config', 'to validate your configuration')
+    return validate_command("check_config", "to validate your configuration")
 
 
 def msg_require_auth_login():
     """Standard message requiring authentication."""
-    return require_command('auth_login', 'to set up credentials.json, or add matrix section to config.yaml')
+    return require_command(
+        "auth_login", "to set up credentials.json, or add matrix section to config.yaml"
+    )
 
 
 def msg_retry_auth_login():
     """Standard message suggesting auth retry."""
-    return retry_command('auth_login')
+    return retry_command("auth_login")
 
 
 def msg_run_auth_login():

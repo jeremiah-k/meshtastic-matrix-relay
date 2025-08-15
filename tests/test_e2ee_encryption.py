@@ -327,8 +327,7 @@ class E2EEDebugUtilities:
         encrypted_rooms = []
         if hasattr(client, "rooms") and client.rooms:
             encrypted_rooms = [
-                rid for rid, r in client.rooms.items()
-                if getattr(r, "encrypted", False)
+                rid for rid, r in client.rooms.items() if getattr(r, "encrypted", False)
             ]
         diagnosis = {
             "client_info": {

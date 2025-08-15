@@ -92,7 +92,7 @@ mmrelay auth login
 
 **Interactive prompts:**
 
-```
+```text
 Matrix Bot Login for E2EE
 =========================
 Matrix homeserver (e.g., https://matrix.org): https://your-server.org

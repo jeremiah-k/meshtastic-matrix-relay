@@ -5,7 +5,6 @@ Command-line interface handling for the Meshtastic Matrix Relay.
 import argparse
 import importlib.resources
 import os
-import shutil
 import sys
 
 # Import version from package
@@ -40,9 +39,6 @@ from mmrelay.constants.network import (
     CONNECTION_TYPE_TCP,
 )
 from mmrelay.tools import get_sample_config_path
-
-
-
 
 # =============================================================================
 # CLI Argument Parsing and Command Handling
@@ -133,7 +129,7 @@ def parse_arguments():
     auth_subparsers = auth_parser.add_subparsers(
         dest="auth_command", help="Auth commands"
     )
-    auth_login_parser = auth_subparsers.add_parser(
+    auth_subparsers.add_parser(
         "login",
         help="Authenticate with Matrix",
         description="Set up Matrix authentication for E2EE support",
@@ -865,8 +861,6 @@ def generate_sample_config():
     Returns:
         bool: True if the sample config was generated successfully, False otherwise.
     """
-
-    import shutil
 
     # Get the first config path (highest priority)
     config_paths = get_config_paths()
