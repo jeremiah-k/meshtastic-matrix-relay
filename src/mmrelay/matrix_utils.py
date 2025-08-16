@@ -662,13 +662,28 @@ async def connect_matrix(passed_config=None):
         ssl=ssl_context,
     )
 
+    # If E2EE is enabled, load the store BEFORE restoring the login
+    if e2ee_enabled:
+        try:
+            logger.info("Setting up End-to-End Encryption...")
+            logger.info(f"E2EE store path: {e2ee_store_path}")
+            # The device_id must be set on the client before loading the store
+            matrix_client.device_id = e2ee_device_id
+            logger.info(f"Device ID: {matrix_client.device_id}")
+
+            logger.debug("Loading encryption store...")
+            matrix_client.load_store()
+            logger.info("Encryption store loaded successfully")
+
+        except Exception as e:
+            logger.error(f"Failed to load E2EE store: {e}")
+            logger.error("E2EE will not work correctly")
+            logger.error("Consider regenerating credentials with: mmrelay auth login")
+            # Don't fail completely, continue without E2EE
+            e2ee_enabled = False
+
     # Set the access_token and user_id using restore_login for better session management
     if credentials:
-        # CRITICAL: Set device_id on client BEFORE calling restore_login
-        # matrix-nio requires this for E2EE store loading
-        matrix_client.device_id = e2ee_device_id
-        logger.info(f"Using device ID: {matrix_client.device_id}")
-
         # Use restore_login method for proper session restoration
         matrix_client.restore_login(
             user_id=bot_user_id,
@@ -683,32 +698,21 @@ async def connect_matrix(passed_config=None):
         matrix_client.access_token = matrix_access_token
         matrix_client.user_id = bot_user_id
 
-    # If E2EE is enabled, load the store and set up encryption BEFORE any sync operations
+    # If E2EE is enabled, upload keys if necessary AFTER restoring login
     if e2ee_enabled:
         try:
-            logger.info("Setting up End-to-End Encryption...")
-            logger.info(f"E2EE store path: {e2ee_store_path}")
-            logger.info(f"Device ID: {matrix_client.device_id}")
-
-            # Load the encryption store immediately after setting credentials
-            logger.debug("Loading encryption store...")
-            matrix_client.load_store()
-            logger.info("Encryption store loaded successfully")
-
-            # Upload keys if needed
             if matrix_client.should_upload_keys:
                 logger.info("Uploading encryption keys...")
                 await matrix_client.keys_upload()
                 logger.info("Encryption keys uploaded successfully")
             else:
                 logger.info("No key upload needed - keys already present")
-
         except Exception as e:
-            logger.error(f"Failed to set up E2EE: {e}")
-            logger.error("E2EE will not work correctly")
-            logger.error("Consider regenerating credentials with: mmrelay auth login")
-            # Don't fail completely, continue without E2EE
-            e2ee_enabled = False
+            logger.error(f"Failed to upload E2EE keys: {e}")
+            # E2EE might still work, so we don't disable it here
+            logger.error(
+                "Consider regenerating credentials with: mmrelay auth login"
+            )
 
     # Perform initial sync to populate rooms (needed for message delivery)
     logger.info("Performing initial sync to initialize rooms...")
