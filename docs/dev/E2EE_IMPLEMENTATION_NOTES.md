@@ -4,9 +4,47 @@
 
 ## Core E2EE Implementation Logic
 
-The final working E2EE implementation relies on four critical components to function correctly.
+The final working E2EE implementation relies on five critical components to function correctly.
 
-### 1. Initial Sync with Full State
+### 1. Correct Client Initialization and Session Restoration
+
+Analysis of several working `matrix-nio` bots revealed that the library handles loading the E2EE store implicitly when the `store_path` is provided during client construction. Manually calling `client.load_store()` is unnecessary when using `client.restore_login()` and can interfere with the client's internal state.
+
+The correct sequence is:
+1. Initialize `AsyncClient`, providing `homeserver`, `user_id`, `device_id`, and `store_path` in the constructor.
+2. Call `client.restore_login()` to inject the access token.
+3. Call `client.keys_upload()` if `client.should_upload_keys` is true.
+4. Begin syncing.
+
+**Implementation (`src/mmrelay/matrix_utils.py`):**
+
+```python
+# In connect_matrix()
+
+# Initialize the client with all necessary parameters
+matrix_client = AsyncClient(
+    homeserver=matrix_homeserver,
+    user=bot_user_id,
+    device_id=e2ee_device_id,
+    store_path=e2ee_store_path if e2ee_enabled else None,
+    config=client_config,
+    ssl=ssl_context,
+)
+
+# Restore the login. nio implicitly loads the store based on store_path.
+if credentials:
+    matrix_client.restore_login(
+        user_id=bot_user_id,
+        device_id=e2ee_device_id,
+        access_token=matrix_access_token,
+    )
+
+# Upload keys if needed, now that we are authenticated.
+if e2ee_enabled and matrix_client.should_upload_keys:
+    await matrix_client.keys_upload()
+```
+
+### 2. Initial Sync with Full State
 
 To correctly identify encrypted rooms at startup, the initial sync with the homeserver **must** be performed with `full_state=True`. A lightweight sync (`full_state=False`) does not provide the necessary `m.room.encryption` state events, causing the client to incorrectly treat encrypted rooms as unencrypted.
 
@@ -22,7 +60,7 @@ sync_response = await asyncio.wait_for(
 )
 ```
 
-### 2. Robust Callback Handling for Encrypted Messages
+### 3. Robust Callback Handling for Encrypted Messages
 
 A single callback for all message types is not sufficient to handle the nuances of E2EE. The final implementation uses two separate callbacks for handling encrypted messages:
 
@@ -41,7 +79,7 @@ matrix_client.add_event_callback(
 matrix_client.add_event_callback(on_decryption_failure, (MegolmEvent,))
 ```
 
-### 3. Automatic Key Requesting on Decryption Failure
+### 4. Automatic Key Requesting on Decryption Failure
 
 When the `on_decryption_failure` callback is triggered, it is not enough to simply log the error. The client must actively request the missing decryption key from other clients in the room.
 
@@ -64,7 +102,7 @@ except Exception as e:
     logger.error(f"Failed to request keys for event {event.event_id}: {e}")
 ```
 
-### 4. Outgoing Message Formatting (`formatted_body` fix)
+### 5. Outgoing Message Formatting (`formatted_body` fix)
 
 A validation error in `matrix-nio`'s event parser was triggered when the relay sent a plain-text message and later received it back from the server. The parser would incorrectly create a `formatted_body: None` field, which failed schema validation.
 
@@ -87,10 +125,11 @@ content["formatted_body"] = formatted_body
 
 ## Summary of E2EE Flow
 
-1.  **Startup**: The client connects and performs a `sync(full_state=True)`, learning which rooms are encrypted. The E2EE store is loaded and keys are uploaded if needed _before_ this sync.
-2.  **Outgoing Message**: `matrix_relay` sends a message from Meshtastic to Matrix. It is correctly encrypted by `nio` because the room's encrypted state is known. The message content includes a `formatted_body` to prevent parser errors.
-3.  **Incoming Encrypted Message**: A `MegolmEvent` is received.
+1.  **Startup**: The client is initialized with the E2EE store path. It authenticates using `restore_login()`, which implicitly loads the store. Keys are uploaded if needed.
+2.  **Sync**: The client performs a `sync(full_state=True)`, learning which rooms are encrypted.
+3.  **Outgoing Message**: `matrix_relay` sends a message from Meshtastic to Matrix. It is correctly encrypted by `nio` because the room's encrypted state is known. The message content includes a `formatted_body` to prevent parser errors.
+4.  **Incoming Encrypted Message**: A `MegolmEvent` is received.
     - **If decryption succeeds**: `nio` automatically generates a `RoomMessageText` event. `on_room_message` is triggered, and the decrypted message is relayed to Meshtastic.
     - **If decryption fails**: `nio` fires the `MegolmEvent` callback. `on_decryption_failure` is triggered. The bot logs the error and sends out an `m.room_key_request`.
-4.  **Key Arrival**: The key request is received by other clients, who send the key back in a `m.forwarded_room_key` to-device event. `nio` automatically processes this key and stores it.
-5.  **Decryption Retry**: The next time the client syncs, it can now decrypt the original message it failed on. The `RoomMessageText` callback will be fired, and the message will be processed.
+5.  **Key Arrival**: The key request is received by other clients, who send the key back in a `m.forwarded_room_key` to-device event. `nio` automatically processes this key and stores it.
+6.  **Decryption Retry**: The next time the client syncs, it can now decrypt the original message it failed on. The `RoomMessageText` callback will be fired, and the message will be processed.

@@ -662,29 +662,11 @@ async def connect_matrix(passed_config=None):
         ssl=ssl_context,
     )
 
-    # If E2EE is enabled, load the store BEFORE restoring the login
-    if e2ee_enabled:
-        try:
-            logger.info("Setting up End-to-End Encryption...")
-            logger.info(f"E2EE store path: {e2ee_store_path}")
-            # The device_id must be set on the client before loading the store
-            matrix_client.device_id = e2ee_device_id
-            logger.info(f"Device ID: {matrix_client.device_id}")
-
-            logger.debug("Loading encryption store...")
-            matrix_client.load_store()
-            logger.info("Encryption store loaded successfully")
-
-        except Exception as e:
-            logger.error(f"Failed to load E2EE store: {e}")
-            logger.error("E2EE will not work correctly")
-            logger.error("Consider regenerating credentials with: mmrelay auth login")
-            # Don't fail completely, continue without E2EE
-            e2ee_enabled = False
-
     # Set the access_token and user_id using restore_login for better session management
     if credentials:
-        # Use restore_login method for proper session restoration
+        # Use restore_login method for proper session restoration.
+        # nio will handle loading the store automatically if store_path was provided
+        # to the client constructor.
         matrix_client.restore_login(
             user_id=bot_user_id,
             device_id=e2ee_device_id,
