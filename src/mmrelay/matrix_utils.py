@@ -675,6 +675,16 @@ async def connect_matrix(passed_config=None):
         logger.info(
             f"Restored login session for {bot_user_id} with device {e2ee_device_id}"
         )
+
+        # If E2EE is enabled, we need to trust our own device to be able to send encrypted messages
+        if e2ee_enabled:
+            logger.info(f"Trusting own device: {matrix_client.device_id}")
+            device = matrix_client.device_store.get(matrix_client.user_id, matrix_client.device_id)
+            if device:
+                matrix_client.verify_device(device)
+                logger.info("Device successfully trusted.")
+            else:
+                logger.warning(f"Could not find own device {matrix_client.device_id} in device store to trust it.")
     else:
         # Fallback to direct assignment for legacy token-based auth
         matrix_client.access_token = matrix_access_token
@@ -739,6 +749,11 @@ async def connect_matrix(passed_config=None):
             f"Initial sync timed out after {MATRIX_SYNC_OPERATION_TIMEOUT} seconds"
         )
         raise
+
+    # Add a delay to allow for key sharing to complete
+    if e2ee_enabled:
+        logger.info("Waiting for 5 seconds to allow for key sharing...")
+        await asyncio.sleep(5)
 
     # Fetch the bot's display name
     response = await matrix_client.get_displayname(bot_user_id)
