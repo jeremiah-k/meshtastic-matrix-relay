@@ -131,7 +131,7 @@ async def main(config):
     matrix_logger.info("Listening for inbound Matrix messages...")
     matrix_client.add_event_callback(
         on_room_message,
-        (RoomMessageText, RoomMessageNotice, RoomMessageEmote, ReactionEvent),
+        (RoomMessageText, RoomMessageNotice, RoomMessageEmote, ReactionEvent, MegolmEvent),
     )
     # Add E2EE callbacks
     matrix_client.add_event_callback(on_decryption_failure, (MegolmEvent,))

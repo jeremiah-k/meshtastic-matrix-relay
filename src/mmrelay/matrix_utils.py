@@ -668,11 +668,13 @@ async def connect_matrix(passed_config=None):
     if e2ee_enabled:
         try:
             logger.info("Setting up End-to-End Encryption...")
+            logger.info(f"E2EE store path: {e2ee_store_path}")
+            logger.info(f"Device ID: {matrix_client.device_id}")
 
             # Load the encryption store immediately after setting credentials
             logger.debug("Loading encryption store...")
             matrix_client.load_store()
-            logger.debug("Encryption store loaded successfully")
+            logger.info("Encryption store loaded successfully")
 
             # Upload keys if needed
             if matrix_client.should_upload_keys:
@@ -680,7 +682,7 @@ async def connect_matrix(passed_config=None):
                 await matrix_client.keys_upload()
                 logger.info("Encryption keys uploaded successfully")
             else:
-                logger.debug("No key upload needed")
+                logger.info("No key upload needed - keys already present")
 
         except Exception as e:
             logger.error(f"Failed to set up E2EE: {e}")
@@ -706,6 +708,13 @@ async def connect_matrix(passed_config=None):
             logger.info(
                 f"Initial sync completed. Found {len(matrix_client.rooms)} rooms."
             )
+
+            # Debug: Check room encryption status after sync
+            if e2ee_enabled:
+                logger.info("Checking room encryption status after sync...")
+                for room_id, room in matrix_client.rooms.items():
+                    encrypted_status = getattr(room, "encrypted", "unknown")
+                    logger.info(f"Room {room_id}: encrypted={encrypted_status}")
     except asyncio.TimeoutError:
         logger.error(
             f"Initial sync timed out after {MATRIX_SYNC_OPERATION_TIMEOUT} seconds"
@@ -1519,9 +1528,15 @@ async def on_room_message(
         logger.info(f"Room {room.room_id} is now encrypted")
         return
 
-    # Note: MegolmEvent (encrypted) messages are handled by the `on_decryption_failure`
-    # callback if they fail, or by the `RoomMessageText` callback if they succeed.
-    # No explicit handling is needed here.
+    # Handle MegolmEvent (encrypted messages that failed to decrypt)
+    if isinstance(event, MegolmEvent):
+        logger.warning(
+            f"Received undecrypted MegolmEvent {event.event_id} in room {room.room_id}. "
+            f"This suggests E2EE decryption is not working properly. "
+            f"The on_decryption_failure callback should handle key requests."
+        )
+        # Don't process undecrypted messages further
+        return
 
     # Find the room_config that matches this room, if any
     room_config = None
