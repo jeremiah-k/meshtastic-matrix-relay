@@ -12,7 +12,6 @@ import sys
 from nio import (
     MegolmEvent,
     ReactionEvent,
-    RoomEncryptionEvent,
     RoomMessageEmote,
     RoomMessageNotice,
     RoomMessageText,
