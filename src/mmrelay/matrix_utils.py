@@ -680,7 +680,8 @@ async def connect_matrix(passed_config=None):
         matrix_client.access_token = matrix_access_token
         matrix_client.user_id = bot_user_id
 
-    # If E2EE is enabled, upload keys if necessary AFTER restoring login
+    # If E2EE is enabled, upload keys if necessary.
+    # nio will have loaded the store automatically if store_path was provided.
     if e2ee_enabled:
         try:
             if matrix_client.should_upload_keys:
