@@ -136,7 +136,6 @@ async def main(config):
     )
     # Add E2EE callbacks
     matrix_client.add_event_callback(on_decryption_failure, (MegolmEvent,))
-    matrix_client.add_event_callback(on_room_message, (RoomEncryptionEvent,))
     # Add RoomMemberEvent callback to track room-specific display name changes
     matrix_client.add_event_callback(on_room_member, (RoomMemberEvent,))
 
