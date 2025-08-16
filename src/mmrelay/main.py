@@ -131,9 +131,10 @@ async def main(config):
     matrix_logger.info("Listening for inbound Matrix messages...")
     matrix_client.add_event_callback(
         on_room_message,
-        (RoomMessageText, RoomMessageNotice, RoomMessageEmote, ReactionEvent, MegolmEvent),
+        (RoomMessageText, RoomMessageNotice, RoomMessageEmote, ReactionEvent),
     )
-    # Add E2EE callbacks
+    # Add E2EE callbacks - MegolmEvent only goes to decryption failure handler
+    # Successfully decrypted messages will be converted to RoomMessageText etc. by matrix-nio
     matrix_client.add_event_callback(on_decryption_failure, (MegolmEvent,))
     # Add RoomMemberEvent callback to track room-specific display name changes
     matrix_client.add_event_callback(on_room_member, (RoomMemberEvent,))
