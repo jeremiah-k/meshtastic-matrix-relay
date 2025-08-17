@@ -731,7 +731,7 @@ async def connect_matrix(passed_config=None):
                 if encrypted_status is True:
                     encrypted_rooms += 1
 
-            logger.info(
+            logger.debug(
                 f"Found {encrypted_rooms} encrypted rooms out of {len(matrix_client.rooms)} total rooms"
             )
 
@@ -773,7 +773,7 @@ async def connect_matrix(passed_config=None):
     if e2ee_enabled:
         # Make the delay configurable, default to 5 seconds
         delay = config.get("matrix", {}).get("e2ee", {}).get("key_sharing_delay_seconds", 5)
-        logger.info(f"Waiting for {delay} seconds to allow for key sharing...")
+        logger.debug(f"Waiting for {delay} seconds to allow for key sharing...")
         await asyncio.sleep(delay)
 
     # Fetch the bot's display name
