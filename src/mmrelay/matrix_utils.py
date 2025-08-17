@@ -583,7 +583,7 @@ async def connect_matrix(passed_config=None):
                     except ImportError as e:
                         logger.error(f"Missing E2EE dependency: {e}")
                         logger.error("Please reinstall with: pip install mmrelay[e2e]")
-                        raise RuntimeError("Missing E2EE dependency (Olm/SqliteStore)")
+                        raise RuntimeError("Missing E2EE dependency (Olm/SqliteStore)") from e
 
                     e2ee_enabled = True
                     logger.info("End-to-End Encryption (E2EE) is enabled")
@@ -629,9 +629,9 @@ async def connect_matrix(passed_config=None):
 
                     logger.info(f"Using E2EE store path: {e2ee_store_path}")
 
-                    # We'll get the device ID from whoami() later
-                    e2ee_device_id = None
-                    logger.debug("Will retrieve device_id from whoami() response")
+                    # If device_id is not present in credentials, we can attempt to learn it later.
+                    if not e2ee_device_id:
+                        logger.debug("No device_id in credentials; will retrieve from store/whoami later if available")
                 except ImportError:
                     logger.warning(
                         "E2EE is enabled in config but python-olm is not installed."
@@ -677,6 +677,11 @@ async def connect_matrix(passed_config=None):
         logger.info(
             f"Restored login session for {bot_user_id} with device {e2ee_device_id}"
         )
+
+        # If the device_id was not known up-front, capture what nio has after restore.
+        if not e2ee_device_id and getattr(matrix_client, "device_id", None):
+            e2ee_device_id = matrix_client.device_id
+            logger.debug(f"Device ID established after restore_login: {e2ee_device_id}")
     else:
         # Fallback to direct assignment for legacy token-based auth
         matrix_client.access_token = matrix_access_token
