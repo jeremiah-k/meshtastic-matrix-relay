@@ -477,7 +477,7 @@ async def connect_matrix(passed_config=None):
             # Log available keys for debugging without exposing sensitive data
             logger.debug(f"credentials.json keys present: {list(credentials.keys())}")
             logger.error(msg_regenerate_credentials())
-            return None
+            raise RuntimeError("E2EE requires a valid device_id in credentials.json")
 
         # Validate device_id format
         if not isinstance(e2ee_device_id, str) or len(e2ee_device_id.strip()) == 0:
@@ -486,7 +486,7 @@ async def connect_matrix(passed_config=None):
             )
             logger.error("Device ID must be a non-empty string")
             logger.error(msg_regenerate_credentials())
-            return None
+            raise RuntimeError("Invalid device_id format in credentials.json")
 
         # If config also has Matrix login info, let the user know we're ignoring it
         if config and "matrix" in config and "access_token" in config["matrix"]:
@@ -583,8 +583,7 @@ async def connect_matrix(passed_config=None):
                     except ImportError as e:
                         logger.error(f"Missing E2EE dependency: {e}")
                         logger.error("Please reinstall with: pip install mmrelay[e2e]")
-                        e2ee_enabled = False
-                        return None
+                        raise RuntimeError("Missing E2EE dependency (Olm/SqliteStore)")
 
                     e2ee_enabled = True
                     logger.info("End-to-End Encryption (E2EE) is enabled")
@@ -745,8 +744,10 @@ async def connect_matrix(passed_config=None):
 
     # Add a delay to allow for key sharing to complete
     if e2ee_enabled:
-        logger.info("Waiting for 5 seconds to allow for key sharing...")
-        await asyncio.sleep(5)
+        # Make the delay configurable, default to 5 seconds
+        delay = config.get("matrix", {}).get("e2ee", {}).get("key_sharing_delay_seconds", 5)
+        logger.info(f"Waiting for {delay} seconds to allow for key sharing...")
+        await asyncio.sleep(delay)
 
     # Fetch the bot's display name
     response = await matrix_client.get_displayname(bot_user_id)
