@@ -187,14 +187,30 @@ async def main(config):
                     [sync_task, shutdown_task],
                     return_when=asyncio.FIRST_COMPLETED,
                 )
-                if shutdown_event.is_set():
-                    matrix_logger.info("Shutdown event detected. Stopping sync loop...")
-                    sync_task.cancel()
+
+                # Cancel any pending tasks
+                for task in pending:
+                    task.cancel()
                     try:
-                        await sync_task
+                        await task
                     except asyncio.CancelledError:
                         pass
+
+                if shutdown_event.is_set():
+                    matrix_logger.info("Shutdown event detected. Stopping sync loop...")
                     break
+
+                # Check if sync_task completed with an exception
+                if sync_task in done:
+                    try:
+                        # This will raise the exception if the task failed
+                        sync_task.result()
+                        # If we get here, sync completed normally (shouldn't happen with sync_forever)
+                        matrix_logger.warning("Matrix sync_forever completed unexpectedly")
+                    except Exception as e:
+                        # Log the exception and continue to retry
+                        matrix_logger.error(f"Matrix sync failed: {e}")
+                        # The outer try/catch will handle the retry logic
 
             except Exception as e:
                 if shutdown_event.is_set():
