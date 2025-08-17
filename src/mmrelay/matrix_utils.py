@@ -1526,7 +1526,6 @@ async def on_room_message(
         RoomMessageNotice,
         ReactionEvent,
         RoomMessageEmote,
-        RoomEncryptionEvent,
     ],
 ) -> None:
     """
@@ -1574,10 +1573,7 @@ async def on_room_message(
     if event.sender == bot_user_id:
         return
 
-    # Handle RoomEncryptionEvent - log when a room becomes encrypted
-    if isinstance(event, RoomEncryptionEvent):
-        logger.info(f"Room {room.room_id} is now encrypted")
-        return
+
 
     # Note: MegolmEvent (encrypted) messages are handled by the `on_decryption_failure`
     # callback if they fail to decrypt. Successfully decrypted messages are automatically
