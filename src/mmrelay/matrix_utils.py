@@ -471,22 +471,22 @@ async def connect_matrix(passed_config=None):
         logger.info(f"Loaded device_id: {e2ee_device_id}")
 
         # Check if device_id is missing or None
-        if not e2ee_device_id:
-            logger.error("Device ID is missing from credentials.json!")
-            logger.error("E2EE requires a valid device_id for session persistence")
-            # Log available keys for debugging without exposing sensitive data
-            logger.debug(f"credentials.json keys present: {list(credentials.keys())}")
-            logger.error(msg_regenerate_credentials())
-            raise RuntimeError("E2EE requires a valid device_id in credentials.json")
+        if not isinstance(e2ee_device_id, str) or not e2ee_device_id.strip():
+            if not e2ee_device_id:
+                logger.error("Device ID is missing from credentials.json!")
+                logger.error("E2EE requires a valid device_id for session persistence")
+                # Log available keys for debugging without exposing sensitive data
+                logger.debug(f"credentials.json keys present: {list(credentials.keys())}")
+                error_msg = "E2EE requires a valid device_id in credentials.json"
+            else:
+                logger.error(
+                    f"Invalid device_id format in credentials.json: {repr(e2ee_device_id)}"
+                )
+                logger.error("Device ID must be a non-empty string")
+                error_msg = "Invalid device_id format in credentials.json"
 
-        # Validate device_id format
-        if not isinstance(e2ee_device_id, str) or len(e2ee_device_id.strip()) == 0:
-            logger.error(
-                f"Invalid device_id format in credentials.json: {repr(e2ee_device_id)}"
-            )
-            logger.error("Device ID must be a non-empty string")
             logger.error(msg_regenerate_credentials())
-            raise RuntimeError("Invalid device_id format in credentials.json")
+            raise RuntimeError(error_msg)
 
         # If config also has Matrix login info, let the user know we're ignoring it
         if config and "matrix" in config and "access_token" in config["matrix"]:
@@ -723,7 +723,7 @@ async def connect_matrix(passed_config=None):
                 encrypted_rooms = 0
                 for room_id, room in matrix_client.rooms.items():
                     encrypted_status = getattr(room, "encrypted", "unknown")
-                    logger.info(f"Room {room_id}: encrypted={encrypted_status}")
+                    logger.debug(f"Room {room_id}: encrypted={encrypted_status}")
                     if encrypted_status is True:
                         encrypted_rooms += 1
 
@@ -743,6 +743,13 @@ async def connect_matrix(passed_config=None):
         raise
 
     # Add a delay to allow for key sharing to complete
+    # This addresses a race condition where the client attempts to send encrypted messages
+    # before it has received and processed room key sharing messages from other devices.
+    # The initial sync() call triggers key sharing requests, but the actual key exchange
+    # happens asynchronously. Without this delay, outgoing messages may be sent unencrypted
+    # even to encrypted rooms. While not ideal, this timing-based approach is necessary
+    # because matrix-nio doesn't provide event-driven alternatives to detect when key
+    # sharing is complete. The delay can be configured via matrix.e2ee.key_sharing_delay_seconds.
     if e2ee_enabled:
         # Make the delay configurable, default to 5 seconds
         delay = config.get("matrix", {}).get("e2ee", {}).get("key_sharing_delay_seconds", 5)
