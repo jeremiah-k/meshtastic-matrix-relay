@@ -11,6 +11,7 @@ The final working E2EE implementation relies on five critical components to func
 Analysis of several working `matrix-nio` bots (`matrix-commander`, `matrix-nio-send`) revealed that the library handles loading the E2EE store implicitly when the `store_path` is provided during client construction. Manually calling `client.load_store()` is unnecessary when using `client.restore_login()` and can interfere with the client's internal state.
 
 The correct sequence is:
+
 1. Initialize `AsyncClient`, providing `homeserver`, `user_id`, `device_id`, and `store_path` in the constructor.
 2. Call `client.restore_login()` to inject the access token. This method implicitly loads the E2EE store.
 3. Call `client.keys_upload()` if `client.should_upload_keys` is true.
