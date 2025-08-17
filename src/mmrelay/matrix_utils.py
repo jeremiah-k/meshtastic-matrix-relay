@@ -740,6 +740,11 @@ async def connect_matrix(passed_config=None):
         )
         raise
 
+    # Add a delay to allow for key sharing to complete
+    if e2ee_enabled:
+        logger.info("Waiting for 5 seconds to allow for key sharing...")
+        await asyncio.sleep(5)
+
     # Fetch the bot's display name
     response = await matrix_client.get_displayname(bot_user_id)
     if hasattr(response, "displayname"):
