@@ -722,18 +722,25 @@ async def connect_matrix(passed_config=None):
                 f"Initial sync completed. Found {len(matrix_client.rooms)} rooms."
             )
 
-            # Check room encryption status after sync and warn about E2EE setup
-            logger.info("Checking room encryption status after sync...")
+            # List all rooms the bot is in, showing encryption status if E2EE is enabled
+            logger.info("Bot is in the following rooms:")
             encrypted_rooms = 0
             for room_id, room in matrix_client.rooms.items():
-                encrypted_status = getattr(room, "encrypted", "unknown")
-                logger.debug(f"Room {room_id}: encrypted={encrypted_status}")
-                if encrypted_status is True:
-                    encrypted_rooms += 1
+                room_name = getattr(room, "display_name", room_id)
+                if e2ee_enabled:
+                    encrypted_status = getattr(room, "encrypted", "unknown")
+                    if encrypted_status is True:
+                        encrypted_rooms += 1
+                        logger.info(f"  🔒 {room_name} ({room_id}) - Encrypted")
+                    else:
+                        logger.info(f"  📝 {room_name} ({room_id}) - Unencrypted")
+                else:
+                    logger.info(f"  📝 {room_name} ({room_id})")
 
-            logger.debug(
-                f"Found {encrypted_rooms} encrypted rooms out of {len(matrix_client.rooms)} total rooms"
-            )
+            if e2ee_enabled:
+                logger.debug(
+                    f"Found {encrypted_rooms} encrypted rooms out of {len(matrix_client.rooms)} total rooms"
+                )
 
             # Warn if bot is in encrypted rooms but E2EE is not properly set up
             if encrypted_rooms > 0 and not e2ee_enabled:
