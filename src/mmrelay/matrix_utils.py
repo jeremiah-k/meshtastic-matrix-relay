@@ -722,20 +722,35 @@ async def connect_matrix(passed_config=None):
                 f"Initial sync completed. Found {len(matrix_client.rooms)} rooms."
             )
 
-            # Debug: Check room encryption status after sync
-            if e2ee_enabled:
-                logger.info("Checking room encryption status after sync...")
-                encrypted_rooms = 0
+            # Check room encryption status after sync and warn about E2EE setup
+            logger.info("Checking room encryption status after sync...")
+            encrypted_rooms = 0
+            for room_id, room in matrix_client.rooms.items():
+                encrypted_status = getattr(room, "encrypted", "unknown")
+                logger.debug(f"Room {room_id}: encrypted={encrypted_status}")
+                if encrypted_status is True:
+                    encrypted_rooms += 1
+
+            logger.info(
+                f"Found {encrypted_rooms} encrypted rooms out of {len(matrix_client.rooms)} total rooms"
+            )
+
+            # Warn if bot is in encrypted rooms but E2EE is not properly set up
+            if encrypted_rooms > 0 and not e2ee_enabled:
+                logger.warning("⚠️  ENCRYPTION WARNING: Bot is in encrypted rooms but E2EE is not enabled!")
+                logger.warning("Messages in encrypted rooms will NOT be relayed properly.")
+                logger.warning("To fix this:")
+                logger.warning("1. Install E2EE dependencies: pip install mmrelay[e2e]")
+                logger.warning("2. Set up credentials: mmrelay auth login")
+                logger.warning("3. Restart mmrelay - E2EE will be enabled automatically")
+                logger.warning("Encrypted rooms detected:")
                 for room_id, room in matrix_client.rooms.items():
-                    encrypted_status = getattr(room, "encrypted", "unknown")
-                    logger.debug(f"Room {room_id}: encrypted={encrypted_status}")
-                    if encrypted_status is True:
-                        encrypted_rooms += 1
+                    if getattr(room, "encrypted", False):
+                        room_name = getattr(room, "display_name", room_id)
+                        logger.warning(f"  - {room_name} ({room_id})")
 
-                logger.info(
-                    f"Found {encrypted_rooms} encrypted rooms out of {len(matrix_client.rooms)} total rooms"
-                )
-
+            # Additional debugging for E2EE enabled case
+            if e2ee_enabled:
                 if encrypted_rooms == 0 and len(matrix_client.rooms) > 0:
                     logger.warning("No encrypted rooms detected! This could indicate:")
                     logger.warning("1. Rooms are not actually encrypted")
