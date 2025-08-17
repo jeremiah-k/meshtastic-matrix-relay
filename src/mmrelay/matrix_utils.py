@@ -22,7 +22,6 @@ from nio import (
     MatrixRoom,
     MegolmEvent,
     ReactionEvent,
-    RoomEncryptionEvent,
     RoomMessageEmote,
     RoomMessageNotice,
     RoomMessageText,
@@ -476,7 +475,9 @@ async def connect_matrix(passed_config=None):
                 logger.error("Device ID is missing from credentials.json!")
                 logger.error("E2EE requires a valid device_id for session persistence")
                 # Log available keys for debugging without exposing sensitive data
-                logger.debug(f"credentials.json keys present: {list(credentials.keys())}")
+                logger.debug(
+                    f"credentials.json keys present: {list(credentials.keys())}"
+                )
                 error_msg = "E2EE requires a valid device_id in credentials.json"
             else:
                 logger.error(
@@ -583,7 +584,9 @@ async def connect_matrix(passed_config=None):
                     except ImportError as e:
                         logger.error(f"Missing E2EE dependency: {e}")
                         logger.error("Please reinstall with: pip install mmrelay[e2e]")
-                        raise RuntimeError("Missing E2EE dependency (Olm/SqliteStore)") from e
+                        raise RuntimeError(
+                            "Missing E2EE dependency (Olm/SqliteStore)"
+                        ) from e
 
                     e2ee_enabled = True
                     logger.info("End-to-End Encryption (E2EE) is enabled")
@@ -631,7 +634,9 @@ async def connect_matrix(passed_config=None):
 
                     # If device_id is not present in credentials, we can attempt to learn it later.
                     if not e2ee_device_id:
-                        logger.debug("No device_id in credentials; will retrieve from store/whoami later if available")
+                        logger.debug(
+                            "No device_id in credentials; will retrieve from store/whoami later if available"
+                        )
                 except ImportError:
                     logger.warning(
                         "E2EE is enabled in config but python-olm is not installed."
@@ -744,12 +749,18 @@ async def connect_matrix(passed_config=None):
 
             # Warn if bot is in encrypted rooms but E2EE is not properly set up
             if encrypted_rooms > 0 and not e2ee_enabled:
-                logger.warning("⚠️  ENCRYPTION WARNING: Bot is in encrypted rooms but E2EE is not enabled!")
-                logger.warning("Messages in encrypted rooms will NOT be relayed properly.")
+                logger.warning(
+                    "⚠️  ENCRYPTION WARNING: Bot is in encrypted rooms but E2EE is not enabled!"
+                )
+                logger.warning(
+                    "Messages in encrypted rooms will NOT be relayed properly."
+                )
                 logger.warning("To fix this:")
                 logger.warning("1. Install E2EE dependencies: pip install mmrelay[e2e]")
                 logger.warning("2. Set up credentials: mmrelay auth login")
-                logger.warning("3. Restart mmrelay - E2EE will be enabled automatically")
+                logger.warning(
+                    "3. Restart mmrelay - E2EE will be enabled automatically"
+                )
                 logger.warning("Encrypted rooms detected:")
                 for room_id, room in matrix_client.rooms.items():
                     if getattr(room, "encrypted", False):
@@ -779,7 +790,9 @@ async def connect_matrix(passed_config=None):
     # sharing is complete. The delay can be configured via matrix.e2ee.key_sharing_delay_seconds.
     if e2ee_enabled:
         # Make the delay configurable, default to 5 seconds
-        delay = config.get("matrix", {}).get("e2ee", {}).get("key_sharing_delay_seconds", 5)
+        delay = (
+            config.get("matrix", {}).get("e2ee", {}).get("key_sharing_delay_seconds", 5)
+        )
         logger.debug(f"Waiting for {delay} seconds to allow for key sharing...")
         await asyncio.sleep(delay)
 
@@ -1594,8 +1607,6 @@ async def on_room_message(
     # Do not process messages from the bot itself
     if event.sender == bot_user_id:
         return
-
-
 
     # Note: MegolmEvent (encrypted) messages are handled by the `on_decryption_failure`
     # callback if they fail to decrypt. Successfully decrypted messages are automatically
