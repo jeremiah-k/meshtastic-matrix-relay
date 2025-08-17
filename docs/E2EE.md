@@ -2,6 +2,15 @@
 
 **MMRelay v1.2+** includes full support for **Matrix End-to-End Encryption**, enabling secure communication in encrypted Matrix rooms. This guide covers everything you need to set up and use E2EE features.
 
+## ✅ E2EE Status (August 2025)
+
+**E2EE is fully working and production-ready!** Recent improvements include:
+
+- **Enhanced Stability**: Fixed Matrix sync exception handling for more reliable operation
+- **Better Configuration**: Configurable key sharing delays and improved error messages
+- **User-Friendly Warnings**: Clear alerts when E2EE setup is needed for encrypted rooms
+- **Robust Session Management**: Improved device persistence and key recovery
+
 ## What is E2EE?
 
 End-to-End Encryption ensures that only you and the intended recipients can read your messages. When MMRelay connects to encrypted Matrix rooms, it will:
@@ -34,6 +43,10 @@ matrix:
   # E2EE Configuration
   e2ee:
     enabled: true
+    # Optional: Configure key sharing delay (default: 5 seconds)
+    # key_sharing_delay_seconds: 5
+    # Optional: Custom store path (default: ~/.mmrelay/store)
+    # store_path: ~/.mmrelay/store
 ```
 
 ### 3. Set Up Authentication

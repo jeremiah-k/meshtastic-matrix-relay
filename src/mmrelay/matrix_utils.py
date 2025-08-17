@@ -471,12 +471,22 @@ async def connect_matrix(passed_config=None):
         logger.info(f"Loaded device_id: {e2ee_device_id}")
 
         # Check if device_id is missing or None
-        if not e2ee_device_id:
-            logger.error("Device ID is missing from credentials.json!")
-            # Log available keys for debugging without exposing sensitive data
-            logger.debug(f"credentials.json keys present: {list(credentials.keys())}")
+        if not isinstance(e2ee_device_id, str) or not e2ee_device_id.strip():
+            if not e2ee_device_id:
+                logger.error("Device ID is missing from credentials.json!")
+                logger.error("E2EE requires a valid device_id for session persistence")
+                # Log available keys for debugging without exposing sensitive data
+                logger.debug(f"credentials.json keys present: {list(credentials.keys())}")
+                error_msg = "E2EE requires a valid device_id in credentials.json"
+            else:
+                logger.error(
+                    f"Invalid device_id format in credentials.json: {repr(e2ee_device_id)}"
+                )
+                logger.error("Device ID must be a non-empty string")
+                error_msg = "Invalid device_id format in credentials.json"
+
             logger.error(msg_regenerate_credentials())
-            return None
+            raise RuntimeError(error_msg)
 
         # If config also has Matrix login info, let the user know we're ignoring it
         if config and "matrix" in config and "access_token" in config["matrix"]:
@@ -564,6 +574,17 @@ async def connect_matrix(passed_config=None):
                 try:
                     import olm  # noqa: F401
 
+                    # Also check for other required E2EE dependencies
+                    try:
+                        from nio.crypto import OlmDevice  # noqa: F401
+                        from nio.store import SqliteStore  # noqa: F401
+
+                        logger.info("All E2EE dependencies are available")
+                    except ImportError as e:
+                        logger.error(f"Missing E2EE dependency: {e}")
+                        logger.error("Please reinstall with: pip install mmrelay[e2e]")
+                        raise RuntimeError("Missing E2EE dependency (Olm/SqliteStore)") from e
+
                     e2ee_enabled = True
                     logger.info("End-to-End Encryption (E2EE) is enabled")
 
@@ -608,9 +629,9 @@ async def connect_matrix(passed_config=None):
 
                     logger.info(f"Using E2EE store path: {e2ee_store_path}")
 
-                    # We'll get the device ID from whoami() later
-                    e2ee_device_id = None
-                    logger.debug("Will retrieve device_id from whoami() response")
+                    # If device_id is not present in credentials, we can attempt to learn it later.
+                    if not e2ee_device_id:
+                        logger.debug("No device_id in credentials; will retrieve from store/whoami later if available")
                 except ImportError:
                     logger.warning(
                         "E2EE is enabled in config but python-olm is not installed."
@@ -645,12 +666,9 @@ async def connect_matrix(passed_config=None):
 
     # Set the access_token and user_id using restore_login for better session management
     if credentials:
-        # CRITICAL: Set device_id on client BEFORE calling restore_login
-        # matrix-nio requires this for E2EE store loading
-        matrix_client.device_id = e2ee_device_id
-        logger.info(f"Using device ID: {matrix_client.device_id}")
-
-        # Use restore_login method for proper session restoration
+        # Use restore_login method for proper session restoration.
+        # nio will handle loading the store automatically if store_path was provided
+        # to the client constructor.
         matrix_client.restore_login(
             user_id=bot_user_id,
             device_id=e2ee_device_id,
@@ -659,33 +677,30 @@ async def connect_matrix(passed_config=None):
         logger.info(
             f"Restored login session for {bot_user_id} with device {e2ee_device_id}"
         )
+
+        # If the device_id was not known up-front, capture what nio has after restore.
+        if not e2ee_device_id and getattr(matrix_client, "device_id", None):
+            e2ee_device_id = matrix_client.device_id
+            logger.debug(f"Device ID established after restore_login: {e2ee_device_id}")
     else:
         # Fallback to direct assignment for legacy token-based auth
         matrix_client.access_token = matrix_access_token
         matrix_client.user_id = bot_user_id
 
-    # If E2EE is enabled, load the store and set up encryption BEFORE any sync operations
+    # If E2EE is enabled, upload keys if necessary.
+    # nio will have loaded the store automatically if store_path was provided.
     if e2ee_enabled:
         try:
-            logger.info("Setting up End-to-End Encryption...")
-
-            # Load the encryption store immediately after setting credentials
-            logger.debug("Loading encryption store...")
-            matrix_client.load_store()
-            logger.debug("Encryption store loaded successfully")
-
-            # Upload keys if needed
             if matrix_client.should_upload_keys:
                 logger.info("Uploading encryption keys...")
                 await matrix_client.keys_upload()
                 logger.info("Encryption keys uploaded successfully")
             else:
-                logger.debug("No key upload needed")
-
+                logger.info("No key upload needed - keys already present")
         except Exception as e:
-            logger.error(f"Failed to set up E2EE: {e}")
-            logger.error("E2EE will not work correctly")
-            # Don't fail completely, continue without E2EE
+            logger.error(f"Failed to upload E2EE keys: {e}")
+            # E2EE might still work, so we don't disable it here
+            logger.error("Consider regenerating credentials with: mmrelay auth login")
 
     # Perform initial sync to populate rooms (needed for message delivery)
     logger.info("Performing initial sync to initialize rooms...")
@@ -706,11 +721,60 @@ async def connect_matrix(passed_config=None):
             logger.info(
                 f"Initial sync completed. Found {len(matrix_client.rooms)} rooms."
             )
+
+            # Check room encryption status after sync and warn about E2EE setup
+            logger.info("Checking room encryption status after sync...")
+            encrypted_rooms = 0
+            for room_id, room in matrix_client.rooms.items():
+                encrypted_status = getattr(room, "encrypted", "unknown")
+                logger.debug(f"Room {room_id}: encrypted={encrypted_status}")
+                if encrypted_status is True:
+                    encrypted_rooms += 1
+
+            logger.debug(
+                f"Found {encrypted_rooms} encrypted rooms out of {len(matrix_client.rooms)} total rooms"
+            )
+
+            # Warn if bot is in encrypted rooms but E2EE is not properly set up
+            if encrypted_rooms > 0 and not e2ee_enabled:
+                logger.warning("⚠️  ENCRYPTION WARNING: Bot is in encrypted rooms but E2EE is not enabled!")
+                logger.warning("Messages in encrypted rooms will NOT be relayed properly.")
+                logger.warning("To fix this:")
+                logger.warning("1. Install E2EE dependencies: pip install mmrelay[e2e]")
+                logger.warning("2. Set up credentials: mmrelay auth login")
+                logger.warning("3. Restart mmrelay - E2EE will be enabled automatically")
+                logger.warning("Encrypted rooms detected:")
+                for room_id, room in matrix_client.rooms.items():
+                    if getattr(room, "encrypted", False):
+                        room_name = getattr(room, "display_name", room_id)
+                        logger.warning(f"  - {room_name} ({room_id})")
+
+            # Additional debugging for E2EE enabled case
+            if e2ee_enabled:
+                if encrypted_rooms == 0 and len(matrix_client.rooms) > 0:
+                    logger.warning("No encrypted rooms detected! This could indicate:")
+                    logger.warning("1. Rooms are not actually encrypted")
+                    logger.warning("2. Room encryption state detection is not working")
+                    logger.warning("3. E2EE setup is incomplete")
     except asyncio.TimeoutError:
         logger.error(
             f"Initial sync timed out after {MATRIX_SYNC_OPERATION_TIMEOUT} seconds"
         )
         raise
+
+    # Add a delay to allow for key sharing to complete
+    # This addresses a race condition where the client attempts to send encrypted messages
+    # before it has received and processed room key sharing messages from other devices.
+    # The initial sync() call triggers key sharing requests, but the actual key exchange
+    # happens asynchronously. Without this delay, outgoing messages may be sent unencrypted
+    # even to encrypted rooms. While not ideal, this timing-based approach is necessary
+    # because matrix-nio doesn't provide event-driven alternatives to detect when key
+    # sharing is complete. The delay can be configured via matrix.e2ee.key_sharing_delay_seconds.
+    if e2ee_enabled:
+        # Make the delay configurable, default to 5 seconds
+        delay = config.get("matrix", {}).get("e2ee", {}).get("key_sharing_delay_seconds", 5)
+        logger.debug(f"Waiting for {delay} seconds to allow for key sharing...")
+        await asyncio.sleep(delay)
 
     # Fetch the bot's display name
     response = await matrix_client.get_displayname(bot_user_id)
@@ -1126,8 +1190,20 @@ async def matrix_relay(
                 logger.debug(
                     f"Room {room_id} encryption status: encrypted={encrypted_status}"
                 )
+
+                # Additional E2EE debugging
+                if encrypted_status is True:
+                    logger.debug(f"Sending encrypted message to room {room_id}")
+                elif encrypted_status is False:
+                    logger.debug(f"Sending unencrypted message to room {room_id}")
+                else:
+                    logger.warning(
+                        f"Room {room_id} encryption status is unknown - this may indicate E2EE issues"
+                    )
             else:
-                logger.warning(f"Room {room_id} not found in client.rooms")
+                logger.warning(
+                    f"Room {room_id} not found in client.rooms - cannot determine encryption status"
+                )
 
             # Always use ignore_unverified_devices=True for text messages (like matrix-nio-send)
             logger.debug(
@@ -1465,8 +1541,6 @@ async def on_room_message(
         RoomMessageNotice,
         ReactionEvent,
         RoomMessageEmote,
-        MegolmEvent,
-        RoomEncryptionEvent,
     ],
 ) -> None:
     """
@@ -1514,14 +1588,11 @@ async def on_room_message(
     if event.sender == bot_user_id:
         return
 
-    # Handle RoomEncryptionEvent - log when a room becomes encrypted
-    if isinstance(event, RoomEncryptionEvent):
-        logger.info(f"Room {room.room_id} is now encrypted")
-        return
+
 
     # Note: MegolmEvent (encrypted) messages are handled by the `on_decryption_failure`
-    # callback if they fail, or by the `RoomMessageText` callback if they succeed.
-    # No explicit handling is needed here.
+    # callback if they fail to decrypt. Successfully decrypted messages are automatically
+    # converted to RoomMessageText/RoomMessageNotice/etc. by matrix-nio and handled normally.
 
     # Find the room_config that matches this room, if any
     room_config = None
