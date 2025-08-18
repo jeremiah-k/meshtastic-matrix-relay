@@ -727,53 +727,35 @@ async def connect_matrix(passed_config=None):
                 f"Initial sync completed. Found {len(matrix_client.rooms)} rooms."
             )
 
-            # List all rooms the bot is in, showing encryption status if E2EE is enabled
+            # List all rooms with unified E2EE status display
+            from mmrelay.e2ee_utils import get_e2ee_status, format_room_list, get_room_encryption_warnings
+            from mmrelay.config import config_path
+
+            # Get comprehensive E2EE status
+            e2ee_status = get_e2ee_status(config, config_path)
+
             logger.info("Bot is in the following rooms:")
-            encrypted_rooms = 0
-            for room_id, room in matrix_client.rooms.items():
-                room_name = getattr(room, "display_name", room_id)
-                if e2ee_enabled:
-                    encrypted_status = getattr(room, "encrypted", "unknown")
-                    if encrypted_status is True:
-                        encrypted_rooms += 1
-                        logger.info(f"  🔒 {room_name} ({room_id}) - Encrypted")
-                    else:
-                        logger.info(f"  📝 {room_name} ({room_id}) - Unencrypted")
-                else:
-                    logger.info(f"  📝 {room_name} ({room_id})")
 
-            if e2ee_enabled:
-                logger.debug(
-                    f"Found {encrypted_rooms} encrypted rooms out of {len(matrix_client.rooms)} total rooms"
-                )
+            # Format room list with appropriate encryption indicators
+            room_lines = format_room_list(matrix_client.rooms, e2ee_status)
+            for line in room_lines:
+                logger.info(line)
 
-            # Warn if bot is in encrypted rooms but E2EE is not properly set up
-            if encrypted_rooms > 0 and not e2ee_enabled:
-                logger.warning(
-                    "⚠️  ENCRYPTION WARNING: Bot is in encrypted rooms but E2EE is not enabled!"
-                )
-                logger.warning(
-                    "Messages in encrypted rooms will NOT be relayed properly."
-                )
-                logger.warning("To fix this:")
-                logger.warning("1. Install E2EE dependencies: pip install mmrelay[e2e]")
-                logger.warning("2. Set up credentials: mmrelay auth login")
-                logger.warning(
-                    "3. Restart mmrelay - E2EE will be enabled automatically"
-                )
-                logger.warning("Encrypted rooms detected:")
-                for room_id, room in matrix_client.rooms.items():
-                    if getattr(room, "encrypted", False):
-                        room_name = getattr(room, "display_name", room_id)
-                        logger.warning(f"  - {room_name} ({room_id})")
+            # Show warnings for encrypted rooms when E2EE is not ready
+            warnings = get_room_encryption_warnings(matrix_client.rooms, e2ee_status)
+            for warning in warnings:
+                logger.warning(warning)
+
+            # Debug information
+            encrypted_count = sum(1 for room in matrix_client.rooms.values() if getattr(room, 'encrypted', False))
+            logger.debug(
+                f"Found {encrypted_count} encrypted rooms out of {len(matrix_client.rooms)} total rooms"
+            )
+            logger.debug(f"E2EE status: {e2ee_status['overall_status']}")
 
             # Additional debugging for E2EE enabled case
-            if e2ee_enabled:
-                if encrypted_rooms == 0 and len(matrix_client.rooms) > 0:
-                    logger.warning("No encrypted rooms detected! This could indicate:")
-                    logger.warning("1. Rooms are not actually encrypted")
-                    logger.warning("2. Room encryption state detection is not working")
-                    logger.warning("3. E2EE setup is incomplete")
+            if e2ee_enabled and encrypted_count == 0 and len(matrix_client.rooms) > 0:
+                logger.debug("No encrypted rooms detected - all rooms are plaintext")
     except asyncio.TimeoutError:
         logger.error(
             f"Initial sync timed out after {MATRIX_SYNC_OPERATION_TIMEOUT} seconds"
