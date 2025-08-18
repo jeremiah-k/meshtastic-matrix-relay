@@ -30,8 +30,8 @@ try:
     )
 
     IMPORTS_AVAILABLE = True
-except ImportError as e:
-    print(f"❌ Import error: {e}")
+except ImportError:
+    # Imports not available; dependent tests will be skipped.
     IMPORTS_AVAILABLE = False
 
 
@@ -70,16 +70,7 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
 
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
-    def create_credentials_file(self, device_id="TEST_DEVICE"):
-        """Create a mock credentials.json file"""
-        credentials = {
-            "homeserver": "https://matrix.org",
-            "user_id": "@test:matrix.org",
-            "access_token": "test_token",
-            "device_id": device_id,
-        }
-        with open(self.credentials_path, "w") as f:
-            json.dump(credentials, f)
+
 
     @patch("sys.platform", "linux")
     @patch("mmrelay.e2ee_utils.os.path.exists")

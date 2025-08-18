@@ -54,7 +54,7 @@ def get_e2ee_status(
     }
 
     # Check platform support
-    if sys.platform == WINDOWS_PLATFORM:
+    if sys.platform == WINDOWS_PLATFORM or sys.platform.startswith(("msys", "cygwin")):
         status["platform_supported"] = False
         status["issues"].append("E2EE is not supported on Windows")
 
@@ -172,15 +172,15 @@ def get_room_encryption_warnings(
     if encrypted_rooms:
         if e2ee_status["overall_status"] == "unavailable":
             warnings.append(
-                f"⚠️  {len(encrypted_rooms)} encrypted room(s) detected but E2EE is unavailable on Windows"
+                f"⚠️ {len(encrypted_rooms)} encrypted room(s) detected but E2EE is unavailable on Windows"
             )
         elif e2ee_status["overall_status"] == "disabled":
             warnings.append(
-                f"⚠️  {len(encrypted_rooms)} encrypted room(s) detected but E2EE is disabled"
+                f"⚠️ {len(encrypted_rooms)} encrypted room(s) detected but E2EE is disabled"
             )
         else:
             warnings.append(
-                f"⚠️  {len(encrypted_rooms)} encrypted room(s) detected but E2EE setup is incomplete"
+                f"⚠️ {len(encrypted_rooms)} encrypted room(s) detected but E2EE setup is incomplete"
             )
 
         warnings.append("   Messages to encrypted rooms will be blocked")
@@ -294,21 +294,25 @@ def get_e2ee_fix_instructions(e2ee_status: Dict[str, Any]) -> List[str]:
         instructions.append("   Use Linux or macOS for E2EE support")
         return instructions
 
+    step = 1
     if not e2ee_status["dependencies_installed"]:
-        instructions.append("1. Install E2EE dependencies:")
+        instructions.append(f"{step}. Install E2EE dependencies:")
         instructions.append(f"   pip install {PACKAGE_NAME_E2E}")
+        step += 1
 
     if not e2ee_status["credentials_available"]:
-        instructions.append("2. Set up Matrix authentication:")
+        instructions.append(f"{step}. Set up Matrix authentication:")
         instructions.append(f"   {get_command('auth_login')}")
+        step += 1
 
     if not e2ee_status["enabled"]:
-        instructions.append("3. Enable E2EE in configuration:")
+        instructions.append(f"{step}. Enable E2EE in configuration:")
         instructions.append("   Edit config.yaml and add under matrix section:")
         instructions.append("   e2ee:")
         instructions.append("     enabled: true")
+        step += 1
 
-    instructions.append("4. Verify configuration:")
+    instructions.append(f"{step}. Verify configuration:")
     instructions.append(f"   {get_command('check_config')}")
 
     return instructions

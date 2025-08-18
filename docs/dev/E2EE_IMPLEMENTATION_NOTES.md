@@ -11,7 +11,7 @@ As of the latest implementation, MMRelay uses a centralized E2EE status detectio
 - **`get_e2ee_status(config, config_path)`**: Single source of truth for E2EE capabilities
 - **`format_room_list(rooms, e2ee_status)`**: Consistent room listing with encryption warnings
 - **`get_room_encryption_warnings(rooms, e2ee_status)`**: Warning generation for problematic setups
-- **Standard message templates**: Consistent error messages and fix instructions
+- **Standardized message templates**: Consistent error messages and fix instructions
 
 ### E2EE Status States
 

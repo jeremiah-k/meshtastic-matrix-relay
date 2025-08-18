@@ -489,9 +489,9 @@ def _print_unified_e2ee_analysis(e2ee_status):
 
     # Dependencies
     if e2ee_status["dependencies_installed"]:
-        print("✅ Dependencies: python-olm installed")
+        print("✅ Dependencies: E2EE dependencies installed")
     else:
-        print("❌ Dependencies: python-olm not installed")
+        print("❌ Dependencies: E2EE dependencies not fully installed")
 
     # Configuration
     if e2ee_status["enabled"]:

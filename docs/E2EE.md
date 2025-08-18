@@ -92,7 +92,7 @@ mmrelay auth login
 - Generates a unique device ID for MMRelay
 - Saves credentials to `~/.mmrelay/credentials.json`
 
-5. Sets up encryption key storage in `~/.mmrelay/store/`
+- Sets up encryption key storage in `~/.mmrelay/store/`
 
 **Interactive prompts:**
 
@@ -104,19 +104,7 @@ Matrix username (e.g., @user:matrix.org): @yourbot:your-server.org
 Matrix password: [hidden input]
 ```
 
-### Step 3: Start MMRelay
 
-Once configured, start MMRelay normally:
-
-```bash
-mmrelay
-```
-
-MMRelay will automatically:
-
-- Load E2EE credentials from `credentials.json`
-- Initialize encryption keys and device trust
-- Connect to Matrix with full E2EE support
 
 ## The `auth login` Command
 
