@@ -1100,9 +1100,9 @@ def _get_e2ee_error_message():
                         if os.path.exists(config_credentials_path):
                             credentials_found = True
                             break
-            except:
+            except Exception:
                 pass  # If we can't determine config paths, just use base directory check
-    except:
+    except Exception:
         pass  # If any error occurs, assume no credentials
 
     if not credentials_found:
