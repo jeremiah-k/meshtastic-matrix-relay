@@ -344,6 +344,200 @@ def _validate_e2ee_config(config, matrix_section, config_path):
     return True
 
 
+async def _analyze_e2ee_status(config, config_path):
+    """
+    Perform comprehensive E2EE analysis including room encryption status.
+    Returns detailed status information for user-friendly display.
+    """
+    analysis = {
+        "config_enabled": False,
+        "dependencies_available": False,
+        "credentials_available": False,
+        "platform_supported": True,
+        "rooms": {"total": 0, "encrypted": [], "unencrypted": []},
+        "overall_status": "unknown",
+        "recommendations": [],
+    }
+
+    # Check platform support
+    if sys.platform == WINDOWS_PLATFORM:
+        analysis["platform_supported"] = False
+        analysis["recommendations"].append(
+            "E2EE is not supported on Windows. Use Linux/macOS for E2EE support."
+        )
+
+    # Check dependencies
+    try:
+        import olm  # noqa: F401
+        from nio.crypto import OlmDevice  # noqa: F401
+        from nio.store import SqliteStore  # noqa: F401
+
+        analysis["dependencies_available"] = True
+    except ImportError:
+        analysis["dependencies_available"] = False
+        analysis["recommendations"].append(
+            "Install E2EE dependencies: pip install mmrelay[e2e]"
+        )
+
+    # Check config setting
+    matrix_section = config.get("matrix", {})
+    e2ee_config = matrix_section.get("e2ee", {})
+    encryption_config = matrix_section.get("encryption", {})  # Legacy support
+    analysis["config_enabled"] = e2ee_config.get(
+        "enabled", False
+    ) or encryption_config.get("enabled", False)
+
+    # Check credentials
+    config_dir = os.path.dirname(config_path)
+    credentials_path = os.path.join(config_dir, "credentials.json")
+    analysis["credentials_available"] = os.path.exists(credentials_path)
+
+    if not analysis["credentials_available"]:
+        analysis["recommendations"].append(
+            "Set up Matrix authentication: mmrelay auth login"
+        )
+
+    # Try to connect to Matrix and get room encryption status
+    if analysis["credentials_available"] and analysis["dependencies_available"]:
+        try:
+            # Import matrix connection functions
+            # Temporarily set global config for matrix connection
+            import mmrelay.matrix_utils as matrix_utils
+            from mmrelay.matrix_utils import connect_matrix
+
+            matrix_utils.config = config
+
+            # Connect and get room info
+            matrix_client = await connect_matrix()
+            if matrix_client and hasattr(matrix_client, "rooms"):
+                analysis["rooms"]["total"] = len(matrix_client.rooms)
+
+                for room_id, room in matrix_client.rooms.items():
+                    room_name = getattr(room, "display_name", room_id)
+                    encrypted = getattr(room, "encrypted", False)
+
+                    room_info = {"id": room_id, "name": room_name}
+                    if encrypted:
+                        analysis["rooms"]["encrypted"].append(room_info)
+                    else:
+                        analysis["rooms"]["unencrypted"].append(room_info)
+
+                # Close the connection
+                await matrix_client.close()
+
+        except Exception as e:
+            # If we can't connect, that's OK - we'll just note it
+            analysis["rooms"]["total"] = "unknown"
+            analysis["recommendations"].append(
+                f"Could not connect to Matrix to check room status: {e}"
+            )
+
+    # Determine overall status
+    if not analysis["platform_supported"]:
+        analysis["overall_status"] = "not_supported"
+    elif (
+        analysis["config_enabled"]
+        and analysis["dependencies_available"]
+        and analysis["credentials_available"]
+    ):
+        analysis["overall_status"] = "ready"
+    elif not analysis["config_enabled"] and len(analysis["rooms"]["encrypted"]) == 0:
+        analysis["overall_status"] = "disabled_safe"
+    elif not analysis["config_enabled"] and len(analysis["rooms"]["encrypted"]) > 0:
+        analysis["overall_status"] = "disabled_dangerous"
+    else:
+        analysis["overall_status"] = "incomplete"
+
+    return analysis
+
+
+def _print_e2ee_analysis(analysis):
+    """Print comprehensive E2EE analysis in user-friendly format."""
+    print("\n🔐 E2EE Configuration Analysis:")
+
+    # Current settings
+    print("\n📋 Current Settings:")
+
+    # Dependencies
+    if analysis["dependencies_available"]:
+        print("   ✅ Dependencies: Installed (python-olm available)")
+    else:
+        print("   ❌ Dependencies: Missing (python-olm not installed)")
+
+    # Credentials
+    if analysis["credentials_available"]:
+        print("   ✅ Authentication: Ready (credentials.json found)")
+    else:
+        print("   ❌ Authentication: Missing (no credentials.json)")
+
+    # Platform
+    if not analysis["platform_supported"]:
+        print("   ❌ Platform: Windows (E2EE not supported)")
+    else:
+        print("   ✅ Platform: Supported")
+
+    # Config setting
+    if analysis["config_enabled"]:
+        print("   ✅ Configuration: ENABLED (e2ee.enabled: true)")
+    else:
+        print("   ❌ Configuration: DISABLED (e2ee.enabled: false)")
+
+    # Room analysis
+    if analysis["rooms"]["total"] != "unknown" and analysis["rooms"]["total"] > 0:
+        print("\n🏠 Room Analysis:")
+        print(f"   Total rooms: {analysis['rooms']['total']}")
+
+        if analysis["rooms"]["unencrypted"]:
+            print(
+                f"   📝 Unencrypted: {len(analysis['rooms']['unencrypted'])} rooms (messages will work normally)"
+            )
+
+        if analysis["rooms"]["encrypted"]:
+            print(
+                f"   🔒 Encrypted: {len(analysis['rooms']['encrypted'])} rooms", end=""
+            )
+            if not analysis["config_enabled"]:
+                print(" (messages will be BLOCKED)")
+            else:
+                print(" (messages will be encrypted)")
+
+            for room in analysis["rooms"]["encrypted"]:
+                print(f"      - {room['name']} ({room['id']})")
+
+    # Predicted behavior
+    print("\n🚨 PREDICTED BEHAVIOR:")
+    if analysis["overall_status"] == "ready":
+        print("   ✅ All messages will work correctly")
+        print("   ✅ Encrypted rooms will receive encrypted messages")
+        print("   ✅ Unencrypted rooms will receive normal messages")
+    elif analysis["overall_status"] == "disabled_safe":
+        print("   ✅ All messages will work normally (no encrypted rooms)")
+    elif analysis["overall_status"] == "disabled_dangerous":
+        print("   ❌ Messages to encrypted rooms will be BLOCKED")
+        print("   ✅ Messages to unencrypted rooms will work normally")
+    elif analysis["overall_status"] == "not_supported":
+        print("   ❌ E2EE not supported on Windows")
+        print("   ❌ Messages to encrypted rooms will be BLOCKED")
+    else:
+        print("   ⚠️  E2EE setup incomplete - some issues need to be resolved")
+
+    # Recommendations
+    if analysis["recommendations"]:
+        print("\n🔧 TO FIX:")
+        for i, rec in enumerate(analysis["recommendations"], 1):
+            print(f"   {i}. {rec}")
+
+        if not analysis["config_enabled"] and analysis["rooms"]["encrypted"]:
+            print(
+                f"   {len(analysis['recommendations']) + 1}. Enable E2EE in your config:"
+            )
+            print("      Edit ~/.mmrelay/config.yaml")
+            print("      Add under matrix section:")
+            print("        e2ee:")
+            print("          enabled: true")
+            print(f"   {len(analysis['recommendations']) + 2}. Restart mmrelay")
+
+
 def _print_environment_summary():
     """Print environment and capability summary."""
     print("\n🖥️  Environment Summary:")
@@ -364,7 +558,7 @@ def _print_environment_summary():
             print("   Install: pipx install mmrelay[e2e]")
 
 
-def check_config(args=None):
+async def check_config_async(args=None):
     """
     Validate the application's YAML configuration file and its required sections.
 
@@ -475,9 +669,25 @@ def check_config(args=None):
                         print(f"   {msg_setup_authentication()}")
                     return False
 
-                # Validate E2EE configuration and authentication
-                if not _validate_e2ee_config(config, matrix_section, config_path):
-                    return False
+                # Perform comprehensive E2EE analysis
+                try:
+                    e2ee_analysis = await _analyze_e2ee_status(config, config_path)
+                    _print_e2ee_analysis(e2ee_analysis)
+
+                    # Check if there are critical E2EE issues
+                    if (
+                        e2ee_analysis["overall_status"] == "not_supported"
+                        and len(e2ee_analysis["rooms"]["encrypted"]) > 0
+                    ):
+                        print(
+                            "\n⚠️  Warning: You have encrypted rooms but E2EE is not supported on Windows"
+                        )
+                        print("   Messages to encrypted rooms will be blocked")
+                except Exception as e:
+                    print(f"\n⚠️  Could not perform E2EE analysis: {e}")
+                    print("   Falling back to basic E2EE validation...")
+                    if not _validate_e2ee_config(config, matrix_section, config_path):
+                        return False
 
                 # Check matrix_rooms section
                 if "matrix_rooms" not in config or not config["matrix_rooms"]:
@@ -620,9 +830,6 @@ def check_config(args=None):
                         "This option still works but may be removed in future versions.\n"
                     )
 
-                # Print environment summary
-                _print_environment_summary()
-
                 print("\n✅ Configuration file is valid!")
                 return True
             except Exception as e:
@@ -634,6 +841,20 @@ def check_config(args=None):
         print(f"  - {path}")
     print(f"\n{msg_suggest_generate_config()}")
     return False
+
+
+def check_config(args=None):
+    """
+    Synchronous wrapper for check_config_async.
+    Validates the application's YAML configuration file and its required sections.
+    """
+    import asyncio
+
+    try:
+        return asyncio.run(check_config_async(args))
+    except Exception as e:
+        print(f"Error during configuration check: {e}")
+        return False
 
 
 def main():
