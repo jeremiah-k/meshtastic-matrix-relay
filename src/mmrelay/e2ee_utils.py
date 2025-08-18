@@ -34,25 +34,28 @@ def get_e2ee_status(
     config: Dict[str, Any], config_path: Optional[str] = None
 ) -> E2EEStatus:
     """
-    Get comprehensive E2EE status information.
-
-    Analyzes the current environment, configuration, and dependencies to determine
-    the complete E2EE status. This is the single source of truth for E2EE capabilities.
-
-    Args:
-        config: Parsed configuration dictionary
-        config_path: Path to config file (used for credential detection)
-
+    Return a consolidated E2EE status summary by inspecting the runtime platform, required crypto dependencies, configuration, and presence of Matrix credentials.
+    
+    This inspects:
+    - platform support (disables on Windows/msys/cygwin),
+    - presence of Python olm/nio components,
+    - whether E2EE is enabled in the provided config (supports legacy `matrix.encryption.enabled`),
+    - whether Matrix credentials (credentials.json) can be found (uses config_path directory if provided, otherwise falls back to the application's base directory).
+    
+    Parameters:
+        config (Dict[str, Any]): Parsed application configuration; used to read `matrix.e2ee.enabled` (and legacy `matrix.encryption.enabled`).
+        config_path (Optional[str]): Optional path to the configuration file directory to prioritize when checking for credentials.json.
+    
     Returns:
-        Dict containing:
-        - enabled: Whether E2EE is enabled in configuration
-        - available: Whether E2EE is available (platform + dependencies)
-        - configured: Whether authentication is properly set up
-        - platform_supported: Whether current platform supports E2EE
-        - dependencies_installed: Whether required dependencies are available
-        - credentials_available: Whether credentials.json exists
-        - overall_status: Summary status (ready/disabled/unavailable/incomplete)
-        - issues: List of specific issues preventing E2EE
+        E2EEStatus: A dict with the following keys:
+          - enabled (bool): E2EE enabled in configuration.
+          - available (bool): Platform + dependencies allow E2EE.
+          - configured (bool): Authentication/credentials are present.
+          - platform_supported (bool): True unless running on Windows/msys/cygwin.
+          - dependencies_installed (bool): True if required olm/nio components are importable.
+          - credentials_available (bool): True if credentials.json is discovered.
+          - overall_status (str): One of "ready", "disabled", "unavailable", "incomplete", or "unknown".
+          - issues (List[str]): Human-readable issues found that prevent full E2EE readiness.
     """
     status: E2EEStatus = {
         "enabled": False,
@@ -126,16 +129,15 @@ def get_e2ee_status(
 
 def _check_credentials_available(config_path: str) -> bool:
     """
-    Check if credentials.json is available in standard locations.
-
-    Checks both the config directory and the base directory for credentials.json,
-    following the same pattern as other credential checking functions.
-
-    Args:
-        config_path: Path to the configuration file
-
+    Check whether the Matrix credentials file exists in standard locations.
+    
+    Searches for CREDENTIALS_FILENAME in the directory containing the provided configuration file first, then falls back to the application's base directory (via mmrelay.config.get_base_dir()). If the base directory cannot be resolved (ImportError or OSError), the function returns False.
+    
+    Parameters:
+        config_path (str): Filesystem path to the configuration file whose directory should be checked.
+    
     Returns:
-        True if credentials.json exists in either location
+        bool: True if the credentials file exists in either the config directory or the base directory; otherwise False.
     """
     # Check config directory first
     config_dir = os.path.dirname(config_path)
@@ -207,14 +209,18 @@ def get_room_encryption_warnings(
 
 def format_room_list(rooms: Dict[str, Any], e2ee_status: Dict[str, Any]) -> List[str]:
     """
-    Format room list with appropriate encryption status indicators.
-
-    Args:
-        rooms: Dictionary of Matrix rooms
-        e2ee_status: E2EE status from get_e2ee_status()
-
+    Return a list of user-facing lines for each room including encryption indicators and status-specific warnings.
+    
+    Each returned line is prefixed with an icon and the room display name (falling back to the room ID). For encrypted rooms the message depends on the E2EE overall status:
+    - When overall_status == "ready": encrypted rooms show "🔒 {name} - Encrypted"; non-encrypted show "✅ {name}".
+    - When not ready: encrypted rooms show a warning ("⚠️") with a short explanation based on overall_status ("unavailable", "disabled", or other -> "incomplete"); non-encrypted rooms still show "✅ {name}".
+    
+    Parameters:
+        rooms: Mapping of room_id -> room-like object. Each room may provide a `display_name` attribute and an `encrypted` boolean attribute (both optional; defaults: display_name -> room_id, encrypted -> False).
+        e2ee_status: E2EE status dictionary returned by get_e2ee_status(). The function reads e2ee_status["overall_status"] to decide formatting.
+    
     Returns:
-        List of formatted room strings
+        List[str]: Formatted lines for display, one per room.
     """
     room_lines = []
 
@@ -251,7 +257,15 @@ def format_room_list(rooms: Dict[str, Any], e2ee_status: Dict[str, Any]) -> List
 
 # Standard warning message templates
 def get_e2ee_warning_messages():
-    """Get E2EE warning messages with current CLI commands."""
+    """
+    Return a mapping of standard user-facing E2EE warning messages.
+    
+    Each key is a short status identifier and the value is a ready-to-display message. Messages that reference external tooling or packages are rendered with the module's constants and CLI commands (e.g. PACKAGE_NAME_E2E and get_command).
+    Returns:
+        dict: Mapping of status keys to formatted warning strings. Keys include:
+            - "unavailable", "disabled", "incomplete", "missing_deps",
+              "missing_auth", and "missing_config".
+    """
     return {
         "unavailable": "E2EE is not supported on Windows - messages to encrypted rooms will be blocked",
         "disabled": "E2EE is disabled in configuration - messages to encrypted rooms will be blocked",
@@ -264,13 +278,23 @@ def get_e2ee_warning_messages():
 
 def get_e2ee_error_message(e2ee_status: Dict[str, Any]) -> str:
     """
-    Get appropriate error message for E2EE issues.
-
-    Args:
-        e2ee_status: E2EE status from get_e2ee_status()
-
+    Return a single user-facing E2EE error message based on the provided E2EE status.
+    
+    If the status is "ready" this returns an empty string. Otherwise selects one actionable
+    message (in priority order) for the first failing condition:
+    1. platform not supported
+    2. E2EE disabled in config
+    3. missing E2EE dependencies
+    4. missing Matrix credentials
+    5. otherwise, E2EE setup incomplete
+    
+    Parameters:
+        e2ee_status (dict): Status dictionary produced by get_e2ee_status().
+            Expected keys used: "overall_status", "platform_supported", "enabled",
+            "dependencies_installed", and "credentials_available".
+    
     Returns:
-        Formatted error message explaining the issue and how to fix it
+        str: A single formatted warning/instruction string, or an empty string when ready.
     """
     if e2ee_status.get("overall_status") == "ready":
         return ""  # No error
@@ -293,13 +317,16 @@ def get_e2ee_error_message(e2ee_status: Dict[str, Any]) -> str:
 
 def get_e2ee_fix_instructions(e2ee_status: Dict[str, Any]) -> List[str]:
     """
-    Get step-by-step instructions to fix E2EE issues.
-
-    Args:
-        e2ee_status: E2EE status from get_e2ee_status()
-
+    Return a sequenced list of user-facing instructions to resolve E2EE configuration issues.
+    
+    Given an E2EE status dictionary produced by get_e2ee_status(), returns a numbered set of actionable steps the operator can follow to make E2EE operational. If the status is "ready" a single success line is returned. If the platform is unsupported (Windows), returns platform-specific guidance and stops. Otherwise the list includes steps (when applicable) to install required dependencies, provision Matrix credentials, enable E2EE in the configuration, and a final verification command. Commands and package names are inserted where appropriate.
+    Parameters:
+        e2ee_status (dict): Status mapping returned by get_e2ee_status(); keys consulted include
+            "overall_status", "platform_supported", "dependencies_installed",
+            "credentials_available", and "enabled".
+    
     Returns:
-        List of instruction strings
+        List[str]: Ordered, human-readable instruction lines. Each step is numbered when multiple steps are returned; additional indented lines provide commands or configuration snippets.
     """
     if e2ee_status["overall_status"] == "ready":
         return ["✅ E2EE is fully configured and ready"]

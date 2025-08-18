@@ -1077,28 +1077,31 @@ async def matrix_relay(
     reply_to_event_id=None,
 ):
     """
-    Relay a Meshtastic message into a Matrix room, optionally as an emote, emoji reaction, or reply, and record cross-network mappings when configured.
-
-    Formats content (plain and HTML/markdown), builds Matrix reply framing when reply_to_event_id is provided, sends the message to the specified Matrix room, and—if message-interactions are enabled—stores a mapping between the Meshtastic message ID and the resulting Matrix event for future replies/reactions. Respects room encryption and will block sending to encrypted rooms if E2EE is not properly enabled.
-
+    Relay a Meshtastic message into a Matrix room, optionally as an emote, emoji-marked message, or as a reply, and record a Meshtastic↔Matrix mapping when configured.
+    
+    Builds a Matrix message payload (plain and HTML/markdown-safe formatted bodies), applies Matrix reply framing when reply_to_event_id is provided, enforces E2EE restrictions (will block sending to encrypted rooms when client E2EE is not enabled), sends the event via the global Matrix client, and — if message-interactions are enabled and a Meshtastic message ID is provided — stores a mapping for future cross-network replies/reactions. Handles timeouts and errors by logging and returning without raising.
+    
     Parameters:
-        room_id (str): Matrix room ID or alias to send the message to.
-        message (str): Message text to relay.
-        longname (str): Sender's long display name from Meshtastic (used in formatted output).
-        shortname (str): Sender's short display name from Meshtastic.
+        room_id (str): Matrix room ID or alias to send to.
+        message (str): Message text to relay; may contain Markdown or HTML which will be converted/stripped as needed.
+        longname (str): Sender long display name from Meshtastic used for attribution in formatted output.
+        shortname (str): Sender short display name from Meshtastic.
         meshnet_name (str): Originating meshnet name (used for metadata/attribution).
         portnum (int): Meshtastic port number the message originated from.
-        meshtastic_id (str, optional): Meshtastic message ID; when provided and interactions are enabled, a mapping to the Matrix event will be stored.
-        meshtastic_replyId (str, optional): Meshtastic message ID being replied to (included as metadata).
-        meshtastic_text (str, optional): Original Meshtastic message text (used when storing mappings).
-        emote (bool, optional): If True, send as an emote (m.emote) instead of regular text.
-        emoji (bool, optional): If True, mark the message as an emoji reaction in metadata.
-        reply_to_event_id (str, optional): Matrix event ID to format this message as an m.relates_to reply to.
-
+        meshtastic_id (str, optional): Meshtastic message ID; when provided and interactions/storage are enabled, a mapping from this Meshtastic ID to the resulting Matrix event will be persisted.
+        meshtastic_replyId (str, optional): Meshtastic message ID being replied to; included as metadata on the Matrix event.
+        meshtastic_text (str, optional): Original Meshtastic message text used when creating stored mappings.
+        emote (bool, optional): If True, send as an m.emote (emote) message instead of regular text.
+        emoji (bool, optional): If True, add emoji metadata to the Matrix event (used to mark emoji-like messages).
+        reply_to_event_id (str, optional): Matrix event ID to which this message should be formatted as an m.in_reply_to reply.
+    
     Side effects:
-        - Sends a message to Matrix via the global Matrix client.
-        - May persist a Meshtastic ↔ Matrix message mapping (for reactions/replies) depending on configuration.
-        - Observes encryption configuration and will not send to encrypted rooms when E2EE is not enabled.
+        - Sends a message to Matrix using the global matrix client.
+        - May persist a Meshtastic↔Matrix mapping for replies/reactions when storage is enabled.
+        - Logs errors and warnings; does not raise on send failures or storage errors (errors are caught and logged).
+    
+    Returns:
+        None
     """
     global config
 
