@@ -205,7 +205,7 @@ def format_room_list(rooms: Dict[str, Any], e2ee_status: Dict[str, Any]) -> List
             if encrypted:
                 room_lines.append(f"   🔒 {room_name} - Encrypted")
             else:
-                room_lines.append(f"   📝 {room_name} - Plaintext")
+                room_lines.append(f"   ✅ {room_name}")
         else:
             # Show warnings for encrypted rooms when E2EE is not ready
             if encrypted:
@@ -222,7 +222,7 @@ def format_room_list(rooms: Dict[str, Any], e2ee_status: Dict[str, Any]) -> List
                         f"   ⚠️ {room_name} - Encrypted (E2EE incomplete - messages will be blocked)"
                     )
             else:
-                room_lines.append(f"   📝 {room_name}")
+                room_lines.append(f"   ✅ {room_name}")
 
     return room_lines
 

@@ -1,36 +1,30 @@
 # E2EE Implementation Notes
 
-**This document summarizes the final, working implementation of End-to-End Encryption (E2EE) in MMRelay as of August 2025.**
+**Technical documentation for developers working on MMRelay's End-to-End Encryption implementation.**
 
-## Current Status (August 2025)
+## Unified E2EE Status System
 
-✅ **E2EE is fully working and production-ready**
+As of the latest implementation, MMRelay uses a centralized E2EE status detection system located in `src/mmrelay/e2ee_utils.py`. This provides consistent E2EE status reporting across all components.
 
-- Session restoration with device persistence
-- Automatic key sharing and decryption failure recovery
-- Configurable key sharing delays
-- Robust exception handling for Matrix sync operations
-- Warning system for encrypted rooms without E2EE setup
+### Key Components
 
-## Recent Improvements (August 2025)
+- **`get_e2ee_status(config, config_path)`**: Single source of truth for E2EE capabilities
+- **`format_room_list(rooms, e2ee_status)`**: Consistent room listing with encryption warnings
+- **`get_room_encryption_warnings(rooms, e2ee_status)`**: Warning generation for problematic setups
+- **Standard message templates**: Consistent error messages and fix instructions
 
-### Exception Handling and Stability
+### E2EE Status States
 
-- **Matrix Sync Exception Handling**: Fixed "Task exception was never retrieved" errors by properly checking `sync_task.result()` and handling TimeoutError gracefully
-- **Resource Management**: Added proper task cancellation to prevent memory leaks
-- **Error Propagation**: Improved exception chaining with `from e` for better debugging
+- **`ready`**: E2EE fully configured and operational
+- **`disabled`**: E2EE disabled in configuration
+- **`unavailable`**: Platform doesn't support E2EE (Windows)
+- **`incomplete`**: Missing dependencies or credentials
 
-### Configuration and Usability
+### Room Display Logic
 
-- **Configurable Key Sharing Delay**: Made key sharing delay configurable via `matrix.e2ee.key_sharing_delay_seconds` (default: 5 seconds)
-- **Warning System**: Added warnings when bot is in encrypted rooms but E2EE is not enabled, with clear setup instructions
-- **Debug Logging**: Improved logging levels for better debugging without noise
-
-### Code Quality
-
-- **Dead Code Removal**: Removed unreachable RoomEncryptionEvent handling code
-- **Device Validation**: Enhanced device ID validation with proper RuntimeError exceptions
-- **Combined Logic**: Consolidated validation logic for better maintainability
+- **E2EE Ready**: `🔒 Room Name - Encrypted` / `✅ Room Name`
+- **E2EE Disabled**: `⚠️ Room Name - Encrypted (E2EE disabled - messages will be blocked)` / `✅ Room Name`
+- **E2EE Unavailable**: `⚠️ Room Name - Encrypted (E2EE unavailable on Windows)` / `✅ Room Name`
 
 ## Core E2EE Implementation Logic
 
