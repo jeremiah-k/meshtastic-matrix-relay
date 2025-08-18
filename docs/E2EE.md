@@ -76,33 +76,7 @@ That's it! MMRelay will automatically encrypt messages for encrypted rooms and d
 
 **Windows users can still use MMRelay** for regular (unencrypted) Matrix communication. You can use `mmrelay auth login` to create credentials on Windows (E2EE not available), or alternatively configure Matrix credentials directly in `config.yaml`.
 
-### Step 2: Create E2EE Credentials
 
-Use the authentication command to create E2EE credentials:
-
-```bash
-# Create E2EE credentials (interactive)
-mmrelay auth login
-```
-
-**What the `auth login` command does:**
-
-- Prompts for your Matrix homeserver, username, and password
-- Creates a new Matrix session with E2EE support
-- Generates a unique device ID for MMRelay
-- Saves credentials to `~/.mmrelay/credentials.json`
-
-- Sets up encryption key storage in `~/.mmrelay/store/`
-
-**Interactive prompts:**
-
-```text
-Matrix Bot Login for E2EE
-=========================
-Matrix homeserver (e.g., https://matrix.org): https://your-server.org
-Matrix username (e.g., @user:matrix.org): @yourbot:your-server.org
-Matrix password: [hidden input]
-```
 
 
 

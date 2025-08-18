@@ -198,9 +198,11 @@ def _validate_e2ee_dependencies():
         print("   Solution: Use Linux or macOS for E2EE support")
         return False
 
-    # Check if python-olm is available
+    # Check if E2EE dependencies are available
     try:
         import olm  # noqa: F401
+        from nio.crypto import OlmDevice  # noqa: F401
+        from nio.store import SqliteStore  # noqa: F401
 
         print("✅ E2EE dependencies are installed")
         return True
@@ -625,6 +627,8 @@ def _print_environment_summary():
     else:
         try:
             import olm  # noqa: F401
+            from nio.crypto import OlmDevice  # noqa: F401
+            from nio.store import SqliteStore  # noqa: F401
 
             print("   E2EE Support: ✅ Available and installed")
         except ImportError:
@@ -753,7 +757,7 @@ def check_config(args=None):
                     _print_unified_e2ee_analysis(e2ee_status)
 
                     # Check if there are critical E2EE issues
-                    if e2ee_status["overall_status"] == "unavailable":
+                    if not e2ee_status.get("platform_supported", True):
                         print("\n⚠️  Warning: E2EE is not supported on Windows")
                         print("   Messages to encrypted rooms will be blocked")
                 except Exception as e:

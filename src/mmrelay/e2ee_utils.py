@@ -7,7 +7,7 @@ formatting across all components of the meshtastic-matrix-relay application.
 
 import os
 import sys
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional, TypedDict
 
 from mmrelay.cli_utils import get_command
 from mmrelay.constants.app import (
@@ -18,9 +18,21 @@ from mmrelay.constants.app import (
 )
 
 
+class E2EEStatus(TypedDict):
+    """Type definition for E2EE status dictionary."""
+    enabled: bool
+    available: bool
+    configured: bool
+    platform_supported: bool
+    dependencies_installed: bool
+    credentials_available: bool
+    overall_status: Literal["ready", "disabled", "unavailable", "incomplete", "unknown"]
+    issues: List[str]
+
+
 def get_e2ee_status(
     config: Dict[str, Any], config_path: Optional[str] = None
-) -> Dict[str, Any]:
+) -> E2EEStatus:
     """
     Get comprehensive E2EE status information.
 
@@ -42,7 +54,7 @@ def get_e2ee_status(
         - overall_status: Summary status (ready/disabled/unavailable/incomplete)
         - issues: List of specific issues preventing E2EE
     """
-    status = {
+    status: E2EEStatus = {
         "enabled": False,
         "available": False,
         "configured": False,
@@ -170,11 +182,12 @@ def get_room_encryption_warnings(
             encrypted_rooms.append(room_name)
 
     if encrypted_rooms:
-        if e2ee_status["overall_status"] == "unavailable":
+        overall = e2ee_status["overall_status"]
+        if overall == "unavailable":
             warnings.append(
-                f"⚠️ {len(encrypted_rooms)} encrypted room(s) detected but E2EE is unavailable on Windows"
+                f"⚠️ {len(encrypted_rooms)} encrypted room(s) detected but E2EE is not supported on Windows"
             )
-        elif e2ee_status["overall_status"] == "disabled":
+        elif overall == "disabled":
             warnings.append(
                 f"⚠️ {len(encrypted_rooms)} encrypted room(s) detected but E2EE is disabled"
             )
@@ -183,7 +196,11 @@ def get_room_encryption_warnings(
                 f"⚠️ {len(encrypted_rooms)} encrypted room(s) detected but E2EE setup is incomplete"
             )
 
-        warnings.append("   Messages to encrypted rooms will be blocked")
+        # Tail message depends on readiness
+        if overall == "incomplete":
+            warnings.append("   Messages to encrypted rooms may be blocked")
+        else:
+            warnings.append("   Messages to encrypted rooms will be blocked")
 
     return warnings
 
@@ -224,7 +241,7 @@ def format_room_list(rooms: Dict[str, Any], e2ee_status: Dict[str, Any]) -> List
                     )
                 else:
                     room_lines.append(
-                        f"   ⚠️ {room_name} - Encrypted (E2EE incomplete - messages will be blocked)"
+                        f"   ⚠️ {room_name} - Encrypted (E2EE incomplete - messages may be blocked)"
                     )
             else:
                 room_lines.append(f"   ✅ {room_name}")

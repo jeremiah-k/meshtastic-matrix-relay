@@ -8,7 +8,6 @@ This module provides comprehensive testing for the unified E2EE approach, includ
 - Log capture tests to ensure encryption is actually happening
 """
 
-import json
 import logging
 import os
 import sys
@@ -78,9 +77,15 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
         """Test E2EE ready status when everything is configured"""
         mock_exists.return_value = True  # credentials.json exists
 
-        with patch("builtins.__import__") as mock_import:
-            mock_import.return_value = MagicMock()  # Mock olm import
+        import builtins
+        _real_import = builtins.__import__
 
+        def _mock_import(name, globals=None, locals=None, fromlist=(), level=0):
+            if name in ("olm", "nio.crypto", "nio.store"):
+                return MagicMock()
+            return _real_import(name, globals, locals, fromlist, level)
+
+        with patch("builtins.__import__", side_effect=_mock_import):
             status = get_e2ee_status(self.base_config, self.config_path)
 
             self.assertEqual(status["overall_status"], "ready")
@@ -136,9 +141,15 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
         """Test E2EE incomplete status when credentials are missing"""
         mock_exists.return_value = False  # credentials.json doesn't exist
 
-        with patch("builtins.__import__") as mock_import:
-            mock_import.return_value = MagicMock()  # Mock olm import
+        import builtins
+        _real_import = builtins.__import__
 
+        def _mock_import(name, globals=None, locals=None, fromlist=(), level=0):
+            if name in ("olm", "nio.crypto", "nio.store"):
+                return MagicMock()
+            return _real_import(name, globals, locals, fromlist, level)
+
+        with patch("builtins.__import__", side_effect=_mock_import):
             status = get_e2ee_status(self.base_config, self.config_path)
 
             self.assertEqual(status["overall_status"], "incomplete")
