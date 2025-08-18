@@ -73,10 +73,18 @@ class TestConfigChecker(unittest.TestCase):
         mock_validate_credentials,
     ):
         """
-        Test that check_config passes when matrix section is completely missing but credentials.json exists.
-
-        This simulates the scenario where the user has commented out the entire matrix section
-        but has valid credentials.json file containing all authentication info (homeserver, access_token, user_id, device_id).
+        Test that check_config succeeds when the `matrix` section is absent but a valid credentials.json is present.
+        
+        Simulates a configuration file missing the entire `matrix` section while providing required
+        room and meshtastic settings. Mocks:
+        - argument parsing to use default config discovery,
+        - config path discovery and file existence,
+        - YAML validation to return the config without a `matrix` section,
+        - credentials validation to report a valid credentials.json,
+        - unified E2EE status retrieval to report a ready state.
+        
+        Asserts that check_config returns True, credentials validation is invoked, and the unified
+        E2EE status is queried.
         """
         args = MagicMock()
         args.config = None
@@ -116,9 +124,9 @@ class TestConfigChecker(unittest.TestCase):
     @patch("mmrelay.config.os.makedirs")
     def test_get_config_paths(self, mock_makedirs):
         """
-        Test that get_config_paths returns a list of configuration file paths.
-
-        Asserts that the returned value is a list of the expected length and that the function is called exactly once.
+        Verify get_config_paths() returns a list of candidate configuration file paths.
+        
+        Asserts that the result is a list with at least three entries and that each returned path ends with "config.yaml".
         """
         # Test the actual function behavior
         paths = get_config_paths()
