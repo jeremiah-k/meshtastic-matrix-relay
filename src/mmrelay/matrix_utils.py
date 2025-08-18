@@ -803,6 +803,9 @@ async def connect_matrix(passed_config=None):
     else:
         bot_user_name = bot_user_id  # Fallback if display name is not set
 
+    # Set E2EE status on the client for other functions to access
+    matrix_client.e2ee_enabled = e2ee_enabled
+
     return matrix_client
 
 
@@ -1048,6 +1051,44 @@ async def join_matrix_room(matrix_client, room_id_or_alias: str) -> None:
         logger.error(f"Error joining room '{room_id_or_alias}': {e}")
 
 
+def _get_e2ee_error_message():
+    """
+    Return a specific error message for why E2EE is not properly enabled.
+    Provides actionable guidance for different failure scenarios.
+    """
+    if sys.platform == WINDOWS_PLATFORM:
+        return (
+            "E2EE is not supported on Windows due to library limitations. "
+            "Messages will not be sent to encrypted rooms. "
+            "Use Linux/macOS for E2EE support, or ask room admins to disable encryption."
+        )
+
+    try:
+        import olm  # noqa: F401
+    except ImportError:
+        return (
+            "E2EE dependencies are not installed. "
+            "Install with: pip install mmrelay[e2e] "
+            "Then run 'mmrelay config check' to verify setup."
+        )
+
+    # Check for credentials.json
+    from mmrelay.config import get_base_dir
+
+    if not os.path.exists(os.path.join(get_base_dir(), "credentials.json")):
+        return (
+            "E2EE is not configured. "
+            "Run 'mmrelay auth login' to set up E2EE authentication, "
+            "then use 'mmrelay config check' to verify."
+        )
+
+    return (
+        "E2EE is not enabled in your configuration. "
+        "Add 'e2ee: enabled: true' under the matrix section in config.yaml, "
+        "then run 'mmrelay config check' to validate."
+    )
+
+
 async def matrix_relay(
     room_id,
     message,
@@ -1229,6 +1270,23 @@ async def matrix_relay(
             logger.debug(
                 "Sending message with ignore_unverified_devices=True (always for text messages)"
             )
+
+            # Final check: Do not send to encrypted rooms if E2EE is not enabled
+            if (
+                room
+                and getattr(room, "encrypted", False)
+                and not getattr(matrix_client, "e2ee_enabled", False)
+            ):
+                room_name = getattr(room, "display_name", room_id)
+                error_message = _get_e2ee_error_message()
+                logger.error(
+                    f"🔒 BLOCKED: Cannot send message to encrypted room '{room_name}' ({room_id})"
+                )
+                logger.error(f"Reason: {error_message}")
+                logger.info(
+                    "💡 Tip: Run 'mmrelay config check' to validate your E2EE setup"
+                )
+                return
 
             response = await asyncio.wait_for(
                 matrix_client.room_send(
