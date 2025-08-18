@@ -71,8 +71,9 @@ class E2EEDebugger:
         if self.client:
             try:
                 await self.client.close()
-            except Exception:
-                # Ignore cleanup errors - client may already be closed
+            except (AttributeError, RuntimeError, OSError):
+                # Ignore cleanup errors - client may already be closed or in invalid state
+                # Common during shutdown or after connection failures
                 pass
 
         return True

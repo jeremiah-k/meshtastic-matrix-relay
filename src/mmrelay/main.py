@@ -206,7 +206,9 @@ async def main(config):
                         # This will raise the exception if the task failed
                         sync_task.result()
                         # If we get here, sync completed normally (shouldn't happen with sync_forever)
-                        matrix_logger.warning("Matrix sync_forever completed unexpectedly")
+                        matrix_logger.warning(
+                            "Matrix sync_forever completed unexpectedly"
+                        )
                     except Exception as e:
                         # Log the exception and continue to retry
                         matrix_logger.error(f"Matrix sync failed: {e}")

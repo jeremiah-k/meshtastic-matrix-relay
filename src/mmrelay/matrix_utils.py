@@ -22,7 +22,6 @@ from nio import (
     MatrixRoom,
     MegolmEvent,
     ReactionEvent,
-    RoomEncryptionEvent,
     RoomMessageEmote,
     RoomMessageNotice,
     RoomMessageText,
@@ -476,7 +475,9 @@ async def connect_matrix(passed_config=None):
                 logger.error("Device ID is missing from credentials.json!")
                 logger.error("E2EE requires a valid device_id for session persistence")
                 # Log available keys for debugging without exposing sensitive data
-                logger.debug(f"credentials.json keys present: {list(credentials.keys())}")
+                logger.debug(
+                    f"credentials.json keys present: {list(credentials.keys())}"
+                )
                 error_msg = "E2EE requires a valid device_id in credentials.json"
             else:
                 logger.error(
@@ -583,7 +584,9 @@ async def connect_matrix(passed_config=None):
                     except ImportError as e:
                         logger.error(f"Missing E2EE dependency: {e}")
                         logger.error("Please reinstall with: pip install mmrelay[e2e]")
-                        raise RuntimeError("Missing E2EE dependency (Olm/SqliteStore)") from e
+                        raise RuntimeError(
+                            "Missing E2EE dependency (Olm/SqliteStore)"
+                        ) from e
 
                     e2ee_enabled = True
                     logger.info("End-to-End Encryption (E2EE) is enabled")
@@ -631,7 +634,9 @@ async def connect_matrix(passed_config=None):
 
                     # If device_id is not present in credentials, we can attempt to learn it later.
                     if not e2ee_device_id:
-                        logger.debug("No device_id in credentials; will retrieve from store/whoami later if available")
+                        logger.debug(
+                            "No device_id in credentials; will retrieve from store/whoami later if available"
+                        )
                 except ImportError:
                     logger.warning(
                         "E2EE is enabled in config but python-olm is not installed."
@@ -722,27 +727,40 @@ async def connect_matrix(passed_config=None):
                 f"Initial sync completed. Found {len(matrix_client.rooms)} rooms."
             )
 
-            # Check room encryption status after sync and warn about E2EE setup
-            logger.info("Checking room encryption status after sync...")
+            # List all rooms the bot is in, showing encryption status if E2EE is enabled
+            logger.info("Bot is in the following rooms:")
             encrypted_rooms = 0
             for room_id, room in matrix_client.rooms.items():
-                encrypted_status = getattr(room, "encrypted", "unknown")
-                logger.debug(f"Room {room_id}: encrypted={encrypted_status}")
-                if encrypted_status is True:
-                    encrypted_rooms += 1
+                room_name = getattr(room, "display_name", room_id)
+                if e2ee_enabled:
+                    encrypted_status = getattr(room, "encrypted", "unknown")
+                    if encrypted_status is True:
+                        encrypted_rooms += 1
+                        logger.info(f"  🔒 {room_name} ({room_id}) - Encrypted")
+                    else:
+                        logger.info(f"  📝 {room_name} ({room_id}) - Unencrypted")
+                else:
+                    logger.info(f"  📝 {room_name} ({room_id})")
 
-            logger.debug(
-                f"Found {encrypted_rooms} encrypted rooms out of {len(matrix_client.rooms)} total rooms"
-            )
+            if e2ee_enabled:
+                logger.debug(
+                    f"Found {encrypted_rooms} encrypted rooms out of {len(matrix_client.rooms)} total rooms"
+                )
 
             # Warn if bot is in encrypted rooms but E2EE is not properly set up
             if encrypted_rooms > 0 and not e2ee_enabled:
-                logger.warning("⚠️  ENCRYPTION WARNING: Bot is in encrypted rooms but E2EE is not enabled!")
-                logger.warning("Messages in encrypted rooms will NOT be relayed properly.")
+                logger.warning(
+                    "⚠️  ENCRYPTION WARNING: Bot is in encrypted rooms but E2EE is not enabled!"
+                )
+                logger.warning(
+                    "Messages in encrypted rooms will NOT be relayed properly."
+                )
                 logger.warning("To fix this:")
                 logger.warning("1. Install E2EE dependencies: pip install mmrelay[e2e]")
                 logger.warning("2. Set up credentials: mmrelay auth login")
-                logger.warning("3. Restart mmrelay - E2EE will be enabled automatically")
+                logger.warning(
+                    "3. Restart mmrelay - E2EE will be enabled automatically"
+                )
                 logger.warning("Encrypted rooms detected:")
                 for room_id, room in matrix_client.rooms.items():
                     if getattr(room, "encrypted", False):
@@ -772,7 +790,9 @@ async def connect_matrix(passed_config=None):
     # sharing is complete. The delay can be configured via matrix.e2ee.key_sharing_delay_seconds.
     if e2ee_enabled:
         # Make the delay configurable, default to 5 seconds
-        delay = config.get("matrix", {}).get("e2ee", {}).get("key_sharing_delay_seconds", 5)
+        delay = (
+            config.get("matrix", {}).get("e2ee", {}).get("key_sharing_delay_seconds", 5)
+        )
         logger.debug(f"Waiting for {delay} seconds to allow for key sharing...")
         await asyncio.sleep(delay)
 
@@ -782,6 +802,9 @@ async def connect_matrix(passed_config=None):
         bot_user_name = response.displayname
     else:
         bot_user_name = bot_user_id  # Fallback if display name is not set
+
+    # Set E2EE status on the client for other functions to access
+    matrix_client.e2ee_enabled = e2ee_enabled
 
     return matrix_client
 
@@ -994,7 +1017,13 @@ async def login_matrix_bot(
 
 
 async def join_matrix_room(matrix_client, room_id_or_alias: str) -> None:
-    """Join a Matrix room by its ID or alias."""
+    """
+    Join a Matrix room by room ID or alias, resolving aliases and updating the local room mapping.
+
+    If room_id_or_alias is a room alias (starts with '#'), the alias is resolved to a room ID and any entry in the global `matrix_rooms` list that referenced the alias will be updated to the resolved room ID. The function will attempt to join the resolved room (or the given room ID) if the bot is not already a member. Success and failure are logged; errors are caught and logged internally.
+    Parameters:
+        room_id_or_alias (str): A Matrix room ID (e.g. "!abcdef:server") or room alias (e.g. "#room:server") to join.
+    """
     try:
         if room_id_or_alias.startswith("#"):
             # If it's a room alias, resolve it to a room ID
@@ -1028,6 +1057,74 @@ async def join_matrix_room(matrix_client, room_id_or_alias: str) -> None:
         logger.error(f"Error joining room '{room_id_or_alias}': {e}")
 
 
+def _get_e2ee_error_message():
+    """
+    Return a specific error message for why E2EE is not properly enabled.
+    Provides actionable guidance for different failure scenarios.
+    """
+    if sys.platform == WINDOWS_PLATFORM:
+        return (
+            "E2EE is not supported on Windows due to library limitations. "
+            "Messages will not be sent to encrypted rooms. "
+            "Use Linux/macOS for E2EE support, or ask room admins to disable encryption."
+        )
+
+    try:
+        import olm  # noqa: F401
+    except ImportError:
+        return (
+            "E2EE dependencies are not installed. "
+            "Install with: pip install mmrelay[e2e] "
+            "Then run 'mmrelay config check' to verify setup."
+        )
+
+    # Check for credentials.json (check both locations like _validate_credentials_json)
+    from mmrelay.config import get_base_dir, get_config_paths
+
+    credentials_found = False
+
+    # Try to find credentials.json in standard locations
+    try:
+        # First check base directory
+        base_credentials_path = os.path.join(get_base_dir(), "credentials.json")
+        if os.path.exists(base_credentials_path):
+            credentials_found = True
+        else:
+            # Also check config directory if we can determine it
+            try:
+                config_paths = get_config_paths()
+                for config_path in config_paths:
+                    if os.path.exists(config_path):
+                        config_dir = os.path.dirname(config_path)
+                        config_credentials_path = os.path.join(
+                            config_dir, "credentials.json"
+                        )
+                        if os.path.exists(config_credentials_path):
+                            credentials_found = True
+                            break
+            except (OSError, ImportError, AttributeError):
+                # Config path detection failed - this is expected in some environments
+                # Fall back to base directory check only
+                pass
+    except (OSError, ImportError):
+        # File system or import errors - safe to assume no credentials available
+        # This handles cases where get_base_dir() or file operations fail
+        pass
+
+    if not credentials_found:
+        return (
+            "E2EE is not configured. "
+            "Run 'mmrelay auth login' to set up E2EE authentication, "
+            "then use 'mmrelay config check' to verify."
+        )
+
+    return (
+        "E2EE is not enabled in your configuration. "
+        "Add 'e2ee: enabled: true' under the matrix section in config.yaml, "
+        "then run 'mmrelay config check' to validate."
+    )
+
+
 async def matrix_relay(
     room_id,
     message,
@@ -1043,23 +1140,28 @@ async def matrix_relay(
     reply_to_event_id=None,
 ):
     """
-    Relays a message from the Meshtastic network to a Matrix room, supporting replies, emotes, emoji reactions, and cross-network message mapping.
+    Relay a Meshtastic message into a Matrix room, optionally as an emote, emoji reaction, or reply, and record cross-network mappings when configured.
 
-    If a reply target is specified, formats the message as a Matrix reply with appropriate quoting and HTML structure. Detects and preserves markdown or HTML formatting in outgoing messages, with graceful fallback if markdown processing is unavailable. When message interactions (reactions or replies) are enabled, stores a mapping between the Meshtastic message ID and the resulting Matrix event ID to support future cross-network interactions, pruning old mappings according to configuration.
+    Formats content (plain and HTML/markdown), builds Matrix reply framing when reply_to_event_id is provided, sends the message to the specified Matrix room, and—if message-interactions are enabled—stores a mapping between the Meshtastic message ID and the resulting Matrix event for future replies/reactions. Respects room encryption and will block sending to encrypted rooms if E2EE is not properly enabled.
 
     Parameters:
-        room_id (str): The Matrix room ID to send the message to.
-        message (str): The message content to relay.
-        longname (str): The sender's long display name from Meshtastic.
-        shortname (str): The sender's short display name from Meshtastic.
-        meshnet_name (str): The originating meshnet name.
-        portnum (int): The Meshtastic port number.
-        meshtastic_id (str, optional): The Meshtastic message ID for mapping.
-        meshtastic_replyId (str, optional): The Meshtastic message ID being replied to, if any.
-        meshtastic_text (str, optional): The original Meshtastic message text.
-        emote (bool, optional): Whether to send the message as an emote.
-        emoji (bool, optional): Whether the message is an emoji reaction.
-        reply_to_event_id (str, optional): The Matrix event ID being replied to, if sending a reply.
+        room_id (str): Matrix room ID or alias to send the message to.
+        message (str): Message text to relay.
+        longname (str): Sender's long display name from Meshtastic (used in formatted output).
+        shortname (str): Sender's short display name from Meshtastic.
+        meshnet_name (str): Originating meshnet name (used for metadata/attribution).
+        portnum (int): Meshtastic port number the message originated from.
+        meshtastic_id (str, optional): Meshtastic message ID; when provided and interactions are enabled, a mapping to the Matrix event will be stored.
+        meshtastic_replyId (str, optional): Meshtastic message ID being replied to (included as metadata).
+        meshtastic_text (str, optional): Original Meshtastic message text (used when storing mappings).
+        emote (bool, optional): If True, send as an emote (m.emote) instead of regular text.
+        emoji (bool, optional): If True, mark the message as an emoji reaction in metadata.
+        reply_to_event_id (str, optional): Matrix event ID to format this message as an m.relates_to reply to.
+
+    Side effects:
+        - Sends a message to Matrix via the global Matrix client.
+        - May persist a Meshtastic ↔ Matrix message mapping (for reactions/replies) depending on configuration.
+        - Observes encryption configuration and will not send to encrypted rooms when E2EE is not enabled.
     """
     global config
 
@@ -1209,6 +1311,23 @@ async def matrix_relay(
             logger.debug(
                 "Sending message with ignore_unverified_devices=True (always for text messages)"
             )
+
+            # Final check: Do not send to encrypted rooms if E2EE is not enabled
+            if (
+                room
+                and getattr(room, "encrypted", False)
+                and not getattr(matrix_client, "e2ee_enabled", False)
+            ):
+                room_name = getattr(room, "display_name", room_id)
+                error_message = _get_e2ee_error_message()
+                logger.error(
+                    f"🔒 BLOCKED: Cannot send message to encrypted room '{room_name}' ({room_id})"
+                )
+                logger.error(f"Reason: {error_message}")
+                logger.info(
+                    "💡 Tip: Run 'mmrelay config check' to validate your E2EE setup"
+                )
+                return
 
             response = await asyncio.wait_for(
                 matrix_client.room_send(
@@ -1587,8 +1706,6 @@ async def on_room_message(
     # Do not process messages from the bot itself
     if event.sender == bot_user_id:
         return
-
-
 
     # Note: MegolmEvent (encrypted) messages are handled by the `on_decryption_failure`
     # callback if they fail to decrypt. Successfully decrypted messages are automatically

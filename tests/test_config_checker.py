@@ -58,12 +58,14 @@ class TestConfigChecker(unittest.TestCase):
     @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
     @patch("mmrelay.cli.validate_yaml_syntax")
-    @patch("mmrelay.cli._validate_e2ee_config")
+    @patch("mmrelay.cli._print_e2ee_analysis")
+    @patch("mmrelay.cli._analyze_e2ee_setup")
     @patch("builtins.print")
     def test_check_config_missing_matrix_section_with_credentials(
         self,
         mock_print,
-        mock_validate_e2ee,
+        mock_analyze_e2ee,
+        mock_print_e2ee,
         mock_validate_yaml,
         mock_isfile,
         mock_get_paths,
@@ -93,7 +95,11 @@ class TestConfigChecker(unittest.TestCase):
         mock_get_paths.return_value = ["/test/config.yaml"]
         mock_isfile.return_value = True
         mock_validate_yaml.return_value = (True, None, config_without_matrix)
-        mock_validate_e2ee.return_value = True
+        # Mock the E2EE analysis to return a valid analysis
+        mock_analyze_e2ee.return_value = {
+            "overall_status": "ready",
+            "recommendations": [],
+        }
         mock_validate_credentials.return_value = True  # Valid credentials.json exists
 
         with patch("builtins.open", mock_open(read_data="test")):
@@ -102,7 +108,7 @@ class TestConfigChecker(unittest.TestCase):
         self.assertTrue(result)
         mock_print.assert_any_call("\n✅ Configuration file is valid!")
         mock_validate_credentials.assert_called_once()
-        mock_validate_e2ee.assert_called_once()
+        mock_analyze_e2ee.assert_called_once()
 
     @patch("mmrelay.config.os.makedirs")
     def test_get_config_paths(self, mock_makedirs):
@@ -125,14 +131,16 @@ class TestConfigChecker(unittest.TestCase):
     @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
     @patch("mmrelay.cli.validate_yaml_syntax")
-    @patch("mmrelay.cli._validate_e2ee_config")
+    @patch("mmrelay.cli._print_e2ee_analysis")
+    @patch("mmrelay.cli._analyze_e2ee_setup")
     @patch("builtins.print")
     @patch("builtins.open", new_callable=mock_open)
     def test_check_config_valid_tcp(
         self,
         mock_open,
         mock_print,
-        mock_validate_e2ee,
+        mock_analyze_e2ee,
+        mock_print_e2ee,
         mock_validate_yaml,
         mock_isfile,
         mock_get_paths,
@@ -145,7 +153,11 @@ class TestConfigChecker(unittest.TestCase):
         mock_get_paths.return_value = ["/test/config.yaml"]
         mock_isfile.return_value = True
         mock_validate_yaml.return_value = (True, None, self.valid_config)
-        mock_validate_e2ee.return_value = True
+        # Mock the E2EE analysis to return a valid analysis
+        mock_analyze_e2ee.return_value = {
+            "overall_status": "ready",
+            "recommendations": [],
+        }
 
         with patch("mmrelay.cli._validate_credentials_json", return_value=False):
             result = check_config()
@@ -197,14 +209,16 @@ class TestConfigChecker(unittest.TestCase):
     @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
     @patch("mmrelay.cli.validate_yaml_syntax")
-    @patch("mmrelay.cli._validate_e2ee_config")
+    @patch("mmrelay.cli._print_e2ee_analysis")
+    @patch("mmrelay.cli._analyze_e2ee_setup")
     @patch("builtins.print")
     @patch("builtins.open", new_callable=mock_open)
     def test_check_config_valid_ble(
         self,
         mock_open,
         mock_print,
-        mock_validate_e2ee,
+        mock_analyze_e2ee,
+        mock_print_e2ee,
         mock_validate_yaml,
         mock_isfile,
         mock_get_paths,
@@ -226,7 +240,11 @@ class TestConfigChecker(unittest.TestCase):
         mock_get_paths.return_value = ["/test/config.yaml"]
         mock_isfile.return_value = True
         mock_validate_yaml.return_value = (True, None, ble_config)
-        mock_validate_e2ee.return_value = True
+        # Mock the E2EE analysis to return a valid analysis
+        mock_analyze_e2ee.return_value = {
+            "overall_status": "ready",
+            "recommendations": [],
+        }
 
         with patch("mmrelay.cli._validate_credentials_json", return_value=False):
             result = check_config()

@@ -46,7 +46,9 @@ class E2EETestFramework:
         client = AsyncMock()
         client.device_id = "TEST_DEVICE_ID"
         client.user_id = "@test:example.org"
-        client.access_token = "test_token"
+        client.access_token = (
+            "test_token"  # nosec B105 - test token, not real credentials
+        )
 
         # Mock rooms
         if rooms is None:

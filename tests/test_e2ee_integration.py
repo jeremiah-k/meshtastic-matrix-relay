@@ -310,7 +310,8 @@ class E2EEIntegrationTester:
         if self.client:
             try:
                 await self.client.close()
-            except Exception:
+            except (AttributeError, RuntimeError, OSError):
+                # Ignore cleanup errors during test teardown
                 pass
 
         return failed == 0
