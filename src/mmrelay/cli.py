@@ -511,6 +511,7 @@ def _print_unified_e2ee_analysis(e2ee_status):
     # Show fix instructions if needed
     if e2ee_status["overall_status"] != "ready":
         from mmrelay.e2ee_utils import get_e2ee_fix_instructions
+
         instructions = get_e2ee_fix_instructions(e2ee_status)
         print("\n🔧 To fix E2EE issues:")
         for instruction in instructions:
@@ -744,7 +745,9 @@ def check_config(args=None):
 
                 # Perform comprehensive E2EE analysis using centralized utilities
                 try:
-                    from mmrelay.e2ee_utils import get_e2ee_status, get_e2ee_fix_instructions
+                    from mmrelay.e2ee_utils import (
+                        get_e2ee_status,
+                    )
 
                     e2ee_status = get_e2ee_status(config, config_path)
                     _print_unified_e2ee_analysis(e2ee_status)

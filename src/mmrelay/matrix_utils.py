@@ -728,8 +728,12 @@ async def connect_matrix(passed_config=None):
             )
 
             # List all rooms with unified E2EE status display
-            from mmrelay.e2ee_utils import get_e2ee_status, format_room_list, get_room_encryption_warnings
             from mmrelay.config import config_path
+            from mmrelay.e2ee_utils import (
+                format_room_list,
+                get_e2ee_status,
+                get_room_encryption_warnings,
+            )
 
             # Get comprehensive E2EE status
             e2ee_status = get_e2ee_status(config, config_path)
@@ -747,7 +751,11 @@ async def connect_matrix(passed_config=None):
                 logger.warning(warning)
 
             # Debug information
-            encrypted_count = sum(1 for room in matrix_client.rooms.values() if getattr(room, 'encrypted', False))
+            encrypted_count = sum(
+                1
+                for room in matrix_client.rooms.values()
+                if getattr(room, "encrypted", False)
+            )
             logger.debug(
                 f"Found {encrypted_count} encrypted rooms out of {len(matrix_client.rooms)} total rooms"
             )
@@ -1044,8 +1052,8 @@ def _get_e2ee_error_message():
     Return a specific error message for why E2EE is not properly enabled.
     Uses the unified E2EE status system for consistent messaging.
     """
-    from mmrelay.e2ee_utils import get_e2ee_status, get_e2ee_error_message
     from mmrelay.config import config_path
+    from mmrelay.e2ee_utils import get_e2ee_error_message, get_e2ee_status
 
     # Get unified E2EE status
     e2ee_status = get_e2ee_status(config, config_path)
