@@ -311,20 +311,20 @@ def _validate_matrix_authentication(config_path, matrix_section):
 def _validate_e2ee_config(config, matrix_section, config_path):
     """
     Validate end-to-end encryption (E2EE) configuration and Matrix authentication for the given config.
-    
+
     Performs these checks:
     - Confirms Matrix authentication is available (via credentials.json or matrix access token); returns False if authentication is missing or invalid.
     - If no matrix section is present, treats E2EE as not configured and returns True.
     - If E2EE/encryption is enabled in the matrix config, verifies platform/dependency support and inspects the configured store path. If the store directory does not yet exist, a note is printed indicating it will be created.
-    
+
     Parameters:
         config_path (str): Path to the active configuration file (used to locate credentials.json and related auth artifacts).
         matrix_section (dict | None): The "matrix" subsection of the parsed config (may be None or empty).
         config (dict): Full parsed configuration (unused for most checks but kept for consistency with caller signature).
-    
+
     Returns:
         bool: True if configuration and required authentication/dependencies are valid (or E2EE is not configured); False if validation fails.
-    
+
     Side effects:
         Prints informational or error messages about authentication, dependency checks, and E2EE store path status.
     """
@@ -365,21 +365,21 @@ def _validate_e2ee_config(config, matrix_section, config_path):
 def _analyze_e2ee_setup(config, config_path):
     """
     Analyze local E2EE readiness without contacting Matrix.
-    
+
     Performs an offline inspection of the environment and configuration to determine
     whether end-to-end encryption (E2EE) can be used. Checks platform support
     (Windows is considered unsupported), presence of required Python dependencies
     (olm and selected nio components), whether E2EE is enabled in the provided
     config, and whether a credentials.json is available adjacent to the supplied
     config_path or in the standard base directory.
-    
+
     Parameters:
         config (dict): Parsed configuration (typically from config.yaml). Only the
             "matrix" section is consulted to detect E2EE/encryption enablement.
         config_path (str): Path to the configuration file used to locate a
             credentials.json sibling; also used to resolve an alternate standard
             credentials location.
-    
+
     Returns:
         dict: Analysis summary with these keys:
           - config_enabled (bool): True if E2EE/encryption is enabled in config.
@@ -443,6 +443,7 @@ def _analyze_e2ee_setup(config, config_path):
     if not os.path.exists(credentials_path):
         # Also try the standard location
         from mmrelay.config import get_base_dir
+
         standard_credentials_path = os.path.join(get_base_dir(), "credentials.json")
         if os.path.exists(standard_credentials_path):
             credentials_path = standard_credentials_path
@@ -474,7 +475,7 @@ def _analyze_e2ee_setup(config, config_path):
 def _print_e2ee_analysis(analysis):
     """
     Print a user-facing analysis of end-to-end encryption (E2EE) readiness to standard output.
-    
+
     Parameters:
         analysis (dict): Analysis results with the following keys:
             - dependencies_available (bool): True if required E2EE dependencies (e.g., python-olm) are present.
@@ -483,10 +484,10 @@ def _print_e2ee_analysis(analysis):
             - config_enabled (bool): True if E2EE is enabled in the configuration.
             - overall_status (str): One of "ready", "disabled", "not_supported", or "incomplete" indicating the aggregated readiness.
             - recommendations (list[str]): User-facing remediation steps or suggestions (may be empty).
-    
+
     Returns:
         None
-    
+
     Notes:
         - This function only prints a human-readable report and does not modify state.
     """
@@ -536,7 +537,9 @@ def _print_e2ee_analysis(analysis):
         print("   ⚠️  E2EE setup incomplete - some issues need to be resolved")
         print("   ❌ Messages to encrypted rooms may be BLOCKED")
 
-    print("\n💡 Note: Room encryption status will be checked when mmrelay connects to Matrix")
+    print(
+        "\n💡 Note: Room encryption status will be checked when mmrelay connects to Matrix"
+    )
 
     # Recommendations
     if analysis["recommendations"]:
@@ -545,20 +548,24 @@ def _print_e2ee_analysis(analysis):
             print(f"   {i}. {rec}")
 
         if analysis["overall_status"] == "ready":
-            print("\n✅ E2EE setup is complete! Run 'mmrelay' to start with E2EE support.")
+            print(
+                "\n✅ E2EE setup is complete! Run 'mmrelay' to start with E2EE support."
+            )
         else:
-            print("\n⚠️  After fixing issues above, run 'mmrelay config check' again to verify.")
+            print(
+                "\n⚠️  After fixing issues above, run 'mmrelay config check' again to verify."
+            )
 
 
 def _print_environment_summary():
     """
     Print a concise environment summary including platform, Python version, and Matrix E2EE capability.
-    
+
     Provides:
     - Platform and Python version.
     - Whether E2EE is supported on the current platform (Windows is reported as not supported).
     - Whether the `olm` dependency is installed when E2EE is supported, and a brief installation hint if missing.
-    
+
     This function writes human-facing lines to standard output and returns None.
     """
     print("\n🖥️  Environment Summary:")
@@ -857,9 +864,6 @@ def check_config(args=None):
         print(f"  - {path}")
     print(f"\n{msg_suggest_generate_config()}")
     return False
-
-
-
 
 
 def main():

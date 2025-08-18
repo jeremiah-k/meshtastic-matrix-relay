@@ -98,7 +98,7 @@ class TestConfigChecker(unittest.TestCase):
         # Mock the E2EE analysis to return a valid analysis
         mock_analyze_e2ee.return_value = {
             "overall_status": "ready",
-            "recommendations": []
+            "recommendations": [],
         }
         mock_validate_credentials.return_value = True  # Valid credentials.json exists
 
@@ -156,7 +156,7 @@ class TestConfigChecker(unittest.TestCase):
         # Mock the E2EE analysis to return a valid analysis
         mock_analyze_e2ee.return_value = {
             "overall_status": "ready",
-            "recommendations": []
+            "recommendations": [],
         }
 
         with patch("mmrelay.cli._validate_credentials_json", return_value=False):
@@ -243,7 +243,7 @@ class TestConfigChecker(unittest.TestCase):
         # Mock the E2EE analysis to return a valid analysis
         mock_analyze_e2ee.return_value = {
             "overall_status": "ready",
-            "recommendations": []
+            "recommendations": [],
         }
 
         with patch("mmrelay.cli._validate_credentials_json", return_value=False):

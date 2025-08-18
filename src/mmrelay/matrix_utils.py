@@ -1019,7 +1019,7 @@ async def login_matrix_bot(
 async def join_matrix_room(matrix_client, room_id_or_alias: str) -> None:
     """
     Join a Matrix room by room ID or alias, resolving aliases and updating the local room mapping.
-    
+
     If room_id_or_alias is a room alias (starts with '#'), the alias is resolved to a room ID and any entry in the global `matrix_rooms` list that referenced the alias will be updated to the resolved room ID. The function will attempt to join the resolved room (or the given room ID) if the bot is not already a member. Success and failure are logged; errors are caught and logged internally.
     Parameters:
         room_id_or_alias (str): A Matrix room ID (e.g. "!abcdef:server") or room alias (e.g. "#room:server") to join.
@@ -1096,14 +1096,20 @@ def _get_e2ee_error_message():
                 for config_path in config_paths:
                     if os.path.exists(config_path):
                         config_dir = os.path.dirname(config_path)
-                        config_credentials_path = os.path.join(config_dir, "credentials.json")
+                        config_credentials_path = os.path.join(
+                            config_dir, "credentials.json"
+                        )
                         if os.path.exists(config_credentials_path):
                             credentials_found = True
                             break
-            except Exception:
-                pass  # If we can't determine config paths, just use base directory check
-    except Exception:
-        pass  # If any error occurs, assume no credentials
+            except (OSError, ImportError, AttributeError):
+                # Config path detection failed - this is expected in some environments
+                # Fall back to base directory check only
+                pass
+    except (OSError, ImportError):
+        # File system or import errors - safe to assume no credentials available
+        # This handles cases where get_base_dir() or file operations fail
+        pass
 
     if not credentials_found:
         return (
@@ -1135,9 +1141,9 @@ async def matrix_relay(
 ):
     """
     Relay a Meshtastic message into a Matrix room, optionally as an emote, emoji reaction, or reply, and record cross-network mappings when configured.
-    
+
     Formats content (plain and HTML/markdown), builds Matrix reply framing when reply_to_event_id is provided, sends the message to the specified Matrix room, and—if message-interactions are enabled—stores a mapping between the Meshtastic message ID and the resulting Matrix event for future replies/reactions. Respects room encryption and will block sending to encrypted rooms if E2EE is not properly enabled.
-    
+
     Parameters:
         room_id (str): Matrix room ID or alias to send the message to.
         message (str): Message text to relay.
@@ -1151,7 +1157,7 @@ async def matrix_relay(
         emote (bool, optional): If True, send as an emote (m.emote) instead of regular text.
         emoji (bool, optional): If True, mark the message as an emoji reaction in metadata.
         reply_to_event_id (str, optional): Matrix event ID to format this message as an m.relates_to reply to.
-    
+
     Side effects:
         - Sends a message to Matrix via the global Matrix client.
         - May persist a Meshtastic ↔ Matrix message mapping (for reactions/replies) depending on configuration.
