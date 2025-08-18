@@ -1072,10 +1072,34 @@ def _get_e2ee_error_message():
             "Then run 'mmrelay config check' to verify setup."
         )
 
-    # Check for credentials.json
-    from mmrelay.config import get_base_dir
+    # Check for credentials.json (check both locations like _validate_credentials_json)
+    from mmrelay.config import get_base_dir, get_config_paths
 
-    if not os.path.exists(os.path.join(get_base_dir(), "credentials.json")):
+    credentials_found = False
+
+    # Try to find credentials.json in standard locations
+    try:
+        # First check base directory
+        base_credentials_path = os.path.join(get_base_dir(), "credentials.json")
+        if os.path.exists(base_credentials_path):
+            credentials_found = True
+        else:
+            # Also check config directory if we can determine it
+            try:
+                config_paths = get_config_paths()
+                for config_path in config_paths:
+                    if os.path.exists(config_path):
+                        config_dir = os.path.dirname(config_path)
+                        config_credentials_path = os.path.join(config_dir, "credentials.json")
+                        if os.path.exists(config_credentials_path):
+                            credentials_found = True
+                            break
+            except:
+                pass  # If we can't determine config paths, just use base directory check
+    except:
+        pass  # If any error occurs, assume no credentials
+
+    if not credentials_found:
         return (
             "E2EE is not configured. "
             "Run 'mmrelay auth login' to set up E2EE authentication, "

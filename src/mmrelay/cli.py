@@ -391,9 +391,17 @@ def _analyze_e2ee_setup(config, config_path):
             "Enable E2EE in config.yaml under matrix section: e2ee: enabled: true"
         )
 
-    # Check credentials
+    # Check credentials (same logic as _validate_credentials_json)
     config_dir = os.path.dirname(config_path)
     credentials_path = os.path.join(config_dir, "credentials.json")
+
+    if not os.path.exists(credentials_path):
+        # Also try the standard location
+        from mmrelay.config import get_base_dir
+        standard_credentials_path = os.path.join(get_base_dir(), "credentials.json")
+        if os.path.exists(standard_credentials_path):
+            credentials_path = standard_credentials_path
+
     analysis["credentials_available"] = os.path.exists(credentials_path)
 
     if not analysis["credentials_available"]:
