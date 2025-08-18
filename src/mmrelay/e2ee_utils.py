@@ -9,8 +9,13 @@ import os
 import sys
 from typing import Any, Dict, List, Optional
 
-# Platform constants
-WINDOWS_PLATFORM = "win32"
+from mmrelay.cli_utils import get_command
+from mmrelay.constants.app import (
+    CREDENTIALS_FILENAME,
+    PACKAGE_NAME_E2E,
+    PYTHON_OLM_PACKAGE,
+    WINDOWS_PLATFORM,
+)
 
 
 def get_e2ee_status(
@@ -62,7 +67,7 @@ def get_e2ee_status(
         status["dependencies_installed"] = True
     except ImportError:
         status["dependencies_installed"] = False
-        status["issues"].append("E2EE dependencies not installed (python-olm)")
+        status["issues"].append(f"E2EE dependencies not installed ({PYTHON_OLM_PACKAGE})")
 
     # Check configuration
     matrix_section = config.get("matrix", {})
@@ -82,7 +87,7 @@ def get_e2ee_status(
         # Fallback to base directory check only
         from mmrelay.config import get_base_dir
 
-        base_credentials_path = os.path.join(get_base_dir(), "credentials.json")
+        base_credentials_path = os.path.join(get_base_dir(), CREDENTIALS_FILENAME)
         status["credentials_available"] = os.path.exists(base_credentials_path)
 
     if not status["credentials_available"]:
@@ -122,7 +127,7 @@ def _check_credentials_available(config_path: str) -> bool:
     """
     # Check config directory first
     config_dir = os.path.dirname(config_path)
-    config_credentials_path = os.path.join(config_dir, "credentials.json")
+    config_credentials_path = os.path.join(config_dir, CREDENTIALS_FILENAME)
 
     if os.path.exists(config_credentials_path):
         return True
@@ -131,7 +136,7 @@ def _check_credentials_available(config_path: str) -> bool:
     try:
         from mmrelay.config import get_base_dir
 
-        base_credentials_path = os.path.join(get_base_dir(), "credentials.json")
+        base_credentials_path = os.path.join(get_base_dir(), CREDENTIALS_FILENAME)
         return os.path.exists(base_credentials_path)
     except (ImportError, OSError):
         # If we can't determine base directory, assume no credentials
@@ -228,14 +233,16 @@ def format_room_list(rooms: Dict[str, Any], e2ee_status: Dict[str, Any]) -> List
 
 
 # Standard warning message templates
-E2EE_WARNING_MESSAGES = {
-    "unavailable": "E2EE is not supported on Windows - encrypted rooms cannot receive messages",
-    "disabled": "E2EE is disabled in configuration - messages to encrypted rooms will be blocked",
-    "incomplete": "E2EE setup is incomplete - messages to encrypted rooms may be blocked",
-    "missing_deps": "E2EE dependencies not installed - run: pip install mmrelay[e2e]",
-    "missing_auth": "Matrix authentication not configured - run: mmrelay auth login",
-    "missing_config": "E2EE not enabled in configuration - add 'e2ee: enabled: true' under matrix section",
-}
+def get_e2ee_warning_messages():
+    """Get E2EE warning messages with current CLI commands."""
+    return {
+        "unavailable": "E2EE is not supported on Windows - encrypted rooms cannot receive messages",
+        "disabled": "E2EE is disabled in configuration - messages to encrypted rooms will be blocked",
+        "incomplete": "E2EE setup is incomplete - messages to encrypted rooms may be blocked",
+        "missing_deps": f"E2EE dependencies not installed - run: pip install {PACKAGE_NAME_E2E}",
+        "missing_auth": f"Matrix authentication not configured - run: {get_command('auth_login')}",
+        "missing_config": "E2EE not enabled in configuration - add 'e2ee: enabled: true' under matrix section",
+    }
 
 
 def get_e2ee_error_message(e2ee_status: Dict[str, Any]) -> str:
@@ -251,17 +258,20 @@ def get_e2ee_error_message(e2ee_status: Dict[str, Any]) -> str:
     if e2ee_status["overall_status"] == "ready":
         return ""  # No error
 
+    # Get current warning messages
+    warning_messages = get_e2ee_warning_messages()
+
     # Build error message based on specific issues
     if not e2ee_status["platform_supported"]:
-        return E2EE_WARNING_MESSAGES["unavailable"]
+        return warning_messages["unavailable"]
     elif not e2ee_status["enabled"]:
-        return E2EE_WARNING_MESSAGES["disabled"]
+        return warning_messages["disabled"]
     elif not e2ee_status["dependencies_installed"]:
-        return E2EE_WARNING_MESSAGES["missing_deps"]
+        return warning_messages["missing_deps"]
     elif not e2ee_status["credentials_available"]:
-        return E2EE_WARNING_MESSAGES["missing_auth"]
+        return warning_messages["missing_auth"]
     else:
-        return E2EE_WARNING_MESSAGES["incomplete"]
+        return warning_messages["incomplete"]
 
 
 def get_e2ee_fix_instructions(e2ee_status: Dict[str, Any]) -> List[str]:
@@ -286,11 +296,11 @@ def get_e2ee_fix_instructions(e2ee_status: Dict[str, Any]) -> List[str]:
 
     if not e2ee_status["dependencies_installed"]:
         instructions.append("1. Install E2EE dependencies:")
-        instructions.append("   pip install mmrelay[e2e]")
+        instructions.append(f"   pip install {PACKAGE_NAME_E2E}")
 
     if not e2ee_status["credentials_available"]:
         instructions.append("2. Set up Matrix authentication:")
-        instructions.append("   mmrelay auth login")
+        instructions.append(f"   {get_command('auth_login')}")
 
     if not e2ee_status["enabled"]:
         instructions.append("3. Enable E2EE in configuration:")
@@ -299,6 +309,6 @@ def get_e2ee_fix_instructions(e2ee_status: Dict[str, Any]) -> List[str]:
         instructions.append("     enabled: true")
 
     instructions.append("4. Verify configuration:")
-    instructions.append("   mmrelay config check")
+    instructions.append(f"   {get_command('check_config')}")
 
     return instructions
