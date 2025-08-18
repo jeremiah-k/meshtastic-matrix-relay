@@ -233,7 +233,7 @@ def format_room_list(rooms: Dict[str, Any], e2ee_status: Dict[str, Any]) -> List
             if encrypted:
                 if e2ee_status["overall_status"] == "unavailable":
                     room_lines.append(
-                        f"   ⚠️ {room_name} - Encrypted (E2EE unavailable on Windows)"
+                        f"   ⚠️ {room_name} - Encrypted (E2EE not supported on Windows - messages will be blocked)"
                     )
                 elif e2ee_status["overall_status"] == "disabled":
                     room_lines.append(
@@ -253,7 +253,7 @@ def format_room_list(rooms: Dict[str, Any], e2ee_status: Dict[str, Any]) -> List
 def get_e2ee_warning_messages():
     """Get E2EE warning messages with current CLI commands."""
     return {
-        "unavailable": "E2EE is not supported on Windows - encrypted rooms cannot receive messages",
+        "unavailable": "E2EE is not supported on Windows - messages to encrypted rooms will be blocked",
         "disabled": "E2EE is disabled in configuration - messages to encrypted rooms will be blocked",
         "incomplete": "E2EE setup is incomplete - messages to encrypted rooms may be blocked",
         "missing_deps": f"E2EE dependencies not installed - run: pip install {PACKAGE_NAME_E2E}",

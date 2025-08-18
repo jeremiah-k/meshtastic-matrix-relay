@@ -216,7 +216,7 @@ class TestRoomListFormatting(unittest.TestCase):
         room_lines = format_room_list(rooms, e2ee_status)
 
         self.assertIn(
-            "   ⚠️ Encrypted Room - Encrypted (E2EE unavailable on Windows)", room_lines
+            "   ⚠️ Encrypted Room - Encrypted (E2EE not supported on Windows - messages will be blocked)", room_lines
         )
 
 
