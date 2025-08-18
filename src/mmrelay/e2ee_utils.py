@@ -256,7 +256,7 @@ def get_e2ee_warning_messages():
         "unavailable": "E2EE is not supported on Windows - messages to encrypted rooms will be blocked",
         "disabled": "E2EE is disabled in configuration - messages to encrypted rooms will be blocked",
         "incomplete": "E2EE setup is incomplete - messages to encrypted rooms may be blocked",
-        "missing_deps": f"E2EE dependencies not installed - run: pip install {PACKAGE_NAME_E2E}",
+        "missing_deps": f"E2EE dependencies not installed - run: pipx install {PACKAGE_NAME_E2E}",
         "missing_auth": f"Matrix authentication not configured - run: {get_command('auth_login')}",
         "missing_config": "E2EE not enabled in configuration - add 'e2ee: enabled: true' under matrix section",
     }
@@ -272,20 +272,20 @@ def get_e2ee_error_message(e2ee_status: Dict[str, Any]) -> str:
     Returns:
         Formatted error message explaining the issue and how to fix it
     """
-    if e2ee_status["overall_status"] == "ready":
+    if e2ee_status.get("overall_status") == "ready":
         return ""  # No error
 
     # Get current warning messages
     warning_messages = get_e2ee_warning_messages()
 
     # Build error message based on specific issues
-    if not e2ee_status["platform_supported"]:
+    if not e2ee_status.get("platform_supported", True):
         return warning_messages["unavailable"]
-    elif not e2ee_status["enabled"]:
+    elif not e2ee_status.get("enabled", False):
         return warning_messages["disabled"]
-    elif not e2ee_status["dependencies_installed"]:
+    elif not e2ee_status.get("dependencies_installed", False):
         return warning_messages["missing_deps"]
-    elif not e2ee_status["credentials_available"]:
+    elif not e2ee_status.get("credentials_available", False):
         return warning_messages["missing_auth"]
     else:
         return warning_messages["incomplete"]
@@ -314,7 +314,7 @@ def get_e2ee_fix_instructions(e2ee_status: Dict[str, Any]) -> List[str]:
     step = 1
     if not e2ee_status["dependencies_installed"]:
         instructions.append(f"{step}. Install E2EE dependencies:")
-        instructions.append(f"   pip install {PACKAGE_NAME_E2E}")
+        instructions.append(f"   pipx install {PACKAGE_NAME_E2E}")
         step += 1
 
     if not e2ee_status["credentials_available"]:

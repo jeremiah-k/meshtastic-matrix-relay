@@ -583,7 +583,7 @@ async def connect_matrix(passed_config=None):
                         logger.info("All E2EE dependencies are available")
                     except ImportError as e:
                         logger.error(f"Missing E2EE dependency: {e}")
-                        logger.error("Please reinstall with: pip install mmrelay[e2e]")
+                        logger.error("Please reinstall with: pipx install mmrelay[e2e]")
                         raise RuntimeError(
                             "Missing E2EE dependency (Olm/SqliteStore)"
                         ) from e

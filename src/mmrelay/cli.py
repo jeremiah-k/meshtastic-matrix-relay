@@ -422,7 +422,7 @@ def _analyze_e2ee_setup(config, config_path):
     except ImportError:
         analysis["dependencies_available"] = False
         analysis["recommendations"].append(
-            "Install E2EE dependencies: pip install mmrelay[e2e]"
+            "Install E2EE dependencies: pipx install mmrelay[e2e]"
         )
 
     # Check config setting

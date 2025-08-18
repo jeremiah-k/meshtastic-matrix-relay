@@ -60,7 +60,7 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
         self.base_config = {
             "matrix": {"e2ee": {"enabled": True}},
             "meshtastic": {"meshnet_name": "TestNet"},
-            "matrix_rooms": {"!room:test.org": {"meshtastic_channel": 0}},
+            "matrix_rooms": [{"id": "!room:test.org", "meshtastic_channel": 0}],
         }
 
     def tearDown(self):
