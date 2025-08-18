@@ -18,3 +18,12 @@ MATRIX_DEVICE_NAME = "MMRelay"
 
 # Platform-specific constants
 WINDOWS_PLATFORM = "win32"
+
+# Package and installation constants
+PACKAGE_NAME_E2E = "mmrelay[e2e]"
+PYTHON_OLM_PACKAGE = "python-olm"
+
+# Configuration file names
+CREDENTIALS_FILENAME = "credentials.json"
+CONFIG_FILENAME = "config.yaml"
+STORE_DIRNAME = "store"

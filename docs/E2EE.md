@@ -2,23 +2,14 @@
 
 **MMRelay v1.2+** includes full support for **Matrix End-to-End Encryption**, enabling secure communication in encrypted Matrix rooms. This guide covers everything you need to set up and use E2EE features.
 
-## ✅ E2EE Status (August 2025)
+## E2EE in MMRelay
 
-**E2EE is fully working and production-ready!** Recent improvements include:
+MMRelay can participate in encrypted Matrix rooms, allowing your Meshtastic network to communicate securely through Matrix's end-to-end encryption. When E2EE is enabled:
 
-- **Enhanced Stability**: Fixed Matrix sync exception handling for more reliable operation
-- **Better Configuration**: Configurable key sharing delays and improved error messages
-- **User-Friendly Warnings**: Clear alerts when E2EE setup is needed for encrypted rooms
-- **Robust Session Management**: Improved device persistence and key recovery
-
-## What is E2EE?
-
-End-to-End Encryption ensures that only you and the intended recipients can read your messages. When MMRelay connects to encrypted Matrix rooms, it will:
-
-- **Automatically encrypt** outgoing messages to encrypted rooms
-- **Automatically decrypt** incoming messages from encrypted rooms, requesting keys as needed
-- **Maintain device identity** across sessions for consistent encryption
-- **Handle mixed environments** with both encrypted and unencrypted rooms seamlessly
+- Messages from Meshtastic are encrypted before being sent to encrypted Matrix rooms
+- Encrypted messages from Matrix are decrypted before being relayed to Meshtastic
+- MMRelay maintains its own device identity and encryption keys
+- Both encrypted and regular rooms work seamlessly in the same relay
 
 ## Quick Start
 
@@ -77,8 +68,7 @@ That's it! MMRelay will automatically encrypt messages for encrypted rooms and d
 - **Python 3.9 or higher**
 - **Linux or macOS** (E2EE is not supported on Windows due to library limitations)
 - **MMRelay v1.2+** with E2EE support: `pipx install mmrelay[e2e]`
-- **Matrix homeserver** that supports E2EE (most modern servers do)
-- **Dedicated bot account** recommended (don't use your personal Matrix account)
+
 
 ### Windows Limitation
 
@@ -86,47 +76,9 @@ That's it! MMRelay will automatically encrypt messages for encrypted rooms and d
 
 **Windows users can still use MMRelay** for regular (unencrypted) Matrix communication. You can use `mmrelay auth login` to create credentials on Windows (E2EE not available), or alternatively configure Matrix credentials directly in `config.yaml`.
 
-### Step 2: Create E2EE Credentials
 
-Use the authentication command to create E2EE credentials:
 
-```bash
-# Create E2EE credentials (interactive)
-mmrelay auth login
-```
 
-**What the `auth login` command does:**
-
-- Prompts for your Matrix homeserver, username, and password
-- Creates a new Matrix session with E2EE support
-- Generates a unique device ID for MMRelay
-- Saves credentials to `~/.mmrelay/credentials.json`
-
-5. Sets up encryption key storage in `~/.mmrelay/store/`
-
-**Interactive prompts:**
-
-```text
-Matrix Bot Login for E2EE
-=========================
-Matrix homeserver (e.g., https://matrix.org): https://your-server.org
-Matrix username (e.g., @user:matrix.org): @yourbot:your-server.org
-Matrix password: [hidden input]
-```
-
-### Step 3: Start MMRelay
-
-Once configured, start MMRelay normally:
-
-```bash
-mmrelay
-```
-
-MMRelay will automatically:
-
-- Load E2EE credentials from `credentials.json`
-- Initialize encryption keys and device trust
-- Connect to Matrix with full E2EE support
 
 ## The `auth login` Command
 
@@ -179,12 +131,7 @@ You can now start MMRelay with: mmrelay
 
 **`~/.mmrelay/store/`** - Directory containing encryption keys and device information (multiple database files).
 
-### Security Benefits
 
-- **Secure Storage**: Credentials are stored locally, not in plain text config files
-- **Device Persistence**: Same device ID across restarts maintains encryption history
-- **E2EE Ready**: Automatically sets up everything needed for encrypted communication
-- **Isolated Sessions**: Creates dedicated bot sessions separate from personal accounts
 
 ## How It Works
 

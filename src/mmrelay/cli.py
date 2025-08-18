@@ -191,16 +191,27 @@ def print_version():
 
 
 def _validate_e2ee_dependencies():
-    """Check if E2EE dependencies are available."""
+    """
+    Check whether end-to-end encryption (E2EE) runtime dependencies are available.
+    
+    Performs a platform check and attempts to import required packages (python-olm, nio.crypto.OlmDevice,
+    and nio.store.SqliteStore). Prints a short user-facing status message and guidance.
+    
+    Returns:
+        bool: True if the platform supports E2EE and all required dependencies can be imported;
+              False if running on an unsupported platform (Windows) or if any dependency is missing.
+    """
     if sys.platform == WINDOWS_PLATFORM:
         print("❌ Error: E2EE is not supported on Windows")
         print("   Reason: python-olm library requires native C libraries")
         print("   Solution: Use Linux or macOS for E2EE support")
         return False
 
-    # Check if python-olm is available
+    # Check if E2EE dependencies are available
     try:
         import olm  # noqa: F401
+        from nio.crypto import OlmDevice  # noqa: F401
+        from nio.store import SqliteStore  # noqa: F401
 
         print("✅ E2EE dependencies are installed")
         return True
@@ -420,7 +431,7 @@ def _analyze_e2ee_setup(config, config_path):
     except ImportError:
         analysis["dependencies_available"] = False
         analysis["recommendations"].append(
-            "Install E2EE dependencies: pip install mmrelay[e2e]"
+            "Install E2EE dependencies: pipx install mmrelay[e2e]"
         )
 
     # Check config setting
@@ -470,6 +481,62 @@ def _analyze_e2ee_setup(config, config_path):
         analysis["overall_status"] = "incomplete"
 
     return analysis
+
+
+def _print_unified_e2ee_analysis(e2ee_status):
+    """
+    Print a concise, user-facing analysis of E2EE readiness from a centralized status object.
+    
+    This formats and prints the platform support, dependency availability, configuration enabled state,
+    authentication (credentials.json) presence, and the overall status. If the overall status is not
+    "ready", prints actionable fix instructions obtained from mmrelay.e2ee_utils.get_e2ee_fix_instructions.
+    
+    Parameters:
+        e2ee_status (dict): Status dictionary as returned by get_e2ee_status(config, config_path).
+            Expected keys:
+                - platform_supported (bool)
+                - dependencies_installed (bool)
+                - enabled (bool)
+                - credentials_available (bool)
+                - overall_status (str)
+    """
+    print("\n🔐 E2EE Configuration Analysis:")
+
+    # Platform support
+    if e2ee_status["platform_supported"]:
+        print("✅ Platform: E2EE supported")
+    else:
+        print("❌ Platform: E2EE not supported on Windows")
+
+    # Dependencies
+    if e2ee_status["dependencies_installed"]:
+        print("✅ Dependencies: E2EE dependencies installed")
+    else:
+        print("❌ Dependencies: E2EE dependencies not fully installed")
+
+    # Configuration
+    if e2ee_status["enabled"]:
+        print("✅ Configuration: E2EE enabled")
+    else:
+        print("❌ Configuration: E2EE disabled")
+
+    # Authentication
+    if e2ee_status["credentials_available"]:
+        print("✅ Authentication: credentials.json found")
+    else:
+        print("❌ Authentication: credentials.json not found")
+
+    # Overall status
+    print(f"\n📊 Overall Status: {e2ee_status['overall_status'].upper()}")
+
+    # Show fix instructions if needed
+    if e2ee_status["overall_status"] != "ready":
+        from mmrelay.e2ee_utils import get_e2ee_fix_instructions
+
+        instructions = get_e2ee_fix_instructions(e2ee_status)
+        print("\n🔧 To fix E2EE issues:")
+        for instruction in instructions:
+            print(f"   {instruction}")
 
 
 def _print_e2ee_analysis(analysis):
@@ -579,6 +646,8 @@ def _print_environment_summary():
     else:
         try:
             import olm  # noqa: F401
+            from nio.crypto import OlmDevice  # noqa: F401
+            from nio.store import SqliteStore  # noqa: F401
 
             print("   E2EE Support: ✅ Available and installed")
         except ImportError:
@@ -697,13 +766,17 @@ def check_config(args=None):
                         print(f"   {msg_setup_authentication()}")
                     return False
 
-                # Perform comprehensive E2EE analysis
+                # Perform comprehensive E2EE analysis using centralized utilities
                 try:
-                    e2ee_analysis = _analyze_e2ee_setup(config, config_path)
-                    _print_e2ee_analysis(e2ee_analysis)
+                    from mmrelay.e2ee_utils import (
+                        get_e2ee_status,
+                    )
+
+                    e2ee_status = get_e2ee_status(config, config_path)
+                    _print_unified_e2ee_analysis(e2ee_status)
 
                     # Check if there are critical E2EE issues
-                    if e2ee_analysis["overall_status"] == "not_supported":
+                    if not e2ee_status.get("platform_supported", True):
                         print("\n⚠️  Warning: E2EE is not supported on Windows")
                         print("   Messages to encrypted rooms will be blocked")
                 except Exception as e:
