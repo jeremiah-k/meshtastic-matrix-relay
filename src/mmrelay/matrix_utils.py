@@ -1017,7 +1017,13 @@ async def login_matrix_bot(
 
 
 async def join_matrix_room(matrix_client, room_id_or_alias: str) -> None:
-    """Join a Matrix room by its ID or alias."""
+    """
+    Join a Matrix room by room ID or alias, resolving aliases and updating the local room mapping.
+    
+    If room_id_or_alias is a room alias (starts with '#'), the alias is resolved to a room ID and any entry in the global `matrix_rooms` list that referenced the alias will be updated to the resolved room ID. The function will attempt to join the resolved room (or the given room ID) if the bot is not already a member. Success and failure are logged; errors are caught and logged internally.
+    Parameters:
+        room_id_or_alias (str): A Matrix room ID (e.g. "!abcdef:server") or room alias (e.g. "#room:server") to join.
+    """
     try:
         if room_id_or_alias.startswith("#"):
             # If it's a room alias, resolve it to a room ID
@@ -1128,23 +1134,28 @@ async def matrix_relay(
     reply_to_event_id=None,
 ):
     """
-    Relays a message from the Meshtastic network to a Matrix room, supporting replies, emotes, emoji reactions, and cross-network message mapping.
-
-    If a reply target is specified, formats the message as a Matrix reply with appropriate quoting and HTML structure. Detects and preserves markdown or HTML formatting in outgoing messages, with graceful fallback if markdown processing is unavailable. When message interactions (reactions or replies) are enabled, stores a mapping between the Meshtastic message ID and the resulting Matrix event ID to support future cross-network interactions, pruning old mappings according to configuration.
-
+    Relay a Meshtastic message into a Matrix room, optionally as an emote, emoji reaction, or reply, and record cross-network mappings when configured.
+    
+    Formats content (plain and HTML/markdown), builds Matrix reply framing when reply_to_event_id is provided, sends the message to the specified Matrix room, and—if message-interactions are enabled—stores a mapping between the Meshtastic message ID and the resulting Matrix event for future replies/reactions. Respects room encryption and will block sending to encrypted rooms if E2EE is not properly enabled.
+    
     Parameters:
-        room_id (str): The Matrix room ID to send the message to.
-        message (str): The message content to relay.
-        longname (str): The sender's long display name from Meshtastic.
-        shortname (str): The sender's short display name from Meshtastic.
-        meshnet_name (str): The originating meshnet name.
-        portnum (int): The Meshtastic port number.
-        meshtastic_id (str, optional): The Meshtastic message ID for mapping.
-        meshtastic_replyId (str, optional): The Meshtastic message ID being replied to, if any.
-        meshtastic_text (str, optional): The original Meshtastic message text.
-        emote (bool, optional): Whether to send the message as an emote.
-        emoji (bool, optional): Whether the message is an emoji reaction.
-        reply_to_event_id (str, optional): The Matrix event ID being replied to, if sending a reply.
+        room_id (str): Matrix room ID or alias to send the message to.
+        message (str): Message text to relay.
+        longname (str): Sender's long display name from Meshtastic (used in formatted output).
+        shortname (str): Sender's short display name from Meshtastic.
+        meshnet_name (str): Originating meshnet name (used for metadata/attribution).
+        portnum (int): Meshtastic port number the message originated from.
+        meshtastic_id (str, optional): Meshtastic message ID; when provided and interactions are enabled, a mapping to the Matrix event will be stored.
+        meshtastic_replyId (str, optional): Meshtastic message ID being replied to (included as metadata).
+        meshtastic_text (str, optional): Original Meshtastic message text (used when storing mappings).
+        emote (bool, optional): If True, send as an emote (m.emote) instead of regular text.
+        emoji (bool, optional): If True, mark the message as an emoji reaction in metadata.
+        reply_to_event_id (str, optional): Matrix event ID to format this message as an m.relates_to reply to.
+    
+    Side effects:
+        - Sends a message to Matrix via the global Matrix client.
+        - May persist a Meshtastic ↔ Matrix message mapping (for reactions/replies) depending on configuration.
+        - Observes encryption configuration and will not send to encrypted rooms when E2EE is not enabled.
     """
     global config
 
