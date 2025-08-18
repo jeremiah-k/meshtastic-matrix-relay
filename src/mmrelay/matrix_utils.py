@@ -1042,69 +1042,16 @@ async def join_matrix_room(matrix_client, room_id_or_alias: str) -> None:
 def _get_e2ee_error_message():
     """
     Return a specific error message for why E2EE is not properly enabled.
-    Provides actionable guidance for different failure scenarios.
+    Uses the unified E2EE status system for consistent messaging.
     """
-    if sys.platform == WINDOWS_PLATFORM:
-        return (
-            "E2EE is not supported on Windows due to library limitations. "
-            "Messages will not be sent to encrypted rooms. "
-            "Use Linux/macOS for E2EE support, or ask room admins to disable encryption."
-        )
+    from mmrelay.e2ee_utils import get_e2ee_status, get_e2ee_error_message
+    from mmrelay.config import config_path
 
-    try:
-        import olm  # noqa: F401
-    except ImportError:
-        return (
-            "E2EE dependencies are not installed. "
-            "Install with: pip install mmrelay[e2e] "
-            "Then run 'mmrelay config check' to verify setup."
-        )
+    # Get unified E2EE status
+    e2ee_status = get_e2ee_status(config, config_path)
 
-    # Check for credentials.json (check both locations like _validate_credentials_json)
-    from mmrelay.config import get_base_dir, get_config_paths
-
-    credentials_found = False
-
-    # Try to find credentials.json in standard locations
-    try:
-        # First check base directory
-        base_credentials_path = os.path.join(get_base_dir(), "credentials.json")
-        if os.path.exists(base_credentials_path):
-            credentials_found = True
-        else:
-            # Also check config directory if we can determine it
-            try:
-                config_paths = get_config_paths()
-                for config_path in config_paths:
-                    if os.path.exists(config_path):
-                        config_dir = os.path.dirname(config_path)
-                        config_credentials_path = os.path.join(
-                            config_dir, "credentials.json"
-                        )
-                        if os.path.exists(config_credentials_path):
-                            credentials_found = True
-                            break
-            except (OSError, ImportError, AttributeError):
-                # Config path detection failed - this is expected in some environments
-                # Fall back to base directory check only
-                pass
-    except (OSError, ImportError):
-        # File system or import errors - safe to assume no credentials available
-        # This handles cases where get_base_dir() or file operations fail
-        pass
-
-    if not credentials_found:
-        return (
-            "E2EE is not configured. "
-            "Run 'mmrelay auth login' to set up E2EE authentication, "
-            "then use 'mmrelay config check' to verify."
-        )
-
-    return (
-        "E2EE is not enabled in your configuration. "
-        "Add 'e2ee: enabled: true' under the matrix section in config.yaml, "
-        "then run 'mmrelay config check' to validate."
-    )
+    # Return unified error message
+    return get_e2ee_error_message(e2ee_status)
 
 
 async def matrix_relay(

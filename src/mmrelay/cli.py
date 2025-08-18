@@ -472,6 +472,51 @@ def _analyze_e2ee_setup(config, config_path):
     return analysis
 
 
+def _print_unified_e2ee_analysis(e2ee_status):
+    """
+    Print unified E2EE analysis using centralized status detection.
+
+    Args:
+        e2ee_status: E2EE status dictionary from get_e2ee_status()
+    """
+    print("\n🔐 E2EE Configuration Analysis:")
+
+    # Platform support
+    if e2ee_status["platform_supported"]:
+        print("✅ Platform: E2EE supported")
+    else:
+        print("❌ Platform: E2EE not supported on Windows")
+
+    # Dependencies
+    if e2ee_status["dependencies_installed"]:
+        print("✅ Dependencies: python-olm installed")
+    else:
+        print("❌ Dependencies: python-olm not installed")
+
+    # Configuration
+    if e2ee_status["enabled"]:
+        print("✅ Configuration: E2EE enabled")
+    else:
+        print("❌ Configuration: E2EE disabled")
+
+    # Authentication
+    if e2ee_status["credentials_available"]:
+        print("✅ Authentication: credentials.json found")
+    else:
+        print("❌ Authentication: credentials.json not found")
+
+    # Overall status
+    print(f"\n📊 Overall Status: {e2ee_status['overall_status'].upper()}")
+
+    # Show fix instructions if needed
+    if e2ee_status["overall_status"] != "ready":
+        from mmrelay.e2ee_utils import get_e2ee_fix_instructions
+        instructions = get_e2ee_fix_instructions(e2ee_status)
+        print("\n🔧 To fix E2EE issues:")
+        for instruction in instructions:
+            print(f"   {instruction}")
+
+
 def _print_e2ee_analysis(analysis):
     """
     Print a user-facing analysis of end-to-end encryption (E2EE) readiness to standard output.
@@ -697,13 +742,15 @@ def check_config(args=None):
                         print(f"   {msg_setup_authentication()}")
                     return False
 
-                # Perform comprehensive E2EE analysis
+                # Perform comprehensive E2EE analysis using centralized utilities
                 try:
-                    e2ee_analysis = _analyze_e2ee_setup(config, config_path)
-                    _print_e2ee_analysis(e2ee_analysis)
+                    from mmrelay.e2ee_utils import get_e2ee_status, get_e2ee_fix_instructions
+
+                    e2ee_status = get_e2ee_status(config, config_path)
+                    _print_unified_e2ee_analysis(e2ee_status)
 
                     # Check if there are critical E2EE issues
-                    if e2ee_analysis["overall_status"] == "not_supported":
+                    if e2ee_status["overall_status"] == "unavailable":
                         print("\n⚠️  Warning: E2EE is not supported on Windows")
                         print("   Messages to encrypted rooms will be blocked")
                 except Exception as e:
