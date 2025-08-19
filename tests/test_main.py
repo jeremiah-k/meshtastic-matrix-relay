@@ -837,11 +837,11 @@ class TestMainFunctionEdgeCases(unittest.TestCase):
                 mmrelay.meshtastic_utils.meshtastic_client = original_client
 
 
-class TestMainAdditionalCoverage(unittest.TestCase):
-    """Additional tests to improve main.py coverage."""
+class TestBannerFunctionality(unittest.TestCase):
+    """Test cases for application banner functionality."""
 
-    def test_print_banner_multiple_calls(self):
-        """Test that print_banner only prints once."""
+    def test_print_banner_displays_only_once(self):
+        """Test that print_banner only displays the banner on first call."""
         import mmrelay.main
 
         # Reset banner state
@@ -859,8 +859,8 @@ class TestMainAdditionalCoverage(unittest.TestCase):
             print_banner()
             mock_logger.info.assert_not_called()
 
-    def test_print_banner_version_info(self):
-        """Test that print_banner includes version information."""
+    def test_print_banner_includes_version_information(self):
+        """Test that print_banner includes application name and version information."""
         import mmrelay.main
 
         # Reset banner state
@@ -872,8 +872,12 @@ class TestMainAdditionalCoverage(unittest.TestCase):
             # Should log with version info
             mock_logger.info.assert_called_once()
             call_args = mock_logger.info.call_args[0][0]
-            assert "MMRelay" in call_args
-            assert "v" in call_args  # Version indicator
+            self.assertIn("MMRelay", call_args)
+            self.assertIn("v", call_args)  # Version indicator
+
+
+class TestDatabaseConfiguration(unittest.TestCase):
+    """Test cases for database configuration handling."""
 
     @patch('mmrelay.main.initialize_database')
     @patch('mmrelay.main.load_plugins')

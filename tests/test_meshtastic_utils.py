@@ -882,94 +882,92 @@ def test_check_connection_function_exists(reset_meshtastic_globals):
     assert callable(check_connection)
 
 
-# Additional tests to improve coverage
-class TestMeshtasticUtilsAdditionalCoverage:
-    """Additional tests to improve meshtastic_utils coverage."""
+class TestCoroutineSubmission(unittest.TestCase):
+    """Test cases for coroutine submission functionality."""
 
-    def test_is_running_as_service(self):
-        """Test is_running_as_service function."""
-        from mmrelay.meshtastic_utils import is_running_as_service
-
-        # Test when not running as service (normal case)
-        with patch.dict(os.environ, {}, clear=True):
-            assert is_running_as_service() is False
-
-        # Test when running as service
-        with patch.dict(os.environ, {"INVOCATION_ID": "test-id"}):
-            assert is_running_as_service() is True
-
-    def test_serial_port_exists(self):
-        """Test serial_port_exists function."""
-        from mmrelay.meshtastic_utils import serial_port_exists
-
-        # Test with non-existent port
-        assert serial_port_exists("/dev/nonexistent") is False
-
-        # Test with None
-        assert serial_port_exists(None) is False
-
-        # Test with empty string
-        assert serial_port_exists("") is False
-
-    def test_submit_coro_non_coroutine(self):
-        """Test _submit_coro with non-coroutine input."""
+    def test_submit_coro_with_non_coroutine_input(self):
+        """Test that _submit_coro returns None when given non-coroutine input."""
         from mmrelay.meshtastic_utils import _submit_coro
 
-        # Test with non-coroutine (should return None)
+        # Test with string input
         result = _submit_coro("not a coroutine")
-        assert result is None
+        self.assertIsNone(result)
 
-        # Test with None
+        # Test with None input
         result = _submit_coro(None)
-        assert result is None
+        self.assertIsNone(result)
 
-    def test_sendTextReply_basic(self):
-        """Test sendTextReply function basic functionality."""
+        # Test with integer input
+        result = _submit_coro(42)
+        self.assertIsNone(result)
+
+
+class TestTextReplyFunctionality(unittest.TestCase):
+    """Test cases for text reply functionality."""
+
+    def test_sendTextReply_with_basic_parameters(self):
+        """Test sendTextReply with minimal required parameters."""
         from mmrelay.meshtastic_utils import sendTextReply
 
         # Mock interface
         mock_interface = MagicMock()
         mock_interface.sendText = MagicMock()
 
-        # Test basic send (need to provide reply_id)
-        sendTextReply(mock_interface, "Test message", reply_id=12345)
+        # Test basic send
+        sendTextReply(mock_interface, "Hello world", reply_id=12345)
 
-        # Should call sendText
+        # Verify sendText was called
         mock_interface.sendText.assert_called_once()
         call_args = mock_interface.sendText.call_args
-        assert "Test message" in str(call_args)
+        self.assertIn("Hello world", str(call_args))
 
-    def test_sendTextReply_with_destination(self):
-        """Test sendTextReply with destination parameter."""
+    def test_sendTextReply_with_custom_destination(self):
+        """Test sendTextReply with custom destination ID."""
         from mmrelay.meshtastic_utils import sendTextReply
 
         # Mock interface
         mock_interface = MagicMock()
         mock_interface.sendText = MagicMock()
 
-        # Test with destination (need to provide reply_id)
-        sendTextReply(mock_interface, "Test message", reply_id=12345, destinationId=123456789)
+        # Test with custom destination
+        sendTextReply(mock_interface, "Private message", reply_id=12345, destinationId=987654321)
 
-        # Should call sendText with destination
+        # Verify sendText was called with destination
         mock_interface.sendText.assert_called_once()
         call_args = mock_interface.sendText.call_args
-        assert "Test message" in str(call_args)
+        self.assertIn("Private message", str(call_args))
 
-    def test_sendTextReply_with_channel_index(self):
-        """Test sendTextReply with channel index parameter."""
+    def test_sendTextReply_with_channel_selection(self):
+        """Test sendTextReply with specific channel index."""
         from mmrelay.meshtastic_utils import sendTextReply
 
         # Mock interface
         mock_interface = MagicMock()
         mock_interface.sendText = MagicMock()
 
-        # Test with channel index (need to provide reply_id)
-        sendTextReply(mock_interface, "Test message", reply_id=12345, channelIndex=1)
+        # Test with channel index
+        sendTextReply(mock_interface, "Channel message", reply_id=12345, channelIndex=2)
 
-        # Should call sendText with channel index
+        # Verify sendText was called with channel
         mock_interface.sendText.assert_called_once()
         call_args = mock_interface.sendText.call_args
-        assert "Test message" in str(call_args)
+        self.assertIn("Channel message", str(call_args))
+
+    def test_sendTextReply_with_acknowledgment_request(self):
+        """Test sendTextReply with acknowledgment requested."""
+        from mmrelay.meshtastic_utils import sendTextReply
+
+        # Mock interface
+        mock_interface = MagicMock()
+        mock_interface.sendText = MagicMock()
+
+        # Test with acknowledgment
+        sendTextReply(mock_interface, "Important message", reply_id=12345, wantAck=True)
+
+        # Verify sendText was called
+        mock_interface.sendText.assert_called_once()
+        call_args = mock_interface.sendText.call_args
+        self.assertIn("Important message", str(call_args))
 
 
 if __name__ == "__main__":

@@ -1508,67 +1508,96 @@ async def test_connect_matrix_legacy_config(
         # Note: whoami() is no longer called in the new E2EE implementation
 
 
-# Additional tests to improve coverage
-class TestMatrixUtilsAdditionalCoverage:
-    """Additional tests to improve matrix_utils coverage."""
+class TestMessageConfiguration(unittest.TestCase):
+    """Test cases for message configuration functionality."""
 
-    def test_get_msgs_to_keep_config(self):
-        """Test _get_msgs_to_keep_config function."""
+    def test_get_msgs_to_keep_config_returns_valid_count(self):
+        """Test that _get_msgs_to_keep_config returns a valid message count."""
         from mmrelay.matrix_utils import _get_msgs_to_keep_config
 
-        # Should return default value
         result = _get_msgs_to_keep_config()
-        assert isinstance(result, int)
-        assert result > 0
+        self.assertIsInstance(result, int)
+        self.assertGreater(result, 0)
 
-    def test_add_truncated_vars(self):
-        """Test _add_truncated_vars helper function."""
+
+class TestMessageFormatting(unittest.TestCase):
+    """Test cases for message formatting functionality."""
+
+    def test_add_truncated_vars_with_long_text(self):
+        """Test _add_truncated_vars adds truncation variables for long text."""
         from mmrelay.matrix_utils import _add_truncated_vars
 
         format_vars = {}
-        prefix = "test"
-        text = "This is a long message that should be truncated"
+        prefix = "user"
+        text = "This is a very long message that will be truncated at various lengths"
 
         _add_truncated_vars(format_vars, prefix, text)
 
-        # Should add truncated variables
-        assert f"{prefix}_truncated_10" in format_vars
-        assert f"{prefix}_truncated_20" in format_vars
-        assert f"{prefix}_truncated_30" in format_vars
+        # Should add truncated variables at different lengths
+        self.assertIn(f"{prefix}_truncated_10", format_vars)
+        self.assertIn(f"{prefix}_truncated_20", format_vars)
+        self.assertIn(f"{prefix}_truncated_30", format_vars)
 
-        # Test with empty text
-        format_vars_empty = {}
-        _add_truncated_vars(format_vars_empty, "empty", "")
-        assert "empty_truncated_10" in format_vars_empty
-        assert format_vars_empty["empty_truncated_10"] == ""
+        # Verify truncated content is shorter than original
+        self.assertLessEqual(len(format_vars[f"{prefix}_truncated_10"]), 10)
+        self.assertLessEqual(len(format_vars[f"{prefix}_truncated_20"]), 20)
 
-    def test_message_storage_enabled(self):
-        """Test message_storage_enabled function."""
+    def test_add_truncated_vars_with_empty_text(self):
+        """Test _add_truncated_vars handles empty text gracefully."""
+        from mmrelay.matrix_utils import _add_truncated_vars
+
+        format_vars = {}
+        _add_truncated_vars(format_vars, "empty", "")
+
+        # Should still add truncated variables even for empty text
+        self.assertIn("empty_truncated_10", format_vars)
+        self.assertEqual(format_vars["empty_truncated_10"], "")
+
+class TestMessageStorage(unittest.TestCase):
+    """Test cases for message storage functionality."""
+
+    def test_message_storage_enabled_with_reactions(self):
+        """Test that message storage is enabled when reactions are enabled."""
         from mmrelay.matrix_utils import message_storage_enabled
 
-        # Test with reactions enabled
         interactions = {"reactions": True, "replies": False}
-        assert message_storage_enabled(interactions) is True
+        result = message_storage_enabled(interactions)
+        self.assertTrue(result)
 
-        # Test with replies enabled
+    def test_message_storage_enabled_with_replies(self):
+        """Test that message storage is enabled when replies are enabled."""
+        from mmrelay.matrix_utils import message_storage_enabled
+
         interactions = {"reactions": False, "replies": True}
-        assert message_storage_enabled(interactions) is True
+        result = message_storage_enabled(interactions)
+        self.assertTrue(result)
 
-        # Test with both enabled
+    def test_message_storage_enabled_with_both_features(self):
+        """Test that message storage is enabled when both reactions and replies are enabled."""
+        from mmrelay.matrix_utils import message_storage_enabled
+
         interactions = {"reactions": True, "replies": True}
-        assert message_storage_enabled(interactions) is True
+        result = message_storage_enabled(interactions)
+        self.assertTrue(result)
 
-        # Test with neither enabled
+    def test_message_storage_disabled_with_no_features(self):
+        """Test that message storage is disabled when neither reactions nor replies are enabled."""
+        from mmrelay.matrix_utils import message_storage_enabled
+
         interactions = {"reactions": False, "replies": False}
-        assert message_storage_enabled(interactions) is False
+        result = message_storage_enabled(interactions)
+        self.assertFalse(result)
 
-    def test_validate_prefix_format_valid(self):
-        """Test validate_prefix_format with valid format strings."""
+class TestPrefixValidation(unittest.TestCase):
+    """Test cases for prefix format validation."""
+
+    def test_validate_prefix_format_with_valid_variables(self):
+        """Test that validate_prefix_format accepts valid format strings."""
         from mmrelay.matrix_utils import validate_prefix_format
 
         available_vars = ["user", "message", "user_truncated_10"]
 
-        # Valid format strings
+        # Valid format strings should not raise exceptions
         valid_formats = [
             "[{user}]",
             "{user}: {message}",
@@ -1579,15 +1608,18 @@ class TestMatrixUtilsAdditionalCoverage:
 
         for format_str in valid_formats:
             # Should not raise exception
-            validate_prefix_format(format_str, available_vars)
+            try:
+                validate_prefix_format(format_str, available_vars)
+            except ValueError:
+                self.fail(f"validate_prefix_format raised ValueError for valid format: {format_str}")
 
-    def test_validate_prefix_format_invalid(self):
-        """Test validate_prefix_format with invalid format strings."""
+    def test_validate_prefix_format_with_invalid_variables(self):
+        """Test that validate_prefix_format rejects invalid format strings."""
         from mmrelay.matrix_utils import validate_prefix_format
 
         available_vars = ["user", "message"]
 
-        # Invalid format strings
+        # Invalid format strings should raise ValueError
         invalid_formats = [
             "{unknown_var}",
             "{user} {unknown}",
@@ -1595,7 +1627,7 @@ class TestMatrixUtilsAdditionalCoverage:
         ]
 
         for format_str in invalid_formats:
-            with pytest.raises(ValueError):
+            with self.assertRaises(ValueError):
                 validate_prefix_format(format_str, available_vars)
 
     def test_truncate_message_default(self):
