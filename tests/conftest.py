@@ -389,10 +389,9 @@ ensure_builtins_not_mocked()
 @pytest.fixture(autouse=True)
 def reset_custom_data_dir():
     """
-    Automatically reset custom_data_dir before and after each test.
-
-    This prevents tests from interfering with each other by ensuring
-    the global custom_data_dir variable is always reset to None.
+    Autouse pytest fixture that resets mmrelay.config.custom_data_dir to None for each test and restores its original value afterwards.
+    
+    Before the test runs, stores the current value of mmrelay.config.custom_data_dir (if any) and sets it to None to ensure tests do not share or depend on a persistent custom data directory. After the test yields, the original value is restored.
     """
     import mmrelay.config
 
@@ -410,7 +409,11 @@ def reset_custom_data_dir():
 
 @pytest.fixture(autouse=True)
 def reset_banner_flag():
-    """Reset banner flag before each test to ensure proper test isolation."""
+    """
+    Autouse pytest fixture that resets mmrelay.main._banner_printed to False before each test.
+    
+    This ensures the module-level banner-printed flag does not persist state between tests. The fixture yields once to allow the test to run with the reset state.
+    """
     import mmrelay.main
     mmrelay.main._banner_printed = False
     yield
