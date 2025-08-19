@@ -241,10 +241,11 @@ class TestMeshtasticUtils(unittest.TestCase):
         self.assertEqual(result, mock_client)
         mock_tcp.assert_called_once_with(hostname="192.168.1.100")
 
+    @patch("mmrelay.meshtastic_utils.on_lost_meshtastic_connection")
     @patch("mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface")
     @patch("mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface")
     @patch("mmrelay.meshtastic_utils.meshtastic.tcp_interface.TCPInterface")
-    def test_connect_meshtastic_ble(self, mock_tcp, mock_ble, mock_serial):
+    def test_connect_meshtastic_ble(self, mock_tcp, mock_ble, mock_serial, mock_on_lost):
         """
         Test that the Meshtastic client connects via BLE using the configured BLE address.
 
@@ -257,12 +258,8 @@ class TestMeshtasticUtils(unittest.TestCase):
         # Ensure the mock doesn't create any async operations
         mock_client.close = MagicMock()
 
-        # Configure BLE mock to return our mock client and prevent async operations
-        def mock_ble_constructor(*args, **kwargs):
-            # Ensure no async operations are created
-            return mock_client
-
-        mock_ble.side_effect = mock_ble_constructor
+        # Configure BLE mock to return our mock client
+        mock_ble.return_value = mock_client
 
         config = {
             "meshtastic": {"connection_type": "ble", "ble_address": "AA:BB:CC:DD:EE:FF"}
@@ -275,18 +272,15 @@ class TestMeshtasticUtils(unittest.TestCase):
         mmrelay.meshtastic_utils.shutting_down = False
         mmrelay.meshtastic_utils.reconnecting = False
 
-        # Patch any potential coroutine creation
-        with patch('asyncio.create_task', return_value=MagicMock()) as mock_create_task, \
-             patch('asyncio.ensure_future', return_value=MagicMock()) as mock_ensure_future:
-            result = connect_meshtastic(passed_config=config)
+        result = connect_meshtastic(passed_config=config)
 
-            self.assertEqual(result, mock_client)
-            mock_ble.assert_called_once_with(
-                address="AA:BB:CC:DD:EE:FF",
-                noProto=False,
-                debugOut=None,
-                noNodes=False,
-            )
+        self.assertEqual(result, mock_client)
+        mock_ble.assert_called_once_with(
+            address="AA:BB:CC:DD:EE:FF",
+            noProto=False,
+            debugOut=None,
+            noNodes=False,
+        )
 
     @patch("mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface")
     @patch("mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface")
