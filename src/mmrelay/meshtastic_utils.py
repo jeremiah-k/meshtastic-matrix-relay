@@ -454,9 +454,10 @@ async def reconnect():
                         "Shutdown in progress. Aborting reconnection attempts."
                     )
                     break
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
+                # Pass force_connect=True without overwriting the global config
                 meshtastic_client = await loop.run_in_executor(
-                    None, connect_meshtastic, True
+                    None, connect_meshtastic, None, True
                 )
                 if meshtastic_client:
                     logger.info("Reconnected successfully.")

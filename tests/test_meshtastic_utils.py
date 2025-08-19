@@ -873,8 +873,8 @@ async def test_reconnect_attempts_connection(
 
     await reconnect()
 
-    # Assert that a connection was attempted
-    mock_connect.assert_called_with(force_connect=True)
+    # Assert that a connection was attempted with correct parameters
+    mock_connect.assert_called_with(None, True)
 
 
 def test_check_connection_function_exists(reset_meshtastic_globals):
