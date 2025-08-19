@@ -17,6 +17,7 @@ import os
 import sys
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
+import pytest
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -879,20 +880,21 @@ class TestBannerFunctionality(unittest.TestCase):
 class TestDatabaseConfiguration(unittest.TestCase):
     """Test cases for database configuration handling."""
 
+    @pytest.mark.parametrize("db_key", ["database", "db"])
     @patch('mmrelay.main.initialize_database')
     @patch('mmrelay.main.load_plugins')
     @patch('mmrelay.main.start_message_queue')
     @patch('mmrelay.main.connect_matrix')
     @patch('mmrelay.main.connect_meshtastic')
     @patch('mmrelay.main.join_matrix_room')
-    def test_main_database_wipe_config(self, mock_join, mock_connect_mesh,
+    def test_main_database_wipe_config(self, db_key, mock_join, mock_connect_mesh,
                                       mock_connect_matrix, mock_start_queue,
                                       mock_load_plugins, mock_init_db):
-        """Test main function with database wipe configuration."""
+        """Test main function with database wipe configuration (current and legacy)."""
         # Mock config with database wipe settings
         config = {
             "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
-            "database": {
+            db_key: {
                 "msg_map": {
                     "wipe_on_restart": True
                 }
@@ -915,44 +917,6 @@ class TestDatabaseConfiguration(unittest.TestCase):
                     pass
 
             # Should wipe message map on startup
-            mock_wipe.assert_called()
-
-    @patch('mmrelay.main.initialize_database')
-    @patch('mmrelay.main.load_plugins')
-    @patch('mmrelay.main.start_message_queue')
-    @patch('mmrelay.main.connect_matrix')
-    @patch('mmrelay.main.connect_meshtastic')
-    @patch('mmrelay.main.join_matrix_room')
-    def test_main_legacy_db_config(self, mock_join, mock_connect_mesh,
-                                  mock_connect_matrix, mock_start_queue,
-                                  mock_load_plugins, mock_init_db):
-        """Test main function with legacy db configuration."""
-        # Mock config with legacy db settings
-        config = {
-            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
-            "db": {
-                "msg_map": {
-                    "wipe_on_restart": True
-                }
-            }
-        }
-
-        # Mock the async components with proper return values
-        mock_matrix_client = AsyncMock()
-        mock_matrix_client.add_event_callback = MagicMock()  # This can be sync
-        mock_matrix_client.close = AsyncMock()
-        mock_matrix_client.sync_forever = AsyncMock(side_effect=KeyboardInterrupt)
-        mock_connect_matrix.return_value = mock_matrix_client
-        mock_connect_mesh.return_value = MagicMock()
-
-        with patch('mmrelay.main.wipe_message_map') as mock_wipe:
-            with patch('mmrelay.main.asyncio.sleep', side_effect=KeyboardInterrupt):
-                try:
-                    asyncio.run(main(config))
-                except KeyboardInterrupt:
-                    pass
-
-            # Should wipe message map using legacy config
             mock_wipe.assert_called()
 
 
