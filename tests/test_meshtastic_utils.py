@@ -911,28 +911,28 @@ class TestMeshtasticUtilsAdditionalCoverage:
         # Test with empty string
         assert serial_port_exists("") is False
 
-    @patch('mmrelay.meshtastic_utils.asyncio.get_event_loop')
-    def test_submit_coro(self, mock_get_loop):
+    @patch('mmrelay.meshtastic_utils.asyncio.run_coroutine_threadsafe')
+    @patch('mmrelay.meshtastic_utils.inspect.iscoroutine')
+    def test_submit_coro(self, mock_iscoroutine, mock_run_coro_threadsafe):
         """Test _submit_coro function."""
         from mmrelay.meshtastic_utils import _submit_coro
 
-        # Mock coroutine and loop
+        # Mock coroutine
         mock_coro = MagicMock()
-        mock_loop = MagicMock()
-        mock_get_loop.return_value = mock_loop
+        mock_iscoroutine.return_value = True
 
-        # Test with no loop provided
-        _submit_coro(mock_coro)
-        mock_get_loop.assert_called_once()
-        mock_loop.create_task.assert_called_once_with(mock_coro)
+        # Mock loop
+        mock_loop = MagicMock()
+        mock_loop.is_closed.return_value = False
 
         # Test with loop provided
-        mock_loop.reset_mock()
-        mock_get_loop.reset_mock()
-        provided_loop = MagicMock()
-        _submit_coro(mock_coro, provided_loop)
-        mock_get_loop.assert_not_called()
-        provided_loop.create_task.assert_called_once_with(mock_coro)
+        _submit_coro(mock_coro, mock_loop)
+        mock_run_coro_threadsafe.assert_called_once_with(mock_coro, mock_loop)
+
+        # Test with non-coroutine (should return None)
+        mock_iscoroutine.return_value = False
+        result = _submit_coro("not a coroutine")
+        assert result is None
 
     @patch('mmrelay.meshtastic_utils.meshtastic_client')
     @patch('mmrelay.meshtastic_utils.logger')
