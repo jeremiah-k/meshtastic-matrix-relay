@@ -888,6 +888,16 @@ class TestDatabaseConfiguration(unittest.TestCase):
 class TestRunMainFunction(unittest.TestCase):
     """Test cases for run_main function."""
 
+    def setUp(self):
+        """Set up test environment and store original config state."""
+        import mmrelay.config
+        self.original_custom_data_dir = mmrelay.config.custom_data_dir
+
+    def tearDown(self):
+        """Clean up test environment and restore original config state."""
+        import mmrelay.config
+        mmrelay.config.custom_data_dir = self.original_custom_data_dir
+
     @patch("mmrelay.main.print_banner")
     @patch("mmrelay.config.load_config")
     @patch("mmrelay.config.load_credentials")
@@ -985,26 +995,38 @@ class TestRunMainFunction(unittest.TestCase):
         mock_print_banner,
     ):
         """Test run_main with custom data directory."""
-        custom_data_dir = "/custom/data/dir"
-        mock_abspath.return_value = custom_data_dir
+        import tempfile
+        import mmrelay.config
 
-        mock_config = {
-            "matrix": {"homeserver": "https://matrix.org"},
-            "meshtastic": {"connection_type": "serial"},
-            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
-        }
-        mock_load_config.return_value = mock_config
-        mock_load_credentials.return_value = None
+        # Store original custom_data_dir to restore later
+        original_custom_data_dir = mmrelay.config.custom_data_dir
 
-        mock_args = MagicMock()
-        mock_args.data_dir = custom_data_dir
-        mock_args.log_level = None
+        try:
+            # Use a temporary directory that actually exists
+            with tempfile.TemporaryDirectory() as temp_dir:
+                custom_data_dir = os.path.join(temp_dir, "custom_data")
+                mock_abspath.return_value = custom_data_dir
 
-        result = run_main(mock_args)
+                mock_config = {
+                    "matrix": {"homeserver": "https://matrix.org"},
+                    "meshtastic": {"connection_type": "serial"},
+                    "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+                }
+                mock_load_config.return_value = mock_config
+                mock_load_credentials.return_value = None
 
-        self.assertEqual(result, 0)
-        mock_abspath.assert_called_with(custom_data_dir)
-        mock_makedirs.assert_called_once_with(custom_data_dir, exist_ok=True)
+                mock_args = MagicMock()
+                mock_args.data_dir = custom_data_dir
+                mock_args.log_level = None
+
+                result = run_main(mock_args)
+
+                self.assertEqual(result, 0)
+                mock_abspath.assert_called_with(custom_data_dir)
+                mock_makedirs.assert_called_once_with(custom_data_dir, exist_ok=True)
+        finally:
+            # Restore original custom_data_dir
+            mmrelay.config.custom_data_dir = original_custom_data_dir
 
     @patch("mmrelay.main.print_banner")
     @patch("mmrelay.config.load_config")

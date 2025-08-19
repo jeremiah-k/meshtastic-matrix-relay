@@ -384,3 +384,25 @@ def done_future():
 
 # Ensure built-in modules are not accidentally mocked
 ensure_builtins_not_mocked()
+
+
+@pytest.fixture(autouse=True)
+def reset_custom_data_dir():
+    """
+    Automatically reset custom_data_dir before and after each test.
+
+    This prevents tests from interfering with each other by ensuring
+    the global custom_data_dir variable is always reset to None.
+    """
+    import mmrelay.config
+
+    # Store original value
+    original_custom_data_dir = mmrelay.config.custom_data_dir
+
+    # Reset to None before test
+    mmrelay.config.custom_data_dir = None
+
+    yield
+
+    # Restore original value after test
+    mmrelay.config.custom_data_dir = original_custom_data_dir
