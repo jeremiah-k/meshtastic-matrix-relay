@@ -1572,5 +1572,3 @@ def test_validate_prefix_format_comprehensive():
         assert is_valid is False
         assert error_msg is not None
         assert isinstance(error_msg, str)
-
-

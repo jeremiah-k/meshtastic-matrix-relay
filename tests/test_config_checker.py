@@ -74,7 +74,7 @@ class TestConfigChecker(unittest.TestCase):
     ):
         """
         Test that check_config succeeds when the `matrix` section is absent but a valid credentials.json is present.
-        
+
         Simulates a configuration file missing the entire `matrix` section while providing required
         room and meshtastic settings. Mocks:
         - argument parsing to use default config discovery,
@@ -82,7 +82,7 @@ class TestConfigChecker(unittest.TestCase):
         - YAML validation to return the config without a `matrix` section,
         - credentials validation to report a valid credentials.json,
         - unified E2EE status retrieval to report a ready state.
-        
+
         Asserts that check_config returns True, credentials validation is invoked, and the unified
         E2EE status is queried.
         """
@@ -125,7 +125,7 @@ class TestConfigChecker(unittest.TestCase):
     def test_get_config_paths(self, mock_makedirs):
         """
         Verify get_config_paths() returns a list of candidate configuration file paths.
-        
+
         Asserts that the result is a list with at least three entries and that each returned path ends with "config.yaml".
         """
         # Test the actual function behavior
@@ -847,8 +847,6 @@ class TestConfigChecker(unittest.TestCase):
 
         self.assertFalse(result)
         mock_print.assert_any_call("Error checking configuration: General error")
-
-
 
 
 if __name__ == "__main__":

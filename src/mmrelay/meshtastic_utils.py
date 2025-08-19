@@ -369,12 +369,12 @@ def connect_meshtastic(passed_config=None, force_connect=False):
 def on_lost_meshtastic_connection(interface=None, detection_source="unknown"):
     """
     Mark the Meshtastic connection as lost, close the current client, and initiate an asynchronous reconnect.
-    
+
     If a shutdown is in progress or a reconnect is already underway this function returns immediately. Otherwise it:
     - sets the module-level `reconnecting` flag,
     - attempts to close and clear the module-level `meshtastic_client` (handles already-closed file descriptors),
     - schedules the reconnect() coroutine on the global event loop if that loop exists and is open.
-    
+
     Parameters:
         detection_source (str): Identifier for where or how the loss was detected; used in log messages.
     """
@@ -411,7 +411,7 @@ def on_lost_meshtastic_connection(interface=None, detection_source="unknown"):
 async def reconnect():
     """
     Attempt to reconnect to the Meshtastic device asynchronously using exponential backoff.
-    
+
     Starts with DEFAULT_BACKOFF_TIME and doubles after each failure, capped at 300 seconds (5 minutes). Between attempts the task either sleeps or — when not running as a system service — displays a Rich progress countdown. On each cycle it calls connect_meshtastic(force_connect=True); the loop exits when a connection is re-established, when shutting_down is set, or when the task is cancelled. Any exceptions during attempts are logged; asyncio.CancelledError is handled and logged. The function clears the module-level `reconnecting` flag on exit.
     """
     global meshtastic_client, reconnecting, shutting_down

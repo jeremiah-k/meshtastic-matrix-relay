@@ -40,7 +40,7 @@ class MockRoom:
     def __init__(self, room_id, display_name, encrypted=False):
         """
         Initialize a MockRoom.
-        
+
         Parameters:
             room_id (str): Unique Matrix room identifier (e.g., "!abcdef:matrix.org").
             display_name (str): Human-readable room name.
@@ -57,9 +57,9 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
     def setUp(self):
         """
         Set up the test environment by creating a temporary directory and configuration files, and skipping tests if required imports are not available.
-        
+
         The method performs the following steps:
-        
+
         1. Checks if the required imports are available. If not, it skips the test.
         2. Creates a temporary directory using `tempfile.mkdtemp()`.
         3. Creates a configuration file path and a credentials file path within the temporary directory.
@@ -67,7 +67,7 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
            - `matrix.e2ee.enabled` is set to `True` to enable end-to-end encryption.
            - `meshtastic.meshnet_name` is set to `"TestNet"`.
            - `matrix_rooms` contains a single room with the ID `"!room:test.org"` and a Meshtastic channel of `0`.
-        
+
         This setup ensures a consistent environment for the subsequent tests, and allows for the simulation of various E2EE scenarios by modifying the configuration or mocking the required dependencies.
         """
         if not IMPORTS_AVAILABLE:
@@ -88,15 +88,13 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
     def tearDown(self):
         """
         Remove the temporary test directory created during setUp.
-        
+
         This deletes the directory referenced by self.temp_dir and its contents. Errors
         during removal are ignored (best-effort cleanup).
         """
         import shutil
 
         shutil.rmtree(self.temp_dir, ignore_errors=True)
-
-
 
     @patch("sys.platform", "linux")
     @patch("mmrelay.e2ee_utils.os.path.exists")
@@ -105,18 +103,19 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
         mock_exists.return_value = True  # credentials.json exists
 
         import builtins
+
         _real_import = builtins.__import__
 
         def _mock_import(name, globals=None, locals=None, fromlist=(), level=0):
             """
             Test helper that simulates imports of E2EE-related modules.
-            
+
             When used as a replacement for the built-in __import__, this function returns a MagicMock for the module names "olm", "nio.crypto", and "nio.store" so tests can run without those dependencies. All other imports are delegated to the real import implementation.
-            
+
             Parameters:
                 name (str): The fully-qualified name of the module to import.
                 globals, locals, fromlist, level: Passed through to the real import for non-mocked modules.
-            
+
             Returns:
                 module or MagicMock: A MagicMock for the mocked module names, otherwise the real imported module.
             """
@@ -181,18 +180,19 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
         mock_exists.return_value = False  # credentials.json doesn't exist
 
         import builtins
+
         _real_import = builtins.__import__
 
         def _mock_import(name, globals=None, locals=None, fromlist=(), level=0):
             """
             Test helper that simulates imports of E2EE-related modules.
-            
+
             When used as a replacement for the built-in __import__, this function returns a MagicMock for the module names "olm", "nio.crypto", and "nio.store" so tests can run without those dependencies. All other imports are delegated to the real import implementation.
-            
+
             Parameters:
                 name (str): The fully-qualified name of the module to import.
                 globals, locals, fromlist, level: Passed through to the real import for non-mocked modules.
-            
+
             Returns:
                 module or MagicMock: A MagicMock for the mocked module names, otherwise the real imported module.
             """
@@ -214,7 +214,7 @@ class TestRoomListFormatting(unittest.TestCase):
     def setUp(self):
         """
         Skip the test if required imports for the test module are not available.
-        
+
         If the module-level flag `IMPORTS_AVAILABLE` is False, calls `self.skipTest`
         to mark the test as skipped with an explanatory message.
         """
@@ -273,7 +273,8 @@ class TestRoomListFormatting(unittest.TestCase):
         room_lines = format_room_list(rooms, e2ee_status)
 
         self.assertIn(
-            "   ⚠️ Encrypted Room - Encrypted (E2EE not supported on Windows - messages will be blocked)", room_lines
+            "   ⚠️ Encrypted Room - Encrypted (E2EE not supported on Windows - messages will be blocked)",
+            room_lines,
         )
 
 
@@ -283,7 +284,7 @@ class TestEncryptionWarnings(unittest.TestCase):
     def setUp(self):
         """
         Skip the test if required imports for the test module are not available.
-        
+
         If the module-level flag `IMPORTS_AVAILABLE` is False, calls `self.skipTest`
         to mark the test as skipped with an explanatory message.
         """
@@ -333,7 +334,7 @@ class TestE2EEErrorMessages(unittest.TestCase):
     def setUp(self):
         """
         Skip the test if required imports for the test module are not available.
-        
+
         If the module-level flag `IMPORTS_AVAILABLE` is False, calls `self.skipTest`
         to mark the test as skipped with an explanatory message.
         """
@@ -386,7 +387,7 @@ class TestActualEncryptionVerification(unittest.TestCase):
     def setUp(self):
         """
         Skip the test if required imports for the test module are not available.
-        
+
         If the module-level flag `IMPORTS_AVAILABLE` is False, calls `self.skipTest`
         to mark the test as skipped with an explanatory message.
         """
@@ -396,7 +397,7 @@ class TestActualEncryptionVerification(unittest.TestCase):
     def test_encryption_log_detection(self):
         """
         Capture INFO-level messages from the `nio.crypto.log` logger and assert that expected encryption-related log entries are emitted.
-        
+
         This test attaches a temporary log handler to `nio.crypto.log`, emits three representative INFO messages related to group session sharing and creation, and verifies those exact messages were captured. The handler is removed in a finally block to avoid side effects on global logging state.
         """
         # Set up log capture
@@ -406,10 +407,10 @@ class TestActualEncryptionVerification(unittest.TestCase):
             def emit(self, record):
                 """
                 Append the formatted message from a logging.LogRecord to the surrounding `log_capture` list.
-                
+
                 Parameters:
                     record (logging.LogRecord): The log record whose message (via `getMessage()`) will be appended.
-                
+
                 Returns:
                     None
                 """
@@ -448,13 +449,13 @@ class TestActualEncryptionVerification(unittest.TestCase):
     def test_encrypted_event_detection(self):
         """
         Verify detection and basic validity checks for a Matrix `m.room.encrypted` event.
-        
+
         Creates a representative encrypted event dictionary and asserts:
         - event `type` is "m.room.encrypted";
         - `content.algorithm` matches the expected Megolm algorithm;
         - `content` contains a `ciphertext` field; and
         - the `ciphertext` length is non-trivial (greater than 50 characters).
-        
+
         This test ensures the shape and minimal substance of encrypted event payloads used by higher-level encryption verification code.
         """
         # Mock encrypted event structure based on user's log output

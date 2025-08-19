@@ -6,25 +6,26 @@ that provide consistent command references across the application.
 """
 
 import pytest
+
 from mmrelay.cli_utils import (
     CLI_COMMANDS,
     DEPRECATED_COMMANDS,
     get_command,
     get_deprecation_warning,
-    suggest_command,
-    require_command,
-    retry_command,
-    validate_command,
-    msg_suggest_generate_config,
-    msg_suggest_check_config,
+    msg_for_e2ee_support,
+    msg_or_run_auth_login,
+    msg_regenerate_credentials,
     msg_require_auth_login,
     msg_retry_auth_login,
     msg_run_auth_login,
-    msg_for_e2ee_support,
     msg_setup_auth,
-    msg_or_run_auth_login,
     msg_setup_authentication,
-    msg_regenerate_credentials,
+    msg_suggest_check_config,
+    msg_suggest_generate_config,
+    require_command,
+    retry_command,
+    suggest_command,
+    validate_command,
 )
 
 
@@ -35,19 +36,19 @@ class TestCommandRegistry:
         """Test that CLI_COMMANDS has expected structure and commands."""
         assert isinstance(CLI_COMMANDS, dict)
         assert len(CLI_COMMANDS) > 0
-        
+
         # Test key commands exist
         expected_commands = [
             "generate_config",
-            "check_config", 
+            "check_config",
             "auth_login",
             "auth_status",
             "service_install",
             "start_relay",
             "show_version",
-            "show_help"
+            "show_help",
         ]
-        
+
         for cmd in expected_commands:
             assert cmd in CLI_COMMANDS
             assert isinstance(CLI_COMMANDS[cmd], str)
@@ -56,7 +57,7 @@ class TestCommandRegistry:
     def test_deprecated_commands_structure(self):
         """Test that DEPRECATED_COMMANDS maps old flags to new command keys."""
         assert isinstance(DEPRECATED_COMMANDS, dict)
-        
+
         # Test expected deprecated mappings
         expected_mappings = {
             "--generate-config": "generate_config",
@@ -64,7 +65,7 @@ class TestCommandRegistry:
             "--install-service": "service_install",
             "--auth": "auth_login",
         }
-        
+
         for old_flag, new_key in expected_mappings.items():
             assert old_flag in DEPRECATED_COMMANDS
             assert DEPRECATED_COMMANDS[old_flag] == new_key
@@ -121,7 +122,9 @@ class TestSuggestCommand:
     def test_suggest_command_basic(self):
         """Test suggest_command formats messages correctly."""
         result = suggest_command("generate_config", "to create a sample configuration")
-        assert result == "Run 'mmrelay config generate' to create a sample configuration."
+        assert (
+            result == "Run 'mmrelay config generate' to create a sample configuration."
+        )
 
     def test_suggest_command_different_purposes(self):
         """Test suggest_command with different purposes."""
@@ -159,7 +162,10 @@ class TestRetryCommand:
     def test_retry_command_with_context(self):
         """Test retry_command with additional context."""
         result = retry_command("auth_login", "after fixing the configuration")
-        assert result == "Try running 'mmrelay auth login' again after fixing the configuration."
+        assert (
+            result
+            == "Try running 'mmrelay auth login' again after fixing the configuration."
+        )
 
     def test_retry_command_empty_context(self):
         """Test retry_command with empty context string."""
@@ -247,7 +253,7 @@ class TestIntegration:
 
     def test_all_deprecated_commands_have_valid_replacements(self):
         """Test that all deprecated commands map to valid CLI commands."""
-        for old_flag, new_key in DEPRECATED_COMMANDS.items():
+        for _old_flag, new_key in DEPRECATED_COMMANDS.items():
             # Should not raise KeyError
             command = get_command(new_key)
             assert isinstance(command, str)
