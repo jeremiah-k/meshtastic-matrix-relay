@@ -59,6 +59,7 @@ component_management:
       paths:
         - src/mmrelay/main.py
         - src/mmrelay/cli.py
+        - src/mmrelay/cli_utils.py
       statuses:
         - type: project
           target: 60%
@@ -89,8 +90,30 @@ component_management:
         - type: patch
           target: 30%
           threshold: 3%
+    - component_id: e2ee
+      name: E2EE (End-to-End Encryption)
+      paths:
+        - src/mmrelay/e2ee_utils.py
+      statuses:
+        - type: project
+          target: 60%
+          threshold: 3%
+        - type: patch
+          target: 60%
+          threshold: 3%
+    - component_id: constants
+      name: Constants
+      paths:
+        - src/mmrelay/constants/**
+      statuses:
+        - type: project
+          target: 80%
+          threshold: 2%
+        - type: patch
+          target: 80%
+          threshold: 2%
 
 comment:
-  layout: "header, diff, flags, components"
+  layout: header, diff, flags, components
   behavior: default
   require_changes: false
