@@ -241,13 +241,11 @@ class TestMeshtasticUtils(unittest.TestCase):
         self.assertEqual(result, mock_client)
         mock_tcp.assert_called_once_with(hostname="192.168.1.100")
 
-    @patch("asyncio.create_task", return_value=MagicMock())
-    @patch("asyncio.ensure_future", return_value=MagicMock())
-    @patch("mmrelay.meshtastic_utils.on_lost_meshtastic_connection")
+    @patch("mmrelay.meshtastic_utils.pub.subscribe")
     @patch("mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface")
     @patch("mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface")
     @patch("mmrelay.meshtastic_utils.meshtastic.tcp_interface.TCPInterface")
-    def test_connect_meshtastic_ble(self, mock_tcp, mock_ble, mock_serial, mock_on_lost, mock_ensure_future, mock_create_task):
+    def test_connect_meshtastic_ble(self, mock_tcp, mock_ble, mock_serial, mock_pub_subscribe):
         """
         Test that the Meshtastic client connects via BLE using the configured BLE address.
 
@@ -260,12 +258,8 @@ class TestMeshtasticUtils(unittest.TestCase):
         # Ensure the mock doesn't create any async operations
         mock_client.close = MagicMock()
 
-        # Completely replace BLE constructor to prevent any real BLE code from running
-        def mock_ble_constructor(*args, **kwargs):
-            # Return mock client without executing any real BLE interface code
-            return mock_client
-
-        mock_ble.side_effect = mock_ble_constructor
+        # Use return_value like working tests, and patch pub.subscribe to prevent coroutine creation
+        mock_ble.return_value = mock_client
 
         config = {
             "meshtastic": {"connection_type": "ble", "ble_address": "AA:BB:CC:DD:EE:FF"}
@@ -287,6 +281,8 @@ class TestMeshtasticUtils(unittest.TestCase):
             debugOut=None,
             noNodes=False,
         )
+        # Verify pub.subscribe was called to set up event handlers
+        self.assertEqual(mock_pub_subscribe.call_count, 2)  # Two subscriptions: messages and connection lost
 
     @patch("mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface")
     @patch("mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface")
