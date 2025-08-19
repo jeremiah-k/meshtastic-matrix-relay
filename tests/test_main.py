@@ -31,7 +31,11 @@ class TestMain(unittest.TestCase):
     """Test cases for main application functionality."""
 
     def setUp(self):
-        """Set up mock configuration for tests."""
+        """Set up mock configuration and reset banner state for tests."""
+        # Reset banner state for test isolation
+        import mmrelay.main
+        mmrelay.main._banner_printed = False
+
         self.mock_config = {
             "matrix": {
                 "homeserver": "https://matrix.org",
