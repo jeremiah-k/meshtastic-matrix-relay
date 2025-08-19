@@ -1602,7 +1602,7 @@ class TestPrefixValidation:
         # Function expects a dict, not a list
         available_vars = {"user": "testuser", "message": "testmsg", "user10": "testuser10"}
 
-        # Valid format strings should not raise exceptions
+        # Valid format strings should return (True, None)
         valid_formats = [
             "[{user}]",
             "{user}: {message}",
@@ -1612,8 +1612,9 @@ class TestPrefixValidation:
         ]
 
         for format_str in valid_formats:
-            # Should not raise exception
-            validate_prefix_format(format_str, available_vars)
+            is_valid, error_msg = validate_prefix_format(format_str, available_vars)
+            assert is_valid is True
+            assert error_msg is None
 
     def test_validate_prefix_format_with_invalid_variables(self):
         """Test that validate_prefix_format rejects invalid format strings."""
@@ -1622,7 +1623,7 @@ class TestPrefixValidation:
         # Function expects a dict, not a list
         available_vars = {"user": "testuser", "message": "testmsg"}
 
-        # Invalid format strings should raise ValueError
+        # Invalid format strings should return (False, error_message)
         invalid_formats = [
             "{unknown_var}",
             "{user} {unknown}",
@@ -1630,8 +1631,10 @@ class TestPrefixValidation:
         ]
 
         for format_str in invalid_formats:
-            with pytest.raises((ValueError, KeyError)):
-                validate_prefix_format(format_str, available_vars)
+            is_valid, error_msg = validate_prefix_format(format_str, available_vars)
+            assert is_valid is False
+            assert error_msg is not None
+            assert isinstance(error_msg, str)
 
     def test_truncate_message_basic_functionality(self):
         """Test truncate_message basic functionality."""

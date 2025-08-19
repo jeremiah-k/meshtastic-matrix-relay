@@ -899,8 +899,9 @@ class TestDatabaseConfiguration(unittest.TestCase):
             }
         }
 
-        # Mock the async components
-        mock_matrix_client = AsyncMock()
+        # Mock the async components with proper return values
+        mock_matrix_client = MagicMock()
+        mock_matrix_client.add_event_callback = MagicMock()
         mock_connect_matrix.return_value = mock_matrix_client
         mock_connect_mesh.return_value = MagicMock()
 
@@ -934,8 +935,9 @@ class TestDatabaseConfiguration(unittest.TestCase):
             }
         }
 
-        # Mock the async components
-        mock_matrix_client = AsyncMock()
+        # Mock the async components with proper return values
+        mock_matrix_client = MagicMock()
+        mock_matrix_client.add_event_callback = MagicMock()
         mock_connect_matrix.return_value = mock_matrix_client
         mock_connect_mesh.return_value = MagicMock()
 
