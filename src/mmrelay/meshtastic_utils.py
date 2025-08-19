@@ -5,6 +5,7 @@ import io
 import os
 import threading
 import time
+from concurrent.futures import Future
 from typing import List
 
 import meshtastic.ble_interface
@@ -114,8 +115,6 @@ def _submit_coro(coro, loop=None):
         return running.create_task(coro)
     except RuntimeError:
         # No running loop: run synchronously and wrap the result in a completed Future
-        from concurrent.futures import Future
-
         f = Future()
         try:
             result = asyncio.run(coro)
