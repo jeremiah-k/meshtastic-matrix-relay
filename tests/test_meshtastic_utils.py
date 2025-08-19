@@ -242,11 +242,9 @@ class TestMeshtasticUtils(unittest.TestCase):
         mock_tcp.assert_called_once_with(hostname="192.168.1.100")
 
     @patch("mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface")
-    @patch("mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface")
+    @patch("mmrelay.meshtastic_utils.meshtastic.ble_interface")
     @patch("mmrelay.meshtastic_utils.meshtastic.tcp_interface.TCPInterface")
-    @patch("asyncio.ensure_future")
-    @patch("asyncio.create_task")
-    def test_connect_meshtastic_ble(self, mock_create_task, mock_ensure_future, mock_tcp, mock_ble, mock_serial):
+    def test_connect_meshtastic_ble(self, mock_tcp, mock_ble_module, mock_serial):
         """
         Test that the Meshtastic client connects via BLE using the configured BLE address.
 
@@ -259,14 +257,8 @@ class TestMeshtasticUtils(unittest.TestCase):
         # Ensure the mock doesn't create any async operations
         mock_client.close = MagicMock()
 
-        # Configure the BLE mock to not create any coroutines
-        def mock_ble_constructor(*args, **kwargs):
-            return mock_client
-        mock_ble.side_effect = mock_ble_constructor
-
-        # Prevent any async operations from being created
-        mock_create_task.return_value = MagicMock()
-        mock_ensure_future.return_value = MagicMock()
+        # Mock the BLE module to prevent any async operations
+        mock_ble_module.BLEInterface = MagicMock(return_value=mock_client)
 
         config = {
             "meshtastic": {"connection_type": "ble", "ble_address": "AA:BB:CC:DD:EE:FF"}
@@ -282,7 +274,7 @@ class TestMeshtasticUtils(unittest.TestCase):
         result = connect_meshtastic(passed_config=config)
 
         self.assertEqual(result, mock_client)
-        mock_ble.assert_called_once_with(
+        mock_ble_module.BLEInterface.assert_called_once_with(
             address="AA:BB:CC:DD:EE:FF",
             noProto=False,
             debugOut=None,
