@@ -642,6 +642,15 @@ class TestCLIValidationFunctions(unittest.TestCase):
             result = _validate_e2ee_dependencies()
             self.assertFalse(result)
 
+    @patch("sys.platform", "win32")
+    def test_validate_e2ee_dependencies_windows(self):
+        """Test _validate_e2ee_dependencies on Windows platform."""
+        from mmrelay.cli import _validate_e2ee_dependencies
+
+        with patch("builtins.print"):  # Suppress print output
+            result = _validate_e2ee_dependencies()
+            self.assertFalse(result)
+
     @patch("os.path.exists")
     def test_validate_credentials_json_exists(self, mock_exists):
         """Test _validate_credentials_json when credentials.json exists and is valid."""
@@ -679,6 +688,39 @@ class TestCLIValidationFunctions(unittest.TestCase):
         with patch("builtins.open", mock_open(read_data='{"incomplete": "data"}')):
             result = _validate_credentials_json("/path/to/config.yaml")
             self.assertFalse(result)
+
+    @patch("os.path.exists")
+    def test_validate_credentials_json_standard_location(self, mock_exists):
+        """Test _validate_credentials_json when credentials.json exists in standard location."""
+        from mmrelay.cli import _validate_credentials_json
+
+        # First call (config dir) returns False, second call (standard location) returns True
+        mock_exists.side_effect = [False, True]
+
+        valid_credentials = {
+            "homeserver": "https://matrix.org",
+            "access_token": "test_token",
+            "user_id": "@test:matrix.org",
+            "device_id": "test_device",
+        }
+
+        with patch("mmrelay.config.get_base_dir", return_value="/home/user/.mmrelay"):
+            with patch("builtins.open", mock_open(read_data=json.dumps(valid_credentials))):
+                result = _validate_credentials_json("/path/to/config.yaml")
+                self.assertTrue(result)
+
+    @patch("os.path.exists")
+    def test_validate_credentials_json_exception_handling(self, mock_exists):
+        """Test _validate_credentials_json exception handling."""
+        from mmrelay.cli import _validate_credentials_json
+
+        mock_exists.return_value = True
+
+        # Mock open to raise an exception
+        with patch("builtins.open", side_effect=FileNotFoundError("File not found")):
+            with patch("builtins.print"):  # Suppress print output
+                result = _validate_credentials_json("/path/to/config.yaml")
+                self.assertFalse(result)
 
     def test_validate_matrix_authentication_with_credentials(self):
         """Test _validate_matrix_authentication with valid credentials.json."""
