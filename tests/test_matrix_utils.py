@@ -1508,7 +1508,7 @@ async def test_connect_matrix_legacy_config(
         # Note: whoami() is no longer called in the new E2EE implementation
 
 
-class TestMessageConfiguration(unittest.TestCase):
+class TestMessageConfiguration:
     """Test cases for message configuration functionality."""
 
     def test_get_msgs_to_keep_config_returns_valid_count(self):
@@ -1516,11 +1516,11 @@ class TestMessageConfiguration(unittest.TestCase):
         from mmrelay.matrix_utils import _get_msgs_to_keep_config
 
         result = _get_msgs_to_keep_config()
-        self.assertIsInstance(result, int)
-        self.assertGreater(result, 0)
+        assert isinstance(result, int)
+        assert result > 0
 
 
-class TestMessageFormatting(unittest.TestCase):
+class TestMessageFormatting:
     """Test cases for message formatting functionality."""
 
     def test_add_truncated_vars_with_long_text(self):
@@ -1534,13 +1534,13 @@ class TestMessageFormatting(unittest.TestCase):
         _add_truncated_vars(format_vars, prefix, text)
 
         # Should add truncated variables at different lengths
-        self.assertIn(f"{prefix}_truncated_10", format_vars)
-        self.assertIn(f"{prefix}_truncated_20", format_vars)
-        self.assertIn(f"{prefix}_truncated_30", format_vars)
+        assert f"{prefix}_truncated_10" in format_vars
+        assert f"{prefix}_truncated_20" in format_vars
+        assert f"{prefix}_truncated_30" in format_vars
 
         # Verify truncated content is shorter than original
-        self.assertLessEqual(len(format_vars[f"{prefix}_truncated_10"]), 10)
-        self.assertLessEqual(len(format_vars[f"{prefix}_truncated_20"]), 20)
+        assert len(format_vars[f"{prefix}_truncated_10"]) <= 10
+        assert len(format_vars[f"{prefix}_truncated_20"]) <= 20
 
     def test_add_truncated_vars_with_empty_text(self):
         """Test _add_truncated_vars handles empty text gracefully."""
@@ -1550,10 +1550,10 @@ class TestMessageFormatting(unittest.TestCase):
         _add_truncated_vars(format_vars, "empty", "")
 
         # Should still add truncated variables even for empty text
-        self.assertIn("empty_truncated_10", format_vars)
-        self.assertEqual(format_vars["empty_truncated_10"], "")
+        assert "empty_truncated_10" in format_vars
+        assert format_vars["empty_truncated_10"] == ""
 
-class TestMessageStorage(unittest.TestCase):
+class TestMessageStorage:
     """Test cases for message storage functionality."""
 
     def test_message_storage_enabled_with_reactions(self):
@@ -1562,7 +1562,7 @@ class TestMessageStorage(unittest.TestCase):
 
         interactions = {"reactions": True, "replies": False}
         result = message_storage_enabled(interactions)
-        self.assertTrue(result)
+        assert result is True
 
     def test_message_storage_enabled_with_replies(self):
         """Test that message storage is enabled when replies are enabled."""
@@ -1570,7 +1570,7 @@ class TestMessageStorage(unittest.TestCase):
 
         interactions = {"reactions": False, "replies": True}
         result = message_storage_enabled(interactions)
-        self.assertTrue(result)
+        assert result is True
 
     def test_message_storage_enabled_with_both_features(self):
         """Test that message storage is enabled when both reactions and replies are enabled."""
@@ -1578,7 +1578,7 @@ class TestMessageStorage(unittest.TestCase):
 
         interactions = {"reactions": True, "replies": True}
         result = message_storage_enabled(interactions)
-        self.assertTrue(result)
+        assert result is True
 
     def test_message_storage_disabled_with_no_features(self):
         """Test that message storage is disabled when neither reactions nor replies are enabled."""
@@ -1586,9 +1586,9 @@ class TestMessageStorage(unittest.TestCase):
 
         interactions = {"reactions": False, "replies": False}
         result = message_storage_enabled(interactions)
-        self.assertFalse(result)
+        assert result is False
 
-class TestPrefixValidation(unittest.TestCase):
+class TestPrefixValidation:
     """Test cases for prefix format validation."""
 
     def test_validate_prefix_format_with_valid_variables(self):
@@ -1608,10 +1608,7 @@ class TestPrefixValidation(unittest.TestCase):
 
         for format_str in valid_formats:
             # Should not raise exception
-            try:
-                validate_prefix_format(format_str, available_vars)
-            except ValueError:
-                self.fail(f"validate_prefix_format raised ValueError for valid format: {format_str}")
+            validate_prefix_format(format_str, available_vars)
 
     def test_validate_prefix_format_with_invalid_variables(self):
         """Test that validate_prefix_format rejects invalid format strings."""
@@ -1627,7 +1624,7 @@ class TestPrefixValidation(unittest.TestCase):
         ]
 
         for format_str in invalid_formats:
-            with self.assertRaises(ValueError):
+            with pytest.raises(ValueError):
                 validate_prefix_format(format_str, available_vars)
 
     def test_truncate_message_default(self):
