@@ -806,5 +806,175 @@ class TestCLISubcommandHandlers(unittest.TestCase):
             mock_status.assert_called_once_with(args)
 
 
+class TestE2EEConfigurationFunctions(unittest.TestCase):
+    """Test cases for E2EE configuration validation functions."""
+
+    def test_validate_e2ee_config_no_matrix_section(self):
+        """Test _validate_e2ee_config with no matrix section."""
+        from mmrelay.cli import _validate_e2ee_config
+
+        config = {"matrix": {"homeserver": "https://matrix.org"}}
+
+        with patch("mmrelay.cli._validate_matrix_authentication", return_value=True):
+            result = _validate_e2ee_config(config, None, "/path/to/config.yaml")
+            self.assertTrue(result)
+
+    def test_validate_e2ee_config_e2ee_disabled(self):
+        """Test _validate_e2ee_config with E2EE disabled."""
+        from mmrelay.cli import _validate_e2ee_config
+
+        config = {"matrix": {"homeserver": "https://matrix.org"}}
+        matrix_section = {"homeserver": "https://matrix.org"}
+
+        with patch("mmrelay.cli._validate_matrix_authentication", return_value=True):
+            with patch("builtins.print"):  # Suppress print output
+                result = _validate_e2ee_config(config, matrix_section, "/path/to/config.yaml")
+                self.assertTrue(result)
+
+    def test_validate_e2ee_config_e2ee_enabled_valid(self):
+        """Test _validate_e2ee_config with E2EE enabled and valid."""
+        from mmrelay.cli import _validate_e2ee_config
+
+        config = {"matrix": {"homeserver": "https://matrix.org", "e2ee": {"enabled": True}}}
+        matrix_section = {
+            "homeserver": "https://matrix.org",
+            "e2ee": {"enabled": True, "store_path": "~/.mmrelay/store"},
+        }
+
+        with patch("mmrelay.cli._validate_matrix_authentication", return_value=True):
+            with patch("mmrelay.cli._validate_e2ee_dependencies", return_value=True):
+                with patch("os.path.expanduser", return_value="/home/user/.mmrelay/store"):
+                    with patch("os.path.exists", return_value=True):
+                        with patch("builtins.print"):  # Suppress print output
+                            result = _validate_e2ee_config(config, matrix_section, "/path/to/config.yaml")
+                            self.assertTrue(result)
+
+    def test_validate_e2ee_config_e2ee_enabled_invalid_deps(self):
+        """Test _validate_e2ee_config with E2EE enabled but invalid dependencies."""
+        from mmrelay.cli import _validate_e2ee_config
+
+        config = {"matrix": {"homeserver": "https://matrix.org", "e2ee": {"enabled": True}}}
+        matrix_section = {"homeserver": "https://matrix.org", "e2ee": {"enabled": True}}
+
+        with patch("mmrelay.cli._validate_matrix_authentication", return_value=True):
+            with patch("mmrelay.cli._validate_e2ee_dependencies", return_value=False):
+                result = _validate_e2ee_config(config, matrix_section, "/path/to/config.yaml")
+                self.assertFalse(result)
+
+
+class TestE2EEAnalysisFunctions(unittest.TestCase):
+    """Test cases for E2EE analysis functions."""
+
+    @patch("sys.platform", "linux")
+    @patch("os.path.exists")
+    def test_analyze_e2ee_setup_ready(self, mock_exists):
+        """Test _analyze_e2ee_setup when E2EE is ready."""
+        from mmrelay.cli import _analyze_e2ee_setup
+
+        config = {
+            "matrix": {
+                "e2ee": {"enabled": True}
+            }
+        }
+        mock_exists.return_value = True  # credentials.json exists
+
+        with patch("builtins.__import__") as mock_import:
+            mock_import.return_value = MagicMock()  # Dependencies available
+            result = _analyze_e2ee_setup(config, "/path/to/config.yaml")
+
+            self.assertTrue(result["config_enabled"])
+            self.assertTrue(result["dependencies_available"])
+            self.assertTrue(result["credentials_available"])
+            self.assertTrue(result["platform_supported"])
+            self.assertEqual(result["overall_status"], "ready")
+
+    @patch("sys.platform", "win32")
+    def test_analyze_e2ee_setup_windows_not_supported(self):
+        """Test _analyze_e2ee_setup on Windows platform."""
+        from mmrelay.cli import _analyze_e2ee_setup
+
+        config = {"matrix": {"e2ee": {"enabled": True}}}
+
+        result = _analyze_e2ee_setup(config, "/path/to/config.yaml")
+
+        self.assertFalse(result["platform_supported"])
+        self.assertEqual(result["overall_status"], "not_supported")
+        self.assertIn("E2EE is not supported on Windows", result["recommendations"][0])
+
+    @patch("sys.platform", "linux")
+    @patch("os.path.exists")
+    def test_analyze_e2ee_setup_disabled(self, mock_exists):
+        """Test _analyze_e2ee_setup when E2EE is disabled."""
+        from mmrelay.cli import _analyze_e2ee_setup
+
+        config = {"matrix": {"e2ee": {"enabled": False}}}
+        mock_exists.return_value = True
+
+        with patch("builtins.__import__") as mock_import:
+            mock_import.return_value = MagicMock()
+            result = _analyze_e2ee_setup(config, "/path/to/config.yaml")
+
+            self.assertFalse(result["config_enabled"])
+            self.assertEqual(result["overall_status"], "disabled")
+
+
+class TestE2EEPrintFunctions(unittest.TestCase):
+    """Test cases for E2EE print functions."""
+
+    def test_print_e2ee_analysis_ready(self):
+        """Test _print_e2ee_analysis with ready status."""
+        from mmrelay.cli import _print_e2ee_analysis
+
+        analysis = {
+            "dependencies_available": True,
+            "credentials_available": True,
+            "platform_supported": True,
+            "config_enabled": True,
+            "overall_status": "ready",
+            "recommendations": [],
+        }
+
+        with patch("builtins.print") as mock_print:
+            _print_e2ee_analysis(analysis)
+            mock_print.assert_called()
+            # Check that success messages are printed
+            calls = [call.args[0] for call in mock_print.call_args_list]
+            self.assertTrue(any("✅ E2EE is fully configured and ready" in call for call in calls))
+
+    def test_print_e2ee_analysis_disabled(self):
+        """Test _print_e2ee_analysis with disabled status."""
+        from mmrelay.cli import _print_e2ee_analysis
+
+        analysis = {
+            "dependencies_available": True,
+            "credentials_available": True,
+            "platform_supported": True,
+            "config_enabled": False,
+            "overall_status": "disabled",
+            "recommendations": ["Enable E2EE in config.yaml"],
+        }
+
+        with patch("builtins.print") as mock_print:
+            _print_e2ee_analysis(analysis)
+            mock_print.assert_called()
+            # Check that disabled messages are printed
+            calls = [call.args[0] for call in mock_print.call_args_list]
+            self.assertTrue(any("⚠️  E2EE is disabled in configuration" in call for call in calls))
+
+    @patch("sys.platform", "linux")
+    def test_print_environment_summary_linux(self):
+        """Test _print_environment_summary on Linux."""
+        from mmrelay.cli import _print_environment_summary
+
+        with patch("builtins.__import__") as mock_import:
+            mock_import.return_value = MagicMock()  # Dependencies available
+            with patch("builtins.print") as mock_print:
+                _print_environment_summary()
+                mock_print.assert_called()
+                # Check that Linux-specific messages are printed
+                calls = [call.args[0] for call in mock_print.call_args_list]
+                self.assertTrue(any("Platform: linux" in call for call in calls))
+
+
 if __name__ == "__main__":
     unittest.main()
