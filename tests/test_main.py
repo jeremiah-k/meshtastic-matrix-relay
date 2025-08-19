@@ -882,5 +882,284 @@ class TestDatabaseConfiguration(unittest.TestCase):
     """Test cases for database configuration handling."""
 
 
+class TestRunMainFunction(unittest.TestCase):
+    """Test cases for run_main function."""
+
+    @patch('mmrelay.main.print_banner')
+    @patch('mmrelay.main.load_config')
+    @patch('mmrelay.main.load_credentials')
+    @patch('mmrelay.main.asyncio.run')
+    def test_run_main_success(self, mock_asyncio_run, mock_load_credentials, mock_load_config, mock_print_banner):
+        """Test successful run_main execution."""
+        # Mock configuration
+        mock_config = {
+            "matrix": {"homeserver": "https://matrix.org"},
+            "meshtastic": {"connection_type": "serial"},
+            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}]
+        }
+        mock_load_config.return_value = mock_config
+        mock_load_credentials.return_value = None
+
+        # Mock args
+        mock_args = MagicMock()
+        mock_args.data_dir = None
+        mock_args.log_level = None
+
+        result = run_main(mock_args)
+
+        self.assertEqual(result, 0)
+        mock_print_banner.assert_called_once()
+        mock_asyncio_run.assert_called_once()
+
+    @patch('mmrelay.main.print_banner')
+    @patch('mmrelay.main.load_config')
+    @patch('mmrelay.main.load_credentials')
+    def test_run_main_missing_config_keys(self, mock_load_credentials, mock_load_config, mock_print_banner):
+        """Test run_main with missing required configuration keys."""
+        # Mock incomplete configuration
+        mock_config = {"matrix": {"homeserver": "https://matrix.org"}}  # Missing meshtastic and matrix_rooms
+        mock_load_config.return_value = mock_config
+        mock_load_credentials.return_value = None
+
+        mock_args = MagicMock()
+        mock_args.data_dir = None
+        mock_args.log_level = None
+
+        result = run_main(mock_args)
+
+        self.assertEqual(result, 1)
+        mock_print_banner.assert_called_once()
+
+    @patch('mmrelay.main.print_banner')
+    @patch('mmrelay.main.load_config')
+    @patch('mmrelay.main.load_credentials')
+    def test_run_main_with_credentials_json(self, mock_load_credentials, mock_load_config, mock_print_banner):
+        """Test run_main with credentials.json present (different required keys)."""
+        # Mock configuration with credentials.json present
+        mock_config = {
+            "meshtastic": {"connection_type": "serial"},
+            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}]
+            # No matrix section needed when credentials.json exists
+        }
+        mock_load_config.return_value = mock_config
+        mock_load_credentials.return_value = {"access_token": "test_token"}
+
+        mock_args = MagicMock()
+        mock_args.data_dir = None
+        mock_args.log_level = None
+
+        with patch('mmrelay.main.asyncio.run') as mock_asyncio_run:
+            result = run_main(mock_args)
+
+        self.assertEqual(result, 0)
+        mock_asyncio_run.assert_called_once()
+
+    @patch('mmrelay.main.print_banner')
+    @patch('mmrelay.main.load_config')
+    @patch('mmrelay.main.load_credentials')
+    @patch('mmrelay.main.asyncio.run')
+    @patch('os.makedirs')
+    @patch('os.path.abspath')
+    def test_run_main_with_custom_data_dir(self, mock_abspath, mock_makedirs, mock_asyncio_run,
+                                          mock_load_credentials, mock_load_config, mock_print_banner):
+        """Test run_main with custom data directory."""
+        custom_data_dir = "/custom/data/dir"
+        mock_abspath.return_value = custom_data_dir
+
+        mock_config = {
+            "matrix": {"homeserver": "https://matrix.org"},
+            "meshtastic": {"connection_type": "serial"},
+            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}]
+        }
+        mock_load_config.return_value = mock_config
+        mock_load_credentials.return_value = None
+
+        mock_args = MagicMock()
+        mock_args.data_dir = custom_data_dir
+        mock_args.log_level = None
+
+        result = run_main(mock_args)
+
+        self.assertEqual(result, 0)
+        mock_abspath.assert_called_with(custom_data_dir)
+        mock_makedirs.assert_called_once_with(custom_data_dir, exist_ok=True)
+
+    @patch('mmrelay.main.print_banner')
+    @patch('mmrelay.main.load_config')
+    @patch('mmrelay.main.load_credentials')
+    def test_run_main_with_log_level_override(self, mock_load_credentials, mock_load_config, mock_print_banner):
+        """Test run_main with log level override."""
+        mock_config = {
+            "matrix": {"homeserver": "https://matrix.org"},
+            "meshtastic": {"connection_type": "serial"},
+            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}]
+        }
+        mock_load_config.return_value = mock_config
+        mock_load_credentials.return_value = None
+
+        mock_args = MagicMock()
+        mock_args.data_dir = None
+        mock_args.log_level = "DEBUG"
+
+        with patch('mmrelay.main.asyncio.run') as mock_asyncio_run:
+            result = run_main(mock_args)
+
+        self.assertEqual(result, 0)
+        # Verify log level was set in config
+        self.assertEqual(mock_config["logging"]["level"], "DEBUG")
+
+    @patch('mmrelay.main.print_banner')
+    @patch('mmrelay.main.load_config')
+    @patch('mmrelay.main.load_credentials')
+    @patch('mmrelay.main.asyncio.run')
+    def test_run_main_keyboard_interrupt(self, mock_asyncio_run, mock_load_credentials, mock_load_config, mock_print_banner):
+        """Test run_main handling KeyboardInterrupt."""
+        mock_config = {
+            "matrix": {"homeserver": "https://matrix.org"},
+            "meshtastic": {"connection_type": "serial"},
+            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}]
+        }
+        mock_load_config.return_value = mock_config
+        mock_load_credentials.return_value = None
+        mock_asyncio_run.side_effect = KeyboardInterrupt()
+
+        mock_args = MagicMock()
+        mock_args.data_dir = None
+        mock_args.log_level = None
+
+        result = run_main(mock_args)
+
+        self.assertEqual(result, 0)  # KeyboardInterrupt should return 0
+
+    @patch('mmrelay.main.print_banner')
+    @patch('mmrelay.main.load_config')
+    @patch('mmrelay.main.load_credentials')
+    @patch('mmrelay.main.asyncio.run')
+    def test_run_main_exception_handling(self, mock_asyncio_run, mock_load_credentials, mock_load_config, mock_print_banner):
+        """Test run_main handling general exceptions."""
+        mock_config = {
+            "matrix": {"homeserver": "https://matrix.org"},
+            "meshtastic": {"connection_type": "serial"},
+            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}]
+        }
+        mock_load_config.return_value = mock_config
+        mock_load_credentials.return_value = None
+        mock_asyncio_run.side_effect = Exception("Test error")
+
+        mock_args = MagicMock()
+        mock_args.data_dir = None
+        mock_args.log_level = None
+
+        result = run_main(mock_args)
+
+        self.assertEqual(result, 1)  # General exceptions should return 1
+
+
+class TestMainAsyncFunction(unittest.TestCase):
+    """Test cases for the main async function."""
+
+    @patch('mmrelay.main.initialize_database')
+    @patch('mmrelay.main.load_plugins')
+    @patch('mmrelay.main.start_message_queue')
+    @patch('mmrelay.main.connect_matrix')
+    @patch('mmrelay.main.connect_meshtastic')
+    @patch('mmrelay.main.join_matrix_room')
+    def test_main_async_initialization_sequence(self, mock_join, mock_connect_mesh,
+                                               mock_connect_matrix, mock_start_queue,
+                                               mock_load_plugins, mock_init_db):
+        """Test the main async function initialization sequence."""
+        config = {
+            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}]
+        }
+
+        # Mock the async components
+        mock_matrix_client = AsyncMock()
+        mock_matrix_client.add_event_callback = MagicMock()
+        mock_matrix_client.close = AsyncMock()
+        mock_matrix_client.sync_forever = AsyncMock(side_effect=KeyboardInterrupt)
+        mock_connect_matrix.return_value = mock_matrix_client
+        mock_connect_mesh.return_value = MagicMock()
+
+        with patch('mmrelay.main.asyncio.sleep', side_effect=KeyboardInterrupt):
+            try:
+                asyncio.run(main(config))
+            except KeyboardInterrupt:
+                pass
+
+        # Verify initialization sequence
+        mock_init_db.assert_called_once()
+        mock_load_plugins.assert_called_once()
+        mock_start_queue.assert_called_once()
+        mock_connect_matrix.assert_called_once()
+        mock_connect_mesh.assert_called_once()
+
+    @patch('mmrelay.main.initialize_database')
+    @patch('mmrelay.main.load_plugins')
+    @patch('mmrelay.main.start_message_queue')
+    @patch('mmrelay.main.connect_matrix')
+    @patch('mmrelay.main.connect_meshtastic')
+    @patch('mmrelay.main.join_matrix_room')
+    def test_main_async_with_multiple_rooms(self, mock_join, mock_connect_mesh,
+                                           mock_connect_matrix, mock_start_queue,
+                                           mock_load_plugins, mock_init_db):
+        """Test main async function with multiple matrix rooms."""
+        config = {
+            "matrix_rooms": [
+                {"id": "!room1:matrix.org", "meshtastic_channel": 0},
+                {"id": "!room2:matrix.org", "meshtastic_channel": 1}
+            ]
+        }
+
+        mock_matrix_client = AsyncMock()
+        mock_matrix_client.add_event_callback = MagicMock()
+        mock_matrix_client.close = AsyncMock()
+        mock_matrix_client.sync_forever = AsyncMock(side_effect=KeyboardInterrupt)
+        mock_connect_matrix.return_value = mock_matrix_client
+        mock_connect_mesh.return_value = MagicMock()
+
+        with patch('mmrelay.main.asyncio.sleep', side_effect=KeyboardInterrupt):
+            try:
+                asyncio.run(main(config))
+            except KeyboardInterrupt:
+                pass
+
+        # Verify join_matrix_room was called for each room
+        self.assertEqual(mock_join.call_count, 2)
+
+    @patch('mmrelay.main.initialize_database')
+    @patch('mmrelay.main.load_plugins')
+    @patch('mmrelay.main.start_message_queue')
+    @patch('mmrelay.main.connect_matrix')
+    @patch('mmrelay.main.connect_meshtastic')
+    @patch('mmrelay.main.join_matrix_room')
+    def test_main_async_event_loop_setup(self, mock_join, mock_connect_mesh,
+                                         mock_connect_matrix, mock_start_queue,
+                                         mock_load_plugins, mock_init_db):
+        """Test that main async function sets up event loop correctly."""
+        config = {
+            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}]
+        }
+
+        mock_matrix_client = AsyncMock()
+        mock_matrix_client.add_event_callback = MagicMock()
+        mock_matrix_client.close = AsyncMock()
+        mock_matrix_client.sync_forever = AsyncMock(side_effect=KeyboardInterrupt)
+        mock_connect_matrix.return_value = mock_matrix_client
+        mock_connect_mesh.return_value = MagicMock()
+
+        with patch('mmrelay.main.asyncio.get_event_loop') as mock_get_loop:
+            mock_loop = MagicMock()
+            mock_get_loop.return_value = mock_loop
+
+            with patch('mmrelay.main.asyncio.sleep', side_effect=KeyboardInterrupt):
+                try:
+                    asyncio.run(main(config))
+                except KeyboardInterrupt:
+                    pass
+
+        # Verify event loop was accessed for meshtastic utils
+        mock_get_loop.assert_called()
+
+
 if __name__ == "__main__":
     unittest.main()
