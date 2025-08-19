@@ -104,7 +104,7 @@ component_management:
     - component_id: constants
       name: Constants
       paths:
-        - src/mmrelay/constants/**
+        - src/mmrelay/constants/**/*.py
       statuses:
         - type: project
           target: 80%
