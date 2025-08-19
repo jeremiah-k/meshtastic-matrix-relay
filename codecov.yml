@@ -1,9 +1,10 @@
-ignore:
-  - tests/**/*
-
 coverage:
   status:
     project:
+      default:
+        target: 40%
+        threshold: 2%
+    patch:
       default:
         target: 40%
         threshold: 2%
@@ -13,6 +14,9 @@ component_management:
     statuses:
       - type: project
         target: auto
+        threshold: 2%
+      - type: patch
+        target: 40%
         threshold: 2%
   individual_components:
     - component_id: plugins
@@ -24,14 +28,21 @@ component_management:
         - type: project
           target: 50%
           threshold: 3%
+        - type: patch
+          target: 50%
+          threshold: 3%
     - component_id: configuration
       name: Configuration
       paths:
         - src/mmrelay/config.py
         - src/mmrelay/cli.py
+        - src/mmrelay/config_checker.py
       statuses:
         - type: project
-          target: 50%
+          target: 70%
+          threshold: 2%
+        - type: patch
+          target: 60%
           threshold: 2%
     - component_id: core_utils
       name: Core Utils
@@ -44,6 +55,9 @@ component_management:
         - type: project
           target: 40%
           threshold: 3%
+        - type: patch
+          target: 40%
+          threshold: 3%
     - component_id: cli_main
       name: CLI & Main
       paths:
@@ -53,6 +67,9 @@ component_management:
         - type: project
           target: 60%
           threshold: 3%
+        - type: patch
+          target: 50%
+          threshold: 3%
     - component_id: database
       name: Database
       paths:
@@ -61,6 +78,9 @@ component_management:
         - type: project
           target: 70%
           threshold: 2%
+        - type: patch
+          target: 60%
+          threshold: 2%
     - component_id: setup_tools
       name: Setup & Tools
       paths:
@@ -68,6 +88,9 @@ component_management:
         - src/mmrelay/tools/**
       statuses:
         - type: project
+          target: 30%
+          threshold: 3%
+        - type: patch
           target: 30%
           threshold: 3%
     - component_id: constants
