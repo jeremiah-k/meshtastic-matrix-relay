@@ -40,7 +40,7 @@ component_management:
           target: 70%
           threshold: 2%
         - type: patch
-          target: 60%
+          target: 70%
           threshold: 2%
     - component_id: core_utils
       name: Core Utils
@@ -64,7 +64,7 @@ component_management:
           target: 60%
           threshold: 3%
         - type: patch
-          target: 50%
+          target: 60%
           threshold: 3%
     - component_id: database
       name: Database
@@ -75,7 +75,7 @@ component_management:
           target: 70%
           threshold: 2%
         - type: patch
-          target: 60%
+          target: 70%
           threshold: 2%
     - component_id: setup_tools
       name: Setup & Tools
