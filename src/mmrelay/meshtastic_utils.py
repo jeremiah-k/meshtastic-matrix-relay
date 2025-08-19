@@ -183,7 +183,7 @@ def connect_meshtastic(passed_config=None, force_connect=False):
         logger.debug("Shutdown in progress. Not attempting to connect.")
         return None
 
-    if reconnecting:
+    if reconnecting and not force_connect:
         logger.debug("Reconnection already in progress. Not attempting new connection.")
         return None
 
