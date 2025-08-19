@@ -976,7 +976,7 @@ class TestE2EEPrintFunctions(unittest.TestCase):
             "recommendations": [],
         }
 
-        with patch("builtins.print") as mock_print:
+        with patch("mmrelay.cli.print") as mock_print:
             _print_e2ee_analysis(analysis)
             mock_print.assert_called()
             # Check that success messages are printed
@@ -996,7 +996,7 @@ class TestE2EEPrintFunctions(unittest.TestCase):
             "recommendations": ["Enable E2EE in config.yaml"],
         }
 
-        with patch("builtins.print") as mock_print:
+        with patch("mmrelay.cli.print") as mock_print:
             _print_e2ee_analysis(analysis)
             mock_print.assert_called()
             # Check that disabled messages are printed
@@ -1010,7 +1010,7 @@ class TestE2EEPrintFunctions(unittest.TestCase):
 
         with patch("builtins.__import__") as mock_import:
             mock_import.return_value = MagicMock()  # Dependencies available
-            with patch("builtins.print") as mock_print:
+            with patch("mmrelay.cli.print") as mock_print:
                 _print_environment_summary()
                 mock_print.assert_called()
                 # Check that Linux-specific messages are printed
