@@ -31,15 +31,7 @@ class TestMain(unittest.TestCase):
     """Test cases for main application functionality."""
 
     def setUp(self):
-        """
-        Prepares the test environment by resetting the banner printed state and initializing a mock configuration for use in tests.
-        """
-        # Reset banner state
-        import mmrelay.main
-
-        mmrelay.main._banner_printed = False
-
-        # Mock configuration
+        """Set up mock configuration for tests."""
         self.mock_config = {
             "matrix": {
                 "homeserver": "https://matrix.org",
@@ -57,15 +49,6 @@ class TestMain(unittest.TestCase):
             },
             "database": {"msg_map": {"wipe_on_restart": False}},
         }
-
-    def tearDown(self):
-        """
-        Reset the banner printed state after each test to ensure test isolation.
-        """
-        # Reset banner state
-        import mmrelay.main
-
-        mmrelay.main._banner_printed = False
 
     def test_print_banner(self):
         """
@@ -629,21 +612,21 @@ class TestRunMain(unittest.TestCase):
 
         mock_asyncio_run.side_effect = mock_run_with_cleanup
 
-        # Use a temporary directory instead of hardcoded path
-        with tempfile.TemporaryDirectory() as temp_dir:
-            custom_data_dir = os.path.join(temp_dir, "data")
-            mock_abspath.return_value = custom_data_dir
+        # Use a simple custom data directory path
+        custom_data_dir = "/tmp/test_custom_data"
+        mock_abspath.return_value = custom_data_dir
 
-            mock_args = MagicMock()
-            mock_args.data_dir = custom_data_dir
-            mock_args.log_level = None
+        mock_args = MagicMock()
+        mock_args.data_dir = custom_data_dir
+        mock_args.log_level = None
 
-            result = run_main(mock_args)
+        result = run_main(mock_args)
 
-            self.assertEqual(result, 0)
-            # Check that abspath was called with our custom data dir (may be called multiple times)
-            mock_abspath.assert_any_call(custom_data_dir)
-            mock_makedirs.assert_called_once_with(custom_data_dir, exist_ok=True)
+        self.assertEqual(result, 0)
+        # Check that abspath was called with our custom data dir (may be called multiple times)
+        mock_abspath.assert_any_call(custom_data_dir)
+        # Check that makedirs was called with our custom data dir (may be called multiple times for logs too)
+        mock_makedirs.assert_any_call(custom_data_dir, exist_ok=True)
 
     @patch("asyncio.run", spec=True)
     @patch("mmrelay.config.load_config", spec=True)
@@ -871,10 +854,10 @@ def test_main_database_wipe_config(
     mock_connect_matrix.return_value = mock_matrix_client
     mock_connect_mesh.return_value = MagicMock()
 
-    with patch("mmrelay.main.wipe_message_map") as mock_wipe:
-        with patch("mmrelay.main.asyncio.sleep", side_effect=KeyboardInterrupt):
-            with contextlib.suppress(KeyboardInterrupt):
-                asyncio.run(main(config))
+    with patch("mmrelay.main.wipe_message_map") as mock_wipe, \
+         patch("mmrelay.main.asyncio.sleep", side_effect=KeyboardInterrupt), \
+         contextlib.suppress(KeyboardInterrupt):
+        asyncio.run(main(config))
 
         # Should wipe message map on startup
         mock_wipe.assert_called()
@@ -1157,9 +1140,9 @@ class TestMainAsyncFunction(unittest.TestCase):
         mock_connect_matrix.return_value = mock_matrix_client
         mock_connect_mesh.return_value = MagicMock()
 
-        with patch("mmrelay.main.asyncio.sleep", side_effect=KeyboardInterrupt):
-            with contextlib.suppress(KeyboardInterrupt):
-                asyncio.run(main(config))
+        with patch("mmrelay.main.asyncio.sleep", side_effect=KeyboardInterrupt), \
+             contextlib.suppress(KeyboardInterrupt):
+            asyncio.run(main(config))
 
         # Verify initialization sequence
         mock_init_db.assert_called_once()
@@ -1198,9 +1181,9 @@ class TestMainAsyncFunction(unittest.TestCase):
         mock_connect_matrix.return_value = mock_matrix_client
         mock_connect_mesh.return_value = MagicMock()
 
-        with patch("mmrelay.main.asyncio.sleep", side_effect=KeyboardInterrupt):
-            with contextlib.suppress(KeyboardInterrupt):
-                asyncio.run(main(config))
+        with patch("mmrelay.main.asyncio.sleep", side_effect=KeyboardInterrupt), \
+             contextlib.suppress(KeyboardInterrupt):
+            asyncio.run(main(config))
 
         # Verify join_matrix_room was called for each room
         self.assertEqual(mock_join.call_count, 2)
@@ -1234,9 +1217,9 @@ class TestMainAsyncFunction(unittest.TestCase):
             mock_loop = MagicMock()
             mock_get_loop.return_value = mock_loop
 
-            with patch("mmrelay.main.asyncio.sleep", side_effect=KeyboardInterrupt):
-                with contextlib.suppress(KeyboardInterrupt):
-                    asyncio.run(main(config))
+            with patch("mmrelay.main.asyncio.sleep", side_effect=KeyboardInterrupt), \
+                 contextlib.suppress(KeyboardInterrupt):
+                asyncio.run(main(config))
 
         # Verify event loop was accessed for meshtastic utils
         mock_get_loop.assert_called()
