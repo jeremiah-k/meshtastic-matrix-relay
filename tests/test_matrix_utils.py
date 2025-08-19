@@ -1637,24 +1637,29 @@ class TestPrefixValidation:
             assert isinstance(error_msg, str)
 
     def test_truncate_message_basic_functionality(self):
-        """Test truncate_message basic functionality."""
+        """Test truncate_message for both short and long messages."""
         from mmrelay.matrix_utils import truncate_message
 
-        # Short message should not be truncated
-        short_msg = "Short message"
-        result = truncate_message(short_msg)
-        assert isinstance(result, str)
-        assert len(result) <= len(short_msg)
+        # Test with a message shorter than the limit
+        assert truncate_message("short", max_bytes=10) == "short"
+
+        # Test with a message longer than the limit
+        long_msg = "This is a very long message that needs to be truncated."
+        truncated = truncate_message(long_msg, max_bytes=20)
+        assert truncated == "This is a very long "
 
     def test_strip_quoted_lines_basic_functionality(self):
-        """Test strip_quoted_lines basic functionality."""
+        """Test strip_quoted_lines with and without quoted content."""
         from mmrelay.matrix_utils import strip_quoted_lines
 
-        # Text without quoted lines should remain unchanged
-        normal_text = "Just normal text"
-        result = strip_quoted_lines(normal_text)
-        assert isinstance(result, str)
+        # Text without quoted lines should be joined
+        normal_text = "Just normal text\nwith line breaks"
+        assert strip_quoted_lines(normal_text) == "Just normal text with line breaks"
 
-        # Empty text should work
-        result = strip_quoted_lines("")
-        assert result == ""
+        # Text with quoted lines should have them stripped
+        quoted_text = "> quoted line\nThis is a reply\n> another quote"
+        assert strip_quoted_lines(quoted_text) == "This is a reply"
+
+        # Empty and all-quotes text should result in empty string
+        assert strip_quoted_lines("") == ""
+        assert strip_quoted_lines("> quote1\n> quote2") == ""
