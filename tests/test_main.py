@@ -919,6 +919,15 @@ class TestRunMainFunction(unittest.TestCase):
         mock_load_config.return_value = mock_config
         mock_load_credentials.return_value = None
 
+        # Mock asyncio.run to properly close coroutines
+        def mock_run_with_cleanup(coro):
+            """Mock that properly closes coroutines to prevent warnings."""
+            if hasattr(coro, 'close'):
+                coro.close()
+            return None
+
+        mock_asyncio_run.side_effect = mock_run_with_cleanup
+
         # Mock args
         mock_args = MagicMock()
         mock_args.data_dir = None
@@ -974,6 +983,14 @@ class TestRunMainFunction(unittest.TestCase):
         mock_args.log_level = None
 
         with patch("mmrelay.main.asyncio.run") as mock_asyncio_run:
+            # Mock asyncio.run to properly close coroutines
+            def mock_run_with_cleanup(coro):
+                """Mock that properly closes coroutines to prevent warnings."""
+                if hasattr(coro, 'close'):
+                    coro.close()
+                return None
+
+            mock_asyncio_run.side_effect = mock_run_with_cleanup
             result = run_main(mock_args)
 
         self.assertEqual(result, 0)
@@ -997,33 +1014,44 @@ class TestRunMainFunction(unittest.TestCase):
         """Test run_main with custom data directory."""
         import tempfile
         import mmrelay.config
+        from os.path import abspath as real_abspath  # Import real function before mocking
 
         # Store original custom_data_dir to restore later
         original_custom_data_dir = mmrelay.config.custom_data_dir
 
         try:
-            # Use a temporary directory that actually exists
-            with tempfile.TemporaryDirectory() as temp_dir:
-                custom_data_dir = os.path.join(temp_dir, "custom_data")
-                mock_abspath.return_value = custom_data_dir
+            # Use a simple custom data directory path
+            custom_data_dir = "/tmp/test_custom_data"
+            mock_abspath.return_value = custom_data_dir
 
-                mock_config = {
-                    "matrix": {"homeserver": "https://matrix.org"},
-                    "meshtastic": {"connection_type": "serial"},
-                    "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
-                }
-                mock_load_config.return_value = mock_config
-                mock_load_credentials.return_value = None
+            mock_config = {
+                "matrix": {"homeserver": "https://matrix.org"},
+                "meshtastic": {"connection_type": "serial"},
+                "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+            }
+            mock_load_config.return_value = mock_config
+            mock_load_credentials.return_value = None
 
-                mock_args = MagicMock()
-                mock_args.data_dir = custom_data_dir
-                mock_args.log_level = None
+            # Mock asyncio.run to properly close coroutines
+            def mock_run_with_cleanup(coro):
+                """Mock that properly closes coroutines to prevent warnings."""
+                if hasattr(coro, 'close'):
+                    coro.close()
+                return None
 
-                result = run_main(mock_args)
+            mock_asyncio_run.side_effect = mock_run_with_cleanup
 
-                self.assertEqual(result, 0)
-                mock_abspath.assert_called_with(custom_data_dir)
-                mock_makedirs.assert_called_once_with(custom_data_dir, exist_ok=True)
+            mock_args = MagicMock()
+            mock_args.data_dir = custom_data_dir
+            mock_args.log_level = None
+
+            result = run_main(mock_args)
+
+            self.assertEqual(result, 0)
+            # Check that abspath was called with our custom data dir (may be called multiple times)
+            mock_abspath.assert_any_call(custom_data_dir)
+            # Check that makedirs was called with our custom data dir (may be called multiple times for logs too)
+            mock_makedirs.assert_any_call(custom_data_dir, exist_ok=True)
         finally:
             # Restore original custom_data_dir
             mmrelay.config.custom_data_dir = original_custom_data_dir
@@ -1047,7 +1075,15 @@ class TestRunMainFunction(unittest.TestCase):
         mock_args.data_dir = None
         mock_args.log_level = "DEBUG"
 
-        with patch("mmrelay.main.asyncio.run"):
+        with patch("mmrelay.main.asyncio.run") as mock_asyncio_run:
+            # Mock asyncio.run to properly close coroutines
+            def mock_run_with_cleanup(coro):
+                """Mock that properly closes coroutines to prevent warnings."""
+                if hasattr(coro, 'close'):
+                    coro.close()
+                return None
+
+            mock_asyncio_run.side_effect = mock_run_with_cleanup
             result = run_main(mock_args)
 
         self.assertEqual(result, 0)
@@ -1073,7 +1109,15 @@ class TestRunMainFunction(unittest.TestCase):
         }
         mock_load_config.return_value = mock_config
         mock_load_credentials.return_value = None
-        mock_asyncio_run.side_effect = KeyboardInterrupt()
+
+        # Mock asyncio.run to properly close coroutines and raise KeyboardInterrupt
+        def mock_run_with_keyboard_interrupt(coro):
+            """Mock that properly closes coroutines and raises KeyboardInterrupt."""
+            if hasattr(coro, 'close'):
+                coro.close()
+            raise KeyboardInterrupt()
+
+        mock_asyncio_run.side_effect = mock_run_with_keyboard_interrupt
 
         mock_args = MagicMock()
         mock_args.data_dir = None
@@ -1102,7 +1146,15 @@ class TestRunMainFunction(unittest.TestCase):
         }
         mock_load_config.return_value = mock_config
         mock_load_credentials.return_value = None
-        mock_asyncio_run.side_effect = Exception("Test error")
+
+        # Mock asyncio.run to properly close coroutines and raise exception
+        def mock_run_with_exception(coro):
+            """Mock that properly closes coroutines and raises exception."""
+            if hasattr(coro, 'close'):
+                coro.close()
+            raise Exception("Test error")
+
+        mock_asyncio_run.side_effect = mock_run_with_exception
 
         mock_args = MagicMock()
         mock_args.data_dir = None
