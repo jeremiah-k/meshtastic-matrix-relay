@@ -848,9 +848,9 @@ class TestDatabaseConfiguration(unittest.TestCase):
     @patch('mmrelay.main.connect_matrix')
     @patch('mmrelay.main.connect_meshtastic')
     @patch('mmrelay.main.join_matrix_room')
-    def test_main_database_wipe_config(self, db_key, mock_join, mock_connect_mesh,
+    def test_main_database_wipe_config(self, mock_join, mock_connect_mesh,
                                       mock_connect_matrix, mock_start_queue,
-                                      mock_load_plugins, mock_init_db):
+                                      mock_load_plugins, mock_init_db, db_key):
         """Test main function with database wipe configuration (current and legacy)."""
         # Mock config with database wipe settings
         config = {
