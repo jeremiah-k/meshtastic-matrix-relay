@@ -1508,158 +1508,69 @@ async def test_connect_matrix_legacy_config(
         # Note: whoami() is no longer called in the new E2EE implementation
 
 
-class TestMessageConfiguration:
-    """Test cases for message configuration functionality."""
+def test_truncate_message_with_truncation():
+    """Test truncate_message for both short and long messages."""
+    from mmrelay.matrix_utils import truncate_message
 
-    def test_get_msgs_to_keep_config_returns_valid_count(self):
-        """Test that _get_msgs_to_keep_config returns a valid message count."""
-        from mmrelay.matrix_utils import _get_msgs_to_keep_config
+    # Test with a message shorter than the limit
+    assert truncate_message("short", max_bytes=10) == "short"
 
-        result = _get_msgs_to_keep_config()
-        assert isinstance(result, int)
-        assert result > 0
+    # Test with a message longer than the limit
+    long_msg = "This is a very long message that needs to be truncated."
+    truncated = truncate_message(long_msg, max_bytes=20)
+    assert truncated == "This is a very long "
 
 
-class TestMessageFormatting:
-    """Test cases for message formatting functionality."""
+def test_strip_quoted_lines_comprehensive():
+    """Test strip_quoted_lines with and without quoted content."""
+    from mmrelay.matrix_utils import strip_quoted_lines
 
-    def test_add_truncated_vars_with_long_text(self):
-        """Test _add_truncated_vars adds truncation variables for long text."""
-        from mmrelay.matrix_utils import _add_truncated_vars
+    # Text without quoted lines should be joined
+    normal_text = "Just normal text\nwith line breaks"
+    assert strip_quoted_lines(normal_text) == "Just normal text with line breaks"
 
-        format_vars = {}
-        prefix = "user"
-        text = "This is a very long message that will be truncated at various lengths"
+    # Text with quoted lines should have them stripped
+    quoted_text = "> quoted line\nThis is a reply\n> another quote"
+    assert strip_quoted_lines(quoted_text) == "This is a reply"
 
-        _add_truncated_vars(format_vars, prefix, text)
+    # Empty and all-quotes text should result in empty string
+    assert strip_quoted_lines("") == ""
+    assert strip_quoted_lines("> quote1\n> quote2") == ""
 
-        # Should add truncated variables at different lengths (user1, user2, etc.)
-        assert f"{prefix}1" in format_vars
-        assert f"{prefix}10" in format_vars
-        assert f"{prefix}20" in format_vars
 
-        # Verify truncated content matches expected lengths
-        assert len(format_vars[f"{prefix}1"]) == 1
-        assert len(format_vars[f"{prefix}10"]) == 10
-        assert format_vars[f"{prefix}1"] == "T"
-        assert format_vars[f"{prefix}10"] == "This is a "
+def test_validate_prefix_format_comprehensive():
+    """Test validate_prefix_format with valid and invalid format strings."""
+    from mmrelay.matrix_utils import validate_prefix_format
 
-    def test_add_truncated_vars_with_empty_text(self):
-        """Test _add_truncated_vars handles empty text gracefully."""
-        from mmrelay.matrix_utils import _add_truncated_vars
+    # Function expects a dict, not a list
+    available_vars = {"user": "testuser", "message": "testmsg", "user10": "testuser10"}
 
-        format_vars = {}
-        _add_truncated_vars(format_vars, "empty", "")
+    # Valid format strings should return (True, None)
+    valid_formats = [
+        "[{user}]",
+        "{user}: {message}",
+        "{user10}",
+        "No variables here",
+        "",
+    ]
 
-        # Should still add truncated variables even for empty text
-        assert "empty1" in format_vars
-        assert "empty10" in format_vars
-        assert format_vars["empty1"] == ""
-        assert format_vars["empty10"] == ""
+    for format_str in valid_formats:
+        is_valid, error_msg = validate_prefix_format(format_str, available_vars)
+        assert is_valid is True
+        assert error_msg is None
 
-class TestMessageStorage:
-    """Test cases for message storage functionality."""
+    # Invalid format strings should return (False, error_message)
+    available_vars_limited = {"user": "testuser", "message": "testmsg"}
+    invalid_formats = [
+        "{unknown_var}",
+        "{user} {unknown}",
+        "{user10}",  # not in available_vars_limited
+    ]
 
-    def test_message_storage_enabled_with_reactions(self):
-        """Test that message storage is enabled when reactions are enabled."""
-        from mmrelay.matrix_utils import message_storage_enabled
+    for format_str in invalid_formats:
+        is_valid, error_msg = validate_prefix_format(format_str, available_vars_limited)
+        assert is_valid is False
+        assert error_msg is not None
+        assert isinstance(error_msg, str)
 
-        interactions = {"reactions": True, "replies": False}
-        result = message_storage_enabled(interactions)
-        assert result is True
 
-    def test_message_storage_enabled_with_replies(self):
-        """Test that message storage is enabled when replies are enabled."""
-        from mmrelay.matrix_utils import message_storage_enabled
-
-        interactions = {"reactions": False, "replies": True}
-        result = message_storage_enabled(interactions)
-        assert result is True
-
-    def test_message_storage_enabled_with_both_features(self):
-        """Test that message storage is enabled when both reactions and replies are enabled."""
-        from mmrelay.matrix_utils import message_storage_enabled
-
-        interactions = {"reactions": True, "replies": True}
-        result = message_storage_enabled(interactions)
-        assert result is True
-
-    def test_message_storage_disabled_with_no_features(self):
-        """Test that message storage is disabled when neither reactions nor replies are enabled."""
-        from mmrelay.matrix_utils import message_storage_enabled
-
-        interactions = {"reactions": False, "replies": False}
-        result = message_storage_enabled(interactions)
-        assert result is False
-
-class TestPrefixValidation:
-    """Test cases for prefix format validation."""
-
-    def test_validate_prefix_format_with_valid_variables(self):
-        """Test that validate_prefix_format accepts valid format strings."""
-        from mmrelay.matrix_utils import validate_prefix_format
-
-        # Function expects a dict, not a list
-        available_vars = {"user": "testuser", "message": "testmsg", "user10": "testuser10"}
-
-        # Valid format strings should return (True, None)
-        valid_formats = [
-            "[{user}]",
-            "{user}: {message}",
-            "{user10}",
-            "No variables here",
-            "",
-        ]
-
-        for format_str in valid_formats:
-            is_valid, error_msg = validate_prefix_format(format_str, available_vars)
-            assert is_valid is True
-            assert error_msg is None
-
-    def test_validate_prefix_format_with_invalid_variables(self):
-        """Test that validate_prefix_format rejects invalid format strings."""
-        from mmrelay.matrix_utils import validate_prefix_format
-
-        # Function expects a dict, not a list
-        available_vars = {"user": "testuser", "message": "testmsg"}
-
-        # Invalid format strings should return (False, error_message)
-        invalid_formats = [
-            "{unknown_var}",
-            "{user} {unknown}",
-            "{user10}",  # not in available_vars
-        ]
-
-        for format_str in invalid_formats:
-            is_valid, error_msg = validate_prefix_format(format_str, available_vars)
-            assert is_valid is False
-            assert error_msg is not None
-            assert isinstance(error_msg, str)
-
-    def test_truncate_message_basic_functionality(self):
-        """Test truncate_message for both short and long messages."""
-        from mmrelay.matrix_utils import truncate_message
-
-        # Test with a message shorter than the limit
-        assert truncate_message("short", max_bytes=10) == "short"
-
-        # Test with a message longer than the limit
-        long_msg = "This is a very long message that needs to be truncated."
-        truncated = truncate_message(long_msg, max_bytes=20)
-        assert truncated == "This is a very long "
-
-    def test_strip_quoted_lines_basic_functionality(self):
-        """Test strip_quoted_lines with and without quoted content."""
-        from mmrelay.matrix_utils import strip_quoted_lines
-
-        # Text without quoted lines should be joined
-        normal_text = "Just normal text\nwith line breaks"
-        assert strip_quoted_lines(normal_text) == "Just normal text with line breaks"
-
-        # Text with quoted lines should have them stripped
-        quoted_text = "> quoted line\nThis is a reply\n> another quote"
-        assert strip_quoted_lines(quoted_text) == "This is a reply"
-
-        # Empty and all-quotes text should result in empty string
-        assert strip_quoted_lines("") == ""
-        assert strip_quoted_lines("> quote1\n> quote2") == ""

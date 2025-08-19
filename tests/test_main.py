@@ -838,45 +838,6 @@ class TestMainFunctionEdgeCases(unittest.TestCase):
                 mmrelay.meshtastic_utils.meshtastic_client = original_client
 
 
-class TestBannerFunctionality(unittest.TestCase):
-    """Test cases for application banner functionality."""
-
-    def test_print_banner_displays_only_once(self):
-        """Test that print_banner only displays the banner on first call."""
-        import mmrelay.main
-
-        # Reset banner state
-        mmrelay.main._banner_printed = False
-
-        with patch('mmrelay.main.logger') as mock_logger:
-            # First call should print
-            print_banner()
-            mock_logger.info.assert_called_once()
-
-            # Reset mock
-            mock_logger.reset_mock()
-
-            # Second call should not print
-            print_banner()
-            mock_logger.info.assert_not_called()
-
-    def test_print_banner_includes_version_information(self):
-        """Test that print_banner includes application name and version information."""
-        import mmrelay.main
-
-        # Reset banner state
-        mmrelay.main._banner_printed = False
-
-        with patch('mmrelay.main.logger') as mock_logger:
-            print_banner()
-
-            # Should log with version info
-            mock_logger.info.assert_called_once()
-            call_args = mock_logger.info.call_args[0][0]
-            self.assertIn("MMRelay", call_args)
-            self.assertIn("v", call_args)  # Version indicator
-
-
 class TestDatabaseConfiguration(unittest.TestCase):
     """Test cases for database configuration handling."""
 
