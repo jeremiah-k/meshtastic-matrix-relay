@@ -1932,9 +1932,8 @@ async def on_room_message(
             full_display_name = display_name_response.displayname or event.sender
         prefix = get_meshtastic_prefix(config, full_display_name, event.sender)
         logger.debug(f"Processing matrix message from [{full_display_name}]: {text}")
-        # Truncate first to ensure the final message respects size limits
-        text = truncate_message(text)
         full_message = f"{prefix}{text}"
+        full_message = truncate_message(full_message)
 
     # Plugin functionality
     from mmrelay.plugin_loader import load_plugins
