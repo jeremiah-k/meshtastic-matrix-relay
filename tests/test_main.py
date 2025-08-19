@@ -837,5 +837,114 @@ class TestMainFunctionEdgeCases(unittest.TestCase):
                 mmrelay.meshtastic_utils.meshtastic_client = original_client
 
 
+class TestMainAdditionalCoverage(unittest.TestCase):
+    """Additional tests to improve main.py coverage."""
+
+    def test_print_banner_multiple_calls(self):
+        """Test that print_banner only prints once."""
+        import mmrelay.main
+
+        # Reset banner state
+        mmrelay.main._banner_printed = False
+
+        with patch('mmrelay.main.logger') as mock_logger:
+            # First call should print
+            print_banner()
+            mock_logger.info.assert_called_once()
+
+            # Reset mock
+            mock_logger.reset_mock()
+
+            # Second call should not print
+            print_banner()
+            mock_logger.info.assert_not_called()
+
+    def test_print_banner_version_info(self):
+        """Test that print_banner includes version information."""
+        import mmrelay.main
+
+        # Reset banner state
+        mmrelay.main._banner_printed = False
+
+        with patch('mmrelay.main.logger') as mock_logger:
+            print_banner()
+
+            # Should log with version info
+            mock_logger.info.assert_called_once()
+            call_args = mock_logger.info.call_args[0][0]
+            assert "MMRelay" in call_args
+            assert "v" in call_args  # Version indicator
+
+    @patch('mmrelay.main.initialize_database')
+    @patch('mmrelay.main.load_plugins')
+    @patch('mmrelay.main.start_message_queue')
+    @patch('mmrelay.main.connect_matrix')
+    @patch('mmrelay.main.connect_meshtastic')
+    @patch('mmrelay.main.join_matrix_room')
+    def test_main_database_wipe_config(self, mock_join, mock_connect_mesh,
+                                      mock_connect_matrix, mock_start_queue,
+                                      mock_load_plugins, mock_init_db):
+        """Test main function with database wipe configuration."""
+        # Mock config with database wipe settings
+        config = {
+            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+            "database": {
+                "msg_map": {
+                    "wipe_on_restart": True
+                }
+            }
+        }
+
+        # Mock the async components
+        mock_matrix_client = AsyncMock()
+        mock_connect_matrix.return_value = mock_matrix_client
+        mock_connect_mesh.return_value = MagicMock()
+
+        with patch('mmrelay.main.wipe_message_map') as mock_wipe:
+            with patch('mmrelay.main.asyncio.sleep', side_effect=KeyboardInterrupt):
+                try:
+                    asyncio.run(main(config))
+                except KeyboardInterrupt:
+                    pass
+
+            # Should wipe message map on startup
+            mock_wipe.assert_called()
+
+    @patch('mmrelay.main.initialize_database')
+    @patch('mmrelay.main.load_plugins')
+    @patch('mmrelay.main.start_message_queue')
+    @patch('mmrelay.main.connect_matrix')
+    @patch('mmrelay.main.connect_meshtastic')
+    @patch('mmrelay.main.join_matrix_room')
+    def test_main_legacy_db_config(self, mock_join, mock_connect_mesh,
+                                  mock_connect_matrix, mock_start_queue,
+                                  mock_load_plugins, mock_init_db):
+        """Test main function with legacy db configuration."""
+        # Mock config with legacy db settings
+        config = {
+            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+            "db": {
+                "msg_map": {
+                    "wipe_on_restart": True
+                }
+            }
+        }
+
+        # Mock the async components
+        mock_matrix_client = AsyncMock()
+        mock_connect_matrix.return_value = mock_matrix_client
+        mock_connect_mesh.return_value = MagicMock()
+
+        with patch('mmrelay.main.wipe_message_map') as mock_wipe:
+            with patch('mmrelay.main.asyncio.sleep', side_effect=KeyboardInterrupt):
+                try:
+                    asyncio.run(main(config))
+                except KeyboardInterrupt:
+                    pass
+
+            # Should wipe message map using legacy config
+            mock_wipe.assert_called()
+
+
 if __name__ == "__main__":
     unittest.main()

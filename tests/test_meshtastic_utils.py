@@ -882,5 +882,126 @@ def test_check_connection_function_exists(reset_meshtastic_globals):
     assert callable(check_connection)
 
 
+# Additional tests to improve coverage
+class TestMeshtasticUtilsAdditionalCoverage:
+    """Additional tests to improve meshtastic_utils coverage."""
+
+    def test_is_running_as_service(self):
+        """Test is_running_as_service function."""
+        from mmrelay.meshtastic_utils import is_running_as_service
+
+        # Test when not running as service (normal case)
+        with patch.dict(os.environ, {}, clear=True):
+            assert is_running_as_service() is False
+
+        # Test when running as service
+        with patch.dict(os.environ, {"INVOCATION_ID": "test-id"}):
+            assert is_running_as_service() is True
+
+    def test_serial_port_exists(self):
+        """Test serial_port_exists function."""
+        from mmrelay.meshtastic_utils import serial_port_exists
+
+        # Test with non-existent port
+        assert serial_port_exists("/dev/nonexistent") is False
+
+        # Test with None
+        assert serial_port_exists(None) is False
+
+        # Test with empty string
+        assert serial_port_exists("") is False
+
+    @patch('mmrelay.meshtastic_utils.asyncio.get_event_loop')
+    def test_submit_coro(self, mock_get_loop):
+        """Test _submit_coro function."""
+        from mmrelay.meshtastic_utils import _submit_coro
+
+        # Mock coroutine and loop
+        mock_coro = MagicMock()
+        mock_loop = MagicMock()
+        mock_get_loop.return_value = mock_loop
+
+        # Test with no loop provided
+        _submit_coro(mock_coro)
+        mock_get_loop.assert_called_once()
+        mock_loop.create_task.assert_called_once_with(mock_coro)
+
+        # Test with loop provided
+        mock_loop.reset_mock()
+        mock_get_loop.reset_mock()
+        provided_loop = MagicMock()
+        _submit_coro(mock_coro, provided_loop)
+        mock_get_loop.assert_not_called()
+        provided_loop.create_task.assert_called_once_with(mock_coro)
+
+    @patch('mmrelay.meshtastic_utils.meshtastic_client')
+    @patch('mmrelay.meshtastic_utils.logger')
+    def test_on_lost_meshtastic_connection_basic(self, mock_logger, mock_client):
+        """Test on_lost_meshtastic_connection basic functionality."""
+        from mmrelay.meshtastic_utils import on_lost_meshtastic_connection
+
+        # Mock the client
+        mock_interface = MagicMock()
+        mock_client.return_value = mock_interface
+
+        # Test basic call
+        on_lost_meshtastic_connection(mock_interface, "test_source")
+
+        # Should log the disconnection
+        mock_logger.warning.assert_called()
+
+        # Should close the interface
+        mock_interface.close.assert_called_once()
+
+    def test_sendTextReply_basic(self):
+        """Test sendTextReply function basic functionality."""
+        from mmrelay.meshtastic_utils import sendTextReply
+
+        # Mock interface
+        mock_interface = MagicMock()
+        mock_interface.sendText = MagicMock()
+
+        # Test basic send
+        sendTextReply(mock_interface, "Test message")
+
+        # Should call sendText
+        mock_interface.sendText.assert_called_once()
+        call_args = mock_interface.sendText.call_args
+        assert "Test message" in str(call_args)
+
+    def test_sendTextReply_with_destination(self):
+        """Test sendTextReply with destination parameter."""
+        from mmrelay.meshtastic_utils import sendTextReply
+
+        # Mock interface
+        mock_interface = MagicMock()
+        mock_interface.sendText = MagicMock()
+
+        # Test with destination
+        sendTextReply(mock_interface, "Test message", destination="!12345678")
+
+        # Should call sendText with destination
+        mock_interface.sendText.assert_called_once()
+        call_args = mock_interface.sendText.call_args
+        assert "Test message" in str(call_args)
+        assert "!12345678" in str(call_args)
+
+    def test_sendTextReply_with_channel_index(self):
+        """Test sendTextReply with channel index parameter."""
+        from mmrelay.meshtastic_utils import sendTextReply
+
+        # Mock interface
+        mock_interface = MagicMock()
+        mock_interface.sendText = MagicMock()
+
+        # Test with channel index
+        sendTextReply(mock_interface, "Test message", channelIndex=1)
+
+        # Should call sendText with channel index
+        mock_interface.sendText.assert_called_once()
+        call_args = mock_interface.sendText.call_args
+        assert "Test message" in str(call_args)
+
+
 if __name__ == "__main__":
     unittest.main()

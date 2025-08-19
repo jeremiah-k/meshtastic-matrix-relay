@@ -1506,3 +1506,178 @@ async def test_connect_matrix_legacy_config(
         # Verify sync was called
         mock_client_instance.sync.assert_called()
         # Note: whoami() is no longer called in the new E2EE implementation
+
+
+# Additional tests to improve coverage
+class TestMatrixUtilsAdditionalCoverage:
+    """Additional tests to improve matrix_utils coverage."""
+
+    def test_get_msgs_to_keep_config(self):
+        """Test _get_msgs_to_keep_config function."""
+        from mmrelay.matrix_utils import _get_msgs_to_keep_config
+
+        # Should return default value
+        result = _get_msgs_to_keep_config()
+        assert isinstance(result, int)
+        assert result > 0
+
+    def test_add_truncated_vars(self):
+        """Test _add_truncated_vars helper function."""
+        from mmrelay.matrix_utils import _add_truncated_vars
+
+        format_vars = {}
+        prefix = "test"
+        text = "This is a long message that should be truncated"
+
+        _add_truncated_vars(format_vars, prefix, text)
+
+        # Should add truncated variables
+        assert f"{prefix}_truncated_10" in format_vars
+        assert f"{prefix}_truncated_20" in format_vars
+        assert f"{prefix}_truncated_30" in format_vars
+
+        # Test with empty text
+        format_vars_empty = {}
+        _add_truncated_vars(format_vars_empty, "empty", "")
+        assert "empty_truncated_10" in format_vars_empty
+        assert format_vars_empty["empty_truncated_10"] == ""
+
+    def test_message_storage_enabled(self):
+        """Test message_storage_enabled function."""
+        from mmrelay.matrix_utils import message_storage_enabled
+
+        # Test with reactions enabled
+        interactions = {"reactions": True, "replies": False}
+        assert message_storage_enabled(interactions) is True
+
+        # Test with replies enabled
+        interactions = {"reactions": False, "replies": True}
+        assert message_storage_enabled(interactions) is True
+
+        # Test with both enabled
+        interactions = {"reactions": True, "replies": True}
+        assert message_storage_enabled(interactions) is True
+
+        # Test with neither enabled
+        interactions = {"reactions": False, "replies": False}
+        assert message_storage_enabled(interactions) is False
+
+    def test_validate_prefix_format_valid(self):
+        """Test validate_prefix_format with valid format strings."""
+        from mmrelay.matrix_utils import validate_prefix_format
+
+        available_vars = ["user", "message", "user_truncated_10"]
+
+        # Valid format strings
+        valid_formats = [
+            "[{user}]",
+            "{user}: {message}",
+            "{user_truncated_10}",
+            "No variables here",
+            "",
+        ]
+
+        for format_str in valid_formats:
+            # Should not raise exception
+            validate_prefix_format(format_str, available_vars)
+
+    def test_validate_prefix_format_invalid(self):
+        """Test validate_prefix_format with invalid format strings."""
+        from mmrelay.matrix_utils import validate_prefix_format
+
+        available_vars = ["user", "message"]
+
+        # Invalid format strings
+        invalid_formats = [
+            "{unknown_var}",
+            "{user} {unknown}",
+            "{user_truncated_5}",  # truncated var not in available_vars
+        ]
+
+        for format_str in invalid_formats:
+            with pytest.raises(ValueError):
+                validate_prefix_format(format_str, available_vars)
+
+    def test_truncate_message_default(self):
+        """Test truncate_message with default byte limit."""
+        from mmrelay.matrix_utils import truncate_message
+
+        # Short message should not be truncated
+        short_msg = "Short message"
+        assert truncate_message(short_msg) == short_msg
+
+        # Long message should be truncated
+        long_msg = "x" * 2000  # Much longer than default limit
+        truncated = truncate_message(long_msg)
+        assert len(truncated.encode('utf-8')) <= 2000  # Default limit
+        assert truncated.endswith("...")
+
+    def test_truncate_message_custom_limit(self):
+        """Test truncate_message with custom byte limit."""
+        from mmrelay.matrix_utils import truncate_message
+
+        message = "This is a test message"
+        limit = 10
+
+        truncated = truncate_message(message, limit)
+        assert len(truncated.encode('utf-8')) <= limit
+
+        # Very small limit should still work
+        tiny_truncated = truncate_message(message, 5)
+        assert len(tiny_truncated.encode('utf-8')) <= 5
+
+    def test_strip_quoted_lines(self):
+        """Test strip_quoted_lines function."""
+        from mmrelay.matrix_utils import strip_quoted_lines
+
+        # Text with quoted lines
+        text_with_quotes = """This is normal text
+> This is a quoted line
+> Another quoted line
+This is also normal text
+> Final quoted line"""
+
+        result = strip_quoted_lines(text_with_quotes)
+        expected = """This is normal text
+This is also normal text"""
+
+        assert result.strip() == expected.strip()
+
+        # Text without quoted lines
+        normal_text = "Just normal text\nNo quotes here"
+        assert strip_quoted_lines(normal_text) == normal_text
+
+        # Empty text
+        assert strip_quoted_lines("") == ""
+
+    def test_get_interaction_settings(self):
+        """Test get_interaction_settings function."""
+        from mmrelay.matrix_utils import get_interaction_settings
+
+        # Test with both enabled
+        config = {
+            "matrix": {
+                "reactions": {"enabled": True},
+                "replies": {"enabled": True}
+            }
+        }
+        result = get_interaction_settings(config)
+        assert result["reactions"] is True
+        assert result["replies"] is True
+
+        # Test with both disabled
+        config = {
+            "matrix": {
+                "reactions": {"enabled": False},
+                "replies": {"enabled": False}
+            }
+        }
+        result = get_interaction_settings(config)
+        assert result["reactions"] is False
+        assert result["replies"] is False
+
+        # Test with missing config
+        config = {}
+        result = get_interaction_settings(config)
+        assert result["reactions"] is False
+        assert result["replies"] is False
