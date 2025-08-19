@@ -710,7 +710,9 @@ class TestCLIValidationFunctions(unittest.TestCase):
             "device_id": "test_device",
         }
 
-        with patch("mmrelay.config.get_base_dir", return_value="/home/user/.mmrelay"), patch("builtins.open", mock_open(read_data=json.dumps(valid_credentials))):
+        with patch(
+            "mmrelay.config.get_base_dir", return_value="/home/user/.mmrelay"
+        ), patch("builtins.open", mock_open(read_data=json.dumps(valid_credentials))):
             result = _validate_credentials_json("/path/to/config.yaml")
             self.assertTrue(result)
 
@@ -722,7 +724,9 @@ class TestCLIValidationFunctions(unittest.TestCase):
         mock_exists.return_value = True
 
         # Mock open to raise an exception
-        with patch("builtins.open", side_effect=FileNotFoundError("File not found")), patch("builtins.print"):
+        with patch(
+            "builtins.open", side_effect=FileNotFoundError("File not found")
+        ), patch("builtins.print"):
             result = _validate_credentials_json("/path/to/config.yaml")
             self.assertFalse(result)
 
@@ -730,7 +734,9 @@ class TestCLIValidationFunctions(unittest.TestCase):
         """Test _validate_matrix_authentication with valid credentials.json."""
         from mmrelay.cli import _validate_matrix_authentication
 
-        with patch("mmrelay.cli._validate_credentials_json", return_value=True), patch("builtins.print"):
+        with patch("mmrelay.cli._validate_credentials_json", return_value=True), patch(
+            "builtins.print"
+        ):
             result = _validate_matrix_authentication("/path/to/config.yaml", None)
             self.assertTrue(result)
 
@@ -744,7 +750,9 @@ class TestCLIValidationFunctions(unittest.TestCase):
             "bot_user_id": "@bot:matrix.org",
         }
 
-        with patch("mmrelay.cli._validate_credentials_json", return_value=False), patch("builtins.print"):
+        with patch("mmrelay.cli._validate_credentials_json", return_value=False), patch(
+            "builtins.print"
+        ):
             result = _validate_matrix_authentication(
                 "/path/to/config.yaml", matrix_section
             )
@@ -754,7 +762,9 @@ class TestCLIValidationFunctions(unittest.TestCase):
         """Test _validate_matrix_authentication with no valid authentication."""
         from mmrelay.cli import _validate_matrix_authentication
 
-        with patch("mmrelay.cli._validate_credentials_json", return_value=False), patch("builtins.print"):
+        with patch("mmrelay.cli._validate_credentials_json", return_value=False), patch(
+            "builtins.print"
+        ):
             result = _validate_matrix_authentication("/path/to/config.yaml", None)
             self.assertFalse(result)
 
@@ -869,37 +879,55 @@ class TestE2EEConfigurationFunctions(unittest.TestCase):
         config = {"matrix": {"homeserver": "https://matrix.org"}}
         matrix_section = {"homeserver": "https://matrix.org"}
 
-        with patch("mmrelay.cli._validate_matrix_authentication", return_value=True), patch("builtins.print"):
-            result = _validate_e2ee_config(config, matrix_section, "/path/to/config.yaml")
+        with patch(
+            "mmrelay.cli._validate_matrix_authentication", return_value=True
+        ), patch("builtins.print"):
+            result = _validate_e2ee_config(
+                config, matrix_section, "/path/to/config.yaml"
+            )
             self.assertTrue(result)
 
     def test_validate_e2ee_config_e2ee_enabled_valid(self):
         """Test _validate_e2ee_config with E2EE enabled and valid."""
         from mmrelay.cli import _validate_e2ee_config
 
-        config = {"matrix": {"homeserver": "https://matrix.org", "e2ee": {"enabled": True}}}
+        config = {
+            "matrix": {"homeserver": "https://matrix.org", "e2ee": {"enabled": True}}
+        }
         matrix_section = {
             "homeserver": "https://matrix.org",
             "e2ee": {"enabled": True, "store_path": "~/.mmrelay/store"},
         }
 
-        with patch("mmrelay.cli._validate_matrix_authentication", return_value=True), \
-             patch("mmrelay.cli._validate_e2ee_dependencies", return_value=True), \
-             patch("os.path.expanduser", return_value="/home/user/.mmrelay/store"), \
-             patch("os.path.exists", return_value=True), \
-             patch("builtins.print"):
-            result = _validate_e2ee_config(config, matrix_section, "/path/to/config.yaml")
+        with patch(
+            "mmrelay.cli._validate_matrix_authentication", return_value=True
+        ), patch("mmrelay.cli._validate_e2ee_dependencies", return_value=True), patch(
+            "os.path.expanduser", return_value="/home/user/.mmrelay/store"
+        ), patch(
+            "os.path.exists", return_value=True
+        ), patch(
+            "builtins.print"
+        ):
+            result = _validate_e2ee_config(
+                config, matrix_section, "/path/to/config.yaml"
+            )
             self.assertTrue(result)
 
     def test_validate_e2ee_config_e2ee_enabled_invalid_deps(self):
         """Test _validate_e2ee_config with E2EE enabled but invalid dependencies."""
         from mmrelay.cli import _validate_e2ee_config
 
-        config = {"matrix": {"homeserver": "https://matrix.org", "e2ee": {"enabled": True}}}
+        config = {
+            "matrix": {"homeserver": "https://matrix.org", "e2ee": {"enabled": True}}
+        }
         matrix_section = {"homeserver": "https://matrix.org", "e2ee": {"enabled": True}}
 
-        with patch("mmrelay.cli._validate_matrix_authentication", return_value=True), patch("mmrelay.cli._validate_e2ee_dependencies", return_value=False):
-            result = _validate_e2ee_config(config, matrix_section, "/path/to/config.yaml")
+        with patch(
+            "mmrelay.cli._validate_matrix_authentication", return_value=True
+        ), patch("mmrelay.cli._validate_e2ee_dependencies", return_value=False):
+            result = _validate_e2ee_config(
+                config, matrix_section, "/path/to/config.yaml"
+            )
             self.assertFalse(result)
 
 
@@ -912,11 +940,7 @@ class TestE2EEAnalysisFunctions(unittest.TestCase):
         """Test _analyze_e2ee_setup when E2EE is ready."""
         from mmrelay.cli import _analyze_e2ee_setup
 
-        config = {
-            "matrix": {
-                "e2ee": {"enabled": True}
-            }
-        }
+        config = {"matrix": {"e2ee": {"enabled": True}}}
         mock_exists.return_value = True  # credentials.json exists
 
         with patch.dict(
@@ -984,7 +1008,9 @@ class TestE2EEPrintFunctions(unittest.TestCase):
             mock_print.assert_called()
             # Check that success messages are printed
             calls = [call.args[0] for call in mock_print.call_args_list]
-            self.assertTrue(any("✅ E2EE is fully configured and ready" in call for call in calls))
+            self.assertTrue(
+                any("✅ E2EE is fully configured and ready" in call for call in calls)
+            )
 
     def test_print_e2ee_analysis_disabled(self):
         """Test _print_e2ee_analysis with disabled status."""
@@ -1004,7 +1030,9 @@ class TestE2EEPrintFunctions(unittest.TestCase):
             mock_print.assert_called()
             # Check that disabled messages are printed
             calls = [call.args[0] for call in mock_print.call_args_list]
-            self.assertTrue(any("⚠️  E2EE is disabled in configuration" in call for call in calls))
+            self.assertTrue(
+                any("⚠️  E2EE is disabled in configuration" in call for call in calls)
+            )
 
     @patch("sys.platform", "linux")
     def test_print_environment_summary_linux(self):

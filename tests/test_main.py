@@ -34,6 +34,7 @@ class TestMain(unittest.TestCase):
         """Set up mock configuration and reset banner state for tests."""
         # Reset banner state for test isolation
         import mmrelay.main
+
         mmrelay.main._banner_printed = False
 
         self.mock_config = {
@@ -591,8 +592,6 @@ class TestRunMain(unittest.TestCase):
 
         Verifies that when a custom data directory is specified, run_main ensures the directory exists by creating it if necessary and resolves its absolute path for initialization.
         """
-        import os
-        import tempfile
 
         mock_config = {
             "matrix": {"homeserver": "https://matrix.org"},
@@ -617,7 +616,7 @@ class TestRunMain(unittest.TestCase):
         mock_asyncio_run.side_effect = mock_run_with_cleanup
 
         # Use a simple custom data directory path
-        custom_data_dir = "/tmp/test_custom_data"
+        custom_data_dir = "/home/user/test_custom_data"
         mock_abspath.return_value = custom_data_dir
 
         mock_args = MagicMock()
@@ -858,9 +857,9 @@ def test_main_database_wipe_config(
     mock_connect_matrix.return_value = mock_matrix_client
     mock_connect_mesh.return_value = MagicMock()
 
-    with patch("mmrelay.main.wipe_message_map") as mock_wipe, \
-         patch("mmrelay.main.asyncio.sleep", side_effect=KeyboardInterrupt), \
-         contextlib.suppress(KeyboardInterrupt):
+    with patch("mmrelay.main.wipe_message_map") as mock_wipe, patch(
+        "mmrelay.main.asyncio.sleep", side_effect=KeyboardInterrupt
+    ), contextlib.suppress(KeyboardInterrupt):
         asyncio.run(main(config))
 
         # Should wipe message map on startup
@@ -876,11 +875,13 @@ class TestRunMainFunction(unittest.TestCase):
 
     def _get_mock_run_with_cleanup(self):
         """Helper method that returns a mock function for asyncio.run that properly closes coroutines."""
+
         def mock_run_with_cleanup(coro):
             """Mock that properly closes coroutines to prevent warnings."""
-            if hasattr(coro, 'close'):
+            if hasattr(coro, "close"):
                 coro.close()
             return None
+
         return mock_run_with_cleanup
 
     @patch("mmrelay.main.print_banner")
@@ -986,7 +987,7 @@ class TestRunMainFunction(unittest.TestCase):
     ):
         """Test run_main with custom data directory."""
         # Use a simple custom data directory path
-        custom_data_dir = "/tmp/test_custom_data"
+        custom_data_dir = "/home/user/test_custom_data"
         mock_abspath.return_value = custom_data_dir
 
         mock_config = {
@@ -1063,7 +1064,7 @@ class TestRunMainFunction(unittest.TestCase):
         # Mock asyncio.run to properly close coroutines and raise KeyboardInterrupt
         def mock_run_with_keyboard_interrupt(coro):
             """Mock that properly closes coroutines and raises KeyboardInterrupt."""
-            if hasattr(coro, 'close'):
+            if hasattr(coro, "close"):
                 coro.close()
             raise KeyboardInterrupt()
 
@@ -1100,7 +1101,7 @@ class TestRunMainFunction(unittest.TestCase):
         # Mock asyncio.run to properly close coroutines and raise exception
         def mock_run_with_exception(coro):
             """Mock that properly closes coroutines and raises exception."""
-            if hasattr(coro, 'close'):
+            if hasattr(coro, "close"):
                 coro.close()
             raise Exception("Test error")
 
@@ -1144,8 +1145,9 @@ class TestMainAsyncFunction(unittest.TestCase):
         mock_connect_matrix.return_value = mock_matrix_client
         mock_connect_mesh.return_value = MagicMock()
 
-        with patch("mmrelay.main.asyncio.sleep", side_effect=KeyboardInterrupt), \
-             contextlib.suppress(KeyboardInterrupt):
+        with patch(
+            "mmrelay.main.asyncio.sleep", side_effect=KeyboardInterrupt
+        ), contextlib.suppress(KeyboardInterrupt):
             asyncio.run(main(config))
 
         # Verify initialization sequence
@@ -1185,8 +1187,9 @@ class TestMainAsyncFunction(unittest.TestCase):
         mock_connect_matrix.return_value = mock_matrix_client
         mock_connect_mesh.return_value = MagicMock()
 
-        with patch("mmrelay.main.asyncio.sleep", side_effect=KeyboardInterrupt), \
-             contextlib.suppress(KeyboardInterrupt):
+        with patch(
+            "mmrelay.main.asyncio.sleep", side_effect=KeyboardInterrupt
+        ), contextlib.suppress(KeyboardInterrupt):
             asyncio.run(main(config))
 
         # Verify join_matrix_room was called for each room
@@ -1221,8 +1224,9 @@ class TestMainAsyncFunction(unittest.TestCase):
             mock_loop = MagicMock()
             mock_get_loop.return_value = mock_loop
 
-            with patch("mmrelay.main.asyncio.sleep", side_effect=KeyboardInterrupt), \
-                 contextlib.suppress(KeyboardInterrupt):
+            with patch(
+                "mmrelay.main.asyncio.sleep", side_effect=KeyboardInterrupt
+            ), contextlib.suppress(KeyboardInterrupt):
                 asyncio.run(main(config))
 
         # Verify event loop was accessed for meshtastic utils

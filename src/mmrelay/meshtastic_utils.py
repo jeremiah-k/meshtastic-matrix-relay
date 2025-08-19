@@ -115,6 +115,7 @@ def _submit_coro(coro, loop=None):
     except RuntimeError:
         # No running loop: run synchronously and wrap the result in a completed Future
         from concurrent.futures import Future
+
         f = Future()
         try:
             result = asyncio.run(coro)
@@ -455,7 +456,9 @@ async def reconnect():
                     )
                     break
                 loop = asyncio.get_event_loop()
-                meshtastic_client = await loop.run_in_executor(None, connect_meshtastic, True)
+                meshtastic_client = await loop.run_in_executor(
+                    None, connect_meshtastic, True
+                )
                 if meshtastic_client:
                     logger.info("Reconnected successfully.")
                     break
