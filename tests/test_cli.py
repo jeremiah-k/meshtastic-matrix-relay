@@ -1008,8 +1008,12 @@ class TestE2EEPrintFunctions(unittest.TestCase):
         """Test _print_environment_summary on Linux."""
         from mmrelay.cli import _print_environment_summary
 
-        with patch("builtins.__import__") as mock_import:
-            mock_import.return_value = MagicMock()  # Dependencies available
+        # Mock the specific modules instead of builtins.__import__ to avoid Python 3.10 conflicts
+        with patch.dict('sys.modules', {
+            'olm': MagicMock(),
+            'nio.crypto': MagicMock(),
+            'nio.store': MagicMock()
+        }):
             with patch("mmrelay.cli.print") as mock_print:
                 _print_environment_summary()
                 mock_print.assert_called()
