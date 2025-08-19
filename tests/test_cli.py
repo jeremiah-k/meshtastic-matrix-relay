@@ -629,7 +629,12 @@ class TestCLIValidationFunctions(unittest.TestCase):
         # Mock the required modules as available
         with patch.dict(
             "sys.modules",
-            {"olm": MagicMock(), "nio.crypto": MagicMock(), "nio.store": MagicMock()},
+            {
+                "olm": MagicMock(),
+                "nio": MagicMock(),
+                "nio.crypto": MagicMock(),
+                "nio.store": MagicMock(),
+            },
         ), patch("builtins.print"):
             result = _validate_e2ee_dependencies()
             self.assertTrue(result)
@@ -638,13 +643,17 @@ class TestCLIValidationFunctions(unittest.TestCase):
         """Test _validate_e2ee_dependencies when dependencies are missing."""
         from mmrelay.cli import _validate_e2ee_dependencies
 
-        # Mock missing modules by ensuring they're not in sys.modules
-        modules_to_remove = ["olm", "nio.crypto", "nio.store"]
-        with patch.dict("sys.modules", {}, clear=False), patch("builtins.print"):
-            # Remove the modules if they exist
-            for module in modules_to_remove:
-                if module in sys.modules:
-                    del sys.modules[module]
+        # Simulate missing modules in a reversible way
+        with patch.dict(
+            "sys.modules",
+            {
+                "olm": None,
+                "nio": None,
+                "nio.crypto": None,
+                "nio.store": None,
+            },
+            clear=False,
+        ), patch("mmrelay.cli.print"):
             result = _validate_e2ee_dependencies()
             self.assertFalse(result)
 
@@ -653,7 +662,7 @@ class TestCLIValidationFunctions(unittest.TestCase):
         """Test _validate_e2ee_dependencies on Windows platform."""
         from mmrelay.cli import _validate_e2ee_dependencies
 
-        with patch("builtins.print"):  # Suppress print output
+        with patch("mmrelay.cli.print"):  # Suppress print output
             result = _validate_e2ee_dependencies()
             self.assertFalse(result)
 
@@ -881,7 +890,7 @@ class TestE2EEConfigurationFunctions(unittest.TestCase):
 
         with patch(
             "mmrelay.cli._validate_matrix_authentication", return_value=True
-        ), patch("builtins.print"):
+        ), patch("mmrelay.cli.print"):
             result = _validate_e2ee_config(
                 config, matrix_section, "/path/to/config.yaml"
             )

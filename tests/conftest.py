@@ -406,3 +406,11 @@ def reset_custom_data_dir():
 
     # Restore original value after test
     mmrelay.config.custom_data_dir = original_custom_data_dir
+
+
+@pytest.fixture(autouse=True)
+def reset_banner_flag():
+    """Reset banner flag before each test to ensure proper test isolation."""
+    import mmrelay.main
+    mmrelay.main._banner_printed = False
+    yield

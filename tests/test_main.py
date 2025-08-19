@@ -31,12 +31,7 @@ class TestMain(unittest.TestCase):
     """Test cases for main application functionality."""
 
     def setUp(self):
-        """Set up mock configuration and reset banner state for tests."""
-        # Reset banner state for test isolation
-        import mmrelay.main
-
-        mmrelay.main._banner_printed = False
-
+        """Set up mock configuration for tests."""
         self.mock_config = {
             "matrix": {
                 "homeserver": "https://matrix.org",
@@ -81,8 +76,8 @@ class TestMain(unittest.TestCase):
     @patch("mmrelay.main.load_plugins")
     @patch("mmrelay.main.start_message_queue")
     @patch("mmrelay.main.connect_meshtastic")
-    @patch("mmrelay.main.connect_matrix")
-    @patch("mmrelay.main.join_matrix_room")
+    @patch("mmrelay.main.connect_matrix", new_callable=AsyncMock)
+    @patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock)
     @patch("mmrelay.main.update_longnames")
     @patch("mmrelay.main.update_shortnames")
     @patch("mmrelay.main.stop_message_queue")
@@ -345,11 +340,9 @@ class TestPrintBanner(unittest.TestCase):
 
     def setUp(self):
         """
-        Resets the banner printed state to ensure the banner can be printed during each test.
+        Set up test environment for banner tests.
         """
-        import mmrelay.main
-
-        mmrelay.main._banner_printed = False
+        pass
 
     @patch("mmrelay.main.logger")
     def test_print_banner_first_time(self, mock_logger):
@@ -378,11 +371,9 @@ class TestRunMain(unittest.TestCase):
 
     def setUp(self):
         """
-        Resets the banner printed state to ensure the banner can be printed during each test.
+        Set up test environment for run_main tests.
         """
-        import mmrelay.main
-
-        mmrelay.main._banner_printed = False
+        pass
 
     @patch("asyncio.run")
     @patch("mmrelay.config.load_config")
@@ -830,9 +821,9 @@ class TestMainFunctionEdgeCases(unittest.TestCase):
 @patch("mmrelay.main.initialize_database")
 @patch("mmrelay.main.load_plugins")
 @patch("mmrelay.main.start_message_queue")
-@patch("mmrelay.main.connect_matrix")
+@patch("mmrelay.main.connect_matrix", new_callable=AsyncMock)
 @patch("mmrelay.main.connect_meshtastic")
-@patch("mmrelay.main.join_matrix_room")
+@patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock)
 def test_main_database_wipe_config(
     mock_join,
     mock_connect_mesh,
@@ -1122,9 +1113,9 @@ class TestMainAsyncFunction(unittest.TestCase):
     @patch("mmrelay.main.initialize_database")
     @patch("mmrelay.main.load_plugins")
     @patch("mmrelay.main.start_message_queue")
-    @patch("mmrelay.main.connect_matrix")
+    @patch("mmrelay.main.connect_matrix", new_callable=AsyncMock)
     @patch("mmrelay.main.connect_meshtastic")
-    @patch("mmrelay.main.join_matrix_room")
+    @patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock)
     def test_main_async_initialization_sequence(
         self,
         mock_join,
@@ -1160,9 +1151,9 @@ class TestMainAsyncFunction(unittest.TestCase):
     @patch("mmrelay.main.initialize_database")
     @patch("mmrelay.main.load_plugins")
     @patch("mmrelay.main.start_message_queue")
-    @patch("mmrelay.main.connect_matrix")
+    @patch("mmrelay.main.connect_matrix", new_callable=AsyncMock)
     @patch("mmrelay.main.connect_meshtastic")
-    @patch("mmrelay.main.join_matrix_room")
+    @patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock)
     def test_main_async_with_multiple_rooms(
         self,
         mock_join,
@@ -1198,9 +1189,9 @@ class TestMainAsyncFunction(unittest.TestCase):
     @patch("mmrelay.main.initialize_database")
     @patch("mmrelay.main.load_plugins")
     @patch("mmrelay.main.start_message_queue")
-    @patch("mmrelay.main.connect_matrix")
+    @patch("mmrelay.main.connect_matrix", new_callable=AsyncMock)
     @patch("mmrelay.main.connect_meshtastic")
-    @patch("mmrelay.main.join_matrix_room")
+    @patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock)
     def test_main_async_event_loop_setup(
         self,
         mock_join,
