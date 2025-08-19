@@ -618,5 +618,176 @@ class TestMainFunction(unittest.TestCase):
         mock_run_main.assert_called_once_with(args)
 
 
+class TestCLIValidationFunctions(unittest.TestCase):
+    """Test cases for CLI validation helper functions."""
+
+    def test_validate_e2ee_dependencies_available(self):
+        """Test _validate_e2ee_dependencies when dependencies are available."""
+        from mmrelay.cli import _validate_e2ee_dependencies
+
+        with patch('importlib.util.find_spec') as mock_find_spec:
+            mock_find_spec.return_value = MagicMock()  # Dependency found
+            result = _validate_e2ee_dependencies()
+            self.assertTrue(result)
+
+    def test_validate_e2ee_dependencies_missing(self):
+        """Test _validate_e2ee_dependencies when dependencies are missing."""
+        from mmrelay.cli import _validate_e2ee_dependencies
+
+        with patch('importlib.util.find_spec') as mock_find_spec:
+            mock_find_spec.return_value = None  # Dependency not found
+            result = _validate_e2ee_dependencies()
+            self.assertFalse(result)
+
+    @patch('os.path.exists')
+    def test_validate_credentials_json_exists(self, mock_exists):
+        """Test _validate_credentials_json when credentials.json exists and is valid."""
+        from mmrelay.cli import _validate_credentials_json
+
+        mock_exists.return_value = True
+
+        with patch('builtins.open', mock_open(read_data='{"access_token": "test_token", "device_id": "test_device"}')):
+            result = _validate_credentials_json("/path/to/config.yaml")
+            self.assertTrue(result)
+
+    @patch('os.path.exists')
+    def test_validate_credentials_json_missing(self, mock_exists):
+        """Test _validate_credentials_json when credentials.json doesn't exist."""
+        from mmrelay.cli import _validate_credentials_json
+
+        mock_exists.return_value = False
+        result = _validate_credentials_json("/path/to/config.yaml")
+        self.assertFalse(result)
+
+    @patch('os.path.exists')
+    def test_validate_credentials_json_invalid(self, mock_exists):
+        """Test _validate_credentials_json when credentials.json exists but is invalid."""
+        from mmrelay.cli import _validate_credentials_json
+
+        mock_exists.return_value = True
+
+        with patch('builtins.open', mock_open(read_data='{"incomplete": "data"}')):
+            result = _validate_credentials_json("/path/to/config.yaml")
+            self.assertFalse(result)
+
+    def test_validate_matrix_authentication_with_credentials(self):
+        """Test _validate_matrix_authentication with valid credentials.json."""
+        from mmrelay.cli import _validate_matrix_authentication
+
+        with patch('mmrelay.cli._validate_credentials_json', return_value=True):
+            result = _validate_matrix_authentication("/path/to/config.yaml", None)
+            self.assertEqual(result, "credentials")
+
+    def test_validate_matrix_authentication_with_config(self):
+        """Test _validate_matrix_authentication with valid matrix config section."""
+        from mmrelay.cli import _validate_matrix_authentication
+
+        matrix_section = {
+            "homeserver": "https://matrix.org",
+            "access_token": "test_token",
+            "bot_user_id": "@bot:matrix.org"
+        }
+
+        with patch('mmrelay.cli._validate_credentials_json', return_value=False):
+            result = _validate_matrix_authentication("/path/to/config.yaml", matrix_section)
+            self.assertEqual(result, "config")
+
+    def test_validate_matrix_authentication_none(self):
+        """Test _validate_matrix_authentication with no valid authentication."""
+        from mmrelay.cli import _validate_matrix_authentication
+
+        with patch('mmrelay.cli._validate_credentials_json', return_value=False):
+            result = _validate_matrix_authentication("/path/to/config.yaml", None)
+            self.assertIsNone(result)
+
+
+class TestCLISubcommandHandlers(unittest.TestCase):
+    """Test cases for CLI subcommand handler functions."""
+
+    def test_handle_subcommand_config(self):
+        """Test handle_subcommand dispatching to config commands."""
+        from mmrelay.cli import handle_subcommand
+
+        args = MagicMock()
+        args.command = "config"
+
+        with patch('mmrelay.cli.handle_config_command', return_value=0) as mock_handle:
+            result = handle_subcommand(args)
+            self.assertEqual(result, 0)
+            mock_handle.assert_called_once_with(args)
+
+    def test_handle_subcommand_auth(self):
+        """Test handle_subcommand dispatching to auth commands."""
+        from mmrelay.cli import handle_subcommand
+
+        args = MagicMock()
+        args.command = "auth"
+
+        with patch('mmrelay.cli.handle_auth_command', return_value=0) as mock_handle:
+            result = handle_subcommand(args)
+            self.assertEqual(result, 0)
+            mock_handle.assert_called_once_with(args)
+
+    def test_handle_subcommand_service(self):
+        """Test handle_subcommand dispatching to service commands."""
+        from mmrelay.cli import handle_subcommand
+
+        args = MagicMock()
+        args.command = "service"
+
+        with patch('mmrelay.cli.handle_service_command', return_value=0) as mock_handle:
+            result = handle_subcommand(args)
+            self.assertEqual(result, 0)
+            mock_handle.assert_called_once_with(args)
+
+    def test_handle_config_command_generate(self):
+        """Test handle_config_command with generate subcommand."""
+        from mmrelay.cli import handle_config_command
+
+        args = MagicMock()
+        args.config_command = "generate"
+
+        with patch('mmrelay.cli.generate_sample_config', return_value=True) as mock_generate:
+            result = handle_config_command(args)
+            self.assertEqual(result, 0)
+            mock_generate.assert_called_once()
+
+    def test_handle_config_command_check(self):
+        """Test handle_config_command with check subcommand."""
+        from mmrelay.cli import handle_config_command
+
+        args = MagicMock()
+        args.config_command = "check"
+
+        with patch('mmrelay.cli.check_config', return_value=True) as mock_check:
+            result = handle_config_command(args)
+            self.assertEqual(result, 0)
+            mock_check.assert_called_once_with(args)
+
+    def test_handle_auth_command_login(self):
+        """Test handle_auth_command with login subcommand."""
+        from mmrelay.cli import handle_auth_command
+
+        args = MagicMock()
+        args.auth_command = "login"
+
+        with patch('mmrelay.cli.handle_auth_login', return_value=0) as mock_login:
+            result = handle_auth_command(args)
+            self.assertEqual(result, 0)
+            mock_login.assert_called_once_with(args)
+
+    def test_handle_auth_command_status(self):
+        """Test handle_auth_command with status subcommand."""
+        from mmrelay.cli import handle_auth_command
+
+        args = MagicMock()
+        args.auth_command = "status"
+
+        with patch('mmrelay.cli.handle_auth_status', return_value=0) as mock_status:
+            result = handle_auth_command(args)
+            self.assertEqual(result, 0)
+            mock_status.assert_called_once_with(args)
+
+
 if __name__ == "__main__":
     unittest.main()
