@@ -397,7 +397,7 @@ def reset_custom_data_dir():
     import mmrelay.config
 
     # Store original value
-    original_custom_data_dir = mmrelay.config.custom_data_dir
+    original_custom_data_dir = getattr(mmrelay.config, "custom_data_dir", None)
 
     # Reset to None before test
     mmrelay.config.custom_data_dir = None

@@ -627,20 +627,18 @@ class TestCLIValidationFunctions(unittest.TestCase):
         from mmrelay.cli import _validate_e2ee_dependencies
 
         # Mock the actual imports that the function tries to do
-        with patch("builtins.__import__") as mock_import:
-            with patch("builtins.print"):  # Suppress print output
-                mock_import.return_value = MagicMock()  # All imports succeed
-                result = _validate_e2ee_dependencies()
-                self.assertTrue(result)
+        with patch("builtins.__import__") as mock_import, patch("builtins.print"):
+            mock_import.return_value = MagicMock()  # All imports succeed
+            result = _validate_e2ee_dependencies()
+            self.assertTrue(result)
 
     def test_validate_e2ee_dependencies_missing(self):
         """Test _validate_e2ee_dependencies when dependencies are missing."""
         from mmrelay.cli import _validate_e2ee_dependencies
 
-        with patch("builtins.__import__", side_effect=ImportError("No module named 'olm'")):
-            with patch("builtins.print"):  # Suppress print output
-                result = _validate_e2ee_dependencies()
-                self.assertFalse(result)
+        with patch("builtins.__import__", side_effect=ImportError("No module named 'olm'")), patch("builtins.print"):
+            result = _validate_e2ee_dependencies()
+            self.assertFalse(result)
 
     @patch("sys.platform", "win32")
     def test_validate_e2ee_dependencies_windows(self):
@@ -704,10 +702,9 @@ class TestCLIValidationFunctions(unittest.TestCase):
             "device_id": "test_device",
         }
 
-        with patch("mmrelay.config.get_base_dir", return_value="/home/user/.mmrelay"):
-            with patch("builtins.open", mock_open(read_data=json.dumps(valid_credentials))):
-                result = _validate_credentials_json("/path/to/config.yaml")
-                self.assertTrue(result)
+        with patch("mmrelay.config.get_base_dir", return_value="/home/user/.mmrelay"), patch("builtins.open", mock_open(read_data=json.dumps(valid_credentials))):
+            result = _validate_credentials_json("/path/to/config.yaml")
+            self.assertTrue(result)
 
     @patch("os.path.exists")
     def test_validate_credentials_json_exception_handling(self, mock_exists):
@@ -717,19 +714,17 @@ class TestCLIValidationFunctions(unittest.TestCase):
         mock_exists.return_value = True
 
         # Mock open to raise an exception
-        with patch("builtins.open", side_effect=FileNotFoundError("File not found")):
-            with patch("builtins.print"):  # Suppress print output
-                result = _validate_credentials_json("/path/to/config.yaml")
-                self.assertFalse(result)
+        with patch("builtins.open", side_effect=FileNotFoundError("File not found")), patch("builtins.print"):
+            result = _validate_credentials_json("/path/to/config.yaml")
+            self.assertFalse(result)
 
     def test_validate_matrix_authentication_with_credentials(self):
         """Test _validate_matrix_authentication with valid credentials.json."""
         from mmrelay.cli import _validate_matrix_authentication
 
-        with patch("mmrelay.cli._validate_credentials_json", return_value=True):
-            with patch("builtins.print"):  # Suppress print output
-                result = _validate_matrix_authentication("/path/to/config.yaml", None)
-                self.assertTrue(result)
+        with patch("mmrelay.cli._validate_credentials_json", return_value=True), patch("builtins.print"):
+            result = _validate_matrix_authentication("/path/to/config.yaml", None)
+            self.assertTrue(result)
 
     def test_validate_matrix_authentication_with_config(self):
         """Test _validate_matrix_authentication with valid matrix config section."""
@@ -741,21 +736,19 @@ class TestCLIValidationFunctions(unittest.TestCase):
             "bot_user_id": "@bot:matrix.org",
         }
 
-        with patch("mmrelay.cli._validate_credentials_json", return_value=False):
-            with patch("builtins.print"):  # Suppress print output
-                result = _validate_matrix_authentication(
-                    "/path/to/config.yaml", matrix_section
-                )
-                self.assertTrue(result)
+        with patch("mmrelay.cli._validate_credentials_json", return_value=False), patch("builtins.print"):
+            result = _validate_matrix_authentication(
+                "/path/to/config.yaml", matrix_section
+            )
+            self.assertTrue(result)
 
     def test_validate_matrix_authentication_none(self):
         """Test _validate_matrix_authentication with no valid authentication."""
         from mmrelay.cli import _validate_matrix_authentication
 
-        with patch("mmrelay.cli._validate_credentials_json", return_value=False):
-            with patch("builtins.print"):  # Suppress print output
-                result = _validate_matrix_authentication("/path/to/config.yaml", None)
-                self.assertFalse(result)
+        with patch("mmrelay.cli._validate_credentials_json", return_value=False), patch("builtins.print"):
+            result = _validate_matrix_authentication("/path/to/config.yaml", None)
+            self.assertFalse(result)
 
 
 class TestCLISubcommandHandlers(unittest.TestCase):
@@ -868,10 +861,9 @@ class TestE2EEConfigurationFunctions(unittest.TestCase):
         config = {"matrix": {"homeserver": "https://matrix.org"}}
         matrix_section = {"homeserver": "https://matrix.org"}
 
-        with patch("mmrelay.cli._validate_matrix_authentication", return_value=True):
-            with patch("builtins.print"):  # Suppress print output
-                result = _validate_e2ee_config(config, matrix_section, "/path/to/config.yaml")
-                self.assertTrue(result)
+        with patch("mmrelay.cli._validate_matrix_authentication", return_value=True), patch("builtins.print"):
+            result = _validate_e2ee_config(config, matrix_section, "/path/to/config.yaml")
+            self.assertTrue(result)
 
     def test_validate_e2ee_config_e2ee_enabled_valid(self):
         """Test _validate_e2ee_config with E2EE enabled and valid."""
@@ -883,13 +875,13 @@ class TestE2EEConfigurationFunctions(unittest.TestCase):
             "e2ee": {"enabled": True, "store_path": "~/.mmrelay/store"},
         }
 
-        with patch("mmrelay.cli._validate_matrix_authentication", return_value=True):
-            with patch("mmrelay.cli._validate_e2ee_dependencies", return_value=True):
-                with patch("os.path.expanduser", return_value="/home/user/.mmrelay/store"):
-                    with patch("os.path.exists", return_value=True):
-                        with patch("builtins.print"):  # Suppress print output
-                            result = _validate_e2ee_config(config, matrix_section, "/path/to/config.yaml")
-                            self.assertTrue(result)
+        with patch("mmrelay.cli._validate_matrix_authentication", return_value=True), \
+             patch("mmrelay.cli._validate_e2ee_dependencies", return_value=True), \
+             patch("os.path.expanduser", return_value="/home/user/.mmrelay/store"), \
+             patch("os.path.exists", return_value=True), \
+             patch("builtins.print"):
+            result = _validate_e2ee_config(config, matrix_section, "/path/to/config.yaml")
+            self.assertTrue(result)
 
     def test_validate_e2ee_config_e2ee_enabled_invalid_deps(self):
         """Test _validate_e2ee_config with E2EE enabled but invalid dependencies."""
@@ -898,10 +890,9 @@ class TestE2EEConfigurationFunctions(unittest.TestCase):
         config = {"matrix": {"homeserver": "https://matrix.org", "e2ee": {"enabled": True}}}
         matrix_section = {"homeserver": "https://matrix.org", "e2ee": {"enabled": True}}
 
-        with patch("mmrelay.cli._validate_matrix_authentication", return_value=True):
-            with patch("mmrelay.cli._validate_e2ee_dependencies", return_value=False):
-                result = _validate_e2ee_config(config, matrix_section, "/path/to/config.yaml")
-                self.assertFalse(result)
+        with patch("mmrelay.cli._validate_matrix_authentication", return_value=True), patch("mmrelay.cli._validate_e2ee_dependencies", return_value=False):
+            result = _validate_e2ee_config(config, matrix_section, "/path/to/config.yaml")
+            self.assertFalse(result)
 
 
 class TestE2EEAnalysisFunctions(unittest.TestCase):
@@ -1009,17 +1000,15 @@ class TestE2EEPrintFunctions(unittest.TestCase):
         from mmrelay.cli import _print_environment_summary
 
         # Mock the specific modules instead of builtins.__import__ to avoid Python 3.10 conflicts
-        with patch.dict('sys.modules', {
-            'olm': MagicMock(),
-            'nio.crypto': MagicMock(),
-            'nio.store': MagicMock()
-        }):
-            with patch("mmrelay.cli.print") as mock_print:
-                _print_environment_summary()
-                mock_print.assert_called()
-                # Check that Linux-specific messages are printed
-                calls = [call.args[0] for call in mock_print.call_args_list]
-                self.assertTrue(any("Platform: linux" in call for call in calls))
+        with patch.dict(
+            "sys.modules",
+            {"olm": MagicMock(), "nio.crypto": MagicMock(), "nio.store": MagicMock()},
+        ), patch("mmrelay.cli.print") as mock_print:
+            _print_environment_summary()
+            mock_print.assert_called()
+            # Check that Linux-specific messages are printed
+            calls = [call.args[0] for call in mock_print.call_args_list]
+            self.assertTrue(any("Platform: linux" in call for call in calls))
 
 
 if __name__ == "__main__":

@@ -113,13 +113,15 @@ def _submit_coro(coro, loop=None):
         running = asyncio.get_running_loop()
         return running.create_task(coro)
     except RuntimeError:
-        # No running loop: create a private one, run “soon”
-        tmp = asyncio.new_event_loop()
+        # No running loop: run synchronously and wrap the result in a completed Future
+        from concurrent.futures import Future
+        f = Future()
         try:
-            return asyncio.run_coroutine_threadsafe(coro, tmp)
-        finally:
-            # don’t leak this loop: the caller must not force this path in tests
-            pass
+            result = asyncio.run(coro)
+            f.set_result(result)
+        except Exception as e:
+            f.set_exception(e)
+        return f
 
 
 def is_running_as_service():
@@ -452,7 +454,8 @@ async def reconnect():
                         "Shutdown in progress. Aborting reconnection attempts."
                     )
                     break
-                meshtastic_client = connect_meshtastic(force_connect=True)
+                loop = asyncio.get_event_loop()
+                meshtastic_client = await loop.run_in_executor(None, connect_meshtastic, True)
                 if meshtastic_client:
                     logger.info("Reconnected successfully.")
                     break

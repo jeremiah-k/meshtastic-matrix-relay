@@ -13,6 +13,7 @@ Tests the main application flow including:
 """
 
 import asyncio
+import contextlib
 import os
 import sys
 import unittest
@@ -872,10 +873,8 @@ def test_main_database_wipe_config(
 
     with patch("mmrelay.main.wipe_message_map") as mock_wipe:
         with patch("mmrelay.main.asyncio.sleep", side_effect=KeyboardInterrupt):
-            try:
+            with contextlib.suppress(KeyboardInterrupt):
                 asyncio.run(main(config))
-            except KeyboardInterrupt:
-                pass
 
         # Should wipe message map on startup
         mock_wipe.assert_called()
@@ -1174,10 +1173,8 @@ class TestMainAsyncFunction(unittest.TestCase):
         mock_connect_mesh.return_value = MagicMock()
 
         with patch("mmrelay.main.asyncio.sleep", side_effect=KeyboardInterrupt):
-            try:
+            with contextlib.suppress(KeyboardInterrupt):
                 asyncio.run(main(config))
-            except KeyboardInterrupt:
-                pass
 
         # Verify initialization sequence
         mock_init_db.assert_called_once()
@@ -1217,10 +1214,8 @@ class TestMainAsyncFunction(unittest.TestCase):
         mock_connect_mesh.return_value = MagicMock()
 
         with patch("mmrelay.main.asyncio.sleep", side_effect=KeyboardInterrupt):
-            try:
+            with contextlib.suppress(KeyboardInterrupt):
                 asyncio.run(main(config))
-            except KeyboardInterrupt:
-                pass
 
         # Verify join_matrix_room was called for each room
         self.assertEqual(mock_join.call_count, 2)
@@ -1255,10 +1250,8 @@ class TestMainAsyncFunction(unittest.TestCase):
             mock_get_loop.return_value = mock_loop
 
             with patch("mmrelay.main.asyncio.sleep", side_effect=KeyboardInterrupt):
-                try:
+                with contextlib.suppress(KeyboardInterrupt):
                     asyncio.run(main(config))
-                except KeyboardInterrupt:
-                    pass
 
         # Verify event loop was accessed for meshtastic utils
         mock_get_loop.assert_called()
