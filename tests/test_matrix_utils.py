@@ -1506,3 +1506,71 @@ async def test_connect_matrix_legacy_config(
         # Verify sync was called
         mock_client_instance.sync.assert_called()
         # Note: whoami() is no longer called in the new E2EE implementation
+
+
+def test_truncate_message_with_truncation():
+    """Test truncate_message for both short and long messages."""
+    from mmrelay.matrix_utils import truncate_message
+
+    # Test with a message shorter than the limit
+    assert truncate_message("short", max_bytes=10) == "short"
+
+    # Test with a message longer than the limit
+    long_msg = "This is a very long message that needs to be truncated."
+    truncated = truncate_message(long_msg, max_bytes=20)
+    assert truncated == "This is a very long "
+
+
+def test_strip_quoted_lines_comprehensive():
+    """Test strip_quoted_lines with and without quoted content."""
+    from mmrelay.matrix_utils import strip_quoted_lines
+
+    # Text without quoted lines should be joined
+    normal_text = "Just normal text\nwith line breaks"
+    assert strip_quoted_lines(normal_text) == "Just normal text with line breaks"
+
+    # Text with quoted lines should have them stripped
+    quoted_text = "> quoted line\nThis is a reply\n> another quote"
+    assert strip_quoted_lines(quoted_text) == "This is a reply"
+
+    # Empty and all-quotes text should result in empty string
+    assert strip_quoted_lines("") == ""
+    assert strip_quoted_lines("> quote1\n> quote2") == ""
+
+
+def test_validate_prefix_format_comprehensive():
+    """Test validate_prefix_format with valid and invalid format strings."""
+    from mmrelay.matrix_utils import validate_prefix_format
+
+    # Function expects a dict, not a list
+    available_vars = {"user": "testuser", "message": "testmsg", "user10": "testuser10"}
+
+    # Valid format strings should return (True, None)
+    valid_formats = [
+        "[{user}]",
+        "{user}: {message}",
+        "{user10}",
+        "No variables here",
+        "",
+    ]
+
+    for format_str in valid_formats:
+        is_valid, error_msg = validate_prefix_format(format_str, available_vars)
+        assert is_valid is True
+        assert error_msg is None
+
+    # Invalid format strings should return (False, error_message)
+    available_vars_limited = {"user": "testuser", "message": "testmsg"}
+    invalid_formats = [
+        "{unknown_var}",
+        "{user} {unknown}",
+        "{user10}",  # not in available_vars_limited
+    ]
+
+    for format_str in invalid_formats:
+        is_valid, error_msg = validate_prefix_format(format_str, available_vars_limited)
+        assert is_valid is False
+        assert error_msg is not None
+        assert isinstance(error_msg, str)
+
+

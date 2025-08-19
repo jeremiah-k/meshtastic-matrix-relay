@@ -368,11 +368,15 @@ def connect_meshtastic(passed_config=None, force_connect=False):
 
 def on_lost_meshtastic_connection(interface=None, detection_source="unknown"):
     """
-    Handles loss of connection to the Meshtastic device by safely closing the current client and initiating a reconnection sequence, unless a shutdown or reconnection is already underway.
-
+    Mark the Meshtastic connection as lost, close the current client, and initiate an asynchronous reconnect.
+    
+    If a shutdown is in progress or a reconnect is already underway this function returns immediately. Otherwise it:
+    - sets the module-level `reconnecting` flag,
+    - attempts to close and clear the module-level `meshtastic_client` (handles already-closed file descriptors),
+    - schedules the reconnect() coroutine on the global event loop if that loop exists and is open.
+    
     Parameters:
-        interface: Optional Meshtastic interface instance, included for compatibility.
-        detection_source (str): Source identifier for the connection loss, used for debugging purposes.
+        detection_source (str): Identifier for where or how the loss was detected; used in log messages.
     """
     global meshtastic_client, reconnecting, shutting_down, event_loop, reconnect_task
     with meshtastic_lock:
@@ -400,15 +404,15 @@ def on_lost_meshtastic_connection(interface=None, detection_source="unknown"):
                 logger.warning(f"Error closing Meshtastic client: {e}")
         meshtastic_client = None
 
-        if event_loop:
-            reconnect_task = _submit_coro(reconnect(), event_loop)
+        if event_loop and not event_loop.is_closed():
+            reconnect_task = event_loop.create_task(reconnect())
 
 
 async def reconnect():
     """
-    Asynchronously attempts to reconnect to the Meshtastic device using exponential backoff, halting if shutdown is initiated.
-
-    Reconnection begins with a 10-second delay, doubling after each failure up to a maximum of 5 minutes. If not running as a service, a progress bar is displayed during the wait. The process stops immediately if shutdown is triggered or reconnection succeeds.
+    Attempt to reconnect to the Meshtastic device asynchronously using exponential backoff.
+    
+    Starts with DEFAULT_BACKOFF_TIME and doubles after each failure, capped at 300 seconds (5 minutes). Between attempts the task either sleeps or — when not running as a system service — displays a Rich progress countdown. On each cycle it calls connect_meshtastic(force_connect=True); the loop exits when a connection is re-established, when shutting_down is set, or when the task is cancelled. Any exceptions during attempts are logged; asyncio.CancelledError is handled and logged. The function clears the module-level `reconnecting` flag on exit.
     """
     global meshtastic_client, reconnecting, shutting_down
     backoff_time = DEFAULT_BACKOFF_TIME

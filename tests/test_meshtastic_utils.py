@@ -254,6 +254,10 @@ class TestMeshtasticUtils(unittest.TestCase):
         mock_client.getMyNodeInfo.return_value = {
             "user": {"shortName": "test", "hwModel": "test"}
         }
+        # Ensure the mock doesn't create any async operations
+        mock_client.close = MagicMock()
+
+        # Configure BLE mock to return our mock client
         mock_ble.return_value = mock_client
 
         config = {
@@ -880,6 +884,47 @@ def test_check_connection_function_exists(reset_meshtastic_globals):
     # This test just verifies the function exists without running it
     # to avoid the hanging issue in the async loop
     assert callable(check_connection)
+
+
+class TestCoroutineSubmission(unittest.TestCase):
+    """Test cases for coroutine submission functionality."""
+
+    def test_submit_coro_with_non_coroutine_input(self):
+        """Test that _submit_coro returns None when given non-coroutine input."""
+        from mmrelay.meshtastic_utils import _submit_coro
+
+        # Test with string input
+        result = _submit_coro("not a coroutine")
+        self.assertIsNone(result)
+
+        # Test with None input
+        result = _submit_coro(None)
+        self.assertIsNone(result)
+
+        # Test with integer input
+        result = _submit_coro(42)
+        self.assertIsNone(result)
+
+
+class TestTextReplyFunctionality(unittest.TestCase):
+    """Test cases for text reply functionality."""
+
+    def test_sendTextReply_with_none_interface(self):
+        """Test sendTextReply returns None when interface is None."""
+        from mmrelay.meshtastic_utils import sendTextReply
+
+        # Test with None interface
+        result = sendTextReply(None, "Test message", reply_id=12345)
+
+        # Should return None
+        self.assertIsNone(result)
+
+    def test_sendTextReply_function_exists_and_callable(self):
+        """Test that sendTextReply function exists and is callable."""
+        from mmrelay.meshtastic_utils import sendTextReply
+
+        # Function should exist and be callable
+        self.assertTrue(callable(sendTextReply))
 
 
 if __name__ == "__main__":
