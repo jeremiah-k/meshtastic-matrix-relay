@@ -1,13 +1,13 @@
-ignore:
-  - tests/**/*
-
 coverage:
   status:
     project:
       default:
         target: 40%
         threshold: 2%
-    patch: off
+    patch:
+      default:
+        target: 40%
+        threshold: 2%
 
 component_management:
   default_rules:
@@ -15,34 +15,43 @@ component_management:
       - type: project
         target: auto
         threshold: 2%
+      - type: patch
+        target: 40%
+        threshold: 2%
   individual_components:
     - component_id: plugins
       name: Plugins
       paths:
         - src/mmrelay/plugins/**
-        - src/mmrelay/plugin_loader.py
       statuses:
         - type: project
+          target: 50%
+          threshold: 3%
+        - type: patch
           target: 50%
           threshold: 3%
     - component_id: configuration
       name: Configuration
       paths:
+        - src/mmrelay/config_checker.py
         - src/mmrelay/config.py
-        - src/mmrelay/cli.py
       statuses:
         - type: project
-          target: 50%
+          target: 70%
+          threshold: 2%
+        - type: patch
+          target: 70%
           threshold: 2%
     - component_id: core_utils
       name: Core Utils
       paths:
         - src/mmrelay/meshtastic_utils.py
         - src/mmrelay/matrix_utils.py
-        - src/mmrelay/message_queue.py
-        - src/mmrelay/log_utils.py
       statuses:
         - type: project
+          target: 40%
+          threshold: 3%
+        - type: patch
           target: 40%
           threshold: 3%
     - component_id: cli_main
@@ -54,12 +63,18 @@ component_management:
         - type: project
           target: 60%
           threshold: 3%
+        - type: patch
+          target: 60%
+          threshold: 3%
     - component_id: database
       name: Database
       paths:
         - src/mmrelay/db_utils.py
       statuses:
         - type: project
+          target: 70%
+          threshold: 2%
+        - type: patch
           target: 70%
           threshold: 2%
     - component_id: setup_tools
@@ -71,17 +86,11 @@ component_management:
         - type: project
           target: 30%
           threshold: 3%
-    - component_id: constants
-      name: Constants & Init
-      paths:
-        - src/mmrelay/constants/**
-        - src/mmrelay/__init__.py
-      statuses:
-        - type: project
-          target: 80%
-          threshold: 2%
+        - type: patch
+          target: 30%
+          threshold: 3%
 
 comment:
-  layout: header, diff, flags, components
+  layout: "header, diff, flags, components"
   behavior: default
   require_changes: false
