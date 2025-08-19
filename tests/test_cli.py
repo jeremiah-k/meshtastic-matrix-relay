@@ -637,10 +637,10 @@ class TestCLIValidationFunctions(unittest.TestCase):
         """Test _validate_e2ee_dependencies when dependencies are missing."""
         from mmrelay.cli import _validate_e2ee_dependencies
 
-        with patch("importlib.util.find_spec") as mock_find_spec:
-            mock_find_spec.return_value = None  # Dependency not found
-            result = _validate_e2ee_dependencies()
-            self.assertFalse(result)
+        with patch("builtins.__import__", side_effect=ImportError("No module named 'olm'")):
+            with patch("builtins.print"):  # Suppress print output
+                result = _validate_e2ee_dependencies()
+                self.assertFalse(result)
 
     @patch("sys.platform", "win32")
     def test_validate_e2ee_dependencies_windows(self):

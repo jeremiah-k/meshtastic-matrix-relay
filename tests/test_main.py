@@ -888,16 +888,6 @@ class TestDatabaseConfiguration(unittest.TestCase):
 class TestRunMainFunction(unittest.TestCase):
     """Test cases for run_main function."""
 
-    def setUp(self):
-        """Set up test environment and store original config state."""
-        import mmrelay.config
-        self.original_custom_data_dir = mmrelay.config.custom_data_dir
-
-    def tearDown(self):
-        """Clean up test environment and restore original config state."""
-        import mmrelay.config
-        mmrelay.config.custom_data_dir = self.original_custom_data_dir
-
     @patch("mmrelay.main.print_banner")
     @patch("mmrelay.config.load_config")
     @patch("mmrelay.config.load_credentials")
@@ -1012,49 +1002,38 @@ class TestRunMainFunction(unittest.TestCase):
         mock_print_banner,
     ):
         """Test run_main with custom data directory."""
-        import tempfile
-        import mmrelay.config
-        from os.path import abspath as real_abspath  # Import real function before mocking
+        # Use a simple custom data directory path
+        custom_data_dir = "/tmp/test_custom_data"
+        mock_abspath.return_value = custom_data_dir
 
-        # Store original custom_data_dir to restore later
-        original_custom_data_dir = mmrelay.config.custom_data_dir
+        mock_config = {
+            "matrix": {"homeserver": "https://matrix.org"},
+            "meshtastic": {"connection_type": "serial"},
+            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+        }
+        mock_load_config.return_value = mock_config
+        mock_load_credentials.return_value = None
 
-        try:
-            # Use a simple custom data directory path
-            custom_data_dir = "/tmp/test_custom_data"
-            mock_abspath.return_value = custom_data_dir
+        # Mock asyncio.run to properly close coroutines
+        def mock_run_with_cleanup(coro):
+            """Mock that properly closes coroutines to prevent warnings."""
+            if hasattr(coro, 'close'):
+                coro.close()
+            return None
 
-            mock_config = {
-                "matrix": {"homeserver": "https://matrix.org"},
-                "meshtastic": {"connection_type": "serial"},
-                "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
-            }
-            mock_load_config.return_value = mock_config
-            mock_load_credentials.return_value = None
+        mock_asyncio_run.side_effect = mock_run_with_cleanup
 
-            # Mock asyncio.run to properly close coroutines
-            def mock_run_with_cleanup(coro):
-                """Mock that properly closes coroutines to prevent warnings."""
-                if hasattr(coro, 'close'):
-                    coro.close()
-                return None
+        mock_args = MagicMock()
+        mock_args.data_dir = custom_data_dir
+        mock_args.log_level = None
 
-            mock_asyncio_run.side_effect = mock_run_with_cleanup
+        result = run_main(mock_args)
 
-            mock_args = MagicMock()
-            mock_args.data_dir = custom_data_dir
-            mock_args.log_level = None
-
-            result = run_main(mock_args)
-
-            self.assertEqual(result, 0)
-            # Check that abspath was called with our custom data dir (may be called multiple times)
-            mock_abspath.assert_any_call(custom_data_dir)
-            # Check that makedirs was called with our custom data dir (may be called multiple times for logs too)
-            mock_makedirs.assert_any_call(custom_data_dir, exist_ok=True)
-        finally:
-            # Restore original custom_data_dir
-            mmrelay.config.custom_data_dir = original_custom_data_dir
+        self.assertEqual(result, 0)
+        # Check that abspath was called with our custom data dir (may be called multiple times)
+        mock_abspath.assert_any_call(custom_data_dir)
+        # Check that makedirs was called with our custom data dir (may be called multiple times for logs too)
+        mock_makedirs.assert_any_call(custom_data_dir, exist_ok=True)
 
     @patch("mmrelay.main.print_banner")
     @patch("mmrelay.config.load_config")
