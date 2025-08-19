@@ -626,9 +626,11 @@ class TestCLIValidationFunctions(unittest.TestCase):
         """Test _validate_e2ee_dependencies when dependencies are available."""
         from mmrelay.cli import _validate_e2ee_dependencies
 
-        # Mock the actual imports that the function tries to do
-        with patch("builtins.__import__") as mock_import, patch("builtins.print"):
-            mock_import.return_value = MagicMock()  # All imports succeed
+        # Mock the required modules as available
+        with patch.dict(
+            "sys.modules",
+            {"olm": MagicMock(), "nio.crypto": MagicMock(), "nio.store": MagicMock()},
+        ), patch("builtins.print"):
             result = _validate_e2ee_dependencies()
             self.assertTrue(result)
 
@@ -636,7 +638,13 @@ class TestCLIValidationFunctions(unittest.TestCase):
         """Test _validate_e2ee_dependencies when dependencies are missing."""
         from mmrelay.cli import _validate_e2ee_dependencies
 
-        with patch("builtins.__import__", side_effect=ImportError("No module named 'olm'")), patch("builtins.print"):
+        # Mock missing modules by ensuring they're not in sys.modules
+        modules_to_remove = ["olm", "nio.crypto", "nio.store"]
+        with patch.dict("sys.modules", {}, clear=False), patch("builtins.print"):
+            # Remove the modules if they exist
+            for module in modules_to_remove:
+                if module in sys.modules:
+                    del sys.modules[module]
             result = _validate_e2ee_dependencies()
             self.assertFalse(result)
 
@@ -911,8 +919,10 @@ class TestE2EEAnalysisFunctions(unittest.TestCase):
         }
         mock_exists.return_value = True  # credentials.json exists
 
-        with patch("builtins.__import__") as mock_import:
-            mock_import.return_value = MagicMock()  # Dependencies available
+        with patch.dict(
+            "sys.modules",
+            {"olm": MagicMock(), "nio.crypto": MagicMock(), "nio.store": MagicMock()},
+        ):
             result = _analyze_e2ee_setup(config, "/path/to/config.yaml")
 
             self.assertTrue(result["config_enabled"])
@@ -943,8 +953,10 @@ class TestE2EEAnalysisFunctions(unittest.TestCase):
         config = {"matrix": {"e2ee": {"enabled": False}}}
         mock_exists.return_value = True
 
-        with patch("builtins.__import__") as mock_import:
-            mock_import.return_value = MagicMock()
+        with patch.dict(
+            "sys.modules",
+            {"olm": MagicMock(), "nio.crypto": MagicMock(), "nio.store": MagicMock()},
+        ):
             result = _analyze_e2ee_setup(config, "/path/to/config.yaml")
 
             self.assertFalse(result["config_enabled"])

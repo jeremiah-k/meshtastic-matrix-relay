@@ -887,6 +887,15 @@ class TestDatabaseConfiguration(unittest.TestCase):
 class TestRunMainFunction(unittest.TestCase):
     """Test cases for run_main function."""
 
+    def _get_mock_run_with_cleanup(self):
+        """Helper method that returns a mock function for asyncio.run that properly closes coroutines."""
+        def mock_run_with_cleanup(coro):
+            """Mock that properly closes coroutines to prevent warnings."""
+            if hasattr(coro, 'close'):
+                coro.close()
+            return None
+        return mock_run_with_cleanup
+
     @patch("mmrelay.main.print_banner")
     @patch("mmrelay.config.load_config")
     @patch("mmrelay.config.load_credentials")
@@ -909,13 +918,7 @@ class TestRunMainFunction(unittest.TestCase):
         mock_load_credentials.return_value = None
 
         # Mock asyncio.run to properly close coroutines
-        def mock_run_with_cleanup(coro):
-            """Mock that properly closes coroutines to prevent warnings."""
-            if hasattr(coro, 'close'):
-                coro.close()
-            return None
-
-        mock_asyncio_run.side_effect = mock_run_with_cleanup
+        mock_asyncio_run.side_effect = self._get_mock_run_with_cleanup()
 
         # Mock args
         mock_args = MagicMock()
@@ -973,13 +976,7 @@ class TestRunMainFunction(unittest.TestCase):
 
         with patch("mmrelay.main.asyncio.run") as mock_asyncio_run:
             # Mock asyncio.run to properly close coroutines
-            def mock_run_with_cleanup(coro):
-                """Mock that properly closes coroutines to prevent warnings."""
-                if hasattr(coro, 'close'):
-                    coro.close()
-                return None
-
-            mock_asyncio_run.side_effect = mock_run_with_cleanup
+            mock_asyncio_run.side_effect = self._get_mock_run_with_cleanup()
             result = run_main(mock_args)
 
         self.assertEqual(result, 0)
@@ -1014,13 +1011,7 @@ class TestRunMainFunction(unittest.TestCase):
         mock_load_credentials.return_value = None
 
         # Mock asyncio.run to properly close coroutines
-        def mock_run_with_cleanup(coro):
-            """Mock that properly closes coroutines to prevent warnings."""
-            if hasattr(coro, 'close'):
-                coro.close()
-            return None
-
-        mock_asyncio_run.side_effect = mock_run_with_cleanup
+        mock_asyncio_run.side_effect = self._get_mock_run_with_cleanup()
 
         mock_args = MagicMock()
         mock_args.data_dir = custom_data_dir
@@ -1055,13 +1046,7 @@ class TestRunMainFunction(unittest.TestCase):
 
         with patch("mmrelay.main.asyncio.run") as mock_asyncio_run:
             # Mock asyncio.run to properly close coroutines
-            def mock_run_with_cleanup(coro):
-                """Mock that properly closes coroutines to prevent warnings."""
-                if hasattr(coro, 'close'):
-                    coro.close()
-                return None
-
-            mock_asyncio_run.side_effect = mock_run_with_cleanup
+            mock_asyncio_run.side_effect = self._get_mock_run_with_cleanup()
             result = run_main(mock_args)
 
         self.assertEqual(result, 0)
