@@ -400,8 +400,8 @@ def on_lost_meshtastic_connection(interface=None, detection_source="unknown"):
                 logger.warning(f"Error closing Meshtastic client: {e}")
         meshtastic_client = None
 
-        if event_loop:
-            reconnect_task = _submit_coro(reconnect(), event_loop)
+        if event_loop and not event_loop.is_closed():
+            reconnect_task = event_loop.create_task(reconnect())
 
 
 async def reconnect():
