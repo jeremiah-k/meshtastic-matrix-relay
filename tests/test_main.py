@@ -886,8 +886,8 @@ class TestRunMainFunction(unittest.TestCase):
     """Test cases for run_main function."""
 
     @patch('mmrelay.main.print_banner')
-    @patch('mmrelay.main.load_config')
-    @patch('mmrelay.main.load_credentials')
+    @patch('mmrelay.config.load_config')
+    @patch('mmrelay.config.load_credentials')
     @patch('mmrelay.main.asyncio.run')
     def test_run_main_success(self, mock_asyncio_run, mock_load_credentials, mock_load_config, mock_print_banner):
         """Test successful run_main execution."""
@@ -912,8 +912,8 @@ class TestRunMainFunction(unittest.TestCase):
         mock_asyncio_run.assert_called_once()
 
     @patch('mmrelay.main.print_banner')
-    @patch('mmrelay.main.load_config')
-    @patch('mmrelay.main.load_credentials')
+    @patch('mmrelay.config.load_config')
+    @patch('mmrelay.config.load_credentials')
     def test_run_main_missing_config_keys(self, mock_load_credentials, mock_load_config, mock_print_banner):
         """Test run_main with missing required configuration keys."""
         # Mock incomplete configuration
@@ -931,8 +931,8 @@ class TestRunMainFunction(unittest.TestCase):
         mock_print_banner.assert_called_once()
 
     @patch('mmrelay.main.print_banner')
-    @patch('mmrelay.main.load_config')
-    @patch('mmrelay.main.load_credentials')
+    @patch('mmrelay.config.load_config')
+    @patch('mmrelay.config.load_credentials')
     def test_run_main_with_credentials_json(self, mock_load_credentials, mock_load_config, mock_print_banner):
         """Test run_main with credentials.json present (different required keys)."""
         # Mock configuration with credentials.json present
@@ -955,8 +955,8 @@ class TestRunMainFunction(unittest.TestCase):
         mock_asyncio_run.assert_called_once()
 
     @patch('mmrelay.main.print_banner')
-    @patch('mmrelay.main.load_config')
-    @patch('mmrelay.main.load_credentials')
+    @patch('mmrelay.config.load_config')
+    @patch('mmrelay.config.load_credentials')
     @patch('mmrelay.main.asyncio.run')
     @patch('os.makedirs')
     @patch('os.path.abspath')
@@ -985,8 +985,8 @@ class TestRunMainFunction(unittest.TestCase):
         mock_makedirs.assert_called_once_with(custom_data_dir, exist_ok=True)
 
     @patch('mmrelay.main.print_banner')
-    @patch('mmrelay.main.load_config')
-    @patch('mmrelay.main.load_credentials')
+    @patch('mmrelay.config.load_config')
+    @patch('mmrelay.config.load_credentials')
     def test_run_main_with_log_level_override(self, mock_load_credentials, mock_load_config, mock_print_banner):
         """Test run_main with log level override."""
         mock_config = {
@@ -1009,8 +1009,8 @@ class TestRunMainFunction(unittest.TestCase):
         self.assertEqual(mock_config["logging"]["level"], "DEBUG")
 
     @patch('mmrelay.main.print_banner')
-    @patch('mmrelay.main.load_config')
-    @patch('mmrelay.main.load_credentials')
+    @patch('mmrelay.config.load_config')
+    @patch('mmrelay.config.load_credentials')
     @patch('mmrelay.main.asyncio.run')
     def test_run_main_keyboard_interrupt(self, mock_asyncio_run, mock_load_credentials, mock_load_config, mock_print_banner):
         """Test run_main handling KeyboardInterrupt."""
@@ -1032,8 +1032,8 @@ class TestRunMainFunction(unittest.TestCase):
         self.assertEqual(result, 0)  # KeyboardInterrupt should return 0
 
     @patch('mmrelay.main.print_banner')
-    @patch('mmrelay.main.load_config')
-    @patch('mmrelay.main.load_credentials')
+    @patch('mmrelay.config.load_config')
+    @patch('mmrelay.config.load_credentials')
     @patch('mmrelay.main.asyncio.run')
     def test_run_main_exception_handling(self, mock_asyncio_run, mock_load_credentials, mock_load_config, mock_print_banner):
         """Test run_main handling general exceptions."""
