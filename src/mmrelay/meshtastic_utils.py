@@ -99,9 +99,16 @@ subscribed_to_connection_lost = False
 
 def _submit_coro(coro, loop=None):
     """
-    Safely submits an asyncio coroutine to the appropriate event loop for execution.
-
-    If a valid event loop is provided and open, schedules the coroutine thread-safely. Otherwise, attempts to use the currently running loop or creates a temporary event loop as a fallback. Returns None if the input is not a coroutine.
+    Submit an asyncio coroutine for execution on the appropriate event loop and return a Future representing its result.
+    
+    If `loop` (or the module-level `event_loop`) is an open asyncio event loop, the coroutine is scheduled thread-safely via `asyncio.run_coroutine_threadsafe`. If there is a currently running loop in the calling thread, the coroutine is scheduled with that loop's `create_task`. If no running loop exists, the coroutine is executed synchronously with `asyncio.run` and its result (or raised exception) is wrapped in a completed Future. If `coro` is not a coroutine, returns None.
+    
+    Parameters:
+        coro: The coroutine object to execute.
+        loop: Optional asyncio event loop to target. If omitted, the module-level `event_loop` is used.
+    
+    Returns:
+        A Future-like object representing the coroutine's eventual result, or None if `coro` is not a coroutine.
     """
     if not inspect.iscoroutine(coro):
         # Defensive guard for tests that mistakenly patch async funcs to return None
@@ -412,9 +419,9 @@ def on_lost_meshtastic_connection(interface=None, detection_source="unknown"):
 
 async def reconnect():
     """
-    Attempt to reconnect to the Meshtastic device asynchronously using exponential backoff.
-
-    Starts with DEFAULT_BACKOFF_TIME and doubles after each failure, capped at 300 seconds (5 minutes). Between attempts the task either sleeps or — when not running as a system service — displays a Rich progress countdown. On each cycle it calls connect_meshtastic(force_connect=True); the loop exits when a connection is re-established, when shutting_down is set, or when the task is cancelled. Any exceptions during attempts are logged; asyncio.CancelledError is handled and logged. The function clears the module-level `reconnecting` flag on exit.
+    Attempt to re-establish a Meshtastic connection with exponential backoff.
+    
+    Starts from DEFAULT_BACKOFF_TIME and doubles after each failure up to 300 seconds. Between attempts the coroutine sleeps; when not running as a systemd service it displays a Rich progress countdown during the backoff. Each cycle invokes connect_meshtastic(force_connect=True) in the default executor; the loop exits when a connection is obtained, the global shutting_down flag is set, or the task is cancelled. Exceptions during attempts are logged; asyncio.CancelledError is caught and logged. Ensures the module-level reconnecting flag is cleared before returning.
     """
     global meshtastic_client, reconnecting, shutting_down
     backoff_time = DEFAULT_BACKOFF_TIME

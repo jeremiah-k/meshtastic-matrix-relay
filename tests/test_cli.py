@@ -601,7 +601,7 @@ class TestMainFunction(unittest.TestCase):
     @patch("mmrelay.main.run_main")
     def test_main_run_main(self, mock_run_main, mock_parse):
         """
-        Tests that the main function calls run_main with parsed arguments and returns its exit code when no special CLI commands are specified.
+        Verify that when no top-level CLI command flags are set, main() delegates to run_main with the parsed args and returns its exit code.
         """
         args = MagicMock()
         args.command = None
