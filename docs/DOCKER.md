@@ -190,6 +190,8 @@ MMRelay checks for authentication in this order:
 
 **These environment variables configure connection and system settings - NOT authentication.** Authentication is handled through the methods described above.
 
+**Security Note:** Environment variables are visible via `docker inspect` and process listings. For stronger secrecy, prefer mounting `credentials.json` from the host with restrictive permissions.
+
 ### Meshtastic Connection Settings
 
 Configure how MMRelay connects to your Meshtastic device:
