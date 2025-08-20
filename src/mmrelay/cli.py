@@ -39,28 +39,8 @@ from mmrelay.constants.network import (
     CONNECTION_TYPE_SERIAL,
     CONNECTION_TYPE_TCP,
 )
+from mmrelay.config import set_secure_file_permissions
 from mmrelay.tools import get_sample_config_path
-
-# =============================================================================
-# Helper Functions
-# =============================================================================
-
-
-def set_secure_file_permissions(file_path: str, mode: int = 0o640) -> None:
-    """
-    Set secure file permissions on Unix systems.
-
-    Args:
-        file_path: Path to the file
-        mode: Permission mode (default: 0o640 - owner read/write, group read)
-    """
-    if sys.platform in ["linux", "darwin"]:
-        try:
-            os.chmod(file_path, mode)
-        except (OSError, PermissionError):
-            # Permissions setting failed, but file was created successfully
-            pass
-
 
 # =============================================================================
 # CLI Argument Parsing and Command Handling
@@ -1278,8 +1258,8 @@ def generate_sample_config():
         try:
             shutil.copy2(sample_config_path, target_path)
 
-            # Set secure permissions on Unix systems (640 - owner read/write, group read)
-            set_secure_file_permissions(target_path, 0o640)
+            # Set secure permissions on Unix systems (600 - owner read/write)
+            set_secure_file_permissions(target_path)
 
             print(f"Generated sample config file at: {target_path}")
             print(
@@ -1303,8 +1283,8 @@ def generate_sample_config():
         with open(target_path, "w") as f:
             f.write(sample_config_content)
 
-        # Set secure permissions on Unix systems (640 - owner read/write, group read)
-        set_secure_file_permissions(target_path, 0o640)
+        # Set secure permissions on Unix systems (600 - owner read/write)
+        set_secure_file_permissions(target_path)
 
         print(f"Generated sample config file at: {target_path}")
         print(

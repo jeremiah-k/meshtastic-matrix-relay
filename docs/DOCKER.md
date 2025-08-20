@@ -375,88 +375,15 @@ MMRELAY_HOME=/path/to/your/data
 - For Serial: Check device permissions and path
 - For BLE: Ensure privileged mode and host networking are enabled
 
-## E2EE (End-to-End Encryption) Setup
-
-MMRelay v1.2+ supports Matrix End-to-End Encryption in Docker environments using environment variables.
-
-### Prerequisites
-
-- **Linux/macOS host**: E2EE is not supported on Windows due to library limitations
-- **E2EE-enabled image**: Use `ghcr.io/jeremiah-k/mmrelay:latest` or build with E2EE support
-
-### Setup Methods
-
-#### Method 1: Auth System + Docker (Recommended)
-
-First, create credentials on your host system:
-
-```bash
-# Run on host system (not in Docker)
-mmrelay auth login
-```
-
-Then add to your docker-compose.yaml:
-
-```yaml
-services:
-  mmrelay:
-    image: ghcr.io/jeremiah-k/mmrelay:latest
-    environment:
-      # Meshtastic Connection (TCP example)
-      - MMRELAY_MESHTASTIC_CONNECTION_TYPE=tcp
-      - MMRELAY_MESHTASTIC_HOST=192.168.1.100
-      - MMRELAY_MESHTASTIC_PORT=4403
-
-      # Operational Settings
-      - MMRELAY_MESHTASTIC_BROADCAST_ENABLED=true
-      - MMRELAY_MESHTASTIC_MESHNET_NAME=My Mesh Network
-      - MMRELAY_LOGGING_LEVEL=INFO
-      - MMRELAY_DATABASE_PATH=/app/data/meshtastic.sqlite
-    volumes:
-      - ~/.mmrelay:/app/data # Includes credentials.json and E2EE store
-      - ~/.mmrelay/config.yaml:/app/config.yaml:ro
-```
-
-**✅ This approach provides full E2EE support and persistent device identity.**
-
-#### Method 2: config.yaml Matrix Authentication (Limited)
-
-For cases where the auth system cannot be used, configure Matrix authentication in config.yaml:
-
-```yaml
-# In your config.yaml
-matrix:
-  homeserver: https://matrix.example.org
-  access_token: your_access_token_here
-  bot_user_id: @yourbot:example.org
-
-# Docker compose with environment variables for operational settings only
-services:
-  mmrelay:
-    image: ghcr.io/jeremiah-k/mmrelay:latest
-    environment:
-      # Meshtastic Connection
-      - MMRELAY_MESHTASTIC_CONNECTION_TYPE=tcp
-      - MMRELAY_MESHTASTIC_HOST=192.168.1.100
-      - MMRELAY_MESHTASTIC_PORT=4403
-
-      # Operational Settings
-      - MMRELAY_MESHTASTIC_BROADCAST_ENABLED=true
-      - MMRELAY_MESHTASTIC_MESHNET_NAME=My Mesh Network
-      - MMRELAY_LOGGING_LEVEL=INFO
-      - MMRELAY_DATABASE_PATH=/app/data/meshtastic.sqlite
-    volumes:
-      - ~/.mmrelay:/app/data
-      - ~/.mmrelay/config.yaml:/app/config.yaml:ro
-```
-
-**⚠️ Note**: Method 2 cannot participate in encrypted Matrix rooms.
-
 ## Complete Docker Examples
 
-### Auth System + Environment Variables
+### Method 1: Auth System + Environment Variables (Recommended for E2EE)
 
-Use `mmrelay auth login` for authentication and environment variables for operational settings.
+Use `mmrelay auth login` for Matrix authentication and environment variables for operational settings. This method provides full E2EE support.
+
+**Prerequisites for E2EE:**
+- **Linux/macOS host**: E2EE is not supported on Windows due to library limitations
+- **E2EE-enabled image**: Use `ghcr.io/jeremiah-k/mmrelay:latest` or build with E2EE support
 
 #### Step 1: Set up authentication on your host system
 
@@ -493,9 +420,9 @@ services:
 - File-based credential storage
 - Flexible operational configuration
 
-### Manual Access Token + Environment Variables
+### Method 2: Manual Access Token + Environment Variables (No E2EE)
 
-Alternative approach using manually captured access tokens.
+Alternative approach using manually captured access tokens. **⚠️ This method cannot participate in encrypted Matrix rooms.**
 
 #### Step 1: Capture access token manually
 

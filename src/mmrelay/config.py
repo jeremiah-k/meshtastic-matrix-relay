@@ -22,6 +22,22 @@ from mmrelay.constants.config import (
 custom_data_dir = None
 
 
+def set_secure_file_permissions(file_path: str, mode: int = 0o600) -> None:
+    """
+    Set secure file permissions on Unix systems.
+
+    Args:
+        file_path: Path to the file
+        mode: Permission mode (default: 0o600 - owner read/write)
+    """
+    if sys.platform in ["linux", "darwin"]:
+        try:
+            os.chmod(file_path, mode)
+        except (OSError, PermissionError):
+            # Permissions setting failed, but file was created successfully
+            pass
+
+
 # Custom base directory for Unix systems
 def get_base_dir():
     """Returns the base directory for all application files.
@@ -459,13 +475,9 @@ def save_credentials(credentials):
             json.dump(credentials, f, indent=2)
 
         # Set secure permissions on Unix systems (600 - owner read/write only)
+        set_secure_file_permissions(credentials_path)
         if sys.platform in ["linux", "darwin"]:
-            try:
-                os.chmod(credentials_path, 0o600)
-                logger.debug(f"Set secure permissions (600) on {credentials_path}")
-            except (OSError, PermissionError):
-                logger.warning(f"Could not set secure permissions on {credentials_path}")
-                # File was still created successfully, so continue
+            logger.debug(f"Set secure permissions (600) on {credentials_path}")
 
         logger.info(f"Saved credentials to {credentials_path}")
     except (OSError, PermissionError) as e:
