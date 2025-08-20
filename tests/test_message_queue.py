@@ -344,6 +344,41 @@ class TestQueuedMessage(unittest.TestCase):
         self.assertEqual(message.description, "Test message")
 
 
+class TestMessageQueueMethods(unittest.TestCase):
+    """Test cases for additional MessageQueue methods."""
+
+    def test_ensure_processor_started(self):
+        """Test ensure_processor_started method when event loop is available."""
+        queue = MessageQueue()
+
+        # Start the queue with custom delay
+        queue.start(message_delay=0.1)
+
+        # Test ensure_processor_started method
+        queue.ensure_processor_started()
+
+        # Verify processor is running
+        self.assertTrue(queue._running)
+
+        # Clean up
+        queue.stop()
+
+    def test_stop_method(self):
+        """Test stop method functionality."""
+        queue = MessageQueue()
+
+        # Start the queue
+        queue.start(message_delay=0.1)
+        self.assertTrue(queue._running)
+
+        # Stop the queue
+        queue.stop()
+        self.assertFalse(queue._running)
+
+        # Verify processor task is cleaned up
+        self.assertIsNone(queue._processor_task)
+
+
 if __name__ == "__main__":
     # Run tests
     unittest.main(verbosity=2)

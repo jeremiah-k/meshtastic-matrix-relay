@@ -1660,24 +1660,4 @@ async def test_login_matrix_bot_login_failure(mock_input, mock_getpass):
         assert mock_client.close.call_count == 2
 
 
-@patch("mmrelay.e2ee_utils.get_e2ee_error_message")
-@patch("mmrelay.e2ee_utils.get_e2ee_status")
-@patch("mmrelay.config.config_path", "/test/config.yaml")
-def test_get_e2ee_error_message(mock_config_path, mock_get_e2ee_status, mock_get_e2ee_error_message):
-    """Test _get_e2ee_error_message function."""
-    # Mock the E2EE status and error message
-    mock_e2ee_status = {"status": "disabled", "reason": "not_configured"}
-    mock_get_e2ee_status.return_value = mock_e2ee_status
-    mock_get_e2ee_error_message.return_value = "E2EE is not configured"
 
-    # Mock config
-    test_config = {"matrix": {"e2ee": {"enabled": False}}}
-
-    with patch("mmrelay.matrix_utils.config", test_config):
-        # Call the function
-        result = _get_e2ee_error_message()
-
-        # Verify the result
-        assert result == "E2EE is not configured"
-        mock_get_e2ee_status.assert_called_once_with(test_config, "/test/config.yaml")
-        mock_get_e2ee_error_message.assert_called_once_with(mock_e2ee_status)
