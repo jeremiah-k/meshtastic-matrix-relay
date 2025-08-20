@@ -33,9 +33,9 @@ def set_secure_file_permissions(file_path: str, mode: int = 0o600) -> None:
     if sys.platform in ["linux", "darwin"]:
         try:
             os.chmod(file_path, mode)
-        except (OSError, PermissionError):
-            # Permissions setting failed, but file was created successfully
-            pass
+            logger.debug(f"Set secure permissions ({oct(mode)}) on {file_path}")
+        except (OSError, PermissionError) as e:
+            logger.warning(f"Could not set secure permissions on {file_path}: {e}")
 
 
 # Custom base directory for Unix systems
@@ -233,17 +233,14 @@ def _convert_env_int(value, var_name, min_value=None, max_value=None):
     """
     try:
         int_value = int(value)
-        if min_value is not None and int_value < min_value:
-            raise ValueError(f"{var_name} must be >= {min_value}, got {int_value}")
-        if max_value is not None and int_value > max_value:
-            raise ValueError(f"{var_name} must be <= {max_value}, got {int_value}")
-        return int_value
-    except ValueError as e:
-        if "invalid literal" in str(e):
-            raise ValueError(
-                f"Invalid integer value for {var_name}: '{value}'"
-            ) from None
-        raise
+    except ValueError:
+        raise ValueError(f"Invalid integer value for {var_name}: '{value}'") from None
+
+    if min_value is not None and int_value < min_value:
+        raise ValueError(f"{var_name} must be >= {min_value}, got {int_value}")
+    if max_value is not None and int_value > max_value:
+        raise ValueError(f"{var_name} must be <= {max_value}, got {int_value}")
+    return int_value
 
 
 def _convert_env_float(value, var_name, min_value=None, max_value=None):
@@ -264,15 +261,14 @@ def _convert_env_float(value, var_name, min_value=None, max_value=None):
     """
     try:
         float_value = float(value)
-        if min_value is not None and float_value < min_value:
-            raise ValueError(f"{var_name} must be >= {min_value}, got {float_value}")
-        if max_value is not None and float_value > max_value:
-            raise ValueError(f"{var_name} must be <= {max_value}, got {float_value}")
-        return float_value
-    except ValueError as e:
-        if "could not convert" in str(e):
-            raise ValueError(f"Invalid float value for {var_name}: '{value}'") from None
-        raise
+    except ValueError:
+        raise ValueError(f"Invalid float value for {var_name}: '{value}'") from None
+
+    if min_value is not None and float_value < min_value:
+        raise ValueError(f"{var_name} must be >= {min_value}, got {float_value}")
+    if max_value is not None and float_value > max_value:
+        raise ValueError(f"{var_name} must be <= {max_value}, got {float_value}")
+    return float_value
 
 
 def load_meshtastic_config_from_env():
@@ -475,8 +471,6 @@ def save_credentials(credentials):
 
         # Set secure permissions on Unix systems (600 - owner read/write only)
         set_secure_file_permissions(credentials_path)
-        if sys.platform in ["linux", "darwin"]:
-            logger.debug(f"Set secure permissions (600) on {credentials_path}")
 
         logger.info(f"Saved credentials to {credentials_path}")
     except (OSError, PermissionError) as e:
