@@ -175,9 +175,6 @@ def get_e2ee_store_dir():
     return store_dir
 
 
-
-
-
 def _convert_env_bool(value, var_name):
     """
     Convert environment variable string to boolean.
@@ -192,12 +189,14 @@ def _convert_env_bool(value, var_name):
     Raises:
         ValueError: If value cannot be converted to boolean
     """
-    if value.lower() in ('true', '1', 'yes', 'on'):
+    if value.lower() in ("true", "1", "yes", "on"):
         return True
-    elif value.lower() in ('false', '0', 'no', 'off'):
+    elif value.lower() in ("false", "0", "no", "off"):
         return False
     else:
-        raise ValueError(f"Invalid boolean value for {var_name}: '{value}'. Use true/false, 1/0, yes/no, or on/off")
+        raise ValueError(
+            f"Invalid boolean value for {var_name}: '{value}'. Use true/false, 1/0, yes/no, or on/off"
+        )
 
 
 def _convert_env_int(value, var_name, min_value=None, max_value=None):
@@ -225,7 +224,9 @@ def _convert_env_int(value, var_name, min_value=None, max_value=None):
         return int_value
     except ValueError as e:
         if "invalid literal" in str(e):
-            raise ValueError(f"Invalid integer value for {var_name}: '{value}'") from None
+            raise ValueError(
+                f"Invalid integer value for {var_name}: '{value}'"
+            ) from None
         raise
 
 
@@ -268,97 +269,101 @@ def load_meshtastic_config_from_env():
     # Define environment variable mappings with validation rules
     env_var_mappings = [
         {
-            'env_var': 'MMRELAY_MESHTASTIC_CONNECTION_TYPE',
-            'config_key': 'connection_type',
-            'type': 'enum',
-            'valid_values': ('tcp', 'serial', 'ble'),
-            'transform': lambda x: x.lower()
+            "env_var": "MMRELAY_MESHTASTIC_CONNECTION_TYPE",
+            "config_key": "connection_type",
+            "type": "enum",
+            "valid_values": ("tcp", "serial", "ble"),
+            "transform": lambda x: x.lower(),
+        },
+        {"env_var": "MMRELAY_MESHTASTIC_HOST", "config_key": "host", "type": "string"},
+        {
+            "env_var": "MMRELAY_MESHTASTIC_PORT",
+            "config_key": "port",
+            "type": "int",
+            "min_value": 1,
+            "max_value": 65535,
         },
         {
-            'env_var': 'MMRELAY_MESHTASTIC_HOST',
-            'config_key': 'host',
-            'type': 'string'
+            "env_var": "MMRELAY_MESHTASTIC_SERIAL_PORT",
+            "config_key": "serial_port",
+            "type": "string",
         },
         {
-            'env_var': 'MMRELAY_MESHTASTIC_PORT',
-            'config_key': 'port',
-            'type': 'int',
-            'min_value': 1,
-            'max_value': 65535
+            "env_var": "MMRELAY_MESHTASTIC_BLE_ADDRESS",
+            "config_key": "ble_address",
+            "type": "string",
         },
         {
-            'env_var': 'MMRELAY_MESHTASTIC_SERIAL_PORT',
-            'config_key': 'serial_port',
-            'type': 'string'
+            "env_var": "MMRELAY_MESHTASTIC_BROADCAST_ENABLED",
+            "config_key": "broadcast_enabled",
+            "type": "bool",
         },
         {
-            'env_var': 'MMRELAY_MESHTASTIC_BLE_ADDRESS',
-            'config_key': 'ble_address',
-            'type': 'string'
+            "env_var": "MMRELAY_MESHTASTIC_MESHNET_NAME",
+            "config_key": "meshnet_name",
+            "type": "string",
         },
         {
-            'env_var': 'MMRELAY_MESHTASTIC_BROADCAST_ENABLED',
-            'config_key': 'broadcast_enabled',
-            'type': 'bool'
+            "env_var": "MMRELAY_MESHTASTIC_MESSAGE_DELAY",
+            "config_key": "message_delay",
+            "type": "float",
+            "min_value": 2.0,
         },
-        {
-            'env_var': 'MMRELAY_MESHTASTIC_MESHNET_NAME',
-            'config_key': 'meshnet_name',
-            'type': 'string'
-        },
-        {
-            'env_var': 'MMRELAY_MESHTASTIC_MESSAGE_DELAY',
-            'config_key': 'message_delay',
-            'type': 'float',
-            'min_value': 2.0
-        }
     ]
 
     config = {}
 
     for mapping in env_var_mappings:
-        env_value = os.getenv(mapping['env_var'])
+        env_value = os.getenv(mapping["env_var"])
         if env_value is None:
             continue
 
         try:
-            if mapping['type'] == 'string':
+            if mapping["type"] == "string":
                 value = env_value
-            elif mapping['type'] == 'int':
+            elif mapping["type"] == "int":
                 value = _convert_env_int(
                     env_value,
-                    mapping['env_var'],
-                    min_value=mapping.get('min_value'),
-                    max_value=mapping.get('max_value')
+                    mapping["env_var"],
+                    min_value=mapping.get("min_value"),
+                    max_value=mapping.get("max_value"),
                 )
-            elif mapping['type'] == 'float':
+            elif mapping["type"] == "float":
                 value = _convert_env_float(
                     env_value,
-                    mapping['env_var'],
-                    min_value=mapping.get('min_value'),
-                    max_value=mapping.get('max_value')
+                    mapping["env_var"],
+                    min_value=mapping.get("min_value"),
+                    max_value=mapping.get("max_value"),
                 )
-            elif mapping['type'] == 'bool':
-                value = _convert_env_bool(env_value, mapping['env_var'])
-            elif mapping['type'] == 'enum':
-                transformed_value = mapping.get('transform', lambda x: x)(env_value)
-                if transformed_value not in mapping['valid_values']:
-                    valid_values_str = "', '".join(mapping['valid_values'])
-                    logger.error(f"Invalid {mapping['env_var']}: '{env_value}'. Must be '{valid_values_str}'. Skipping this setting.")
+            elif mapping["type"] == "bool":
+                value = _convert_env_bool(env_value, mapping["env_var"])
+            elif mapping["type"] == "enum":
+                transformed_value = mapping.get("transform", lambda x: x)(env_value)
+                if transformed_value not in mapping["valid_values"]:
+                    valid_values_str = "', '".join(mapping["valid_values"])
+                    logger.error(
+                        f"Invalid {mapping['env_var']}: '{env_value}'. Must be '{valid_values_str}'. Skipping this setting."
+                    )
                     continue  # Skip invalid value but continue with other settings
                 value = transformed_value
             else:
-                logger.error(f"Unknown type '{mapping['type']}' for {mapping['env_var']}. Skipping this setting.")
+                logger.error(
+                    f"Unknown type '{mapping['type']}' for {mapping['env_var']}. Skipping this setting."
+                )
                 continue  # Skip unknown type but continue with other settings
 
-            config[mapping['config_key']] = value
+            config[mapping["config_key"]] = value
 
         except ValueError as e:
-            logger.error(f"Error parsing {mapping['env_var']}: {e}. Skipping this setting.")
+            logger.error(
+                f"Error parsing {mapping['env_var']}: {e}. Skipping this setting."
+            )
             continue  # Skip invalid value but continue with other settings
 
     if config:
-        logger.debug(f"Loaded Meshtastic configuration from environment variables: {list(config.keys())}")
+        logger.debug(
+            f"Loaded Meshtastic configuration from environment variables: {list(config.keys())}"
+        )
         return config
 
     return None
@@ -374,22 +379,28 @@ def load_logging_config_from_env():
     config = {}
 
     # Logging level
-    level = os.getenv('MMRELAY_LOGGING_LEVEL')
+    level = os.getenv("MMRELAY_LOGGING_LEVEL")
     if level:
         level_upper = level.upper()
-        if level_upper not in ('DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'):
-            logger.error(f"Invalid MMRELAY_LOGGING_LEVEL: '{level}'. Must be DEBUG, INFO, WARNING, ERROR, or CRITICAL. Skipping logging level.")
+        if level_upper not in ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"):
+            logger.error(
+                f"Invalid MMRELAY_LOGGING_LEVEL: '{level}'. Must be DEBUG, INFO, WARNING, ERROR, or CRITICAL. Skipping logging level."
+            )
         else:
-            config['level'] = level_upper.lower()  # Store in lowercase to match config.yaml format
+            config["level"] = (
+                level_upper.lower()
+            )  # Store in lowercase to match config.yaml format
 
     # Log file path
-    log_file = os.getenv('MMRELAY_LOG_FILE')
+    log_file = os.getenv("MMRELAY_LOG_FILE")
     if log_file:
-        config['filename'] = log_file
-        config['log_to_file'] = True  # Enable file logging if filename is provided
+        config["filename"] = log_file
+        config["log_to_file"] = True  # Enable file logging if filename is provided
 
     if config:
-        logger.debug(f"Loaded logging configuration from environment variables: {list(config.keys())}")
+        logger.debug(
+            f"Loaded logging configuration from environment variables: {list(config.keys())}"
+        )
         return config
 
     return None
@@ -405,12 +416,14 @@ def load_database_config_from_env():
     config = {}
 
     # Database path
-    db_path = os.getenv('MMRELAY_DATABASE_PATH')
+    db_path = os.getenv("MMRELAY_DATABASE_PATH")
     if db_path:
-        config['path'] = db_path
+        config["path"] = db_path
 
     if config:
-        logger.debug(f"Loaded database configuration from environment variables: {list(config.keys())}")
+        logger.debug(
+            f"Loaded database configuration from environment variables: {list(config.keys())}"
+        )
         return config
 
     return None
@@ -432,19 +445,19 @@ def apply_env_config_overrides(config):
     # Apply Meshtastic configuration overrides
     meshtastic_env_config = load_meshtastic_config_from_env()
     if meshtastic_env_config:
-        config.setdefault('meshtastic', {}).update(meshtastic_env_config)
+        config.setdefault("meshtastic", {}).update(meshtastic_env_config)
         logger.debug("Applied Meshtastic environment variable overrides")
 
     # Apply logging configuration overrides
     logging_env_config = load_logging_config_from_env()
     if logging_env_config:
-        config.setdefault('logging', {}).update(logging_env_config)
+        config.setdefault("logging", {}).update(logging_env_config)
         logger.debug("Applied logging environment variable overrides")
 
     # Apply database configuration overrides
     database_env_config = load_database_config_from_env()
     if database_env_config:
-        config.setdefault('database', {}).update(database_env_config)
+        config.setdefault("database", {}).update(database_env_config)
         logger.debug("Applied database environment variable overrides")
 
     return config

@@ -372,7 +372,7 @@ class TestRunMain(unittest.TestCase):
     def setUp(self):
         """
         Prepare common fixtures used by run_main tests.
-        
+
         Creates a default mock args object and a representative configuration used across run_main test cases, and provides helpers to supply a coroutine-cleanup wrapper for asyncio.run so tests can avoid un-awaited coroutine warnings.
         """
         pass
@@ -872,10 +872,10 @@ class TestRunMainFunction(unittest.TestCase):
         def mock_run_with_cleanup(coro):
             """
             Close a coroutine object (if it provides a close method) to avoid ResourceWarning/cleanup warnings in tests.
-            
+
             Parameters:
                 coro: A coroutine or awaitable object that may implement a .close() method. If .close() exists it will be called; otherwise the object is left untouched.
-            
+
             Returns:
                 None
             """
@@ -1066,10 +1066,10 @@ class TestRunMainFunction(unittest.TestCase):
         def mock_run_with_keyboard_interrupt(coro):
             """
             Close the given coroutine (if possible) and then raise KeyboardInterrupt to simulate an interrupt during asyncio.run.
-            
+
             Parameters:
                 coro: An awaitable/coroutine object; if it has a `close()` method it will be called before the KeyboardInterrupt is raised.
-            
+
             Raises:
                 KeyboardInterrupt: Always raised after attempting to close the coroutine.
             """
@@ -1111,10 +1111,10 @@ class TestRunMainFunction(unittest.TestCase):
         def mock_run_with_exception(coro):
             """
             Close the given coroutine (if closable) and then raise a test Exception.
-            
+
             Parameters:
                 coro: A coroutine or generator-based coroutine object. If it has a `close()` method, this function calls it to avoid warnings.
-            
+
             Raises:
                 Exception: Always raises Exception("Test error") after attempting to close the coroutine.
             """
@@ -1152,8 +1152,9 @@ class TestMainAsyncFunction(unittest.TestCase):
         mock_init_db,
     ):
         """Verify that the asynchronous main() startup sequence invokes database initialization, plugin loading, message-queue startup, and both Matrix and Meshtastic connection routines.
-        
-        Sets up a minimal config with one Matrix room, injects AsyncMock/MagicMock clients for Matrix and Meshtastic, and arranges for the Matrix client's sync loop and asyncio.sleep to raise KeyboardInterrupt so the function exits cleanly. Asserts each initialization/connect function is called exactly once."""
+
+        Sets up a minimal config with one Matrix room, injects AsyncMock/MagicMock clients for Matrix and Meshtastic, and arranges for the Matrix client's sync loop and asyncio.sleep to raise KeyboardInterrupt so the function exits cleanly. Asserts each initialization/connect function is called exactly once.
+        """
         config = {"matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}]}
 
         # Mock the async components
@@ -1193,7 +1194,7 @@ class TestMainAsyncFunction(unittest.TestCase):
     ):
         """
         Verify that main() joins each configured Matrix room.
-        
+
         Runs the async main flow with two matrix room entries in the config and patches connectors
         so startup proceeds until a KeyboardInterrupt. Asserts join_matrix_room is invoked once
         per configured room.

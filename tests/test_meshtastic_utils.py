@@ -930,7 +930,7 @@ class TestCoroutineSubmission(unittest.TestCase):
         result = _submit_coro(coro)
 
         # Should return a Future-like object (either Future or Task)
-        self.assertTrue(hasattr(result, 'result') or hasattr(result, 'done'))
+        self.assertTrue(hasattr(result, "result") or hasattr(result, "done"))
 
         # Clean up the coroutine
         coro.close()
@@ -956,10 +956,9 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
         # We need to reload the function definition
         import importlib
         import importlib.util
-        import sys
 
         # Get the source module without the mock
-        spec = importlib.util.find_spec('mmrelay.meshtastic_utils')
+        spec = importlib.util.find_spec("mmrelay.meshtastic_utils")
         source_module = importlib.util.module_from_spec(spec)
 
         # Execute the module to get the original function
@@ -971,6 +970,7 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
     def tearDown(self):
         """Restore original module state and mocking."""
         import mmrelay.meshtastic_utils as mu
+
         # Restore original event_loop state
         mu.event_loop = self.original_event_loop
         # Restore the mock
@@ -978,7 +978,6 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
 
     def test_submit_coro_with_no_event_loop_no_running_loop(self):
         """Test _submit_coro with no event loop and no running loop - should use asyncio.run."""
-        import asyncio
         from concurrent.futures import Future
 
         async def test_coro():
@@ -987,7 +986,7 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
         coro = test_coro()
 
         # Patch to ensure no running loop
-        with patch('asyncio.get_running_loop') as mock_get_loop:
+        with patch("asyncio.get_running_loop") as mock_get_loop:
             mock_get_loop.side_effect = RuntimeError("No running loop")
 
             result = self.original_submit_coro(coro)
@@ -998,7 +997,6 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
 
     def test_submit_coro_with_no_event_loop_no_running_loop_exception(self):
         """Test _submit_coro exception handling when asyncio.run fails."""
-        import asyncio
         from concurrent.futures import Future
 
         async def failing_coro():
@@ -1007,7 +1005,7 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
         coro = failing_coro()
 
         # Patch to ensure no running loop
-        with patch('asyncio.get_running_loop') as mock_get_loop:
+        with patch("asyncio.get_running_loop") as mock_get_loop:
             mock_get_loop.side_effect = RuntimeError("No running loop")
 
             result = self.original_submit_coro(coro)
@@ -1020,7 +1018,6 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
 
     def test_submit_coro_with_running_loop(self):
         """Test _submit_coro with a running loop - should use create_task."""
-        import asyncio
 
         async def test_coro():
             return "test_result"
@@ -1029,7 +1026,7 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
 
         try:
             # Mock a running loop
-            with patch('asyncio.get_running_loop') as mock_get_loop:
+            with patch("asyncio.get_running_loop") as mock_get_loop:
                 mock_loop = MagicMock()
                 mock_task = MagicMock()
 
@@ -1048,7 +1045,7 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
                 self.assertEqual(result, mock_task)
         finally:
             # Ensure coroutine is properly closed if not already closed
-            if hasattr(coro, 'cr_frame') and coro.cr_frame is not None:
+            if hasattr(coro, "cr_frame") and coro.cr_frame is not None:
                 coro.close()
 
     def test_submit_coro_with_event_loop_parameter(self):
@@ -1065,7 +1062,7 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
             mock_loop = MagicMock(spec=asyncio.AbstractEventLoop)
             mock_loop.is_closed.return_value = False
 
-            with patch('asyncio.run_coroutine_threadsafe') as mock_run_threadsafe:
+            with patch("asyncio.run_coroutine_threadsafe") as mock_run_threadsafe:
                 mock_future = MagicMock()
 
                 # Mock run_coroutine_threadsafe to close the coroutine when called
@@ -1082,7 +1079,7 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
                 self.assertEqual(result, mock_future)
         finally:
             # Ensure coroutine is properly closed if not already closed
-            if hasattr(coro, 'cr_frame') and coro.cr_frame is not None:
+            if hasattr(coro, "cr_frame") and coro.cr_frame is not None:
                 coro.close()
 
     def test_submit_coro_with_non_coroutine_actual(self):
@@ -1112,10 +1109,9 @@ class TestBLEExceptionHandling(unittest.TestCase):
         # The fallback classes should already be defined in the module
         # regardless of whether bleak is available, because the module
         # defines them as fallbacks in the except block
-
         # Verify that the fallback classes are defined
-        self.assertTrue(hasattr(mu, 'BleakDBusError'))
-        self.assertTrue(hasattr(mu, 'BleakError'))
+        self.assertTrue(hasattr(mu, "BleakDBusError"))
+        self.assertTrue(hasattr(mu, "BleakError"))
 
         # Verify they are proper exception classes
         self.assertTrue(issubclass(mu.BleakDBusError, Exception))
@@ -1151,6 +1147,7 @@ class TestReconnectingFlagLogic(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures."""
         import mmrelay.meshtastic_utils
+
         # Reset global state
         mmrelay.meshtastic_utils.reconnecting = False
         mmrelay.meshtastic_utils.meshtastic_client = None
@@ -1158,10 +1155,11 @@ class TestReconnectingFlagLogic(unittest.TestCase):
     def tearDown(self):
         """Clean up after tests."""
         import mmrelay.meshtastic_utils
+
         mmrelay.meshtastic_utils.reconnecting = False
         mmrelay.meshtastic_utils.meshtastic_client = None
 
-    @patch('mmrelay.meshtastic_utils.logger')
+    @patch("mmrelay.meshtastic_utils.logger")
     def test_connect_meshtastic_blocked_by_reconnecting_flag(self, mock_logger):
         """Test that connect_meshtastic is blocked when reconnecting=True and force_connect=False."""
         import mmrelay.meshtastic_utils
@@ -1179,9 +1177,11 @@ class TestReconnectingFlagLogic(unittest.TestCase):
             "Reconnection already in progress. Not attempting new connection."
         )
 
-    @patch('mmrelay.meshtastic_utils.logger')
-    @patch('mmrelay.meshtastic_utils.config', None)
-    def test_connect_meshtastic_force_connect_bypasses_reconnecting_flag(self, mock_logger):
+    @patch("mmrelay.meshtastic_utils.logger")
+    @patch("mmrelay.meshtastic_utils.config", None)
+    def test_connect_meshtastic_force_connect_bypasses_reconnecting_flag(
+        self, mock_logger
+    ):
         """Test that connect_meshtastic with force_connect=True bypasses reconnecting flag."""
         import mmrelay.meshtastic_utils
         from mmrelay.meshtastic_utils import connect_meshtastic

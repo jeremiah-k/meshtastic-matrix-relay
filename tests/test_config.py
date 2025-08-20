@@ -1,5 +1,3 @@
-import base64
-import json
 import os
 import sys
 import unittest
@@ -10,20 +8,19 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import mmrelay.config
 from mmrelay.config import (
+    _convert_env_bool,
+    _convert_env_float,
+    _convert_env_int,
+    apply_env_config_overrides,
     get_base_dir,
     get_config_paths,
     get_data_dir,
     get_log_dir,
     get_plugin_data_dir,
     load_config,
-    load_credentials,
-    load_meshtastic_config_from_env,
-    load_logging_config_from_env,
     load_database_config_from_env,
-    apply_env_config_overrides,
-    _convert_env_bool,
-    _convert_env_int,
-    _convert_env_float,
+    load_logging_config_from_env,
+    load_meshtastic_config_from_env,
 )
 
 
@@ -384,20 +381,26 @@ class TestConfigEdgeCases(unittest.TestCase):
 
         self.assertEqual(result, "C:\\Users\\test\\AppData\\Local\\mmrelay")
         mock_user_data_dir.assert_called_once_with("mmrelay", None)
-        mock_makedirs.assert_called_once_with("C:\\Users\\test\\AppData\\Local\\mmrelay", exist_ok=True)
+        mock_makedirs.assert_called_once_with(
+            "C:\\Users\\test\\AppData\\Local\\mmrelay", exist_ok=True
+        )
 
     @patch("mmrelay.config.platformdirs.user_log_dir")
     @patch("mmrelay.config.os.makedirs")
     @patch("mmrelay.config.sys.platform", "win32")
     def test_get_log_dir_windows(self, mock_makedirs, mock_user_log_dir):
         """Test get_log_dir on Windows platform."""
-        mock_user_log_dir.return_value = "C:\\Users\\test\\AppData\\Local\\mmrelay\\Logs"
+        mock_user_log_dir.return_value = (
+            "C:\\Users\\test\\AppData\\Local\\mmrelay\\Logs"
+        )
 
         result = get_log_dir()
 
         self.assertEqual(result, "C:\\Users\\test\\AppData\\Local\\mmrelay\\Logs")
         mock_user_log_dir.assert_called_once_with("mmrelay", None)
-        mock_makedirs.assert_called_once_with("C:\\Users\\test\\AppData\\Local\\mmrelay\\Logs", exist_ok=True)
+        mock_makedirs.assert_called_once_with(
+            "C:\\Users\\test\\AppData\\Local\\mmrelay\\Logs", exist_ok=True
+        )
 
     @patch("mmrelay.config.os.makedirs")
     def test_get_config_paths_permission_error(self, mock_makedirs):
@@ -412,76 +415,79 @@ class TestConfigEdgeCases(unittest.TestCase):
         self.assertGreater(len(paths), 0)
 
 
-
 class TestEnvironmentVariableHelpers(unittest.TestCase):
     """Test environment variable conversion helper functions."""
 
     def test_convert_env_bool_valid_true(self):
         """Test conversion of valid true boolean values."""
-        true_values = ['true', 'True', 'TRUE', '1', 'yes', 'YES', 'on', 'ON']
+        true_values = ["true", "True", "TRUE", "1", "yes", "YES", "on", "ON"]
         for value in true_values:
             with self.subTest(value=value):
-                self.assertTrue(_convert_env_bool(value, 'TEST_VAR'))
+                self.assertTrue(_convert_env_bool(value, "TEST_VAR"))
 
     def test_convert_env_bool_valid_false(self):
         """Test conversion of valid false boolean values."""
-        false_values = ['false', 'False', 'FALSE', '0', 'no', 'NO', 'off', 'OFF']
+        false_values = ["false", "False", "FALSE", "0", "no", "NO", "off", "OFF"]
         for value in false_values:
             with self.subTest(value=value):
-                self.assertFalse(_convert_env_bool(value, 'TEST_VAR'))
+                self.assertFalse(_convert_env_bool(value, "TEST_VAR"))
 
     def test_convert_env_bool_invalid(self):
         """Test conversion of invalid boolean values."""
-        invalid_values = ['maybe', 'invalid', '2', 'truee', 'falsee']
+        invalid_values = ["maybe", "invalid", "2", "truee", "falsee"]
         for value in invalid_values:
             with self.subTest(value=value):
                 with self.assertRaises(ValueError) as cm:
-                    _convert_env_bool(value, 'TEST_VAR')
-                self.assertIn('Invalid boolean value for TEST_VAR', str(cm.exception))
+                    _convert_env_bool(value, "TEST_VAR")
+                self.assertIn("Invalid boolean value for TEST_VAR", str(cm.exception))
 
     def test_convert_env_int_valid(self):
         """Test conversion of valid integer values."""
-        self.assertEqual(_convert_env_int('42', 'TEST_VAR'), 42)
-        self.assertEqual(_convert_env_int('-10', 'TEST_VAR'), -10)
-        self.assertEqual(_convert_env_int('0', 'TEST_VAR'), 0)
+        self.assertEqual(_convert_env_int("42", "TEST_VAR"), 42)
+        self.assertEqual(_convert_env_int("-10", "TEST_VAR"), -10)
+        self.assertEqual(_convert_env_int("0", "TEST_VAR"), 0)
 
     def test_convert_env_int_with_range(self):
         """Test integer conversion with range validation."""
-        self.assertEqual(_convert_env_int('50', 'TEST_VAR', min_value=1, max_value=100), 50)
+        self.assertEqual(
+            _convert_env_int("50", "TEST_VAR", min_value=1, max_value=100), 50
+        )
 
         with self.assertRaises(ValueError) as cm:
-            _convert_env_int('0', 'TEST_VAR', min_value=1)
-        self.assertIn('must be >= 1', str(cm.exception))
+            _convert_env_int("0", "TEST_VAR", min_value=1)
+        self.assertIn("must be >= 1", str(cm.exception))
 
         with self.assertRaises(ValueError) as cm:
-            _convert_env_int('101', 'TEST_VAR', max_value=100)
-        self.assertIn('must be <= 100', str(cm.exception))
+            _convert_env_int("101", "TEST_VAR", max_value=100)
+        self.assertIn("must be <= 100", str(cm.exception))
 
     def test_convert_env_int_invalid(self):
         """Test conversion of invalid integer values."""
         with self.assertRaises(ValueError) as cm:
-            _convert_env_int('not_a_number', 'TEST_VAR')
-        self.assertIn('Invalid integer value for TEST_VAR', str(cm.exception))
+            _convert_env_int("not_a_number", "TEST_VAR")
+        self.assertIn("Invalid integer value for TEST_VAR", str(cm.exception))
 
     def test_convert_env_float_valid(self):
         """Test conversion of valid float values."""
-        self.assertEqual(_convert_env_float('3.14', 'TEST_VAR'), 3.14)
-        self.assertEqual(_convert_env_float('-2.5', 'TEST_VAR'), -2.5)
-        self.assertEqual(_convert_env_float('42', 'TEST_VAR'), 42.0)
+        self.assertEqual(_convert_env_float("3.14", "TEST_VAR"), 3.14)
+        self.assertEqual(_convert_env_float("-2.5", "TEST_VAR"), -2.5)
+        self.assertEqual(_convert_env_float("42", "TEST_VAR"), 42.0)
 
     def test_convert_env_float_with_range(self):
         """Test float conversion with range validation."""
-        self.assertEqual(_convert_env_float('2.5', 'TEST_VAR', min_value=2.0, max_value=3.0), 2.5)
+        self.assertEqual(
+            _convert_env_float("2.5", "TEST_VAR", min_value=2.0, max_value=3.0), 2.5
+        )
 
         with self.assertRaises(ValueError) as cm:
-            _convert_env_float('1.5', 'TEST_VAR', min_value=2.0)
-        self.assertIn('must be >= 2.0', str(cm.exception))
+            _convert_env_float("1.5", "TEST_VAR", min_value=2.0)
+        self.assertIn("must be >= 2.0", str(cm.exception))
 
     def test_convert_env_float_invalid(self):
         """Test conversion of invalid float values."""
         with self.assertRaises(ValueError) as cm:
-            _convert_env_float('not_a_float', 'TEST_VAR')
-        self.assertIn('Invalid float value for TEST_VAR', str(cm.exception))
+            _convert_env_float("not_a_float", "TEST_VAR")
+        self.assertIn("Invalid float value for TEST_VAR", str(cm.exception))
 
 
 class TestMeshtasticEnvironmentVariables(unittest.TestCase):
@@ -490,14 +496,14 @@ class TestMeshtasticEnvironmentVariables(unittest.TestCase):
     def setUp(self):
         """Clear environment variables before each test."""
         self.env_vars = [
-            'MMRELAY_MESHTASTIC_CONNECTION_TYPE',
-            'MMRELAY_MESHTASTIC_HOST',
-            'MMRELAY_MESHTASTIC_PORT',
-            'MMRELAY_MESHTASTIC_SERIAL_PORT',
-            'MMRELAY_MESHTASTIC_BLE_ADDRESS',
-            'MMRELAY_MESHTASTIC_BROADCAST_ENABLED',
-            'MMRELAY_MESHTASTIC_MESHNET_NAME',
-            'MMRELAY_MESHTASTIC_MESSAGE_DELAY'
+            "MMRELAY_MESHTASTIC_CONNECTION_TYPE",
+            "MMRELAY_MESHTASTIC_HOST",
+            "MMRELAY_MESHTASTIC_PORT",
+            "MMRELAY_MESHTASTIC_SERIAL_PORT",
+            "MMRELAY_MESHTASTIC_BLE_ADDRESS",
+            "MMRELAY_MESHTASTIC_BROADCAST_ENABLED",
+            "MMRELAY_MESHTASTIC_MESHNET_NAME",
+            "MMRELAY_MESHTASTIC_MESSAGE_DELAY",
         ]
         for var in self.env_vars:
             if var in os.environ:
@@ -511,76 +517,76 @@ class TestMeshtasticEnvironmentVariables(unittest.TestCase):
 
     def test_load_meshtastic_tcp_config(self):
         """Test loading TCP Meshtastic configuration."""
-        os.environ['MMRELAY_MESHTASTIC_CONNECTION_TYPE'] = 'tcp'
-        os.environ['MMRELAY_MESHTASTIC_HOST'] = '192.168.1.100'
-        os.environ['MMRELAY_MESHTASTIC_PORT'] = '4403'
+        os.environ["MMRELAY_MESHTASTIC_CONNECTION_TYPE"] = "tcp"
+        os.environ["MMRELAY_MESHTASTIC_HOST"] = "192.168.1.100"
+        os.environ["MMRELAY_MESHTASTIC_PORT"] = "4403"
 
         config = load_meshtastic_config_from_env()
 
         self.assertIsNotNone(config)
-        self.assertEqual(config['connection_type'], 'tcp')
-        self.assertEqual(config['host'], '192.168.1.100')
-        self.assertEqual(config['port'], 4403)
+        self.assertEqual(config["connection_type"], "tcp")
+        self.assertEqual(config["host"], "192.168.1.100")
+        self.assertEqual(config["port"], 4403)
 
     def test_load_meshtastic_serial_config(self):
         """Test loading serial Meshtastic configuration."""
-        os.environ['MMRELAY_MESHTASTIC_CONNECTION_TYPE'] = 'serial'
-        os.environ['MMRELAY_MESHTASTIC_SERIAL_PORT'] = '/dev/ttyUSB0'
+        os.environ["MMRELAY_MESHTASTIC_CONNECTION_TYPE"] = "serial"
+        os.environ["MMRELAY_MESHTASTIC_SERIAL_PORT"] = "/dev/ttyUSB0"
 
         config = load_meshtastic_config_from_env()
 
         self.assertIsNotNone(config)
-        self.assertEqual(config['connection_type'], 'serial')
-        self.assertEqual(config['serial_port'], '/dev/ttyUSB0')
+        self.assertEqual(config["connection_type"], "serial")
+        self.assertEqual(config["serial_port"], "/dev/ttyUSB0")
 
     def test_load_meshtastic_ble_config(self):
         """Test loading BLE Meshtastic configuration."""
-        os.environ['MMRELAY_MESHTASTIC_CONNECTION_TYPE'] = 'ble'
-        os.environ['MMRELAY_MESHTASTIC_BLE_ADDRESS'] = 'AA:BB:CC:DD:EE:FF'
+        os.environ["MMRELAY_MESHTASTIC_CONNECTION_TYPE"] = "ble"
+        os.environ["MMRELAY_MESHTASTIC_BLE_ADDRESS"] = "AA:BB:CC:DD:EE:FF"
 
         config = load_meshtastic_config_from_env()
 
         self.assertIsNotNone(config)
-        self.assertEqual(config['connection_type'], 'ble')
-        self.assertEqual(config['ble_address'], 'AA:BB:CC:DD:EE:FF')
+        self.assertEqual(config["connection_type"], "ble")
+        self.assertEqual(config["ble_address"], "AA:BB:CC:DD:EE:FF")
 
     def test_load_meshtastic_operational_settings(self):
         """Test loading operational Meshtastic settings."""
-        os.environ['MMRELAY_MESHTASTIC_BROADCAST_ENABLED'] = 'true'
-        os.environ['MMRELAY_MESHTASTIC_MESHNET_NAME'] = 'Test Mesh'
-        os.environ['MMRELAY_MESHTASTIC_MESSAGE_DELAY'] = '2.5'
+        os.environ["MMRELAY_MESHTASTIC_BROADCAST_ENABLED"] = "true"
+        os.environ["MMRELAY_MESHTASTIC_MESHNET_NAME"] = "Test Mesh"
+        os.environ["MMRELAY_MESHTASTIC_MESSAGE_DELAY"] = "2.5"
 
         config = load_meshtastic_config_from_env()
 
         self.assertIsNotNone(config)
-        self.assertEqual(config['broadcast_enabled'], True)
-        self.assertEqual(config['meshnet_name'], 'Test Mesh')
-        self.assertEqual(config['message_delay'], 2.5)
+        self.assertEqual(config["broadcast_enabled"], True)
+        self.assertEqual(config["meshnet_name"], "Test Mesh")
+        self.assertEqual(config["message_delay"], 2.5)
 
     def test_invalid_connection_type(self):
         """Test invalid connection type handling."""
-        os.environ['MMRELAY_MESHTASTIC_CONNECTION_TYPE'] = 'invalid'
+        os.environ["MMRELAY_MESHTASTIC_CONNECTION_TYPE"] = "invalid"
 
         config = load_meshtastic_config_from_env()
         self.assertIsNone(config)
 
     def test_invalid_port(self):
         """Test invalid port handling."""
-        os.environ['MMRELAY_MESHTASTIC_PORT'] = 'invalid_port'
+        os.environ["MMRELAY_MESHTASTIC_PORT"] = "invalid_port"
 
         config = load_meshtastic_config_from_env()
         self.assertIsNone(config)
 
     def test_port_out_of_range(self):
         """Test port out of range handling."""
-        os.environ['MMRELAY_MESHTASTIC_PORT'] = '70000'
+        os.environ["MMRELAY_MESHTASTIC_PORT"] = "70000"
 
         config = load_meshtastic_config_from_env()
         self.assertIsNone(config)
 
     def test_invalid_message_delay(self):
         """Test invalid message delay handling."""
-        os.environ['MMRELAY_MESHTASTIC_MESSAGE_DELAY'] = '1.0'  # Below minimum of 2.0
+        os.environ["MMRELAY_MESHTASTIC_MESSAGE_DELAY"] = "1.0"  # Below minimum of 2.0
 
         config = load_meshtastic_config_from_env()
         self.assertIsNone(config)
@@ -596,7 +602,7 @@ class TestLoggingEnvironmentVariables(unittest.TestCase):
 
     def setUp(self):
         """Clear environment variables before each test."""
-        self.env_vars = ['MMRELAY_LOGGING_LEVEL', 'MMRELAY_LOG_FILE']
+        self.env_vars = ["MMRELAY_LOGGING_LEVEL", "MMRELAY_LOG_FILE"]
         for var in self.env_vars:
             if var in os.environ:
                 del os.environ[var]
@@ -609,26 +615,26 @@ class TestLoggingEnvironmentVariables(unittest.TestCase):
 
     def test_load_logging_level(self):
         """Test loading logging level."""
-        os.environ['MMRELAY_LOGGING_LEVEL'] = 'DEBUG'
+        os.environ["MMRELAY_LOGGING_LEVEL"] = "DEBUG"
 
         config = load_logging_config_from_env()
 
         self.assertIsNotNone(config)
-        self.assertEqual(config['level'], 'debug')
+        self.assertEqual(config["level"], "debug")
 
     def test_load_log_file(self):
         """Test loading log file path."""
-        os.environ['MMRELAY_LOG_FILE'] = '/app/logs/mmrelay.log'
+        os.environ["MMRELAY_LOG_FILE"] = "/app/logs/mmrelay.log"
 
         config = load_logging_config_from_env()
 
         self.assertIsNotNone(config)
-        self.assertEqual(config['filename'], '/app/logs/mmrelay.log')
-        self.assertTrue(config['log_to_file'])
+        self.assertEqual(config["filename"], "/app/logs/mmrelay.log")
+        self.assertTrue(config["log_to_file"])
 
     def test_invalid_logging_level(self):
         """Test invalid logging level handling."""
-        os.environ['MMRELAY_LOGGING_LEVEL'] = 'INVALID'
+        os.environ["MMRELAY_LOGGING_LEVEL"] = "INVALID"
 
         config = load_logging_config_from_env()
         self.assertIsNone(config)
@@ -644,22 +650,22 @@ class TestDatabaseEnvironmentVariables(unittest.TestCase):
 
     def setUp(self):
         """Clear environment variables before each test."""
-        if 'MMRELAY_DATABASE_PATH' in os.environ:
-            del os.environ['MMRELAY_DATABASE_PATH']
+        if "MMRELAY_DATABASE_PATH" in os.environ:
+            del os.environ["MMRELAY_DATABASE_PATH"]
 
     def tearDown(self):
         """Clear environment variables after each test."""
-        if 'MMRELAY_DATABASE_PATH' in os.environ:
-            del os.environ['MMRELAY_DATABASE_PATH']
+        if "MMRELAY_DATABASE_PATH" in os.environ:
+            del os.environ["MMRELAY_DATABASE_PATH"]
 
     def test_load_database_path(self):
         """Test loading database path."""
-        os.environ['MMRELAY_DATABASE_PATH'] = '/app/data/custom.sqlite'
+        os.environ["MMRELAY_DATABASE_PATH"] = "/app/data/custom.sqlite"
 
         config = load_database_config_from_env()
 
         self.assertIsNotNone(config)
-        self.assertEqual(config['path'], '/app/data/custom.sqlite')
+        self.assertEqual(config["path"], "/app/data/custom.sqlite")
 
     def test_no_env_vars_returns_none(self):
         """Test that no environment variables returns None."""
@@ -673,9 +679,11 @@ class TestEnvironmentVariableIntegration(unittest.TestCase):
     def setUp(self):
         """Clear environment variables before each test."""
         self.all_env_vars = [
-            'MMRELAY_MESHTASTIC_CONNECTION_TYPE', 'MMRELAY_MESHTASTIC_HOST',
-            'MMRELAY_MESHTASTIC_PORT', 'MMRELAY_LOGGING_LEVEL',
-            'MMRELAY_DATABASE_PATH'
+            "MMRELAY_MESHTASTIC_CONNECTION_TYPE",
+            "MMRELAY_MESHTASTIC_HOST",
+            "MMRELAY_MESHTASTIC_PORT",
+            "MMRELAY_LOGGING_LEVEL",
+            "MMRELAY_DATABASE_PATH",
         ]
         for var in self.all_env_vars:
             if var in os.environ:
@@ -689,75 +697,74 @@ class TestEnvironmentVariableIntegration(unittest.TestCase):
 
     def test_apply_env_config_overrides_empty_config(self):
         """Test applying environment variable overrides to empty configuration."""
-        os.environ['MMRELAY_MESHTASTIC_CONNECTION_TYPE'] = 'tcp'
-        os.environ['MMRELAY_MESHTASTIC_HOST'] = '192.168.1.100'
-        os.environ['MMRELAY_LOGGING_LEVEL'] = 'INFO'
-        os.environ['MMRELAY_DATABASE_PATH'] = '/app/data/test.sqlite'
+        os.environ["MMRELAY_MESHTASTIC_CONNECTION_TYPE"] = "tcp"
+        os.environ["MMRELAY_MESHTASTIC_HOST"] = "192.168.1.100"
+        os.environ["MMRELAY_LOGGING_LEVEL"] = "INFO"
+        os.environ["MMRELAY_DATABASE_PATH"] = "/app/data/test.sqlite"
 
         config = apply_env_config_overrides({})
 
-        self.assertIn('meshtastic', config)
-        self.assertEqual(config['meshtastic']['connection_type'], 'tcp')
-        self.assertEqual(config['meshtastic']['host'], '192.168.1.100')
+        self.assertIn("meshtastic", config)
+        self.assertEqual(config["meshtastic"]["connection_type"], "tcp")
+        self.assertEqual(config["meshtastic"]["host"], "192.168.1.100")
 
-        self.assertIn('logging', config)
-        self.assertEqual(config['logging']['level'], 'info')
+        self.assertIn("logging", config)
+        self.assertEqual(config["logging"]["level"], "info")
 
-        self.assertIn('database', config)
-        self.assertEqual(config['database']['path'], '/app/data/test.sqlite')
+        self.assertIn("database", config)
+        self.assertEqual(config["database"]["path"], "/app/data/test.sqlite")
 
     def test_apply_env_config_overrides_existing_config(self):
         """Test applying environment variable overrides to existing configuration."""
         base_config = {
-            'meshtastic': {
-                'connection_type': 'serial',
-                'serial_port': '/dev/ttyUSB0',
-                'meshnet_name': 'Original Name'
+            "meshtastic": {
+                "connection_type": "serial",
+                "serial_port": "/dev/ttyUSB0",
+                "meshnet_name": "Original Name",
             },
-            'logging': {
-                'level': 'warning'
-            }
+            "logging": {"level": "warning"},
         }
 
-        os.environ['MMRELAY_MESHTASTIC_CONNECTION_TYPE'] = 'tcp'
-        os.environ['MMRELAY_MESHTASTIC_HOST'] = '192.168.1.100'
-        os.environ['MMRELAY_LOGGING_LEVEL'] = 'DEBUG'
+        os.environ["MMRELAY_MESHTASTIC_CONNECTION_TYPE"] = "tcp"
+        os.environ["MMRELAY_MESHTASTIC_HOST"] = "192.168.1.100"
+        os.environ["MMRELAY_LOGGING_LEVEL"] = "DEBUG"
 
         config = apply_env_config_overrides(base_config)
 
         # Environment variables should override existing values
-        self.assertEqual(config['meshtastic']['connection_type'], 'tcp')
-        self.assertEqual(config['meshtastic']['host'], '192.168.1.100')
+        self.assertEqual(config["meshtastic"]["connection_type"], "tcp")
+        self.assertEqual(config["meshtastic"]["host"], "192.168.1.100")
         # Existing values not overridden should remain
-        self.assertEqual(config['meshtastic']['serial_port'], '/dev/ttyUSB0')
-        self.assertEqual(config['meshtastic']['meshnet_name'], 'Original Name')
+        self.assertEqual(config["meshtastic"]["serial_port"], "/dev/ttyUSB0")
+        self.assertEqual(config["meshtastic"]["meshnet_name"], "Original Name")
         # Logging level should be overridden
-        self.assertEqual(config['logging']['level'], 'debug')
+        self.assertEqual(config["logging"]["level"], "debug")
 
-    @patch('mmrelay.config.yaml.load')
-    @patch('builtins.open')
-    @patch('mmrelay.config.os.path.isfile')
-    def test_load_config_with_env_overrides(self, mock_isfile, mock_open, mock_yaml_load):
+    @patch("mmrelay.config.yaml.load")
+    @patch("builtins.open")
+    @patch("mmrelay.config.os.path.isfile")
+    def test_load_config_with_env_overrides(
+        self, mock_isfile, mock_open, mock_yaml_load
+    ):
         """Test that load_config applies environment variable overrides."""
         # Mock file existence and YAML loading
         mock_isfile.return_value = True
         mock_yaml_load.return_value = {
-            'meshtastic': {
-                'connection_type': 'serial',
-                'serial_port': '/dev/ttyUSB0'
-            }
+            "meshtastic": {"connection_type": "serial", "serial_port": "/dev/ttyUSB0"}
         }
 
         # Set environment variables
-        os.environ['MMRELAY_MESHTASTIC_CONNECTION_TYPE'] = 'tcp'
-        os.environ['MMRELAY_MESHTASTIC_HOST'] = '192.168.1.100'
+        os.environ["MMRELAY_MESHTASTIC_CONNECTION_TYPE"] = "tcp"
+        os.environ["MMRELAY_MESHTASTIC_HOST"] = "192.168.1.100"
 
-        config = load_config('/fake/config.yaml')
+        config = load_config("/fake/config.yaml")
 
         # Should have both file config and env var overrides
-        self.assertEqual(config['meshtastic']['connection_type'], 'tcp')  # From env var
-        self.assertEqual(config['meshtastic']['host'], '192.168.1.100')   # From env var
-        self.assertEqual(config['meshtastic']['serial_port'], '/dev/ttyUSB0')  # From file
+        self.assertEqual(config["meshtastic"]["connection_type"], "tcp")  # From env var
+        self.assertEqual(config["meshtastic"]["host"], "192.168.1.100")  # From env var
+        self.assertEqual(
+            config["meshtastic"]["serial_port"], "/dev/ttyUSB0"
+        )  # From file
 
     def test_no_env_vars_returns_empty_dict(self):
         """Test that no environment variables returns empty dict."""
