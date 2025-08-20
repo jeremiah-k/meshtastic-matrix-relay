@@ -501,13 +501,16 @@ privileged: true # Required for BLE access
 When using environment variables for most settings, your config.yaml only needs:
 
 ```yaml
-matrix:
-  e2ee:
-    enabled: true
-
+# Required: Matrix rooms configuration
 matrix_rooms:
   - id: "#yourroom:example.org"
     meshtastic_channel: 0
+
+# Optional: Enable E2EE if you are using the 'auth login' method.
+# This is not needed for non-encrypted rooms.
+# matrix:
+#   e2ee:
+#     enabled: true
 
 # Optional: Plugin configuration (if using plugins)
 plugins:
