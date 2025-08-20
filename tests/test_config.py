@@ -363,6 +363,44 @@ class TestConfigEdgeCases(unittest.TestCase):
         # Should include the absolute path
         self.assertIn("/absolute/path/config.yaml", paths)
 
+    @patch("mmrelay.config.platformdirs.user_data_dir")
+    @patch("mmrelay.config.os.makedirs")
+    @patch("mmrelay.config.sys.platform", "win32")
+    def test_get_data_dir_windows(self, mock_makedirs, mock_user_data_dir):
+        """Test get_data_dir on Windows platform."""
+        mock_user_data_dir.return_value = "C:\\Users\\test\\AppData\\Local\\mmrelay"
+
+        result = get_data_dir()
+
+        self.assertEqual(result, "C:\\Users\\test\\AppData\\Local\\mmrelay")
+        mock_user_data_dir.assert_called_once_with("mmrelay", None)
+        mock_makedirs.assert_called_once_with("C:\\Users\\test\\AppData\\Local\\mmrelay", exist_ok=True)
+
+    @patch("mmrelay.config.platformdirs.user_log_dir")
+    @patch("mmrelay.config.os.makedirs")
+    @patch("mmrelay.config.sys.platform", "win32")
+    def test_get_log_dir_windows(self, mock_makedirs, mock_user_log_dir):
+        """Test get_log_dir on Windows platform."""
+        mock_user_log_dir.return_value = "C:\\Users\\test\\AppData\\Local\\mmrelay\\Logs"
+
+        result = get_log_dir()
+
+        self.assertEqual(result, "C:\\Users\\test\\AppData\\Local\\mmrelay\\Logs")
+        mock_user_log_dir.assert_called_once_with("mmrelay", None)
+        mock_makedirs.assert_called_once_with("C:\\Users\\test\\AppData\\Local\\mmrelay\\Logs", exist_ok=True)
+
+    @patch("mmrelay.config.os.makedirs")
+    def test_get_config_paths_permission_error(self, mock_makedirs):
+        """Test get_config_paths when directory creation fails."""
+        # Mock OSError when creating user config directory
+        mock_makedirs.side_effect = [OSError("Permission denied"), None, None]
+
+        paths = get_config_paths()
+
+        # Should still return paths even if user config dir creation fails
+        self.assertIsInstance(paths, list)
+        self.assertGreater(len(paths), 0)
+
 
 if __name__ == "__main__":
     unittest.main()
