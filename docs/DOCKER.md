@@ -172,8 +172,7 @@ matrix:
 ```
 
 **Limitations:**
-- No E2EE support - cannot participate in encrypted Matrix rooms
-- No persistent device ID - each restart appears as a new device to other users
+- Limited E2EE support - requires manual device_id configuration for encrypted rooms
 - Manual token management - requires capturing access tokens from browser sessions
 
 ### Authentication Precedence
@@ -522,8 +521,7 @@ services:
 ```
 
 **Limitations:**
-- Cannot participate in encrypted Matrix rooms
-- Each restart appears as a new device
+- Limited E2EE support - requires manual device_id and E2EE configuration
 - Manual token management required
 
 ## Connection Type Variants
