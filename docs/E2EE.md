@@ -308,21 +308,9 @@ MMRelay supports E2EE in Docker environments using environment variables for eas
 
 ### Quick Docker E2EE Setup
 
-#### Method 1: Environment Variables (Recommended)
+#### Method 1: Auth System + Docker (Recommended)
 
-```yaml
-services:
-  mmrelay:
-    image: ghcr.io/jeremiah-k/mmrelay:latest
-    environment:
-      - MATRIX_HOMESERVER=https://matrix.example.org
-      - MATRIX_ACCESS_TOKEN=YOUR_ACCESS_TOKEN
-      - MATRIX_BOT_USER_ID=@yourbot:example.org
-      - MATRIX_DEVICE_ID=ABCDEFGHIJ # Recommended for E2EE
-    volumes:
-      - ~/.mmrelay:/app/data
-      - ~/.mmrelay/config.yaml:/app/config.yaml:ro
-```
+For complete Docker E2EE setup instructions with environment variables for operational settings, see the [Docker Guide E2EE Setup section](DOCKER.md#e2ee-end-to-end-encryption-setup).
 
 #### Method 2: Mount Credentials File
 

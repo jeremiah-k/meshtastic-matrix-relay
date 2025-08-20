@@ -502,10 +502,14 @@ def save_credentials(credentials):
         with open(credentials_path, "w") as f:
             json.dump(credentials, f, indent=2)
 
-        # Set secure permissions on Unix systems
+        # Set secure permissions on Unix systems (600 - owner read/write only)
         if sys.platform in ["linux", "darwin"]:
-            os.chmod(credentials_path, 0o600)
-            logger.debug(f"Set secure permissions (600) on {credentials_path}")
+            try:
+                os.chmod(credentials_path, 0o600)
+                logger.debug(f"Set secure permissions (600) on {credentials_path}")
+            except (OSError, PermissionError):
+                logger.warning(f"Could not set secure permissions on {credentials_path}")
+                # File was still created successfully, so continue
 
         logger.info(f"Saved credentials to {credentials_path}")
     except (OSError, PermissionError) as e:
@@ -606,9 +610,9 @@ def load_config(config_file=None, args=None):
             with open(config_file, "r") as f:
                 relay_config = yaml.load(f, Loader=SafeLoader)
             config_path = config_file
-            # Return None for empty/null YAML files
+            # Treat empty/null YAML files as an empty config dictionary
             if relay_config is None:
-                return None
+                relay_config = {}
             # Apply environment variable overrides
             relay_config = apply_env_config_overrides(relay_config)
             return relay_config
@@ -627,9 +631,9 @@ def load_config(config_file=None, args=None):
             try:
                 with open(config_path, "r") as f:
                     relay_config = yaml.load(f, Loader=SafeLoader)
-                # Return None for empty/null YAML files
+                # Treat empty/null YAML files as an empty config dictionary
                 if relay_config is None:
-                    return None
+                    relay_config = {}
                 # Apply environment variable overrides
                 relay_config = apply_env_config_overrides(relay_config)
                 return relay_config
