@@ -1259,7 +1259,11 @@ def generate_sample_config():
 
             # Set secure permissions on Unix systems (640 - owner read/write, group read)
             if sys.platform in ["linux", "darwin"]:
-                os.chmod(target_path, 0o640)
+                try:
+                    os.chmod(target_path, 0o640)
+                except (OSError, PermissionError):
+                    # Permissions setting failed, but file was created successfully
+                    pass
 
             print(f"Generated sample config file at: {target_path}")
             print(
@@ -1285,7 +1289,11 @@ def generate_sample_config():
 
         # Set secure permissions on Unix systems (640 - owner read/write, group read)
         if sys.platform in ["linux", "darwin"]:
-            os.chmod(target_path, 0o640)
+            try:
+                os.chmod(target_path, 0o640)
+            except (OSError, PermissionError):
+                # Permissions setting failed, but file was created successfully
+                pass
 
         print(f"Generated sample config file at: {target_path}")
         print(

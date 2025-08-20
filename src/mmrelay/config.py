@@ -606,6 +606,9 @@ def load_config(config_file=None, args=None):
             with open(config_file, "r") as f:
                 relay_config = yaml.load(f, Loader=SafeLoader)
             config_path = config_file
+            # Return None for empty/null YAML files
+            if relay_config is None:
+                return None
             # Apply environment variable overrides
             relay_config = apply_env_config_overrides(relay_config)
             return relay_config
@@ -624,6 +627,9 @@ def load_config(config_file=None, args=None):
             try:
                 with open(config_path, "r") as f:
                     relay_config = yaml.load(f, Loader=SafeLoader)
+                # Return None for empty/null YAML files
+                if relay_config is None:
+                    return None
                 # Apply environment variable overrides
                 relay_config = apply_env_config_overrides(relay_config)
                 return relay_config
