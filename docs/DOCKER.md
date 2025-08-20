@@ -520,8 +520,7 @@ plugins:
 
 **Note**: For E2EE to function properly, you must also:
 1. Use the `mmrelay auth login` method for authentication (not manual tokens)
-2. Mount the `~/.mmrelay` directory as shown in the examples above
-3. Use the volume mount `~/.mmrelay:/app/data` to persist credentials and E2EE store
+2. Mount the `~/.mmrelay` directory to `/app/data` to persist credentials and the E2EE store, as shown in the examples
 
 The E2EE store directory (`/app/data/store`) is automatically created and persisted via the volume mount.
 

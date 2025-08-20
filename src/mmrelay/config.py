@@ -314,7 +314,7 @@ def load_meshtastic_config_from_env():
                 if transformed_value not in mapping["valid_values"]:
                     valid_values_str = "', '".join(mapping["valid_values"])
                     logger.error(
-                        f"Invalid {mapping['env_var']}: '{env_value}'. Must be '{valid_values_str}'. Skipping this setting."
+                        f"Invalid {mapping['env_var']}: '{env_value}'. Must be one of: '{valid_values_str}'. Skipping this setting."
                     )
                     continue  # Skip invalid value but continue with other settings
                 value = transformed_value
@@ -470,7 +470,6 @@ def save_credentials(credentials):
         config_dir = get_base_dir()
         credentials_path = os.path.join(config_dir, "credentials.json")
 
-        # Create file with secure permissions (600 - owner read/write only)
         with open(credentials_path, "w") as f:
             json.dump(credentials, f, indent=2)
 

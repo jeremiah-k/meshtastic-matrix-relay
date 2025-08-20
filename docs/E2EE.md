@@ -310,7 +310,7 @@ MMRelay supports E2EE in Docker environments using environment variables for eas
 
 #### Method 1: Auth System + Docker (Recommended)
 
-For complete Docker E2EE setup instructions with environment variables for operational settings, see the [Docker Guide E2EE Setup section](DOCKER.md#e2ee-end-to-end-encryption-setup).
+For complete Docker E2EE setup instructions with environment variables for operational settings, see the [Docker Guide E2EE Setup section](DOCKER.md#method-1-auth-system--environment-variables-recommended-for-e2ee).
 
 #### Method 2: Mount Credentials File
 
@@ -339,7 +339,7 @@ matrix:
 
 The E2EE store directory is automatically created in the mounted data volume.
 
-For complete Docker setup instructions, see the [Docker Guide](DOCKER.md#e2ee-end-to-end-encryption-setup).
+For complete Docker setup instructions, see the [Docker Guide](DOCKER.md#method-1-auth-system--environment-variables-recommended-for-e2ee).
 
 ### Performance Impact
 
