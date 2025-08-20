@@ -1256,6 +1256,11 @@ def generate_sample_config():
 
         try:
             shutil.copy2(sample_config_path, target_path)
+
+            # Set secure permissions on Unix systems (640 - owner read/write, group read)
+            if sys.platform in ["linux", "darwin"]:
+                os.chmod(target_path, 0o640)
+
             print(f"Generated sample config file at: {target_path}")
             print(
                 "\nEdit this file with your Matrix and Meshtastic settings before running mmrelay."
@@ -1277,6 +1282,10 @@ def generate_sample_config():
         # Write the sample config to the target path
         with open(target_path, "w") as f:
             f.write(sample_config_content)
+
+        # Set secure permissions on Unix systems (640 - owner read/write, group read)
+        if sys.platform in ["linux", "darwin"]:
+            os.chmod(target_path, 0o640)
 
         print(f"Generated sample config file at: {target_path}")
         print(

@@ -526,8 +526,8 @@ async def connect_matrix(passed_config=None):
         matrix_access_token = matrix_section["access_token"]
         bot_user_id = matrix_section["bot_user_id"]
 
-        # Set device_id for E2EE - only use config value if specified
-        e2ee_device_id = matrix_section.get("device_id")
+        # Manual method does not support device_id - use auth system for E2EE
+        e2ee_device_id = None
 
     # Get matrix rooms from config
     if "matrix_rooms" not in config:

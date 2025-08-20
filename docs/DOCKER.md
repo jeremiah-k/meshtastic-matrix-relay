@@ -157,7 +157,7 @@ mmrelay auth login
 - **Persistent Device Identity**: Same device across restarts, no "new device" notifications
 - **Automatic Key Management**: Handles encryption keys, sharing, and storage
 - **Convenience**: No manual token capture from browser sessions required
-- **File-based Storage**: Credentials stored in files with configurable permissions
+- **Secure Storage**: Credentials stored with restricted file permissions (600 on Unix systems)
 
 ### Manual Access Token in config.yaml
 
@@ -172,7 +172,7 @@ matrix:
 ```
 
 **Limitations:**
-- Limited E2EE support - requires manual device_id configuration for encrypted rooms
+- No E2EE support - cannot participate in encrypted Matrix rooms
 - Manual token management - requires capturing access tokens from browser sessions
 
 ### Authentication Precedence
@@ -521,7 +521,7 @@ services:
 ```
 
 **Limitations:**
-- Limited E2EE support - requires manual device_id and E2EE configuration
+- No E2EE support - cannot participate in encrypted Matrix rooms
 - Manual token management required
 
 ## Connection Type Variants

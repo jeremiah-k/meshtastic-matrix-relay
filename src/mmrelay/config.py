@@ -476,7 +476,7 @@ def load_credentials():
 
 def save_credentials(credentials):
     """
-    Save Matrix credentials to credentials.json file.
+    Save Matrix credentials to credentials.json file with secure permissions.
 
     Args:
         credentials (dict): Credentials dictionary to save.
@@ -485,8 +485,14 @@ def save_credentials(credentials):
         config_dir = get_base_dir()
         credentials_path = os.path.join(config_dir, "credentials.json")
 
+        # Create file with secure permissions (600 - owner read/write only)
         with open(credentials_path, "w") as f:
             json.dump(credentials, f, indent=2)
+
+        # Set secure permissions on Unix systems
+        if sys.platform in ["linux", "darwin"]:
+            os.chmod(credentials_path, 0o600)
+            logger.debug(f"Set secure permissions (600) on {credentials_path}")
 
         logger.info(f"Saved credentials to {credentials_path}")
     except (OSError, PermissionError) as e:
