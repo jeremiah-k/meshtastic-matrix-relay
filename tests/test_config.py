@@ -17,7 +17,6 @@ from mmrelay.config import (
     get_plugin_data_dir,
     load_config,
     load_credentials,
-    load_credentials_from_env,
     load_meshtastic_config_from_env,
     load_logging_config_from_env,
     load_database_config_from_env,
@@ -413,124 +412,6 @@ class TestConfigEdgeCases(unittest.TestCase):
         self.assertGreater(len(paths), 0)
 
 
-class TestCredentialsEnvironmentVariables(unittest.TestCase):
-    """Test environment variable support for Matrix credentials."""
-
-    def setUp(self):
-        """Clear environment variables before each test."""
-        env_vars = [
-            'MATRIX_HOMESERVER',
-            'MATRIX_ACCESS_TOKEN',
-            'MATRIX_BOT_USER_ID',
-            'MATRIX_PASSWORD',
-            'MATRIX_CREDENTIALS_JSON'
-        ]
-        for var in env_vars:
-            if var in os.environ:
-                del os.environ[var]
-
-    def tearDown(self):
-        """Clear environment variables after each test."""
-        env_vars = [
-            'MATRIX_HOMESERVER',
-            'MATRIX_ACCESS_TOKEN',
-            'MATRIX_BOT_USER_ID',
-            'MATRIX_PASSWORD',
-            'MATRIX_CREDENTIALS_JSON'
-        ]
-        for var in env_vars:
-            if var in os.environ:
-                del os.environ[var]
-
-    def test_load_credentials_from_env_individual_vars_access_token(self):
-        """Test loading credentials from individual environment variables with access token."""
-        os.environ['MATRIX_HOMESERVER'] = 'https://matrix.example.org'
-        os.environ['MATRIX_ACCESS_TOKEN'] = 'syt_test_token'
-        os.environ['MATRIX_BOT_USER_ID'] = '@bot:example.org'
-
-        credentials = load_credentials_from_env()
-
-        self.assertIsNotNone(credentials)
-        self.assertEqual(credentials['homeserver'], 'https://matrix.example.org')
-        self.assertEqual(credentials['access_token'], 'syt_test_token')
-        self.assertEqual(credentials['user_id'], '@bot:example.org')
-        self.assertNotIn('device_id', credentials)  # Device ID never comes from env vars
-
-    def test_load_credentials_from_env_individual_vars_password(self):
-        """Test loading credentials from individual environment variables with password."""
-        os.environ['MATRIX_HOMESERVER'] = 'https://matrix.example.org'
-        os.environ['MATRIX_BOT_USER_ID'] = '@bot:example.org'
-        os.environ['MATRIX_PASSWORD'] = 'test_password'
-
-        credentials = load_credentials_from_env()
-
-        self.assertIsNotNone(credentials)
-        self.assertEqual(credentials['homeserver'], 'https://matrix.example.org')
-        self.assertEqual(credentials['user_id'], '@bot:example.org')
-        self.assertEqual(credentials['password'], 'test_password')
-        self.assertNotIn('access_token', credentials)
-        self.assertNotIn('device_id', credentials)
-
-    def test_load_credentials_from_env_base64_json(self):
-        """Test loading credentials from base64 encoded JSON."""
-        test_credentials = {
-            'homeserver': 'https://matrix.example.org',
-            'access_token': 'syt_test_token',
-            'user_id': '@bot:example.org'
-        }
-
-        credentials_json = json.dumps(test_credentials)
-        credentials_b64 = base64.b64encode(credentials_json.encode('utf-8')).decode('utf-8')
-        os.environ['MATRIX_CREDENTIALS_JSON'] = credentials_b64
-
-        credentials = load_credentials_from_env()
-
-        self.assertIsNotNone(credentials)
-        self.assertEqual(credentials, test_credentials)
-
-    def test_load_credentials_from_env_missing_vars(self):
-        """Test that None is returned when required environment variables are missing."""
-        # Only set some variables, not all required ones
-        os.environ['MATRIX_HOMESERVER'] = 'https://matrix.example.org'
-        os.environ['MATRIX_ACCESS_TOKEN'] = 'syt_test_token'
-        # Missing MATRIX_BOT_USER_ID
-
-        credentials = load_credentials_from_env()
-        self.assertIsNone(credentials)
-
-    def test_load_credentials_from_env_invalid_base64(self):
-        """Test handling of invalid base64 in MATRIX_CREDENTIALS_JSON."""
-        os.environ['MATRIX_CREDENTIALS_JSON'] = 'invalid_base64!'
-
-        credentials = load_credentials_from_env()
-        self.assertIsNone(credentials)
-
-    @patch('mmrelay.config.os.path.exists')
-    @patch('builtins.open')
-    def test_load_credentials_precedence(self, mock_open, mock_exists):
-        """Test that environment variables take precedence over credentials.json file."""
-        # Set up environment variables
-        os.environ['MATRIX_HOMESERVER'] = 'https://env.example.org'
-        os.environ['MATRIX_ACCESS_TOKEN'] = 'env_token'
-        os.environ['MATRIX_BOT_USER_ID'] = '@env_bot:example.org'
-
-        # Mock file existence and content
-        mock_exists.return_value = True
-        file_credentials = {
-            'homeserver': 'https://file.example.org',
-            'access_token': 'file_token',
-            'user_id': '@file_bot:example.org'
-        }
-        mock_open.return_value.__enter__.return_value.read.return_value = json.dumps(file_credentials)
-
-        credentials = load_credentials()
-
-        # Should return environment variables, not file content
-        self.assertIsNotNone(credentials)
-        self.assertEqual(credentials['homeserver'], 'https://env.example.org')
-        self.assertEqual(credentials['access_token'], 'env_token')
-        self.assertEqual(credentials['user_id'], '@env_bot:example.org')
-
 
 class TestEnvironmentVariableHelpers(unittest.TestCase):
     """Test environment variable conversion helper functions."""
@@ -794,8 +675,7 @@ class TestEnvironmentVariableIntegration(unittest.TestCase):
         self.all_env_vars = [
             'MMRELAY_MESHTASTIC_CONNECTION_TYPE', 'MMRELAY_MESHTASTIC_HOST',
             'MMRELAY_MESHTASTIC_PORT', 'MMRELAY_LOGGING_LEVEL',
-            'MMRELAY_DATABASE_PATH', 'MATRIX_HOMESERVER', 'MATRIX_ACCESS_TOKEN',
-            'MATRIX_BOT_USER_ID'
+            'MMRELAY_DATABASE_PATH'
         ]
         for var in self.all_env_vars:
             if var in os.environ:

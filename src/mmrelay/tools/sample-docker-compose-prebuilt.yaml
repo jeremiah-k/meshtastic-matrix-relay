@@ -10,15 +10,8 @@ services:
       - PYTHONUNBUFFERED=1
       - MPLCONFIGDIR=/tmp/matplotlib
 
-      # Matrix Authentication (E2EE Support) - Uncomment and configure as needed
-      # Method 1: Individual environment variables (recommended)
-      # - MATRIX_HOMESERVER=https://matrix.example.org
-      # - MATRIX_ACCESS_TOKEN=your_access_token_here
-      # - MATRIX_BOT_USER_ID=@yourbot:example.org
-
-
-      # Method 2: Base64 encoded credentials.json (alternative)
-      # - MATRIX_CREDENTIALS_JSON=eyJob21lc2VydmVyIjoi...
+      # Matrix Authentication: Use 'mmrelay auth login' on host system to create credentials.json
+      # The credentials file will be automatically loaded from the volume mount below
 
       # Meshtastic Connection Settings - Uncomment and configure as needed
       # TCP Connection (most common)

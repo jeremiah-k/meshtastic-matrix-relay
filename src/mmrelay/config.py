@@ -175,59 +175,7 @@ def get_e2ee_store_dir():
     return store_dir
 
 
-def load_credentials_from_env():
-    """
-    Load Matrix credentials from environment variables.
 
-    Supports three methods (in order of precedence):
-    1. Base64 encoded credentials.json content (MATRIX_CREDENTIALS_JSON)
-    2. Individual environment variables with access token (MATRIX_HOMESERVER, MATRIX_ACCESS_TOKEN, MATRIX_BOT_USER_ID)
-    3. Individual environment variables with password (MATRIX_HOMESERVER, MATRIX_BOT_USER_ID, MATRIX_PASSWORD)
-
-    Note: MATRIX_DEVICE_ID is never set via environment variables - it comes from the Matrix server during authentication.
-
-    Returns:
-        dict: Credentials dictionary if found, None otherwise.
-    """
-    import base64
-
-    # Method 1: Base64 encoded credentials.json
-    credentials_json_b64 = os.getenv('MATRIX_CREDENTIALS_JSON')
-    if credentials_json_b64:
-        try:
-            credentials_json = base64.b64decode(credentials_json_b64).decode('utf-8')
-            credentials = json.loads(credentials_json)
-            logger.debug("Loaded credentials from MATRIX_CREDENTIALS_JSON environment variable")
-            return credentials
-        except (ValueError, json.JSONDecodeError, UnicodeDecodeError) as e:
-            logger.error(f"Error decoding MATRIX_CREDENTIALS_JSON: {e}")
-            return None
-
-    # Method 2: Individual environment variables
-    homeserver = os.getenv('MATRIX_HOMESERVER')
-    access_token = os.getenv('MATRIX_ACCESS_TOKEN')
-    user_id = os.getenv('MATRIX_BOT_USER_ID')
-    password = os.getenv('MATRIX_PASSWORD')
-
-    # Support both access token and username/password authentication
-    if homeserver and access_token and user_id:
-        credentials = {
-            'homeserver': homeserver,
-            'access_token': access_token,
-            'user_id': user_id,
-        }
-        logger.debug("Loaded credentials from individual environment variables (access token)")
-        return credentials
-    elif homeserver and user_id and password:
-        credentials = {
-            'homeserver': homeserver,
-            'user_id': user_id,
-            'password': password,
-        }
-        logger.debug("Loaded credentials from individual environment variables (username/password)")
-        return credentials
-
-    return None
 
 
 def _convert_env_bool(value, var_name):
@@ -504,17 +452,11 @@ def apply_env_config_overrides(config):
 
 def load_credentials():
     """
-    Load Matrix credentials with precedence: environment variables > credentials.json file.
+    Load Matrix credentials from credentials.json file.
 
     Returns:
         dict: Credentials dictionary if found, None otherwise.
     """
-    # First try environment variables (highest precedence)
-    env_credentials = load_credentials_from_env()
-    if env_credentials:
-        return env_credentials
-
-    # Fall back to credentials.json file
     try:
         config_dir = get_base_dir()
         credentials_path = os.path.join(config_dir, "credentials.json")
