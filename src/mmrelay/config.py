@@ -278,63 +278,12 @@ def load_meshtastic_config_from_env():
     Returns:
         dict: Meshtastic configuration dictionary if any env vars found, None otherwise.
     """
-
-    config = {}
-
-    for mapping in _MESHTASTIC_ENV_VAR_MAPPINGS:
-        env_value = os.getenv(mapping["env_var"])
-        if env_value is None:
-            continue
-
-        try:
-            if mapping["type"] == "string":
-                value = env_value
-            elif mapping["type"] == "int":
-                value = _convert_env_int(
-                    env_value,
-                    mapping["env_var"],
-                    min_value=mapping.get("min_value"),
-                    max_value=mapping.get("max_value"),
-                )
-            elif mapping["type"] == "float":
-                value = _convert_env_float(
-                    env_value,
-                    mapping["env_var"],
-                    min_value=mapping.get("min_value"),
-                    max_value=mapping.get("max_value"),
-                )
-            elif mapping["type"] == "bool":
-                value = _convert_env_bool(env_value, mapping["env_var"])
-            elif mapping["type"] == "enum":
-                transformed_value = mapping.get("transform", lambda x: x)(env_value)
-                if transformed_value not in mapping["valid_values"]:
-                    valid_values_str = "', '".join(mapping["valid_values"])
-                    logger.error(
-                        f"Invalid {mapping['env_var']}: '{env_value}'. Must be one of: '{valid_values_str}'. Skipping this setting."
-                    )
-                    continue  # Skip invalid value but continue with other settings
-                value = transformed_value
-            else:
-                logger.error(
-                    f"Unknown type '{mapping['type']}' for {mapping['env_var']}. Skipping this setting."
-                )
-                continue  # Skip unknown type but continue with other settings
-
-            config[mapping["config_key"]] = value
-
-        except ValueError as e:
-            logger.error(
-                f"Error parsing {mapping['env_var']}: {e}. Skipping this setting."
-            )
-            continue  # Skip invalid value but continue with other settings
-
+    config = _load_config_from_env_mapping(_MESHTASTIC_ENV_VAR_MAPPINGS)
     if config:
         logger.debug(
             f"Loaded Meshtastic configuration from environment variables: {list(config.keys())}"
         )
-        return config
-
-    return None
+    return config
 
 
 def load_logging_config_from_env():
@@ -344,34 +293,14 @@ def load_logging_config_from_env():
     Returns:
         dict: Logging configuration dictionary if any env vars found, None otherwise.
     """
-    config = {}
-
-    # Logging level
-    level = os.getenv("MMRELAY_LOGGING_LEVEL")
-    if level:
-        level_upper = level.upper()
-        if level_upper not in ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"):
-            logger.error(
-                f"Invalid MMRELAY_LOGGING_LEVEL: '{level}'. Must be DEBUG, INFO, WARNING, ERROR, or CRITICAL. Skipping logging level."
-            )
-        else:
-            config["level"] = (
-                level_upper.lower()
-            )  # Store in lowercase to match config.yaml format
-
-    # Log file path
-    log_file = os.getenv("MMRELAY_LOG_FILE")
-    if log_file:
-        config["filename"] = log_file
-        config["log_to_file"] = True  # Enable file logging if filename is provided
-
+    config = _load_config_from_env_mapping(_LOGGING_ENV_VAR_MAPPINGS)
     if config:
+        if config.get("filename"):
+            config["log_to_file"] = True
         logger.debug(
             f"Loaded logging configuration from environment variables: {list(config.keys())}"
         )
-        return config
-
-    return None
+    return config
 
 
 def load_database_config_from_env():
@@ -381,20 +310,12 @@ def load_database_config_from_env():
     Returns:
         dict: Database configuration dictionary if any env vars found, None otherwise.
     """
-    config = {}
-
-    # Database path
-    db_path = os.getenv("MMRELAY_DATABASE_PATH")
-    if db_path:
-        config["path"] = db_path
-
+    config = _load_config_from_env_mapping(_DATABASE_ENV_VAR_MAPPINGS)
     if config:
         logger.debug(
             f"Loaded database configuration from environment variables: {list(config.keys())}"
         )
-        return config
-
-    return None
+    return config
 
 
 def apply_env_config_overrides(config):
@@ -493,7 +414,7 @@ logger.addHandler(handler)
 relay_config = {}
 config_path = None
 
-# Environment variable mappings for Meshtastic configuration
+# Environment variable mappings for configuration sections
 _MESHTASTIC_ENV_VAR_MAPPINGS = [
     {
         "env_var": "MMRELAY_MESHTASTIC_CONNECTION_TYPE",
@@ -537,6 +458,83 @@ _MESHTASTIC_ENV_VAR_MAPPINGS = [
         "min_value": 2.0,
     },
 ]
+
+_LOGGING_ENV_VAR_MAPPINGS = [
+    {
+        "env_var": "MMRELAY_LOGGING_LEVEL",
+        "config_key": "level",
+        "type": "enum",
+        "valid_values": ("debug", "info", "warning", "error", "critical"),
+        "transform": lambda x: x.lower(),
+    },
+    {"env_var": "MMRELAY_LOG_FILE", "config_key": "filename", "type": "string"},
+]
+
+_DATABASE_ENV_VAR_MAPPINGS = [
+    {"env_var": "MMRELAY_DATABASE_PATH", "config_key": "path", "type": "string"},
+]
+
+
+def _load_config_from_env_mapping(mappings):
+    """
+    Generic function to load configuration from environment variables based on a mapping.
+
+    Args:
+        mappings: List of mapping dictionaries defining environment variables and their types
+
+    Returns:
+        dict: Configuration dictionary if any env vars found, None otherwise
+    """
+    config = {}
+
+    for mapping in mappings:
+        env_value = os.getenv(mapping["env_var"])
+        if env_value is None:
+            continue
+
+        try:
+            if mapping["type"] == "string":
+                value = env_value
+            elif mapping["type"] == "int":
+                value = _convert_env_int(
+                    env_value,
+                    mapping["env_var"],
+                    min_value=mapping.get("min_value"),
+                    max_value=mapping.get("max_value"),
+                )
+            elif mapping["type"] == "float":
+                value = _convert_env_float(
+                    env_value,
+                    mapping["env_var"],
+                    min_value=mapping.get("min_value"),
+                    max_value=mapping.get("max_value"),
+                )
+            elif mapping["type"] == "bool":
+                value = _convert_env_bool(env_value, mapping["env_var"])
+            elif mapping["type"] == "enum":
+                transformed_value = mapping.get("transform", lambda x: x)(env_value)
+                if transformed_value not in mapping["valid_values"]:
+                    valid_values_str = "', '".join(mapping["valid_values"])
+                    logger.error(
+                        f"Invalid {mapping['env_var']}: '{env_value}'. Must be one of: '{valid_values_str}'. Skipping this setting."
+                    )
+                    continue
+                value = transformed_value
+            else:
+                logger.error(
+                    f"Unknown type '{mapping['type']}' for {mapping['env_var']}. Skipping this setting."
+                )
+                continue
+
+            config[mapping["config_key"]] = value
+
+        except ValueError as e:
+            logger.error(
+                f"Error parsing {mapping['env_var']}: {e}. Skipping this setting."
+            )
+            continue
+
+    return config if config else None
 
 
 def set_config(module, passed_config):
