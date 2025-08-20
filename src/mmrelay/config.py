@@ -179,9 +179,12 @@ def load_credentials_from_env():
     """
     Load Matrix credentials from environment variables.
 
-    Supports two methods:
-    1. Individual environment variables (MATRIX_HOMESERVER, MATRIX_ACCESS_TOKEN, etc.)
-    2. Base64 encoded credentials.json content (MATRIX_CREDENTIALS_JSON)
+    Supports three methods (in order of precedence):
+    1. Base64 encoded credentials.json content (MATRIX_CREDENTIALS_JSON)
+    2. Individual environment variables with access token (MATRIX_HOMESERVER, MATRIX_ACCESS_TOKEN, MATRIX_BOT_USER_ID)
+    3. Individual environment variables with password (MATRIX_HOMESERVER, MATRIX_BOT_USER_ID, MATRIX_PASSWORD)
+
+    Note: MATRIX_DEVICE_ID is never set via environment variables - it comes from the Matrix server during authentication.
 
     Returns:
         dict: Credentials dictionary if found, None otherwise.
@@ -204,20 +207,24 @@ def load_credentials_from_env():
     homeserver = os.getenv('MATRIX_HOMESERVER')
     access_token = os.getenv('MATRIX_ACCESS_TOKEN')
     user_id = os.getenv('MATRIX_BOT_USER_ID')
+    password = os.getenv('MATRIX_PASSWORD')
 
+    # Support both access token and username/password authentication
     if homeserver and access_token and user_id:
         credentials = {
             'homeserver': homeserver,
             'access_token': access_token,
             'user_id': user_id,
         }
-
-        # Optional device_id for E2EE
-        device_id = os.getenv('MATRIX_DEVICE_ID')
-        if device_id:
-            credentials['device_id'] = device_id
-
-        logger.debug("Loaded credentials from individual environment variables")
+        logger.debug("Loaded credentials from individual environment variables (access token)")
+        return credentials
+    elif homeserver and user_id and password:
+        credentials = {
+            'homeserver': homeserver,
+            'user_id': user_id,
+            'password': password,
+        }
+        logger.debug("Loaded credentials from individual environment variables (username/password)")
         return credentials
 
     return None
@@ -270,7 +277,7 @@ def _convert_env_int(value, var_name, min_value=None, max_value=None):
         return int_value
     except ValueError as e:
         if "invalid literal" in str(e):
-            raise ValueError(f"Invalid integer value for {var_name}: '{value}'")
+            raise ValueError(f"Invalid integer value for {var_name}: '{value}'") from None
         raise
 
 
@@ -299,7 +306,7 @@ def _convert_env_float(value, var_name, min_value=None, max_value=None):
         return float_value
     except ValueError as e:
         if "could not convert" in str(e):
-            raise ValueError(f"Invalid float value for {var_name}: '{value}'")
+            raise ValueError(f"Invalid float value for {var_name}: '{value}'") from None
         raise
 
 
@@ -389,18 +396,18 @@ def load_meshtastic_config_from_env():
                 transformed_value = mapping.get('transform', lambda x: x)(env_value)
                 if transformed_value not in mapping['valid_values']:
                     valid_values_str = "', '".join(mapping['valid_values'])
-                    logger.error(f"Invalid {mapping['env_var']}: '{env_value}'. Must be '{valid_values_str}'")
-                    return None
+                    logger.error(f"Invalid {mapping['env_var']}: '{env_value}'. Must be '{valid_values_str}'. Skipping this setting.")
+                    continue  # Skip invalid value but continue with other settings
                 value = transformed_value
             else:
-                logger.error(f"Unknown type '{mapping['type']}' for {mapping['env_var']}")
-                return None
+                logger.error(f"Unknown type '{mapping['type']}' for {mapping['env_var']}. Skipping this setting.")
+                continue  # Skip unknown type but continue with other settings
 
             config[mapping['config_key']] = value
 
         except ValueError as e:
-            logger.error(f"Error parsing {mapping['env_var']}: {e}")
-            return None
+            logger.error(f"Error parsing {mapping['env_var']}: {e}. Skipping this setting.")
+            continue  # Skip invalid value but continue with other settings
 
     if config:
         logger.debug(f"Loaded Meshtastic configuration from environment variables: {list(config.keys())}")
@@ -423,9 +430,9 @@ def load_logging_config_from_env():
     if level:
         level_upper = level.upper()
         if level_upper not in ('DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'):
-            logger.error(f"Invalid MMRELAY_LOGGING_LEVEL: '{level}'. Must be DEBUG, INFO, WARNING, ERROR, or CRITICAL")
-            return None
-        config['level'] = level_upper.lower()  # Store in lowercase to match config.yaml format
+            logger.error(f"Invalid MMRELAY_LOGGING_LEVEL: '{level}'. Must be DEBUG, INFO, WARNING, ERROR, or CRITICAL. Skipping logging level.")
+        else:
+            config['level'] = level_upper.lower()  # Store in lowercase to match config.yaml format
 
     # Log file path
     log_file = os.getenv('MMRELAY_LOG_FILE')

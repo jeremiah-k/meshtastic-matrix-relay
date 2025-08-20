@@ -15,7 +15,7 @@ services:
       # - MATRIX_HOMESERVER=https://matrix.example.org
       # - MATRIX_ACCESS_TOKEN=your_access_token_here
       # - MATRIX_BOT_USER_ID=@yourbot:example.org
-      # - MATRIX_DEVICE_ID=ABCDEFGHIJ  # Optional but recommended for E2EE
+
 
       # Method 2: Base64 encoded credentials.json (alternative)
       # - MATRIX_CREDENTIALS_JSON=eyJob21lc2VydmVyIjoi...
@@ -41,7 +41,7 @@ services:
 
       # System Configuration
       # - MMRELAY_LOGGING_LEVEL=INFO  # DEBUG, INFO, WARNING, ERROR, CRITICAL
-      # - MMRELAY_LOG_FILE=/app/data/mmrelay.log  # Enables file logging
+      # - MMRELAY_LOG_FILE=/app/data/logs/mmrelay.log  # Enables file logging
       # - MMRELAY_DATABASE_PATH=/app/data/meshtastic.sqlite
 
       # Note: Environment variables take precedence over credentials.json and config.yaml

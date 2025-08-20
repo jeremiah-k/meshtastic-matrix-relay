@@ -138,12 +138,16 @@ MMRelay supports Matrix authentication via environment variables, which is espec
 
 **Method 1: Individual Variables**
 - **`MATRIX_HOMESERVER`**: Matrix homeserver URL (e.g., `https://matrix.example.org`)
-- **`MATRIX_ACCESS_TOKEN`**: Matrix access token for authentication
+- **`MATRIX_ACCESS_TOKEN`**: Matrix access token for authentication (alternative to password)
 - **`MATRIX_BOT_USER_ID`**: Bot's Matrix user ID (e.g., `@bot:example.org`)
-- **`MATRIX_DEVICE_ID`**: Device ID for E2EE support (optional but recommended)
+- **`MATRIX_PASSWORD`**: Matrix password for authentication (alternative to access token)
+
+**Note**: Device ID is never set via environment variables - it comes from the Matrix server during authentication.
 
 **Method 2: Base64 Encoded Credentials**
 - **`MATRIX_CREDENTIALS_JSON`**: Base64 encoded `credentials.json` content
+
+**Security Note**: Environment variables are visible via `docker inspect` and process listings. For stronger secrecy, prefer mounting `credentials.json` from the host with restrictive permissions.
 
 ### Meshtastic Connection Settings
 Configure Meshtastic device connection via environment variables:
@@ -341,7 +345,7 @@ services:
       - MATRIX_HOMESERVER=https://matrix.example.org
       - MATRIX_ACCESS_TOKEN=your_access_token_here
       - MATRIX_BOT_USER_ID=@yourbot:example.org
-      - MATRIX_DEVICE_ID=ABCDEFGHIJ  # Optional but recommended for E2EE
+
 
       # Meshtastic Connection (TCP example)
       - MMRELAY_MESHTASTIC_CONNECTION_TYPE=tcp
@@ -386,7 +390,7 @@ services:
       - MATRIX_HOMESERVER=https://matrix.example.org
       - MATRIX_ACCESS_TOKEN=your_access_token_here
       - MATRIX_BOT_USER_ID=@yourbot:example.org
-      - MATRIX_DEVICE_ID=ABCDEFGHIJ
+
 
       # Meshtastic TCP Connection
       - MMRELAY_MESHTASTIC_CONNECTION_TYPE=tcp

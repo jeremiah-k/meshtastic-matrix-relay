@@ -422,7 +422,7 @@ class TestCredentialsEnvironmentVariables(unittest.TestCase):
             'MATRIX_HOMESERVER',
             'MATRIX_ACCESS_TOKEN',
             'MATRIX_BOT_USER_ID',
-            'MATRIX_DEVICE_ID',
+            'MATRIX_PASSWORD',
             'MATRIX_CREDENTIALS_JSON'
         ]
         for var in env_vars:
@@ -435,30 +435,15 @@ class TestCredentialsEnvironmentVariables(unittest.TestCase):
             'MATRIX_HOMESERVER',
             'MATRIX_ACCESS_TOKEN',
             'MATRIX_BOT_USER_ID',
-            'MATRIX_DEVICE_ID',
+            'MATRIX_PASSWORD',
             'MATRIX_CREDENTIALS_JSON'
         ]
         for var in env_vars:
             if var in os.environ:
                 del os.environ[var]
 
-    def test_load_credentials_from_env_individual_vars(self):
-        """Test loading credentials from individual environment variables."""
-        os.environ['MATRIX_HOMESERVER'] = 'https://matrix.example.org'
-        os.environ['MATRIX_ACCESS_TOKEN'] = 'syt_test_token'
-        os.environ['MATRIX_BOT_USER_ID'] = '@bot:example.org'
-        os.environ['MATRIX_DEVICE_ID'] = 'TESTDEVICE123'
-
-        credentials = load_credentials_from_env()
-
-        self.assertIsNotNone(credentials)
-        self.assertEqual(credentials['homeserver'], 'https://matrix.example.org')
-        self.assertEqual(credentials['access_token'], 'syt_test_token')
-        self.assertEqual(credentials['user_id'], '@bot:example.org')
-        self.assertEqual(credentials['device_id'], 'TESTDEVICE123')
-
-    def test_load_credentials_from_env_without_device_id(self):
-        """Test loading credentials without device_id (optional field)."""
+    def test_load_credentials_from_env_individual_vars_access_token(self):
+        """Test loading credentials from individual environment variables with access token."""
         os.environ['MATRIX_HOMESERVER'] = 'https://matrix.example.org'
         os.environ['MATRIX_ACCESS_TOKEN'] = 'syt_test_token'
         os.environ['MATRIX_BOT_USER_ID'] = '@bot:example.org'
@@ -469,6 +454,21 @@ class TestCredentialsEnvironmentVariables(unittest.TestCase):
         self.assertEqual(credentials['homeserver'], 'https://matrix.example.org')
         self.assertEqual(credentials['access_token'], 'syt_test_token')
         self.assertEqual(credentials['user_id'], '@bot:example.org')
+        self.assertNotIn('device_id', credentials)  # Device ID never comes from env vars
+
+    def test_load_credentials_from_env_individual_vars_password(self):
+        """Test loading credentials from individual environment variables with password."""
+        os.environ['MATRIX_HOMESERVER'] = 'https://matrix.example.org'
+        os.environ['MATRIX_BOT_USER_ID'] = '@bot:example.org'
+        os.environ['MATRIX_PASSWORD'] = 'test_password'
+
+        credentials = load_credentials_from_env()
+
+        self.assertIsNotNone(credentials)
+        self.assertEqual(credentials['homeserver'], 'https://matrix.example.org')
+        self.assertEqual(credentials['user_id'], '@bot:example.org')
+        self.assertEqual(credentials['password'], 'test_password')
+        self.assertNotIn('access_token', credentials)
         self.assertNotIn('device_id', credentials)
 
     def test_load_credentials_from_env_base64_json(self):
@@ -476,8 +476,7 @@ class TestCredentialsEnvironmentVariables(unittest.TestCase):
         test_credentials = {
             'homeserver': 'https://matrix.example.org',
             'access_token': 'syt_test_token',
-            'user_id': '@bot:example.org',
-            'device_id': 'TESTDEVICE123'
+            'user_id': '@bot:example.org'
         }
 
         credentials_json = json.dumps(test_credentials)
