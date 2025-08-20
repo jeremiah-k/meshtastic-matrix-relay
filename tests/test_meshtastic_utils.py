@@ -475,6 +475,20 @@ class TestServiceDetection(unittest.TestCase):
         result = is_running_as_service()
         self.assertFalse(result)
 
+    @patch.dict(os.environ, {}, clear=True)
+    @patch("builtins.open", side_effect=PermissionError("Permission denied"))
+    def test_is_running_as_service_permission_error(self, mock_open_func):
+        """Test that service detection handles PermissionError gracefully."""
+        result = is_running_as_service()
+        self.assertFalse(result)
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_is_running_as_service_value_error(self):
+        """Test that service detection handles ValueError gracefully when parsing invalid data."""
+        with patch("builtins.open", mock_open(read_data="invalid data format\n")):
+            result = is_running_as_service()
+            self.assertFalse(result)
+
 
 class TestSerialPortDetection(unittest.TestCase):
     """Test cases for serial port detection functionality."""
@@ -904,6 +918,177 @@ class TestCoroutineSubmission(unittest.TestCase):
         # Test with integer input
         result = _submit_coro(42)
         self.assertIsNone(result)
+
+    def test_submit_coro_with_valid_event_loop(self):
+        """Test _submit_coro with a valid event loop uses run_coroutine_threadsafe."""
+        from mmrelay.meshtastic_utils import _submit_coro
+        import asyncio
+
+        # Create a mock event loop
+        mock_loop = MagicMock(spec=asyncio.AbstractEventLoop)
+        mock_loop.is_closed.return_value = False
+
+        # Create a simple coroutine
+        async def test_coro():
+            return "test_result"
+
+        coro = test_coro()
+
+        with patch('asyncio.run_coroutine_threadsafe') as mock_run_threadsafe:
+            mock_future = MagicMock()
+            mock_run_threadsafe.return_value = mock_future
+
+            # Pass the loop directly to bypass the module-level event_loop
+            result = _submit_coro(coro, loop=mock_loop)
+
+            # Verify run_coroutine_threadsafe was called
+            mock_run_threadsafe.assert_called_once_with(coro, mock_loop)
+            self.assertEqual(result, mock_future)
+
+        # Clean up the coroutine
+        coro.close()
+
+    def test_submit_coro_with_running_loop_fallback(self):
+        """Test _submit_coro fallback to running loop when no event_loop provided."""
+        from mmrelay.meshtastic_utils import _submit_coro
+        import asyncio
+
+        async def test_coro():
+            return "test_result"
+
+        coro = test_coro()
+
+        with patch('mmrelay.meshtastic_utils.event_loop', None), \
+             patch('asyncio.get_running_loop') as mock_get_loop:
+            mock_loop = MagicMock()
+            mock_task = MagicMock()
+            mock_loop.create_task.return_value = mock_task
+            mock_get_loop.return_value = mock_loop
+
+            result = _submit_coro(coro)
+
+            # Verify create_task was called on the running loop
+            mock_loop.create_task.assert_called_once_with(coro)
+            self.assertEqual(result, mock_task)
+
+        # Clean up the coroutine
+        coro.close()
+
+    def test_submit_coro_no_running_loop_success(self):
+        """Test _submit_coro with no running loop executes synchronously and wraps result."""
+        from mmrelay.meshtastic_utils import _submit_coro
+        from concurrent.futures import Future
+
+        async def test_coro():
+            return "test_result"
+
+        coro = test_coro()
+
+        with patch('mmrelay.meshtastic_utils.event_loop', None), \
+             patch('asyncio.get_running_loop') as mock_get_loop, \
+             patch('asyncio.run') as mock_run:
+
+            # Simulate no running loop
+            mock_get_loop.side_effect = RuntimeError("No running loop")
+            mock_run.return_value = "test_result"
+
+            result = _submit_coro(coro)
+
+            # Verify asyncio.run was called
+            mock_run.assert_called_once_with(coro)
+
+            # Verify result is a Future with the correct result
+            self.assertIsInstance(result, Future)
+            self.assertEqual(result.result(), "test_result")
+
+    def test_submit_coro_no_running_loop_exception(self):
+        """Test _submit_coro with no running loop handles exceptions properly."""
+        from mmrelay.meshtastic_utils import _submit_coro
+        from concurrent.futures import Future
+
+        async def failing_coro():
+            raise ValueError("Test exception")
+
+        coro = failing_coro()
+
+        with patch('mmrelay.meshtastic_utils.event_loop', None), \
+             patch('asyncio.get_running_loop') as mock_get_loop, \
+             patch('asyncio.run') as mock_run:
+
+            # Simulate no running loop
+            mock_get_loop.side_effect = RuntimeError("No running loop")
+            mock_run.side_effect = ValueError("Test exception")
+
+            result = _submit_coro(coro)
+
+            # Verify asyncio.run was called
+            mock_run.assert_called_once_with(coro)
+
+            # Verify result is a Future with the exception
+            self.assertIsInstance(result, Future)
+            with self.assertRaises(ValueError) as cm:
+                result.result()
+            self.assertEqual(str(cm.exception), "Test exception")
+
+
+class TestReconnectingFlagLogic(unittest.TestCase):
+    """Test cases for reconnecting flag logic in connect_meshtastic."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        import mmrelay.meshtastic_utils
+        # Reset global state
+        mmrelay.meshtastic_utils.reconnecting = False
+        mmrelay.meshtastic_utils.meshtastic_client = None
+
+    def tearDown(self):
+        """Clean up after tests."""
+        import mmrelay.meshtastic_utils
+        mmrelay.meshtastic_utils.reconnecting = False
+        mmrelay.meshtastic_utils.meshtastic_client = None
+
+    @patch('mmrelay.meshtastic_utils.logger')
+    def test_connect_meshtastic_blocked_by_reconnecting_flag(self, mock_logger):
+        """Test that connect_meshtastic is blocked when reconnecting=True and force_connect=False."""
+        import mmrelay.meshtastic_utils
+        from mmrelay.meshtastic_utils import connect_meshtastic
+
+        # Set reconnecting flag
+        mmrelay.meshtastic_utils.reconnecting = True
+
+        # Call connect_meshtastic with force_connect=False (default)
+        result = connect_meshtastic(None, False)
+
+        # Should return None and log debug message
+        self.assertIsNone(result)
+        mock_logger.debug.assert_called_with(
+            "Reconnection already in progress. Not attempting new connection."
+        )
+
+    @patch('mmrelay.meshtastic_utils.logger')
+    @patch('mmrelay.meshtastic_utils.config', None)
+    def test_connect_meshtastic_force_connect_bypasses_reconnecting_flag(self, mock_logger):
+        """Test that connect_meshtastic with force_connect=True bypasses reconnecting flag."""
+        import mmrelay.meshtastic_utils
+        from mmrelay.meshtastic_utils import connect_meshtastic
+
+        # Set reconnecting flag
+        mmrelay.meshtastic_utils.reconnecting = True
+
+        # Call connect_meshtastic with force_connect=True
+        result = connect_meshtastic(None, True)
+
+        # Should NOT be blocked by reconnecting flag
+        # Should return None due to missing config, not due to reconnecting flag
+        self.assertIsNone(result)
+
+        # Should NOT log the reconnection debug message
+        mock_logger.debug.assert_not_called()
+
+        # Should log the config error instead
+        mock_logger.error.assert_called_with(
+            "No configuration available. Cannot connect to Meshtastic."
+        )
 
 
 class TestTextReplyFunctionality(unittest.TestCase):
