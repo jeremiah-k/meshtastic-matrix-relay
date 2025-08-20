@@ -940,7 +940,11 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
     """Test the actual _submit_coro implementation without global mocking."""
 
     def setUp(self):
-        """Set up test by temporarily disabling the global mock."""
+        """
+        Prepare test fixture by disabling the module-level asyncio event loop mock and capturing the real `_submit_coro`.
+        
+        This saves the current `mmrelay.meshtastic_utils.event_loop` and `_submit_coro` into instance attributes so they can be restored later, sets `event_loop` to None to ensure tests run against the real asyncio behavior, and reloads the `mmrelay.meshtastic_utils` source to obtain the original (unmocked) `_submit_coro` implementation for direct testing.
+        """
         import mmrelay.meshtastic_utils as mu
 
         # Store original event_loop state
@@ -968,7 +972,13 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
         self.original_submit_coro = source_module._submit_coro
 
     def tearDown(self):
-        """Restore original module state and mocking."""
+        """
+        Tear down test fixtures by restoring the meshtastic_utils module's global state.
+        
+        Specifically restores:
+        - mu.event_loop to the saved original event loop
+        - mu._submit_coro to the previously mocked implementation
+        """
         import mmrelay.meshtastic_utils as mu
 
         # Restore original event_loop state
@@ -1000,6 +1010,14 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
         from concurrent.futures import Future
 
         async def failing_coro():
+            """
+            Coroutine that immediately raises a ValueError when awaited.
+            
+            This async helper is intended for tests: awaiting this coroutine will always raise
+            a ValueError with message "Test exception".
+            Raises:
+                ValueError: Always raised when the coroutine is awaited.
+            """
             raise ValueError("Test exception")
 
         coro = failing_coro()
@@ -1153,7 +1171,12 @@ class TestReconnectingFlagLogic(unittest.TestCase):
         mmrelay.meshtastic_utils.meshtastic_client = None
 
     def tearDown(self):
-        """Clean up after tests."""
+        """
+        Reset meshtastic-related global state after a test.
+        
+        Sets mmrelay.meshtastic_utils.reconnecting to False and mmrelay.meshtastic_utils.meshtastic_client to None
+        to ensure tests remain isolated and no client or reconnect loop state is carried across tests.
+        """
         import mmrelay.meshtastic_utils
 
         mmrelay.meshtastic_utils.reconnecting = False

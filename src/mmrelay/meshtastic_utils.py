@@ -420,8 +420,13 @@ def on_lost_meshtastic_connection(interface=None, detection_source="unknown"):
 async def reconnect():
     """
     Attempt to re-establish a Meshtastic connection with exponential backoff.
-
-    Starts from DEFAULT_BACKOFF_TIME and doubles after each failure up to 300 seconds. Between attempts the coroutine sleeps; when not running as a systemd service it displays a Rich progress countdown during the backoff. Each cycle invokes connect_meshtastic(force_connect=True) in the default executor; the loop exits when a connection is obtained, the global shutting_down flag is set, or the task is cancelled. Exceptions during attempts are logged; asyncio.CancelledError is caught and logged. Ensures the module-level reconnecting flag is cleared before returning.
+    
+    This coroutine repeatedly tries to reconnect by invoking connect_meshtastic(force_connect=True)
+    in a thread executor until a connection is obtained, the global shutting_down flag is set,
+    or the task is cancelled. It begins with DEFAULT_BACKOFF_TIME and doubles the wait after each
+    failed attempt, capping the backoff at 300 seconds. The function ensures the module-level
+    reconnecting flag is cleared before it returns. asyncio.CancelledError is handled (logged)
+    and causes the routine to stop.
     """
     global meshtastic_client, reconnecting, shutting_down
     backoff_time = DEFAULT_BACKOFF_TIME
