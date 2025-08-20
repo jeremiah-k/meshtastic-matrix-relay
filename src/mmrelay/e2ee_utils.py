@@ -213,17 +213,17 @@ def get_room_encryption_warnings(
 def format_room_list(rooms: Dict[str, Any], e2ee_status: Dict[str, Any]) -> List[str]:
     """
     Format a list of human-readable room lines with encryption indicators and status-specific warnings.
-    
+
     Given a mapping of room_id -> room-like objects, produce one display string per room:
     - If E2EE overall_status == "ready": encrypted rooms are marked "🔒 {name} - Encrypted"; non-encrypted rooms are "✅ {name}".
     - If not ready: encrypted rooms are prefixed with "⚠️" and include a short reason derived from overall_status ("unavailable" -> not supported on Windows, "disabled" -> disabled in config, otherwise "incomplete"); non-encrypted rooms remain "✅ {name}".
-    
+
     Parameters:
         rooms: Mapping of room_id to a room-like object. Each room may have attributes:
             - display_name (str): human-friendly name (fallback: room_id)
             - encrypted (bool): whether the room is encrypted (default: False)
         e2ee_status: E2EE status dictionary (as returned by get_e2ee_status()). Only e2ee_status["overall_status"] is used.
-    
+
     Returns:
         List[str]: One formatted line per room suitable for user display.
     """
@@ -322,17 +322,17 @@ def get_e2ee_error_message(e2ee_status: Dict[str, Any]) -> str:
 
 def get_e2ee_fix_instructions(e2ee_status: Dict[str, Any]) -> List[str]:
     """
-    Return an ordered list of user-facing, actionable instructions to resolve E2EE issues.
+    Return ordered, user-facing instructions to resolve E2EE setup problems.
     
-    If e2ee_status["overall_status"] == "ready" returns a single success line. If the platform is unsupported, returns platform-specific guidance and stops. Otherwise returns a numbered sequence of steps (when applicable) to install E2EE dependencies, provision Matrix credentials, enable E2EE in the configuration, and a final verification step. Steps include indented command or configuration snippets.
+    When E2EE is already ready, returns a single confirmation line. If the platform is unsupported, returns platform-specific guidance and stops. Otherwise returns a numbered sequence of actionable steps (when applicable) to: install required E2EE dependencies, provision Matrix credentials, enable E2EE in the configuration file, and finally verify the configuration. Each step may include indented command or configuration snippets.
     
     Parameters:
-        e2ee_status (dict): Status mapping produced by get_e2ee_status(); keys consulted:
+        e2ee_status (dict): Status mapping produced by get_e2ee_status(); the function reads the keys
             "overall_status", "platform_supported", "dependencies_installed",
-            "credentials_available", and "enabled".
+            "credentials_available", and "enabled" to decide which steps to include.
     
     Returns:
-        List[str]: Ordered, human-readable instruction lines. Multiple steps are numbered; related commands or snippets are provided as indented lines.
+        List[str]: Ordered, human-readable instruction lines. Steps are numbered and related commands/config snippets are provided as indented lines.
     """
     if e2ee_status["overall_status"] == "ready":
         return ["✅ E2EE is fully configured and ready"]

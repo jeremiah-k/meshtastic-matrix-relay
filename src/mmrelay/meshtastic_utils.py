@@ -100,13 +100,13 @@ subscribed_to_connection_lost = False
 def _submit_coro(coro, loop=None):
     """
     Submit an asyncio coroutine for execution on the appropriate event loop and return a Future representing its result.
-    
+
     If `loop` (or the module-level `event_loop`) is an open asyncio event loop, the coroutine is scheduled thread-safely via `asyncio.run_coroutine_threadsafe`. If there is a currently running loop in the calling thread, the coroutine is scheduled with that loop's `create_task`. If no running loop exists, the coroutine is executed synchronously with `asyncio.run` and its result (or raised exception) is wrapped in a completed Future. If `coro` is not a coroutine, returns None.
-    
+
     Parameters:
         coro: The coroutine object to execute.
         loop: Optional asyncio event loop to target. If omitted, the module-level `event_loop` is used.
-    
+
     Returns:
         A Future-like object representing the coroutine's eventual result, or None if `coro` is not a coroutine.
     """
@@ -421,7 +421,12 @@ async def reconnect():
     """
     Attempt to re-establish a Meshtastic connection with exponential backoff.
     
-    Starts from DEFAULT_BACKOFF_TIME and doubles after each failure up to 300 seconds. Between attempts the coroutine sleeps; when not running as a systemd service it displays a Rich progress countdown during the backoff. Each cycle invokes connect_meshtastic(force_connect=True) in the default executor; the loop exits when a connection is obtained, the global shutting_down flag is set, or the task is cancelled. Exceptions during attempts are logged; asyncio.CancelledError is caught and logged. Ensures the module-level reconnecting flag is cleared before returning.
+    This coroutine repeatedly tries to reconnect by invoking connect_meshtastic(force_connect=True)
+    in a thread executor until a connection is obtained, the global shutting_down flag is set,
+    or the task is cancelled. It begins with DEFAULT_BACKOFF_TIME and doubles the wait after each
+    failed attempt, capping the backoff at 300 seconds. The function ensures the module-level
+    reconnecting flag is cleared before it returns. asyncio.CancelledError is handled (logged)
+    and causes the routine to stop.
     """
     global meshtastic_client, reconnecting, shutting_down
     backoff_time = DEFAULT_BACKOFF_TIME

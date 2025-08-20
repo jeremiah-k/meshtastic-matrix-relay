@@ -20,7 +20,11 @@ from mmrelay.cli_utils import (
     msg_setup_authentication,
     msg_suggest_generate_config,
 )
-from mmrelay.config import get_config_paths, validate_yaml_syntax
+from mmrelay.config import (
+    get_config_paths,
+    set_secure_file_permissions,
+    validate_yaml_syntax,
+)
 from mmrelay.constants.app import WINDOWS_PLATFORM
 from mmrelay.constants.config import (
     CONFIG_KEY_ACCESS_TOKEN,
@@ -1216,14 +1220,14 @@ def handle_cli_commands(args):
 
 def generate_sample_config():
     """
-    Generate a sample configuration file (config.yaml) at the default config location if no config already exists.
-
-    If a config file already exists, the function prints the existing path and does nothing. Otherwise it attempts to create the sample config at the highest-priority candidate path returned by get_config_paths(). Sources tried, in order, are:
-    - a path returned by get_sample_config_path(),
+    Generate a sample configuration file at the highest-priority config path if no config already exists.
+    
+    If an existing config file is found in any candidate path (from get_config_paths()), this function aborts and prints its location. Otherwise it creates a sample config at the first candidate path. Sources tried, in order, are:
+    - the path returned by get_sample_config_path(),
     - the packaged resource mmrelay.tools:sample_config.yaml via importlib.resources,
-    - a set of fallback filesystem locations relative to the package and the current working directory.
-
-    The function writes the sample file to disk (creating or overwriting only the target file) and prints success or failure messages. Returns True on successful generation, False on any failure.
+    - a set of fallback filesystem locations relative to the package and current working directory.
+    
+    On success the sample is written to disk and (on Unix-like systems) secure file permissions are applied (owner read/write, 0o600). Returns True when a sample config is successfully generated and False on any error or if a config already exists.
     """
 
     # Get the first config path (highest priority)
@@ -1256,6 +1260,10 @@ def generate_sample_config():
 
         try:
             shutil.copy2(sample_config_path, target_path)
+
+            # Set secure permissions on Unix systems (600 - owner read/write)
+            set_secure_file_permissions(target_path)
+
             print(f"Generated sample config file at: {target_path}")
             print(
                 "\nEdit this file with your Matrix and Meshtastic settings before running mmrelay."
@@ -1277,6 +1285,9 @@ def generate_sample_config():
         # Write the sample config to the target path
         with open(target_path, "w") as f:
             f.write(sample_config_content)
+
+        # Set secure permissions on Unix systems (600 - owner read/write)
+        set_secure_file_permissions(target_path)
 
         print(f"Generated sample config file at: {target_path}")
         print(

@@ -88,8 +88,7 @@ For users who prefer web-based Docker management:
          - PYTHONUNBUFFERED=1
          - MPLCONFIGDIR=/tmp/matplotlib
        volumes:
-         - /home/yourusername/.mmrelay/config.yaml:/app/config.yaml:ro
-         - /home/yourusername/.mmrelay:/app/data
+         - /home/yourusername/.mmrelay:/app/data # Includes config.yaml, credentials.json, and all data
        ports:
          - "4403:4403"
    ```
@@ -127,12 +126,116 @@ docker compose logs -f
 
 The docker-compose files use environment variables for customization:
 
+### Container Configuration
+
 - **`MMRELAY_HOME`**: Base directory for MMRelay data (default: `$HOME`)
 - **`UID`**: User ID for container permissions (default: `1000`)
 - **`GID`**: Group ID for container permissions (default: `1000`)
 - **`EDITOR`**: Preferred text editor for config editing (default: `nano`)
 
-These are set in the `.env` file. For Portainer users, you can:
+## Matrix Authentication
+
+MMRelay requires Matrix authentication to connect to your Matrix homeserver. There are two approaches, with the auth system being strongly recommended for security and functionality.
+
+### Auth System (`mmrelay auth login`)
+
+The auth system provides E2EE support and persistent device identity.
+
+```bash
+# Run this on your host system (not in Docker)
+mmrelay auth login
+```
+
+**What this does:**
+
+- Creates `~/.mmrelay/credentials.json` with secure session credentials
+- Generates a persistent device ID for your MMRelay instance
+- Sets up encryption key storage for E2EE support
+- Establishes proper Matrix session lifecycle
+
+**Features:**
+
+- **E2EE Support**: Provides encrypted room participation
+- **Persistent Device Identity**: Same device across restarts, no "new device" notifications
+- **Automatic Key Management**: Handles encryption keys, sharing, and storage
+- **Convenience**: No manual token capture from browser sessions required
+- **Secure Storage**: Credentials stored with restricted file permissions (600 on Unix systems)
+
+### Manual Access Token in config.yaml
+
+Alternative authentication method using manually captured access tokens.
+
+```yaml
+# In your config.yaml file
+matrix:
+  homeserver: https://matrix.example.org
+  access_token: your_access_token_here  # Captured from browser session
+  bot_user_id: @yourbot:example.org
+```
+
+**Limitations:**
+
+- No E2EE support - cannot participate in encrypted Matrix rooms
+- Manual token management - requires capturing access tokens from browser sessions
+
+### Authentication Precedence
+
+MMRelay checks for authentication in this order:
+
+1. **`credentials.json`** (from auth system) - full features
+2. **`config.yaml` matrix section** - limited features
+
+## Operational Environment Variables
+
+**These environment variables configure connection and system settings - NOT authentication.** Authentication is handled through the methods described above.
+
+**Security Note:** Environment variables are visible via `docker inspect` and process listings. For stronger secrecy, prefer mounting `credentials.json` from the host with restrictive permissions.
+
+### Meshtastic Connection Settings
+
+Configure how MMRelay connects to your Meshtastic device:
+
+#### Connection Type and Settings
+
+- **`MMRELAY_MESHTASTIC_CONNECTION_TYPE`**: Connection method (`tcp`, `serial`, or `ble`)
+- **`MMRELAY_MESHTASTIC_HOST`**: TCP host address (for `tcp` connections)
+- **`MMRELAY_MESHTASTIC_PORT`**: TCP port number (for `tcp` connections, default: 4403)
+- **`MMRELAY_MESHTASTIC_SERIAL_PORT`**: Serial device path (for `serial` connections, e.g., `/dev/ttyUSB0`)
+- **`MMRELAY_MESHTASTIC_BLE_ADDRESS`**: Bluetooth MAC address (for `ble` connections)
+
+#### Operational Settings
+
+- **`MMRELAY_MESHTASTIC_BROADCAST_ENABLED`**: Enable Matrix→Meshtastic messages (`true`/`false`)
+- **`MMRELAY_MESHTASTIC_MESHNET_NAME`**: Display name for the mesh network
+- **`MMRELAY_MESHTASTIC_MESSAGE_DELAY`**: Delay between messages in seconds (minimum: 2.0)
+
+### System Configuration Settings
+
+Configure logging and database behavior:
+
+#### Logging Settings
+
+- **`MMRELAY_LOGGING_LEVEL`**: Log level (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`)
+- **`MMRELAY_LOG_FILE`**: Path to log file (enables file logging when set)
+
+#### Database Settings
+
+- **`MMRELAY_DATABASE_PATH`**: Path to SQLite database file
+
+### Why Environment Variables for These Settings?
+
+Environment variables are ideal for operational settings because they:
+
+- **Change between environments** (development, staging, production)
+- **Are not sensitive** (unlike authentication credentials)
+- **Make Docker deployment flexible** without editing config files
+- **Have clear validation** with helpful error messages
+
+### Setting Environment Variables
+
+**For docker-compose users:** Add to your `.env` file or docker-compose environment section.
+
+**For Portainer users:** You can:
 
 1. Set them in Portainer's environment variables section
 2. Use absolute paths instead of variables in the docker-compose
@@ -270,6 +373,171 @@ MMRELAY_HOME=/path/to/your/data
 - For TCP: Verify Meshtastic device IP and port 4403
 - For Serial: Check device permissions and path
 - For BLE: Ensure privileged mode and host networking are enabled
+
+## Complete Docker Examples
+
+### Method 1: Auth System + Environment Variables (Recommended for E2EE)
+
+Use `mmrelay auth login` for Matrix authentication and environment variables for operational settings. This method provides full E2EE support.
+
+**Prerequisites for E2EE:**
+
+- **Linux/macOS host**: E2EE is not supported on Windows due to library limitations
+- **E2EE-enabled image**: Use `ghcr.io/jeremiah-k/mmrelay:latest` or build with E2EE support
+
+#### Step 1: Set up authentication on your host system
+
+```bash
+mmrelay auth login
+```
+
+#### Step 2: Create docker-compose.yaml
+
+```yaml
+services:
+  mmrelay:
+    image: ghcr.io/jeremiah-k/mmrelay:latest
+    environment:
+      # Meshtastic Connection (TCP example)
+      - MMRELAY_MESHTASTIC_CONNECTION_TYPE=tcp
+      - MMRELAY_MESHTASTIC_HOST=192.168.1.100
+      - MMRELAY_MESHTASTIC_PORT=4403
+
+      # Operational Settings
+      - MMRELAY_MESHTASTIC_BROADCAST_ENABLED=true
+      - MMRELAY_MESHTASTIC_MESHNET_NAME=Home Mesh
+      - MMRELAY_LOGGING_LEVEL=INFO
+      - MMRELAY_DATABASE_PATH=/app/data/meshtastic.sqlite
+    volumes:
+      - ${MMRELAY_HOME}/.mmrelay:/app/data # Includes credentials.json, E2EE store, config.yaml, and all data
+```
+
+**This approach provides:**
+
+- E2EE support for encrypted Matrix rooms
+- Persistent device identity (no "new device" notifications)
+- File-based credential storage
+- Flexible operational configuration
+
+### Method 2: Manual Access Token + Environment Variables (No E2EE)
+
+Alternative approach using manually captured access tokens. **⚠️ This method cannot participate in encrypted Matrix rooms.**
+
+#### Step 1: Capture access token manually
+
+1. Log into Matrix in your browser
+2. Go to Settings → Help & About → Advanced → Access Token
+3. Copy the access token
+
+#### Step 2: Add to config.yaml
+
+```yaml
+# In your ~/.mmrelay/config.yaml
+matrix:
+  homeserver: https://matrix.example.org
+  access_token: your_captured_access_token_here
+  bot_user_id: @yourbot:example.org
+
+matrix_rooms:
+  - id: "#yourroom:example.org"
+    meshtastic_channel: 0
+```
+
+#### Step 3: Create docker-compose.yaml
+
+```yaml
+services:
+  mmrelay:
+    image: ghcr.io/jeremiah-k/mmrelay:latest
+    environment:
+      # Meshtastic Connection (TCP example)
+      - MMRELAY_MESHTASTIC_CONNECTION_TYPE=tcp
+      - MMRELAY_MESHTASTIC_HOST=192.168.1.100
+      - MMRELAY_MESHTASTIC_PORT=4403
+
+      # Operational Settings
+      - MMRELAY_MESHTASTIC_BROADCAST_ENABLED=true
+      - MMRELAY_MESHTASTIC_MESHNET_NAME=Home Mesh
+      - MMRELAY_LOGGING_LEVEL=INFO
+      - MMRELAY_DATABASE_PATH=/app/data/meshtastic.sqlite
+    volumes:
+      - ${MMRELAY_HOME}/.mmrelay:/app/data # Includes config.yaml and all data
+```
+
+**Limitations:**
+
+- No E2EE support - cannot participate in encrypted Matrix rooms
+- Manual token management required
+
+## Connection Type Variants
+
+The examples above show TCP connections. Here are variants for other connection types:
+
+**Serial Connection:**
+
+```yaml
+environment:
+  - MMRELAY_MESHTASTIC_CONNECTION_TYPE=serial
+  - MMRELAY_MESHTASTIC_SERIAL_PORT=/dev/ttyUSB0
+  # ... other settings
+devices:
+  - /dev/ttyUSB0:/dev/ttyUSB0
+```
+
+**BLE Connection:**
+
+```yaml
+environment:
+  - MMRELAY_MESHTASTIC_CONNECTION_TYPE=ble
+  - MMRELAY_MESHTASTIC_BLE_ADDRESS=AA:BB:CC:DD:EE:FF
+  # ... other settings
+privileged: true # Required for BLE access
+```
+
+### Minimal config.yaml
+
+When using environment variables for most settings, your config.yaml only needs:
+
+```yaml
+# Optional: Enable E2EE if you are using the 'auth login' method.
+# This is not needed for non-encrypted rooms.
+# matrix:
+#   e2ee:
+#     enabled: true
+
+matrix_rooms:
+  - id: "#yourroom:example.org"
+    meshtastic_channel: 0
+
+# Optional: Plugin configuration (if using plugins)
+plugins:
+  ping:
+    active: true
+  weather:
+    active: true
+    units: imperial
+```
+
+**Note**: For E2EE to function properly, you must also:
+
+1. Use the `mmrelay auth login` method for authentication (not manual tokens)
+2. Mount the `~/.mmrelay` directory to `/app/data` to persist credentials and the E2EE store, as shown in the examples
+
+The E2EE store directory (`/app/data/store`) is automatically created and persisted via the volume mount.
+
+### Verification
+
+Check logs for E2EE status:
+
+```bash
+docker compose logs mmrelay | grep -i e2ee
+```
+
+Look for messages like:
+
+- "End-to-End Encryption (E2EE) is enabled"
+- "Using credentials from ~/.mmrelay/credentials.json"
+- "Found X encrypted rooms out of Y total rooms"
 
 ## Updates
 

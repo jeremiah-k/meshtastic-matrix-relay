@@ -2,7 +2,6 @@
 
 import unittest
 from unittest.mock import patch
-import pathlib
 
 from mmrelay.tools import get_sample_config_path, get_service_template_path
 
@@ -29,7 +28,7 @@ class TestToolsInit(unittest.TestCase):
         """Test get_sample_config_path fallback for older Python versions."""
         # Simulate AttributeError to trigger fallback
         mock_files.side_effect = AttributeError("files not available")
-        
+
         path = get_sample_config_path()
         self.assertIsInstance(path, str)
         self.assertIn("sample_config.yaml", path)
@@ -41,7 +40,7 @@ class TestToolsInit(unittest.TestCase):
         """Test get_service_template_path fallback for older Python versions."""
         # Simulate AttributeError to trigger fallback
         mock_files.side_effect = AttributeError("files not available")
-        
+
         path = get_service_template_path()
         self.assertIsInstance(path, str)
         self.assertIn("mmrelay.service", path)

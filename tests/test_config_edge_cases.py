@@ -154,7 +154,10 @@ class TestConfigEdgeCases(unittest.TestCase):
 
     def test_load_config_empty_file(self):
         """
-        Test that load_config returns None when given an empty configuration file.
+        Verify load_config returns an empty dict when given an empty YAML configuration file.
+        
+        This ensures the function handles an empty file without raising and returns {} so environment-variable
+        overrides can still be applied by callers.
         """
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write("")  # Empty file
@@ -162,14 +165,14 @@ class TestConfigEdgeCases(unittest.TestCase):
 
         try:
             config = load_config(config_file=temp_path)
-            # Should handle empty file gracefully
-            self.assertIsNone(config)
+            # Should handle empty file gracefully and return empty dict to allow env var overrides
+            self.assertEqual(config, {})
         finally:
             os.unlink(temp_path)
 
     def test_load_config_null_yaml(self):
         """
-        Test that load_config returns None when the YAML config file contains only a null value.
+        Test that load_config returns empty dict when the YAML config file contains only a null value.
         """
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write("null")
@@ -177,8 +180,8 @@ class TestConfigEdgeCases(unittest.TestCase):
 
         try:
             config = load_config(config_file=temp_path)
-            # Should handle null YAML gracefully
-            self.assertIsNone(config)
+            # Should handle null YAML gracefully and return empty dict to allow env var overrides
+            self.assertEqual(config, {})
         finally:
             os.unlink(temp_path)
 

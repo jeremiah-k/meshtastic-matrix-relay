@@ -22,6 +22,25 @@ from mmrelay.constants.config import (
 custom_data_dir = None
 
 
+def set_secure_file_permissions(file_path: str, mode: int = 0o600) -> None:
+    """
+    Set secure file permissions for a file on Unix-like systems.
+    
+    This attempts to chmod the given file to the provided mode (default 0o600 — owner read/write).
+    No action is taken on non-Unix platforms (e.g., Windows). Failures to change permissions are
+    caught and handled internally (the function does not raise).
+    Parameters:
+        file_path (str): Path to the file whose permissions should be tightened.
+        mode (int): Unix permission bits to apply (default 0o600).
+    """
+    if sys.platform in ["linux", "darwin"]:
+        try:
+            os.chmod(file_path, mode)
+            logger.debug(f"Set secure permissions ({oct(mode)}) on {file_path}")
+        except (OSError, PermissionError) as e:
+            logger.warning(f"Could not set secure permissions on {file_path}: {e}")
+
+
 # Custom base directory for Unix systems
 def get_base_dir():
     """Returns the base directory for all application files.
@@ -159,8 +178,13 @@ def get_log_dir():
 
 def get_e2ee_store_dir():
     """
-    Returns the directory for storing E2EE data (encryption keys, etc.).
-    Creates the directory if it doesn't exist.
+    Return the path to the directory used for storing E2EE data (e.g., encryption keys), creating it if missing.
+    
+    On Linux/macOS the directory is "<base_dir>/store" where base_dir is returned by get_base_dir().
+    On Windows the directory is under the platform user data directory for the app (user_data_dir(APP_NAME, APP_AUTHOR)/store).
+    
+    Returns:
+        str: Absolute path to the ensured store directory.
     """
     if sys.platform in ["linux", "darwin"]:
         # Use ~/.mmrelay/store/ for Linux and Mac
@@ -175,12 +199,184 @@ def get_e2ee_store_dir():
     return store_dir
 
 
-def load_credentials():
+def _convert_env_bool(value, var_name):
     """
-    Load Matrix credentials from credentials.json file.
+    Convert a string from an environment variable into a boolean.
+    
+    Accepts (case-insensitive) true values: "true", "1", "yes", "on"; false values: "false", "0", "no", "off".
+    If the value is not recognized, raises ValueError including var_name to indicate which environment variable was invalid.
+    
+    Parameters:
+        value (str): The environment variable value to convert.
+        var_name (str): Name of the environment variable (used in the error message).
+    
+    Returns:
+        bool: The parsed boolean.
+    
+    Raises:
+        ValueError: If the input is not a recognized boolean representation.
+    """
+    if value.lower() in ("true", "1", "yes", "on"):
+        return True
+    elif value.lower() in ("false", "0", "no", "off"):
+        return False
+    else:
+        raise ValueError(
+            f"Invalid boolean value for {var_name}: '{value}'. Use true/false, 1/0, yes/no, or on/off"
+        )
+
+
+def _convert_env_int(value, var_name, min_value=None, max_value=None):
+    """
+    Convert environment variable string to integer with optional range validation.
+
+    Args:
+        value (str): Environment variable value
+        var_name (str): Variable name for error messages
+        min_value (int, optional): Minimum allowed value
+        max_value (int, optional): Maximum allowed value
 
     Returns:
-        dict: Credentials dictionary if found, None otherwise.
+        int: Converted integer value
+
+    Raises:
+        ValueError: If value cannot be converted or is out of range
+    """
+    try:
+        int_value = int(value)
+    except ValueError:
+        raise ValueError(f"Invalid integer value for {var_name}: '{value}'") from None
+
+    if min_value is not None and int_value < min_value:
+        raise ValueError(f"{var_name} must be >= {min_value}, got {int_value}")
+    if max_value is not None and int_value > max_value:
+        raise ValueError(f"{var_name} must be <= {max_value}, got {int_value}")
+    return int_value
+
+
+def _convert_env_float(value, var_name, min_value=None, max_value=None):
+    """
+    Convert an environment variable string to a float and optionally validate its range.
+    
+    Parameters:
+        value (str): The raw environment variable value to convert.
+        var_name (str): Name of the variable (used in error messages).
+        min_value (float, optional): Inclusive minimum allowed value.
+        max_value (float, optional): Inclusive maximum allowed value.
+    
+    Returns:
+        float: The parsed float value.
+    
+    Raises:
+        ValueError: If the value cannot be parsed as a float or falls outside the specified range.
+    """
+    try:
+        float_value = float(value)
+    except ValueError:
+        raise ValueError(f"Invalid float value for {var_name}: '{value}'") from None
+
+    if min_value is not None and float_value < min_value:
+        raise ValueError(f"{var_name} must be >= {min_value}, got {float_value}")
+    if max_value is not None and float_value > max_value:
+        raise ValueError(f"{var_name} must be <= {max_value}, got {float_value}")
+    return float_value
+
+
+def load_meshtastic_config_from_env():
+    """
+    Load Meshtastic-related configuration from environment variables.
+    
+    Reads known Meshtastic environment variables (as defined by the module's
+    _MESHTASTIC_ENV_VAR_MAPPINGS), converts and validates their types, and
+    returns a configuration dict containing any successfully parsed values.
+    Returns None if no relevant environment variables are present or valid.
+    """
+    config = _load_config_from_env_mapping(_MESHTASTIC_ENV_VAR_MAPPINGS)
+    if config:
+        logger.debug(
+            f"Loaded Meshtastic configuration from environment variables: {list(config.keys())}"
+        )
+    return config
+
+
+def load_logging_config_from_env():
+    """
+    Load logging configuration from environment variables and return it as a dict.
+    
+    Reads logging-related environment variables (per the module's logging env mappings) and, if a filename is provided, sets "log_to_file" to True in the returned mapping.
+    
+    Returns:
+        dict or None: A dictionary with logging configuration values when any relevant environment variables are set; otherwise None.
+    """
+    config = _load_config_from_env_mapping(_LOGGING_ENV_VAR_MAPPINGS)
+    if config:
+        if config.get("filename"):
+            config["log_to_file"] = True
+        logger.debug(
+            f"Loaded logging configuration from environment variables: {list(config.keys())}"
+        )
+    return config
+
+
+def load_database_config_from_env():
+    """
+    Load database configuration from environment variables.
+
+    Returns:
+        dict: Database configuration dictionary if any env vars found, None otherwise.
+    """
+    config = _load_config_from_env_mapping(_DATABASE_ENV_VAR_MAPPINGS)
+    if config:
+        logger.debug(
+            f"Loaded database configuration from environment variables: {list(config.keys())}"
+        )
+    return config
+
+
+def apply_env_config_overrides(config):
+    """
+    Apply environment-variable-derived overrides to a configuration dictionary.
+    
+    If `config` is falsy a new dict is created. Environment values from the Meshtastic, logging,
+    and database loaders are merged into the corresponding top-level sections ("meshtastic",
+    "logging", "database"); existing keys in those sections are updated with environment-supplied
+    values while other keys are left intact.
+    
+    Parameters:
+        config (dict): Base configuration to update; may be None or an empty value.
+    
+    Returns:
+        dict: The resulting configuration dictionary with environment overrides applied.
+    """
+    if not config:
+        config = {}
+
+    # Apply Meshtastic configuration overrides
+    meshtastic_env_config = load_meshtastic_config_from_env()
+    if meshtastic_env_config:
+        config.setdefault("meshtastic", {}).update(meshtastic_env_config)
+        logger.debug("Applied Meshtastic environment variable overrides")
+
+    # Apply logging configuration overrides
+    logging_env_config = load_logging_config_from_env()
+    if logging_env_config:
+        config.setdefault("logging", {}).update(logging_env_config)
+        logger.debug("Applied logging environment variable overrides")
+
+    # Apply database configuration overrides
+    database_env_config = load_database_config_from_env()
+    if database_env_config:
+        config.setdefault("database", {}).update(database_env_config)
+        logger.debug("Applied database environment variable overrides")
+
+    return config
+
+
+def load_credentials():
+    """
+    Load Matrix credentials from the application's credentials.json file.
+    
+    Searches for "credentials.json" in the application's base configuration directory (get_base_dir()). If the file exists and contains valid JSON, returns the parsed credentials as a dict. On missing file, parse errors, or filesystem access errors, returns None.
     """
     try:
         config_dir = get_base_dir()
@@ -201,10 +397,9 @@ def load_credentials():
 
 def save_credentials(credentials):
     """
-    Save Matrix credentials to credentials.json file.
-
-    Args:
-        credentials (dict): Credentials dictionary to save.
+    Write the provided Matrix credentials dict to "credentials.json" in the application's base config directory and apply secure file permissions (Unix 0o600) to the file.
+    
+    If writing or permission changes fail, an error is logged; exceptions are not propagated.
     """
     try:
         config_dir = get_base_dir()
@@ -212,6 +407,9 @@ def save_credentials(credentials):
 
         with open(credentials_path, "w") as f:
             json.dump(credentials, f, indent=2)
+
+        # Set secure permissions on Unix systems (600 - owner read/write only)
+        set_secure_file_permissions(credentials_path)
 
         logger.info(f"Saved credentials to {credentials_path}")
     except (OSError, PermissionError) as e:
@@ -233,6 +431,138 @@ logger.addHandler(handler)
 # Initialize empty config
 relay_config = {}
 config_path = None
+
+# Environment variable mappings for configuration sections
+_MESHTASTIC_ENV_VAR_MAPPINGS = [
+    {
+        "env_var": "MMRELAY_MESHTASTIC_CONNECTION_TYPE",
+        "config_key": "connection_type",
+        "type": "enum",
+        "valid_values": ("tcp", "serial", "ble"),
+        "transform": lambda x: x.lower(),
+    },
+    {"env_var": "MMRELAY_MESHTASTIC_HOST", "config_key": "host", "type": "string"},
+    {
+        "env_var": "MMRELAY_MESHTASTIC_PORT",
+        "config_key": "port",
+        "type": "int",
+        "min_value": 1,
+        "max_value": 65535,
+    },
+    {
+        "env_var": "MMRELAY_MESHTASTIC_SERIAL_PORT",
+        "config_key": "serial_port",
+        "type": "string",
+    },
+    {
+        "env_var": "MMRELAY_MESHTASTIC_BLE_ADDRESS",
+        "config_key": "ble_address",
+        "type": "string",
+    },
+    {
+        "env_var": "MMRELAY_MESHTASTIC_BROADCAST_ENABLED",
+        "config_key": "broadcast_enabled",
+        "type": "bool",
+    },
+    {
+        "env_var": "MMRELAY_MESHTASTIC_MESHNET_NAME",
+        "config_key": "meshnet_name",
+        "type": "string",
+    },
+    {
+        "env_var": "MMRELAY_MESHTASTIC_MESSAGE_DELAY",
+        "config_key": "message_delay",
+        "type": "float",
+        "min_value": 2.0,
+    },
+]
+
+_LOGGING_ENV_VAR_MAPPINGS = [
+    {
+        "env_var": "MMRELAY_LOGGING_LEVEL",
+        "config_key": "level",
+        "type": "enum",
+        "valid_values": ("debug", "info", "warning", "error", "critical"),
+        "transform": lambda x: x.lower(),
+    },
+    {"env_var": "MMRELAY_LOG_FILE", "config_key": "filename", "type": "string"},
+]
+
+_DATABASE_ENV_VAR_MAPPINGS = [
+    {"env_var": "MMRELAY_DATABASE_PATH", "config_key": "path", "type": "string"},
+]
+
+
+def _load_config_from_env_mapping(mappings):
+    """
+    Build a configuration dict from environment variables according to a mapping specification.
+    
+    The function iterates the provided mapping entries, reads each mapping's environment variable,
+    converts/validates the value according to the mapping's "type", and places the result under
+    the mapping's "config_key" in the returned dict. Supported mapping keys on each entry:
+    - "env_var" (str): name of the environment variable to read.
+    - "config_key" (str): key to use in the resulting configuration dictionary.
+    - "type" (str): one of "string", "int", "float", "bool", or "enum".
+    Optional keys depending on "type":
+    - "min_value", "max_value" (for int/float): numeric bounds validated during conversion.
+    - "valid_values" (for enum): iterable of allowed values.
+    - "transform" (for enum): callable applied to the raw env value before validation.
+    
+    Behavior:
+    - Values that fail conversion or validation are skipped (an error is logged).
+    - Unknown mapping types are skipped (an error is logged).
+    - Returns a dict of found/converted settings, or None if no environment variables from the mapping were present.
+    """
+    config = {}
+
+    for mapping in mappings:
+        env_value = os.getenv(mapping["env_var"])
+        if env_value is None:
+            continue
+
+        try:
+            if mapping["type"] == "string":
+                value = env_value
+            elif mapping["type"] == "int":
+                value = _convert_env_int(
+                    env_value,
+                    mapping["env_var"],
+                    min_value=mapping.get("min_value"),
+                    max_value=mapping.get("max_value"),
+                )
+            elif mapping["type"] == "float":
+                value = _convert_env_float(
+                    env_value,
+                    mapping["env_var"],
+                    min_value=mapping.get("min_value"),
+                    max_value=mapping.get("max_value"),
+                )
+            elif mapping["type"] == "bool":
+                value = _convert_env_bool(env_value, mapping["env_var"])
+            elif mapping["type"] == "enum":
+                transformed_value = mapping.get("transform", lambda x: x)(env_value)
+                if transformed_value not in mapping["valid_values"]:
+                    valid_values_str = "', '".join(mapping["valid_values"])
+                    logger.error(
+                        f"Invalid {mapping['env_var']}: '{env_value}'. Must be one of: '{valid_values_str}'. Skipping this setting."
+                    )
+                    continue
+                value = transformed_value
+            else:
+                logger.error(
+                    f"Unknown type '{mapping['type']}' for {mapping['env_var']}. Skipping this setting."
+                )
+                continue
+
+            config[mapping["config_key"]] = value
+
+        except ValueError as e:
+            logger.error(
+                f"Error parsing {mapping['env_var']}: {e}. Skipping this setting."
+            )
+            continue
+
+    return config if config else None
 
 
 def set_config(module, passed_config):
@@ -292,16 +622,16 @@ def set_config(module, passed_config):
 
 def load_config(config_file=None, args=None):
     """
-    Load the application configuration from a specified file or by searching standard locations.
-
-    If a config file path is provided and valid, attempts to load and parse it as YAML. If not, searches for a configuration file in prioritized locations and loads the first valid one found. Returns an empty dictionary if no valid configuration is found or if loading fails due to file or YAML errors.
-
+    Load the application configuration from a file or from environment variables.
+    
+    If config_file is provided and exists, load and parse it as YAML. Otherwise search prioritized locations returned by get_config_paths(args) and load the first readable YAML file found. After loading (or when no file is found) environment-variable-derived overrides are merged into the configuration via apply_env_config_overrides(). The function updates the module-level relay_config and config_path.
+    
     Parameters:
-        config_file (str, optional): Path to a specific configuration file. If None, searches default locations.
-        args: Parsed command-line arguments, used to determine config search order.
-
+        config_file (str, optional): Path to a specific YAML configuration file. If None, the function searches default locations.
+        args: Parsed command-line arguments used to influence the search order (passed to get_config_paths).
+    
     Returns:
-        dict: The loaded configuration dictionary, or an empty dictionary if loading fails.
+        dict: The resulting configuration dictionary. Returns an empty dict on read/parse errors or if no configuration is provided via files or environment.
     """
     global relay_config, config_path
 
@@ -312,6 +642,11 @@ def load_config(config_file=None, args=None):
             with open(config_file, "r") as f:
                 relay_config = yaml.load(f, Loader=SafeLoader)
             config_path = config_file
+            # Treat empty/null YAML files as an empty config dictionary
+            if relay_config is None:
+                relay_config = {}
+            # Apply environment variable overrides
+            relay_config = apply_env_config_overrides(relay_config)
             return relay_config
         except (yaml.YAMLError, PermissionError, OSError) as e:
             logger.error(f"Error loading config file {config_file}: {e}")
@@ -328,19 +663,31 @@ def load_config(config_file=None, args=None):
             try:
                 with open(config_path, "r") as f:
                     relay_config = yaml.load(f, Loader=SafeLoader)
+                # Treat empty/null YAML files as an empty config dictionary
+                if relay_config is None:
+                    relay_config = {}
+                # Apply environment variable overrides
+                relay_config = apply_env_config_overrides(relay_config)
                 return relay_config
             except (yaml.YAMLError, PermissionError, OSError) as e:
                 logger.error(f"Error loading config file {path}: {e}")
                 continue  # Try the next config path
 
-    # No config file found
-    logger.error("Configuration file not found in any of the following locations:")
+    # No config file found - try to use environment variables only
+    logger.warning("Configuration file not found in any of the following locations:")
     for path in config_paths:
-        logger.error(f"  - {path}")
-    logger.error("Using empty configuration. This will likely cause errors.")
-    logger.error(msg_suggest_generate_config())
+        logger.warning(f"  - {path}")
 
-    return relay_config
+    # Apply environment variable overrides to empty config
+    relay_config = apply_env_config_overrides({})
+
+    if relay_config:
+        logger.info("Using configuration from environment variables only")
+        return relay_config
+    else:
+        logger.error("No configuration found in files or environment variables.")
+        logger.error(msg_suggest_generate_config())
+        return {}
 
 
 def validate_yaml_syntax(config_content, config_path):

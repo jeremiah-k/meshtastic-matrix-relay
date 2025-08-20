@@ -31,7 +31,7 @@ Welcome to the MMRelay documentation! This directory contains comprehensive guid
 # Generate configuration file
 mmrelay config generate
 
-# Set up Matrix authentication (recommended)
+# Set up Matrix authentication (recommended for E2EE and convenience)
 mmrelay auth login
 
 # Validate configuration

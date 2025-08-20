@@ -69,7 +69,7 @@ begin
 
   MatrixPage.Add('Homeserver (example: https://matrix.org):', False);
   MatrixPage.Add('Bot user ID (example: @mybotuser:matrix.org):', False);
-  MatrixPage.Add('Access token (example: syt_bWvzaGjvdD1_PwsXoZgGItImVxBIZbBK_1XZVW8):', False);
+  MatrixPage.Add('Access token (example: YOUR_ACCESS_TOKEN_HERE):', False);
 
   TokenInfoLabel := TLabel.Create(WizardForm);
   TokenInfoLabel.Caption := 'For instructions on where to find your access token, visit:';
