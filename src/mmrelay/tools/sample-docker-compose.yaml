@@ -37,7 +37,7 @@ services:
       # - MMRELAY_LOG_FILE=/app/data/logs/mmrelay.log  # Enables file logging
       # - MMRELAY_DATABASE_PATH=/app/data/meshtastic.sqlite
 
-      # Note: Environment variables take precedence over credentials.json and config.yaml
+      # Note: Environment variables for Meshtastic, logging, and database settings take precedence over config.yaml
 
     volumes:
       # Configuration - uses standard ~/.mmrelay/config.yaml location
