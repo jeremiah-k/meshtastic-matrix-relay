@@ -145,10 +145,35 @@ MMRelay supports Matrix authentication via environment variables, which is espec
 **Method 2: Base64 Encoded Credentials**
 - **`MATRIX_CREDENTIALS_JSON`**: Base64 encoded `credentials.json` content
 
+### Meshtastic Connection Settings
+Configure Meshtastic device connection via environment variables:
+
+**Connection Type and Settings**
+- **`MMRELAY_MESHTASTIC_CONNECTION_TYPE`**: Connection method (`tcp`, `serial`, or `ble`)
+- **`MMRELAY_MESHTASTIC_HOST`**: TCP host address (for `tcp` connections)
+- **`MMRELAY_MESHTASTIC_PORT`**: TCP port number (for `tcp` connections, default: 4403)
+- **`MMRELAY_MESHTASTIC_SERIAL_PORT`**: Serial device path (for `serial` connections, e.g., `/dev/ttyUSB0`)
+- **`MMRELAY_MESHTASTIC_BLE_ADDRESS`**: Bluetooth MAC address (for `ble` connections)
+
+**Operational Settings**
+- **`MMRELAY_MESHTASTIC_BROADCAST_ENABLED`**: Enable Matrix→Meshtastic messages (`true`/`false`)
+- **`MMRELAY_MESHTASTIC_MESHNET_NAME`**: Display name for the mesh network
+- **`MMRELAY_MESHTASTIC_MESSAGE_DELAY`**: Delay between messages in seconds (minimum: 2.0)
+
+### System Configuration
+Configure logging and database settings:
+
+**Logging Settings**
+- **`MMRELAY_LOGGING_LEVEL`**: Log level (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`)
+- **`MMRELAY_LOG_FILE`**: Path to log file (enables file logging when set)
+
+**Database Settings**
+- **`MMRELAY_DATABASE_PATH`**: Path to SQLite database file
+
 **Precedence Order:**
 1. Environment variables (highest priority)
-2. `credentials.json` file
-3. `config.yaml` matrix section (lowest priority)
+2. `credentials.json` file (Matrix auth only)
+3. `config.yaml` sections (lowest priority)
 
 ### Setting Environment Variables
 
@@ -312,10 +337,22 @@ services:
   mmrelay:
     image: ghcr.io/jeremiah-k/mmrelay:latest
     environment:
+      # Matrix Authentication (E2EE)
       - MATRIX_HOMESERVER=https://matrix.example.org
       - MATRIX_ACCESS_TOKEN=syt_your_access_token_here
       - MATRIX_BOT_USER_ID=@yourbot:example.org
       - MATRIX_DEVICE_ID=ABCDEFGHIJ  # Optional but recommended for E2EE
+
+      # Meshtastic Connection (TCP example)
+      - MMRELAY_MESHTASTIC_CONNECTION_TYPE=tcp
+      - MMRELAY_MESHTASTIC_HOST=192.168.1.100
+      - MMRELAY_MESHTASTIC_PORT=4403
+
+      # Operational Settings
+      - MMRELAY_MESHTASTIC_BROADCAST_ENABLED=true
+      - MMRELAY_MESHTASTIC_MESHNET_NAME=My Mesh Network
+      - MMRELAY_LOGGING_LEVEL=INFO
+      - MMRELAY_DATABASE_PATH=/app/data/meshtastic.sqlite
       # ... other environment variables
 ```
 
@@ -337,16 +374,100 @@ environment:
   - MATRIX_CREDENTIALS_JSON=eyJob21lc2VydmVyIjoi...  # Base64 encoded credentials.json
 ```
 
-### E2EE Configuration
+### Complete Configuration Examples
 
-Enable E2EE in your config.yaml:
+**TCP Connection Example:**
+```yaml
+services:
+  mmrelay:
+    image: ghcr.io/jeremiah-k/mmrelay:latest
+    environment:
+      # Matrix Authentication
+      - MATRIX_HOMESERVER=https://matrix.example.org
+      - MATRIX_ACCESS_TOKEN=syt_your_access_token_here
+      - MATRIX_BOT_USER_ID=@yourbot:example.org
+      - MATRIX_DEVICE_ID=ABCDEFGHIJ
+
+      # Meshtastic TCP Connection
+      - MMRELAY_MESHTASTIC_CONNECTION_TYPE=tcp
+      - MMRELAY_MESHTASTIC_HOST=192.168.1.100
+      - MMRELAY_MESHTASTIC_PORT=4403
+
+      # Operational Settings
+      - MMRELAY_MESHTASTIC_BROADCAST_ENABLED=true
+      - MMRELAY_MESHTASTIC_MESHNET_NAME=Home Mesh
+      - MMRELAY_LOGGING_LEVEL=INFO
+      - MMRELAY_DATABASE_PATH=/app/data/meshtastic.sqlite
+    volumes:
+      - ~/.mmrelay:/app/data
+      - ~/.mmrelay/config.yaml:/app/config.yaml:ro  # For matrix_rooms and plugins only
+```
+
+**Serial Connection Example:**
+```yaml
+services:
+  mmrelay:
+    image: ghcr.io/jeremiah-k/mmrelay:latest
+    environment:
+      # Matrix Authentication
+      - MATRIX_HOMESERVER=https://matrix.example.org
+      - MATRIX_ACCESS_TOKEN=syt_your_access_token_here
+      - MATRIX_BOT_USER_ID=@yourbot:example.org
+
+      # Meshtastic Serial Connection
+      - MMRELAY_MESHTASTIC_CONNECTION_TYPE=serial
+      - MMRELAY_MESHTASTIC_SERIAL_PORT=/dev/ttyUSB0
+
+      # Operational Settings
+      - MMRELAY_MESHTASTIC_BROADCAST_ENABLED=true
+      - MMRELAY_LOGGING_LEVEL=DEBUG
+    devices:
+      - /dev/ttyUSB0:/dev/ttyUSB0
+    volumes:
+      - ~/.mmrelay:/app/data
+      - ~/.mmrelay/config.yaml:/app/config.yaml:ro
+```
+
+**BLE Connection Example:**
+```yaml
+services:
+  mmrelay:
+    image: ghcr.io/jeremiah-k/mmrelay:latest
+    environment:
+      # Matrix Authentication
+      - MATRIX_HOMESERVER=https://matrix.example.org
+      - MATRIX_ACCESS_TOKEN=syt_your_access_token_here
+      - MATRIX_BOT_USER_ID=@yourbot:example.org
+
+      # Meshtastic BLE Connection
+      - MMRELAY_MESHTASTIC_CONNECTION_TYPE=ble
+      - MMRELAY_MESHTASTIC_BLE_ADDRESS=AA:BB:CC:DD:EE:FF
+
+      # Operational Settings
+      - MMRELAY_MESHTASTIC_BROADCAST_ENABLED=true
+      - MMRELAY_LOGGING_LEVEL=INFO
+    privileged: true  # Required for BLE access
+    volumes:
+      - ~/.mmrelay:/app/data
+      - ~/.mmrelay/config.yaml:/app/config.yaml:ro
+```
+
+### Minimal config.yaml
+
+When using environment variables for most settings, your config.yaml only needs:
 
 ```yaml
-matrix:
-  e2ee:
-    enabled: true
-    # Optional: key_sharing_delay_seconds: 5
-    # Optional: store_path: /app/data/store
+matrix_rooms:
+  - id: "#yourroom:example.org"
+    meshtastic_channel: 0
+
+# Optional: Plugin configuration (if using plugins)
+plugins:
+  ping:
+    active: true
+  weather:
+    active: true
+    units: imperial
 ```
 
 The E2EE store directory (`/app/data/store`) is automatically created and persisted via the volume mount.

@@ -223,6 +223,246 @@ def load_credentials_from_env():
     return None
 
 
+def _convert_env_bool(value, var_name):
+    """
+    Convert environment variable string to boolean.
+
+    Args:
+        value (str): Environment variable value
+        var_name (str): Variable name for error messages
+
+    Returns:
+        bool: Converted boolean value
+
+    Raises:
+        ValueError: If value cannot be converted to boolean
+    """
+    if value.lower() in ('true', '1', 'yes', 'on'):
+        return True
+    elif value.lower() in ('false', '0', 'no', 'off'):
+        return False
+    else:
+        raise ValueError(f"Invalid boolean value for {var_name}: '{value}'. Use true/false, 1/0, yes/no, or on/off")
+
+
+def _convert_env_int(value, var_name, min_value=None, max_value=None):
+    """
+    Convert environment variable string to integer with optional range validation.
+
+    Args:
+        value (str): Environment variable value
+        var_name (str): Variable name for error messages
+        min_value (int, optional): Minimum allowed value
+        max_value (int, optional): Maximum allowed value
+
+    Returns:
+        int: Converted integer value
+
+    Raises:
+        ValueError: If value cannot be converted or is out of range
+    """
+    try:
+        int_value = int(value)
+        if min_value is not None and int_value < min_value:
+            raise ValueError(f"{var_name} must be >= {min_value}, got {int_value}")
+        if max_value is not None and int_value > max_value:
+            raise ValueError(f"{var_name} must be <= {max_value}, got {int_value}")
+        return int_value
+    except ValueError as e:
+        if "invalid literal" in str(e):
+            raise ValueError(f"Invalid integer value for {var_name}: '{value}'")
+        raise
+
+
+def _convert_env_float(value, var_name, min_value=None, max_value=None):
+    """
+    Convert environment variable string to float with optional range validation.
+
+    Args:
+        value (str): Environment variable value
+        var_name (str): Variable name for error messages
+        min_value (float, optional): Minimum allowed value
+        max_value (float, optional): Maximum allowed value
+
+    Returns:
+        float: Converted float value
+
+    Raises:
+        ValueError: If value cannot be converted or is out of range
+    """
+    try:
+        float_value = float(value)
+        if min_value is not None and float_value < min_value:
+            raise ValueError(f"{var_name} must be >= {min_value}, got {float_value}")
+        if max_value is not None and float_value > max_value:
+            raise ValueError(f"{var_name} must be <= {max_value}, got {float_value}")
+        return float_value
+    except ValueError as e:
+        if "could not convert" in str(e):
+            raise ValueError(f"Invalid float value for {var_name}: '{value}'")
+        raise
+
+
+def load_meshtastic_config_from_env():
+    """
+    Load Meshtastic configuration from environment variables.
+
+    Returns:
+        dict: Meshtastic configuration dictionary if any env vars found, None otherwise.
+    """
+    config = {}
+
+    # Connection settings
+    connection_type = os.getenv('MMRELAY_MESHTASTIC_CONNECTION_TYPE')
+    if connection_type:
+        if connection_type.lower() not in ('tcp', 'serial', 'ble'):
+            logger.error(f"Invalid MMRELAY_MESHTASTIC_CONNECTION_TYPE: '{connection_type}'. Must be 'tcp', 'serial', or 'ble'")
+            return None
+        config['connection_type'] = connection_type.lower()
+
+    # TCP connection settings
+    host = os.getenv('MMRELAY_MESHTASTIC_HOST')
+    if host:
+        config['host'] = host
+
+    port = os.getenv('MMRELAY_MESHTASTIC_PORT')
+    if port:
+        try:
+            config['port'] = _convert_env_int(port, 'MMRELAY_MESHTASTIC_PORT', min_value=1, max_value=65535)
+        except ValueError as e:
+            logger.error(f"Error parsing MMRELAY_MESHTASTIC_PORT: {e}")
+            return None
+
+    # Serial connection settings
+    serial_port = os.getenv('MMRELAY_MESHTASTIC_SERIAL_PORT')
+    if serial_port:
+        config['serial_port'] = serial_port
+
+    # BLE connection settings
+    ble_address = os.getenv('MMRELAY_MESHTASTIC_BLE_ADDRESS')
+    if ble_address:
+        config['ble_address'] = ble_address
+
+    # Operational settings
+    broadcast_enabled = os.getenv('MMRELAY_MESHTASTIC_BROADCAST_ENABLED')
+    if broadcast_enabled:
+        try:
+            config['broadcast_enabled'] = _convert_env_bool(broadcast_enabled, 'MMRELAY_MESHTASTIC_BROADCAST_ENABLED')
+        except ValueError as e:
+            logger.error(f"Error parsing MMRELAY_MESHTASTIC_BROADCAST_ENABLED: {e}")
+            return None
+
+    meshnet_name = os.getenv('MMRELAY_MESHTASTIC_MESHNET_NAME')
+    if meshnet_name:
+        config['meshnet_name'] = meshnet_name
+
+    message_delay = os.getenv('MMRELAY_MESHTASTIC_MESSAGE_DELAY')
+    if message_delay:
+        try:
+            config['message_delay'] = _convert_env_float(message_delay, 'MMRELAY_MESHTASTIC_MESSAGE_DELAY', min_value=2.0)
+        except ValueError as e:
+            logger.error(f"Error parsing MMRELAY_MESHTASTIC_MESSAGE_DELAY: {e}")
+            return None
+
+    if config:
+        logger.debug(f"Loaded Meshtastic configuration from environment variables: {list(config.keys())}")
+        return config
+
+    return None
+
+
+def load_logging_config_from_env():
+    """
+    Load logging configuration from environment variables.
+
+    Returns:
+        dict: Logging configuration dictionary if any env vars found, None otherwise.
+    """
+    config = {}
+
+    # Logging level
+    level = os.getenv('MMRELAY_LOGGING_LEVEL')
+    if level:
+        level_upper = level.upper()
+        if level_upper not in ('DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'):
+            logger.error(f"Invalid MMRELAY_LOGGING_LEVEL: '{level}'. Must be DEBUG, INFO, WARNING, ERROR, or CRITICAL")
+            return None
+        config['level'] = level_upper.lower()  # Store in lowercase to match config.yaml format
+
+    # Log file path
+    log_file = os.getenv('MMRELAY_LOG_FILE')
+    if log_file:
+        config['filename'] = log_file
+        config['log_to_file'] = True  # Enable file logging if filename is provided
+
+    if config:
+        logger.debug(f"Loaded logging configuration from environment variables: {list(config.keys())}")
+        return config
+
+    return None
+
+
+def load_database_config_from_env():
+    """
+    Load database configuration from environment variables.
+
+    Returns:
+        dict: Database configuration dictionary if any env vars found, None otherwise.
+    """
+    config = {}
+
+    # Database path
+    db_path = os.getenv('MMRELAY_DATABASE_PATH')
+    if db_path:
+        config['path'] = db_path
+
+    if config:
+        logger.debug(f"Loaded database configuration from environment variables: {list(config.keys())}")
+        return config
+
+    return None
+
+
+def apply_env_config_overrides(config):
+    """
+    Apply environment variable overrides to the loaded configuration.
+
+    Args:
+        config (dict): Base configuration dictionary
+
+    Returns:
+        dict: Configuration with environment variable overrides applied
+    """
+    if not config:
+        config = {}
+
+    # Apply Meshtastic configuration overrides
+    meshtastic_env_config = load_meshtastic_config_from_env()
+    if meshtastic_env_config:
+        if 'meshtastic' not in config:
+            config['meshtastic'] = {}
+        config['meshtastic'].update(meshtastic_env_config)
+        logger.debug("Applied Meshtastic environment variable overrides")
+
+    # Apply logging configuration overrides
+    logging_env_config = load_logging_config_from_env()
+    if logging_env_config:
+        if 'logging' not in config:
+            config['logging'] = {}
+        config['logging'].update(logging_env_config)
+        logger.debug("Applied logging environment variable overrides")
+
+    # Apply database configuration overrides
+    database_env_config = load_database_config_from_env()
+    if database_env_config:
+        if 'database' not in config:
+            config['database'] = {}
+        config['database'].update(database_env_config)
+        logger.debug("Applied database environment variable overrides")
+
+    return config
+
+
 def load_credentials():
     """
     Load Matrix credentials with precedence: environment variables > credentials.json file.
@@ -366,6 +606,8 @@ def load_config(config_file=None, args=None):
             with open(config_file, "r") as f:
                 relay_config = yaml.load(f, Loader=SafeLoader)
             config_path = config_file
+            # Apply environment variable overrides
+            relay_config = apply_env_config_overrides(relay_config)
             return relay_config
         except (yaml.YAMLError, PermissionError, OSError) as e:
             logger.error(f"Error loading config file {config_file}: {e}")
@@ -382,19 +624,28 @@ def load_config(config_file=None, args=None):
             try:
                 with open(config_path, "r") as f:
                     relay_config = yaml.load(f, Loader=SafeLoader)
+                # Apply environment variable overrides
+                relay_config = apply_env_config_overrides(relay_config)
                 return relay_config
             except (yaml.YAMLError, PermissionError, OSError) as e:
                 logger.error(f"Error loading config file {path}: {e}")
                 continue  # Try the next config path
 
-    # No config file found
-    logger.error("Configuration file not found in any of the following locations:")
+    # No config file found - try to use environment variables only
+    logger.warning("Configuration file not found in any of the following locations:")
     for path in config_paths:
-        logger.error(f"  - {path}")
-    logger.error("Using empty configuration. This will likely cause errors.")
-    logger.error(msg_suggest_generate_config())
+        logger.warning(f"  - {path}")
 
-    return relay_config
+    # Apply environment variable overrides to empty config
+    relay_config = apply_env_config_overrides({})
+
+    if relay_config:
+        logger.info("Using configuration from environment variables only")
+        return relay_config
+    else:
+        logger.error("No configuration found in files or environment variables.")
+        logger.error(msg_suggest_generate_config())
+        return {}
 
 
 def validate_yaml_syntax(config_content, config_path):

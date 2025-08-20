@@ -20,6 +20,30 @@ services:
       # Method 2: Base64 encoded credentials.json (alternative)
       # - MATRIX_CREDENTIALS_JSON=eyJob21lc2VydmVyIjoi...
 
+      # Meshtastic Connection Settings - Uncomment and configure as needed
+      # TCP Connection (most common)
+      # - MMRELAY_MESHTASTIC_CONNECTION_TYPE=tcp
+      # - MMRELAY_MESHTASTIC_HOST=192.168.1.100
+      # - MMRELAY_MESHTASTIC_PORT=4403  # Default port
+
+      # Serial Connection (uncomment for serial)
+      # - MMRELAY_MESHTASTIC_CONNECTION_TYPE=serial
+      # - MMRELAY_MESHTASTIC_SERIAL_PORT=/dev/ttyUSB0
+
+      # BLE Connection (uncomment for Bluetooth)
+      # - MMRELAY_MESHTASTIC_CONNECTION_TYPE=ble
+      # - MMRELAY_MESHTASTIC_BLE_ADDRESS=AA:BB:CC:DD:EE:FF
+
+      # Meshtastic Operational Settings
+      # - MMRELAY_MESHTASTIC_BROADCAST_ENABLED=true
+      # - MMRELAY_MESHTASTIC_MESHNET_NAME=My Mesh Network
+      # - MMRELAY_MESHTASTIC_MESSAGE_DELAY=2.2  # Minimum 2.0 seconds
+
+      # System Configuration
+      # - MMRELAY_LOGGING_LEVEL=INFO  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+      # - MMRELAY_LOG_FILE=/app/data/mmrelay.log  # Enables file logging
+      # - MMRELAY_DATABASE_PATH=/app/data/meshtastic.sqlite
+
       # Note: Environment variables take precedence over credentials.json and config.yaml
 
     volumes:
