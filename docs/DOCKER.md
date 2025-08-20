@@ -133,8 +133,34 @@ The docker-compose files use environment variables for customization:
 - **`GID`**: Group ID for container permissions (default: `1000`)
 - **`EDITOR`**: Preferred text editor for config editing (default: `nano`)
 
-### Matrix Authentication (E2EE Support)
-MMRelay supports Matrix authentication via environment variables, which is especially useful for Docker deployments:
+### Matrix Authentication
+
+**⚠️ IMPORTANT: Use the `mmrelay auth login` command for best results**
+
+The **recommended approach** is to use MMRelay's built-in authentication system:
+
+```bash
+# Run this on your host system (not in Docker)
+mmrelay auth login
+```
+
+This creates `~/.mmrelay/credentials.json` with proper E2EE support, persistent device identity, and secure session management.
+
+#### Why the Auth System is Recommended
+
+**✅ Required for E2EE**: Only `mmrelay auth login` provides the device ID and encryption store needed for encrypted rooms
+
+**✅ Persistent Device Identity**: Maintains the same device across restarts, preventing "new device" notifications
+
+**✅ Automatic Key Management**: Handles encryption key upload, sharing, and storage automatically
+
+**✅ More Convenient**: No need to manually capture access tokens from browser sessions
+
+**✅ Secure Session Management**: Proper Matrix session lifecycle with device registration
+
+#### Environment Variable Authentication (Limited)
+
+For cases where the auth system cannot be used, MMRelay supports environment variables:
 
 **Method 1: Individual Variables**
 - **`MATRIX_HOMESERVER`**: Matrix homeserver URL (e.g., `https://matrix.example.org`)
@@ -142,12 +168,16 @@ MMRelay supports Matrix authentication via environment variables, which is espec
 - **`MATRIX_BOT_USER_ID`**: Bot's Matrix user ID (e.g., `@bot:example.org`)
 - **`MATRIX_PASSWORD`**: Matrix password for authentication (alternative to access token)
 
-**Note**: Device ID is never set via environment variables - it comes from the Matrix server during authentication.
-
 **Method 2: Base64 Encoded Credentials**
 - **`MATRIX_CREDENTIALS_JSON`**: Base64 encoded `credentials.json` content
 
-**Security Note**: Environment variables are visible via `docker inspect` and process listings. For stronger secrecy, prefer mounting `credentials.json` from the host with restrictive permissions.
+**⚠️ Limitations of Environment Variable Auth:**
+- **No E2EE Support**: Cannot participate in encrypted rooms
+- **No Persistent Device ID**: Each restart appears as a new device
+- **Manual Token Management**: Requires capturing tokens from browser sessions
+- **Security Concerns**: Environment variables visible via `docker inspect`
+
+**Note**: Device ID is never set via environment variables - it comes from the Matrix server during authentication.
 
 ### Meshtastic Connection Settings
 Configure Meshtastic device connection via environment variables:
@@ -174,10 +204,10 @@ Configure logging and database settings:
 **Database Settings**
 - **`MMRELAY_DATABASE_PATH`**: Path to SQLite database file
 
-**Precedence Order:**
-1. Environment variables (highest priority)
-2. `credentials.json` file (Matrix auth only)
-3. `config.yaml` sections (lowest priority)
+**Authentication Precedence Order:**
+1. Environment variables (highest priority, limited functionality)
+2. `credentials.json` file (recommended, full E2EE support)
+3. `config.yaml` matrix section (legacy, no E2EE support)
 
 ### Setting Environment Variables
 
@@ -332,21 +362,22 @@ MMRelay v1.2+ supports Matrix End-to-End Encryption in Docker environments using
 
 ### Setup Methods
 
-**Method 1: Environment Variables (Recommended for Docker)**
+**Method 1: Auth System + Docker (Recommended)**
 
-Add to your docker-compose.yaml:
+First, create credentials on your host system:
+
+```bash
+# Run on host system (not in Docker)
+mmrelay auth login
+```
+
+Then add to your docker-compose.yaml:
 
 ```yaml
 services:
   mmrelay:
     image: ghcr.io/jeremiah-k/mmrelay:latest
     environment:
-      # Matrix Authentication (E2EE)
-      - MATRIX_HOMESERVER=https://matrix.example.org
-      - MATRIX_ACCESS_TOKEN=your_access_token_here
-      - MATRIX_BOT_USER_ID=@yourbot:example.org
-
-
       # Meshtastic Connection (TCP example)
       - MMRELAY_MESHTASTIC_CONNECTION_TYPE=tcp
       - MMRELAY_MESHTASTIC_HOST=192.168.1.100
@@ -357,19 +388,43 @@ services:
       - MMRELAY_MESHTASTIC_MESHNET_NAME=My Mesh Network
       - MMRELAY_LOGGING_LEVEL=INFO
       - MMRELAY_DATABASE_PATH=/app/data/meshtastic.sqlite
-      # ... other environment variables
+    volumes:
+      - ~/.mmrelay:/app/data  # Includes credentials.json and E2EE store
+      - ~/.mmrelay/config.yaml:/app/config.yaml:ro
 ```
 
-**Method 2: Credentials File**
+**✅ This approach provides full E2EE support and persistent device identity.**
 
-1. Run `mmrelay auth login` on your host system
-2. Mount the generated credentials.json:
+**Method 2: Environment Variables Only (Limited)**
+
+For cases where the auth system cannot be used:
 
 ```yaml
-volumes:
-  - ~/.mmrelay/credentials.json:/app/data/credentials.json:ro
-  # ... other volumes
+services:
+  mmrelay:
+    image: ghcr.io/jeremiah-k/mmrelay:latest
+    environment:
+      # Matrix Authentication (No E2EE support)
+      - MATRIX_HOMESERVER=https://matrix.example.org
+      - MATRIX_ACCESS_TOKEN=your_access_token_here
+      - MATRIX_BOT_USER_ID=@yourbot:example.org
+
+      # Meshtastic Connection
+      - MMRELAY_MESHTASTIC_CONNECTION_TYPE=tcp
+      - MMRELAY_MESHTASTIC_HOST=192.168.1.100
+      - MMRELAY_MESHTASTIC_PORT=4403
+
+      # Operational Settings
+      - MMRELAY_MESHTASTIC_BROADCAST_ENABLED=true
+      - MMRELAY_MESHTASTIC_MESHNET_NAME=My Mesh Network
+      - MMRELAY_LOGGING_LEVEL=INFO
+      - MMRELAY_DATABASE_PATH=/app/data/meshtastic.sqlite
+    volumes:
+      - ~/.mmrelay:/app/data
+      - ~/.mmrelay/config.yaml:/app/config.yaml:ro
 ```
+
+**⚠️ Note**: Method 2 cannot participate in encrypted Matrix rooms.
 
 **Method 3: Base64 Encoded Credentials**
 
