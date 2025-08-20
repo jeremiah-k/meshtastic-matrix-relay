@@ -39,6 +39,7 @@ from mmrelay.config import (
     get_base_dir,
     get_e2ee_store_dir,
     get_meshtastic_config_value,
+    load_credentials,
     save_credentials,
 )
 from mmrelay.constants.app import WINDOWS_PLATFORM
@@ -2119,3 +2120,168 @@ async def on_room_member(room: MatrixRoom, event: RoomMemberEvent) -> None:
     # but no explicit action is needed since room.user_name() automatically
     # handles room-specific display names after the room state is updated.
     pass
+
+
+async def logout_matrix_bot(password=None):
+    """
+    Log out from Matrix and clear all local session data.
+
+    This function will:
+    1. Verify the password against the current Matrix session
+    2. Log out from the Matrix server (invalidating the access token)
+    3. Clear credentials.json
+    4. Clear the E2EE store directory
+
+    Args:
+        password: The Matrix password for verification
+
+    Returns:
+        bool: True if logout was successful, False otherwise
+    """
+    import shutil
+
+    # Load current credentials
+    credentials = load_credentials()
+    if not credentials:
+        logger.info("No active session found. Already logged out.")
+        print("✅ No active Matrix session found.")
+        print("You are already logged out.")
+        return True
+
+    homeserver = credentials.get("homeserver")
+    user_id = credentials.get("user_id")
+    access_token = credentials.get("access_token")
+    device_id = credentials.get("device_id")
+
+    if not all([homeserver, user_id, access_token]):
+        logger.error("Invalid credentials found. Cannot verify logout.")
+        print("❌ Invalid credentials found.")
+        print("Proceeding with local cleanup only...")
+
+        # Still try to clean up local files
+        return _cleanup_local_session_data()
+
+    # Get password for verification
+    if not password:
+        password = getpass.getpass("Enter Matrix password to confirm logout: ")
+
+    logger.info(f"Verifying password for {user_id}...")
+
+    try:
+        # Create a temporary client to verify the password
+        # We'll try to login with the password to verify it's correct
+        temp_client = AsyncClient(homeserver, user_id)
+
+        try:
+            # Attempt login with the provided password
+            response = await asyncio.wait_for(
+                temp_client.login(password, device_name="mmrelay-logout-verify"),
+                timeout=30,
+            )
+
+            if hasattr(response, "access_token"):
+                logger.info("Password verified successfully.")
+
+                # Immediately logout the temporary session
+                await temp_client.logout()
+            else:
+                logger.error("Password verification failed.")
+                return False
+
+        except asyncio.TimeoutError:
+            logger.error("Password verification timed out.")
+            return False
+        except Exception as e:
+            logger.error(f"Password verification failed: {e}")
+            return False
+        finally:
+            await temp_client.close()
+
+        # Now logout the main session
+        logger.info("Logging out from Matrix server...")
+        main_client = AsyncClient(homeserver, user_id)
+        main_client.restore_login(
+            user_id=user_id,
+            device_id=device_id,
+            access_token=access_token,
+        )
+
+        try:
+            # Logout from the server (invalidates the access token)
+            logout_response = await main_client.logout()
+            if hasattr(logout_response, "transport_response"):
+                logger.info("Successfully logged out from Matrix server.")
+            else:
+                logger.warning("Logout response unclear, proceeding with local cleanup.")
+        except Exception as e:
+            logger.warning(f"Server logout failed, proceeding with local cleanup: {e}")
+        finally:
+            await main_client.close()
+
+        # Clear local session data
+        return _cleanup_local_session_data()
+
+    except Exception as e:
+        logger.error(f"Error during logout process: {e}")
+        return False
+
+
+def _cleanup_local_session_data():
+    """
+    Helper function to clean up local session data (credentials.json and E2EE store).
+
+    Returns:
+        bool: True if cleanup was successful, False otherwise
+    """
+    import shutil
+
+    logger.info("Clearing local session data...")
+    success = True
+
+    # Remove credentials.json
+    config_dir = get_base_dir()
+    credentials_path = os.path.join(config_dir, "credentials.json")
+
+    if os.path.exists(credentials_path):
+        try:
+            os.remove(credentials_path)
+            logger.info(f"Removed credentials file: {credentials_path}")
+            print(f"✅ Removed credentials file: {credentials_path}")
+        except (OSError, PermissionError) as e:
+            logger.error(f"Failed to remove credentials file: {e}")
+            print(f"❌ Failed to remove credentials file: {e}")
+            success = False
+    else:
+        logger.info("No credentials file found to remove")
+        print("ℹ️  No credentials file found")
+
+    # Clear E2EE store directory
+    store_path = get_e2ee_store_dir()
+    if os.path.exists(store_path):
+        try:
+            shutil.rmtree(store_path)
+            logger.info(f"Removed E2EE store directory: {store_path}")
+            print(f"✅ Removed E2EE store directory: {store_path}")
+        except (OSError, PermissionError) as e:
+            logger.error(f"Failed to remove E2EE store directory: {e}")
+            print(f"❌ Failed to remove E2EE store directory: {e}")
+            success = False
+    else:
+        logger.info("No E2EE store directory found to remove")
+        print("ℹ️  No E2EE store directory found")
+
+    if success:
+        logger.info("✅ Logout completed successfully!")
+        logger.info("All Matrix sessions and local data have been cleared.")
+        logger.info("Run 'mmrelay auth login' to authenticate again.")
+        print()
+        print("✅ Logout completed successfully!")
+        print("All Matrix sessions and local data have been cleared.")
+        print("Run 'mmrelay auth login' to authenticate again.")
+    else:
+        logger.warning("Logout completed with some errors.")
+        print()
+        print("⚠️  Logout completed with some errors.")
+        print("Some files may not have been removed due to permission issues.")
+
+    return success

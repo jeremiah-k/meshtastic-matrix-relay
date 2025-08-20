@@ -153,6 +153,17 @@ def parse_arguments():
         description="Display current Matrix authentication status",
     )
 
+    logout_parser = auth_subparsers.add_parser(
+        "logout",
+        help="Log out and clear all sessions",
+        description="Clear all Matrix authentication data and E2EE store",
+    )
+    logout_parser.add_argument(
+        "--password",
+        help="Password for verification (will prompt if not provided)",
+        type=str,
+    )
+
     # SERVICE group
     service_parser = subparsers.add_parser(
         "service",
@@ -1052,18 +1063,24 @@ def handle_auth_command(args):
     """
     Dispatches the "auth" CLI subcommand to the appropriate handler.
 
-    If args.auth_command == "status" this calls handle_auth_status(args); otherwise it calls handle_auth_login(args). Returns the chosen handler's exit code (0 on success, non-zero on failure).
+    Handles "login", "status", and "logout" subcommands. Returns the chosen handler's exit code (0 on success, non-zero on failure).
 
     Parameters:
-        args (argparse.Namespace): Parsed CLI arguments; expected to have an `auth_command` attribute indicating the subcommand (e.g., "login" or "status").
+        args (argparse.Namespace): Parsed CLI arguments; expected to have an `auth_command` attribute indicating the subcommand.
 
     Returns:
         int: Exit code from the invoked subcommand handler (0 = success).
     """
-    if hasattr(args, "auth_command") and args.auth_command == "status":
-        return handle_auth_status(args)
+    if hasattr(args, "auth_command"):
+        if args.auth_command == "status":
+            return handle_auth_status(args)
+        elif args.auth_command == "logout":
+            return handle_auth_logout(args)
+        else:
+            # Default to login for auth login command
+            return handle_auth_login(args)
     else:
-        # Default to login for both legacy --auth and new auth login
+        # Default to login for legacy --auth
         return handle_auth_login(args)
 
 
@@ -1138,6 +1155,51 @@ def handle_auth_status(args):
     print("❌ No credentials.json found")
     print(f"Run '{get_command('auth_login')}' to authenticate")
     return 1
+
+
+def handle_auth_logout(args):
+    """
+    Log out from Matrix and clear all local session data.
+
+    This function will verify the user's password and then clear all Matrix
+    authentication data including credentials.json and the E2EE store.
+
+    Parameters:
+        args (argparse.Namespace): Parsed CLI arguments containing optional password.
+
+    Returns:
+        int: Exit code (0 = success, 1 = failure).
+    """
+    import asyncio
+
+    from mmrelay.matrix_utils import logout_matrix_bot
+
+    # Show header
+    print("Matrix Bot Logout")
+    print("=================")
+    print()
+    print("This will log out from Matrix and clear all local session data:")
+    print("• Remove credentials.json")
+    print("• Clear E2EE encryption store")
+    print("• Invalidate Matrix access token")
+    print()
+
+    # Confirm the action
+    confirm = input("Are you sure you want to logout? (y/N): ").lower().strip()
+    if not confirm.startswith('y'):
+        print("Logout cancelled.")
+        return 0
+
+    try:
+        # Run the logout process
+        result = asyncio.run(logout_matrix_bot(password=args.password))
+        return 0 if result else 1
+    except KeyboardInterrupt:
+        print("\nLogout cancelled by user.")
+        return 1
+    except Exception as e:
+        print(f"\nError during logout: {e}")
+        return 1
 
 
 def handle_service_command(args):
