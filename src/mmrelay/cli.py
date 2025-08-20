@@ -20,7 +20,11 @@ from mmrelay.cli_utils import (
     msg_setup_authentication,
     msg_suggest_generate_config,
 )
-from mmrelay.config import get_config_paths, validate_yaml_syntax
+from mmrelay.config import (
+    get_config_paths,
+    set_secure_file_permissions,
+    validate_yaml_syntax,
+)
 from mmrelay.constants.app import WINDOWS_PLATFORM
 from mmrelay.constants.config import (
     CONFIG_KEY_ACCESS_TOKEN,
@@ -39,7 +43,6 @@ from mmrelay.constants.network import (
     CONNECTION_TYPE_SERIAL,
     CONNECTION_TYPE_TCP,
 )
-from mmrelay.config import set_secure_file_permissions
 from mmrelay.tools import get_sample_config_path
 
 # =============================================================================

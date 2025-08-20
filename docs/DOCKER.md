@@ -381,6 +381,7 @@ MMRELAY_HOME=/path/to/your/data
 Use `mmrelay auth login` for Matrix authentication and environment variables for operational settings. This method provides full E2EE support.
 
 **Prerequisites for E2EE:**
+
 - **Linux/macOS host**: E2EE is not supported on Windows due to library limitations
 - **E2EE-enabled image**: Use `ghcr.io/jeremiah-k/mmrelay:latest` or build with E2EE support
 
@@ -518,6 +519,7 @@ plugins:
 ```
 
 **Note**: For E2EE to function properly, you must also:
+
 1. Use the `mmrelay auth login` method for authentication (not manual tokens)
 2. Mount the `~/.mmrelay` directory to `/app/data` to persist credentials and the E2EE store, as shown in the examples
 
