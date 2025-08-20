@@ -936,6 +936,199 @@ class TestCoroutineSubmission(unittest.TestCase):
         coro.close()
 
 
+class TestSubmitCoroActualImplementation(unittest.TestCase):
+    """Test the actual _submit_coro implementation without global mocking."""
+
+    def setUp(self):
+        """Set up test by importing the actual function directly."""
+        # Import the module and get the original function before any mocking
+        import importlib
+        import sys
+
+        # Remove the module from cache to get a fresh import
+        if 'mmrelay.meshtastic_utils' in sys.modules:
+            del sys.modules['mmrelay.meshtastic_utils']
+
+        # Import fresh module
+        import mmrelay.meshtastic_utils as mu
+        self.original_submit_coro = mu._submit_coro
+
+        # Reset module state
+        mu.event_loop = None
+
+    def test_submit_coro_with_no_event_loop_no_running_loop(self):
+        """Test _submit_coro with no event loop and no running loop - should use asyncio.run."""
+        import asyncio
+        from concurrent.futures import Future
+
+        async def test_coro():
+            return "test_result"
+
+        coro = test_coro()
+
+        # Patch to ensure no running loop
+        with patch('asyncio.get_running_loop') as mock_get_loop:
+            mock_get_loop.side_effect = RuntimeError("No running loop")
+
+            result = self.original_submit_coro(coro)
+
+            # Should return a Future with the result
+            self.assertIsInstance(result, Future)
+            self.assertEqual(result.result(), "test_result")
+
+    def test_submit_coro_with_no_event_loop_no_running_loop_exception(self):
+        """Test _submit_coro exception handling when asyncio.run fails."""
+        import asyncio
+        from concurrent.futures import Future
+
+        async def failing_coro():
+            raise ValueError("Test exception")
+
+        coro = failing_coro()
+
+        # Patch to ensure no running loop
+        with patch('asyncio.get_running_loop') as mock_get_loop:
+            mock_get_loop.side_effect = RuntimeError("No running loop")
+
+            result = self.original_submit_coro(coro)
+
+            # Should return a Future with the exception
+            self.assertIsInstance(result, Future)
+            with self.assertRaises(ValueError) as cm:
+                result.result()
+            self.assertEqual(str(cm.exception), "Test exception")
+
+    def test_submit_coro_with_running_loop(self):
+        """Test _submit_coro with a running loop - should use create_task."""
+        import asyncio
+
+        async def test_coro():
+            return "test_result"
+
+        coro = test_coro()
+
+        try:
+            # Mock a running loop
+            with patch('asyncio.get_running_loop') as mock_get_loop:
+                mock_loop = MagicMock()
+                mock_task = MagicMock()
+
+                # Mock create_task to close the coroutine when called
+                def mock_create_task(coro_arg):
+                    coro_arg.close()  # Close the coroutine to prevent warnings
+                    return mock_task
+
+                mock_loop.create_task.side_effect = mock_create_task
+                mock_get_loop.return_value = mock_loop
+
+                result = self.original_submit_coro(coro)
+
+                # Should call create_task and return the task
+                mock_loop.create_task.assert_called_once_with(coro)
+                self.assertEqual(result, mock_task)
+        finally:
+            # Ensure coroutine is properly closed if not already closed
+            if hasattr(coro, 'cr_frame') and coro.cr_frame is not None:
+                coro.close()
+
+    def test_submit_coro_with_event_loop_parameter(self):
+        """Test _submit_coro with event loop parameter - should use run_coroutine_threadsafe."""
+        import asyncio
+
+        async def test_coro():
+            return "test_result"
+
+        coro = test_coro()
+
+        try:
+            # Create mock event loop
+            mock_loop = MagicMock(spec=asyncio.AbstractEventLoop)
+            mock_loop.is_closed.return_value = False
+
+            with patch('asyncio.run_coroutine_threadsafe') as mock_run_threadsafe:
+                mock_future = MagicMock()
+
+                # Mock run_coroutine_threadsafe to close the coroutine when called
+                def mock_run_coro_threadsafe(coro_arg, loop_arg):
+                    coro_arg.close()  # Close the coroutine to prevent warnings
+                    return mock_future
+
+                mock_run_threadsafe.side_effect = mock_run_coro_threadsafe
+
+                result = self.original_submit_coro(coro, loop=mock_loop)
+
+                # Should call run_coroutine_threadsafe
+                mock_run_threadsafe.assert_called_once_with(coro, mock_loop)
+                self.assertEqual(result, mock_future)
+        finally:
+            # Ensure coroutine is properly closed if not already closed
+            if hasattr(coro, 'cr_frame') and coro.cr_frame is not None:
+                coro.close()
+
+    def test_submit_coro_with_non_coroutine_actual(self):
+        """Test _submit_coro returns None for non-coroutine input (actual implementation)."""
+        # Test with string input
+        result = self.original_submit_coro("not a coroutine")
+        self.assertIsNone(result)
+
+        # Test with None input
+        result = self.original_submit_coro(None)
+        self.assertIsNone(result)
+
+        # Test with integer input
+        result = self.original_submit_coro(42)
+        self.assertIsNone(result)
+
+
+class TestBLEExceptionHandling(unittest.TestCase):
+    """Test cases for BLE exception handling and fallback classes."""
+
+    def test_bleak_import_fallback_classes(self):
+        """Test that fallback BLE exception classes are defined when bleak is not available."""
+        import sys
+        import importlib
+
+        # Store original modules
+        original_bleak = sys.modules.get('bleak.exc')
+        original_meshtastic_utils = sys.modules.get('mmrelay.meshtastic_utils')
+
+        try:
+            # Remove bleak.exc from sys.modules to simulate ImportError
+            if 'bleak.exc' in sys.modules:
+                del sys.modules['bleak.exc']
+            if 'bleak' in sys.modules:
+                del sys.modules['bleak']
+            if 'mmrelay.meshtastic_utils' in sys.modules:
+                del sys.modules['mmrelay.meshtastic_utils']
+
+            # Mock bleak.exc import to fail
+            with patch.dict('sys.modules', {'bleak.exc': None, 'bleak': None}):
+                # Import the module fresh, which should trigger the ImportError path
+                import mmrelay.meshtastic_utils as mu
+
+                # Verify that the fallback classes are defined
+                self.assertTrue(hasattr(mu, 'BleakDBusError'))
+                self.assertTrue(hasattr(mu, 'BleakError'))
+
+                # Verify they are proper exception classes
+                self.assertTrue(issubclass(mu.BleakDBusError, Exception))
+                self.assertTrue(issubclass(mu.BleakError, Exception))
+
+                # Verify they can be instantiated and raised
+                with self.assertRaises(mu.BleakDBusError):
+                    raise mu.BleakDBusError("Test error")
+
+                with self.assertRaises(mu.BleakError):
+                    raise mu.BleakError("Test error")
+
+        finally:
+            # Restore original modules
+            if original_bleak is not None:
+                sys.modules['bleak.exc'] = original_bleak
+            if original_meshtastic_utils is not None:
+                sys.modules['mmrelay.meshtastic_utils'] = original_meshtastic_utils
+
+
 class TestReconnectingFlagLogic(unittest.TestCase):
     """Test cases for reconnecting flag logic in connect_meshtastic."""
 
