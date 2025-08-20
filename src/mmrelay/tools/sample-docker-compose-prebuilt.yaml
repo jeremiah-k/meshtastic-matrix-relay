@@ -40,13 +40,10 @@ services:
       # Note: Environment variables for Meshtastic, logging, and database settings take precedence over config.yaml
 
     volumes:
-      # Configuration - create ~/.mmrelay/config.yaml first
-      # See docs/DOCKER.md for setup instructions (covers all deployment methods)
-      - ${MMRELAY_HOME}/.mmrelay/config.yaml:/app/config.yaml:ro
-
       # Map entire ~/.mmrelay directory to /app/data to maintain proper structure
-      # This includes plugins/, data/, logs/, and any other subdirectories
+      # This includes config.yaml, plugins/, data/, logs/, credentials.json, and any other subdirectories
       # The --data-dir parameter in CMD points to /app/data
+      # Create config.yaml first - see docs/DOCKER.md for setup instructions
       - ${MMRELAY_HOME}/.mmrelay:/app/data
 
     # For TCP connections (most common) - Meshtastic typically uses port 4403

@@ -88,8 +88,7 @@ For users who prefer web-based Docker management:
          - PYTHONUNBUFFERED=1
          - MPLCONFIGDIR=/tmp/matplotlib
        volumes:
-         - /home/yourusername/.mmrelay/config.yaml:/app/config.yaml:ro
-         - /home/yourusername/.mmrelay:/app/data
+         - /home/yourusername/.mmrelay:/app/data # Includes config.yaml, credentials.json, and all data
        ports:
          - "4403:4403"
    ```
@@ -409,8 +408,7 @@ services:
       - MMRELAY_LOGGING_LEVEL=INFO
       - MMRELAY_DATABASE_PATH=/app/data/meshtastic.sqlite
     volumes:
-      - ${MMRELAY_HOME}/.mmrelay:/app/data # Includes credentials.json and E2EE store
-      - ${MMRELAY_HOME}/.mmrelay/config.yaml:/app/config.yaml:ro # For matrix_rooms and plugins
+      - ${MMRELAY_HOME}/.mmrelay:/app/data # Includes credentials.json, E2EE store, config.yaml, and all data
 ```
 
 **This approach provides:**
@@ -462,8 +460,7 @@ services:
       - MMRELAY_LOGGING_LEVEL=INFO
       - MMRELAY_DATABASE_PATH=/app/data/meshtastic.sqlite
     volumes:
-      - ${MMRELAY_HOME}/.mmrelay:/app/data
-      - ${MMRELAY_HOME}/.mmrelay/config.yaml:/app/config.yaml:ro
+      - ${MMRELAY_HOME}/.mmrelay:/app/data # Includes config.yaml and all data
 ```
 
 **Limitations:**
