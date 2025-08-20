@@ -266,54 +266,10 @@ def load_meshtastic_config_from_env():
     Returns:
         dict: Meshtastic configuration dictionary if any env vars found, None otherwise.
     """
-    # Define environment variable mappings with validation rules
-    env_var_mappings = [
-        {
-            "env_var": "MMRELAY_MESHTASTIC_CONNECTION_TYPE",
-            "config_key": "connection_type",
-            "type": "enum",
-            "valid_values": ("tcp", "serial", "ble"),
-            "transform": lambda x: x.lower(),
-        },
-        {"env_var": "MMRELAY_MESHTASTIC_HOST", "config_key": "host", "type": "string"},
-        {
-            "env_var": "MMRELAY_MESHTASTIC_PORT",
-            "config_key": "port",
-            "type": "int",
-            "min_value": 1,
-            "max_value": 65535,
-        },
-        {
-            "env_var": "MMRELAY_MESHTASTIC_SERIAL_PORT",
-            "config_key": "serial_port",
-            "type": "string",
-        },
-        {
-            "env_var": "MMRELAY_MESHTASTIC_BLE_ADDRESS",
-            "config_key": "ble_address",
-            "type": "string",
-        },
-        {
-            "env_var": "MMRELAY_MESHTASTIC_BROADCAST_ENABLED",
-            "config_key": "broadcast_enabled",
-            "type": "bool",
-        },
-        {
-            "env_var": "MMRELAY_MESHTASTIC_MESHNET_NAME",
-            "config_key": "meshnet_name",
-            "type": "string",
-        },
-        {
-            "env_var": "MMRELAY_MESHTASTIC_MESSAGE_DELAY",
-            "config_key": "message_delay",
-            "type": "float",
-            "min_value": 2.0,
-        },
-    ]
 
     config = {}
 
-    for mapping in env_var_mappings:
+    for mapping in _MESHTASTIC_ENV_VAR_MAPPINGS:
         env_value = os.getenv(mapping["env_var"])
         if env_value is None:
             continue
@@ -531,6 +487,51 @@ logger.addHandler(handler)
 # Initialize empty config
 relay_config = {}
 config_path = None
+
+# Environment variable mappings for Meshtastic configuration
+_MESHTASTIC_ENV_VAR_MAPPINGS = [
+    {
+        "env_var": "MMRELAY_MESHTASTIC_CONNECTION_TYPE",
+        "config_key": "connection_type",
+        "type": "enum",
+        "valid_values": ("tcp", "serial", "ble"),
+        "transform": lambda x: x.lower(),
+    },
+    {"env_var": "MMRELAY_MESHTASTIC_HOST", "config_key": "host", "type": "string"},
+    {
+        "env_var": "MMRELAY_MESHTASTIC_PORT",
+        "config_key": "port",
+        "type": "int",
+        "min_value": 1,
+        "max_value": 65535,
+    },
+    {
+        "env_var": "MMRELAY_MESHTASTIC_SERIAL_PORT",
+        "config_key": "serial_port",
+        "type": "string",
+    },
+    {
+        "env_var": "MMRELAY_MESHTASTIC_BLE_ADDRESS",
+        "config_key": "ble_address",
+        "type": "string",
+    },
+    {
+        "env_var": "MMRELAY_MESHTASTIC_BROADCAST_ENABLED",
+        "config_key": "broadcast_enabled",
+        "type": "bool",
+    },
+    {
+        "env_var": "MMRELAY_MESHTASTIC_MESHNET_NAME",
+        "config_key": "meshnet_name",
+        "type": "string",
+    },
+    {
+        "env_var": "MMRELAY_MESHTASTIC_MESSAGE_DELAY",
+        "config_key": "message_delay",
+        "type": "float",
+        "min_value": 2.0,
+    },
+]
 
 
 def set_config(module, passed_config):
