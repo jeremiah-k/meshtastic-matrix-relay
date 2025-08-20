@@ -137,9 +137,9 @@ The docker-compose files use environment variables for customization:
 
 MMRelay requires Matrix authentication to connect to your Matrix homeserver. There are two approaches, with the auth system being strongly recommended for security and functionality.
 
-### Recommended: Auth System (`mmrelay auth login`)
+### Auth System (`mmrelay auth login`)
 
-**This is the preferred method for all users.** The auth system provides superior security, full E2EE support, and better user experience.
+The auth system provides E2EE support and persistent device identity.
 
 ```bash
 # Run this on your host system (not in Docker)
@@ -152,17 +152,16 @@ mmrelay auth login
 - Sets up encryption key storage for E2EE support
 - Establishes proper Matrix session lifecycle
 
-**Why this is better:**
-- **✅ Full E2EE Support**: Only the auth system provides encrypted room participation
-- **✅ Persistent Device Identity**: Same device across restarts, no "new device" notifications
-- **✅ Automatic Key Management**: Handles encryption keys, sharing, and storage automatically
-- **✅ More Convenient**: No manual token capture from browser sessions required
-- **✅ More Secure**: Credentials stored in files with proper permissions, not visible in process lists
-- **✅ Future-Proof**: Supports all Matrix features as they're added to MMRelay
+**Features:**
+- **E2EE Support**: Provides encrypted room participation
+- **Persistent Device Identity**: Same device across restarts, no "new device" notifications
+- **Automatic Key Management**: Handles encryption keys, sharing, and storage
+- **Convenience**: No manual token capture from browser sessions required
+- **File-based Storage**: Credentials stored in files with configurable permissions
 
-### Fallback: Manual Access Token in config.yaml
+### Manual Access Token in config.yaml
 
-**Only use this if the auth system cannot be used.** This method has significant limitations and security concerns.
+Alternative authentication method using manually captured access tokens.
 
 ```yaml
 # In your config.yaml file
@@ -172,18 +171,16 @@ matrix:
   bot_user_id: @yourbot:example.org
 ```
 
-**⚠️ Significant Limitations:**
-- **❌ No E2EE Support**: Cannot participate in encrypted Matrix rooms
-- **❌ No Persistent Device ID**: Each restart appears as a new device to other users
-- **❌ Manual Token Management**: Requires capturing access tokens from browser sessions
-- **❌ Security Concerns**: Access tokens in config files are less secure than the auth system
-- **❌ Limited Future Support**: New Matrix features may not work with this method
+**Limitations:**
+- No E2EE support - cannot participate in encrypted Matrix rooms
+- No persistent device ID - each restart appears as a new device to other users
+- Manual token management - requires capturing access tokens from browser sessions
 
 ### Authentication Precedence
 
 MMRelay checks for authentication in this order:
-1. **`credentials.json`** (from auth system) - recommended, full features
-2. **`config.yaml` matrix section** - fallback, limited features
+1. **`credentials.json`** (from auth system) - full features
+2. **`config.yaml` matrix section** - limited features
 
 ## Operational Environment Variables
 
@@ -445,9 +442,9 @@ services:
 
 ## Complete Docker Examples
 
-### Recommended: Auth System + Environment Variables
+### Auth System + Environment Variables
 
-**This is the recommended approach** - use `mmrelay auth login` for authentication and environment variables for operational settings.
+Use `mmrelay auth login` for authentication and environment variables for operational settings.
 
 **Step 1: Set up authentication on your host system**
 ```bash
@@ -475,15 +472,15 @@ services:
       - ~/.mmrelay/config.yaml:/app/config.yaml:ro  # For matrix_rooms and plugins
 ```
 
-**✅ This approach provides:**
-- Full E2EE support for encrypted Matrix rooms
+**This approach provides:**
+- E2EE support for encrypted Matrix rooms
 - Persistent device identity (no "new device" notifications)
-- Secure credential storage
+- File-based credential storage
 - Flexible operational configuration
 
-### Fallback: Manual Access Token + Environment Variables
+### Manual Access Token + Environment Variables
 
-**Only use this if the auth system cannot be used.** This approach has significant limitations.
+Alternative approach using manually captured access tokens.
 
 **Step 1: Capture access token manually**
 1. Log into Matrix in your browser
@@ -524,11 +521,10 @@ services:
       - ~/.mmrelay/config.yaml:/app/config.yaml:ro
 ```
 
-**⚠️ This approach has limitations:**
+**Limitations:**
 - Cannot participate in encrypted Matrix rooms
 - Each restart appears as a new device
 - Manual token management required
-- Less secure than the auth system
 
 ## Connection Type Variants
 
