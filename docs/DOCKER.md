@@ -127,13 +127,34 @@ docker compose logs -f
 
 The docker-compose files use environment variables for customization:
 
+### Container Configuration
 - **`MMRELAY_HOME`**: Base directory for MMRelay data (default: `$HOME`)
 - **`UID`**: User ID for container permissions (default: `1000`)
 - **`GID`**: Group ID for container permissions (default: `1000`)
 - **`EDITOR`**: Preferred text editor for config editing (default: `nano`)
 
-These are set in the `.env` file. For Portainer users, you can:
+### Matrix Authentication (E2EE Support)
+MMRelay supports Matrix authentication via environment variables, which is especially useful for Docker deployments:
 
+**Method 1: Individual Variables**
+- **`MATRIX_HOMESERVER`**: Matrix homeserver URL (e.g., `https://matrix.example.org`)
+- **`MATRIX_ACCESS_TOKEN`**: Matrix access token for authentication
+- **`MATRIX_BOT_USER_ID`**: Bot's Matrix user ID (e.g., `@bot:example.org`)
+- **`MATRIX_DEVICE_ID`**: Device ID for E2EE support (optional but recommended)
+
+**Method 2: Base64 Encoded Credentials**
+- **`MATRIX_CREDENTIALS_JSON`**: Base64 encoded `credentials.json` content
+
+**Precedence Order:**
+1. Environment variables (highest priority)
+2. `credentials.json` file
+3. `config.yaml` matrix section (lowest priority)
+
+### Setting Environment Variables
+
+**For docker-compose users:** Add to your `.env` file or docker-compose environment section.
+
+**For Portainer users:** You can:
 1. Set them in Portainer's environment variables section
 2. Use absolute paths instead of variables in the docker-compose
 3. Ensure the paths exist on your host system
@@ -270,6 +291,78 @@ MMRELAY_HOME=/path/to/your/data
 - For TCP: Verify Meshtastic device IP and port 4403
 - For Serial: Check device permissions and path
 - For BLE: Ensure privileged mode and host networking are enabled
+
+## E2EE (End-to-End Encryption) Setup
+
+MMRelay v1.2+ supports Matrix End-to-End Encryption in Docker environments using environment variables.
+
+### Prerequisites
+
+- **Linux/macOS host**: E2EE is not supported on Windows due to library limitations
+- **E2EE-enabled image**: Use `ghcr.io/jeremiah-k/mmrelay:latest` or build with E2EE support
+
+### Setup Methods
+
+**Method 1: Environment Variables (Recommended for Docker)**
+
+Add to your docker-compose.yaml:
+
+```yaml
+services:
+  mmrelay:
+    image: ghcr.io/jeremiah-k/mmrelay:latest
+    environment:
+      - MATRIX_HOMESERVER=https://matrix.example.org
+      - MATRIX_ACCESS_TOKEN=syt_your_access_token_here
+      - MATRIX_BOT_USER_ID=@yourbot:example.org
+      - MATRIX_DEVICE_ID=ABCDEFGHIJ  # Optional but recommended for E2EE
+      # ... other environment variables
+```
+
+**Method 2: Credentials File**
+
+1. Run `mmrelay auth login` on your host system
+2. Mount the generated credentials.json:
+
+```yaml
+volumes:
+  - ~/.mmrelay/credentials.json:/app/data/credentials.json:ro
+  # ... other volumes
+```
+
+**Method 3: Base64 Encoded Credentials**
+
+```yaml
+environment:
+  - MATRIX_CREDENTIALS_JSON=eyJob21lc2VydmVyIjoi...  # Base64 encoded credentials.json
+```
+
+### E2EE Configuration
+
+Enable E2EE in your config.yaml:
+
+```yaml
+matrix:
+  e2ee:
+    enabled: true
+    # Optional: key_sharing_delay_seconds: 5
+    # Optional: store_path: /app/data/store
+```
+
+The E2EE store directory (`/app/data/store`) is automatically created and persisted via the volume mount.
+
+### Verification
+
+Check logs for E2EE status:
+
+```bash
+docker compose logs mmrelay | grep -i e2ee
+```
+
+Look for messages like:
+- "End-to-End Encryption (E2EE) is enabled"
+- "Using credentials from environment variables"
+- "Found X encrypted rooms out of Y total rooms"
 
 ## Updates
 

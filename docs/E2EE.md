@@ -297,6 +297,63 @@ E2EE support is fully backward compatible:
 - E2EE store loaded before sync operations for proper initialization
 - Automatic key management with `ignore_unverified_devices=True`
 
+## Docker E2EE Setup
+
+MMRelay supports E2EE in Docker environments using environment variables for easy configuration.
+
+### Prerequisites
+
+- **Linux/macOS host**: E2EE is not supported on Windows due to library limitations
+- **E2EE-enabled image**: Use the official image `ghcr.io/jeremiah-k/mmrelay:latest`
+
+### Quick Docker E2EE Setup
+
+**Method 1: Environment Variables (Recommended)**
+
+```yaml
+services:
+  mmrelay:
+    image: ghcr.io/jeremiah-k/mmrelay:latest
+    environment:
+      - MATRIX_HOMESERVER=https://matrix.example.org
+      - MATRIX_ACCESS_TOKEN=syt_your_access_token_here
+      - MATRIX_BOT_USER_ID=@yourbot:example.org
+      - MATRIX_DEVICE_ID=ABCDEFGHIJ  # Recommended for E2EE
+    volumes:
+      - ~/.mmrelay:/app/data
+      - ~/.mmrelay/config.yaml:/app/config.yaml:ro
+```
+
+**Method 2: Mount Credentials File**
+
+```bash
+# On host: Create credentials using auth login
+mmrelay auth login
+
+# Then mount the credentials file
+```
+
+```yaml
+volumes:
+  - ~/.mmrelay/credentials.json:/app/data/credentials.json:ro
+  - ~/.mmrelay:/app/data
+  - ~/.mmrelay/config.yaml:/app/config.yaml:ro
+```
+
+### Configuration
+
+Ensure E2EE is enabled in your `config.yaml`:
+
+```yaml
+matrix:
+  e2ee:
+    enabled: true
+```
+
+The E2EE store directory is automatically created in the mounted data volume.
+
+For complete Docker setup instructions, see the [Docker Guide](DOCKER.md#e2ee-end-to-end-encryption-setup).
+
 ### Performance Impact
 
 E2EE adds minimal overhead:
