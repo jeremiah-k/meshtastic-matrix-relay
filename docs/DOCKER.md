@@ -409,8 +409,8 @@ services:
       - MMRELAY_LOGGING_LEVEL=INFO
       - MMRELAY_DATABASE_PATH=/app/data/meshtastic.sqlite
     volumes:
-      - ~/.mmrelay:/app/data # Includes credentials.json and E2EE store
-      - ~/.mmrelay/config.yaml:/app/config.yaml:ro # For matrix_rooms and plugins
+      - ${MMRELAY_HOME}/.mmrelay:/app/data # Includes credentials.json and E2EE store
+      - ${MMRELAY_HOME}/.mmrelay/config.yaml:/app/config.yaml:ro # For matrix_rooms and plugins
 ```
 
 **This approach provides:**
@@ -462,8 +462,8 @@ services:
       - MMRELAY_LOGGING_LEVEL=INFO
       - MMRELAY_DATABASE_PATH=/app/data/meshtastic.sqlite
     volumes:
-      - ~/.mmrelay:/app/data
-      - ~/.mmrelay/config.yaml:/app/config.yaml:ro
+      - ${MMRELAY_HOME}/.mmrelay:/app/data
+      - ${MMRELAY_HOME}/.mmrelay/config.yaml:/app/config.yaml:ro
 ```
 
 **Limitations:**

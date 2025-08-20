@@ -323,8 +323,8 @@ mmrelay auth login
 
 ```yaml
 volumes:
-  - ~/.mmrelay:/app/data
-  - ~/.mmrelay/config.yaml:/app/config.yaml:ro
+  - ${MMRELAY_HOME}/.mmrelay:/app/data
+  - ${MMRELAY_HOME}/.mmrelay/config.yaml:/app/config.yaml:ro
 ```
 
 ### Configuration
