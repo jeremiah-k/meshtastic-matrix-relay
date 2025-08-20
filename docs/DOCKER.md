@@ -339,7 +339,7 @@ services:
     environment:
       # Matrix Authentication (E2EE)
       - MATRIX_HOMESERVER=https://matrix.example.org
-      - MATRIX_ACCESS_TOKEN=syt_your_access_token_here
+      - MATRIX_ACCESS_TOKEN=your_access_token_here
       - MATRIX_BOT_USER_ID=@yourbot:example.org
       - MATRIX_DEVICE_ID=ABCDEFGHIJ  # Optional but recommended for E2EE
 
@@ -384,7 +384,7 @@ services:
     environment:
       # Matrix Authentication
       - MATRIX_HOMESERVER=https://matrix.example.org
-      - MATRIX_ACCESS_TOKEN=syt_your_access_token_here
+      - MATRIX_ACCESS_TOKEN=your_access_token_here
       - MATRIX_BOT_USER_ID=@yourbot:example.org
       - MATRIX_DEVICE_ID=ABCDEFGHIJ
 
@@ -411,7 +411,7 @@ services:
     environment:
       # Matrix Authentication
       - MATRIX_HOMESERVER=https://matrix.example.org
-      - MATRIX_ACCESS_TOKEN=syt_your_access_token_here
+      - MATRIX_ACCESS_TOKEN=your_access_token_here
       - MATRIX_BOT_USER_ID=@yourbot:example.org
 
       # Meshtastic Serial Connection
@@ -436,7 +436,7 @@ services:
     environment:
       # Matrix Authentication
       - MATRIX_HOMESERVER=https://matrix.example.org
-      - MATRIX_ACCESS_TOKEN=syt_your_access_token_here
+      - MATRIX_ACCESS_TOKEN=your_access_token_here
       - MATRIX_BOT_USER_ID=@yourbot:example.org
 
       # Meshtastic BLE Connection

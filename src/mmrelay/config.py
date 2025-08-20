@@ -310,58 +310,96 @@ def load_meshtastic_config_from_env():
     Returns:
         dict: Meshtastic configuration dictionary if any env vars found, None otherwise.
     """
+    # Define environment variable mappings with validation rules
+    env_var_mappings = [
+        {
+            'env_var': 'MMRELAY_MESHTASTIC_CONNECTION_TYPE',
+            'config_key': 'connection_type',
+            'type': 'enum',
+            'valid_values': ('tcp', 'serial', 'ble'),
+            'transform': lambda x: x.lower()
+        },
+        {
+            'env_var': 'MMRELAY_MESHTASTIC_HOST',
+            'config_key': 'host',
+            'type': 'string'
+        },
+        {
+            'env_var': 'MMRELAY_MESHTASTIC_PORT',
+            'config_key': 'port',
+            'type': 'int',
+            'min_value': 1,
+            'max_value': 65535
+        },
+        {
+            'env_var': 'MMRELAY_MESHTASTIC_SERIAL_PORT',
+            'config_key': 'serial_port',
+            'type': 'string'
+        },
+        {
+            'env_var': 'MMRELAY_MESHTASTIC_BLE_ADDRESS',
+            'config_key': 'ble_address',
+            'type': 'string'
+        },
+        {
+            'env_var': 'MMRELAY_MESHTASTIC_BROADCAST_ENABLED',
+            'config_key': 'broadcast_enabled',
+            'type': 'bool'
+        },
+        {
+            'env_var': 'MMRELAY_MESHTASTIC_MESHNET_NAME',
+            'config_key': 'meshnet_name',
+            'type': 'string'
+        },
+        {
+            'env_var': 'MMRELAY_MESHTASTIC_MESSAGE_DELAY',
+            'config_key': 'message_delay',
+            'type': 'float',
+            'min_value': 2.0
+        }
+    ]
+
     config = {}
 
-    # Connection settings
-    connection_type = os.getenv('MMRELAY_MESHTASTIC_CONNECTION_TYPE')
-    if connection_type:
-        if connection_type.lower() not in ('tcp', 'serial', 'ble'):
-            logger.error(f"Invalid MMRELAY_MESHTASTIC_CONNECTION_TYPE: '{connection_type}'. Must be 'tcp', 'serial', or 'ble'")
-            return None
-        config['connection_type'] = connection_type.lower()
+    for mapping in env_var_mappings:
+        env_value = os.getenv(mapping['env_var'])
+        if env_value is None:
+            continue
 
-    # TCP connection settings
-    host = os.getenv('MMRELAY_MESHTASTIC_HOST')
-    if host:
-        config['host'] = host
-
-    port = os.getenv('MMRELAY_MESHTASTIC_PORT')
-    if port:
         try:
-            config['port'] = _convert_env_int(port, 'MMRELAY_MESHTASTIC_PORT', min_value=1, max_value=65535)
+            if mapping['type'] == 'string':
+                value = env_value
+            elif mapping['type'] == 'int':
+                value = _convert_env_int(
+                    env_value,
+                    mapping['env_var'],
+                    min_value=mapping.get('min_value'),
+                    max_value=mapping.get('max_value')
+                )
+            elif mapping['type'] == 'float':
+                value = _convert_env_float(
+                    env_value,
+                    mapping['env_var'],
+                    min_value=mapping.get('min_value'),
+                    max_value=mapping.get('max_value')
+                )
+            elif mapping['type'] == 'bool':
+                value = _convert_env_bool(env_value, mapping['env_var'])
+            elif mapping['type'] == 'enum':
+                transformed_value = mapping.get('transform', lambda x: x)(env_value)
+                if transformed_value not in mapping['valid_values']:
+                    valid_values_str = "', '".join(mapping['valid_values'])
+                    logger.error(f"Invalid {mapping['env_var']}: '{env_value}'. Must be '{valid_values_str}'")
+                    return None
+                value = transformed_value
+            else:
+                logger.error(f"Unknown type '{mapping['type']}' for {mapping['env_var']}")
+                return None
+
+            config[mapping['config_key']] = value
+
         except ValueError as e:
-            logger.error(f"Error parsing MMRELAY_MESHTASTIC_PORT: {e}")
-            return None
-
-    # Serial connection settings
-    serial_port = os.getenv('MMRELAY_MESHTASTIC_SERIAL_PORT')
-    if serial_port:
-        config['serial_port'] = serial_port
-
-    # BLE connection settings
-    ble_address = os.getenv('MMRELAY_MESHTASTIC_BLE_ADDRESS')
-    if ble_address:
-        config['ble_address'] = ble_address
-
-    # Operational settings
-    broadcast_enabled = os.getenv('MMRELAY_MESHTASTIC_BROADCAST_ENABLED')
-    if broadcast_enabled:
-        try:
-            config['broadcast_enabled'] = _convert_env_bool(broadcast_enabled, 'MMRELAY_MESHTASTIC_BROADCAST_ENABLED')
-        except ValueError as e:
-            logger.error(f"Error parsing MMRELAY_MESHTASTIC_BROADCAST_ENABLED: {e}")
-            return None
-
-    meshnet_name = os.getenv('MMRELAY_MESHTASTIC_MESHNET_NAME')
-    if meshnet_name:
-        config['meshnet_name'] = meshnet_name
-
-    message_delay = os.getenv('MMRELAY_MESHTASTIC_MESSAGE_DELAY')
-    if message_delay:
-        try:
-            config['message_delay'] = _convert_env_float(message_delay, 'MMRELAY_MESHTASTIC_MESSAGE_DELAY', min_value=2.0)
-        except ValueError as e:
-            logger.error(f"Error parsing MMRELAY_MESHTASTIC_MESSAGE_DELAY: {e}")
+            logger.error(f"Error parsing {mapping['env_var']}: {e}")
             return None
 
     if config:
@@ -439,25 +477,19 @@ def apply_env_config_overrides(config):
     # Apply Meshtastic configuration overrides
     meshtastic_env_config = load_meshtastic_config_from_env()
     if meshtastic_env_config:
-        if 'meshtastic' not in config:
-            config['meshtastic'] = {}
-        config['meshtastic'].update(meshtastic_env_config)
+        config.setdefault('meshtastic', {}).update(meshtastic_env_config)
         logger.debug("Applied Meshtastic environment variable overrides")
 
     # Apply logging configuration overrides
     logging_env_config = load_logging_config_from_env()
     if logging_env_config:
-        if 'logging' not in config:
-            config['logging'] = {}
-        config['logging'].update(logging_env_config)
+        config.setdefault('logging', {}).update(logging_env_config)
         logger.debug("Applied logging environment variable overrides")
 
     # Apply database configuration overrides
     database_env_config = load_database_config_from_env()
     if database_env_config:
-        if 'database' not in config:
-            config['database'] = {}
-        config['database'].update(database_env_config)
+        config.setdefault('database', {}).update(database_env_config)
         logger.debug("Applied database environment variable overrides")
 
     return config

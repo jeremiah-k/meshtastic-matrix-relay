@@ -335,7 +335,6 @@ mmrelay auth login
 
 ```yaml
 volumes:
-  - ~/.mmrelay/credentials.json:/app/data/credentials.json:ro
   - ~/.mmrelay:/app/data
   - ~/.mmrelay/config.yaml:/app/config.yaml:ro
 ```
