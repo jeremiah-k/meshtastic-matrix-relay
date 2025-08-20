@@ -12,6 +12,7 @@ from mmrelay.config import get_e2ee_store_dir, load_credentials, save_credential
 from mmrelay.matrix_utils import (
     _add_truncated_vars,
     _create_mapping_info,
+    _get_e2ee_error_message,
     _get_msgs_to_keep_config,
     bot_command,
     connect_matrix,
@@ -21,6 +22,7 @@ from mmrelay.matrix_utils import (
     get_meshtastic_prefix,
     get_user_display_name,
     join_matrix_room,
+    login_matrix_bot,
     matrix_relay,
     message_storage_enabled,
     on_room_message,
@@ -1572,3 +1574,110 @@ def test_validate_prefix_format_comprehensive():
         assert is_valid is False
         assert error_msg is not None
         assert isinstance(error_msg, str)
+
+
+@patch("mmrelay.matrix_utils.save_credentials")
+@patch("mmrelay.matrix_utils.AsyncClient")
+@patch("mmrelay.matrix_utils.getpass.getpass")
+@patch("mmrelay.matrix_utils.input")
+async def test_login_matrix_bot_success(mock_input, mock_getpass, mock_async_client, mock_save_credentials):
+    """Test successful login_matrix_bot execution."""
+    # Mock user inputs
+    mock_input.side_effect = [
+        "https://matrix.org",  # homeserver
+        "testuser",            # username
+        "y",                   # logout_others
+    ]
+    mock_getpass.return_value = "testpass"  # password
+
+    # Mock AsyncClient instance
+    mock_client = AsyncMock()
+    mock_client.login.return_value = MagicMock(access_token="test_token", device_id="test_device")
+    mock_client.whoami.return_value = MagicMock(user_id="@testuser:matrix.org")
+    mock_client.close = AsyncMock()
+    mock_async_client.return_value = mock_client
+
+    # Call the function
+    result = await login_matrix_bot()
+
+    # Verify success
+    assert result is True
+    mock_save_credentials.assert_called_once()
+    mock_client.login.assert_called_once_with("testpass", device_name="mmrelay-e2ee")
+    # close() is called twice: once for discovery client, once for main client
+    assert mock_client.close.call_count == 2
+
+
+@patch("mmrelay.matrix_utils.input")
+async def test_login_matrix_bot_with_parameters(mock_input):
+    """Test login_matrix_bot with provided parameters."""
+    with patch("mmrelay.matrix_utils.AsyncClient") as mock_async_client:
+        # Mock AsyncClient instance
+        mock_client = AsyncMock()
+        mock_client.login.return_value = MagicMock(access_token="test_token", device_id="test_device")
+        mock_client.whoami.return_value = MagicMock(user_id="@testuser:matrix.org")
+        mock_client.close = AsyncMock()
+        mock_async_client.return_value = mock_client
+
+        with patch("mmrelay.matrix_utils.save_credentials"):
+            # Call with parameters (should not prompt for input)
+            result = await login_matrix_bot(
+                homeserver="https://matrix.org",
+                username="testuser",
+                password="testpass"
+            )
+
+            # Verify success and no input prompts
+            assert result is True
+            mock_input.assert_not_called()
+
+
+@patch("mmrelay.matrix_utils.getpass.getpass")
+@patch("mmrelay.matrix_utils.input")
+async def test_login_matrix_bot_login_failure(mock_input, mock_getpass):
+    """Test login_matrix_bot when login fails."""
+    # Mock user inputs
+    mock_input.side_effect = [
+        "https://matrix.org",  # homeserver
+        "testuser",            # username
+        "y",                   # logout_others
+    ]
+    mock_getpass.return_value = "wrongpass"  # password
+
+    with patch("mmrelay.matrix_utils.AsyncClient") as mock_async_client:
+        # Mock AsyncClient instance with login failure
+        mock_client = AsyncMock()
+        mock_client.login.side_effect = Exception("Login failed")
+        mock_client.close = AsyncMock()
+        mock_async_client.return_value = mock_client
+
+        # Call the function
+        result = await login_matrix_bot()
+
+        # Verify failure
+        assert result is False
+        # close() is called twice: once for discovery client, once for main client
+        assert mock_client.close.call_count == 2
+
+
+@patch("mmrelay.e2ee_utils.get_e2ee_error_message")
+@patch("mmrelay.e2ee_utils.get_e2ee_status")
+@patch("mmrelay.config.config_path", "/test/config.yaml")
+def test_get_e2ee_error_message(mock_config_path, mock_get_e2ee_status, mock_get_e2ee_error_message):
+    """Test _get_e2ee_error_message function."""
+    # Mock the E2EE status and error message
+    mock_e2ee_status = {"status": "disabled", "reason": "not_configured"}
+    mock_get_e2ee_status.return_value = mock_e2ee_status
+    mock_get_e2ee_error_message.return_value = "E2EE is not configured"
+
+    # Mock config
+    test_config = {"matrix": {"e2ee": {"enabled": False}}}
+
+    with patch("mmrelay.matrix_utils.config", test_config):
+        # Call the function
+        result = _get_e2ee_error_message()
+
+        # Verify the result
+        assert result == "E2EE is not configured"
+        mock_get_e2ee_status.assert_called_once_with(test_config, "/test/config.yaml")
+        mock_get_e2ee_error_message.assert_called_once_with(mock_e2ee_status)
