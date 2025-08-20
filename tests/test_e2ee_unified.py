@@ -39,12 +39,15 @@ class MockRoom:
 
     def __init__(self, room_id, display_name, encrypted=False):
         """
-        Mock representation of a Matrix room used in tests.
-
+        Initialize a MockRoom representing a Matrix room for tests.
+        
+        A minimal container used by unit tests to simulate a Matrix room's identity and E2EE state.
+        The `encrypted` flag controls formatting and warning behavior in tests.
+        
         Parameters:
             room_id (str): Matrix room identifier (e.g., "!abcdef:matrix.org").
             display_name (str): Human-readable room name shown in lists and logs.
-            encrypted (bool, optional): True if the room is end-to-end encrypted (E2EE); affects formatting and warnings in tests. Defaults to False.
+            encrypted (bool, optional): Whether the room is end-to-end encrypted (E2EE). Defaults to False.
         """
         self.room_id = room_id
         self.display_name = display_name
@@ -98,9 +101,12 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
 
         def _mock_import(name, globals=None, locals=None, fromlist=(), level=0):
             """
-            Test helper that fakes importing E2EE-related modules for unit tests.
-
-            Returns a MagicMock when the requested module name is one of "olm", "nio.crypto", or "nio.store", allowing tests to run without the real E2EE dependencies. For any other module name this delegates to the original import implementation, forwarding the standard import parameters.
+            Test helper that intercepts imports of E2EE-related modules and returns MagicMock instances.
+            
+            When the requested module name is one of "olm", "nio.crypto", or "nio.store", returns a MagicMock so unit tests can run without the real E2EE dependencies. For any other module name, delegates to the original import implementation, forwarding the standard __import__ parameters (name, globals, locals, fromlist, level).
+            
+            Returns:
+                module_or_mock: The imported module (via the real import) or a MagicMock for the specified E2EE modules.
             """
             if name in ("olm", "nio.crypto", "nio.store"):
                 return MagicMock()
@@ -160,9 +166,9 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
     @patch("mmrelay.e2ee_utils.os.path.exists")
     def test_e2ee_incomplete_missing_credentials(self, mock_exists):
         """
-        Verify get_e2ee_status reports "incomplete" when Matrix credentials are absent.
-
-        Patches builtins.__import__ to provide MagicMock stubs for E2EE-related modules ("olm", "nio.crypto", "nio.store"), simulates a missing credentials file, calls get_e2ee_status with the test configuration, and asserts the overall status is "incomplete", credentials_available is False, and an issue about Matrix authentication not being configured is present.
+        Verify get_e2ee_status reports "incomplete" when Matrix credentials are missing.
+        
+        Mocks E2EE-related modules ("olm", "nio.crypto", "nio.store") so dependencies appear installed, simulates a missing credentials file, calls get_e2ee_status with the test configuration, and asserts that the overall status is "incomplete", credentials_available is False, and an issue about Matrix authentication not being configured is present.
         """
         mock_exists.return_value = False  # credentials.json doesn't exist
 
@@ -172,9 +178,12 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
 
         def _mock_import(name, globals=None, locals=None, fromlist=(), level=0):
             """
-            Test helper that fakes importing E2EE-related modules for unit tests.
-
-            Returns a MagicMock when the requested module name is one of "olm", "nio.crypto", or "nio.store", allowing tests to run without the real E2EE dependencies. For any other module name this delegates to the original import implementation, forwarding the standard import parameters.
+            Test helper that intercepts imports of E2EE-related modules and returns MagicMock instances.
+            
+            When the requested module name is one of "olm", "nio.crypto", or "nio.store", returns a MagicMock so unit tests can run without the real E2EE dependencies. For any other module name, delegates to the original import implementation, forwarding the standard __import__ parameters (name, globals, locals, fromlist, level).
+            
+            Returns:
+                module_or_mock: The imported module (via the real import) or a MagicMock for the specified E2EE modules.
             """
             if name in ("olm", "nio.crypto", "nio.store"):
                 return MagicMock()
@@ -193,10 +202,11 @@ class TestRoomListFormatting(unittest.TestCase):
 
     def setUp(self):
         """
-        Skip the test when required module imports are unavailable.
-
+        Skip the test if required module imports are unavailable.
+        
         Checks the module-level IMPORTS_AVAILABLE flag and calls self.skipTest with
-        an explanatory message if imports are not present.
+        a clear message when necessary so tests that depend on optional imports are
+        silently skipped instead of failing.
         """
         if not IMPORTS_AVAILABLE:
             self.skipTest("Required imports not available")
@@ -263,10 +273,11 @@ class TestEncryptionWarnings(unittest.TestCase):
 
     def setUp(self):
         """
-        Skip the test when required module imports are unavailable.
-
+        Skip the test if required module imports are unavailable.
+        
         Checks the module-level IMPORTS_AVAILABLE flag and calls self.skipTest with
-        an explanatory message if imports are not present.
+        a clear message when necessary so tests that depend on optional imports are
+        silently skipped instead of failing.
         """
         if not IMPORTS_AVAILABLE:
             self.skipTest("Required imports not available")
@@ -313,10 +324,11 @@ class TestE2EEErrorMessages(unittest.TestCase):
 
     def setUp(self):
         """
-        Skip the test when required module imports are unavailable.
-
+        Skip the test if required module imports are unavailable.
+        
         Checks the module-level IMPORTS_AVAILABLE flag and calls self.skipTest with
-        an explanatory message if imports are not present.
+        a clear message when necessary so tests that depend on optional imports are
+        silently skipped instead of failing.
         """
         if not IMPORTS_AVAILABLE:
             self.skipTest("Required imports not available")
@@ -366,10 +378,11 @@ class TestActualEncryptionVerification(unittest.TestCase):
 
     def setUp(self):
         """
-        Skip the test when required module imports are unavailable.
-
+        Skip the test if required module imports are unavailable.
+        
         Checks the module-level IMPORTS_AVAILABLE flag and calls self.skipTest with
-        an explanatory message if imports are not present.
+        a clear message when necessary so tests that depend on optional imports are
+        silently skipped instead of failing.
         """
         if not IMPORTS_AVAILABLE:
             self.skipTest("Required imports not available")
@@ -387,8 +400,11 @@ class TestActualEncryptionVerification(unittest.TestCase):
             def emit(self, record):
                 """
                 Append the log record's formatted message to the surrounding `log_capture` list.
-
-                This handler extracts the message via `record.getMessage()` and appends it to the outer-scope `log_capture` list for later inspection (used in tests).
+                
+                This handler extracts the record's message (via LogRecord.getMessage()) and appends it to the outer-scope `log_capture` list for later inspection in tests.
+                
+                Parameters:
+                    record (logging.LogRecord): The log record to process.
                 """
                 log_capture.append(record.getMessage())
 

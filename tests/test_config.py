@@ -510,7 +510,11 @@ class TestMeshtasticEnvironmentVariables(unittest.TestCase):
                 del os.environ[var]
 
     def tearDown(self):
-        """Clear environment variables after each test."""
+        """
+        Remove any environment variables listed in self.env_vars from the process environment.
+        
+        This is intended for use as a unittest tearDown helper; it iterates over self.env_vars and deletes each entry from os.environ if present.
+        """
         for var in self.env_vars:
             if var in os.environ:
                 del os.environ[var]
@@ -601,14 +605,22 @@ class TestLoggingEnvironmentVariables(unittest.TestCase):
     """Test logging configuration loading from environment variables."""
 
     def setUp(self):
-        """Clear environment variables before each test."""
+        """
+        Prepare test environment by removing MMRELAY_LOGGING_LEVEL and MMRELAY_LOG_FILE from os.environ.
+        
+        Executed before each test to ensure logging-related environment variables do not affect test outcomes.
+        """
         self.env_vars = ["MMRELAY_LOGGING_LEVEL", "MMRELAY_LOG_FILE"]
         for var in self.env_vars:
             if var in os.environ:
                 del os.environ[var]
 
     def tearDown(self):
-        """Clear environment variables after each test."""
+        """
+        Remove any environment variables listed in self.env_vars from the process environment.
+        
+        This is intended for use as a unittest tearDown helper; it iterates over self.env_vars and deletes each entry from os.environ if present.
+        """
         for var in self.env_vars:
             if var in os.environ:
                 del os.environ[var]
@@ -649,7 +661,9 @@ class TestDatabaseEnvironmentVariables(unittest.TestCase):
     """Test database configuration loading from environment variables."""
 
     def setUp(self):
-        """Clear environment variables before each test."""
+        """
+        Ensure the MMRELAY_DATABASE_PATH environment variable is removed before each test to avoid cross-test contamination.
+        """
         if "MMRELAY_DATABASE_PATH" in os.environ:
             del os.environ["MMRELAY_DATABASE_PATH"]
 
@@ -690,7 +704,12 @@ class TestEnvironmentVariableIntegration(unittest.TestCase):
                 del os.environ[var]
 
     def tearDown(self):
-        """Clear environment variables after each test."""
+        """
+        Remove any environment variables listed in self.all_env_vars.
+        
+        Iterates over self.all_env_vars and deletes each key from os.environ if present.
+        Used in test teardown to ensure environment state is cleared between tests.
+        """
         for var in self.all_env_vars:
             if var in os.environ:
                 del os.environ[var]
