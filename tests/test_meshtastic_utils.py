@@ -475,6 +475,20 @@ class TestServiceDetection(unittest.TestCase):
         result = is_running_as_service()
         self.assertFalse(result)
 
+    @patch.dict(os.environ, {}, clear=True)
+    @patch("builtins.open", side_effect=PermissionError("Permission denied"))
+    def test_is_running_as_service_permission_error(self, mock_open_func):
+        """Test that service detection handles PermissionError gracefully."""
+        result = is_running_as_service()
+        self.assertFalse(result)
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_is_running_as_service_value_error(self):
+        """Test that service detection handles ValueError gracefully when parsing invalid data."""
+        with patch("builtins.open", mock_open(read_data="invalid data format\n")):
+            result = is_running_as_service()
+            self.assertFalse(result)
+
 
 class TestSerialPortDetection(unittest.TestCase):
     """Test cases for serial port detection functionality."""
@@ -873,8 +887,8 @@ async def test_reconnect_attempts_connection(
 
     await reconnect()
 
-    # Assert that a connection was attempted
-    mock_connect.assert_called_with(force_connect=True)
+    # Assert that a connection was attempted with correct parameters
+    mock_connect.assert_called_with(None, True)
 
 
 def test_check_connection_function_exists(reset_meshtastic_globals):
@@ -904,6 +918,291 @@ class TestCoroutineSubmission(unittest.TestCase):
         # Test with integer input
         result = _submit_coro(42)
         self.assertIsNone(result)
+
+    def test_submit_coro_returns_future_for_valid_coroutine(self):
+        """Test _submit_coro returns a Future-like object for valid coroutines."""
+        from mmrelay.meshtastic_utils import _submit_coro
+
+        async def test_coro():
+            return "test_result"
+
+        coro = test_coro()
+        result = _submit_coro(coro)
+
+        # Should return a Future-like object (either Future or Task)
+        self.assertTrue(hasattr(result, 'result') or hasattr(result, 'done'))
+
+        # Clean up the coroutine
+        coro.close()
+
+
+class TestSubmitCoroActualImplementation(unittest.TestCase):
+    """Test the actual _submit_coro implementation without global mocking."""
+
+    def setUp(self):
+        """Set up test by temporarily disabling the global mock."""
+        import mmrelay.meshtastic_utils as mu
+
+        # Store original event_loop state
+        self.original_event_loop = mu.event_loop
+
+        # Reset module state for clean testing
+        mu.event_loop = None
+
+        # Store the mocked function so we can restore it
+        self.mocked_submit_coro = mu._submit_coro
+
+        # Import the original function from the source
+        # We need to reload the function definition
+        import importlib
+        import importlib.util
+        import sys
+
+        # Get the source module without the mock
+        spec = importlib.util.find_spec('mmrelay.meshtastic_utils')
+        source_module = importlib.util.module_from_spec(spec)
+
+        # Execute the module to get the original function
+        spec.loader.exec_module(source_module)
+
+        # Get the original _submit_coro function
+        self.original_submit_coro = source_module._submit_coro
+
+    def tearDown(self):
+        """Restore original module state and mocking."""
+        import mmrelay.meshtastic_utils as mu
+        # Restore original event_loop state
+        mu.event_loop = self.original_event_loop
+        # Restore the mock
+        mu._submit_coro = self.mocked_submit_coro
+
+    def test_submit_coro_with_no_event_loop_no_running_loop(self):
+        """Test _submit_coro with no event loop and no running loop - should use asyncio.run."""
+        import asyncio
+        from concurrent.futures import Future
+
+        async def test_coro():
+            return "test_result"
+
+        coro = test_coro()
+
+        # Patch to ensure no running loop
+        with patch('asyncio.get_running_loop') as mock_get_loop:
+            mock_get_loop.side_effect = RuntimeError("No running loop")
+
+            result = self.original_submit_coro(coro)
+
+            # Should return a Future with the result
+            self.assertIsInstance(result, Future)
+            self.assertEqual(result.result(), "test_result")
+
+    def test_submit_coro_with_no_event_loop_no_running_loop_exception(self):
+        """Test _submit_coro exception handling when asyncio.run fails."""
+        import asyncio
+        from concurrent.futures import Future
+
+        async def failing_coro():
+            raise ValueError("Test exception")
+
+        coro = failing_coro()
+
+        # Patch to ensure no running loop
+        with patch('asyncio.get_running_loop') as mock_get_loop:
+            mock_get_loop.side_effect = RuntimeError("No running loop")
+
+            result = self.original_submit_coro(coro)
+
+            # Should return a Future with the exception
+            self.assertIsInstance(result, Future)
+            with self.assertRaises(ValueError) as cm:
+                result.result()
+            self.assertEqual(str(cm.exception), "Test exception")
+
+    def test_submit_coro_with_running_loop(self):
+        """Test _submit_coro with a running loop - should use create_task."""
+        import asyncio
+
+        async def test_coro():
+            return "test_result"
+
+        coro = test_coro()
+
+        try:
+            # Mock a running loop
+            with patch('asyncio.get_running_loop') as mock_get_loop:
+                mock_loop = MagicMock()
+                mock_task = MagicMock()
+
+                # Mock create_task to close the coroutine when called
+                def mock_create_task(coro_arg):
+                    coro_arg.close()  # Close the coroutine to prevent warnings
+                    return mock_task
+
+                mock_loop.create_task.side_effect = mock_create_task
+                mock_get_loop.return_value = mock_loop
+
+                result = self.original_submit_coro(coro)
+
+                # Should call create_task and return the task
+                mock_loop.create_task.assert_called_once_with(coro)
+                self.assertEqual(result, mock_task)
+        finally:
+            # Ensure coroutine is properly closed if not already closed
+            if hasattr(coro, 'cr_frame') and coro.cr_frame is not None:
+                coro.close()
+
+    def test_submit_coro_with_event_loop_parameter(self):
+        """Test _submit_coro with event loop parameter - should use run_coroutine_threadsafe."""
+        import asyncio
+
+        async def test_coro():
+            return "test_result"
+
+        coro = test_coro()
+
+        try:
+            # Create mock event loop
+            mock_loop = MagicMock(spec=asyncio.AbstractEventLoop)
+            mock_loop.is_closed.return_value = False
+
+            with patch('asyncio.run_coroutine_threadsafe') as mock_run_threadsafe:
+                mock_future = MagicMock()
+
+                # Mock run_coroutine_threadsafe to close the coroutine when called
+                def mock_run_coro_threadsafe(coro_arg, loop_arg):
+                    coro_arg.close()  # Close the coroutine to prevent warnings
+                    return mock_future
+
+                mock_run_threadsafe.side_effect = mock_run_coro_threadsafe
+
+                result = self.original_submit_coro(coro, loop=mock_loop)
+
+                # Should call run_coroutine_threadsafe
+                mock_run_threadsafe.assert_called_once_with(coro, mock_loop)
+                self.assertEqual(result, mock_future)
+        finally:
+            # Ensure coroutine is properly closed if not already closed
+            if hasattr(coro, 'cr_frame') and coro.cr_frame is not None:
+                coro.close()
+
+    def test_submit_coro_with_non_coroutine_actual(self):
+        """Test _submit_coro returns None for non-coroutine input (actual implementation)."""
+        # Test with string input
+        result = self.original_submit_coro("not a coroutine")
+        self.assertIsNone(result)
+
+        # Test with None input
+        result = self.original_submit_coro(None)
+        self.assertIsNone(result)
+
+        # Test with integer input
+        result = self.original_submit_coro(42)
+        self.assertIsNone(result)
+
+
+class TestBLEExceptionHandling(unittest.TestCase):
+    """Test cases for BLE exception handling and fallback classes."""
+
+    def test_bleak_import_fallback_classes(self):
+        """Test that fallback BLE exception classes are defined when bleak is not available."""
+        # This test verifies that the fallback classes exist in the current module
+        # without disrupting the module state for other tests
+        import mmrelay.meshtastic_utils as mu
+
+        # The fallback classes should already be defined in the module
+        # regardless of whether bleak is available, because the module
+        # defines them as fallbacks in the except block
+
+        # Verify that the fallback classes are defined
+        self.assertTrue(hasattr(mu, 'BleakDBusError'))
+        self.assertTrue(hasattr(mu, 'BleakError'))
+
+        # Verify they are proper exception classes
+        self.assertTrue(issubclass(mu.BleakDBusError, Exception))
+        self.assertTrue(issubclass(mu.BleakError, Exception))
+
+        # Verify they can be instantiated and raised
+        # Note: The actual bleak classes may have different constructors
+        # than the fallback classes, so we test instantiation carefully
+        try:
+            # Try simple instantiation first (fallback classes)
+            error1 = mu.BleakDBusError("Test error")
+        except TypeError:
+            # If that fails, try the real bleak constructor
+            error1 = mu.BleakDBusError("Test error", "error_body")
+
+        try:
+            error2 = mu.BleakError("Test error")
+        except TypeError:
+            # If that fails, try with additional args
+            error2 = mu.BleakError("Test error", "additional_arg")
+
+        # Verify they can be raised
+        with self.assertRaises(mu.BleakDBusError):
+            raise error1
+
+        with self.assertRaises(mu.BleakError):
+            raise error2
+
+
+class TestReconnectingFlagLogic(unittest.TestCase):
+    """Test cases for reconnecting flag logic in connect_meshtastic."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        import mmrelay.meshtastic_utils
+        # Reset global state
+        mmrelay.meshtastic_utils.reconnecting = False
+        mmrelay.meshtastic_utils.meshtastic_client = None
+
+    def tearDown(self):
+        """Clean up after tests."""
+        import mmrelay.meshtastic_utils
+        mmrelay.meshtastic_utils.reconnecting = False
+        mmrelay.meshtastic_utils.meshtastic_client = None
+
+    @patch('mmrelay.meshtastic_utils.logger')
+    def test_connect_meshtastic_blocked_by_reconnecting_flag(self, mock_logger):
+        """Test that connect_meshtastic is blocked when reconnecting=True and force_connect=False."""
+        import mmrelay.meshtastic_utils
+        from mmrelay.meshtastic_utils import connect_meshtastic
+
+        # Set reconnecting flag
+        mmrelay.meshtastic_utils.reconnecting = True
+
+        # Call connect_meshtastic with force_connect=False (default)
+        result = connect_meshtastic(None, False)
+
+        # Should return None and log debug message
+        self.assertIsNone(result)
+        mock_logger.debug.assert_called_with(
+            "Reconnection already in progress. Not attempting new connection."
+        )
+
+    @patch('mmrelay.meshtastic_utils.logger')
+    @patch('mmrelay.meshtastic_utils.config', None)
+    def test_connect_meshtastic_force_connect_bypasses_reconnecting_flag(self, mock_logger):
+        """Test that connect_meshtastic with force_connect=True bypasses reconnecting flag."""
+        import mmrelay.meshtastic_utils
+        from mmrelay.meshtastic_utils import connect_meshtastic
+
+        # Set reconnecting flag
+        mmrelay.meshtastic_utils.reconnecting = True
+
+        # Call connect_meshtastic with force_connect=True
+        result = connect_meshtastic(None, True)
+
+        # Should NOT be blocked by reconnecting flag
+        # Should return None due to missing config, not due to reconnecting flag
+        self.assertIsNone(result)
+
+        # Should NOT log the reconnection debug message
+        mock_logger.debug.assert_not_called()
+
+        # Should log the config error instead
+        mock_logger.error.assert_called_with(
+            "No configuration available. Cannot connect to Meshtastic."
+        )
 
 
 class TestTextReplyFunctionality(unittest.TestCase):

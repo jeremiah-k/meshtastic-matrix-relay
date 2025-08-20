@@ -5,6 +5,7 @@ import io
 import os
 import threading
 import time
+from concurrent.futures import Future
 from typing import List
 
 import meshtastic.ble_interface
@@ -98,9 +99,16 @@ subscribed_to_connection_lost = False
 
 def _submit_coro(coro, loop=None):
     """
-    Safely submits an asyncio coroutine to the appropriate event loop for execution.
-
-    If a valid event loop is provided and open, schedules the coroutine thread-safely. Otherwise, attempts to use the currently running loop or creates a temporary event loop as a fallback. Returns None if the input is not a coroutine.
+    Submit an asyncio coroutine for execution on the appropriate event loop and return a Future representing its result.
+    
+    If `loop` (or the module-level `event_loop`) is an open asyncio event loop, the coroutine is scheduled thread-safely via `asyncio.run_coroutine_threadsafe`. If there is a currently running loop in the calling thread, the coroutine is scheduled with that loop's `create_task`. If no running loop exists, the coroutine is executed synchronously with `asyncio.run` and its result (or raised exception) is wrapped in a completed Future. If `coro` is not a coroutine, returns None.
+    
+    Parameters:
+        coro: The coroutine object to execute.
+        loop: Optional asyncio event loop to target. If omitted, the module-level `event_loop` is used.
+    
+    Returns:
+        A Future-like object representing the coroutine's eventual result, or None if `coro` is not a coroutine.
     """
     if not inspect.iscoroutine(coro):
         # Defensive guard for tests that mistakenly patch async funcs to return None
@@ -113,13 +121,14 @@ def _submit_coro(coro, loop=None):
         running = asyncio.get_running_loop()
         return running.create_task(coro)
     except RuntimeError:
-        # No running loop: create a private one, run “soon”
-        tmp = asyncio.new_event_loop()
+        # No running loop: run synchronously and wrap the result in a completed Future
+        f = Future()
         try:
-            return asyncio.run_coroutine_threadsafe(coro, tmp)
-        finally:
-            # don’t leak this loop: the caller must not force this path in tests
-            pass
+            result = asyncio.run(coro)
+            f.set_result(result)
+        except Exception as e:
+            f.set_exception(e)
+        return f
 
 
 def is_running_as_service():
@@ -174,7 +183,7 @@ def connect_meshtastic(passed_config=None, force_connect=False):
         logger.debug("Shutdown in progress. Not attempting to connect.")
         return None
 
-    if reconnecting:
+    if reconnecting and not force_connect:
         logger.debug("Reconnection already in progress. Not attempting new connection.")
         return None
 
@@ -369,12 +378,12 @@ def connect_meshtastic(passed_config=None, force_connect=False):
 def on_lost_meshtastic_connection(interface=None, detection_source="unknown"):
     """
     Mark the Meshtastic connection as lost, close the current client, and initiate an asynchronous reconnect.
-    
+
     If a shutdown is in progress or a reconnect is already underway this function returns immediately. Otherwise it:
     - sets the module-level `reconnecting` flag,
     - attempts to close and clear the module-level `meshtastic_client` (handles already-closed file descriptors),
     - schedules the reconnect() coroutine on the global event loop if that loop exists and is open.
-    
+
     Parameters:
         detection_source (str): Identifier for where or how the loss was detected; used in log messages.
     """
@@ -410,9 +419,9 @@ def on_lost_meshtastic_connection(interface=None, detection_source="unknown"):
 
 async def reconnect():
     """
-    Attempt to reconnect to the Meshtastic device asynchronously using exponential backoff.
+    Attempt to re-establish a Meshtastic connection with exponential backoff.
     
-    Starts with DEFAULT_BACKOFF_TIME and doubles after each failure, capped at 300 seconds (5 minutes). Between attempts the task either sleeps or — when not running as a system service — displays a Rich progress countdown. On each cycle it calls connect_meshtastic(force_connect=True); the loop exits when a connection is re-established, when shutting_down is set, or when the task is cancelled. Any exceptions during attempts are logged; asyncio.CancelledError is handled and logged. The function clears the module-level `reconnecting` flag on exit.
+    Starts from DEFAULT_BACKOFF_TIME and doubles after each failure up to 300 seconds. Between attempts the coroutine sleeps; when not running as a systemd service it displays a Rich progress countdown during the backoff. Each cycle invokes connect_meshtastic(force_connect=True) in the default executor; the loop exits when a connection is obtained, the global shutting_down flag is set, or the task is cancelled. Exceptions during attempts are logged; asyncio.CancelledError is caught and logged. Ensures the module-level reconnecting flag is cleared before returning.
     """
     global meshtastic_client, reconnecting, shutting_down
     backoff_time = DEFAULT_BACKOFF_TIME
@@ -452,7 +461,11 @@ async def reconnect():
                         "Shutdown in progress. Aborting reconnection attempts."
                     )
                     break
-                meshtastic_client = connect_meshtastic(force_connect=True)
+                loop = asyncio.get_running_loop()
+                # Pass force_connect=True without overwriting the global config
+                meshtastic_client = await loop.run_in_executor(
+                    None, connect_meshtastic, None, True
+                )
                 if meshtastic_client:
                     logger.info("Reconnected successfully.")
                     break

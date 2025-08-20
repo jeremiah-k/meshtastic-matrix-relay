@@ -193,10 +193,10 @@ def print_version():
 def _validate_e2ee_dependencies():
     """
     Check whether end-to-end encryption (E2EE) runtime dependencies are available.
-    
+
     Performs a platform check and attempts to import required packages (python-olm, nio.crypto.OlmDevice,
     and nio.store.SqliteStore). Prints a short user-facing status message and guidance.
-    
+
     Returns:
         bool: True if the platform supports E2EE and all required dependencies can be imported;
               False if running on an unsupported platform (Windows) or if any dependency is missing.
@@ -486,11 +486,11 @@ def _analyze_e2ee_setup(config, config_path):
 def _print_unified_e2ee_analysis(e2ee_status):
     """
     Print a concise, user-facing analysis of E2EE readiness from a centralized status object.
-    
+
     This formats and prints the platform support, dependency availability, configuration enabled state,
     authentication (credentials.json) presence, and the overall status. If the overall status is not
     "ready", prints actionable fix instructions obtained from mmrelay.e2ee_utils.get_e2ee_fix_instructions.
-    
+
     Parameters:
         e2ee_status (dict): Status dictionary as returned by get_e2ee_status(config, config_path).
             Expected keys:

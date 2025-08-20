@@ -1078,9 +1078,9 @@ async def matrix_relay(
 ):
     """
     Relay a Meshtastic message into a Matrix room, optionally as an emote, emoji-marked message, or as a reply, and record a Meshtastic↔Matrix mapping when configured.
-    
+
     Builds a Matrix message payload (plain and HTML/markdown-safe formatted bodies), applies Matrix reply framing when reply_to_event_id is provided, enforces E2EE restrictions (will block sending to encrypted rooms when client E2EE is not enabled), sends the event via the global Matrix client, and — if message-interactions are enabled and a Meshtastic message ID is provided — stores a mapping for future cross-network replies/reactions. Handles timeouts and errors by logging and returning without raising.
-    
+
     Parameters:
         room_id (str): Matrix room ID or alias to send to.
         message (str): Message text to relay; may contain Markdown or HTML which will be converted/stripped as needed.
@@ -1094,12 +1094,12 @@ async def matrix_relay(
         emote (bool, optional): If True, send as an m.emote (emote) message instead of regular text.
         emoji (bool, optional): If True, add emoji metadata to the Matrix event (used to mark emoji-like messages).
         reply_to_event_id (str, optional): Matrix event ID to which this message should be formatted as an m.in_reply_to reply.
-    
+
     Side effects:
         - Sends a message to Matrix using the global matrix client.
         - May persist a Meshtastic↔Matrix mapping for replies/reactions when storage is enabled.
         - Logs errors and warnings; does not raise on send failures or storage errors (errors are caught and logged).
-    
+
     Returns:
         None
     """
@@ -1933,7 +1933,7 @@ async def on_room_message(
         prefix = get_meshtastic_prefix(config, full_display_name, event.sender)
         logger.debug(f"Processing matrix message from [{full_display_name}]: {text}")
         full_message = f"{prefix}{text}"
-        text = truncate_message(text)
+        full_message = truncate_message(full_message)
 
     # Plugin functionality
     from mmrelay.plugin_loader import load_plugins
