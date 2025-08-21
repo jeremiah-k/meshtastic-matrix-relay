@@ -249,44 +249,7 @@ class TestMatrixUtilsEdgeCases(unittest.TestCase):
 
         asyncio.run(run_test())
 
-    @patch("mmrelay.matrix_utils.logger")
-    @patch("mmrelay.matrix_utils.AsyncClient")
-    @patch("mmrelay.matrix_utils._create_ssl_context")
-    def test_connect_matrix_with_asyncmock_rooms(
-        self, mock_ssl_context, mock_async_client, mock_logger
-    ):
-        """
-        Test that connect_matrix handles AsyncMock rooms gracefully.
 
-        Verifies that the safe_get_rooms function properly detects and handles AsyncMock objects.
-        """
-        mock_ssl_context.return_value = MagicMock()
-
-        # Mock AsyncClient with AsyncMock rooms to test safe_get_rooms function
-        mock_client = AsyncMock()
-        mock_client.sync = AsyncMock(return_value=MagicMock())
-        # Set rooms as AsyncMock to trigger the safe_get_rooms logic
-        mock_client.rooms = AsyncMock()
-        mock_async_client.return_value = mock_client
-
-        config = {
-            "matrix": {
-                "homeserver": "https://matrix.org",
-                "access_token": "test_token",
-                "bot_user_id": "@test:matrix.org",
-            },
-            "matrix_rooms": [],
-        }
-
-        async def run_test():
-            """
-            Test that connect_matrix handles AsyncMock rooms without warnings.
-            """
-            result = await connect_matrix(config)
-            # Should return a client despite AsyncMock rooms
-            self.assertIsNotNone(result)
-
-        asyncio.run(run_test())
 
     @patch("mmrelay.matrix_utils.logger")
     def test_join_matrix_room_with_invalid_alias(self, mock_logger):

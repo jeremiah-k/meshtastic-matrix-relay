@@ -821,44 +821,22 @@ async def connect_matrix(passed_config=None):
 
             logger.info("Bot is in the following rooms:")
 
-            # Safely get rooms (handle AsyncMock in tests)
-            def safe_get_rooms():
-                """Safely get rooms dict, handling AsyncMock objects in tests."""
-                try:
-                    # Check if matrix_client.rooms is an AsyncMock
-                    from unittest.mock import AsyncMock
-
-                    if isinstance(matrix_client.rooms, AsyncMock):
-                        return {}  # Return empty dict for AsyncMock objects
-
-                    rooms = matrix_client.rooms
-                    # Check if accessing rooms returns a coroutine (AsyncMock)
-                    import inspect
-
-                    if inspect.iscoroutine(rooms):
-                        return {}  # Return empty dict for tests
-                    return rooms
-                except (AttributeError, TypeError, ImportError):
-                    return {}  # Return empty dict if rooms not accessible
-
-            client_rooms = safe_get_rooms()
-
             # Format room list with appropriate encryption indicators
-            room_lines = format_room_list(client_rooms, e2ee_status)
+            room_lines = format_room_list(matrix_client.rooms, e2ee_status)
             for line in room_lines:
                 logger.info(line)
 
             # Show warnings for encrypted rooms when E2EE is not ready
-            warnings = get_room_encryption_warnings(client_rooms, e2ee_status)
+            warnings = get_room_encryption_warnings(matrix_client.rooms, e2ee_status)
             for warning in warnings:
                 logger.warning(warning)
 
             # Debug information
             encrypted_count = sum(
-                1 for room in client_rooms.values() if getattr(room, "encrypted", False)
+                1 for room in matrix_client.rooms.values() if getattr(room, "encrypted", False)
             )
             logger.debug(
-                f"Found {encrypted_count} encrypted rooms out of {len(client_rooms)} total rooms"
+                f"Found {encrypted_count} encrypted rooms out of {len(matrix_client.rooms)} total rooms"
             )
             logger.debug(f"E2EE status: {e2ee_status['overall_status']}")
 
