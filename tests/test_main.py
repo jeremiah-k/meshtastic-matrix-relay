@@ -10,6 +10,34 @@ Tests the main application flow including:
 - Matrix and Meshtastic client connections
 - Graceful shutdown handling
 - Banner printing and version display
+
+CRITICAL HANGING TEST ISSUE SOLVED:
+=====================================
+
+PROBLEM:
+- TestMainAsyncFunction tests would hang when run sequentially
+- test_main_async_event_loop_setup would pass, but test_main_async_initialization_sequence would hang
+- This blocked CI and development for extended periods
+
+ROOT CAUSE:
+- test_main_async_event_loop_setup calls run_main() which calls set_config()
+- set_config() sets global variables in ALL mmrelay modules (meshtastic_utils, matrix_utils, etc.)
+- test_main_async_initialization_sequence inherits this contaminated global state
+- Contaminated state causes the second test to hang indefinitely
+
+SOLUTION:
+- TestMainAsyncFunction class implements comprehensive global state reset
+- setUp() and tearDown() methods call _reset_global_state()
+- _reset_global_state() resets ALL global variables in ALL mmrelay modules
+- Each test now starts with completely clean state
+
+PREVENTION:
+- DO NOT remove or modify setUp(), tearDown(), or _reset_global_state() methods
+- When adding new global variables to mmrelay modules, add them to _reset_global_state()
+- Always test sequential execution of TestMainAsyncFunction tests before committing
+- If hanging tests return, check for new global state that needs resetting
+
+This solution ensures reliable test execution and prevents CI blocking issues.
 """
 
 import asyncio
@@ -1017,14 +1045,38 @@ class TestRunMainFunction(unittest.TestCase):
 
 
 class TestMainAsyncFunction(unittest.TestCase):
-    """Test cases for the main async function."""
+    """
+    Test cases for the main async function.
+
+    CRITICAL: This class implements comprehensive global state reset to prevent
+    hanging tests caused by contamination between test runs.
+
+    HANGING TEST ISSUE SOLVED:
+    - Root cause: test_main_async_event_loop_setup contaminated global state via run_main() -> set_config()
+    - Symptom: test_main_async_initialization_sequence would hang when run after the first test
+    - Solution: Complete global state reset in setUp() and tearDown() methods
+
+    DO NOT REMOVE OR MODIFY the setUp(), tearDown(), or _reset_global_state() methods
+    without understanding the full implications. These methods prevent a critical
+    hanging test issue that blocked CI and development for extended periods.
+    """
 
     def setUp(self):
-        """Reset global state before each test to ensure complete test isolation."""
+        """
+        Reset global state before each test to ensure complete test isolation.
+
+        CRITICAL: This method prevents hanging tests by ensuring each test starts
+        with completely clean global state. DO NOT REMOVE.
+        """
         self._reset_global_state()
 
     def tearDown(self):
-        """Clean up after each test to prevent contamination."""
+        """
+        Clean up after each test to prevent contamination.
+
+        CRITICAL: This method prevents test contamination by cleaning up global
+        state and AsyncMock objects after each test. DO NOT REMOVE.
+        """
         self._reset_global_state()
         # Force garbage collection to clean up AsyncMock objects
         import gc
@@ -1034,8 +1086,28 @@ class TestMainAsyncFunction(unittest.TestCase):
         """
         Reset all global state in mmrelay modules to ensure complete test isolation.
 
-        This method clears configuration, client connections, event loops, and all
-        persistent state that could contaminate between tests.
+        CRITICAL: This method solves the hanging test issue by resetting ALL global
+        variables that could persist between tests and cause contamination.
+
+        ROOT CAUSE OF HANGING TESTS:
+        - test_main_async_event_loop_setup calls run_main() which calls set_config()
+        - set_config() sets global variables in ALL mmrelay modules
+        - test_main_async_initialization_sequence inherits contaminated global state
+        - Contaminated state causes the second test to hang indefinitely
+
+        SOLUTION:
+        This method resets ALL global variables in ALL mmrelay modules to their
+        default/None state, ensuring each test starts with completely clean state.
+
+        MODULES RESET:
+        - mmrelay.meshtastic_utils: config, matrix_rooms, meshtastic_client, event_loop, etc.
+        - mmrelay.matrix_utils: config, matrix_homeserver, matrix_client, bot_user_id, etc.
+        - mmrelay.config: custom_data_dir
+        - mmrelay.plugin_loader: caches
+        - mmrelay.message_queue: proper cleanup
+
+        DO NOT REMOVE OR MODIFY this method without understanding the full implications.
+        Removing any part of this reset could cause the hanging test issue to return.
         """
         import sys
 
