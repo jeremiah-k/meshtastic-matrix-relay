@@ -1019,6 +1019,83 @@ class TestRunMainFunction(unittest.TestCase):
 class TestMainAsyncFunction(unittest.TestCase):
     """Test cases for the main async function."""
 
+    def setUp(self):
+        """Reset global state before each test to ensure complete test isolation."""
+        self._reset_global_state()
+
+    def tearDown(self):
+        """Clean up after each test to prevent contamination."""
+        self._reset_global_state()
+        # Force garbage collection to clean up AsyncMock objects
+        import gc
+        gc.collect()
+
+    def _reset_global_state(self):
+        """
+        Reset all global state in mmrelay modules to ensure complete test isolation.
+
+        This method clears configuration, client connections, event loops, and all
+        persistent state that could contaminate between tests.
+        """
+        import sys
+
+        # Reset meshtastic_utils globals
+        if "mmrelay.meshtastic_utils" in sys.modules:
+            module = sys.modules["mmrelay.meshtastic_utils"]
+            module.config = None
+            module.matrix_rooms = []
+            module.meshtastic_client = None
+            module.event_loop = None
+            module.reconnecting = False
+            module.shutting_down = False
+            module.reconnect_task = None
+            module.subscribed_to_messages = False
+            module.subscribed_to_connection_lost = False
+
+        # Reset matrix_utils globals
+        if "mmrelay.matrix_utils" in sys.modules:
+            module = sys.modules["mmrelay.matrix_utils"]
+            module.config = None
+            module.matrix_homeserver = None
+            module.matrix_rooms = None
+            module.matrix_access_token = None
+            module.bot_user_id = None
+            module.bot_user_name = None
+            module.matrix_client = None
+            # Reset bot_start_time to current time to avoid stale timestamps
+            import time
+            module.bot_start_time = int(time.time() * 1000)
+
+        # Reset config globals
+        if "mmrelay.config" in sys.modules:
+            module = sys.modules["mmrelay.config"]
+            # Reset custom_data_dir if it was set
+            if hasattr(module, 'custom_data_dir'):
+                module.custom_data_dir = None
+
+        # Reset main module globals if any
+        if "mmrelay.main" in sys.modules:
+            module = sys.modules["mmrelay.main"]
+            # Reset any module-level state if present
+            pass
+
+        # Reset plugin_loader caches
+        if "mmrelay.plugin_loader" in sys.modules:
+            module = sys.modules["mmrelay.plugin_loader"]
+            if hasattr(module, '_reset_caches_for_tests'):
+                module._reset_caches_for_tests()
+
+        # Reset message_queue state
+        if "mmrelay.message_queue" in sys.modules:
+            from mmrelay.message_queue import get_message_queue
+            try:
+                queue = get_message_queue()
+                if hasattr(queue, 'stop'):
+                    queue.stop()
+            except Exception:
+                # Ignore errors during cleanup
+                pass
+
     def test_main_async_initialization_sequence(self):
         """Verify that the asynchronous main() startup sequence invokes database initialization, plugin loading, message-queue startup, and both Matrix and Meshtastic connection routines.
 
