@@ -1122,7 +1122,11 @@ class TestMainAsyncFunction(unittest.TestCase):
         mock_init_db,
     ):
         """Test that main async function sets up event loop correctly."""
-        config = {"matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}]}
+        config = {
+            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+            "matrix": {"homeserver": "https://matrix.org"},
+            "meshtastic": {"connection_type": "serial"}
+        }
 
         mock_matrix_client = AsyncMock()
         mock_matrix_client.add_event_callback = MagicMock()
@@ -1135,10 +1139,16 @@ class TestMainAsyncFunction(unittest.TestCase):
             mock_loop = MagicMock()
             mock_get_loop.return_value = mock_loop
 
-            with patch(
-                "mmrelay.main.asyncio.sleep", side_effect=KeyboardInterrupt
-            ), contextlib.suppress(KeyboardInterrupt):
-                asyncio.run(main(config))
+            # Mock initialize_database to exit early after event loop is set
+            with patch("mmrelay.main.initialize_database", side_effect=KeyboardInterrupt), \
+                 patch("mmrelay.config.load_config", return_value=config), \
+                 contextlib.suppress(KeyboardInterrupt):
+                from mmrelay.main import run_main
+                mock_args = MagicMock()
+                mock_args.config = None  # Use default config loading
+                mock_args.data_dir = None
+                mock_args.log_level = None
+                run_main(mock_args)
 
         # Verify event loop was accessed for meshtastic utils
         mock_get_loop.assert_called()

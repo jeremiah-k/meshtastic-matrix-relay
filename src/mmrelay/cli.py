@@ -160,13 +160,10 @@ def parse_arguments():
     )
     logout_parser.add_argument(
         "--password",
-        help="Password for verification (will prompt if not provided)",
+        nargs="?",
+        const="",
+        help="Password for verification. If no value provided, will prompt securely.",
         type=str,
-    )
-    logout_parser.add_argument(
-        "--password-stdin",
-        action="store_true",
-        help="Read password from standard input (more secure than --password)",
     )
     logout_parser.add_argument(
         "-y",
@@ -1196,24 +1193,25 @@ def handle_auth_logout(args):
     print()
 
     try:
-        # Optional warning if password provided via argv
-        if getattr(args, "password", None) and not getattr(args, "password_stdin", False):
+        # Handle password input
+        password = getattr(args, "password", None)
+
+        if password is None:
+            # No --password flag provided, prompt securely
+            import getpass
+            password = getpass.getpass("Enter Matrix password for verification: ")
+        elif password == "":
+            # --password flag provided without value, prompt securely
+            import getpass
+            password = getpass.getpass("Enter Matrix password for verification: ")
+        else:
+            # --password VALUE provided, warn about security
             print(
-                "⚠️  Warning: Supplying --password exposes it in shell history and process list."
+                "⚠️  Warning: Supplying password as argument exposes it in shell history and process list."
             )
             print(
-                "   Prefer the interactive prompt or --password-stdin for improved security."
+                "   For better security, use --password without a value to prompt securely."
             )
-
-        # Read password from stdin if requested
-        if getattr(args, "password_stdin", False):
-            import sys
-
-            try:
-                args.password = sys.stdin.readline().rstrip("\n")
-            except IOError as e:
-                print(f"❌ Failed to read password from stdin: {e}")
-                return 1
 
         # Confirm the action unless forced
         if not getattr(args, "yes", False):
@@ -1223,7 +1221,7 @@ def handle_auth_logout(args):
                 return 0
 
         # Run the logout process
-        result = asyncio.run(logout_matrix_bot(password=args.password))
+        result = asyncio.run(logout_matrix_bot(password=password))
         return 0 if result else 1
     except KeyboardInterrupt:
         print("\nLogout cancelled by user.")
