@@ -827,12 +827,14 @@ async def connect_matrix(passed_config=None):
                 try:
                     # Check if matrix_client.rooms is an AsyncMock
                     from unittest.mock import AsyncMock
+
                     if isinstance(matrix_client.rooms, AsyncMock):
                         return {}  # Return empty dict for AsyncMock objects
 
                     rooms = matrix_client.rooms
                     # Check if accessing rooms returns a coroutine (AsyncMock)
                     import inspect
+
                     if inspect.iscoroutine(rooms):
                         return {}  # Return empty dict for tests
                     return rooms
@@ -853,9 +855,7 @@ async def connect_matrix(passed_config=None):
 
             # Debug information
             encrypted_count = sum(
-                1
-                for room in client_rooms.values()
-                if getattr(room, "encrypted", False)
+                1 for room in client_rooms.values() if getattr(room, "encrypted", False)
             )
             logger.debug(
                 f"Found {encrypted_count} encrypted rooms out of {len(client_rooms)} total rooms"

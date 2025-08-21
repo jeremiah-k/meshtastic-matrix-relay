@@ -316,7 +316,6 @@ def cleanup_asyncmock_objects(request):
         "test_help_plugin",
         "test_ping_plugin",
         "test_nodes_plugin",
-        "test_cli",
     ]
 
     if any(pattern in test_file for pattern in asyncmock_patterns):
@@ -325,7 +324,9 @@ def cleanup_asyncmock_objects(request):
 
         # Suppress RuntimeWarning about unawaited coroutines during cleanup
         with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", category=RuntimeWarning, message=".*never awaited.*")
+            warnings.filterwarnings(
+                "ignore", category=RuntimeWarning, message=".*never awaited.*"
+            )
             gc.collect()
 
 

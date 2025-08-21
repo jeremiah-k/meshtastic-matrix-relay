@@ -269,8 +269,8 @@ class TestRoomListFormatting(unittest.TestCase):
 
     def test_room_list_with_asyncmock_rooms(self):
         """Test room list formatting with AsyncMock rooms (test scenario)"""
-        from unittest.mock import AsyncMock
         import warnings
+        from unittest.mock import AsyncMock
 
         # Create an AsyncMock that returns a coroutine when .items() is called
         mock_rooms = AsyncMock()
@@ -279,7 +279,9 @@ class TestRoomListFormatting(unittest.TestCase):
 
         # Suppress the expected warning during this test
         with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", category=RuntimeWarning, message=".*never awaited.*")
+            warnings.filterwarnings(
+                "ignore", category=RuntimeWarning, message=".*never awaited.*"
+            )
             # This should return empty list when AsyncMock is detected
             room_lines = format_room_list(mock_rooms, e2ee_status)
 
@@ -351,8 +353,8 @@ class TestEncryptionWarnings(unittest.TestCase):
 
     def test_warnings_with_asyncmock_rooms(self):
         """Test encryption warnings with AsyncMock rooms (test scenario)"""
-        from unittest.mock import AsyncMock
         import warnings
+        from unittest.mock import AsyncMock
 
         # Create an AsyncMock that returns a coroutine when .items() is called
         mock_rooms = AsyncMock()
@@ -361,7 +363,9 @@ class TestEncryptionWarnings(unittest.TestCase):
 
         # Suppress the expected warning during this test
         with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", category=RuntimeWarning, message=".*never awaited.*")
+            warnings.filterwarnings(
+                "ignore", category=RuntimeWarning, message=".*never awaited.*"
+            )
             # This should return empty warnings when AsyncMock is detected
             warnings_result = get_room_encryption_warnings(mock_rooms, e2ee_status)
 

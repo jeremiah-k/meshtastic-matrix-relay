@@ -11,13 +11,11 @@
 # For async function mocks, we must create a coroutine that resolves to the value we want.
 # Use asyncio.coroutine or async/await to create proper coroutines that can be awaited.
 
-import asyncio
-import inspect
 import json
 import os
 import sys
 import unittest
-from unittest.mock import AsyncMock, MagicMock, mock_open, patch
+from unittest.mock import MagicMock, mock_open, patch
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -1130,9 +1128,7 @@ class TestAuthLogout(unittest.TestCase):
 
     @patch("mmrelay.matrix_utils.logout_matrix_bot")
     @patch("builtins.print")
-    def test_handle_auth_logout_with_yes_flag(
-        self, mock_print, mock_logout
-    ):
+    def test_handle_auth_logout_with_yes_flag(self, mock_print, mock_logout):
         """Test logout with --yes flag (skip confirmation)."""
         # ASYNC MOCK FIX: Use same pattern - return value directly
         mock_logout.return_value = True
@@ -1215,9 +1211,7 @@ class TestAuthLogout(unittest.TestCase):
 
     @patch("mmrelay.matrix_utils.logout_matrix_bot")
     @patch("builtins.print")
-    def test_handle_auth_logout_failure(
-        self, mock_print, mock_logout
-    ):
+    def test_handle_auth_logout_failure(self, mock_print, mock_logout):
         """Test logout failure returns exit code 1."""
         # ASYNC MOCK FIX: Use same pattern - return value directly
         mock_logout.return_value = False
@@ -1233,9 +1227,7 @@ class TestAuthLogout(unittest.TestCase):
 
     @patch("mmrelay.matrix_utils.logout_matrix_bot")
     @patch("builtins.print")
-    def test_handle_auth_logout_keyboard_interrupt(
-        self, mock_print, mock_logout
-    ):
+    def test_handle_auth_logout_keyboard_interrupt(self, mock_print, mock_logout):
         """Test logout handles KeyboardInterrupt gracefully."""
         # ASYNC MOCK FIX: Make the mock raise KeyboardInterrupt when called
         mock_logout.side_effect = KeyboardInterrupt()
@@ -1251,9 +1243,7 @@ class TestAuthLogout(unittest.TestCase):
 
     @patch("mmrelay.matrix_utils.logout_matrix_bot")
     @patch("builtins.print")
-    def test_handle_auth_logout_exception_handling(
-        self, mock_print, mock_logout
-    ):
+    def test_handle_auth_logout_exception_handling(self, mock_print, mock_logout):
         """Test logout handles general exceptions gracefully."""
         # ASYNC MOCK FIX: Make the mock raise Exception when called
         mock_logout.side_effect = Exception("Test error")
@@ -1285,7 +1275,9 @@ class TestAuthLogout(unittest.TestCase):
             # Verify header was printed
             mock_print.assert_any_call("Matrix Bot Logout")
             mock_print.assert_any_call("=================")
-            mock_print.assert_any_call("This will log out from Matrix and clear all local session data:")
+            mock_print.assert_any_call(
+                "This will log out from Matrix and clear all local session data:"
+            )
             mock_print.assert_any_call("• Remove credentials.json")
             mock_print.assert_any_call("• Clear E2EE encryption store")
             mock_print.assert_any_call("• Invalidate Matrix access token")

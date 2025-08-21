@@ -188,6 +188,7 @@ def get_room_encryption_warnings(
         items_result = rooms.items()
         # Check if it's a coroutine (AsyncMock returns coroutines)
         import inspect
+
         if inspect.iscoroutine(items_result):
             # This is an AsyncMock in a test - return empty warnings to avoid warnings
             return warnings
@@ -250,6 +251,7 @@ def format_room_list(rooms: Dict[str, Any], e2ee_status: Dict[str, Any]) -> List
         items_result = rooms.items()
         # Check if it's a coroutine (AsyncMock returns coroutines)
         import inspect
+
         if inspect.iscoroutine(items_result):
             # This is an AsyncMock in a test - return empty list to avoid warnings
             return []

@@ -1080,6 +1080,7 @@ class TestMainAsyncFunction(unittest.TestCase):
         self._reset_global_state()
         # Force garbage collection to clean up AsyncMock objects
         import gc
+
         gc.collect()
 
     def _reset_global_state(self):
@@ -1136,13 +1137,14 @@ class TestMainAsyncFunction(unittest.TestCase):
             module.matrix_client = None
             # Reset bot_start_time to current time to avoid stale timestamps
             import time
+
             module.bot_start_time = int(time.time() * 1000)
 
         # Reset config globals
         if "mmrelay.config" in sys.modules:
             module = sys.modules["mmrelay.config"]
             # Reset custom_data_dir if it was set
-            if hasattr(module, 'custom_data_dir'):
+            if hasattr(module, "custom_data_dir"):
                 module.custom_data_dir = None
 
         # Reset main module globals if any
@@ -1154,15 +1156,16 @@ class TestMainAsyncFunction(unittest.TestCase):
         # Reset plugin_loader caches
         if "mmrelay.plugin_loader" in sys.modules:
             module = sys.modules["mmrelay.plugin_loader"]
-            if hasattr(module, '_reset_caches_for_tests'):
+            if hasattr(module, "_reset_caches_for_tests"):
                 module._reset_caches_for_tests()
 
         # Reset message_queue state
         if "mmrelay.message_queue" in sys.modules:
             from mmrelay.message_queue import get_message_queue
+
             try:
                 queue = get_message_queue()
-                if hasattr(queue, 'stop'):
+                if hasattr(queue, "stop"):
                     queue.stop()
             except Exception:
                 # Ignore errors during cleanup

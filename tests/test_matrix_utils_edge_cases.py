@@ -209,7 +209,9 @@ class TestMatrixUtilsEdgeCases(unittest.TestCase):
     @patch("mmrelay.matrix_utils.logger")
     @patch("mmrelay.matrix_utils.AsyncClient")
     @patch("mmrelay.matrix_utils._create_ssl_context")
-    def test_connect_matrix_ssl_context_failure(self, mock_ssl_context, mock_async_client, mock_logger):
+    def test_connect_matrix_ssl_context_failure(
+        self, mock_ssl_context, mock_async_client, mock_logger
+    ):
         """
         Test that connect_matrix handles SSL context creation failures gracefully.
 
@@ -250,7 +252,9 @@ class TestMatrixUtilsEdgeCases(unittest.TestCase):
     @patch("mmrelay.matrix_utils.logger")
     @patch("mmrelay.matrix_utils.AsyncClient")
     @patch("mmrelay.matrix_utils._create_ssl_context")
-    def test_connect_matrix_with_asyncmock_rooms(self, mock_ssl_context, mock_async_client, mock_logger):
+    def test_connect_matrix_with_asyncmock_rooms(
+        self, mock_ssl_context, mock_async_client, mock_logger
+    ):
         """
         Test that connect_matrix handles AsyncMock rooms gracefully.
 
