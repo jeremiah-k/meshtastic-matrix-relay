@@ -1,3 +1,17 @@
+# ASYNC MOCK WARNING FIXES:
+# This file contains tests for CLI functions that call async functions via asyncio.run().
+# The main issue is with handle_auth_logout() which calls:
+#   asyncio.run(logout_matrix_bot(password=password))
+#
+# When we patch logout_matrix_bot, the patch automatically creates an AsyncMock because
+# it detects the original function is async. However, AsyncMock creates coroutines that
+# must be properly configured to avoid "coroutine was never awaited" warnings.
+#
+# SOLUTION PATTERN:
+# For async function mocks, we must create a coroutine that resolves to the value we want.
+# Use asyncio.coroutine or async/await to create proper coroutines that can be awaited.
+
+import asyncio
 import inspect
 import json
 import os
@@ -1072,17 +1086,16 @@ class TestAuthLogout(unittest.TestCase):
         self.mock_args.yes = False
 
     @patch("mmrelay.matrix_utils.logout_matrix_bot")
-    @patch("asyncio.run")
     @patch("builtins.input")
     @patch("builtins.print")
     def test_handle_auth_logout_success_with_confirmation(
-        self, mock_print, mock_input, mock_asyncio_run, mock_logout
+        self, mock_print, mock_input, mock_logout
     ):
         """Test successful logout with user confirmation."""
-        # Setup mocks - asyncio.run will handle the async nature
+        # ASYNC MOCK FIX: Replace the async function with a regular function
+        # that returns the value directly. This prevents coroutine creation.
+        mock_logout.return_value = True  # Return the value directly, not a coroutine
         mock_input.return_value = "y"
-        mock_asyncio_run.return_value = True  # This is what asyncio.run returns
-        # Don't mock logout_matrix_bot directly - let asyncio.run handle it
         self.mock_args.password = "test_password"
 
         # Call function
@@ -1091,20 +1104,17 @@ class TestAuthLogout(unittest.TestCase):
         # Verify results
         self.assertEqual(result, 0)
         mock_input.assert_called_once_with("Are you sure you want to logout? (y/N): ")
-        mock_asyncio_run.assert_called_once()
-        # Verify that asyncio.run was called with a coroutine
-        args, kwargs = mock_asyncio_run.call_args
-        self.assertTrue(inspect.iscoroutine(args[0]))
+        mock_logout.assert_called_once_with(password="test_password")
 
     @patch("mmrelay.matrix_utils.logout_matrix_bot")
-    @patch("asyncio.run")
     @patch("builtins.input")
     @patch("builtins.print")
     def test_handle_auth_logout_cancelled_by_user(
-        self, mock_print, mock_input, mock_asyncio_run, mock_logout
+        self, mock_print, mock_input, mock_logout
     ):
         """Test logout cancelled by user confirmation."""
-        # Setup mocks
+        # ASYNC MOCK FIX: Use same pattern - return value directly
+        mock_logout.return_value = True  # Won't be called, but set for consistency
         mock_input.return_value = "n"
         self.mock_args.password = "test_password"
 
@@ -1114,24 +1124,18 @@ class TestAuthLogout(unittest.TestCase):
         # Verify results
         self.assertEqual(result, 0)
         mock_input.assert_called_once_with("Are you sure you want to logout? (y/N): ")
-        mock_asyncio_run.assert_not_called()
         mock_logout.assert_not_called()
         # Check that cancellation message was printed
         mock_print.assert_any_call("Logout cancelled.")
 
     @patch("mmrelay.matrix_utils.logout_matrix_bot")
-    @patch("asyncio.run")
     @patch("builtins.print")
     def test_handle_auth_logout_with_yes_flag(
-        self, mock_print, mock_asyncio_run, mock_logout
+        self, mock_print, mock_logout
     ):
         """Test logout with --yes flag (skip confirmation)."""
-        # Setup mocks - make logout_matrix_bot return a regular value, not a coroutine
-        mock_asyncio_run.return_value = True
-        # Create a proper async mock that returns a value when awaited
-        async def mock_logout_func(password):
-            return True
-        mock_logout.side_effect = mock_logout_func
+        # ASYNC MOCK FIX: Use same pattern - return value directly
+        mock_logout.return_value = True
         self.mock_args.password = "test_password"
         self.mock_args.yes = True
 
@@ -1140,26 +1144,18 @@ class TestAuthLogout(unittest.TestCase):
 
         # Verify results
         self.assertEqual(result, 0)
-        mock_asyncio_run.assert_called_once()
-        # Verify the coroutine was passed to asyncio.run
-        args, kwargs = mock_asyncio_run.call_args
-        self.assertTrue(inspect.iscoroutine(args[0]))
+        mock_logout.assert_called_once_with(password="test_password")
 
     @patch("getpass.getpass")
     @patch("mmrelay.matrix_utils.logout_matrix_bot")
-    @patch("asyncio.run")
     @patch("builtins.print")
     def test_handle_auth_logout_password_prompt_none(
-        self, mock_print, mock_asyncio_run, mock_logout, mock_getpass
+        self, mock_print, mock_logout, mock_getpass
     ):
         """Test logout with password=None (prompt for password)."""
-        # Setup mocks
+        # ASYNC MOCK FIX: Use same pattern - return value directly
         mock_getpass.return_value = "prompted_password"
-        mock_asyncio_run.return_value = True
-        # Create a proper async mock that returns a value when awaited
-        async def mock_logout_func(password):
-            return True
-        mock_logout.side_effect = mock_logout_func
+        mock_logout.return_value = True
         self.mock_args.password = None
         self.mock_args.yes = True
 
@@ -1169,25 +1165,18 @@ class TestAuthLogout(unittest.TestCase):
         # Verify results
         self.assertEqual(result, 0)
         mock_getpass.assert_called_once_with("Enter Matrix password for verification: ")
-        # Verify the coroutine was passed to asyncio.run
-        args, kwargs = mock_asyncio_run.call_args
-        self.assertTrue(inspect.iscoroutine(args[0]))
+        mock_logout.assert_called_once_with(password="prompted_password")
 
     @patch("getpass.getpass")
     @patch("mmrelay.matrix_utils.logout_matrix_bot")
-    @patch("asyncio.run")
     @patch("builtins.print")
     def test_handle_auth_logout_password_prompt_empty(
-        self, mock_print, mock_asyncio_run, mock_logout, mock_getpass
+        self, mock_print, mock_logout, mock_getpass
     ):
         """Test logout with password='' (prompt for password)."""
-        # Setup mocks
+        # ASYNC MOCK FIX: Use same pattern - return value directly
         mock_getpass.return_value = "prompted_password"
-        mock_asyncio_run.return_value = True
-        # Create a proper async mock that returns a value when awaited
-        async def mock_logout_func(password):
-            return True
-        mock_logout.side_effect = mock_logout_func
+        mock_logout.return_value = True
         self.mock_args.password = ""
         self.mock_args.yes = True
 
@@ -1197,23 +1186,16 @@ class TestAuthLogout(unittest.TestCase):
         # Verify results
         self.assertEqual(result, 0)
         mock_getpass.assert_called_once_with("Enter Matrix password for verification: ")
-        # Verify the coroutine was passed to asyncio.run
-        args, kwargs = mock_asyncio_run.call_args
-        self.assertTrue(inspect.iscoroutine(args[0]))
+        mock_logout.assert_called_once_with(password="prompted_password")
 
     @patch("mmrelay.matrix_utils.logout_matrix_bot")
-    @patch("asyncio.run")
     @patch("builtins.print")
     def test_handle_auth_logout_with_password_security_warning(
-        self, mock_print, mock_asyncio_run, mock_logout
+        self, mock_print, mock_logout
     ):
         """Test logout with password provided shows security warning."""
-        # Setup mocks
-        mock_asyncio_run.return_value = True
-        # Create a proper async mock that returns a value when awaited
-        async def mock_logout_func(password):
-            return True
-        mock_logout.side_effect = mock_logout_func
+        # ASYNC MOCK FIX: Use same pattern - return value directly
+        mock_logout.return_value = True
         self.mock_args.password = "insecure_password"
         self.mock_args.yes = True
 
@@ -1229,23 +1211,16 @@ class TestAuthLogout(unittest.TestCase):
         mock_print.assert_any_call(
             "   For better security, use --password without a value to prompt securely."
         )
-        # Verify the coroutine was passed to asyncio.run
-        args, kwargs = mock_asyncio_run.call_args
-        self.assertTrue(inspect.iscoroutine(args[0]))
+        mock_logout.assert_called_once_with(password="insecure_password")
 
     @patch("mmrelay.matrix_utils.logout_matrix_bot")
-    @patch("asyncio.run")
     @patch("builtins.print")
     def test_handle_auth_logout_failure(
-        self, mock_print, mock_asyncio_run, mock_logout
+        self, mock_print, mock_logout
     ):
         """Test logout failure returns exit code 1."""
-        # Setup mocks
-        mock_asyncio_run.return_value = False
-        # Create a proper async mock that returns a value when awaited
-        async def mock_logout_func(password):
-            return False
-        mock_logout.side_effect = mock_logout_func
+        # ASYNC MOCK FIX: Use same pattern - return value directly
+        mock_logout.return_value = False
         self.mock_args.password = "test_password"
         self.mock_args.yes = True
 
@@ -1254,23 +1229,16 @@ class TestAuthLogout(unittest.TestCase):
 
         # Verify results
         self.assertEqual(result, 1)
-        # Verify the coroutine was passed to asyncio.run
-        args, kwargs = mock_asyncio_run.call_args
-        self.assertTrue(inspect.iscoroutine(args[0]))
+        mock_logout.assert_called_once_with(password="test_password")
 
     @patch("mmrelay.matrix_utils.logout_matrix_bot")
-    @patch("asyncio.run")
     @patch("builtins.print")
     def test_handle_auth_logout_keyboard_interrupt(
-        self, mock_print, mock_asyncio_run, mock_logout
+        self, mock_print, mock_logout
     ):
         """Test logout handles KeyboardInterrupt gracefully."""
-        # Setup mocks - KeyboardInterrupt happens in asyncio.run, so no need for async mock
-        mock_asyncio_run.side_effect = KeyboardInterrupt()
-        # Create a proper async mock that returns a value when awaited (won't be called due to exception)
-        async def mock_logout_func(password):
-            return True
-        mock_logout.side_effect = mock_logout_func
+        # ASYNC MOCK FIX: Make the mock raise KeyboardInterrupt when called
+        mock_logout.side_effect = KeyboardInterrupt()
         self.mock_args.password = "test_password"
         self.mock_args.yes = True
 
@@ -1282,18 +1250,13 @@ class TestAuthLogout(unittest.TestCase):
         mock_print.assert_any_call("\nLogout cancelled by user.")
 
     @patch("mmrelay.matrix_utils.logout_matrix_bot")
-    @patch("asyncio.run")
     @patch("builtins.print")
     def test_handle_auth_logout_exception_handling(
-        self, mock_print, mock_asyncio_run, mock_logout
+        self, mock_print, mock_logout
     ):
         """Test logout handles general exceptions gracefully."""
-        # Setup mocks - Exception happens in asyncio.run, so no need for async mock
-        mock_asyncio_run.side_effect = Exception("Test error")
-        # Create a proper async mock that returns a value when awaited (won't be called due to exception)
-        async def mock_logout_func(password):
-            return True
-        mock_logout.side_effect = mock_logout_func
+        # ASYNC MOCK FIX: Make the mock raise Exception when called
+        mock_logout.side_effect = Exception("Test error")
         self.mock_args.password = "test_password"
         self.mock_args.yes = True
 
@@ -1312,13 +1275,9 @@ class TestAuthLogout(unittest.TestCase):
         self.mock_args.yes = True
 
         # Mock the logout to avoid actual execution
-        with patch("asyncio.run") as mock_asyncio_run, \
-             patch("mmrelay.matrix_utils.logout_matrix_bot") as mock_logout:
-            mock_asyncio_run.return_value = True
-            # Create a proper async mock that returns a value when awaited
-            async def mock_logout_func(password):
-                return True
-            mock_logout.side_effect = mock_logout_func
+        with patch("mmrelay.matrix_utils.logout_matrix_bot") as mock_logout:
+            # ASYNC MOCK FIX: Use same pattern - return value directly
+            mock_logout.return_value = True
 
             # Call function
             handle_auth_logout(self.mock_args)
