@@ -111,6 +111,23 @@ Matrix password: [password hidden]
 You can now start MMRelay with: mmrelay
 ```
 
+### Logging Out
+
+To completely log out and clear all Matrix session data:
+
+```bash
+mmrelay auth logout
+```
+
+This command will:
+- Verify your Matrix password for security
+- Log out from the Matrix server (invalidating access tokens)
+- Remove `~/.mmrelay/credentials.json`
+- Clear the E2EE store directory (`~/.mmrelay/store/`)
+- Provide confirmation of all cleanup actions
+
+After logout, you'll need to run `mmrelay auth login` again to re-authenticate.
+
 ### Files Created
 
 **`~/.mmrelay/credentials.json`** - Contains your Matrix session:
