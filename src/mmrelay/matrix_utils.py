@@ -1,4 +1,5 @@
 import asyncio
+from functools import lru_cache
 import getpass
 import io
 import json
@@ -84,6 +85,7 @@ from mmrelay.message_queue import get_message_queue, queue_message
 logger = get_logger(name="Matrix")
 
 
+@lru_cache(maxsize=1)
 def _create_ssl_context():
     """
     Create an SSL context using certifi's certificates for Matrix client connections.
@@ -105,7 +107,7 @@ def _create_ssl_context():
             return None
 
 
-def _can_auto_create_credentials(matrix_config):
+def _can_auto_create_credentials(matrix_config: dict) -> bool:
     """
     Check if we can automatically create credentials from config.yaml.
 
@@ -115,8 +117,10 @@ def _can_auto_create_credentials(matrix_config):
     Returns:
         bool: True if all required fields for automatic login are present
     """
-    required_fields = ["homeserver", "bot_user_id", "password"]
-    return all(field in matrix_config and matrix_config[field] for field in required_fields)
+    homeserver = matrix_config.get("homeserver")
+    user = matrix_config.get("bot_user_id") or matrix_config.get("user_id")
+    password = matrix_config.get("password")
+    return all(isinstance(v, str) and v.strip() for v in (homeserver, user, password))
 
 
 def _get_msgs_to_keep_config():
@@ -458,7 +462,7 @@ async def connect_matrix(passed_config=None):
 
     Raises:
         ValueError: If the top-level "matrix_rooms" configuration is missing.
-        ConnectionError: If creating the SSL context fails or the initial sync reports a sync error.
+        ConnectionError: If the initial sync reports a sync error.
         asyncio.TimeoutError: If the initial sync times out.
     """
     global matrix_client, bot_user_name, matrix_homeserver, matrix_rooms, matrix_access_token, bot_user_id, config
@@ -523,7 +527,7 @@ async def connect_matrix(passed_config=None):
 
         matrix_section = config["matrix"]
         homeserver = matrix_section["homeserver"]
-        username = matrix_section["bot_user_id"]
+        username = matrix_section.get("bot_user_id") or matrix_section.get("user_id")
         password = matrix_section["password"]
 
         # Attempt automatic login

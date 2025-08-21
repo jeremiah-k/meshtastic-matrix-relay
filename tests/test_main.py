@@ -31,7 +31,7 @@ from mmrelay.main import main, print_banner, run_main
 
 def _close_coro_if_possible(coro: Any) -> None:
     """Close a coroutine/awaitable if it exposes close() to avoid ResourceWarning in tests."""
-    if inspect.iscoroutine(coro) and hasattr(coro, "close"):
+    if inspect.isawaitable(coro) and hasattr(coro, "close"):
         coro.close()
     return None
 
@@ -339,6 +339,7 @@ class TestPrintBanner(unittest.TestCase):
         # Check that the message contains version info
         call_args = mock_logger.info.call_args[0][0]
         self.assertIn("Starting MMRelay", call_args)
+        self.assertIn("version ", call_args)  # Version should be included
 
     @patch("mmrelay.main.logger")
     def test_print_banner_subsequent_calls(self, mock_logger):

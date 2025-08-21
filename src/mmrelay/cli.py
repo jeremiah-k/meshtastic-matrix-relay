@@ -1195,33 +1195,33 @@ def handle_auth_logout(args):
     print("• Invalidate Matrix access token")
     print()
 
-    # Optional warning if password provided via argv
-    if getattr(args, "password", None) and not getattr(args, "password_stdin", False):
-        print(
-            "⚠️  Warning: Supplying --password exposes it in shell history and process list."
-        )
-        print(
-            "   Prefer the interactive prompt or --password-stdin for improved security."
-        )
-
-    # Read password from stdin if requested
-    if getattr(args, "password_stdin", False):
-        import sys
-
-        try:
-            args.password = sys.stdin.readline().rstrip("\n")
-        except Exception as e:
-            print(f"❌ Failed to read password from stdin: {e}")
-            return 1
-
-    # Confirm the action unless forced
-    if not getattr(args, "yes", False):
-        confirm = input("Are you sure you want to logout? (y/N): ").lower().strip()
-        if not confirm.startswith("y"):
-            print("Logout cancelled.")
-            return 0
-
     try:
+        # Optional warning if password provided via argv
+        if getattr(args, "password", None) and not getattr(args, "password_stdin", False):
+            print(
+                "⚠️  Warning: Supplying --password exposes it in shell history and process list."
+            )
+            print(
+                "   Prefer the interactive prompt or --password-stdin for improved security."
+            )
+
+        # Read password from stdin if requested
+        if getattr(args, "password_stdin", False):
+            import sys
+
+            try:
+                args.password = sys.stdin.readline().rstrip("\n")
+            except IOError as e:
+                print(f"❌ Failed to read password from stdin: {e}")
+                return 1
+
+        # Confirm the action unless forced
+        if not getattr(args, "yes", False):
+            confirm = input("Are you sure you want to logout? (y/N): ").lower().strip()
+            if not confirm.startswith("y"):
+                print("Logout cancelled.")
+                return 0
+
         # Run the logout process
         result = asyncio.run(logout_matrix_bot(password=args.password))
         return 0 if result else 1

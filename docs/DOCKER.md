@@ -59,7 +59,7 @@ For Docker deployments where interactive authentication isn't possible, MMRelay 
 2. **Remove or comment out** the `access_token` line if present
 
 3. **Start the container** - MMRelay will automatically:
-   - Login to Matrix using your password
+   - Log in to Matrix using your password
    - Create `credentials.json` with secure session tokens
    - Enable E2EE support if configured
    - Continue normal operation
@@ -71,6 +71,10 @@ This method is ideal for:
 - Environments without Python installed locally
 
 **Security Note**: The password is only used once during initial setup to create `credentials.json`. For enhanced security, you should remove the `password` field from your `config.yaml` after the first successful startup.
+Additionally, restrict file permissions so only your user can read it:
+```bash
+chmod 600 ~/.mmrelay/config.yaml
+```
 
 ## Deployment Methods
 
