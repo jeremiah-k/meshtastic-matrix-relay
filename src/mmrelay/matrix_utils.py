@@ -2288,10 +2288,23 @@ async def logout_matrix_bot(password=None):
                 return False
 
         except asyncio.TimeoutError:
-            logger.error("Password verification timed out.")
+            logger.error("Password verification timed out. Please check your network connection.")
             return False
         except Exception as e:
-            logger.error(f"Password verification failed: {e}")
+            # Handle common nio login exceptions with specific user messages
+            error_msg = str(e).lower()
+            if "forbidden" in error_msg or "401" in error_msg:
+                logger.error("Password verification failed: Invalid credentials.")
+                logger.error("Please check your username and password.")
+            elif "network" in error_msg or "connection" in error_msg or "timeout" in error_msg:
+                logger.error("Password verification failed: Network connection error.")
+                logger.error("Please check your internet connection and Matrix server availability.")
+            elif "server" in error_msg or "500" in error_msg or "502" in error_msg or "503" in error_msg:
+                logger.error("Password verification failed: Matrix server error.")
+                logger.error("Please try again later or contact your Matrix server administrator.")
+            else:
+                logger.error(f"Password verification failed: {type(e).__name__}")
+                logger.debug(f"Full error details: {e}")
             return False
         finally:
             await temp_client.close()
@@ -2315,7 +2328,15 @@ async def logout_matrix_bot(password=None):
                     "Logout response unclear, proceeding with local cleanup."
                 )
         except Exception as e:
-            logger.warning(f"Server logout failed, proceeding with local cleanup: {e}")
+            # Handle common logout exceptions with specific messages
+            error_msg = str(e).lower()
+            if "network" in error_msg or "connection" in error_msg or "timeout" in error_msg:
+                logger.warning("Server logout failed due to network issues, proceeding with local cleanup.")
+            elif "401" in error_msg or "forbidden" in error_msg:
+                logger.warning("Server logout failed due to invalid token (already logged out?), proceeding with local cleanup.")
+            else:
+                logger.warning(f"Server logout failed ({type(e).__name__}), proceeding with local cleanup.")
+            logger.debug(f"Logout error details: {e}")
         finally:
             await main_client.close()
 
