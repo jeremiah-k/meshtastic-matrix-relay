@@ -1,8 +1,6 @@
 # MMRelay Instructions
 
-MMRelay v1.2+ works on Linux, macOS, and Windows and requires Python 3.9+.
-
-**New in v1.2**: Full Matrix End-to-End Encryption (E2EE) support for secure communication in encrypted rooms (Linux/macOS only).
+MMRelay works on Linux, macOS, and Windows and requires Python 3.9+.
 
 ## Installation
 

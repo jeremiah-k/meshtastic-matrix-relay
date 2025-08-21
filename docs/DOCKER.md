@@ -44,6 +44,34 @@ docker compose logs -f
 
 **That's it!** Your MMRelay is now running with the official prebuilt image.
 
+## Non-Interactive Authentication
+
+For Docker deployments where interactive authentication isn't possible, MMRelay supports automatic credentials creation from your config file:
+
+1. **Edit your config.yaml** and add your Matrix password:
+   ```yaml
+   matrix:
+     homeserver: https://your-matrix-server.org
+     bot_user_id: "@your-bot:your-matrix-server.org"
+     password: your_matrix_password_here  # Add this line
+   ```
+
+2. **Remove or comment out** the `access_token` line if present
+
+3. **Start the container** - MMRelay will automatically:
+   - Login to Matrix using your password
+   - Create `credentials.json` with secure session tokens
+   - Enable E2EE support if configured
+   - Continue normal operation
+
+This method is ideal for:
+- Docker deployments without interactive terminals
+- Automated deployments and CI/CD pipelines
+- Users who haven't cloned the repository
+- Environments without Python installed locally
+
+**Security Note**: The password is only used once during initial setup. After successful login, MMRelay uses secure session tokens stored in `credentials.json`.
+
 ## Deployment Methods
 
 If the Quick Start above doesn't work for your setup, choose from these alternatives:

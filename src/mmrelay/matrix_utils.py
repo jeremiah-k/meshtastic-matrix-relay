@@ -101,6 +101,20 @@ def _create_ssl_context():
         return None
 
 
+def _can_auto_create_credentials(matrix_config):
+    """
+    Check if we can automatically create credentials from config.yaml.
+
+    Args:
+        matrix_config: The matrix section from config.yaml
+
+    Returns:
+        bool: True if all required fields for automatic login are present
+    """
+    required_fields = ["homeserver", "bot_user_id", "password"]
+    return all(field in matrix_config and matrix_config[field] for field in required_fields)
+
+
 def _get_msgs_to_keep_config():
     """
     Return the configured number of Meshtastic–Matrix message mappings to retain.
@@ -512,6 +526,35 @@ async def connect_matrix(passed_config=None):
             logger.info(
                 "NOTE: Ignoring Matrix login details in config.yaml in favor of credentials.json"
             )
+    # Check if we can automatically create credentials from config.yaml
+    elif config and "matrix" in config and _can_auto_create_credentials(config["matrix"]):
+        logger.info("No credentials.json found, but config.yaml has password field. Attempting automatic login...")
+
+        matrix_section = config["matrix"]
+        homeserver = matrix_section["homeserver"]
+        username = matrix_section["bot_user_id"]
+        password = matrix_section["password"]
+
+        # Attempt automatic login
+        try:
+            success = await login_matrix_bot(
+                homeserver=homeserver,
+                username=username,
+                password=password,
+                logout_others=False
+            )
+
+            if success:
+                logger.info("Automatic login successful! Credentials saved to credentials.json")
+                # Recursively call connect_matrix to use the newly created credentials
+                return await connect_matrix(passed_config)
+            else:
+                logger.error("Automatic login failed. Please check your credentials or use 'mmrelay auth login'")
+                return None
+        except Exception as e:
+            logger.error(f"Error during automatic login: {e}")
+            logger.error("Please use 'mmrelay auth login' for interactive setup")
+            return None
     else:
         # Check if config is available
         if config is None:

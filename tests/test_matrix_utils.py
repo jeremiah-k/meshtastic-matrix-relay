@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from mmrelay.config import get_e2ee_store_dir, load_credentials, save_credentials
 from mmrelay.matrix_utils import (
     _add_truncated_vars,
+    _can_auto_create_credentials,
     _cleanup_local_session_data,
     _create_mapping_info,
     _get_msgs_to_keep_config,
@@ -1906,3 +1907,72 @@ def test_cleanup_local_session_data_permission_error():
         result = _cleanup_local_session_data()
 
         assert result is False  # Should fail due to permission errors
+
+
+def test_can_auto_create_credentials_success():
+    """Test successful detection of auto-create capability."""
+    matrix_config = {
+        "homeserver": "https://matrix.example.org",
+        "bot_user_id": "@bot:example.org",
+        "password": "test_password"
+    }
+
+    result = _can_auto_create_credentials(matrix_config)
+    assert result is True
+
+
+def test_can_auto_create_credentials_missing_homeserver():
+    """Test failure when homeserver is missing."""
+    matrix_config = {
+        "bot_user_id": "@bot:example.org",
+        "password": "test_password"
+    }
+
+    result = _can_auto_create_credentials(matrix_config)
+    assert result is False
+
+
+def test_can_auto_create_credentials_missing_user_id():
+    """Test failure when bot_user_id is missing."""
+    matrix_config = {
+        "homeserver": "https://matrix.example.org",
+        "password": "test_password"
+    }
+
+    result = _can_auto_create_credentials(matrix_config)
+    assert result is False
+
+
+def test_can_auto_create_credentials_missing_password():
+    """Test failure when password is missing."""
+    matrix_config = {
+        "homeserver": "https://matrix.example.org",
+        "bot_user_id": "@bot:example.org"
+    }
+
+    result = _can_auto_create_credentials(matrix_config)
+    assert result is False
+
+
+def test_can_auto_create_credentials_empty_values():
+    """Test failure when required fields are empty."""
+    matrix_config = {
+        "homeserver": "",
+        "bot_user_id": "@bot:example.org",
+        "password": "test_password"
+    }
+
+    result = _can_auto_create_credentials(matrix_config)
+    assert result is False
+
+
+def test_can_auto_create_credentials_none_values():
+    """Test failure when required fields are None."""
+    matrix_config = {
+        "homeserver": "https://matrix.example.org",
+        "bot_user_id": None,
+        "password": "test_password"
+    }
+
+    result = _can_auto_create_credentials(matrix_config)
+    assert result is False

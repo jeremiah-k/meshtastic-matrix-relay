@@ -1,6 +1,6 @@
 # Matrix End-to-End Encryption (E2EE) Guide
 
-**MMRelay v1.2+** includes full support for **Matrix End-to-End Encryption**, enabling secure communication in encrypted Matrix rooms. This guide covers everything you need to set up and use E2EE features.
+MMRelay includes full support for **Matrix End-to-End Encryption**, enabling secure communication in encrypted Matrix rooms. This guide covers everything you need to set up and use E2EE features.
 
 ## E2EE in MMRelay
 

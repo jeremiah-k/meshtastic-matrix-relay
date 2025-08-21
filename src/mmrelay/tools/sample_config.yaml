@@ -3,6 +3,11 @@ matrix:
   access_token: reaalllllyloooooongsecretttttcodeeeeeeforrrrbot # See: https://t2bot.io/docs/access_tokens/
   bot_user_id: "@botuser:example.matrix.org"
 
+  # Alternative: Automatic credentials creation (Docker-friendly)
+  # If you provide password instead of access_token, MMRelay will automatically
+  # create credentials.json on startup. Useful for Docker deployments.
+  #password: your_matrix_password_here  # Uncomment and set your Matrix password
+
   # End-to-End Encryption (E2EE) configuration
   # NOTE: E2EE requires credentials.json instead of access_token for new sessions
   #
