@@ -70,7 +70,7 @@ This method is ideal for:
 - Users who haven't cloned the repository
 - Environments without Python installed locally
 
-**Security Note**: The password is only used once during initial setup. After successful login, MMRelay uses secure session tokens stored in `credentials.json`.
+**Security Note**: The password is only used once during initial setup to create `credentials.json`. For enhanced security, you should remove the `password` field from your `config.yaml` after the first successful startup.
 
 ## Deployment Methods
 

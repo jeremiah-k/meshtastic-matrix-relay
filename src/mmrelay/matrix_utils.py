@@ -912,6 +912,8 @@ async def login_matrix_bot(
 
         # Create SSL context using certifi's certificates
         ssl_context = _create_ssl_context()
+        if ssl_context is None:
+            logger.warning("Failed to create SSL context for server discovery; falling back to default system SSL")
 
         # Create a temporary client for discovery
         temp_client = AsyncClient(homeserver, "", ssl=ssl_context)
@@ -2266,6 +2268,8 @@ async def logout_matrix_bot(password=None):
     try:
         # Create SSL context using certifi's certificates
         ssl_context = _create_ssl_context()
+        if ssl_context is None:
+            logger.warning("Failed to create SSL context for password verification; falling back to default system SSL")
 
         # Create a temporary client to verify the password
         # We'll try to login with the password to verify it's correct
