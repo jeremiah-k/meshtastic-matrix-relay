@@ -131,6 +131,54 @@ def _submit_coro(coro, loop=None):
         return f
 
 
+def _get_device_metadata(client):
+    """
+    Get device metadata including firmware version from a Meshtastic client.
+
+    This function calls getMetadata() on the client's localNode and captures the output
+    to extract firmware version and other metadata. The console output is suppressed
+    to avoid spam in logs.
+
+    Parameters:
+        client: Meshtastic client instance with localNode.getMetadata() method
+
+    Returns:
+        dict: Dictionary containing parsed metadata with keys:
+            - 'firmware_version': Firmware version string or 'unknown' if not found
+            - 'raw_output': Complete captured output from getMetadata()
+            - 'success': Boolean indicating if metadata was retrieved successfully
+    """
+    result = {
+        'firmware_version': 'unknown',
+        'raw_output': '',
+        'success': False
+    }
+
+    try:
+        # Capture getMetadata() output to extract firmware version
+        output_capture = io.StringIO()
+        with contextlib.redirect_stdout(output_capture), contextlib.redirect_stderr(output_capture):
+            client.localNode.getMetadata()
+
+        console_output = output_capture.getvalue()
+        result['raw_output'] = console_output
+
+        # Parse firmware version from the output
+        for line in console_output.split('\n'):
+            if 'firmware_version:' in line:
+                result['firmware_version'] = line.split('firmware_version:')[1].strip()
+                break
+
+        # Check if we got valid metadata (firmware_version should be present)
+        if 'firmware_version' in console_output:
+            result['success'] = True
+
+    except Exception as e:
+        logger.debug(f"Could not retrieve device metadata: {e}")
+
+    return result
+
+
 def is_running_as_service():
     """
     Determine if the application is running as a systemd service.
@@ -320,25 +368,8 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                 hw_model = user_info.get("hwModel", "unknown")
 
                 # Get firmware version from device metadata
-                firmware_version = "unknown"
-                try:
-                    # Capture getMetadata() output to extract firmware version
-                    output_capture = io.StringIO()
-                    with contextlib.redirect_stdout(
-                        output_capture
-                    ), contextlib.redirect_stderr(output_capture):
-                        meshtastic_client.localNode.getMetadata()
-
-                    console_output = output_capture.getvalue()
-                    # Parse firmware version from the output
-                    for line in console_output.split("\n"):
-                        if "firmware_version:" in line:
-                            firmware_version = line.split("firmware_version:")[
-                                1
-                            ].strip()
-                            break
-                except Exception as e:
-                    logger.debug(f"Could not retrieve firmware version: {e}")
+                metadata = _get_device_metadata(meshtastic_client)
+                firmware_version = metadata['firmware_version']
 
                 logger.info(
                     f"Connected to {short_name} / {hw_model} / Meshtastic Firmware version {firmware_version}"
@@ -897,15 +928,10 @@ async def check_connection():
                     ble_skip_logged = True
             else:
                 try:
-                    output_capture = io.StringIO()
-                    with contextlib.redirect_stdout(
-                        output_capture
-                    ), contextlib.redirect_stderr(output_capture):
-                        meshtastic_client.localNode.getMetadata()
-
-                    console_output = output_capture.getvalue()
-                    if "firmware_version" not in console_output:
-                        raise Exception("No firmware_version in getMetadata output.")
+                    # Use helper function to get device metadata
+                    metadata = _get_device_metadata(meshtastic_client)
+                    if not metadata['success']:
+                        raise Exception("Failed to retrieve device metadata.")
 
                 except Exception as e:
                     # Only trigger reconnection if we're not already reconnecting
