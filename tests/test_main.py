@@ -1045,6 +1045,7 @@ class TestMainAsyncFunction(unittest.TestCase):
              patch("mmrelay.main.connect_meshtastic", return_value=MagicMock()) as mock_connect_mesh, \
              patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock) as mock_join, \
              patch("mmrelay.main.asyncio.sleep", side_effect=KeyboardInterrupt), \
+             patch("mmrelay.meshtastic_utils.asyncio.sleep", side_effect=KeyboardInterrupt), \
              contextlib.suppress(KeyboardInterrupt):
 
             asyncio.run(main(config))
