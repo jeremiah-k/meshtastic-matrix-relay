@@ -838,8 +838,15 @@ async def login_matrix_bot(
         # Step 1: Perform server discovery to get the actual homeserver URL
         logger.info(f"Performing server discovery for {homeserver}...")
 
+        # Create SSL context using certifi's certificates
+        try:
+            ssl_context = ssl.create_default_context(cafile=certifi.where())
+        except Exception as e:
+            logger.warning(f"Failed to create SSL context, using default: {e}")
+            ssl_context = None
+
         # Create a temporary client for discovery
-        temp_client = AsyncClient(homeserver, "")
+        temp_client = AsyncClient(homeserver, "", ssl=ssl_context)
         try:
             discovery_response = await asyncio.wait_for(
                 temp_client.discovery_info(), timeout=30.0
@@ -923,9 +930,8 @@ async def login_matrix_bot(
             store_sync_tokens=True, encryption_enabled=True
         )
 
-        # Try default SSL context first (like matrix-commander)
-        # If that fails, we'll try with certifi SSL context
-        ssl_context = None  # Use aiohttp default SSL context
+        # Use the same SSL context as discovery client
+        # ssl_context was created above for discovery
 
         # Initialize client with E2EE support
         # Use most common pattern from matrix-nio examples: positional homeserver and user
@@ -2167,9 +2173,16 @@ async def logout_matrix_bot(password=None):
     logger.info(f"Verifying password for {user_id}...")
 
     try:
+        # Create SSL context using certifi's certificates
+        try:
+            ssl_context = ssl.create_default_context(cafile=certifi.where())
+        except Exception as e:
+            logger.warning(f"Failed to create SSL context, using default: {e}")
+            ssl_context = None
+
         # Create a temporary client to verify the password
         # We'll try to login with the password to verify it's correct
-        temp_client = AsyncClient(homeserver, user_id)
+        temp_client = AsyncClient(homeserver, user_id, ssl=ssl_context)
 
         try:
             # Attempt login with the provided password
@@ -2198,7 +2211,7 @@ async def logout_matrix_bot(password=None):
 
         # Now logout the main session
         logger.info("Logging out from Matrix server...")
-        main_client = AsyncClient(homeserver, user_id)
+        main_client = AsyncClient(homeserver, user_id, ssl=ssl_context)
         main_client.restore_login(
             user_id=user_id,
             device_id=device_id,

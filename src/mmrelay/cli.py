@@ -163,6 +163,17 @@ def parse_arguments():
         help="Password for verification (will prompt if not provided)",
         type=str,
     )
+    logout_parser.add_argument(
+        "--password-stdin",
+        action="store_true",
+        help="Read password from standard input (more secure than --password)",
+    )
+    logout_parser.add_argument(
+        "-y",
+        "--yes",
+        action="store_true",
+        help="Do not prompt for confirmation (useful for non-interactive environments)",
+    )
 
     # SERVICE group
     service_parser = subparsers.add_parser(
@@ -1184,11 +1195,26 @@ def handle_auth_logout(args):
     print("• Invalidate Matrix access token")
     print()
 
-    # Confirm the action
-    confirm = input("Are you sure you want to logout? (y/N): ").lower().strip()
-    if not confirm.startswith("y"):
-        print("Logout cancelled.")
-        return 0
+    # Optional warning if password provided via argv
+    if getattr(args, "password", None) and not getattr(args, "password_stdin", False):
+        print("⚠️  Warning: Supplying --password exposes it in shell history and process list.")
+        print("   Prefer the interactive prompt or --password-stdin for improved security.")
+
+    # Read password from stdin if requested
+    if getattr(args, "password_stdin", False):
+        import sys
+        try:
+            args.password = sys.stdin.readline().rstrip("\n")
+        except Exception as e:
+            print(f"❌ Failed to read password from stdin: {e}")
+            return 1
+
+    # Confirm the action unless forced
+    if not getattr(args, "yes", False):
+        confirm = input("Are you sure you want to logout? (y/N): ").lower().strip()
+        if not confirm.startswith("y"):
+            print("Logout cancelled.")
+            return 0
 
     try:
         # Run the logout process

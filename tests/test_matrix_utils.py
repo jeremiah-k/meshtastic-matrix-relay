@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from mmrelay.config import get_e2ee_store_dir, load_credentials, save_credentials
 from mmrelay.matrix_utils import (
     _add_truncated_vars,
+    _cleanup_local_session_data,
     _create_mapping_info,
     _get_msgs_to_keep_config,
     bot_command,
@@ -22,6 +23,7 @@ from mmrelay.matrix_utils import (
     get_user_display_name,
     join_matrix_room,
     login_matrix_bot,
+    logout_matrix_bot,
     matrix_relay,
     message_storage_enabled,
     on_room_message,
@@ -1663,3 +1665,224 @@ async def test_login_matrix_bot_login_failure(mock_input, mock_getpass):
         assert result is False
         # close() is called twice: once for discovery client, once for main client
         assert mock_client.close.call_count == 2
+
+
+# Matrix logout tests
+
+
+@pytest.mark.asyncio
+async def test_logout_matrix_bot_no_credentials():
+    """Test logout when no credentials exist."""
+    with patch("mmrelay.matrix_utils.load_credentials", return_value=None):
+        result = await logout_matrix_bot()
+        assert result is True
+
+
+@pytest.mark.asyncio
+async def test_logout_matrix_bot_invalid_credentials():
+    """Test logout with invalid/incomplete credentials falls back to local cleanup."""
+    with patch("mmrelay.matrix_utils._cleanup_local_session_data", return_value=True) as mock_cleanup:
+        # Test missing homeserver - should fall back to local cleanup
+        with patch("mmrelay.matrix_utils.load_credentials", return_value={"user_id": "test"}):
+            result = await logout_matrix_bot()
+            assert result is True  # Should succeed with local cleanup
+            mock_cleanup.assert_called_once()
+
+        mock_cleanup.reset_mock()
+
+        # Test missing user_id
+        with patch("mmrelay.matrix_utils.load_credentials", return_value={"homeserver": "matrix.org"}):
+            result = await logout_matrix_bot()
+            assert result is True  # Should succeed with local cleanup
+            mock_cleanup.assert_called_once()
+
+        mock_cleanup.reset_mock()
+
+        # Test missing access_token
+        with patch("mmrelay.matrix_utils.load_credentials", return_value={
+            "homeserver": "matrix.org",
+            "user_id": "@test:matrix.org"
+        }):
+            result = await logout_matrix_bot()
+            assert result is True  # Should succeed with local cleanup
+            mock_cleanup.assert_called_once()
+
+        mock_cleanup.reset_mock()
+
+        # Test missing device_id
+        with patch("mmrelay.matrix_utils.load_credentials", return_value={
+            "homeserver": "matrix.org",
+            "user_id": "@test:matrix.org",
+            "access_token": "test_token"
+        }):
+            result = await logout_matrix_bot()
+            assert result is True  # Should succeed with local cleanup
+            mock_cleanup.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_logout_matrix_bot_password_verification_success():
+    """Test successful logout with password verification."""
+    mock_credentials = {
+        "homeserver": "https://matrix.org",
+        "user_id": "@test:matrix.org",
+        "access_token": "test_token",
+        "device_id": "test_device"
+    }
+
+    with patch("mmrelay.matrix_utils.load_credentials", return_value=mock_credentials), \
+         patch("mmrelay.matrix_utils.AsyncClient") as mock_async_client, \
+         patch("mmrelay.matrix_utils._cleanup_local_session_data", return_value=True) as mock_cleanup:
+
+        # Mock temporary client for password verification
+        mock_temp_client = AsyncMock()
+        mock_temp_client.login.return_value = MagicMock(access_token="temp_token")
+        mock_temp_client.logout = AsyncMock()
+        mock_temp_client.close = AsyncMock()
+
+        # Mock main client for logout
+        mock_main_client = AsyncMock()
+        mock_main_client.restore_login = MagicMock()
+        mock_main_client.logout.return_value = MagicMock(transport_response=True)
+        mock_main_client.close = AsyncMock()
+
+        # Configure AsyncClient to return different instances
+        mock_async_client.side_effect = [mock_temp_client, mock_main_client]
+
+        result = await logout_matrix_bot(password="test_password")
+
+        assert result is True
+        mock_temp_client.login.assert_called_once()
+        mock_temp_client.logout.assert_called_once()
+        mock_main_client.logout.assert_called_once()
+        mock_cleanup.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_logout_matrix_bot_password_verification_failure():
+    """Test logout with failed password verification."""
+    mock_credentials = {
+        "homeserver": "https://matrix.org",
+        "user_id": "@test:matrix.org",
+        "access_token": "test_token",
+        "device_id": "test_device"
+    }
+
+    with patch("mmrelay.matrix_utils.load_credentials", return_value=mock_credentials), \
+         patch("mmrelay.matrix_utils.AsyncClient") as mock_async_client:
+
+        # Mock temporary client with login failure
+        mock_temp_client = AsyncMock()
+        mock_temp_client.login.side_effect = Exception("Invalid password")
+        mock_temp_client.close = AsyncMock()
+        mock_async_client.return_value = mock_temp_client
+
+        result = await logout_matrix_bot(password="wrong_password")
+
+        assert result is False
+        mock_temp_client.login.assert_called_once()
+        mock_temp_client.close.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_logout_matrix_bot_server_logout_failure():
+    """Test logout when server logout fails but local cleanup succeeds."""
+    mock_credentials = {
+        "homeserver": "https://matrix.org",
+        "user_id": "@test:matrix.org",
+        "access_token": "test_token",
+        "device_id": "test_device"
+    }
+
+    with patch("mmrelay.matrix_utils.load_credentials", return_value=mock_credentials), \
+         patch("mmrelay.matrix_utils.AsyncClient") as mock_async_client, \
+         patch("mmrelay.matrix_utils._cleanup_local_session_data", return_value=True) as mock_cleanup:
+
+        # Mock temporary client for password verification
+        mock_temp_client = AsyncMock()
+        mock_temp_client.login.return_value = MagicMock(access_token="temp_token")
+        mock_temp_client.logout = AsyncMock()
+        mock_temp_client.close = AsyncMock()
+
+        # Mock main client with logout failure
+        mock_main_client = AsyncMock()
+        mock_main_client.restore_login = MagicMock()
+        mock_main_client.logout.side_effect = Exception("Server error")
+        mock_main_client.close = AsyncMock()
+
+        mock_async_client.side_effect = [mock_temp_client, mock_main_client]
+
+        result = await logout_matrix_bot(password="test_password")
+
+        assert result is True  # Should still succeed due to local cleanup
+        mock_cleanup.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_logout_matrix_bot_timeout():
+    """Test logout with timeout during password verification."""
+    mock_credentials = {
+        "homeserver": "https://matrix.org",
+        "user_id": "@test:matrix.org",
+        "access_token": "test_token",
+        "device_id": "test_device"
+    }
+
+    with patch("mmrelay.matrix_utils.load_credentials", return_value=mock_credentials), \
+         patch("mmrelay.matrix_utils.AsyncClient") as mock_async_client, \
+         patch("asyncio.wait_for") as mock_wait_for:
+
+        mock_temp_client = AsyncMock()
+        mock_temp_client.close = AsyncMock()
+        mock_async_client.return_value = mock_temp_client
+
+        # Mock timeout
+        import asyncio
+        mock_wait_for.side_effect = asyncio.TimeoutError()
+
+        result = await logout_matrix_bot(password="test_password")
+
+        assert result is False
+        mock_temp_client.close.assert_called_once()
+
+
+def test_cleanup_local_session_data_success():
+    """Test successful cleanup of local session data."""
+    with patch("mmrelay.matrix_utils.get_base_dir", return_value="/test/config"), \
+         patch("mmrelay.matrix_utils.get_e2ee_store_dir", return_value="/test/store"), \
+         patch("os.path.exists") as mock_exists, \
+         patch("os.remove") as mock_remove, \
+         patch("shutil.rmtree") as mock_rmtree:
+
+        # Mock files exist
+        mock_exists.return_value = True
+
+        result = _cleanup_local_session_data()
+
+        assert result is True
+        mock_remove.assert_called_once_with("/test/config/credentials.json")
+        mock_rmtree.assert_called_once_with("/test/store")
+
+
+def test_cleanup_local_session_data_files_not_exist():
+    """Test cleanup when files don't exist."""
+    with patch("mmrelay.matrix_utils.get_base_dir", return_value="/test/config"), \
+         patch("mmrelay.matrix_utils.get_e2ee_store_dir", return_value="/test/store"), \
+         patch("os.path.exists", return_value=False):
+
+        result = _cleanup_local_session_data()
+
+        assert result is True  # Should still succeed
+
+
+def test_cleanup_local_session_data_permission_error():
+    """Test cleanup with permission errors."""
+    with patch("mmrelay.matrix_utils.get_base_dir", return_value="/test/config"), \
+         patch("mmrelay.matrix_utils.get_e2ee_store_dir", return_value="/test/store"), \
+         patch("os.path.exists", return_value=True), \
+         patch("os.remove", side_effect=PermissionError("Access denied")), \
+         patch("shutil.rmtree", side_effect=PermissionError("Access denied")):
+
+        result = _cleanup_local_session_data()
+
+        assert result is False  # Should fail due to permission errors
