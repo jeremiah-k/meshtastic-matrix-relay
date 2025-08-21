@@ -61,7 +61,7 @@ class TestMain(unittest.TestCase):
             mock_logger.info.assert_called_once()
             call_args = mock_logger.info.call_args[0][0]
             self.assertIn("Starting MMRelay", call_args)
-            self.assertIn("v", call_args)  # Version should be included
+            self.assertIn("version ", call_args)  # Version should be included
 
     def test_print_banner_only_once(self):
         """Test that banner is only printed once."""
@@ -846,17 +846,32 @@ def test_main_database_wipe_config(
     mock_matrix_client = AsyncMock()
     mock_matrix_client.add_event_callback = MagicMock()  # This can be sync
     mock_matrix_client.close = AsyncMock()
-    mock_matrix_client.sync_forever = AsyncMock(side_effect=KeyboardInterrupt)
     mock_connect_matrix.return_value = mock_matrix_client
     mock_connect_mesh.return_value = MagicMock()
 
-    with patch("mmrelay.main.wipe_message_map") as mock_wipe, patch(
-        "mmrelay.main.asyncio.sleep", side_effect=KeyboardInterrupt
-    ), contextlib.suppress(KeyboardInterrupt):
-        asyncio.run(main(config))
+    # Mock the message queue to avoid hanging
+    with patch("mmrelay.main.get_message_queue") as mock_get_queue:
+        mock_queue = MagicMock()
+        mock_queue.ensure_processor_started = MagicMock()
+        mock_get_queue.return_value = mock_queue
 
-        # Should wipe message map on startup
-        mock_wipe.assert_called()
+        # Mock check_connection to avoid hanging
+        with patch("mmrelay.main.meshtastic_utils.check_connection", new_callable=AsyncMock):
+            # Mock wipe_message_map and make sync_forever raise KeyboardInterrupt immediately
+            with patch("mmrelay.main.wipe_message_map") as mock_wipe:
+                # Set up sync_forever to raise KeyboardInterrupt after a short delay
+                async def mock_sync_forever(*args, **kwargs):
+                    await asyncio.sleep(0.01)  # Very short delay
+                    raise KeyboardInterrupt()
+
+                mock_matrix_client.sync_forever = mock_sync_forever
+
+                # Run the test with proper exception handling
+                with contextlib.suppress(KeyboardInterrupt):
+                    asyncio.run(main(config))
+
+                # Should wipe message map on startup
+                mock_wipe.assert_called()
 
 
 class TestDatabaseConfiguration(unittest.TestCase):

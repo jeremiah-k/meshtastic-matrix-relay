@@ -213,7 +213,7 @@ def print_version():
     """
     Print the version in a simple format.
     """
-    print(f"MMRelay v{__version__}")
+    print(f"MMRelay version {__version__}")
 
 
 def _validate_e2ee_dependencies():

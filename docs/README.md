@@ -12,13 +12,19 @@ Welcome to the MMRelay documentation! This directory contains comprehensive guid
 
 - **[Extra Configuration](EXTRA_CONFIGURATION.md)** - Advanced features like message prefixes, debug logging, and plugins
 
+## File Locations
+
+| File          | Purpose               | Location                      |
+| ------------- | --------------------- | ----------------------------- |
+| Configuration | Main settings         | `~/.mmrelay/config.yaml`      |
+| Credentials   | Matrix authentication | `~/.mmrelay/credentials.json` |
+| E2EE Store    | Encryption keys       | `~/.mmrelay/store/`           |
+| Logs          | Application logs      | `~/.mmrelay/logs/`            |
+
 ## Developer Documentation
 
 - **[Constants Reference](dev/CONSTANTS.md)** - Internal configuration constants and values
 - **[E2EE Implementation Notes](dev/E2EE_IMPLEMENTATION_NOTES.md)** - Technical details of E2EE implementation
-
-
-| Logs          | Application logs      | `~/.mmrelay/logs/`            |
 
 ## Documentation Structure
 

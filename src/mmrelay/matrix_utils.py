@@ -12,7 +12,7 @@ from typing import Union
 from urllib.parse import urlparse
 
 import certifi
-import markdown
+import html
 import meshtastic.protobuf.portnums_pb2
 from nio import (
     AsyncClient,
@@ -546,8 +546,17 @@ async def connect_matrix(passed_config=None):
 
             if success:
                 logger.info("Automatic login successful! Credentials saved to credentials.json")
-                # Recursively call connect_matrix to use the newly created credentials
-                return await connect_matrix(passed_config)
+                # Load the newly created credentials and set up for credentials flow
+                credentials = load_credentials()
+                if not credentials:
+                    logger.error("Failed to load newly created credentials")
+                    return None
+
+                # Set up variables for credentials-based connection
+                matrix_homeserver = credentials["homeserver"]
+                matrix_access_token = credentials["access_token"]
+                bot_user_id = credentials["user_id"]
+                e2ee_device_id = credentials.get("device_id")
             else:
                 logger.error("Automatic login failed. Please check your credentials or use 'mmrelay auth login'")
                 return None
@@ -904,7 +913,7 @@ async def login_matrix_bot(
         temp_client = AsyncClient(homeserver, "", ssl=ssl_context)
         try:
             discovery_response = await asyncio.wait_for(
-                temp_client.discovery_info(), timeout=30.0
+                temp_client.discovery_info(), timeout=MATRIX_LOGIN_TIMEOUT
             )
 
             if isinstance(discovery_response, DiscoveryInfoResponse):
@@ -1210,10 +1219,18 @@ async def matrix_relay(
 
         # Process markdown to HTML if needed (like base plugin does)
         if has_markdown or has_html:
-            formatted_body = markdown.markdown(message)
-            plain_body = re.sub(r"</?[^>]*>", "", formatted_body)  # Strip all HTML tags
+            try:
+                import markdown as _md
+                formatted_body = _md.markdown(message)
+                plain_body = re.sub(r"</?[^>]*>", "", formatted_body)
+            except ImportError:
+                # Fallback: treat as plain text
+                formatted_body = html.escape(message).replace("\n", "<br/>")
+                plain_body = message
+                has_markdown = False
+                has_html = False
         else:
-            formatted_body = message
+            formatted_body = html.escape(message).replace("\n", "<br/>")
             plain_body = message
 
         content = {
@@ -2239,7 +2256,7 @@ async def logout_matrix_bot(password=None):
             # Attempt login with the provided password
             response = await asyncio.wait_for(
                 temp_client.login(password, device_name="mmrelay-logout-verify"),
-                timeout=30,
+                timeout=MATRIX_LOGIN_TIMEOUT,
             )
 
             if hasattr(response, "access_token"):

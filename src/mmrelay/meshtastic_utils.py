@@ -165,10 +165,19 @@ def _get_device_metadata(client):
             client.localNode.getMetadata()
 
         console_output = output_capture.getvalue()
+        output_capture.close()
+
+        # Cap raw_output length to avoid memory bloat
+        if len(console_output) > 4096:
+            console_output = console_output[:4096] + "…"
         result["raw_output"] = console_output
 
         # Parse firmware version from the output using robust regex
-        match = re.search(r"\bfirmware_version:\s*\"?([^\s\"\r\n]+)\"?", console_output)
+        # Case-insensitive, handles quotes, whitespace, and various formats
+        match = re.search(
+            r"(?i)\bfirmware_version\s*:\s*['\"]?\s*([^\s\r\n'\"]+)\s*['\"]?",
+            console_output,
+        )
         if match:
             parsed = match.group(1).strip()
             if parsed:
@@ -941,7 +950,7 @@ async def check_connection():
                         try:
                             _ = meshtastic_client.getMyNodeInfo()
                         except Exception as probe_err:
-                            raise Exception(f"Metadata and nodeInfo probes failed: {probe_err}")
+                            raise Exception("Metadata and nodeInfo probes failed") from probe_err
                         else:
                             logger.debug("Metadata parse failed but device responded to getMyNodeInfo(); skipping reconnect this cycle")
                             continue
