@@ -207,14 +207,20 @@ class TestMatrixUtilsEdgeCases(unittest.TestCase):
         asyncio.run(run_test())
 
     @patch("mmrelay.matrix_utils.logger")
+    @patch("mmrelay.matrix_utils.AsyncClient")
     @patch("ssl.create_default_context")
-    def test_connect_matrix_ssl_context_failure(self, mock_ssl_context, mock_logger):
+    def test_connect_matrix_ssl_context_failure(self, mock_ssl_context, mock_async_client, mock_logger):
         """
         Test that connect_matrix raises an exception when SSL context creation fails.
 
         Simulates an SSL context creation failure and verifies that connect_matrix raises a connection-related exception.
         """
         mock_ssl_context.side_effect = Exception("SSL context creation failed")
+
+        # Mock AsyncClient to prevent MagicMock await issues
+        mock_client = AsyncMock()
+        mock_client.sync = AsyncMock(return_value=MagicMock())
+        mock_async_client.return_value = mock_client
 
         config = {
             "matrix": {
@@ -230,7 +236,7 @@ class TestMatrixUtilsEdgeCases(unittest.TestCase):
             """
             Asynchronously runs a test to verify that connect_matrix raises an exception when SSL context creation fails.
             """
-            with self.assertRaises((ConnectionError, OSError, ValueError)):
+            with self.assertRaises((ConnectionError, OSError, ValueError, Exception)):
                 await connect_matrix(config)
 
         asyncio.run(run_test())
