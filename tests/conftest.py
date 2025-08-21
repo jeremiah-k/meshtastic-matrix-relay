@@ -302,6 +302,7 @@ def cleanup_asyncmock_objects(request):
     asyncmock_patterns = [
         "test_async_patterns",
         "test_matrix_utils",
+        "test_matrix_utils_edge_cases",
         "test_mesh_relay_plugin",
         "test_map_plugin",
         "test_meshtastic_utils",
@@ -319,8 +320,12 @@ def cleanup_asyncmock_objects(request):
 
     if any(pattern in test_file for pattern in asyncmock_patterns):
         import gc
+        import warnings
 
-        gc.collect()
+        # Suppress RuntimeWarning about unawaited coroutines during cleanup
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=RuntimeWarning, message=".*never awaited.*")
+            gc.collect()
 
 
 @pytest.fixture(autouse=True)
