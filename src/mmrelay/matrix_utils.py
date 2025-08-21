@@ -2152,7 +2152,7 @@ async def logout_matrix_bot(password=None):
     access_token = credentials.get("access_token")
     device_id = credentials.get("device_id")
 
-    if not all([homeserver, user_id, access_token]):
+    if not all([homeserver, user_id, access_token, device_id]):
         logger.error("Invalid credentials found. Cannot verify logout.")
         print("❌ Invalid credentials found.")
         print("Proceeding with local cleanup only...")

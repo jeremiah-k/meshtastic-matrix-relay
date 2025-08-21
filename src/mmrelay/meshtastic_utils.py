@@ -3,6 +3,7 @@ import contextlib
 import inspect
 import io
 import os
+import re
 import threading
 import time
 from concurrent.futures import Future
@@ -165,8 +166,9 @@ def _get_device_metadata(client):
 
         # Parse firmware version from the output
         for line in console_output.split('\n'):
-            if 'firmware_version:' in line:
-                result['firmware_version'] = line.split('firmware_version:')[1].strip()
+            match = re.search(r"firmware_version:\s*(.*)", line, re.IGNORECASE)
+            if match:
+                result['firmware_version'] = match.group(1).strip()
                 break
 
         # Check if we got valid metadata (firmware_version should be present)
