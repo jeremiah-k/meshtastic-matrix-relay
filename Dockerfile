@@ -1,5 +1,5 @@
 # Build stage
-FROM python:3.11-slim AS builder
+FROM python:3.11-slim-bookworm AS builder
 
 # Install build dependencies with pinned versions
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -22,7 +22,7 @@ RUN pip install --no-cache-dir -r requirements.txt && \
     pip install --no-cache-dir --no-deps .
 
 # Runtime stage
-FROM python:3.11-slim
+FROM python:3.11-slim-bookworm
 
 # Create non-root user for security
 RUN groupadd --gid 1000 mmrelay && \
