@@ -1681,9 +1681,13 @@ async def test_logout_matrix_bot_no_credentials():
 @pytest.mark.asyncio
 async def test_logout_matrix_bot_invalid_credentials():
     """Test logout with invalid/incomplete credentials falls back to local cleanup."""
-    with patch("mmrelay.matrix_utils._cleanup_local_session_data", return_value=True) as mock_cleanup:
+    with patch(
+        "mmrelay.matrix_utils._cleanup_local_session_data", return_value=True
+    ) as mock_cleanup:
         # Test missing homeserver - should fall back to local cleanup
-        with patch("mmrelay.matrix_utils.load_credentials", return_value={"user_id": "test"}):
+        with patch(
+            "mmrelay.matrix_utils.load_credentials", return_value={"user_id": "test"}
+        ):
             result = await logout_matrix_bot()
             assert result is True  # Should succeed with local cleanup
             mock_cleanup.assert_called_once()
@@ -1691,7 +1695,10 @@ async def test_logout_matrix_bot_invalid_credentials():
         mock_cleanup.reset_mock()
 
         # Test missing user_id
-        with patch("mmrelay.matrix_utils.load_credentials", return_value={"homeserver": "matrix.org"}):
+        with patch(
+            "mmrelay.matrix_utils.load_credentials",
+            return_value={"homeserver": "matrix.org"},
+        ):
             result = await logout_matrix_bot()
             assert result is True  # Should succeed with local cleanup
             mock_cleanup.assert_called_once()
@@ -1699,10 +1706,10 @@ async def test_logout_matrix_bot_invalid_credentials():
         mock_cleanup.reset_mock()
 
         # Test missing access_token
-        with patch("mmrelay.matrix_utils.load_credentials", return_value={
-            "homeserver": "matrix.org",
-            "user_id": "@test:matrix.org"
-        }):
+        with patch(
+            "mmrelay.matrix_utils.load_credentials",
+            return_value={"homeserver": "matrix.org", "user_id": "@test:matrix.org"},
+        ):
             result = await logout_matrix_bot()
             assert result is True  # Should succeed with local cleanup
             mock_cleanup.assert_called_once()
@@ -1710,11 +1717,14 @@ async def test_logout_matrix_bot_invalid_credentials():
         mock_cleanup.reset_mock()
 
         # Test missing device_id
-        with patch("mmrelay.matrix_utils.load_credentials", return_value={
-            "homeserver": "matrix.org",
-            "user_id": "@test:matrix.org",
-            "access_token": "test_token"
-        }):
+        with patch(
+            "mmrelay.matrix_utils.load_credentials",
+            return_value={
+                "homeserver": "matrix.org",
+                "user_id": "@test:matrix.org",
+                "access_token": "test_token",
+            },
+        ):
             result = await logout_matrix_bot()
             assert result is True  # Should succeed with local cleanup
             mock_cleanup.assert_called_once()
@@ -1727,12 +1737,14 @@ async def test_logout_matrix_bot_password_verification_success():
         "homeserver": "https://matrix.org",
         "user_id": "@test:matrix.org",
         "access_token": "test_token",
-        "device_id": "test_device"
+        "device_id": "test_device",
     }
 
-    with patch("mmrelay.matrix_utils.load_credentials", return_value=mock_credentials), \
-         patch("mmrelay.matrix_utils.AsyncClient") as mock_async_client, \
-         patch("mmrelay.matrix_utils._cleanup_local_session_data", return_value=True) as mock_cleanup:
+    with patch(
+        "mmrelay.matrix_utils.load_credentials", return_value=mock_credentials
+    ), patch("mmrelay.matrix_utils.AsyncClient") as mock_async_client, patch(
+        "mmrelay.matrix_utils._cleanup_local_session_data", return_value=True
+    ) as mock_cleanup:
 
         # Mock temporary client for password verification
         mock_temp_client = AsyncMock()
@@ -1765,11 +1777,12 @@ async def test_logout_matrix_bot_password_verification_failure():
         "homeserver": "https://matrix.org",
         "user_id": "@test:matrix.org",
         "access_token": "test_token",
-        "device_id": "test_device"
+        "device_id": "test_device",
     }
 
-    with patch("mmrelay.matrix_utils.load_credentials", return_value=mock_credentials), \
-         patch("mmrelay.matrix_utils.AsyncClient") as mock_async_client:
+    with patch(
+        "mmrelay.matrix_utils.load_credentials", return_value=mock_credentials
+    ), patch("mmrelay.matrix_utils.AsyncClient") as mock_async_client:
 
         # Mock temporary client with login failure
         mock_temp_client = AsyncMock()
@@ -1791,12 +1804,14 @@ async def test_logout_matrix_bot_server_logout_failure():
         "homeserver": "https://matrix.org",
         "user_id": "@test:matrix.org",
         "access_token": "test_token",
-        "device_id": "test_device"
+        "device_id": "test_device",
     }
 
-    with patch("mmrelay.matrix_utils.load_credentials", return_value=mock_credentials), \
-         patch("mmrelay.matrix_utils.AsyncClient") as mock_async_client, \
-         patch("mmrelay.matrix_utils._cleanup_local_session_data", return_value=True) as mock_cleanup:
+    with patch(
+        "mmrelay.matrix_utils.load_credentials", return_value=mock_credentials
+    ), patch("mmrelay.matrix_utils.AsyncClient") as mock_async_client, patch(
+        "mmrelay.matrix_utils._cleanup_local_session_data", return_value=True
+    ) as mock_cleanup:
 
         # Mock temporary client for password verification
         mock_temp_client = AsyncMock()
@@ -1825,12 +1840,14 @@ async def test_logout_matrix_bot_timeout():
         "homeserver": "https://matrix.org",
         "user_id": "@test:matrix.org",
         "access_token": "test_token",
-        "device_id": "test_device"
+        "device_id": "test_device",
     }
 
-    with patch("mmrelay.matrix_utils.load_credentials", return_value=mock_credentials), \
-         patch("mmrelay.matrix_utils.AsyncClient") as mock_async_client, \
-         patch("asyncio.wait_for") as mock_wait_for:
+    with patch(
+        "mmrelay.matrix_utils.load_credentials", return_value=mock_credentials
+    ), patch("mmrelay.matrix_utils.AsyncClient") as mock_async_client, patch(
+        "asyncio.wait_for"
+    ) as mock_wait_for:
 
         mock_temp_client = AsyncMock()
         mock_temp_client.close = AsyncMock()
@@ -1838,6 +1855,7 @@ async def test_logout_matrix_bot_timeout():
 
         # Mock timeout
         import asyncio
+
         mock_wait_for.side_effect = asyncio.TimeoutError()
 
         result = await logout_matrix_bot(password="test_password")
@@ -1848,11 +1866,11 @@ async def test_logout_matrix_bot_timeout():
 
 def test_cleanup_local_session_data_success():
     """Test successful cleanup of local session data."""
-    with patch("mmrelay.matrix_utils.get_base_dir", return_value="/test/config"), \
-         patch("mmrelay.matrix_utils.get_e2ee_store_dir", return_value="/test/store"), \
-         patch("os.path.exists") as mock_exists, \
-         patch("os.remove") as mock_remove, \
-         patch("shutil.rmtree") as mock_rmtree:
+    with patch("mmrelay.matrix_utils.get_base_dir", return_value="/test/config"), patch(
+        "mmrelay.matrix_utils.get_e2ee_store_dir", return_value="/test/store"
+    ), patch("os.path.exists") as mock_exists, patch("os.remove") as mock_remove, patch(
+        "shutil.rmtree"
+    ) as mock_rmtree:
 
         # Mock files exist
         mock_exists.return_value = True
@@ -1866,9 +1884,9 @@ def test_cleanup_local_session_data_success():
 
 def test_cleanup_local_session_data_files_not_exist():
     """Test cleanup when files don't exist."""
-    with patch("mmrelay.matrix_utils.get_base_dir", return_value="/test/config"), \
-         patch("mmrelay.matrix_utils.get_e2ee_store_dir", return_value="/test/store"), \
-         patch("os.path.exists", return_value=False):
+    with patch("mmrelay.matrix_utils.get_base_dir", return_value="/test/config"), patch(
+        "mmrelay.matrix_utils.get_e2ee_store_dir", return_value="/test/store"
+    ), patch("os.path.exists", return_value=False):
 
         result = _cleanup_local_session_data()
 
@@ -1877,11 +1895,13 @@ def test_cleanup_local_session_data_files_not_exist():
 
 def test_cleanup_local_session_data_permission_error():
     """Test cleanup with permission errors."""
-    with patch("mmrelay.matrix_utils.get_base_dir", return_value="/test/config"), \
-         patch("mmrelay.matrix_utils.get_e2ee_store_dir", return_value="/test/store"), \
-         patch("os.path.exists", return_value=True), \
-         patch("os.remove", side_effect=PermissionError("Access denied")), \
-         patch("shutil.rmtree", side_effect=PermissionError("Access denied")):
+    with patch("mmrelay.matrix_utils.get_base_dir", return_value="/test/config"), patch(
+        "mmrelay.matrix_utils.get_e2ee_store_dir", return_value="/test/store"
+    ), patch("os.path.exists", return_value=True), patch(
+        "os.remove", side_effect=PermissionError("Access denied")
+    ), patch(
+        "shutil.rmtree", side_effect=PermissionError("Access denied")
+    ):
 
         result = _cleanup_local_session_data()
 

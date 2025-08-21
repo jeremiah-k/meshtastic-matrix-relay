@@ -1197,12 +1197,17 @@ def handle_auth_logout(args):
 
     # Optional warning if password provided via argv
     if getattr(args, "password", None) and not getattr(args, "password_stdin", False):
-        print("⚠️  Warning: Supplying --password exposes it in shell history and process list.")
-        print("   Prefer the interactive prompt or --password-stdin for improved security.")
+        print(
+            "⚠️  Warning: Supplying --password exposes it in shell history and process list."
+        )
+        print(
+            "   Prefer the interactive prompt or --password-stdin for improved security."
+        )
 
     # Read password from stdin if requested
     if getattr(args, "password_stdin", False):
         import sys
+
         try:
             args.password = sys.stdin.readline().rstrip("\n")
         except Exception as e:
