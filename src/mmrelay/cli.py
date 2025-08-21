@@ -1199,10 +1199,12 @@ def handle_auth_logout(args):
         if password is None:
             # No --password flag provided, prompt securely
             import getpass
+
             password = getpass.getpass("Enter Matrix password for verification: ")
         elif password == "":
             # --password flag provided without value, prompt securely
             import getpass
+
             password = getpass.getpass("Enter Matrix password for verification: ")
         else:
             # --password VALUE provided, warn about security

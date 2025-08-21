@@ -1,6 +1,6 @@
 import asyncio
-from functools import lru_cache
 import getpass
+import html
 import io
 import json
 import logging
@@ -9,11 +9,11 @@ import re
 import ssl
 import sys
 import time
+from functools import lru_cache
 from typing import Union
 from urllib.parse import urlparse
 
 import certifi
-import html
 import meshtastic.protobuf.portnums_pb2
 from nio import (
     AsyncClient,
@@ -32,7 +32,6 @@ from nio.events.room_events import RoomMemberEvent
 from PIL import Image
 
 from mmrelay.cli_utils import (
-    msg_regenerate_credentials,
     msg_require_auth_login,
     msg_retry_auth_login,
 )
@@ -99,7 +98,9 @@ def _create_ssl_context():
     try:
         return ssl.create_default_context(cafile=certifi.where())
     except Exception as e:
-        logger.warning(f"Failed to create certifi-backed SSL context, falling back to system default: {e}")
+        logger.warning(
+            f"Failed to create certifi-backed SSL context, falling back to system default: {e}"
+        )
         try:
             return ssl.create_default_context()
         except Exception as fallback_e:
@@ -522,8 +523,12 @@ async def connect_matrix(passed_config=None):
                 "NOTE: Ignoring Matrix login details in config.yaml in favor of credentials.json"
             )
     # Check if we can automatically create credentials from config.yaml
-    elif config and "matrix" in config and _can_auto_create_credentials(config["matrix"]):
-        logger.info("No credentials.json found, but config.yaml has password field. Attempting automatic login...")
+    elif (
+        config and "matrix" in config and _can_auto_create_credentials(config["matrix"])
+    ):
+        logger.info(
+            "No credentials.json found, but config.yaml has password field. Attempting automatic login..."
+        )
 
         matrix_section = config["matrix"]
         homeserver = matrix_section["homeserver"]
@@ -536,11 +541,13 @@ async def connect_matrix(passed_config=None):
                 homeserver=homeserver,
                 username=username,
                 password=password,
-                logout_others=False
+                logout_others=False,
             )
 
             if success:
-                logger.info("Automatic login successful! Credentials saved to credentials.json")
+                logger.info(
+                    "Automatic login successful! Credentials saved to credentials.json"
+                )
                 # Load the newly created credentials and set up for credentials flow
                 credentials = load_credentials()
                 if not credentials:
@@ -553,7 +560,9 @@ async def connect_matrix(passed_config=None):
                 bot_user_id = credentials["user_id"]
                 e2ee_device_id = credentials.get("device_id")
             else:
-                logger.error("Automatic login failed. Please check your credentials or use 'mmrelay auth login'")
+                logger.error(
+                    "Automatic login failed. Please check your credentials or use 'mmrelay auth login'"
+                )
                 return None
         except Exception as e:
             logger.error(f"Error during automatic login: {type(e).__name__}")
@@ -606,7 +615,9 @@ async def connect_matrix(passed_config=None):
     # Create SSL context using certifi's certificates with system default fallback
     ssl_context = _create_ssl_context()
     if ssl_context is None:
-        logger.warning("Failed to create certifi/system SSL context; proceeding with AsyncClient defaults")
+        logger.warning(
+            "Failed to create certifi/system SSL context; proceeding with AsyncClient defaults"
+        )
 
     # Check if E2EE is enabled
     e2ee_enabled = False
@@ -910,7 +921,9 @@ async def login_matrix_bot(
         # Create SSL context using certifi's certificates
         ssl_context = _create_ssl_context()
         if ssl_context is None:
-            logger.warning("Failed to create SSL context for server discovery; falling back to default system SSL")
+            logger.warning(
+                "Failed to create SSL context for server discovery; falling back to default system SSL"
+            )
 
         # Create a temporary client for discovery
         temp_client = AsyncClient(homeserver, "", ssl=ssl_context)
@@ -1224,20 +1237,38 @@ async def matrix_relay(
         if has_markdown or has_html:
             try:
                 import markdown as _md
+
                 raw_html = _md.markdown(message)
 
                 # Sanitize HTML to prevent injection attacks
                 try:
                     import bleach
+
                     formatted_body = bleach.clean(
                         raw_html,
-                        tags=["b", "strong", "i", "em", "code", "pre", "br", "blockquote", "a", "ul", "ol", "li", "p"],
+                        tags=[
+                            "b",
+                            "strong",
+                            "i",
+                            "em",
+                            "code",
+                            "pre",
+                            "br",
+                            "blockquote",
+                            "a",
+                            "ul",
+                            "ol",
+                            "li",
+                            "p",
+                        ],
                         attributes={"a": ["href"]},
                         strip=True,
                     )
                 except ImportError:
                     # Conservative fallback: strip all HTML tags if bleach unavailable
-                    logger.debug("bleach not available for HTML sanitization, stripping all HTML tags")
+                    logger.debug(
+                        "bleach not available for HTML sanitization, stripping all HTML tags"
+                    )
                     formatted_body = re.sub(r"</?[^>]*>", "", raw_html)
 
                 plain_body = re.sub(r"</?[^>]*>", "", formatted_body)
@@ -1300,7 +1331,7 @@ async def matrix_relay(
                     blockquote_content = (
                         f'<a href="{reply_link}">In reply to</a> '
                         f'<a href="{bot_link}">@{bot_user_id}</a><br>'
-                        f'[{html.escape(original_sender_display)}]: {safe_original}'
+                        f"[{html.escape(original_sender_display)}]: {safe_original}"
                     )
                     content["formatted_body"] = (
                         f"<mx-reply><blockquote>{blockquote_content}</blockquote></mx-reply>{formatted_body}"
@@ -2271,7 +2302,9 @@ async def logout_matrix_bot(password=None):
         # Create SSL context using certifi's certificates
         ssl_context = _create_ssl_context()
         if ssl_context is None:
-            logger.warning("Failed to create SSL context for password verification; falling back to default system SSL")
+            logger.warning(
+                "Failed to create SSL context for password verification; falling back to default system SSL"
+            )
 
         # Create a temporary client to verify the password
         # We'll try to login with the password to verify it's correct
@@ -2294,7 +2327,9 @@ async def logout_matrix_bot(password=None):
                 return False
 
         except asyncio.TimeoutError:
-            logger.error("Password verification timed out. Please check your network connection.")
+            logger.error(
+                "Password verification timed out. Please check your network connection."
+            )
             return False
         except Exception as e:
             # Handle common nio login exceptions with specific user messages
@@ -2302,12 +2337,25 @@ async def logout_matrix_bot(password=None):
             if "forbidden" in error_msg or "401" in error_msg:
                 logger.error("Password verification failed: Invalid credentials.")
                 logger.error("Please check your username and password.")
-            elif "network" in error_msg or "connection" in error_msg or "timeout" in error_msg:
+            elif (
+                "network" in error_msg
+                or "connection" in error_msg
+                or "timeout" in error_msg
+            ):
                 logger.error("Password verification failed: Network connection error.")
-                logger.error("Please check your internet connection and Matrix server availability.")
-            elif "server" in error_msg or "500" in error_msg or "502" in error_msg or "503" in error_msg:
+                logger.error(
+                    "Please check your internet connection and Matrix server availability."
+                )
+            elif (
+                "server" in error_msg
+                or "500" in error_msg
+                or "502" in error_msg
+                or "503" in error_msg
+            ):
                 logger.error("Password verification failed: Matrix server error.")
-                logger.error("Please try again later or contact your Matrix server administrator.")
+                logger.error(
+                    "Please try again later or contact your Matrix server administrator."
+                )
             else:
                 logger.error(f"Password verification failed: {type(e).__name__}")
                 logger.debug(f"Full error details: {e}")
@@ -2336,12 +2384,22 @@ async def logout_matrix_bot(password=None):
         except Exception as e:
             # Handle common logout exceptions with specific messages
             error_msg = str(e).lower()
-            if "network" in error_msg or "connection" in error_msg or "timeout" in error_msg:
-                logger.warning("Server logout failed due to network issues, proceeding with local cleanup.")
+            if (
+                "network" in error_msg
+                or "connection" in error_msg
+                or "timeout" in error_msg
+            ):
+                logger.warning(
+                    "Server logout failed due to network issues, proceeding with local cleanup."
+                )
             elif "401" in error_msg or "forbidden" in error_msg:
-                logger.warning("Server logout failed due to invalid token (already logged out?), proceeding with local cleanup.")
+                logger.warning(
+                    "Server logout failed due to invalid token (already logged out?), proceeding with local cleanup."
+                )
             else:
-                logger.warning(f"Server logout failed ({type(e).__name__}), proceeding with local cleanup.")
+                logger.warning(
+                    f"Server logout failed ({type(e).__name__}), proceeding with local cleanup."
+                )
             logger.debug(f"Logout error details: {e}")
         finally:
             await main_client.close()
@@ -2387,6 +2445,7 @@ def _cleanup_local_session_data():
     candidate_store_paths = {get_e2ee_store_dir()}
     try:
         from mmrelay.config import load_config
+
         cfg = load_config(args=None) or {}
         matrix_cfg = cfg.get("matrix", {}) or {}
         for section in ("e2ee", "encryption"):
@@ -2396,7 +2455,9 @@ def _cleanup_local_session_data():
             if override:
                 candidate_store_paths.add(override)
     except Exception as e:
-        logger.debug(f"Could not resolve configured E2EE store path: {type(e).__name__}")
+        logger.debug(
+            f"Could not resolve configured E2EE store path: {type(e).__name__}"
+        )
 
     any_store_found = False
     for store_path in sorted(candidate_store_paths):
@@ -2407,7 +2468,9 @@ def _cleanup_local_session_data():
                 logger.info(f"Removed E2EE store directory: {store_path}")
                 print(f"✅ Removed E2EE store directory: {store_path}")
             except (OSError, PermissionError) as e:
-                logger.error(f"Failed to remove E2EE store directory '{store_path}': {e}")
+                logger.error(
+                    f"Failed to remove E2EE store directory '{store_path}': {e}"
+                )
                 print(f"❌ Failed to remove E2EE store directory '{store_path}': {e}")
                 success = False
     if not any_store_found:

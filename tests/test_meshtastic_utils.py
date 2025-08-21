@@ -1260,24 +1260,26 @@ class TestGetDeviceMetadata(unittest.TestCase):
         mock_client.localNode.getMetadata = MagicMock()
 
         # Mock the output capture to return firmware version
-        with patch('mmrelay.meshtastic_utils.io.StringIO') as mock_stringio:
+        with patch("mmrelay.meshtastic_utils.io.StringIO") as mock_stringio:
             mock_output = MagicMock()
-            mock_output.getvalue.return_value = "firmware_version: 2.3.15.abc123\nhw_model: HELTEC_V3"
+            mock_output.getvalue.return_value = (
+                "firmware_version: 2.3.15.abc123\nhw_model: HELTEC_V3"
+            )
             mock_stringio.return_value = mock_output
 
             result = _get_device_metadata(mock_client)
 
             # Verify successful parsing
-            self.assertTrue(result['success'])
-            self.assertEqual(result['firmware_version'], '2.3.15.abc123')
-            self.assertIn('firmware_version: 2.3.15.abc123', result['raw_output'])
+            self.assertTrue(result["success"])
+            self.assertEqual(result["firmware_version"], "2.3.15.abc123")
+            self.assertIn("firmware_version: 2.3.15.abc123", result["raw_output"])
 
     def test_get_device_metadata_no_firmware_version(self):
         """Test metadata retrieval when firmware_version is not present."""
         mock_client = MagicMock()
         mock_client.localNode.getMetadata = MagicMock()
 
-        with patch('mmrelay.meshtastic_utils.io.StringIO') as mock_stringio:
+        with patch("mmrelay.meshtastic_utils.io.StringIO") as mock_stringio:
             mock_output = MagicMock()
             mock_output.getvalue.return_value = "hw_model: HELTEC_V3\nother_info: test"
             mock_stringio.return_value = mock_output
@@ -1285,9 +1287,9 @@ class TestGetDeviceMetadata(unittest.TestCase):
             result = _get_device_metadata(mock_client)
 
             # Verify failure when no firmware version found
-            self.assertFalse(result['success'])
-            self.assertEqual(result['firmware_version'], 'unknown')
-            self.assertIn('hw_model: HELTEC_V3', result['raw_output'])
+            self.assertFalse(result["success"])
+            self.assertEqual(result["firmware_version"], "unknown")
+            self.assertIn("hw_model: HELTEC_V3", result["raw_output"])
 
     def test_get_device_metadata_no_localnode(self):
         """Test metadata retrieval when client has no localNode."""
@@ -1297,9 +1299,9 @@ class TestGetDeviceMetadata(unittest.TestCase):
         result = _get_device_metadata(mock_client)
 
         # Verify early return for missing localNode
-        self.assertFalse(result['success'])
-        self.assertEqual(result['firmware_version'], 'unknown')
-        self.assertEqual(result['raw_output'], '')
+        self.assertFalse(result["success"])
+        self.assertEqual(result["firmware_version"], "unknown")
+        self.assertEqual(result["raw_output"], "")
 
     def test_get_device_metadata_no_getmetadata_method(self):
         """Test metadata retrieval when localNode has no getMetadata method."""
@@ -1310,21 +1312,21 @@ class TestGetDeviceMetadata(unittest.TestCase):
         result = _get_device_metadata(mock_client)
 
         # Verify early return for missing getMetadata
-        self.assertFalse(result['success'])
-        self.assertEqual(result['firmware_version'], 'unknown')
-        self.assertEqual(result['raw_output'], '')
+        self.assertFalse(result["success"])
+        self.assertEqual(result["firmware_version"], "unknown")
+        self.assertEqual(result["raw_output"], "")
 
     def test_get_device_metadata_exception_handling(self):
         """Test metadata retrieval when getMetadata raises an exception."""
         mock_client = MagicMock()
         mock_client.localNode.getMetadata.side_effect = Exception("Device error")
 
-        with patch('mmrelay.meshtastic_utils.logger') as mock_logger:
+        with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
             result = _get_device_metadata(mock_client)
 
             # Verify exception handling
-            self.assertFalse(result['success'])
-            self.assertEqual(result['firmware_version'], 'unknown')
+            self.assertFalse(result["success"])
+            self.assertEqual(result["firmware_version"], "unknown")
             mock_logger.debug.assert_called_once()
 
     def test_get_device_metadata_quoted_version(self):
@@ -1332,7 +1334,7 @@ class TestGetDeviceMetadata(unittest.TestCase):
         mock_client = MagicMock()
         mock_client.localNode.getMetadata = MagicMock()
 
-        with patch('mmrelay.meshtastic_utils.io.StringIO') as mock_stringio:
+        with patch("mmrelay.meshtastic_utils.io.StringIO") as mock_stringio:
             mock_output = MagicMock()
             mock_output.getvalue.return_value = 'firmware_version: "2.3.15.abc123"'
             mock_stringio.return_value = mock_output
@@ -1340,24 +1342,24 @@ class TestGetDeviceMetadata(unittest.TestCase):
             result = _get_device_metadata(mock_client)
 
             # Verify quoted version is parsed correctly
-            self.assertTrue(result['success'])
-            self.assertEqual(result['firmware_version'], '2.3.15.abc123')
+            self.assertTrue(result["success"])
+            self.assertEqual(result["firmware_version"], "2.3.15.abc123")
 
     def test_get_device_metadata_whitespace_handling(self):
         """Test parsing firmware version with various whitespace."""
         mock_client = MagicMock()
         mock_client.localNode.getMetadata = MagicMock()
 
-        with patch('mmrelay.meshtastic_utils.io.StringIO') as mock_stringio:
+        with patch("mmrelay.meshtastic_utils.io.StringIO") as mock_stringio:
             mock_output = MagicMock()
-            mock_output.getvalue.return_value = 'firmware_version:   2.3.15.abc123   '
+            mock_output.getvalue.return_value = "firmware_version:   2.3.15.abc123   "
             mock_stringio.return_value = mock_output
 
             result = _get_device_metadata(mock_client)
 
             # Verify whitespace is handled correctly
-            self.assertTrue(result['success'])
-            self.assertEqual(result['firmware_version'], '2.3.15.abc123')
+            self.assertTrue(result["success"])
+            self.assertEqual(result["firmware_version"], "2.3.15.abc123")
 
 
 if __name__ == "__main__":
