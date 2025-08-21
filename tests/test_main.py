@@ -36,6 +36,18 @@ def _close_coro_if_possible(coro: Any) -> None:
     return None
 
 
+def _mock_run_with_exception(coro: Any) -> None:
+    """Close coroutine and raise test exception."""
+    _close_coro_if_possible(coro)
+    raise Exception("Test error")
+
+
+def _mock_run_with_keyboard_interrupt(coro: Any) -> None:
+    """Close coroutine and raise KeyboardInterrupt."""
+    _close_coro_if_possible(coro)
+    raise KeyboardInterrupt()
+
+
 class TestMain(unittest.TestCase):
     """Test cases for main application functionality."""
 
@@ -214,11 +226,7 @@ class TestMain(unittest.TestCase):
         mock_load_config.return_value = self.mock_config
 
         # Mock asyncio.run with coroutine cleanup and exception
-        def mock_run_with_exception(coro):
-            _close_coro_if_possible(coro)
-            raise Exception("Test error")
-
-        mock_asyncio_run.side_effect = mock_run_with_exception
+        mock_asyncio_run.side_effect = _mock_run_with_exception
 
         result = run_main(None)
 
@@ -235,11 +243,7 @@ class TestMain(unittest.TestCase):
         mock_load_config.return_value = self.mock_config
 
         # Mock asyncio.run with coroutine cleanup and KeyboardInterrupt
-        def mock_run_with_keyboard_interrupt(coro):
-            _close_coro_if_possible(coro)
-            raise KeyboardInterrupt()
-
-        mock_asyncio_run.side_effect = mock_run_with_keyboard_interrupt
+        mock_asyncio_run.side_effect = _mock_run_with_keyboard_interrupt
 
         result = run_main(None)
 
@@ -452,11 +456,7 @@ class TestRunMain(unittest.TestCase):
         mock_load_config.return_value = mock_config
 
         # Mock asyncio.run with coroutine cleanup and KeyboardInterrupt
-        def mock_run_with_keyboard_interrupt(coro):
-            _close_coro_if_possible(coro)
-            raise KeyboardInterrupt()
-
-        mock_asyncio_run.side_effect = mock_run_with_keyboard_interrupt
+        mock_asyncio_run.side_effect = _mock_run_with_keyboard_interrupt
 
         mock_args = MagicMock()
         mock_args.data_dir = None
@@ -490,11 +490,7 @@ class TestRunMain(unittest.TestCase):
         mock_load_config.return_value = mock_config
 
         # Mock asyncio.run with coroutine cleanup and exception
-        def mock_run_with_exception(coro):
-            _close_coro_if_possible(coro)
-            raise Exception("Test error")
-
-        mock_asyncio_run.side_effect = mock_run_with_exception
+        mock_asyncio_run.side_effect = _mock_run_with_exception
 
         mock_args = MagicMock()
         mock_args.data_dir = None
@@ -979,11 +975,7 @@ class TestRunMainFunction(unittest.TestCase):
         mock_load_credentials.return_value = None
 
         # Mock asyncio.run to properly close coroutines and raise KeyboardInterrupt
-        def mock_run_with_keyboard_interrupt(coro):
-            _close_coro_if_possible(coro)
-            raise KeyboardInterrupt()
-
-        mock_asyncio_run.side_effect = mock_run_with_keyboard_interrupt
+        mock_asyncio_run.side_effect = _mock_run_with_keyboard_interrupt
 
         mock_args = MagicMock()
         mock_args.data_dir = None
@@ -1014,11 +1006,7 @@ class TestRunMainFunction(unittest.TestCase):
         mock_load_credentials.return_value = None
 
         # Mock asyncio.run to properly close coroutines and raise exception
-        def mock_run_with_exception(coro):
-            _close_coro_if_possible(coro)
-            raise Exception("Test error")
-
-        mock_asyncio_run.side_effect = mock_run_with_exception
+        mock_asyncio_run.side_effect = _mock_run_with_exception
 
         mock_args = MagicMock()
         mock_args.data_dir = None
