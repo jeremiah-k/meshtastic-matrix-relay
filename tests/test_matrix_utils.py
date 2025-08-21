@@ -1675,7 +1675,7 @@ async def test_login_matrix_bot_login_failure(mock_input, mock_getpass):
 async def test_logout_matrix_bot_no_credentials():
     """Test logout when no credentials exist."""
     with patch("mmrelay.matrix_utils.load_credentials", return_value=None):
-        result = await logout_matrix_bot()
+        result = await logout_matrix_bot(password="test_password")
         assert result is True
 
 
@@ -1689,7 +1689,7 @@ async def test_logout_matrix_bot_invalid_credentials():
         with patch(
             "mmrelay.matrix_utils.load_credentials", return_value={"user_id": "test"}
         ):
-            result = await logout_matrix_bot()
+            result = await logout_matrix_bot(password="test_password")
             assert result is True  # Should succeed with local cleanup
             mock_cleanup.assert_called_once()
 
@@ -1700,7 +1700,7 @@ async def test_logout_matrix_bot_invalid_credentials():
             "mmrelay.matrix_utils.load_credentials",
             return_value={"homeserver": "matrix.org"},
         ):
-            result = await logout_matrix_bot()
+            result = await logout_matrix_bot(password="test_password")
             assert result is True  # Should succeed with local cleanup
             mock_cleanup.assert_called_once()
 
@@ -1711,7 +1711,7 @@ async def test_logout_matrix_bot_invalid_credentials():
             "mmrelay.matrix_utils.load_credentials",
             return_value={"homeserver": "matrix.org", "user_id": "@test:matrix.org"},
         ):
-            result = await logout_matrix_bot()
+            result = await logout_matrix_bot(password="test_password")
             assert result is True  # Should succeed with local cleanup
             mock_cleanup.assert_called_once()
 
@@ -1726,7 +1726,7 @@ async def test_logout_matrix_bot_invalid_credentials():
                 "access_token": "test_token",
             },
         ):
-            result = await logout_matrix_bot()
+            result = await logout_matrix_bot(password="test_password")
             assert result is True  # Should succeed with local cleanup
             mock_cleanup.assert_called_once()
 

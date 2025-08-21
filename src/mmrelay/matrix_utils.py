@@ -2223,7 +2223,7 @@ async def on_room_member(room: MatrixRoom, event: RoomMemberEvent) -> None:
     pass
 
 
-async def logout_matrix_bot(password=None):
+async def logout_matrix_bot(password: str):
     """
     Log out from Matrix and clear all local session data.
 
@@ -2234,7 +2234,7 @@ async def logout_matrix_bot(password=None):
     4. Clear the E2EE store directory
 
     Args:
-        password: The Matrix password for verification
+        password: The Matrix password for verification (required)
 
     Returns:
         bool: True if logout was successful, False otherwise
@@ -2260,10 +2260,6 @@ async def logout_matrix_bot(password=None):
 
         # Still try to clean up local files
         return _cleanup_local_session_data()
-
-    # Get password for verification
-    if not password:
-        password = getpass.getpass("Enter Matrix password to confirm logout: ")
 
     logger.info(f"Verifying password for {user_id}...")
 
