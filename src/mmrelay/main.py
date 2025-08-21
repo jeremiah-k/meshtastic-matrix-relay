@@ -66,7 +66,7 @@ def print_banner():
     global _banner_printed
     # Only print the banner once
     if not _banner_printed:
-        logger.info(f"Starting MMRelay v{__version__}")
+        logger.info(f"Starting MMRelay version {__version__}")
         _banner_printed = True
 
 

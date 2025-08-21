@@ -341,7 +341,7 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                     logger.debug(f"Could not retrieve firmware version: {e}")
 
                 logger.info(
-                    f"Connected to {short_name} / {hw_model} / firmware {firmware_version}"
+                    f"Connected to {short_name} / {hw_model} / Meshtastic Firmware version {firmware_version}"
                 )
 
                 # Subscribe to message and connection lost events (only once per application run)
