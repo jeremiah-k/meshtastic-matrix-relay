@@ -1021,38 +1021,32 @@ class TestRunMainFunction(unittest.TestCase):
 class TestMainAsyncFunction(unittest.TestCase):
     """Test cases for the main async function."""
 
-    @patch("mmrelay.main.initialize_database")
-    @patch("mmrelay.main.load_plugins")
-    @patch("mmrelay.main.start_message_queue")
-    @patch("mmrelay.main.connect_matrix", new_callable=AsyncMock)
-    @patch("mmrelay.main.connect_meshtastic")
-    @patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock)
-    def test_main_async_initialization_sequence(
-        self,
-        mock_join,
-        mock_connect_mesh,
-        mock_connect_matrix,
-        mock_start_queue,
-        mock_load_plugins,
-        mock_init_db,
-    ):
+    def test_main_async_initialization_sequence(self):
         """Verify that the asynchronous main() startup sequence invokes database initialization, plugin loading, message-queue startup, and both Matrix and Meshtastic connection routines.
 
         Sets up a minimal config with one Matrix room, injects AsyncMock/MagicMock clients for Matrix and Meshtastic, and arranges for the Matrix client's sync loop and asyncio.sleep to raise KeyboardInterrupt so the function exits cleanly. Asserts each initialization/connect function is called exactly once.
         """
-        config = {"matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}]}
+        config = {
+            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+            "matrix": {"homeserver": "https://matrix.org"},
+            "meshtastic": {"connection_type": "serial"}
+        }
 
-        # Mock the async components
+        # Mock the async components first
         mock_matrix_client = AsyncMock()
         mock_matrix_client.add_event_callback = MagicMock()
         mock_matrix_client.close = AsyncMock()
         mock_matrix_client.sync_forever = AsyncMock(side_effect=KeyboardInterrupt)
-        mock_connect_matrix.return_value = mock_matrix_client
-        mock_connect_mesh.return_value = MagicMock()
 
-        with patch(
-            "mmrelay.main.asyncio.sleep", side_effect=KeyboardInterrupt
-        ), contextlib.suppress(KeyboardInterrupt):
+        with patch("mmrelay.main.initialize_database") as mock_init_db, \
+             patch("mmrelay.main.load_plugins") as mock_load_plugins, \
+             patch("mmrelay.main.start_message_queue") as mock_start_queue, \
+             patch("mmrelay.main.connect_matrix", new_callable=AsyncMock, return_value=mock_matrix_client) as mock_connect_matrix, \
+             patch("mmrelay.main.connect_meshtastic", return_value=MagicMock()) as mock_connect_mesh, \
+             patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock) as mock_join, \
+             patch("mmrelay.main.asyncio.sleep", side_effect=KeyboardInterrupt), \
+             contextlib.suppress(KeyboardInterrupt):
+
             asyncio.run(main(config))
 
         # Verify initialization sequence
@@ -1062,21 +1056,7 @@ class TestMainAsyncFunction(unittest.TestCase):
         mock_connect_matrix.assert_called_once()
         mock_connect_mesh.assert_called_once()
 
-    @patch("mmrelay.main.initialize_database")
-    @patch("mmrelay.main.load_plugins")
-    @patch("mmrelay.main.start_message_queue")
-    @patch("mmrelay.main.connect_matrix", new_callable=AsyncMock)
-    @patch("mmrelay.main.connect_meshtastic")
-    @patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock)
-    def test_main_async_with_multiple_rooms(
-        self,
-        mock_join,
-        mock_connect_mesh,
-        mock_connect_matrix,
-        mock_start_queue,
-        mock_load_plugins,
-        mock_init_db,
-    ):
+    def test_main_async_with_multiple_rooms(self):
         """
         Verify that main() joins each configured Matrix room.
 
@@ -1088,19 +1068,26 @@ class TestMainAsyncFunction(unittest.TestCase):
             "matrix_rooms": [
                 {"id": "!room1:matrix.org", "meshtastic_channel": 0},
                 {"id": "!room2:matrix.org", "meshtastic_channel": 1},
-            ]
+            ],
+            "matrix": {"homeserver": "https://matrix.org"},
+            "meshtastic": {"connection_type": "serial"}
         }
 
+        # Mock the async components first
         mock_matrix_client = AsyncMock()
         mock_matrix_client.add_event_callback = MagicMock()
         mock_matrix_client.close = AsyncMock()
         mock_matrix_client.sync_forever = AsyncMock(side_effect=KeyboardInterrupt)
-        mock_connect_matrix.return_value = mock_matrix_client
-        mock_connect_mesh.return_value = MagicMock()
 
-        with patch(
-            "mmrelay.main.asyncio.sleep", side_effect=KeyboardInterrupt
-        ), contextlib.suppress(KeyboardInterrupt):
+        with patch("mmrelay.main.initialize_database") as mock_init_db, \
+             patch("mmrelay.main.load_plugins") as mock_load_plugins, \
+             patch("mmrelay.main.start_message_queue") as mock_start_queue, \
+             patch("mmrelay.main.connect_matrix", new_callable=AsyncMock, return_value=mock_matrix_client) as mock_connect_matrix, \
+             patch("mmrelay.main.connect_meshtastic", return_value=MagicMock()) as mock_connect_mesh, \
+             patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock) as mock_join, \
+             patch("mmrelay.main.asyncio.sleep", side_effect=KeyboardInterrupt), \
+             contextlib.suppress(KeyboardInterrupt):
+
             asyncio.run(main(config))
 
         # Verify join_matrix_room was called for each room
