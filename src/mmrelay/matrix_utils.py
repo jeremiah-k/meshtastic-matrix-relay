@@ -84,6 +84,23 @@ from mmrelay.message_queue import get_message_queue, queue_message
 logger = get_logger(name="Matrix")
 
 
+def _create_ssl_context():
+    """
+    Create an SSL context using certifi's certificates for Matrix client connections.
+
+    This helper function centralizes SSL context creation to ensure consistent
+    certificate validation across all Matrix client instances.
+
+    Returns:
+        ssl.SSLContext or None: SSL context with certifi certificates, or None if creation fails
+    """
+    try:
+        return ssl.create_default_context(cafile=certifi.where())
+    except Exception as e:
+        logger.warning(f"Failed to create SSL context, using default: {e}")
+        return None
+
+
 def _get_msgs_to_keep_config():
     """
     Return the configured number of Meshtastic–Matrix message mappings to retain.
@@ -540,11 +557,10 @@ async def connect_matrix(passed_config=None):
     matrix_rooms = config["matrix_rooms"]
 
     # Create SSL context using certifi's certificates
-    try:
-        ssl_context = ssl.create_default_context(cafile=certifi.where())
-    except Exception as e:
-        logger.error(f"Failed to create SSL context: {e}")
-        raise ConnectionError(f"SSL context creation failed: {e}") from e
+    ssl_context = _create_ssl_context()
+    if ssl_context is None:
+        logger.error("Failed to create SSL context")
+        raise ConnectionError("SSL context creation failed")
 
     # Check if E2EE is enabled
     e2ee_enabled = False
@@ -839,11 +855,7 @@ async def login_matrix_bot(
         logger.info(f"Performing server discovery for {homeserver}...")
 
         # Create SSL context using certifi's certificates
-        try:
-            ssl_context = ssl.create_default_context(cafile=certifi.where())
-        except Exception as e:
-            logger.warning(f"Failed to create SSL context, using default: {e}")
-            ssl_context = None
+        ssl_context = _create_ssl_context()
 
         # Create a temporary client for discovery
         temp_client = AsyncClient(homeserver, "", ssl=ssl_context)
@@ -2174,11 +2186,7 @@ async def logout_matrix_bot(password=None):
 
     try:
         # Create SSL context using certifi's certificates
-        try:
-            ssl_context = ssl.create_default_context(cafile=certifi.where())
-        except Exception as e:
-            logger.warning(f"Failed to create SSL context, using default: {e}")
-            ssl_context = None
+        ssl_context = _create_ssl_context()
 
         # Create a temporary client to verify the password
         # We'll try to login with the password to verify it's correct
