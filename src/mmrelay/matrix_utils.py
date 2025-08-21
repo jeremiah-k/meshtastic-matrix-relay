@@ -92,13 +92,17 @@ def _create_ssl_context():
     certificate validation across all Matrix client instances.
 
     Returns:
-        ssl.SSLContext or None: SSL context with certifi certificates, or None if creation fails
+        ssl.SSLContext: SSL context with certifi certificates, or system default if certifi fails
     """
     try:
         return ssl.create_default_context(cafile=certifi.where())
     except Exception as e:
-        logger.warning(f"Failed to create SSL context, using default: {e}")
-        return None
+        logger.warning(f"Failed to create certifi-backed SSL context, falling back to system default: {e}")
+        try:
+            return ssl.create_default_context()
+        except Exception as fallback_e:
+            logger.error(f"Failed to create system default SSL context: {fallback_e}")
+            return None
 
 
 def _can_auto_create_credentials(matrix_config):
@@ -561,7 +565,7 @@ async def connect_matrix(passed_config=None):
                 logger.error("Automatic login failed. Please check your credentials or use 'mmrelay auth login'")
                 return None
         except Exception as e:
-            logger.error(f"Error during automatic login: {e}")
+            logger.error(f"Error during automatic login: {type(e).__name__}")
             logger.error("Please use 'mmrelay auth login' for interactive setup")
             return None
     else:
@@ -608,11 +612,11 @@ async def connect_matrix(passed_config=None):
         raise ValueError("Missing required 'matrix_rooms' configuration")
     matrix_rooms = config["matrix_rooms"]
 
-    # Create SSL context using certifi's certificates
+    # Create SSL context using certifi's certificates with system default fallback
     ssl_context = _create_ssl_context()
     if ssl_context is None:
-        logger.error("Failed to create SSL context")
-        raise ConnectionError("SSL context creation failed")
+        logger.error("Failed to create both certifi-backed and system default SSL contexts")
+        raise ConnectionError("SSL context creation failed - unable to establish secure connections")
 
     # Check if E2EE is enabled
     e2ee_enabled = False
@@ -1221,7 +1225,22 @@ async def matrix_relay(
         if has_markdown or has_html:
             try:
                 import markdown as _md
-                formatted_body = _md.markdown(message)
+                raw_html = _md.markdown(message)
+
+                # Sanitize HTML to prevent injection attacks
+                try:
+                    import bleach
+                    formatted_body = bleach.clean(
+                        raw_html,
+                        tags=["b", "strong", "i", "em", "code", "pre", "br", "blockquote", "a", "ul", "ol", "li", "p"],
+                        attributes={"a": ["href"]},
+                        strip=True,
+                    )
+                except ImportError:
+                    # Conservative fallback: strip all HTML tags if bleach unavailable
+                    logger.debug("bleach not available for HTML sanitization, stripping all HTML tags")
+                    formatted_body = re.sub(r"</?[^>]*>", "", raw_html)
+
                 plain_body = re.sub(r"</?[^>]*>", "", formatted_body)
             except ImportError:
                 # Fallback: treat as plain text
@@ -2337,18 +2356,34 @@ def _cleanup_local_session_data():
         logger.info("No credentials file found to remove")
         print("ℹ️  No credentials file found")
 
-    # Clear E2EE store directory
-    store_path = get_e2ee_store_dir()
-    if os.path.exists(store_path):
-        try:
-            shutil.rmtree(store_path)
-            logger.info(f"Removed E2EE store directory: {store_path}")
-            print(f"✅ Removed E2EE store directory: {store_path}")
-        except (OSError, PermissionError) as e:
-            logger.error(f"Failed to remove E2EE store directory: {e}")
-            print(f"❌ Failed to remove E2EE store directory: {e}")
-            success = False
-    else:
+    # Clear E2EE store directory (default and any configured override)
+    candidate_store_paths = {get_e2ee_store_dir()}
+    try:
+        from mmrelay.config import load_config
+        cfg = load_config(args=None) or {}
+        matrix_cfg = cfg.get("matrix", {}) or {}
+        for section in ("e2ee", "encryption"):
+            override = os.path.expanduser(
+                (matrix_cfg.get(section, {}) or {}).get("store_path", "") or ""
+            )
+            if override:
+                candidate_store_paths.add(override)
+    except Exception as e:
+        logger.debug(f"Could not resolve configured E2EE store path: {type(e).__name__}")
+
+    any_store_found = False
+    for store_path in sorted(candidate_store_paths):
+        if os.path.exists(store_path):
+            any_store_found = True
+            try:
+                shutil.rmtree(store_path)
+                logger.info(f"Removed E2EE store directory: {store_path}")
+                print(f"✅ Removed E2EE store directory: {store_path}")
+            except (OSError, PermissionError) as e:
+                logger.error(f"Failed to remove E2EE store directory '{store_path}': {e}")
+                print(f"❌ Failed to remove E2EE store directory '{store_path}': {e}")
+                success = False
+    if not any_store_found:
         logger.info("No E2EE store directory found to remove")
         print("ℹ️  No E2EE store directory found")
 

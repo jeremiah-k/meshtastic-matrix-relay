@@ -27,6 +27,13 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from mmrelay.main import main, print_banner, run_main
 
 
+def _close_coro_if_possible(coro):
+    """Close a coroutine/awaitable if it exposes close() to avoid ResourceWarning in tests."""
+    if hasattr(coro, "close"):
+        coro.close()
+    return None
+
+
 class TestMain(unittest.TestCase):
     """Test cases for main application functionality."""
 
@@ -172,19 +179,7 @@ class TestMain(unittest.TestCase):
         mock_load_config.return_value = self.mock_config
 
         # Mock asyncio.run with coroutine cleanup to prevent warnings
-        def mock_run_with_cleanup(coro):
-            # Close the coroutine to prevent "never awaited" warning
-            """
-            Closes the provided coroutine to prevent "never awaited" warnings during testing.
-
-            Parameters:
-                coro: The coroutine object to be closed.
-            """
-            if hasattr(coro, "close"):
-                coro.close()
-            return None
-
-        mock_asyncio_run.side_effect = mock_run_with_cleanup
+        mock_asyncio_run.side_effect = _close_coro_if_possible
 
         result = run_main(mock_args)
 
@@ -218,16 +213,7 @@ class TestMain(unittest.TestCase):
 
         # Mock asyncio.run with coroutine cleanup and exception
         def mock_run_with_exception(coro):
-            # Close the coroutine to prevent "never awaited" warning
-            """
-            Simulates an exception during coroutine execution in tests by closing the coroutine and raising an Exception.
-
-            Parameters:
-                coro: The coroutine object to be closed before raising the exception.
-
-            Raises:
-                Exception: Always raised to simulate an error during coroutine execution.
-            """
+            """Close coroutine and raise test exception."""
             if hasattr(coro, "close"):
                 coro.close()
             raise Exception("Test error")
@@ -250,10 +236,7 @@ class TestMain(unittest.TestCase):
 
         # Mock asyncio.run with coroutine cleanup and KeyboardInterrupt
         def mock_run_with_keyboard_interrupt(coro):
-            # Close the coroutine to prevent "never awaited" warning
-            """
-            Simulates a KeyboardInterrupt during coroutine execution in tests by closing the coroutine and raising KeyboardInterrupt.
-            """
+            """Close coroutine and raise KeyboardInterrupt."""
             if hasattr(coro, "close"):
                 coro.close()
             raise KeyboardInterrupt()
@@ -404,19 +387,7 @@ class TestRunMain(unittest.TestCase):
         mock_load_config.return_value = mock_config
 
         # Mock asyncio.run with coroutine cleanup to prevent warnings
-        def mock_run_with_cleanup(coro):
-            # Close the coroutine to prevent "never awaited" warning
-            """
-            Closes the provided coroutine to prevent "never awaited" warnings during testing.
-
-            Parameters:
-                coro: The coroutine object to be closed.
-            """
-            if hasattr(coro, "close"):
-                coro.close()
-            return None
-
-        mock_asyncio_run.side_effect = mock_run_with_cleanup
+        mock_asyncio_run.side_effect = _close_coro_if_possible
 
         # Mock args
         mock_args = MagicMock()
@@ -849,29 +820,27 @@ def test_main_database_wipe_config(
     mock_connect_matrix.return_value = mock_matrix_client
     mock_connect_mesh.return_value = MagicMock()
 
-    # Mock the message queue to avoid hanging
-    with patch("mmrelay.main.get_message_queue") as mock_get_queue:
+    # Mock the message queue to avoid hanging and combine contexts for clarity
+    with patch("mmrelay.main.get_message_queue") as mock_get_queue, \
+         patch("mmrelay.main.meshtastic_utils.check_connection", new_callable=AsyncMock), \
+         patch("mmrelay.main.wipe_message_map") as mock_wipe:
         mock_queue = MagicMock()
         mock_queue.ensure_processor_started = MagicMock()
         mock_get_queue.return_value = mock_queue
 
-        # Mock check_connection to avoid hanging
-        with patch("mmrelay.main.meshtastic_utils.check_connection", new_callable=AsyncMock):
-            # Mock wipe_message_map and make sync_forever raise KeyboardInterrupt immediately
-            with patch("mmrelay.main.wipe_message_map") as mock_wipe:
-                # Set up sync_forever to raise KeyboardInterrupt after a short delay
-                async def mock_sync_forever(*args, **kwargs):
-                    await asyncio.sleep(0.01)  # Very short delay
-                    raise KeyboardInterrupt()
+        # Set up sync_forever to raise KeyboardInterrupt after a short delay
+        async def mock_sync_forever(*args, **kwargs):
+            await asyncio.sleep(0.01)  # Very short delay
+            raise KeyboardInterrupt()
 
-                mock_matrix_client.sync_forever = mock_sync_forever
+        mock_matrix_client.sync_forever = mock_sync_forever
 
-                # Run the test with proper exception handling
-                with contextlib.suppress(KeyboardInterrupt):
-                    asyncio.run(main(config))
+        # Run the test with proper exception handling
+        with contextlib.suppress(KeyboardInterrupt):
+            asyncio.run(main(config))
 
-                # Should wipe message map on startup
-                mock_wipe.assert_called()
+        # Should wipe message map on startup
+        mock_wipe.assert_called()
 
 
 class TestDatabaseConfiguration(unittest.TestCase):
