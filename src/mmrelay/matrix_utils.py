@@ -505,25 +505,12 @@ async def connect_matrix(passed_config=None):
         logger.info(f"Using credentials from {credentials_path}")
         logger.info(f"Loaded device_id: {e2ee_device_id}")
 
-        # Check if device_id is missing or None
+        # If device_id is missing, warn but proceed; we'll learn and persist it after restore_login().
         if not isinstance(e2ee_device_id, str) or not e2ee_device_id.strip():
-            if not e2ee_device_id:
-                logger.error("Device ID is missing from credentials.json!")
-                logger.error("E2EE requires a valid device_id for session persistence")
-                # Log available keys for debugging without exposing sensitive data
-                logger.debug(
-                    f"credentials.json keys present: {list(credentials.keys())}"
-                )
-                error_msg = "E2EE requires a valid device_id in credentials.json"
-            else:
-                logger.error(
-                    f"Invalid device_id format in credentials.json: {repr(e2ee_device_id)}"
-                )
-                logger.error("Device ID must be a non-empty string")
-                error_msg = "Invalid device_id format in credentials.json"
-
-            logger.error(msg_regenerate_credentials())
-            raise RuntimeError(error_msg)
+            logger.warning(
+                "credentials.json has no valid device_id; proceeding to restore session and discover device_id."
+            )
+            e2ee_device_id = None
 
         # If config also has Matrix login info, let the user know we're ignoring it
         if config and "matrix" in config and "access_token" in config["matrix"]:
@@ -615,8 +602,7 @@ async def connect_matrix(passed_config=None):
     # Create SSL context using certifi's certificates with system default fallback
     ssl_context = _create_ssl_context()
     if ssl_context is None:
-        logger.error("Failed to create both certifi-backed and system default SSL contexts")
-        raise ConnectionError("SSL context creation failed - unable to establish secure connections")
+        logger.warning("Failed to create certifi/system SSL context; proceeding with AsyncClient defaults")
 
     # Check if E2EE is enabled
     e2ee_enabled = False
@@ -760,6 +746,13 @@ async def connect_matrix(passed_config=None):
         if not e2ee_device_id and getattr(matrix_client, "device_id", None):
             e2ee_device_id = matrix_client.device_id
             logger.debug(f"Device ID established after restore_login: {e2ee_device_id}")
+            try:
+                if credentials is not None:
+                    credentials["device_id"] = e2ee_device_id
+                    save_credentials(credentials)
+                    logger.info("Updated credentials.json with discovered device_id")
+            except Exception as e:
+                logger.debug(f"Failed to persist discovered device_id: {e}")
     else:
         # Fallback to direct assignment for legacy token-based auth
         matrix_client.access_token = matrix_access_token
@@ -1116,7 +1109,7 @@ async def join_matrix_room(matrix_client, room_id_or_alias: str) -> None:
                 logger.info(f"Joined room '{room_id_or_alias}' successfully")
             else:
                 logger.error(
-                    f"Failed to join room '{room_id_or_alias}': {response.message}"
+                    f"Failed to join room '{room_id_or_alias}': {getattr(response, 'message', str(response))}"
                 )
         else:
             logger.debug(f"Bot is already in room '{room_id_or_alias}'")
@@ -1292,14 +1285,19 @@ async def matrix_relay(
                     original_sender_display = f"{longname}/{original_meshnet}"
 
                     # Create the quoted reply format
-                    quoted_text = f"> <@{bot_user_id}> [{original_sender_display}]: {original_text}"
+                    safe_original = html.escape(original_text or "")
+                    quoted_text = f"> <@{bot_user_id}> [{original_sender_display}]: {safe_original}"
                     content["body"] = f"{quoted_text}\n\n{plain_body}"
 
                     # Always use HTML formatting for replies since we need the mx-reply structure
                     content["format"] = "org.matrix.custom.html"
                     reply_link = f"https://matrix.to/#/{room_id}/{reply_to_event_id}"
                     bot_link = f"https://matrix.to/#/@{bot_user_id}"
-                    blockquote_content = f'<a href="{reply_link}">In reply to</a> <a href="{bot_link}">@{bot_user_id}</a><br>[{original_sender_display}]: {original_text}'
+                    blockquote_content = (
+                        f'<a href="{reply_link}">In reply to</a> '
+                        f'<a href="{bot_link}">@{bot_user_id}</a><br>'
+                        f'[{html.escape(original_sender_display)}]: {safe_original}'
+                    )
                     content["formatted_body"] = (
                         f"<mx-reply><blockquote>{blockquote_content}</blockquote></mx-reply>{formatted_body}"
                     )
