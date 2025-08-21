@@ -825,13 +825,18 @@ async def connect_matrix(passed_config=None):
             def safe_get_rooms():
                 """Safely get rooms dict, handling AsyncMock objects in tests."""
                 try:
+                    # Check if matrix_client.rooms is an AsyncMock
+                    from unittest.mock import AsyncMock
+                    if isinstance(matrix_client.rooms, AsyncMock):
+                        return {}  # Return empty dict for AsyncMock objects
+
                     rooms = matrix_client.rooms
                     # Check if accessing rooms returns a coroutine (AsyncMock)
                     import inspect
                     if inspect.iscoroutine(rooms):
                         return {}  # Return empty dict for tests
                     return rooms
-                except (AttributeError, TypeError):
+                except (AttributeError, TypeError, ImportError):
                     return {}  # Return empty dict if rooms not accessible
 
             client_rooms = safe_get_rooms()

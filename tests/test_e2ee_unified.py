@@ -267,6 +267,37 @@ class TestRoomListFormatting(unittest.TestCase):
             room_lines,
         )
 
+    def test_room_list_with_asyncmock_rooms(self):
+        """Test room list formatting with AsyncMock rooms (test scenario)"""
+        from unittest.mock import AsyncMock
+        import warnings
+
+        # Create an AsyncMock that returns a coroutine when .items() is called
+        mock_rooms = AsyncMock()
+
+        e2ee_status = {"overall_status": "ready"}
+
+        # Suppress the expected warning during this test
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=RuntimeWarning, message=".*never awaited.*")
+            # This should return empty list when AsyncMock is detected
+            room_lines = format_room_list(mock_rooms, e2ee_status)
+
+        # Should return empty list for AsyncMock objects
+        self.assertEqual(room_lines, [])
+
+    def test_room_list_with_invalid_rooms(self):
+        """Test room list formatting with invalid rooms object"""
+        # Test with None
+        e2ee_status = {"overall_status": "ready"}
+        room_lines = format_room_list(None, e2ee_status)
+        self.assertEqual(room_lines, [])
+
+        # Test with object that doesn't have items method
+        invalid_rooms = "not a dict"
+        room_lines = format_room_list(invalid_rooms, e2ee_status)
+        self.assertEqual(room_lines, [])
+
 
 class TestEncryptionWarnings(unittest.TestCase):
     """Test encryption warning generation"""
@@ -317,6 +348,37 @@ class TestEncryptionWarnings(unittest.TestCase):
         warnings = get_room_encryption_warnings(rooms, e2ee_status)
 
         self.assertEqual(len(warnings), 0)
+
+    def test_warnings_with_asyncmock_rooms(self):
+        """Test encryption warnings with AsyncMock rooms (test scenario)"""
+        from unittest.mock import AsyncMock
+        import warnings
+
+        # Create an AsyncMock that returns a coroutine when .items() is called
+        mock_rooms = AsyncMock()
+
+        e2ee_status = {"overall_status": "disabled"}
+
+        # Suppress the expected warning during this test
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=RuntimeWarning, message=".*never awaited.*")
+            # This should return empty warnings when AsyncMock is detected
+            warnings_result = get_room_encryption_warnings(mock_rooms, e2ee_status)
+
+        # Should return empty warnings for AsyncMock objects
+        self.assertEqual(warnings_result, [])
+
+    def test_warnings_with_invalid_rooms(self):
+        """Test encryption warnings with invalid rooms object"""
+        # Test with None
+        e2ee_status = {"overall_status": "disabled"}
+        warnings = get_room_encryption_warnings(None, e2ee_status)
+        self.assertEqual(warnings, [])
+
+        # Test with object that doesn't have items method
+        invalid_rooms = "not a dict"
+        warnings = get_room_encryption_warnings(invalid_rooms, e2ee_status)
+        self.assertEqual(warnings, [])
 
 
 class TestE2EEErrorMessages(unittest.TestCase):
