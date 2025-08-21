@@ -25,7 +25,7 @@ custom_data_dir = None
 def set_secure_file_permissions(file_path: str, mode: int = 0o600) -> None:
     """
     Set secure file permissions for a file on Unix-like systems.
-    
+
     This attempts to chmod the given file to the provided mode (default 0o600 — owner read/write).
     No action is taken on non-Unix platforms (e.g., Windows). Failures to change permissions are
     caught and handled internally (the function does not raise).
@@ -179,10 +179,10 @@ def get_log_dir():
 def get_e2ee_store_dir():
     """
     Return the path to the directory used for storing E2EE data (e.g., encryption keys), creating it if missing.
-    
+
     On Linux/macOS the directory is "<base_dir>/store" where base_dir is returned by get_base_dir().
     On Windows the directory is under the platform user data directory for the app (user_data_dir(APP_NAME, APP_AUTHOR)/store).
-    
+
     Returns:
         str: Absolute path to the ensured store directory.
     """
@@ -202,17 +202,17 @@ def get_e2ee_store_dir():
 def _convert_env_bool(value, var_name):
     """
     Convert a string from an environment variable into a boolean.
-    
+
     Accepts (case-insensitive) true values: "true", "1", "yes", "on"; false values: "false", "0", "no", "off".
     If the value is not recognized, raises ValueError including var_name to indicate which environment variable was invalid.
-    
+
     Parameters:
         value (str): The environment variable value to convert.
         var_name (str): Name of the environment variable (used in the error message).
-    
+
     Returns:
         bool: The parsed boolean.
-    
+
     Raises:
         ValueError: If the input is not a recognized boolean representation.
     """
@@ -257,16 +257,16 @@ def _convert_env_int(value, var_name, min_value=None, max_value=None):
 def _convert_env_float(value, var_name, min_value=None, max_value=None):
     """
     Convert an environment variable string to a float and optionally validate its range.
-    
+
     Parameters:
         value (str): The raw environment variable value to convert.
         var_name (str): Name of the variable (used in error messages).
         min_value (float, optional): Inclusive minimum allowed value.
         max_value (float, optional): Inclusive maximum allowed value.
-    
+
     Returns:
         float: The parsed float value.
-    
+
     Raises:
         ValueError: If the value cannot be parsed as a float or falls outside the specified range.
     """
@@ -285,7 +285,7 @@ def _convert_env_float(value, var_name, min_value=None, max_value=None):
 def load_meshtastic_config_from_env():
     """
     Load Meshtastic-related configuration from environment variables.
-    
+
     Reads known Meshtastic environment variables (as defined by the module's
     _MESHTASTIC_ENV_VAR_MAPPINGS), converts and validates their types, and
     returns a configuration dict containing any successfully parsed values.
@@ -302,9 +302,9 @@ def load_meshtastic_config_from_env():
 def load_logging_config_from_env():
     """
     Load logging configuration from environment variables and return it as a dict.
-    
+
     Reads logging-related environment variables (per the module's logging env mappings) and, if a filename is provided, sets "log_to_file" to True in the returned mapping.
-    
+
     Returns:
         dict or None: A dictionary with logging configuration values when any relevant environment variables are set; otherwise None.
     """
@@ -336,15 +336,15 @@ def load_database_config_from_env():
 def apply_env_config_overrides(config):
     """
     Apply environment-variable-derived overrides to a configuration dictionary.
-    
+
     If `config` is falsy a new dict is created. Environment values from the Meshtastic, logging,
     and database loaders are merged into the corresponding top-level sections ("meshtastic",
     "logging", "database"); existing keys in those sections are updated with environment-supplied
     values while other keys are left intact.
-    
+
     Parameters:
         config (dict): Base configuration to update; may be None or an empty value.
-    
+
     Returns:
         dict: The resulting configuration dictionary with environment overrides applied.
     """
@@ -375,7 +375,7 @@ def apply_env_config_overrides(config):
 def load_credentials():
     """
     Load Matrix credentials from the application's credentials.json file.
-    
+
     Searches for "credentials.json" in the application's base configuration directory (get_base_dir()). If the file exists and contains valid JSON, returns the parsed credentials as a dict. On missing file, parse errors, or filesystem access errors, returns None.
     """
     try:
@@ -398,7 +398,7 @@ def load_credentials():
 def save_credentials(credentials):
     """
     Write the provided Matrix credentials dict to "credentials.json" in the application's base config directory and apply secure file permissions (Unix 0o600) to the file.
-    
+
     If writing or permission changes fail, an error is logged; exceptions are not propagated.
     """
     try:
@@ -496,7 +496,7 @@ _DATABASE_ENV_VAR_MAPPINGS = [
 def _load_config_from_env_mapping(mappings):
     """
     Build a configuration dict from environment variables according to a mapping specification.
-    
+
     The function iterates the provided mapping entries, reads each mapping's environment variable,
     converts/validates the value according to the mapping's "type", and places the result under
     the mapping's "config_key" in the returned dict. Supported mapping keys on each entry:
@@ -507,7 +507,7 @@ def _load_config_from_env_mapping(mappings):
     - "min_value", "max_value" (for int/float): numeric bounds validated during conversion.
     - "valid_values" (for enum): iterable of allowed values.
     - "transform" (for enum): callable applied to the raw env value before validation.
-    
+
     Behavior:
     - Values that fail conversion or validation are skipped (an error is logged).
     - Unknown mapping types are skipped (an error is logged).
@@ -623,13 +623,13 @@ def set_config(module, passed_config):
 def load_config(config_file=None, args=None):
     """
     Load the application configuration from a file or from environment variables.
-    
+
     If config_file is provided and exists, load and parse it as YAML. Otherwise search prioritized locations returned by get_config_paths(args) and load the first readable YAML file found. After loading (or when no file is found) environment-variable-derived overrides are merged into the configuration via apply_env_config_overrides(). The function updates the module-level relay_config and config_path.
-    
+
     Parameters:
         config_file (str, optional): Path to a specific YAML configuration file. If None, the function searches default locations.
         args: Parsed command-line arguments used to influence the search order (passed to get_config_paths).
-    
+
     Returns:
         dict: The resulting configuration dictionary. Returns an empty dict on read/parse errors or if no configuration is provided via files or environment.
     """

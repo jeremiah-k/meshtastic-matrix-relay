@@ -324,19 +324,25 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                 try:
                     # Capture getMetadata() output to extract firmware version
                     output_capture = io.StringIO()
-                    with contextlib.redirect_stdout(output_capture), contextlib.redirect_stderr(output_capture):
+                    with contextlib.redirect_stdout(
+                        output_capture
+                    ), contextlib.redirect_stderr(output_capture):
                         meshtastic_client.localNode.getMetadata()
 
                     console_output = output_capture.getvalue()
                     # Parse firmware version from the output
-                    for line in console_output.split('\n'):
-                        if 'firmware_version:' in line:
-                            firmware_version = line.split('firmware_version:')[1].strip()
+                    for line in console_output.split("\n"):
+                        if "firmware_version:" in line:
+                            firmware_version = line.split("firmware_version:")[
+                                1
+                            ].strip()
                             break
                 except Exception as e:
                     logger.debug(f"Could not retrieve firmware version: {e}")
 
-                logger.info(f"Connected to {short_name} / {hw_model} / firmware {firmware_version}")
+                logger.info(
+                    f"Connected to {short_name} / {hw_model} / firmware {firmware_version}"
+                )
 
                 # Subscribe to message and connection lost events (only once per application run)
                 global subscribed_to_messages, subscribed_to_connection_lost
@@ -438,7 +444,7 @@ def on_lost_meshtastic_connection(interface=None, detection_source="unknown"):
 async def reconnect():
     """
     Attempt to re-establish a Meshtastic connection with exponential backoff.
-    
+
     This coroutine repeatedly tries to reconnect by invoking connect_meshtastic(force_connect=True)
     in a thread executor until a connection is obtained, the global shutting_down flag is set,
     or the task is cancelled. It begins with DEFAULT_BACKOFF_TIME and doubles the wait after each

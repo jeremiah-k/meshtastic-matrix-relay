@@ -942,7 +942,7 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
     def setUp(self):
         """
         Prepare test fixture by disabling the module-level asyncio event loop mock and capturing the real `_submit_coro`.
-        
+
         This saves the current `mmrelay.meshtastic_utils.event_loop` and `_submit_coro` into instance attributes so they can be restored later, sets `event_loop` to None to ensure tests run against the real asyncio behavior, and reloads the `mmrelay.meshtastic_utils` source to obtain the original (unmocked) `_submit_coro` implementation for direct testing.
         """
         import mmrelay.meshtastic_utils as mu
@@ -974,7 +974,7 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
     def tearDown(self):
         """
         Tear down test fixtures by restoring the meshtastic_utils module's global state.
-        
+
         Specifically restores:
         - mu.event_loop to the saved original event loop
         - mu._submit_coro to the previously mocked implementation
@@ -1012,7 +1012,7 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
         async def failing_coro():
             """
             Coroutine that immediately raises a ValueError when awaited.
-            
+
             This async helper is intended for tests: awaiting this coroutine will always raise
             a ValueError with message "Test exception".
             Raises:
@@ -1173,7 +1173,7 @@ class TestReconnectingFlagLogic(unittest.TestCase):
     def tearDown(self):
         """
         Reset meshtastic-related global state after a test.
-        
+
         Sets mmrelay.meshtastic_utils.reconnecting to False and mmrelay.meshtastic_utils.meshtastic_client to None
         to ensure tests remain isolated and no client or reconnect loop state is carried across tests.
         """

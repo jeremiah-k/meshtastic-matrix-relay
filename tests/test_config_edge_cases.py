@@ -155,7 +155,7 @@ class TestConfigEdgeCases(unittest.TestCase):
     def test_load_config_empty_file(self):
         """
         Verify load_config returns an empty dict when given an empty YAML configuration file.
-        
+
         This ensures the function handles an empty file without raising and returns {} so environment-variable
         overrides can still be applied by callers.
         """

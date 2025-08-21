@@ -869,14 +869,14 @@ class TestRunMainFunction(unittest.TestCase):
     def _get_mock_run_with_cleanup(self):
         """
         Return a callable suitable for patching `asyncio.run` that closes coroutines to avoid ResourceWarning warnings.
-        
+
         The returned function accepts a coroutine or awaitable, calls its `.close()` if present, and returns None.
         """
 
         def mock_run_with_cleanup(coro):
             """
             Close the given coroutine/awaitable if it exposes a close() method to prevent ResourceWarning during tests.
-            
+
             Parameters:
                 coro: A coroutine or awaitable object. If it implements `close()`, that method will be called; otherwise the object is left unchanged.
             """
@@ -1067,12 +1067,12 @@ class TestRunMainFunction(unittest.TestCase):
         def mock_run_with_keyboard_interrupt(coro):
             """
             Simulate a KeyboardInterrupt during asyncio.run by closing a coroutine (if closable) and then raising KeyboardInterrupt.
-            
+
             If the provided awaitable has a close() method it will be called to free resources before the interrupt is raised.
-            
+
             Parameters:
                 coro: The awaitable/coroutine to close (if it supports close()).
-            
+
             Raises:
                 KeyboardInterrupt: Always raised after attempting to close the coroutine.
             """
@@ -1114,12 +1114,12 @@ class TestRunMainFunction(unittest.TestCase):
         def mock_run_with_exception(coro):
             """
             Raise a test exception after closing the provided coroutine if possible.
-            
+
             If the passed object has a close() method (e.g., a generator-based coroutine), this function calls it to avoid "coroutine was never awaited" warnings, then raises Exception("Test error").
-            
+
             Parameters:
                 coro: The coroutine or coroutine-like object to close before raising.
-            
+
             Raises:
                 Exception: Always raises Exception("Test error").
             """

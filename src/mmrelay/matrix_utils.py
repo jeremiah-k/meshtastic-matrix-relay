@@ -2138,7 +2138,6 @@ async def logout_matrix_bot(password=None):
     Returns:
         bool: True if logout was successful, False otherwise
     """
-    import shutil
 
     # Load current credentials
     credentials = load_credentials()
@@ -2212,7 +2211,9 @@ async def logout_matrix_bot(password=None):
             if hasattr(logout_response, "transport_response"):
                 logger.info("Successfully logged out from Matrix server.")
             else:
-                logger.warning("Logout response unclear, proceeding with local cleanup.")
+                logger.warning(
+                    "Logout response unclear, proceeding with local cleanup."
+                )
         except Exception as e:
             logger.warning(f"Server logout failed, proceeding with local cleanup: {e}")
         finally:

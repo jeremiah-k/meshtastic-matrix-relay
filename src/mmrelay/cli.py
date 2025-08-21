@@ -1186,7 +1186,7 @@ def handle_auth_logout(args):
 
     # Confirm the action
     confirm = input("Are you sure you want to logout? (y/N): ").lower().strip()
-    if not confirm.startswith('y'):
+    if not confirm.startswith("y"):
         print("Logout cancelled.")
         return 0
 
@@ -1283,12 +1283,12 @@ def handle_cli_commands(args):
 def generate_sample_config():
     """
     Generate a sample configuration file at the highest-priority config path if no config already exists.
-    
+
     If an existing config file is found in any candidate path (from get_config_paths()), this function aborts and prints its location. Otherwise it creates a sample config at the first candidate path. Sources tried, in order, are:
     - the path returned by get_sample_config_path(),
     - the packaged resource mmrelay.tools:sample_config.yaml via importlib.resources,
     - a set of fallback filesystem locations relative to the package and current working directory.
-    
+
     On success the sample is written to disk and (on Unix-like systems) secure file permissions are applied (owner read/write, 0o600). Returns True when a sample config is successfully generated and False on any error or if a config already exists.
     """
 

@@ -120,6 +120,7 @@ mmrelay auth logout
 ```
 
 This command will:
+
 - Verify your Matrix password for security
 - Log out from the Matrix server (invalidating access tokens)
 - Remove `~/.mmrelay/credentials.json`

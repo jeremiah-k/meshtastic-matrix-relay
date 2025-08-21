@@ -323,14 +323,14 @@ def get_e2ee_error_message(e2ee_status: Dict[str, Any]) -> str:
 def get_e2ee_fix_instructions(e2ee_status: Dict[str, Any]) -> List[str]:
     """
     Return ordered, user-facing instructions to resolve E2EE setup problems.
-    
+
     When E2EE is already ready, returns a single confirmation line. If the platform is unsupported, returns platform-specific guidance and stops. Otherwise returns a numbered sequence of actionable steps (when applicable) to: install required E2EE dependencies, provision Matrix credentials, enable E2EE in the configuration file, and finally verify the configuration. Each step may include indented command or configuration snippets.
-    
+
     Parameters:
         e2ee_status (dict): Status mapping produced by get_e2ee_status(); the function reads the keys
             "overall_status", "platform_supported", "dependencies_installed",
             "credentials_available", and "enabled" to decide which steps to include.
-    
+
     Returns:
         List[str]: Ordered, human-readable instruction lines. Steps are numbered and related commands/config snippets are provided as indented lines.
     """
