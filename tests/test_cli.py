@@ -1,4 +1,5 @@
-# ASYNC MOCK WARNING FIXES:
+# ASYNC MOCK TESTING PATTERNS
+#
 # This file contains tests for CLI functions that call async functions via asyncio.run().
 # The main issue is with handle_auth_logout() which calls:
 #   asyncio.run(logout_matrix_bot(password=password))
@@ -8,8 +9,15 @@
 # must be properly configured to avoid "coroutine was never awaited" warnings.
 #
 # SOLUTION PATTERN:
-# For async function mocks, we must create a coroutine that resolves to the value we want.
-# Use asyncio.coroutine or async/await to create proper coroutines that can be awaited.
+# Instead of using AsyncMock, use regular Mock with direct return values.
+# For functions called via asyncio.run(), the asyncio.run() handles the awaiting,
+# so we just need the mock to return the expected value directly.
+#
+# ✅ CORRECT: mock_logout.return_value = True
+# ❌ INCORRECT: mock_logout = AsyncMock(return_value=True)
+#
+# This pattern eliminates RuntimeWarnings while maintaining proper test coverage.
+# See docs/dev/TESTING_GUIDE.md for comprehensive async mocking patterns.
 
 import json
 import os
