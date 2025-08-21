@@ -318,7 +318,25 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                 user_info = nodeInfo.get("user", {}) if nodeInfo else {}
                 short_name = user_info.get("shortName", "unknown")
                 hw_model = user_info.get("hwModel", "unknown")
-                logger.info(f"Connected to {short_name} / {hw_model}")
+
+                # Get firmware version from device metadata
+                firmware_version = "unknown"
+                try:
+                    # Capture getMetadata() output to extract firmware version
+                    output_capture = io.StringIO()
+                    with contextlib.redirect_stdout(output_capture), contextlib.redirect_stderr(output_capture):
+                        meshtastic_client.localNode.getMetadata()
+
+                    console_output = output_capture.getvalue()
+                    # Parse firmware version from the output
+                    for line in console_output.split('\n'):
+                        if 'firmware_version:' in line:
+                            firmware_version = line.split('firmware_version:')[1].strip()
+                            break
+                except Exception as e:
+                    logger.debug(f"Could not retrieve firmware version: {e}")
+
+                logger.info(f"Connected to {short_name} / {hw_model} / firmware {firmware_version}")
 
                 # Subscribe to message and connection lost events (only once per application run)
                 global subscribed_to_messages, subscribed_to_connection_lost
