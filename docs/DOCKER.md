@@ -49,11 +49,12 @@ docker compose logs -f
 For Docker deployments where interactive authentication isn't possible, MMRelay supports automatic credentials creation from your config file:
 
 1. **Edit your config.yaml** and add your Matrix password:
+
    ```yaml
    matrix:
      homeserver: https://your-matrix-server.org
      bot_user_id: "@your-bot:your-matrix-server.org"
-     password: your_matrix_password_here  # Add this line
+     password: your_matrix_password_here # Add this line
    ```
 
 2. **Remove or comment out** the `access_token` line if present
@@ -65,6 +66,7 @@ For Docker deployments where interactive authentication isn't possible, MMRelay 
    - Continue normal operation
 
 This method is ideal for:
+
 - Docker deployments without interactive terminals
 - Automated deployments and CI/CD pipelines
 - Users who haven't cloned the repository
@@ -72,6 +74,7 @@ This method is ideal for:
 
 **Security Note**: The password is only used once during initial setup to create `credentials.json`. For enhanced security, you should remove the `password` field from your `config.yaml` after the first successful startup.
 Additionally, restrict file permissions so only your user can read it:
+
 ```bash
 chmod 600 ~/.mmrelay/config.yaml
 ```

@@ -153,8 +153,12 @@ def _get_device_metadata(client):
 
     try:
         # Preflight: client may be a mock without localNode/getMetadata
-        if not getattr(client, "localNode", None) or not hasattr(client.localNode, "getMetadata"):
-            logger.debug("Meshtastic client has no localNode.getMetadata(); skipping metadata retrieval")
+        if not getattr(client, "localNode", None) or not hasattr(
+            client.localNode, "getMetadata"
+        ):
+            logger.debug(
+                "Meshtastic client has no localNode.getMetadata(); skipping metadata retrieval"
+            )
             return result
 
         # Capture getMetadata() output to extract firmware version
@@ -185,7 +189,9 @@ def _get_device_metadata(client):
                 result["success"] = True
 
     except Exception as e:
-        logger.debug("Could not retrieve device metadata via localNode.getMetadata()", exc_info=e)
+        logger.debug(
+            "Could not retrieve device metadata via localNode.getMetadata()", exc_info=e
+        )
 
     return result
 
@@ -388,7 +394,9 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                     )
                 else:
                     logger.info(f"Connected to {short_name} / {hw_model}")
-                    logger.debug("Device firmware version unavailable from getMetadata()")
+                    logger.debug(
+                        "Device firmware version unavailable from getMetadata()"
+                    )
 
                 # Subscribe to message and connection lost events (only once per application run)
                 global subscribed_to_messages, subscribed_to_connection_lost
@@ -950,9 +958,13 @@ async def check_connection():
                         try:
                             _ = meshtastic_client.getMyNodeInfo()
                         except Exception as probe_err:
-                            raise Exception("Metadata and nodeInfo probes failed") from probe_err
+                            raise Exception(
+                                "Metadata and nodeInfo probes failed"
+                            ) from probe_err
                         else:
-                            logger.debug("Metadata parse failed but device responded to getMyNodeInfo(); skipping reconnect this cycle")
+                            logger.debug(
+                                "Metadata parse failed but device responded to getMyNodeInfo(); skipping reconnect this cycle"
+                            )
                             continue
 
                 except Exception as e:

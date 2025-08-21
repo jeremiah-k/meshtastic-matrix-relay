@@ -1914,7 +1914,7 @@ def test_can_auto_create_credentials_success():
     matrix_config = {
         "homeserver": "https://matrix.example.org",
         "bot_user_id": "@bot:example.org",
-        "password": "test_password"
+        "password": "test_password",
     }
 
     result = _can_auto_create_credentials(matrix_config)
@@ -1923,10 +1923,7 @@ def test_can_auto_create_credentials_success():
 
 def test_can_auto_create_credentials_missing_homeserver():
     """Test failure when homeserver is missing."""
-    matrix_config = {
-        "bot_user_id": "@bot:example.org",
-        "password": "test_password"
-    }
+    matrix_config = {"bot_user_id": "@bot:example.org", "password": "test_password"}
 
     result = _can_auto_create_credentials(matrix_config)
     assert result is False
@@ -1936,7 +1933,7 @@ def test_can_auto_create_credentials_missing_user_id():
     """Test failure when bot_user_id is missing."""
     matrix_config = {
         "homeserver": "https://matrix.example.org",
-        "password": "test_password"
+        "password": "test_password",
     }
 
     result = _can_auto_create_credentials(matrix_config)
@@ -1947,7 +1944,7 @@ def test_can_auto_create_credentials_missing_password():
     """Test failure when password is missing."""
     matrix_config = {
         "homeserver": "https://matrix.example.org",
-        "bot_user_id": "@bot:example.org"
+        "bot_user_id": "@bot:example.org",
     }
 
     result = _can_auto_create_credentials(matrix_config)
@@ -1959,7 +1956,7 @@ def test_can_auto_create_credentials_empty_values():
     matrix_config = {
         "homeserver": "",
         "bot_user_id": "@bot:example.org",
-        "password": "test_password"
+        "password": "test_password",
     }
 
     result = _can_auto_create_credentials(matrix_config)
@@ -1971,7 +1968,7 @@ def test_can_auto_create_credentials_none_values():
     matrix_config = {
         "homeserver": "https://matrix.example.org",
         "bot_user_id": None,
-        "password": "test_password"
+        "password": "test_password",
     }
 
     result = _can_auto_create_credentials(matrix_config)
