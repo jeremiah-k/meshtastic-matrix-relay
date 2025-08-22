@@ -127,12 +127,24 @@ def _display_room_channel_mappings(rooms: Dict[str, Any], config: Dict[str, Any]
         return
 
     # Create mapping of room_id -> channel number
+    # Handle both dict and list formats for matrix_rooms configuration
     room_to_channel = {}
-    for room_config in matrix_rooms_config:
-        room_id = room_config.get("id")
-        channel = room_config.get("meshtastic_channel")
-        if room_id and channel is not None:
-            room_to_channel[room_id] = channel
+    if isinstance(matrix_rooms_config, dict):
+        # Dict format: {"room_name": {"id": "...", "meshtastic_channel": 0}}
+        for room_name, room_config in matrix_rooms_config.items():
+            if isinstance(room_config, dict):
+                room_id = room_config.get("id")
+                channel = room_config.get("meshtastic_channel")
+                if room_id and channel is not None:
+                    room_to_channel[room_id] = channel
+    else:
+        # List format: [{"id": "...", "meshtastic_channel": 0}]
+        for room_config in matrix_rooms_config:
+            if isinstance(room_config, dict):
+                room_id = room_config.get("id")
+                channel = room_config.get("meshtastic_channel")
+                if room_id and channel is not None:
+                    room_to_channel[room_id] = channel
 
     # Group rooms by channel
     channels = {}
