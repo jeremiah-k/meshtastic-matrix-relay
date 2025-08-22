@@ -192,18 +192,21 @@ class Plugin(BasePlugin):
 
         except Exception as e:
             # Handle HTTP/network errors from requests
-            # Use robust detection that works across different environments
-            exception_type = type(e)
-            exception_module = getattr(exception_type, "__module__", "")
-            exception_name = getattr(exception_type, "__name__", "")
+            # Handle requests-related exceptions using safe attribute checking
+            try:
+                # Check if this is a requests exception by checking the module
+                if hasattr(requests, 'RequestException') and isinstance(e, requests.RequestException):
+                    self.logger.error(f"Error fetching weather data: {e}")
+                    return "Error fetching weather data."
+            except (AttributeError, TypeError):
+                # Fallback to string-based detection if isinstance fails
+                exception_module = getattr(type(e), "__module__", "")
+                if "requests" in exception_module:
+                    self.logger.error(f"Error fetching weather data: {e}")
+                    return "Error fetching weather data."
 
-            if "requests" in exception_module and (
-                "Exception" in exception_name or "Error" in exception_name
-            ):
-                self.logger.error(f"Error fetching weather data: {e}")
-                return "Error fetching weather data."
             # Handle data parsing errors
-            elif isinstance(
+            if isinstance(
                 e, (KeyError, IndexError, TypeError, ValueError, AttributeError)
             ):
                 self.logger.error(f"Malformed weather data: {e}")

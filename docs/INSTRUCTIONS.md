@@ -146,6 +146,7 @@ Commands:
     check               Validate configuration file syntax and completeness
   auth                  Authentication management
     login               Authenticate with Matrix and save credentials for E2EE support
+    logout              Secure session cleanup with server-side token invalidation
     status              Check current authentication status
   service               Service management
     install             Install or update the systemd user service for MMRelay
