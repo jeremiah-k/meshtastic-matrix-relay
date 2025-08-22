@@ -1,10 +1,13 @@
 import asyncio
+from datetime import datetime
 
 import requests
 from meshtastic.mesh_interface import BROADCAST_NUM
 
 from mmrelay.constants.formats import TEXT_MESSAGE_APP
 from mmrelay.plugins.base_plugin import BasePlugin
+
+
 
 
 class Plugin(BasePlugin):
@@ -18,41 +21,100 @@ class Plugin(BasePlugin):
         return "Show weather forecast for a radio node using GPS location"
 
     def generate_forecast(self, latitude, longitude):
+        """
+        Generate a concise one-line weather forecast for the given GPS coordinates.
+        
+        Builds and queries the Open-Meteo API for current conditions and hour-aligned forecasts ~+2h and ~+5h, formats temperatures according to the plugin configuration (`self.config["units"]`, default "metric"), and returns a single-line summary including current conditions and the two forecast points.
+        
+        Parameters:
+            latitude (float): Latitude in decimal degrees.
+            longitude (float): Longitude in decimal degrees.
+        
+        Returns:
+            str: A single-line forecast such as
+                 "Now: ☀️ Clear sky - 12.3°C | +2h: 🌧️ Light rain - 13.1°C 20% | +5h: ⛅️ Partly cloudy - 10.8°C 5%".
+                 On recoverable failures returns a short error message: "Weather data temporarily unavailable.",
+                 "Error fetching weather data.", or "Error parsing weather data.".
+        
+        Notes:
+            - Temperature units are determined by `self.config.get("units", "metric")` ("metric" -> °C, "imperial" -> °F).
+            - The function attempts to anchor forecasts to hourly timestamps when available; if timestamps cannot be matched it falls back to hour-of-day indexing (may be less accurate).
+            - Network/HTTP errors and request-related exceptions are handled and result in the "Error fetching weather data." message.
+            - Malformed or incomplete API responses result in "Error parsing weather data." Unexpected exceptions are re-raised.
+        """
         units = self.config.get("units", "metric")  # Default to metric
         temperature_unit = "°C" if units == "metric" else "°F"
 
         url = (
             f"https://api.open-meteo.com/v1/forecast?"
             f"latitude={latitude}&longitude={longitude}&"
-            f"hourly=temperature_2m,precipitation_probability,weathercode,cloudcover&"
-            f"forecast_days=1&current_weather=true"
+            f"hourly=temperature_2m,precipitation_probability,weathercode,is_day&"
+            f"forecast_days=2&timezone=auto&current_weather=true"
         )
 
         try:
             response = requests.get(url, timeout=10)
+            response.raise_for_status()
             data = response.json()
 
             # Extract relevant weather data
             current_temp = data["current_weather"]["temperature"]
             current_weather_code = data["current_weather"]["weathercode"]
             is_day = data["current_weather"]["is_day"]
+            current_time_str = data["current_weather"]["time"]
 
-            # Get indices for +2h and +5h forecasts
-            # Assuming hourly data starts from current hour
-            forecast_2h_index = 2
-            forecast_5h_index = 5
+            # Parse current time to get the hour with defensive handling
+            current_hour = 0
+            current_time = None
+            try:
+                current_time = datetime.fromisoformat(current_time_str.replace("Z", "+00:00"))
+                current_hour = current_time.hour
+            except ValueError as ex:
+                self.logger.warning(f"Unexpected current_weather.time '{current_time_str}': {ex}. Defaulting to hour=0.")
+
+            # Calculate indices for +2h and +5h forecasts
+            # Try to anchor to hourly timestamps for robustness, fall back to hour-of-day
+            base_index = current_hour
+            hourly_times = data["hourly"].get("time", [])
+            if hourly_times and current_time:
+                try:
+                    # Normalize current time to the hour and find it in hourly timestamps
+                    base_key = current_time.replace(minute=0, second=0, microsecond=0).strftime("%Y-%m-%dT%H:00")
+                    base_index = hourly_times.index(base_key)
+                except (ValueError, AttributeError):
+                    # Fall back to hour-of-day if hourly timestamps are unavailable/mismatched
+                    self.logger.warning(
+                        "Could not find current time in hourly timestamps. "
+                        "Falling back to hour-of-day indexing, which may be inaccurate."
+                    )
+
+            forecast_2h_index = base_index + 2
+            forecast_5h_index = base_index + 5
+
+            # Guard against empty hourly series before clamping
+            temps = data["hourly"].get("temperature_2m") or []
+            if not temps:
+                self.logger.warning("No hourly temperature data returned.")
+                return "Weather data temporarily unavailable."
+            max_index = len(temps) - 1
+            forecast_2h_index = min(forecast_2h_index, max_index)
+            forecast_5h_index = min(forecast_5h_index, max_index)
 
             forecast_2h_temp = data["hourly"]["temperature_2m"][forecast_2h_index]
             forecast_2h_precipitation = data["hourly"]["precipitation_probability"][
                 forecast_2h_index
             ]
             forecast_2h_weather_code = data["hourly"]["weathercode"][forecast_2h_index]
+            # Get hour-specific day/night flag for +2h forecast
+            forecast_2h_is_day = data["hourly"]["is_day"][forecast_2h_index] if data["hourly"].get("is_day") else is_day
 
             forecast_5h_temp = data["hourly"]["temperature_2m"][forecast_5h_index]
             forecast_5h_precipitation = data["hourly"]["precipitation_probability"][
                 forecast_5h_index
             ]
             forecast_5h_weather_code = data["hourly"]["weathercode"][forecast_5h_index]
+            # Get hour-specific day/night flag for +5h forecast
+            forecast_5h_is_day = data["hourly"]["is_day"][forecast_5h_index] if data["hourly"].get("is_day") else is_day
 
             if units == "imperial":
                 # Convert temperatures from Celsius to Fahrenheit
@@ -106,19 +168,34 @@ class Plugin(BasePlugin):
                 f"{current_temp}{temperature_unit} | "
             )
             forecast += (
-                f"+2h: {weather_code_to_text(forecast_2h_weather_code, is_day)} - "
+                f"+2h: {weather_code_to_text(forecast_2h_weather_code, forecast_2h_is_day)} - "
                 f"{forecast_2h_temp}{temperature_unit} {forecast_2h_precipitation}% | "
             )
             forecast += (
-                f"+5h: {weather_code_to_text(forecast_5h_weather_code, is_day)} - "
+                f"+5h: {weather_code_to_text(forecast_5h_weather_code, forecast_5h_is_day)} - "
                 f"{forecast_5h_temp}{temperature_unit} {forecast_5h_precipitation}%"
             )
 
             return forecast
 
-        except requests.exceptions.RequestException as e:
-            self.logger.error(f"Error fetching weather data: {e}")
-            return "Error fetching weather data."
+        except Exception as e:
+            # Handle HTTP/network errors from requests
+            # Use robust detection that works across different environments
+            exception_type = type(e)
+            exception_module = getattr(exception_type, '__module__', '')
+            exception_name = getattr(exception_type, '__name__', '')
+
+            if ('requests' in exception_module and
+                ('Exception' in exception_name or 'Error' in exception_name)):
+                self.logger.error(f"Error fetching weather data: {e}")
+                return "Error fetching weather data."
+            # Handle data parsing errors
+            elif isinstance(e, (KeyError, IndexError, TypeError, ValueError, AttributeError)):
+                self.logger.error(f"Malformed weather data: {e}")
+                return "Error parsing weather data."
+            else:
+                # Re-raise unexpected exceptions
+                raise
 
     async def handle_meshtastic_message(
         self, packet, formatted_message, longname, meshnet_name
