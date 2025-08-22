@@ -29,8 +29,6 @@ Visit our [Wiki](https://github.com/jeremiah-k/meshtastic-matrix-relay/wiki) for
 
 ---
 
-
-
 ## Docker
 
 MMRelay includes official Docker support for easy deployment and management:

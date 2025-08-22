@@ -27,31 +27,31 @@ from mmrelay.plugins.weather_plugin import Plugin
 def _normalize_emoji(s: str) -> str:
     """
     Normalize emoji/text by removing Unicode variation selectors U+FE0F and U+FE0E.
-    
+
     This removes common emoji/text variation selector characters so comparisons of strings
     containing emoji are not affected by platform-dependent presentation differences.
-    
+
     Parameters:
         s (str): Input string that may contain variation selector characters.
-    
+
     Returns:
         str: The input string with U+FE0F and U+FE0E removed.
     """
-    return s.replace("\uFE0F", "").replace("\uFE0E", "")
+    return s.replace("\ufe0f", "").replace("\ufe0e", "")
 
 
 def _make_ok_response(payload):
     """
     Create a unittest-friendly mock HTTP response that returns a fixed JSON payload.
-    
+
     The returned object is a MagicMock configured so:
     - .json() returns the provided payload.
     - .raise_for_status() does nothing (simulates a 2xx response).
     - .status_code is set to 200.
-    
+
     Parameters:
         payload: The Python object that should be returned by the mock's .json() method.
-    
+
     Returns:
         A MagicMock configured as described above.
     """
@@ -68,7 +68,7 @@ class TestWeatherPlugin(unittest.TestCase):
     def setUp(self):
         """
         Set up a controlled test environment before each test.
-        
+
         Creates a Plugin instance with mocked dependencies (logger, is_channel_enabled, get_response_delay) and a default config (units: "metric"). Also provides self.sample_weather_data: a two-day (48-hour) mock Open-Meteo-like payload with a current_weather timestamp of "2023-08-20T10:00" and hourly arrays for time, temperature_2m, precipitation_probability, weathercode, and is_day. The sample data is structured so tests can reference the current value (10:00), the +2h forecast (12:00) and the +5h forecast (15:00).
         """
         self.plugin = Plugin()
@@ -121,19 +121,19 @@ class TestWeatherPlugin(unittest.TestCase):
                 ]
                 + [15.0] * 24,  # Next day data
                 "precipitation_probability": [
-                    0,   # 00:00
-                    0,   # 01:00
-                    0,   # 02:00
-                    5,   # 03:00
-                    5,   # 04:00
+                    0,  # 00:00
+                    0,  # 01:00
+                    0,  # 02:00
+                    5,  # 03:00
+                    5,  # 04:00
                     10,  # 05:00
                     10,  # 06:00
                     15,  # 07:00
                     15,  # 08:00
                     10,  # 09:00
                     10,  # 10:00 (current time)
-                    5,   # 11:00
-                    5,   # 12:00 (+2h from current)
+                    5,  # 11:00
+                    5,  # 12:00 (+2h from current)
                     10,  # 13:00
                     15,  # 14:00
                     20,  # 15:00 (+5h from current)
@@ -143,17 +143,17 @@ class TestWeatherPlugin(unittest.TestCase):
                     20,  # 19:00
                     15,  # 20:00
                     10,  # 21:00
-                    5,   # 22:00
-                    5,   # 23:00
+                    5,  # 22:00
+                    5,  # 23:00
                 ]
                 + [0] * 24,  # Next day data
                 "weathercode": [
-                    1,   # 00:00
-                    1,   # 01:00
-                    2,   # 02:00
-                    2,   # 03:00
-                    3,   # 04:00
-                    3,   # 05:00
+                    1,  # 00:00
+                    1,  # 01:00
+                    2,  # 02:00
+                    2,  # 03:00
+                    3,  # 04:00
+                    3,  # 05:00
                     45,  # 06:00
                     45,  # 07:00
                     51,  # 08:00
@@ -175,30 +175,30 @@ class TestWeatherPlugin(unittest.TestCase):
                 ]
                 + [1] * 24,  # Next day data
                 "is_day": [
-                    0,   # 00:00 - night
-                    0,   # 01:00 - night
-                    0,   # 02:00 - night
-                    0,   # 03:00 - night
-                    0,   # 04:00 - night
-                    0,   # 05:00 - night
-                    1,   # 06:00 - day
-                    1,   # 07:00 - day
-                    1,   # 08:00 - day
-                    1,   # 09:00 - day
-                    1,   # 10:00 (current time) - day
-                    1,   # 11:00 - day
-                    1,   # 12:00 (+2h from current) - day
-                    1,   # 13:00 - day
-                    1,   # 14:00 - day
-                    1,   # 15:00 (+5h from current) - day
-                    1,   # 16:00 - day
-                    1,   # 17:00 - day
-                    1,   # 18:00 - day
-                    0,   # 19:00 - night
-                    0,   # 20:00 - night
-                    0,   # 21:00 - night
-                    0,   # 22:00 - night
-                    0,   # 23:00 - night
+                    0,  # 00:00 - night
+                    0,  # 01:00 - night
+                    0,  # 02:00 - night
+                    0,  # 03:00 - night
+                    0,  # 04:00 - night
+                    0,  # 05:00 - night
+                    1,  # 06:00 - day
+                    1,  # 07:00 - day
+                    1,  # 08:00 - day
+                    1,  # 09:00 - day
+                    1,  # 10:00 (current time) - day
+                    1,  # 11:00 - day
+                    1,  # 12:00 (+2h from current) - day
+                    1,  # 13:00 - day
+                    1,  # 14:00 - day
+                    1,  # 15:00 (+5h from current) - day
+                    1,  # 16:00 - day
+                    1,  # 17:00 - day
+                    1,  # 18:00 - day
+                    0,  # 19:00 - night
+                    0,  # 20:00 - night
+                    0,  # 21:00 - night
+                    0,  # 22:00 - night
+                    0,  # 23:00 - night
                 ]
                 + [1] * 24,  # Next day data (all day)
             },
@@ -283,7 +283,12 @@ class TestWeatherPlugin(unittest.TestCase):
             self.assertEqual(int(params.get("forecast_days")), 2)
             self.assertEqual(params.get("timezone"), "auto")
             hourly = params.get("hourly") or ""
-            for field in ("temperature_2m", "precipitation_probability", "weathercode", "is_day"):
+            for field in (
+                "temperature_2m",
+                "precipitation_probability",
+                "weathercode",
+                "is_day",
+            ):
                 self.assertIn(field, hourly)
         else:
             self.assertIn("latitude=40.7128", url)
@@ -291,19 +296,28 @@ class TestWeatherPlugin(unittest.TestCase):
             self.assertIn("longitude=-74.006", url)
             self.assertIn("forecast_days=2", url)
             self.assertIn("timezone=auto", url)
-            for field in ("temperature_2m", "precipitation_probability", "weathercode", "is_day"):
-                self.assertIn(f"hourly=", url)  # ensure param present
+            for field in (
+                "temperature_2m",
+                "precipitation_probability",
+                "weathercode",
+                "is_day",
+            ):
+                self.assertIn("hourly=", url)  # ensure param present
                 self.assertIn(field, url)
 
         # Verify timeout is set
         self.assertEqual(mock_get.call_args.kwargs.get("timeout"), 10)
 
         # Should contain current weather
-        self.assertIn(_normalize_emoji("Now: 🌤️ Mainly clear"), _normalize_emoji(forecast))
+        self.assertIn(
+            _normalize_emoji("Now: 🌤️ Mainly clear"), _normalize_emoji(forecast)
+        )
         self.assertIn("22.5°C", forecast)
 
         # Should contain 2h forecast (index 12: weathercode 63 = Moderate rain)
-        self.assertIn(_normalize_emoji("+2h: 🌧️ Moderate rain"), _normalize_emoji(forecast))
+        self.assertIn(
+            _normalize_emoji("+2h: 🌧️ Moderate rain"), _normalize_emoji(forecast)
+        )
         self.assertIn("21.0°C", forecast)
         self.assertIn("5%", forecast)
 
@@ -344,10 +358,14 @@ class TestWeatherPlugin(unittest.TestCase):
             },
             "hourly": {
                 "time": [f"2023-08-20T{h:02d}:00" for h in range(24)],
-                "temperature_2m": [10.0 + h for h in range(24)],  # 10.0, 11.0, 12.0, ...
+                "temperature_2m": [
+                    10.0 + h for h in range(24)
+                ],  # 10.0, 11.0, 12.0, ...
                 "precipitation_probability": [h * 2 for h in range(24)],  # 0, 2, 4, ...
                 "weathercode": [1] * 24,
-                "is_day": [0 if h < 6 or h > 18 else 1 for h in range(24)],  # Night before 6am and after 6pm
+                "is_day": [
+                    0 if h < 6 or h > 18 else 1 for h in range(24)
+                ],  # Night before 6am and after 6pm
             },
         }
 
@@ -361,8 +379,8 @@ class TestWeatherPlugin(unittest.TestCase):
         self.assertIn("15.0°C", forecast)  # Current temp
         self.assertIn("14.0°C", forecast)  # +2h temp
         self.assertIn("17.0°C", forecast)  # +5h temp
-        self.assertIn("8%", forecast)      # +2h precipitation
-        self.assertIn("14%", forecast)     # +5h precipitation
+        self.assertIn("8%", forecast)  # +2h precipitation
+        self.assertIn("14%", forecast)  # +5h precipitation
 
     @patch("requests.get")
     def test_generate_forecast_time_based_indexing_late_evening(self, mock_get):
@@ -381,7 +399,9 @@ class TestWeatherPlugin(unittest.TestCase):
                 "temperature_2m": [15.0 + (h % 12) for h in range(48)],  # Varying temps
                 "precipitation_probability": [h for h in range(48)],
                 "weathercode": [2] * 48,
-                "is_day": [0 if h % 24 < 6 or h % 24 > 18 else 1 for h in range(48)],  # Day/night cycle
+                "is_day": [
+                    0 if h % 24 < 6 or h % 24 > 18 else 1 for h in range(48)
+                ],  # Day/night cycle
             },
         }
 
@@ -395,8 +415,8 @@ class TestWeatherPlugin(unittest.TestCase):
         self.assertIn("25.0°C", forecast)  # Current temp (distinct from +5h)
         self.assertIn("15.0°C", forecast)  # +2h temp (next day)
         self.assertIn("18.0°C", forecast)  # +5h temp (next day)
-        self.assertIn("24%", forecast)     # +2h precipitation
-        self.assertIn("27%", forecast)     # +5h precipitation
+        self.assertIn("24%", forecast)  # +2h precipitation
+        self.assertIn("27%", forecast)  # +5h precipitation
 
     @patch("requests.get")
     def test_generate_forecast_bounds_checking(self, mock_get):
@@ -414,7 +434,9 @@ class TestWeatherPlugin(unittest.TestCase):
                 "temperature_2m": [20.0] * 23 + [25.0],
                 "precipitation_probability": [10] * 23 + [15],
                 "weathercode": [1] * 24,
-                "is_day": [0 if h < 6 or h > 18 else 1 for h in range(24)],  # Day/night cycle
+                "is_day": [
+                    0 if h < 6 or h > 18 else 1 for h in range(24)
+                ],  # Day/night cycle
             },
         }
 
@@ -426,9 +448,9 @@ class TestWeatherPlugin(unittest.TestCase):
         # +2h would be index 23 (valid)
         # +5h would be index 26 (invalid, should be clamped to 23)
         # Both +2h and +5h should be clamped to the last hour (index 23)
-        self.assertIn("20.0°C", forecast)   # Current temp remains 20.0°C
-        self.assertIn("25.0°C", forecast)   # Forecast temps use last hour
-        self.assertIn("15%", forecast)      # Forecast precip uses last hour
+        self.assertIn("20.0°C", forecast)  # Current temp remains 20.0°C
+        self.assertIn("25.0°C", forecast)  # Forecast temps use last hour
+        self.assertIn("15%", forecast)  # Forecast precip uses last hour
 
     @patch("requests.get")
     def test_generate_forecast_datetime_parsing_with_timezone(self, mock_get):
@@ -445,7 +467,9 @@ class TestWeatherPlugin(unittest.TestCase):
                 "temperature_2m": [25.0] * 24,
                 "precipitation_probability": [5] * 24,
                 "weathercode": [0] * 24,
-                "is_day": [0 if h < 6 or h > 18 else 1 for h in range(24)],  # Day/night cycle
+                "is_day": [
+                    0 if h < 6 or h > 18 else 1 for h in range(24)
+                ],  # Day/night cycle
             },
         }
 
@@ -471,7 +495,9 @@ class TestWeatherPlugin(unittest.TestCase):
                 "temperature_2m": [22.0] * 24,
                 "precipitation_probability": [8] * 24,
                 "weathercode": [2] * 24,
-                "is_day": [0 if h < 6 or h > 18 else 1 for h in range(24)],  # Day/night cycle
+                "is_day": [
+                    0 if h < 6 or h > 18 else 1 for h in range(24)
+                ],  # Day/night cycle
             },
         }
 
@@ -507,10 +533,14 @@ class TestWeatherPlugin(unittest.TestCase):
         forecast = self.plugin.generate_forecast(40.7128, -74.0060)
         self.assertIn("Now:", forecast)
         self.assertIn("20.0°C", forecast)  # Current temp
-        self.assertRegex(forecast, r"\b(2|2\.0)°C\b")  # +2h temp, tolerate formatter changes
-        self.assertRegex(forecast, r"\b(5|5\.0)°C\b")  # +5h temp, tolerate formatter changes
-        self.assertIn("2%", forecast)      # +2h precipitation
-        self.assertIn("5%", forecast)      # +5h precipitation
+        self.assertRegex(
+            forecast, r"\b(2|2\.0)°C\b"
+        )  # +2h temp, tolerate formatter changes
+        self.assertRegex(
+            forecast, r"\b(5|5\.0)°C\b"
+        )  # +5h temp, tolerate formatter changes
+        self.assertIn("2%", forecast)  # +2h precipitation
+        self.assertIn("5%", forecast)  # +5h precipitation
 
     @patch("requests.get")
     def test_generate_forecast_http_error(self, mock_get):
@@ -566,7 +596,9 @@ class TestWeatherPlugin(unittest.TestCase):
             "hourly": {
                 # Start timestamps at 12:00 instead of 00:00 to test anchoring
                 "time": [f"2023-08-20T{h:02d}:00" for h in range(12, 24)],
-                "temperature_2m": [15.0 + h for h in range(12)],  # 15.0, 16.0, 17.0, ...
+                "temperature_2m": [
+                    15.0 + h for h in range(12)
+                ],  # 15.0, 16.0, 17.0, ...
                 "precipitation_probability": [h * 3 for h in range(12)],  # 0, 3, 6, ...
                 "weathercode": [1] * 12,
                 "is_day": [1] * 12,
@@ -586,8 +618,8 @@ class TestWeatherPlugin(unittest.TestCase):
         self.assertIn("20.0°C", forecast)  # Current temp
         self.assertIn("19.0°C", forecast)  # +2h temp
         self.assertIn("22.0°C", forecast)  # +5h temp
-        self.assertIn("12%", forecast)     # +2h precipitation
-        self.assertIn("21%", forecast)     # +5h precipitation
+        self.assertIn("12%", forecast)  # +2h precipitation
+        self.assertIn("21%", forecast)  # +5h precipitation
 
     @patch("requests.get")
     def test_generate_forecast_night_weather_codes(self, mock_get):
@@ -771,8 +803,10 @@ class TestWeatherPlugin(unittest.TestCase):
             mock_client.sendText.assert_called_once()
             call_args = mock_client.sendText.call_args
             self.assertEqual(call_args.kwargs["destinationId"], "!12345678")
-            self.assertIn(_normalize_emoji("Now: 🌤️ Mainly clear"),
-                          _normalize_emoji(call_args.kwargs["text"]))
+            self.assertIn(
+                _normalize_emoji("Now: 🌤️ Mainly clear"),
+                _normalize_emoji(call_args.kwargs["text"]),
+            )
 
             # Should check if channel is enabled for direct message
             self.plugin.is_channel_enabled.assert_called_once_with(
@@ -881,8 +915,10 @@ class TestWeatherPlugin(unittest.TestCase):
             mock_client.sendText.assert_called_once()
             call_args = mock_client.sendText.call_args
             self.assertEqual(call_args.kwargs["channelIndex"], 1)
-            self.assertIn(_normalize_emoji("Now: 🌤️ Mainly clear"),
-                          _normalize_emoji(call_args.kwargs["text"]))
+            self.assertIn(
+                _normalize_emoji("Now: 🌤️ Mainly clear"),
+                _normalize_emoji(call_args.kwargs["text"]),
+            )
 
             # Should check if channel is enabled for broadcast
             self.plugin.is_channel_enabled.assert_called_once_with(
