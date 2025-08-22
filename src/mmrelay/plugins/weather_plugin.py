@@ -21,6 +21,27 @@ class Plugin(BasePlugin):
         return "Show weather forecast for a radio node using GPS location"
 
     def generate_forecast(self, latitude, longitude):
+        """
+        Generate a concise one-line weather forecast for the given GPS coordinates.
+        
+        Builds and queries the Open-Meteo API for current conditions and hour-aligned forecasts ~+2h and ~+5h, formats temperatures according to the plugin configuration (`self.config["units"]`, default "metric"), and returns a single-line summary including current conditions and the two forecast points.
+        
+        Parameters:
+            latitude (float): Latitude in decimal degrees.
+            longitude (float): Longitude in decimal degrees.
+        
+        Returns:
+            str: A single-line forecast such as
+                 "Now: ☀️ Clear sky - 12.3°C | +2h: 🌧️ Light rain - 13.1°C 20% | +5h: ⛅️ Partly cloudy - 10.8°C 5%".
+                 On recoverable failures returns a short error message: "Weather data temporarily unavailable.",
+                 "Error fetching weather data.", or "Error parsing weather data.".
+        
+        Notes:
+            - Temperature units are determined by `self.config.get("units", "metric")` ("metric" -> °C, "imperial" -> °F).
+            - The function attempts to anchor forecasts to hourly timestamps when available; if timestamps cannot be matched it falls back to hour-of-day indexing (may be less accurate).
+            - Network/HTTP errors and request-related exceptions are handled and result in the "Error fetching weather data." message.
+            - Malformed or incomplete API responses result in "Error parsing weather data." Unexpected exceptions are re-raised.
+        """
         units = self.config.get("units", "metric")  # Default to metric
         temperature_unit = "°C" if units == "metric" else "°F"
 
