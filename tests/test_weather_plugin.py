@@ -230,6 +230,8 @@ class TestWeatherPlugin(unittest.TestCase):
 
         # Should make API request with correct parameters
         mock_get.assert_called_once()
+        # Ensure HTTP errors would surface
+        mock_response.raise_for_status.assert_called_once()
         call_args = mock_get.call_args[0][0]
         self.assertIn("latitude=40.7128", call_args)
         self.assertIn(
@@ -320,7 +322,7 @@ class TestWeatherPlugin(unittest.TestCase):
         # Create weather data for late evening scenario
         late_evening_data = {
             "current_weather": {
-                "temperature": 18.0,
+                "temperature": 25.0,
                 "weathercode": 2,
                 "is_day": 0,
                 "time": "2023-08-20T22:00",  # 10:00 PM
@@ -345,7 +347,7 @@ class TestWeatherPlugin(unittest.TestCase):
         # Current time is 22:00 (index 22)
         # +2h forecast should be 24:00/00:00 next day (index 24): temp 15.0°C, precip 24%
         # +5h forecast should be 03:00 next day (index 27): temp 18.0°C, precip 27%
-        self.assertIn("18.0°C", forecast)  # Current temp
+        self.assertIn("25.0°C", forecast)  # Current temp (distinct from +5h)
         self.assertIn("15.0°C", forecast)  # +2h temp (next day)
         self.assertIn("18.0°C", forecast)  # +5h temp (next day)
         self.assertIn("24%", forecast)     # +2h precipitation
@@ -364,8 +366,8 @@ class TestWeatherPlugin(unittest.TestCase):
             },
             "hourly": {
                 "time": [f"2023-08-20T{h:02d}:00" for h in range(24)],  # Only 24 hours
-                "temperature_2m": [20.0] * 24,
-                "precipitation_probability": [10] * 24,
+                "temperature_2m": [20.0] * 23 + [25.0],
+                "precipitation_probability": [10] * 23 + [15],
                 "weathercode": [1] * 24,
                 "is_day": [0 if h < 6 or h > 18 else 1 for h in range(24)],  # Day/night cycle
             },
@@ -381,9 +383,10 @@ class TestWeatherPlugin(unittest.TestCase):
         # Current time is 21:00 (index 21)
         # +2h would be index 23 (valid)
         # +5h would be index 26 (invalid, should be clamped to 23)
-        # Both +2h and +5h should show the same data (index 23)
-        self.assertIn("20.0°C", forecast)  # All temps are 20.0°C
-        self.assertIn("10%", forecast)     # All precipitation is 10%
+        # Both +2h and +5h should be clamped to the last hour (index 23)
+        self.assertIn("20.0°C", forecast)   # Current temp remains 20.0°C
+        self.assertIn("25.0°C", forecast)   # Forecast temps use last hour
+        self.assertIn("15%", forecast)      # Forecast precip uses last hour
 
     @patch("requests.get")
     def test_generate_forecast_datetime_parsing_with_timezone(self, mock_get):
@@ -442,6 +445,52 @@ class TestWeatherPlugin(unittest.TestCase):
         forecast = self.plugin.generate_forecast(40.7128, -74.0060)
         self.assertIn("22.0°C", forecast)
         self.assertIn("⛅️ Partly cloudy", forecast)
+
+    @patch("requests.get")
+    def test_generate_forecast_invalid_time_defaults_to_zero(self, mock_get):
+        """Test that malformed timestamps default to hour=0 without raising exceptions."""
+        invalid_time_data = {
+            "current_weather": {
+                "temperature": 20.0,
+                "weathercode": 1,
+                "is_day": 1,
+                "time": "not-a-time",  # Invalid timestamp
+            },
+            "hourly": {
+                "time": [f"2023-08-20T{h:02d}:00" for h in range(24)],
+                "temperature_2m": [h for h in range(24)],  # 0, 1, 2, ...
+                "precipitation_probability": [h for h in range(24)],  # 0, 1, 2, ...
+                "weathercode": [1] * 24,
+                "is_day": [1] * 24,
+            },
+        }
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = invalid_time_data
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+
+        # Should not raise; falls back to hour=0 -> +2h index 2, +5h index 5
+        forecast = self.plugin.generate_forecast(40.7128, -74.0060)
+        self.assertIn("Now:", forecast)
+        self.assertIn("20.0°C", forecast)  # Current temp
+        self.assertIn("2°C", forecast)     # +2h temp (index 2)
+        self.assertIn("5°C", forecast)     # +5h temp (index 5)
+        self.assertIn("2%", forecast)      # +2h precipitation
+        self.assertIn("5%", forecast)      # +5h precipitation
+
+    @patch("requests.get")
+    def test_generate_forecast_http_error(self, mock_get):
+        """Test that HTTP errors are handled gracefully."""
+        import requests
+
+        mock_response = MagicMock()
+        mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError("500 Server Error")
+        mock_get.return_value = mock_response
+
+        forecast = self.plugin.generate_forecast(40.7128, -74.0060)
+        # HTTP errors are caught and handled gracefully
+        self.assertIn("Error", forecast)
 
     @patch("requests.get")
     def test_generate_forecast_timestamp_anchoring(self, mock_get):

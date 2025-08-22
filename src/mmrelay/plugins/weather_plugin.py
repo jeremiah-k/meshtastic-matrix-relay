@@ -42,6 +42,7 @@ class Plugin(BasePlugin):
 
             # Parse current time to get the hour with defensive handling
             current_hour = 0
+            current_time = None
             try:
                 current_time = datetime.fromisoformat(current_time_str.replace("Z", "+00:00"))
                 current_hour = current_time.hour
@@ -53,7 +54,7 @@ class Plugin(BasePlugin):
             # Try to anchor to hourly timestamps for robustness, fall back to hour-of-day
             base_index = current_hour
             hourly_times = data["hourly"].get("time", [])
-            if hourly_times:
+            if hourly_times and current_time:
                 try:
                     # Normalize current time to the hour and find it in hourly timestamps
                     base_key = current_time.replace(minute=0, second=0, microsecond=0).strftime("%Y-%m-%dT%H:00")
@@ -65,12 +66,10 @@ class Plugin(BasePlugin):
             forecast_2h_index = base_index + 2
             forecast_5h_index = base_index + 5
 
-            # Ensure indices don't exceed array bounds (24 hours in a day)
+            # Clamp indices to the available dataset length
             max_index = len(data["hourly"]["temperature_2m"]) - 1
-            if forecast_2h_index > max_index:
-                forecast_2h_index = max_index
-            if forecast_5h_index > max_index:
-                forecast_5h_index = max_index
+            forecast_2h_index = min(forecast_2h_index, max_index)
+            forecast_5h_index = min(forecast_5h_index, max_index)
 
             forecast_2h_temp = data["hourly"]["temperature_2m"][forecast_2h_index]
             forecast_2h_precipitation = data["hourly"]["precipitation_probability"][
@@ -150,12 +149,18 @@ class Plugin(BasePlugin):
 
             return forecast
 
-        except requests.exceptions.RequestException as e:
-            self.logger.error(f"Error fetching weather data: {e}")
-            return "Error fetching weather data."
-        except (KeyError, TypeError, ValueError) as e:
-            self.logger.error(f"Malformed weather data: {e}")
-            return "Error parsing weather data."
+        except Exception as e:
+            # Handle both HTTP errors and data parsing errors
+            error_type = str(type(e))
+            error_msg = str(e)
+            if ("HTTPError" in error_type or "RequestException" in error_type or
+                "ConnectionError" in error_type or "Timeout" in error_type or
+                "HTTP" in error_msg or "requests" in error_type.lower()):
+                self.logger.error(f"Error fetching weather data: {e}")
+                return "Error fetching weather data."
+            else:
+                self.logger.error(f"Malformed weather data: {e}")
+                return "Error parsing weather data."
 
     async def handle_meshtastic_message(
         self, packet, formatted_message, longname, meshnet_name
