@@ -8,6 +8,8 @@ from mmrelay.constants.formats import TEXT_MESSAGE_APP
 from mmrelay.plugins.base_plugin import BasePlugin
 
 
+
+
 class Plugin(BasePlugin):
     plugin_name = "weather"
 
@@ -60,7 +62,10 @@ class Plugin(BasePlugin):
                     base_index = hourly_times.index(base_key)
                 except (ValueError, AttributeError):
                     # Fall back to hour-of-day if hourly timestamps are unavailable/mismatched
-                    base_index = current_hour
+                    self.logger.warning(
+                        "Could not find current time in hourly timestamps. "
+                        "Falling back to hour-of-day indexing, which may be inaccurate."
+                    )
 
             forecast_2h_index = base_index + 2
             forecast_5h_index = base_index + 5
@@ -154,7 +159,13 @@ class Plugin(BasePlugin):
 
         except Exception as e:
             # Handle HTTP/network errors from requests
-            if 'requests' in str(type(e).__module__) or 'HTTPError' in str(type(e).__name__):
+            # Use robust detection that works across different environments
+            exception_type = type(e)
+            exception_module = getattr(exception_type, '__module__', '')
+            exception_name = getattr(exception_type, '__name__', '')
+
+            if ('requests' in exception_module and
+                ('Exception' in exception_name or 'Error' in exception_name)):
                 self.logger.error(f"Error fetching weather data: {e}")
                 return "Error fetching weather data."
             # Handle data parsing errors

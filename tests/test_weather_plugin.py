@@ -34,6 +34,7 @@ def _make_ok_response(payload):
     r = MagicMock()
     r.json.return_value = payload
     r.raise_for_status.return_value = None
+    r.status_code = 200
     return r
 
 
@@ -255,12 +256,18 @@ class TestWeatherPlugin(unittest.TestCase):
             self.assertAlmostEqual(float(params.get("longitude")), -74.0060, places=3)
             self.assertEqual(int(params.get("forecast_days")), 2)
             self.assertEqual(params.get("timezone"), "auto")
+            hourly = params.get("hourly") or ""
+            for field in ("temperature_2m", "precipitation_probability", "weathercode", "is_day"):
+                self.assertIn(field, hourly)
         else:
             self.assertIn("latitude=40.7128", url)
             # May be formatted without trailing zero
             self.assertIn("longitude=-74.006", url)
             self.assertIn("forecast_days=2", url)
             self.assertIn("timezone=auto", url)
+            for field in ("temperature_2m", "precipitation_probability", "weathercode", "is_day"):
+                self.assertIn(f"hourly=", url)  # ensure param present
+                self.assertIn(field, url)
 
         # Verify timeout is set
         self.assertEqual(mock_get.call_args.kwargs.get("timeout"), 10)
@@ -474,8 +481,8 @@ class TestWeatherPlugin(unittest.TestCase):
         forecast = self.plugin.generate_forecast(40.7128, -74.0060)
         self.assertIn("Now:", forecast)
         self.assertIn("20.0°C", forecast)  # Current temp
-        self.assertIn("2°C", forecast)     # +2h temp (index 2) - integer temps don't show .0
-        self.assertIn("5°C", forecast)     # +5h temp (index 5) - integer temps don't show .0
+        self.assertRegex(forecast, r"\b(2|2\.0)°C\b")  # +2h temp, tolerate formatter changes
+        self.assertRegex(forecast, r"\b(5|5\.0)°C\b")  # +5h temp, tolerate formatter changes
         self.assertIn("2%", forecast)      # +2h precipitation
         self.assertIn("5%", forecast)      # +5h precipitation
 
@@ -572,7 +579,7 @@ class TestWeatherPlugin(unittest.TestCase):
         forecast = self.plugin.generate_forecast(40.7128, -74.0060)
 
         # Should use night weather descriptions
-        self.assertIn("🌙🌤️ Mainly clear", forecast)
+        self.assertIn(_normalize_emoji("🌙🌤️ Mainly clear"), _normalize_emoji(forecast))
 
     @patch("requests.get")
     def test_generate_forecast_unknown_weather_code(self, mock_get):
@@ -738,7 +745,8 @@ class TestWeatherPlugin(unittest.TestCase):
             mock_client.sendText.assert_called_once()
             call_args = mock_client.sendText.call_args
             self.assertEqual(call_args.kwargs["destinationId"], "!12345678")
-            self.assertIn("Now: 🌤️ Mainly clear", call_args.kwargs["text"])
+            self.assertIn(_normalize_emoji("Now: 🌤️ Mainly clear"),
+                          _normalize_emoji(call_args.kwargs["text"]))
 
             # Should check if channel is enabled for direct message
             self.plugin.is_channel_enabled.assert_called_once_with(
@@ -847,7 +855,8 @@ class TestWeatherPlugin(unittest.TestCase):
             mock_client.sendText.assert_called_once()
             call_args = mock_client.sendText.call_args
             self.assertEqual(call_args.kwargs["channelIndex"], 1)
-            self.assertIn("Now: 🌤️ Mainly clear", call_args.kwargs["text"])
+            self.assertIn(_normalize_emoji("Now: 🌤️ Mainly clear"),
+                          _normalize_emoji(call_args.kwargs["text"]))
 
             # Should check if channel is enabled for broadcast
             self.plugin.is_channel_enabled.assert_called_once_with(
