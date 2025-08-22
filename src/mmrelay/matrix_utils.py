@@ -594,7 +594,7 @@ async def connect_matrix(passed_config=None):
         e2ee_device_id = credentials.get("device_id")
 
         # Log consolidated credentials info
-        logger.info(f"Using Matrix credentials (device: {e2ee_device_id})")
+        logger.debug(f"Using Matrix credentials (device: {e2ee_device_id})")
 
         # If device_id is missing, warn but proceed; we'll learn and persist it after restore_login().
         if not isinstance(e2ee_device_id, str) or not e2ee_device_id.strip():
@@ -740,7 +740,7 @@ async def connect_matrix(passed_config=None):
                         from nio.crypto import OlmDevice  # noqa: F401
                         from nio.store import SqliteStore  # noqa: F401
 
-                        logger.info("All E2EE dependencies are available")
+                        logger.debug("All E2EE dependencies are available")
                     except ImportError as e:
                         logger.error(f"Missing E2EE dependency: {e}")
                         logger.error(
@@ -784,7 +784,7 @@ async def connect_matrix(passed_config=None):
                     )
                     db_files = [f for f in store_files if f.endswith(".db")]
                     if db_files:
-                        logger.info(
+                        logger.debug(
                             f"Found existing E2EE store files: {', '.join(db_files)}"
                         )
                     else:
@@ -792,7 +792,7 @@ async def connect_matrix(passed_config=None):
                             "No existing E2EE store files found. Encryption may not work correctly."
                         )
 
-                    logger.info(f"Using E2EE store path: {e2ee_store_path}")
+                    logger.debug(f"Using E2EE store path: {e2ee_store_path}")
 
                     # If device_id is not present in credentials, we can attempt to learn it later.
                     if not e2ee_device_id:
@@ -870,14 +870,14 @@ async def connect_matrix(passed_config=None):
                 await matrix_client.keys_upload()
                 logger.info("Encryption keys uploaded successfully")
             else:
-                logger.info("No key upload needed - keys already present")
+                logger.debug("No key upload needed - keys already present")
         except Exception as e:
             logger.error(f"Failed to upload E2EE keys: {e}")
             # E2EE might still work, so we don't disable it here
             logger.error("Consider regenerating credentials with: mmrelay auth login")
 
     # Perform initial sync to populate rooms (needed for message delivery)
-    logger.info("Performing initial sync to initialize rooms...")
+    logger.debug("Performing initial sync to initialize rooms...")
     try:
         # A full_state=True sync is required to get room encryption state
         sync_response = await asyncio.wait_for(
@@ -1083,7 +1083,7 @@ async def login_matrix_bot(
         # Get the E2EE store path
         store_path = get_e2ee_store_dir()
         os.makedirs(store_path, exist_ok=True)
-        logger.info(f"Using E2EE store path: {store_path}")
+        logger.debug(f"Using E2EE store path: {store_path}")
 
         # Create client config for E2EE
         client_config = AsyncClientConfig(
