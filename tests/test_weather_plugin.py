@@ -995,6 +995,103 @@ class TestWeatherPlugin(unittest.TestCase):
 
         asyncio.run(run_test())
 
+    def test_generate_forecast_timestamp_fallback_warning(self):
+        """Test that warning is logged when current time can't be found in hourly timestamps."""
+        # Mock response with hourly data that doesn't include current time
+        mock_response_data = {
+            "current_weather": {
+                "temperature": 15.0,
+                "weathercode": 0,
+                "is_day": 1,
+                "time": "2023-10-15T14:00",  # Current time
+            },
+            "hourly": {
+                "time": [
+                    "2023-10-15T10:00",  # Missing 14:00 timestamp
+                    "2023-10-15T11:00",
+                    "2023-10-15T12:00",
+                    "2023-10-15T13:00",
+                    "2023-10-15T15:00",  # Skip 14:00
+                    "2023-10-15T16:00",
+                    "2023-10-15T17:00",
+                    "2023-10-15T18:00",
+                    "2023-10-15T19:00",
+                ],
+                "temperature_2m": [10.0, 11.0, 12.0, 13.0, 15.0, 16.0, 17.0, 18.0, 19.0],
+                "precipitation_probability": [0, 5, 10, 15, 20, 25, 30, 35, 40],
+                "weathercode": [0, 1, 2, 3, 0, 1, 2, 3, 0],
+                "is_day": [1, 1, 1, 1, 1, 1, 1, 0, 0],
+            },
+        }
+
+        with patch("requests.get") as mock_get:
+            mock_get.return_value = _make_ok_response(mock_response_data)
+
+            # Mock logger to capture warning
+            with patch.object(self.plugin, 'logger') as mock_logger:
+                result = self.plugin.generate_forecast(40.7128, -74.0060)
+
+                # Should still return a forecast (using fallback indexing)
+                self.assertIn("Now:", result)
+                self.assertIn("+2h:", result)
+                self.assertIn("+5h:", result)
+
+                # Should log warning about timestamp fallback
+                mock_logger.warning.assert_called_once_with(
+                    "Could not find current time in hourly timestamps. "
+                    "Falling back to hour-of-day indexing, which may be inaccurate."
+                )
+
+    def test_generate_forecast_unexpected_exception_reraise(self):
+        """Test that unexpected exceptions are re-raised."""
+        with patch("requests.get") as mock_get:
+            # Simulate an unexpected exception (not requests-related or data parsing)
+            mock_get.side_effect = RuntimeError("Unexpected error")
+
+            # Should re-raise the exception
+            with self.assertRaises(RuntimeError):
+                self.plugin.generate_forecast(40.7128, -74.0060)
+
+    def test_handle_meshtastic_message_broadcast_message_detection(self):
+        """Test that broadcast messages are properly detected."""
+        from meshtastic.mesh_interface import BROADCAST_NUM
+
+        async def run_test():
+            # Mock packet for broadcast message
+            packet = {
+                "decoded": {
+                    "portnum": "TEXT_MESSAGE_APP",
+                    "text": "!weather",  # Use "text" not "payload"
+                },
+                "from": 123456789,
+                "to": BROADCAST_NUM,  # Broadcast message
+                "channel": 0,
+            }
+
+            # Mock the plugin methods and meshtastic connection
+            self.plugin.is_channel_enabled = MagicMock(return_value=True)
+            self.plugin.get_node_location = MagicMock(return_value=(40.7128, -74.0060))
+            self.plugin.generate_forecast = MagicMock(return_value="Test forecast")
+            self.plugin.send_message = MagicMock()
+
+            # Mock the meshtastic connection
+            mock_client = MagicMock()
+            mock_client.myInfo.my_node_num = 987654321  # Different from sender
+
+            with patch("mmrelay.meshtastic_utils.connect_meshtastic", return_value=mock_client):
+                # Call the method
+                await self.plugin.handle_meshtastic_message(
+                    packet, "!weather", "TestNode", "TestMesh"
+                )
+
+                # Should check if channel is enabled for broadcast (is_direct_message=False)
+                self.plugin.is_channel_enabled.assert_called_once_with(
+                    0, is_direct_message=False
+                )
+
+        import asyncio
+        asyncio.run(run_test())
+
 
 if __name__ == "__main__":
     unittest.main()
