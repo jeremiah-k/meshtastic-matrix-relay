@@ -5,7 +5,6 @@ It uses Meshtastic-python and Matrix nio client library to interface with the ra
 
 import asyncio
 import concurrent.futures
-import logging
 import signal
 import sys
 
@@ -53,20 +52,22 @@ from mmrelay.plugin_loader import load_plugins
 # Initialize logger
 logger = get_logger(name=APP_DISPLAY_NAME)
 
-# Set the logging level for 'nio' to ERROR to suppress warnings
-logging.getLogger("nio").setLevel(logging.ERROR)
-
 
 # Flag to track if banner has been printed
 _banner_printed = False
 
 
 def print_banner():
-    """Print a simple startup message with version information."""
+    """
+    Log the MMRelay startup banner with version information once.
+
+    This records an informational message "Starting MMRelay version <version>" via the module logger
+    the first time it is called and sets a module-level flag to prevent subsequent prints.
+    """
     global _banner_printed
     # Only print the banner once
     if not _banner_printed:
-        logger.info(f"Starting MMRelay v{__version__}")
+        logger.info(f"Starting MMRelay version {__version__}")
         _banner_printed = True
 
 
@@ -122,6 +123,13 @@ async def main(config):
 
     # Connect to Matrix
     matrix_client = await connect_matrix(passed_config=config)
+
+    # Check if Matrix connection was successful
+    if matrix_client is None:
+        # The error is logged by connect_matrix, so we can just raise here.
+        raise ConnectionError(
+            "Failed to connect to Matrix. Cannot continue without Matrix client."
+        )
 
     # Join the rooms specified in the config.yaml
     for room in matrix_rooms:

@@ -46,6 +46,7 @@ setup(
         "matplotlib==3.10.1",
         "requests==2.32.4",
         "markdown==3.8.2",
+        "bleach==6.2.0",
         "haversine==2.9.0",
         "schedule==1.2.2",
         "platformdirs==4.3.8",

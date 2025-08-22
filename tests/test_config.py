@@ -511,9 +511,9 @@ class TestMeshtasticEnvironmentVariables(unittest.TestCase):
 
     def tearDown(self):
         """
-        Remove any environment variables listed in self.env_vars from the process environment.
-        
-        This is intended for use as a unittest tearDown helper; it iterates over self.env_vars and deletes each entry from os.environ if present.
+        Clear environment variables named in self.env_vars from the process environment.
+
+        This teardown helper removes each variable listed in self.env_vars from os.environ if present, ensuring test isolation by reverting any environment changes made during a test. It mutates the process environment and returns None.
         """
         for var in self.env_vars:
             if var in os.environ:
@@ -606,9 +606,9 @@ class TestLoggingEnvironmentVariables(unittest.TestCase):
 
     def setUp(self):
         """
-        Prepare test environment by removing MMRELAY_LOGGING_LEVEL and MMRELAY_LOG_FILE from os.environ.
-        
-        Executed before each test to ensure logging-related environment variables do not affect test outcomes.
+        Clear logging-related environment variables before each test.
+
+        Executed before each test case; removes MMRELAY_LOGGING_LEVEL and MMRELAY_LOG_FILE from os.environ to ensure tests run without influence from external logging configuration.
         """
         self.env_vars = ["MMRELAY_LOGGING_LEVEL", "MMRELAY_LOG_FILE"]
         for var in self.env_vars:
@@ -617,9 +617,9 @@ class TestLoggingEnvironmentVariables(unittest.TestCase):
 
     def tearDown(self):
         """
-        Remove any environment variables listed in self.env_vars from the process environment.
-        
-        This is intended for use as a unittest tearDown helper; it iterates over self.env_vars and deletes each entry from os.environ if present.
+        Clear environment variables named in self.env_vars from the process environment.
+
+        This teardown helper removes each variable listed in self.env_vars from os.environ if present, ensuring test isolation by reverting any environment changes made during a test. It mutates the process environment and returns None.
         """
         for var in self.env_vars:
             if var in os.environ:
@@ -706,7 +706,7 @@ class TestEnvironmentVariableIntegration(unittest.TestCase):
     def tearDown(self):
         """
         Remove any environment variables listed in self.all_env_vars.
-        
+
         Iterates over self.all_env_vars and deletes each key from os.environ if present.
         Used in test teardown to ensure environment state is cleared between tests.
         """

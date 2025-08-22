@@ -153,6 +153,25 @@ def parse_arguments():
         description="Display current Matrix authentication status",
     )
 
+    logout_parser = auth_subparsers.add_parser(
+        "logout",
+        help="Log out and clear all sessions",
+        description="Clear all Matrix authentication data and E2EE store",
+    )
+    logout_parser.add_argument(
+        "--password",
+        nargs="?",
+        const="",
+        help="Password for verification. If no value provided, will prompt securely.",
+        type=str,
+    )
+    logout_parser.add_argument(
+        "-y",
+        "--yes",
+        action="store_true",
+        help="Do not prompt for confirmation (useful for non-interactive environments)",
+    )
+
     # SERVICE group
     service_parser = subparsers.add_parser(
         "service",
@@ -191,7 +210,7 @@ def print_version():
     """
     Print the version in a simple format.
     """
-    print(f"MMRelay v{__version__}")
+    print(f"MMRelay version {__version__}")
 
 
 def _validate_e2ee_dependencies():
@@ -1050,20 +1069,28 @@ def handle_config_command(args):
 
 def handle_auth_command(args):
     """
-    Dispatches the "auth" CLI subcommand to the appropriate handler.
+    Dispatch the "auth" CLI subcommand to the appropriate handler.
 
-    If args.auth_command == "status" this calls handle_auth_status(args); otherwise it calls handle_auth_login(args). Returns the chosen handler's exit code (0 on success, non-zero on failure).
+    If args.auth_command is "status" calls handle_auth_status; if "logout" calls handle_auth_logout;
+    any other value (or missing attribute) defaults to handle_auth_login.
 
     Parameters:
-        args (argparse.Namespace): Parsed CLI arguments; expected to have an `auth_command` attribute indicating the subcommand (e.g., "login" or "status").
+        args (argparse.Namespace): Parsed CLI arguments. Expected to optionally provide `auth_command`
+            with one of "login", "status", or "logout".
 
     Returns:
-        int: Exit code from the invoked subcommand handler (0 = success).
+        int: Exit code from the invoked handler (0 = success, non-zero = failure).
     """
-    if hasattr(args, "auth_command") and args.auth_command == "status":
-        return handle_auth_status(args)
+    if hasattr(args, "auth_command"):
+        if args.auth_command == "status":
+            return handle_auth_status(args)
+        elif args.auth_command == "logout":
+            return handle_auth_logout(args)
+        else:
+            # Default to login for auth login command
+            return handle_auth_login(args)
     else:
-        # Default to login for both legacy --auth and new auth login
+        # Default to login for legacy --auth
         return handle_auth_login(args)
 
 
@@ -1098,15 +1125,15 @@ def handle_auth_login(args):
 
 def handle_auth_status(args):
     """
-    Show Matrix authentication (credentials.json) status.
+    Show Matrix authentication status by locating and reading a credentials.json file.
 
-    Searches candidate config directories (derived from the provided parsed-arguments namespace) for a credentials.json file and prints its path and key fields (homeserver, user_id, device_id) if found.
+    Searches candidate config directories derived from the provided parsed-arguments namespace for a credentials.json file. If found and readable, prints the file path and the homeserver, user_id, and device_id values. If the file is unreadable or not found, prints guidance to run the authentication flow.
 
     Parameters:
-        args (argparse.Namespace): Parsed CLI arguments used to determine config search paths.
+        args (argparse.Namespace): Parsed CLI arguments used to determine the list of config paths to search.
 
     Returns:
-        int: Exit code (0 if credentials.json was found and readable; 1 otherwise).
+        int: Exit code — 0 if a readable credentials.json was found, 1 otherwise.
     """
     import json
     import os
@@ -1140,15 +1167,74 @@ def handle_auth_status(args):
     return 1
 
 
-def handle_service_command(args):
+def handle_auth_logout(args):
     """
-    Handle the "service" CLI subcommands (currently: "install").
+    Log out the bot from Matrix and remove local session artifacts.
+
+    Prompts for a verification password (unless provided via args.password), warns if the password was supplied on the command line, asks for confirmation unless args.yes is True, and then performs the logout by calling the logout_matrix_bot routine. On success the function returns 0; on failure or cancellation it returns 1. KeyboardInterrupt is treated as a cancellation and returns 1.
 
     Parameters:
-        args (argparse.Namespace): Parsed CLI arguments; expected to have `service_command` set to the subcommand name.
+        args (argparse.Namespace): CLI arguments. Relevant attributes:
+            password (str | None): If provided and non-empty, used as the verification password.
+                If provided as an empty string or omitted, the function will prompt securely.
+            yes (bool): If True, skip the interactive confirmation prompt.
+    """
+    import asyncio
 
-    Returns:
-        int: Exit code (0 on success, non-zero on failure).
+    from mmrelay.cli_utils import logout_matrix_bot
+
+    # Show header
+    print("Matrix Bot Logout")
+    print("=================")
+    print()
+    print("This will log out from Matrix and clear all local session data:")
+    print("• Remove credentials.json")
+    print("• Clear E2EE encryption store")
+    print("• Invalidate Matrix access token")
+    print()
+
+    try:
+        # Handle password input
+        password = getattr(args, "password", None)
+
+        if password is None or password == "":
+            # No --password flag or --password with no value, prompt securely
+            import getpass
+
+            password = getpass.getpass("Enter Matrix password for verification: ")
+        else:
+            # --password VALUE provided, warn about security
+            print(
+                "⚠️  Warning: Supplying password as argument exposes it in shell history and process list."
+            )
+            print(
+                "   For better security, use --password without a value to prompt securely."
+            )
+
+        # Confirm the action unless forced
+        if not getattr(args, "yes", False):
+            confirm = input("Are you sure you want to logout? (y/N): ").lower().strip()
+            if not confirm.startswith("y"):
+                print("Logout cancelled.")
+                return 0
+
+        # Run the logout process
+        result = asyncio.run(logout_matrix_bot(password=password))
+        return 0 if result else 1
+    except KeyboardInterrupt:
+        print("\nLogout cancelled by user.")
+        return 1
+    except Exception as e:
+        print(f"\nError during logout: {e}")
+        return 1
+
+
+def handle_service_command(args):
+    """
+    Handle service-related CLI subcommands.
+
+    Currently supports the "install" subcommand which attempts to import and run mmrelay.setup_utils.install_service.
+    Returns 0 on success, 1 on failure or for unknown subcommands. Prints an error message if setup utilities cannot be imported.
     """
     if args.service_command == "install":
         try:
@@ -1221,12 +1307,12 @@ def handle_cli_commands(args):
 def generate_sample_config():
     """
     Generate a sample configuration file at the highest-priority config path if no config already exists.
-    
+
     If an existing config file is found in any candidate path (from get_config_paths()), this function aborts and prints its location. Otherwise it creates a sample config at the first candidate path. Sources tried, in order, are:
     - the path returned by get_sample_config_path(),
     - the packaged resource mmrelay.tools:sample_config.yaml via importlib.resources,
     - a set of fallback filesystem locations relative to the package and current working directory.
-    
+
     On success the sample is written to disk and (on Unix-like systems) secure file permissions are applied (owner read/write, 0o600). Returns True when a sample config is successfully generated and False on any error or if a config already exists.
     """
 

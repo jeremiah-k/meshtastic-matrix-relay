@@ -207,14 +207,25 @@ class TestMatrixUtilsEdgeCases(unittest.TestCase):
         asyncio.run(run_test())
 
     @patch("mmrelay.matrix_utils.logger")
-    @patch("ssl.create_default_context")
-    def test_connect_matrix_ssl_context_failure(self, mock_ssl_context, mock_logger):
+    @patch("mmrelay.matrix_utils.AsyncClient")
+    @patch("mmrelay.matrix_utils._create_ssl_context")
+    def test_connect_matrix_ssl_context_failure(
+        self, mock_ssl_context, mock_async_client, mock_logger
+    ):
         """
-        Test that connect_matrix raises an exception when SSL context creation fails.
+        Test that connect_matrix handles SSL context creation failures gracefully.
 
-        Simulates an SSL context creation failure and verifies that connect_matrix raises a connection-related exception.
+        Simulates an SSL context creation failure and verifies that connect_matrix continues
+        with None SSL context and logs appropriate warnings.
         """
-        mock_ssl_context.side_effect = Exception("SSL context creation failed")
+        mock_ssl_context.return_value = None  # Simulate SSL context creation failure
+
+        # Mock AsyncClient to prevent MagicMock await issues
+        mock_client = AsyncMock()
+        mock_client.sync = AsyncMock(return_value=MagicMock())
+        # Mock rooms as a regular dict to prevent AsyncMock issues
+        mock_client.rooms = {}
+        mock_async_client.return_value = mock_client
 
         config = {
             "matrix": {
@@ -226,12 +237,15 @@ class TestMatrixUtilsEdgeCases(unittest.TestCase):
         }
 
         async def run_test():
-            # This should raise an exception due to SSL context failure
+            # This should handle SSL context failure gracefully and return a client
             """
-            Asynchronously runs a test to verify that connect_matrix raises an exception when SSL context creation fails.
+            Asynchronously runs a test to verify that connect_matrix handles SSL context creation failures gracefully.
             """
-            with self.assertRaises((ConnectionError, OSError, ValueError)):
-                await connect_matrix(config)
+            result = await connect_matrix(config)
+            # Should return a client despite SSL context failure
+            self.assertIsNotNone(result)
+            # Should log warning about SSL context failure
+            mock_logger.warning.assert_called()
 
         asyncio.run(run_test())
 

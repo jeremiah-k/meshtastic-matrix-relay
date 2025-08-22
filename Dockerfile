@@ -1,5 +1,5 @@
 # Build stage
-FROM python:3.11-slim AS builder
+FROM python:3.11-slim-bookworm AS builder
 
 # Install build dependencies with pinned versions
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -13,16 +13,18 @@ WORKDIR /app
 RUN pip install --no-cache-dir --upgrade pip==25.1.1 setuptools==80.9.0 wheel==0.45.1
 
 # Copy source files
-COPY requirements.txt setup.py ./
+COPY requirements.txt requirements-e2e.txt setup.py ./
 COPY README.md ./
 COPY src/ ./src/
 
-# Install dependencies and application package
-RUN pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir --no-deps .
+# Install dependencies and application package with E2EE support
+# Split into separate commands to improve reliability and caching
+RUN pip install --no-cache-dir --timeout=300 --retries=3 -r requirements.txt
+RUN pip install --no-cache-dir --timeout=300 --retries=3 -r requirements-e2e.txt
+RUN pip install --no-cache-dir --no-deps .
 
 # Runtime stage
-FROM python:3.11-slim
+FROM python:3.11-slim-bookworm
 
 # Create non-root user for security
 RUN groupadd --gid 1000 mmrelay && \

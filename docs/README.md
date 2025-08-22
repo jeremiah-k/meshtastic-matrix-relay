@@ -4,7 +4,7 @@ Welcome to the MMRelay documentation! This directory contains comprehensive guid
 
 ## Getting Started
 
-- **[Installation Guide](INSTRUCTIONS.md)** - Complete setup instructions for MMRelay v1.2+
+- **[Installation Guide](INSTRUCTIONS.md)** - Complete setup instructions for MMRelay
 - **[E2EE Guide](E2EE.md)** - Matrix End-to-End Encryption setup and usage
 - **[Docker Guide](DOCKER.md)** - Docker deployment and configuration
 
@@ -12,36 +12,7 @@ Welcome to the MMRelay documentation! This directory contains comprehensive guid
 
 - **[Extra Configuration](EXTRA_CONFIGURATION.md)** - Advanced features like message prefixes, debug logging, and plugins
 
-## Developer Documentation
-
-- **[Constants Reference](dev/CONSTANTS.md)** - Internal configuration constants and values
-- **[E2EE Implementation Notes](dev/E2EE_IMPLEMENTATION_NOTES.md)** - Technical details of E2EE implementation
-
-## Quick Reference
-
-### New in v1.2
-
-- **Full Matrix E2EE Support** - Secure communication in encrypted rooms
-- **`auth login` Command** - Simplified authentication setup for E2EE
-- **Automatic Encryption** - Seamless handling of encrypted/unencrypted rooms
-
-### Essential Commands
-
-```bash
-# Generate configuration file
-mmrelay config generate
-
-# Set up Matrix authentication (recommended for E2EE and convenience)
-mmrelay auth login
-
-# Validate configuration
-mmrelay config check
-
-# Start MMRelay
-mmrelay
-```
-
-### File Locations
+## File Locations
 
 | File          | Purpose               | Location                      |
 | ------------- | --------------------- | ----------------------------- |
@@ -49,6 +20,11 @@ mmrelay
 | Credentials   | Matrix authentication | `~/.mmrelay/credentials.json` |
 | E2EE Store    | Encryption keys       | `~/.mmrelay/store/`           |
 | Logs          | Application logs      | `~/.mmrelay/logs/`            |
+
+## Developer Documentation
+
+- **[Constants Reference](dev/CONSTANTS.md)** - Internal configuration constants and values
+- **[E2EE Implementation Notes](dev/E2EE_IMPLEMENTATION_NOTES.md)** - Technical details of E2EE implementation
 
 ## Documentation Structure
 
@@ -75,6 +51,6 @@ docs/
 ## Version Information
 
 - **Current Version**: v1.2+
-- **Python Requirement**: 3.9+
+- **Python Requirement**: 3.10+
 - **Supported Platforms**: Linux, macOS, Windows (E2EE not available on Windows)
 - **Key Features**: Meshtastic ↔ Matrix relay, E2EE support, Docker deployment, Plugin system

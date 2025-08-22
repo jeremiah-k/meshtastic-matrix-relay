@@ -164,14 +164,24 @@ def get_room_encryption_warnings(
     rooms: Dict[str, Any], e2ee_status: Dict[str, Any]
 ) -> List[str]:
     """
-    Generate warnings for encrypted rooms when E2EE is not properly configured.
+    Return user-facing warnings for encrypted rooms when E2EE is not fully ready.
 
-    Args:
-        rooms: Dictionary of Matrix rooms
-        e2ee_status: E2EE status from get_e2ee_status()
+    If the provided E2EE status has overall_status == "ready", returns an empty list.
+    Scans the given rooms mapping for items whose `encrypted` attribute is truthy and
+    produces one or two warning lines per situation:
+    - A line noting how many encrypted rooms were detected and the reason (platform unsupported,
+      disabled, or incomplete).
+    - A follow-up line indicating whether messages to those rooms will be blocked or may be blocked.
+
+    Parameters:
+        rooms: Mapping of room_id -> room object. Room objects are expected to expose
+            an `encrypted` attribute and optionally a `display_name` attribute; room_id is
+            used as a fallback name.
+        e2ee_status: E2EE status dictionary as returned by get_e2ee_status(); this function
+            reads the `overall_status` key to decide warning text.
 
     Returns:
-        List of warning messages for problematic rooms
+        List[str]: Formatted warning lines (empty if no relevant warnings).
     """
     warnings = []
 
@@ -181,6 +191,11 @@ def get_room_encryption_warnings(
 
     # Check for encrypted rooms
     encrypted_rooms = []
+
+    # Handle invalid rooms input
+    if not rooms or not hasattr(rooms, "items"):
+        return warnings
+
     for room_id, room in rooms.items():
         if getattr(room, "encrypted", False):
             room_name = getattr(room, "display_name", room_id)
@@ -228,6 +243,10 @@ def format_room_list(rooms: Dict[str, Any], e2ee_status: Dict[str, Any]) -> List
         List[str]: One formatted line per room suitable for user display.
     """
     room_lines = []
+
+    # Handle invalid rooms input
+    if not rooms or not hasattr(rooms, "items"):
+        return room_lines
 
     for room_id, room in rooms.items():
         room_name = getattr(room, "display_name", room_id)
@@ -323,16 +342,21 @@ def get_e2ee_error_message(e2ee_status: Dict[str, Any]) -> str:
 def get_e2ee_fix_instructions(e2ee_status: Dict[str, Any]) -> List[str]:
     """
     Return ordered, user-facing instructions to resolve E2EE setup problems.
-    
-    When E2EE is already ready, returns a single confirmation line. If the platform is unsupported, returns platform-specific guidance and stops. Otherwise returns a numbered sequence of actionable steps (when applicable) to: install required E2EE dependencies, provision Matrix credentials, enable E2EE in the configuration file, and finally verify the configuration. Each step may include indented command or configuration snippets.
-    
+
+    If E2EE is already ready, returns a single confirmation line. If the platform is unsupported,
+    returns platform-specific guidance. Otherwise returns a numbered sequence of actionable steps
+    (as separate list lines) to install required E2EE dependencies, provision Matrix credentials,
+    enable E2EE in the configuration, and finally verify the configuration. Command and config
+    snippets appear as indented lines in the returned list.
+
     Parameters:
-        e2ee_status (dict): Status mapping produced by get_e2ee_status(); the function reads the keys
-            "overall_status", "platform_supported", "dependencies_installed",
-            "credentials_available", and "enabled" to decide which steps to include.
-    
+        e2ee_status (dict): Status mapping produced by get_e2ee_status(). The function reads the
+            following keys to decide which steps to include: "overall_status",
+            "platform_supported", "dependencies_installed", "credentials_available", and "enabled".
+
     Returns:
-        List[str]: Ordered, human-readable instruction lines. Steps are numbered and related commands/config snippets are provided as indented lines.
+        List[str]: Ordered, human-readable instruction lines. Each step is a separate string;
+            related commands or configuration snippets are returned as additional indented strings.
     """
     if e2ee_status["overall_status"] == "ready":
         return ["✅ E2EE is fully configured and ready"]

@@ -272,3 +272,120 @@ class TestIntegration:
         msg_or_run_auth_login()
         msg_setup_authentication()
         msg_regenerate_credentials()
+
+
+from unittest.mock import patch  # noqa: E402
+
+
+class TestCreateSslContext:
+    """Test the _create_ssl_context function."""
+
+    @patch("ssl.create_default_context")
+    @patch("mmrelay.cli_utils.certifi", None)
+    def test_create_ssl_context_no_certifi(self, mock_ssl_context):
+        """Test _create_ssl_context when certifi is not installed."""
+        from mmrelay.cli_utils import _create_ssl_context
+
+        _create_ssl_context()
+        mock_ssl_context.assert_called_once_with()
+
+    @patch("ssl.create_default_context")
+    @patch("mmrelay.cli_utils.certifi")
+    def test_create_ssl_context_with_certifi(self, mock_certifi, mock_ssl_context):
+        """Test _create_ssl_context when certifi is installed."""
+        from mmrelay.cli_utils import _create_ssl_context
+
+        mock_certifi.where.return_value = "/fake/path"
+        _create_ssl_context()
+        mock_ssl_context.assert_called_once_with(cafile="/fake/path")
+
+    @patch("ssl.create_default_context", side_effect=Exception("SSL error"))
+    @patch("mmrelay.cli_utils.certifi", None)
+    def test_create_ssl_context_ssl_error(self, mock_ssl_context):
+        """Test _create_ssl_context when ssl.create_default_context fails."""
+        from mmrelay.cli_utils import _create_ssl_context
+
+        result = _create_ssl_context()
+        assert result is None
+
+
+class TestCleanupLocalSessionData:
+    """Test the _cleanup_local_session_data function."""
+
+    @patch("os.path.exists")
+    @patch("os.remove")
+    @patch("shutil.rmtree")
+    @patch("mmrelay.config.get_base_dir", return_value="/test/config")
+    @patch("mmrelay.config.get_e2ee_store_dir", return_value="/test/store")
+    def test_cleanup_success(
+        self, mock_get_e2ee, mock_get_base, mock_rmtree, mock_remove, mock_exists
+    ):
+        from mmrelay.cli_utils import _cleanup_local_session_data
+
+        mock_exists.return_value = True
+        result = _cleanup_local_session_data()
+        assert result is True
+        mock_remove.assert_called_once_with("/test/config/credentials.json")
+        mock_rmtree.assert_called_once_with("/test/store")
+
+    @patch("os.path.exists", return_value=False)
+    def test_cleanup_no_files(self, mock_exists):
+        from mmrelay.cli_utils import _cleanup_local_session_data
+
+        result = _cleanup_local_session_data()
+        assert result is True
+
+    @patch("os.path.exists", return_value=True)
+    @patch("os.remove", side_effect=PermissionError)
+    @patch("shutil.rmtree", side_effect=PermissionError)
+    @patch("mmrelay.config.get_base_dir", return_value="/test/config")
+    @patch("mmrelay.config.get_e2ee_store_dir", return_value="/test/store")
+    def test_cleanup_permission_error(
+        self, mock_get_e2ee, mock_get_base, mock_rmtree, mock_remove, mock_exists
+    ):
+        from mmrelay.cli_utils import _cleanup_local_session_data
+
+        result = _cleanup_local_session_data()
+        assert result is False
+
+
+class TestHandleMatrixError:
+    """Test the _handle_matrix_error function."""
+
+    @patch("mmrelay.cli_utils.logger")
+    def test_handle_matrix_error_credentials(self, mock_logger):
+        from mmrelay.cli_utils import NioLoginError, _handle_matrix_error
+
+        error = NioLoginError("Forbidden")
+        error.status_code = 401
+        error.errcode = "M_FORBIDDEN"
+        result = _handle_matrix_error(error, "Password verification")
+        assert result is True
+        mock_logger.error.assert_called()
+
+    @patch("mmrelay.cli_utils.logger")
+    def test_handle_matrix_error_network(self, mock_logger):
+        from mmrelay.cli_utils import NioLocalTransportError, _handle_matrix_error
+
+        error = NioLocalTransportError("Connection failed")
+        result = _handle_matrix_error(error, "Server logout", log_level="warning")
+        assert result is True
+        mock_logger.warning.assert_called()
+
+    @patch("mmrelay.cli_utils.logger")
+    def test_handle_matrix_error_server(self, mock_logger):
+        from mmrelay.cli_utils import _handle_matrix_error
+
+        error = Exception("500 Internal Server Error")
+        result = _handle_matrix_error(error, "Some context")
+        assert result is True
+        mock_logger.error.assert_called()
+
+    @patch("mmrelay.cli_utils.logger")
+    def test_handle_matrix_error_unknown(self, mock_logger):
+        from mmrelay.cli_utils import _handle_matrix_error
+
+        error = ValueError("Some other error")
+        result = _handle_matrix_error(error, "Another context")
+        assert result is True
+        mock_logger.error.assert_called()

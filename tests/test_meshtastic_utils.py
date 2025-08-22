@@ -21,6 +21,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.meshtastic_utils import (
+    _get_device_metadata,
     check_connection,
     connect_meshtastic,
     is_running_as_service,
@@ -942,7 +943,7 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
     def setUp(self):
         """
         Prepare test fixture by disabling the module-level asyncio event loop mock and capturing the real `_submit_coro`.
-        
+
         This saves the current `mmrelay.meshtastic_utils.event_loop` and `_submit_coro` into instance attributes so they can be restored later, sets `event_loop` to None to ensure tests run against the real asyncio behavior, and reloads the `mmrelay.meshtastic_utils` source to obtain the original (unmocked) `_submit_coro` implementation for direct testing.
         """
         import mmrelay.meshtastic_utils as mu
@@ -973,11 +974,12 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
 
     def tearDown(self):
         """
-        Tear down test fixtures by restoring the meshtastic_utils module's global state.
-        
-        Specifically restores:
-        - mu.event_loop to the saved original event loop
-        - mu._submit_coro to the previously mocked implementation
+        Restore mmrelay.meshtastic_utils global state saved during setUp.
+
+        Restores the module-level event_loop and _submit_coro attributes to the
+        original values captured in setUp (self.original_event_loop and
+        self.mocked_submit_coro). This ensures other tests are not affected by the
+        test-specific event loop or submit coroutine replacement.
         """
         import mmrelay.meshtastic_utils as mu
 
@@ -1012,9 +1014,9 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
         async def failing_coro():
             """
             Coroutine that immediately raises a ValueError when awaited.
-            
-            This async helper is intended for tests: awaiting this coroutine will always raise
-            a ValueError with message "Test exception".
+
+            Intended for tests: awaiting this coroutine always raises ValueError("Test exception").
+
             Raises:
                 ValueError: Always raised when the coroutine is awaited.
             """
@@ -1173,7 +1175,7 @@ class TestReconnectingFlagLogic(unittest.TestCase):
     def tearDown(self):
         """
         Reset meshtastic-related global state after a test.
-        
+
         Sets mmrelay.meshtastic_utils.reconnecting to False and mmrelay.meshtastic_utils.meshtastic_client to None
         to ensure tests remain isolated and no client or reconnect loop state is carried across tests.
         """
@@ -1247,6 +1249,118 @@ class TestTextReplyFunctionality(unittest.TestCase):
 
         # Function should exist and be callable
         self.assertTrue(callable(sendTextReply))
+
+
+class TestGetDeviceMetadata(unittest.TestCase):
+    """Test cases for _get_device_metadata helper function."""
+
+    def test_get_device_metadata_success(self):
+        """Test successful metadata retrieval and parsing."""
+        # Create mock client with localNode.getMetadata()
+        mock_client = MagicMock()
+        mock_client.localNode.getMetadata = MagicMock()
+
+        # Mock the output capture to return firmware version
+        with patch("mmrelay.meshtastic_utils.io.StringIO") as mock_stringio:
+            mock_output = MagicMock()
+            mock_output.getvalue.return_value = (
+                "firmware_version: 2.3.15.abc123\nhw_model: HELTEC_V3"
+            )
+            mock_stringio.return_value = mock_output
+
+            result = _get_device_metadata(mock_client)
+
+            # Verify successful parsing
+            self.assertTrue(result["success"])
+            self.assertEqual(result["firmware_version"], "2.3.15.abc123")
+            self.assertIn("firmware_version: 2.3.15.abc123", result["raw_output"])
+
+    def test_get_device_metadata_no_firmware_version(self):
+        """Test metadata retrieval when firmware_version is not present."""
+        mock_client = MagicMock()
+        mock_client.localNode.getMetadata = MagicMock()
+
+        with patch("mmrelay.meshtastic_utils.io.StringIO") as mock_stringio:
+            mock_output = MagicMock()
+            mock_output.getvalue.return_value = "hw_model: HELTEC_V3\nother_info: test"
+            mock_stringio.return_value = mock_output
+
+            result = _get_device_metadata(mock_client)
+
+            # Verify failure when no firmware version found
+            self.assertFalse(result["success"])
+            self.assertEqual(result["firmware_version"], "unknown")
+            self.assertIn("hw_model: HELTEC_V3", result["raw_output"])
+
+    def test_get_device_metadata_no_localnode(self):
+        """Test metadata retrieval when client has no localNode."""
+        mock_client = MagicMock()
+        del mock_client.localNode  # Remove localNode attribute
+
+        result = _get_device_metadata(mock_client)
+
+        # Verify early return for missing localNode
+        self.assertFalse(result["success"])
+        self.assertEqual(result["firmware_version"], "unknown")
+        self.assertEqual(result["raw_output"], "")
+
+    def test_get_device_metadata_no_getmetadata_method(self):
+        """Test metadata retrieval when localNode has no getMetadata method."""
+        mock_client = MagicMock()
+        mock_client.localNode = MagicMock()
+        del mock_client.localNode.getMetadata  # Remove getMetadata method
+
+        result = _get_device_metadata(mock_client)
+
+        # Verify early return for missing getMetadata
+        self.assertFalse(result["success"])
+        self.assertEqual(result["firmware_version"], "unknown")
+        self.assertEqual(result["raw_output"], "")
+
+    def test_get_device_metadata_exception_handling(self):
+        """Test metadata retrieval when getMetadata raises an exception."""
+        mock_client = MagicMock()
+        mock_client.localNode.getMetadata.side_effect = Exception("Device error")
+
+        with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
+            result = _get_device_metadata(mock_client)
+
+            # Verify exception handling
+            self.assertFalse(result["success"])
+            self.assertEqual(result["firmware_version"], "unknown")
+            mock_logger.debug.assert_called_once()
+
+    def test_get_device_metadata_quoted_version(self):
+        """Test parsing firmware version with quotes."""
+        mock_client = MagicMock()
+        mock_client.localNode.getMetadata = MagicMock()
+
+        with patch("mmrelay.meshtastic_utils.io.StringIO") as mock_stringio:
+            mock_output = MagicMock()
+            mock_output.getvalue.return_value = 'firmware_version: "2.3.15.abc123"'
+            mock_stringio.return_value = mock_output
+
+            result = _get_device_metadata(mock_client)
+
+            # Verify quoted version is parsed correctly
+            self.assertTrue(result["success"])
+            self.assertEqual(result["firmware_version"], "2.3.15.abc123")
+
+    def test_get_device_metadata_whitespace_handling(self):
+        """Test parsing firmware version with various whitespace."""
+        mock_client = MagicMock()
+        mock_client.localNode.getMetadata = MagicMock()
+
+        with patch("mmrelay.meshtastic_utils.io.StringIO") as mock_stringio:
+            mock_output = MagicMock()
+            mock_output.getvalue.return_value = "firmware_version:   2.3.15.abc123   "
+            mock_stringio.return_value = mock_output
+
+            result = _get_device_metadata(mock_client)
+
+            # Verify whitespace is handled correctly
+            self.assertTrue(result["success"])
+            self.assertEqual(result["firmware_version"], "2.3.15.abc123")
 
 
 if __name__ == "__main__":

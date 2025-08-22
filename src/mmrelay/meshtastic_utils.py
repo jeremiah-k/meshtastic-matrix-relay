@@ -3,6 +3,7 @@ import contextlib
 import inspect
 import io
 import os
+import re
 import threading
 import time
 from concurrent.futures import Future
@@ -131,6 +132,66 @@ def _submit_coro(coro, loop=None):
         return f
 
 
+def _get_device_metadata(client):
+    """
+    Retrieve device metadata from a Meshtastic client.
+
+    Attempts to call client.localNode.getMetadata() to extract a firmware version and capture the raw output. If the client lacks a usable localNode.getMetadata method or parsing fails, returns defaults. The captured raw output is truncated to 4096 characters.
+
+    Returns:
+        dict: {
+            "firmware_version": str,  # parsed firmware version or "unknown"
+            "raw_output": str,        # captured output from getMetadata() (possibly truncated)
+            "success": bool           # True when a firmware_version was successfully parsed
+        }
+    """
+    result = {"firmware_version": "unknown", "raw_output": "", "success": False}
+
+    try:
+        # Preflight: client may be a mock without localNode/getMetadata
+        if not getattr(client, "localNode", None) or not hasattr(
+            client.localNode, "getMetadata"
+        ):
+            logger.debug(
+                "Meshtastic client has no localNode.getMetadata(); skipping metadata retrieval"
+            )
+            return result
+
+        # Capture getMetadata() output to extract firmware version
+        output_capture = io.StringIO()
+        with contextlib.redirect_stdout(output_capture), contextlib.redirect_stderr(
+            output_capture
+        ):
+            client.localNode.getMetadata()
+
+        console_output = output_capture.getvalue()
+        output_capture.close()
+
+        # Cap raw_output length to avoid memory bloat
+        if len(console_output) > 4096:
+            console_output = console_output[:4096] + "…"
+        result["raw_output"] = console_output
+
+        # Parse firmware version from the output using robust regex
+        # Case-insensitive, handles quotes, whitespace, and various formats
+        match = re.search(
+            r"(?i)\bfirmware_version\s*:\s*['\"]?\s*([^\s\r\n'\"]+)\s*['\"]?",
+            console_output,
+        )
+        if match:
+            parsed = match.group(1).strip()
+            if parsed:
+                result["firmware_version"] = parsed
+                result["success"] = True
+
+    except Exception as e:
+        logger.debug(
+            "Could not retrieve device metadata via localNode.getMetadata()", exc_info=e
+        )
+
+    return result
+
+
 def is_running_as_service():
     """
     Determine if the application is running as a systemd service.
@@ -167,16 +228,16 @@ def serial_port_exists(port_name):
 
 def connect_meshtastic(passed_config=None, force_connect=False):
     """
-    Establishes a connection to a Meshtastic device using serial, BLE, or TCP, with automatic retries and event subscriptions.
+    Establish and return a Meshtastic client connection (serial, BLE, or TCP), with configurable retries and event subscription.
 
-    If a configuration is provided, updates the global configuration and Matrix room mappings. Prevents concurrent or duplicate connection attempts, validates required configuration fields, and supports both legacy and current connection types. Verifies serial port existence before connecting and handles connection failures with exponential backoff. Subscribes to message and connection lost events upon successful connection.
+    Attempts to (re)connect using the module configuration and updates module-level state on success (meshtastic_client, matrix_rooms, and event subscriptions). Validates required configuration keys, supports the legacy "network" alias for TCP, verifies serial port presence before connecting, and performs exponential backoff on connection failures. Subscribes once to message and connection-lost events when a connection is established.
 
     Parameters:
-        passed_config (dict, optional): Configuration dictionary for the connection.
-        force_connect (bool, optional): If True, forces a new connection even if one already exists.
+        passed_config (dict, optional): Configuration to use for the connection; if provided, replaces the module-level config and may update matrix_rooms.
+        force_connect (bool, optional): If True, forces creating a new connection even if one already exists.
 
     Returns:
-        The connected Meshtastic client instance, or None if connection fails or shutdown is in progress.
+        The connected Meshtastic client instance on success, or None if connection cannot be established or shutdown is in progress.
     """
     global meshtastic_client, shutting_down, reconnecting, config, matrix_rooms
     if shutting_down:
@@ -318,7 +379,20 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                 user_info = nodeInfo.get("user", {}) if nodeInfo else {}
                 short_name = user_info.get("shortName", "unknown")
                 hw_model = user_info.get("hwModel", "unknown")
-                logger.info(f"Connected to {short_name} / {hw_model}")
+
+                # Get firmware version from device metadata
+                metadata = _get_device_metadata(meshtastic_client)
+                firmware_version = metadata["firmware_version"]
+
+                if metadata.get("success"):
+                    logger.info(
+                        f"Connected to {short_name} / {hw_model} / Meshtastic Firmware version {firmware_version}"
+                    )
+                else:
+                    logger.info(f"Connected to {short_name} / {hw_model}")
+                    logger.debug(
+                        "Device firmware version unavailable from getMetadata()"
+                    )
 
                 # Subscribe to message and connection lost events (only once per application run)
                 global subscribed_to_messages, subscribed_to_connection_lost
@@ -420,7 +494,7 @@ def on_lost_meshtastic_connection(interface=None, detection_source="unknown"):
 async def reconnect():
     """
     Attempt to re-establish a Meshtastic connection with exponential backoff.
-    
+
     This coroutine repeatedly tries to reconnect by invoking connect_meshtastic(force_connect=True)
     in a thread executor until a connection is obtained, the global shutting_down flag is set,
     or the task is cancelled. It begins with DEFAULT_BACKOFF_TIME and doubles the wait after each
@@ -832,9 +906,15 @@ def on_meshtastic_message(packet, interface):
 
 async def check_connection():
     """
-    Periodically checks the health of the Meshtastic connection and triggers reconnection if the device becomes unresponsive.
+    Periodically verify Meshtastic connection health and trigger reconnection when the device is unresponsive.
 
-    For non-BLE connections, performs a metadata check at configurable intervals to verify device responsiveness. If the check fails or the firmware version is missing, initiates reconnection unless already in progress. BLE connections are excluded from periodic checks due to real-time disconnection detection. The function runs continuously until shutdown is requested, with health check behavior controlled by configuration.
+    Checks run continuously until shutdown. Behavior:
+    - Controlled by config['meshtastic']['health_check']:
+      - 'enabled' (bool, default True) — enable/disable periodic checks.
+      - 'heartbeat_interval' (int, seconds, default 60) — check interval. Backwards-compatible: if 'heartbeat_interval' exists directly under config['meshtastic'], that value is used.
+    - For non-BLE connections, calls _get_device_metadata(client). If metadata parsing fails, performs a fallback probe via client.getMyNodeInfo(); if both fail, on_lost_meshtastic_connection(...) is invoked to start reconnection.
+    - BLE connections are excluded from periodic checks because the underlying library detects disconnections in real time.
+    - No return value; runs as a background coroutine until global shutting_down is True.
     """
     global meshtastic_client, shutting_down, config
 
@@ -873,15 +953,21 @@ async def check_connection():
                     ble_skip_logged = True
             else:
                 try:
-                    output_capture = io.StringIO()
-                    with contextlib.redirect_stdout(
-                        output_capture
-                    ), contextlib.redirect_stderr(output_capture):
-                        meshtastic_client.localNode.getMetadata()
-
-                    console_output = output_capture.getvalue()
-                    if "firmware_version" not in console_output:
-                        raise Exception("No firmware_version in getMetadata output.")
+                    # Use helper function to get device metadata
+                    metadata = _get_device_metadata(meshtastic_client)
+                    if not metadata["success"]:
+                        # Fallback probe: device responding at all?
+                        try:
+                            _ = meshtastic_client.getMyNodeInfo()
+                        except Exception as probe_err:
+                            raise Exception(
+                                "Metadata and nodeInfo probes failed"
+                            ) from probe_err
+                        else:
+                            logger.debug(
+                                "Metadata parse failed but device responded to getMyNodeInfo(); skipping reconnect this cycle"
+                            )
+                            continue
 
                 except Exception as e:
                     # Only trigger reconnection if we're not already reconnecting
