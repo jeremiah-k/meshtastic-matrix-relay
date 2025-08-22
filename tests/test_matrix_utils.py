@@ -8,6 +8,7 @@ import pytest
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from mmrelay.cli_utils import logout_matrix_bot
 from mmrelay.config import get_e2ee_store_dir, load_credentials, save_credentials
 from mmrelay.matrix_utils import (
     _add_truncated_vars,
@@ -24,7 +25,7 @@ from mmrelay.matrix_utils import (
     get_user_display_name,
     join_matrix_room,
     login_matrix_bot,
-    logout_matrix_bot,
+
     matrix_relay,
     message_storage_enabled,
     on_room_message,

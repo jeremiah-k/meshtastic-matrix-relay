@@ -6,15 +6,49 @@ consistency across error messages, help text, and documentation. It's separate
 from cli.py to avoid circular dependencies when other modules need to reference
 CLI commands.
 
+It also contains CLI-specific functions that need to interact with users
+via print statements (as opposed to library functions that should only log).
+
 Usage:
-    from mmrelay.cli_utils import get_command, suggest_command
+    from mmrelay.cli_utils import get_command, suggest_command, logout_matrix_bot
 
     # Get a command string
     cmd = get_command('generate_config')  # Returns "mmrelay config generate"
 
     # Generate suggestion messages
     msg = suggest_command('generate_config', 'to create a sample configuration')
+
+    # CLI functions (can use print statements)
+    result = await logout_matrix_bot(password="user_password")
 """
+
+import asyncio
+import os
+import logging
+from typing import Optional
+
+# Import Matrix-related modules for logout functionality
+try:
+    from nio import AsyncClient, NioLoginError, NioLogoutError
+    from nio.exceptions import (
+        NioLocalTransportError,
+        NioRemoteTransportError,
+        NioLocalProtocolError,
+        NioRemoteProtocolError,
+    )
+except ImportError:
+    # Handle case where matrix-nio is not installed
+    AsyncClient = None
+    NioLoginError = Exception
+    NioLogoutError = Exception
+    NioLocalTransportError = Exception
+    NioRemoteTransportError = Exception
+    NioLocalProtocolError = Exception
+    NioRemoteProtocolError = Exception
+
+# Import mmrelay modules - avoid circular imports by importing inside functions
+
+logger = logging.getLogger(__name__)
 
 # Command registry - single source of truth for CLI command syntax
 CLI_COMMANDS = {
@@ -246,3 +280,276 @@ def msg_regenerate_credentials():
         str: Message instructing the user to run the auth login command again to produce new credentials containing a `device_id`.
     """
     return f"Please run '{get_command('auth_login')}' again to generate new credentials that include a device_id."
+
+
+# CLI-specific functions (can use print statements for user interaction)
+
+async def logout_matrix_bot(password: str):
+    """
+    Log out from Matrix and clear all local session data.
+
+    This is a CLI function that can use print statements for user feedback.
+    It calls library functions from matrix_utils for the actual Matrix operations.
+
+    This function will:
+    1. Verify the password against the current Matrix session
+    2. Log out from the Matrix server (invalidating the access token)
+    3. Clear credentials.json
+    4. Clear the E2EE store directory
+
+    Args:
+        password: The Matrix password for verification (required)
+
+    Returns:
+        bool: True if logout was successful, False otherwise
+    """
+
+    # Import inside function to avoid circular imports
+    from mmrelay.matrix_utils import (
+        load_credentials,
+        _create_ssl_context,
+        _cleanup_local_session_data,
+        MATRIX_LOGIN_TIMEOUT,
+    )
+
+    # Load current credentials
+    credentials = load_credentials()
+    if not credentials:
+        logger.info("No active session found. Already logged out.")
+        print("ℹ️  No active session found. Already logged out.")
+        return True
+
+    homeserver = credentials.get("homeserver")
+    user_id = credentials.get("user_id")
+    access_token = credentials.get("access_token")
+    device_id = credentials.get("device_id")
+
+    if not all([homeserver, user_id, access_token, device_id]):
+        logger.error("Invalid credentials found. Cannot verify logout.")
+        logger.info("Proceeding with local cleanup only...")
+        print("⚠️  Invalid credentials found. Cannot verify logout.")
+        print("Proceeding with local cleanup only...")
+
+        # Still try to clean up local files
+        success = _cleanup_local_session_data()
+        if success:
+            print("✅ Local cleanup completed successfully!")
+        else:
+            print("❌ Local cleanup completed with some errors.")
+        return success
+
+    logger.info(f"Verifying password for {user_id}...")
+    print(f"🔐 Verifying password for {user_id}...")
+
+    try:
+        # Create SSL context using certifi's certificates
+        ssl_context = _create_ssl_context()
+        if ssl_context is None:
+            logger.warning(
+                "Failed to create SSL context for password verification; falling back to default system SSL"
+            )
+
+        # Create a temporary client to verify the password
+        # We'll try to login with the password to verify it's correct
+        temp_client = AsyncClient(homeserver, user_id, ssl=ssl_context)
+
+        try:
+            # Attempt login with the provided password
+            response = await asyncio.wait_for(
+                temp_client.login(password, device_name="mmrelay-logout-verify"),
+                timeout=MATRIX_LOGIN_TIMEOUT,
+            )
+
+            if hasattr(response, "access_token"):
+                logger.info("Password verified successfully.")
+                print("✅ Password verified successfully.")
+
+                # Immediately logout the temporary session
+                await temp_client.logout()
+            else:
+                logger.error("Password verification failed.")
+                print("❌ Password verification failed.")
+                return False
+
+        except asyncio.TimeoutError:
+            logger.error(
+                "Password verification timed out. Please check your network connection."
+            )
+            print("❌ Password verification timed out. Please check your network connection.")
+            return False
+        except Exception as e:
+            # Handle nio login exceptions with specific user messages
+            if isinstance(e, NioLoginError) and hasattr(e, "status_code"):
+                # Handle specific login error responses
+                if (
+                    hasattr(e, "errcode") and e.errcode == "M_FORBIDDEN"
+                ) or e.status_code == 401:
+                    logger.error("Password verification failed: Invalid credentials.")
+                    logger.error("Please check your username and password.")
+                    print("❌ Password verification failed: Invalid credentials.")
+                    print("Please check your username and password.")
+                elif e.status_code in [500, 502, 503]:
+                    logger.error("Password verification failed: Matrix server error.")
+                    logger.error(
+                        "Please try again later or contact your Matrix server administrator."
+                    )
+                    print("❌ Password verification failed: Matrix server error.")
+                    print("Please try again later or contact your Matrix server administrator.")
+                else:
+                    logger.error(f"Password verification failed: {e.status_code}")
+                    logger.debug(f"Full error details: {e}")
+                    print(f"❌ Password verification failed: {e.status_code}")
+            elif isinstance(
+                e,
+                (
+                    NioLocalTransportError,
+                    NioRemoteTransportError,
+                    NioLocalProtocolError,
+                    NioRemoteProtocolError,
+                ),
+            ):
+                logger.error("Password verification failed: Network connection error.")
+                logger.error(
+                    "Please check your internet connection and Matrix server availability."
+                )
+                print("❌ Password verification failed: Network connection error.")
+                print("Please check your internet connection and Matrix server availability.")
+            else:
+                # Fallback to string matching for unknown exceptions
+                error_msg = str(e).lower()
+                if "forbidden" in error_msg or "401" in error_msg:
+                    logger.error("Password verification failed: Invalid credentials.")
+                    logger.error("Please check your username and password.")
+                    print("❌ Password verification failed: Invalid credentials.")
+                    print("Please check your username and password.")
+                elif (
+                    "network" in error_msg
+                    or "connection" in error_msg
+                    or "timeout" in error_msg
+                ):
+                    logger.error(
+                        "Password verification failed: Network connection error."
+                    )
+                    logger.error(
+                        "Please check your internet connection and Matrix server availability."
+                    )
+                    print("❌ Password verification failed: Network connection error.")
+                    print("Please check your internet connection and Matrix server availability.")
+                elif (
+                    "server" in error_msg
+                    or "500" in error_msg
+                    or "502" in error_msg
+                    or "503" in error_msg
+                ):
+                    logger.error("Password verification failed: Matrix server error.")
+                    logger.error(
+                        "Please try again later or contact your Matrix server administrator."
+                    )
+                    print("❌ Password verification failed: Matrix server error.")
+                    print("Please try again later or contact your Matrix server administrator.")
+                else:
+                    logger.error(f"Password verification failed: {type(e).__name__}")
+                    logger.debug(f"Full error details: {e}")
+                    print(f"❌ Password verification failed: {type(e).__name__}")
+            return False
+        finally:
+            await temp_client.close()
+
+        # Now logout the main session
+        logger.info("Logging out from Matrix server...")
+        print("🚪 Logging out from Matrix server...")
+        main_client = AsyncClient(homeserver, user_id, ssl=ssl_context)
+        main_client.restore_login(
+            user_id=user_id,
+            device_id=device_id,
+            access_token=access_token,
+        )
+
+        try:
+            # Logout from the server (invalidates the access token)
+            logout_response = await main_client.logout()
+            if hasattr(logout_response, "transport_response"):
+                logger.info("Successfully logged out from Matrix server.")
+                print("✅ Successfully logged out from Matrix server.")
+            else:
+                logger.warning(
+                    "Logout response unclear, proceeding with local cleanup."
+                )
+                print("⚠️  Logout response unclear, proceeding with local cleanup.")
+        except Exception as e:
+            # Handle nio logout exceptions with specific messages
+            if isinstance(e, NioLogoutError) and hasattr(e, "status_code"):
+                # Handle specific logout error responses
+                if (
+                    hasattr(e, "errcode") and e.errcode == "M_FORBIDDEN"
+                ) or e.status_code == 401:
+                    logger.warning(
+                        "Server logout failed due to invalid token (already logged out?), proceeding with local cleanup."
+                    )
+                    print("⚠️  Server logout failed due to invalid token (already logged out?), proceeding with local cleanup.")
+                elif e.status_code in [500, 502, 503]:
+                    logger.warning(
+                        "Server logout failed due to server error, proceeding with local cleanup."
+                    )
+                    print("⚠️  Server logout failed due to server error, proceeding with local cleanup.")
+                else:
+                    logger.warning(
+                        f"Server logout failed ({e.status_code}), proceeding with local cleanup."
+                    )
+                    print(f"⚠️  Server logout failed ({e.status_code}), proceeding with local cleanup.")
+            elif isinstance(
+                e,
+                (
+                    NioLocalTransportError,
+                    NioRemoteTransportError,
+                    NioLocalProtocolError,
+                    NioRemoteProtocolError,
+                ),
+            ):
+                logger.warning(
+                    "Server logout failed due to network issues, proceeding with local cleanup."
+                )
+                print("⚠️  Server logout failed due to network issues, proceeding with local cleanup.")
+            else:
+                # Fallback to string matching for unknown exceptions
+                error_msg = str(e).lower()
+                if (
+                    "network" in error_msg
+                    or "connection" in error_msg
+                    or "timeout" in error_msg
+                ):
+                    logger.warning(
+                        "Server logout failed due to network issues, proceeding with local cleanup."
+                    )
+                    print("⚠️  Server logout failed due to network issues, proceeding with local cleanup.")
+                elif "401" in error_msg or "forbidden" in error_msg:
+                    logger.warning(
+                        "Server logout failed due to invalid token (already logged out?), proceeding with local cleanup."
+                    )
+                    print("⚠️  Server logout failed due to invalid token (already logged out?), proceeding with local cleanup.")
+                else:
+                    logger.warning(
+                        f"Server logout failed ({type(e).__name__}), proceeding with local cleanup."
+                    )
+                    print(f"⚠️  Server logout failed ({type(e).__name__}), proceeding with local cleanup.")
+            logger.debug(f"Logout error details: {e}")
+        finally:
+            await main_client.close()
+
+        # Clear local session data
+        success = _cleanup_local_session_data()
+        if success:
+            print()
+            print("✅ Logout completed successfully!")
+            print("All Matrix sessions and local data have been cleared.")
+            print("Run 'mmrelay auth login' to authenticate again.")
+        else:
+            print()
+            print("⚠️  Logout completed with some errors.")
+            print("Some files may not have been removed due to permission issues.")
+        return success
+
+    except Exception as e:
+        logger.error(f"Error during logout process: {e}")
+        print(f"❌ Error during logout process: {e}")
+        return False

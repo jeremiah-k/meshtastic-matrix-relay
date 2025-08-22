@@ -1180,7 +1180,7 @@ def handle_auth_logout(args):
     """
     import asyncio
 
-    from mmrelay.matrix_utils import logout_matrix_bot
+    from mmrelay.cli_utils import logout_matrix_bot
 
     # Show header
     print("Matrix Bot Logout")
