@@ -31,6 +31,25 @@ from nio import (
 from nio.events.room_events import RoomMemberEvent
 from PIL import Image
 
+# Import nio exception types with error handling for test environments
+try:
+    from nio.responses import LoginError as NioLoginError, LogoutError as NioLogoutError, ErrorResponse as NioErrorResponse
+    from nio.exceptions import (
+        LocalProtocolError as NioLocalProtocolError,
+        RemoteProtocolError as NioRemoteProtocolError,
+        LocalTransportError as NioLocalTransportError,
+        RemoteTransportError as NioRemoteTransportError
+    )
+except ImportError:
+    # Fallback for test environments where nio imports might fail
+    NioLoginError = Exception
+    NioLogoutError = Exception
+    NioErrorResponse = Exception
+    NioLocalProtocolError = Exception
+    NioRemoteProtocolError = Exception
+    NioLocalTransportError = Exception
+    NioRemoteTransportError = Exception
+
 from mmrelay.cli_utils import (
     msg_require_auth_login,
     msg_retry_auth_login,
@@ -2327,10 +2346,7 @@ async def logout_matrix_bot(password: str):
             return False
         except Exception as e:
             # Handle nio login exceptions with specific user messages
-            from nio.responses import LoginError, ErrorResponse
-            from nio.exceptions import LocalProtocolError, RemoteProtocolError, LocalTransportError, RemoteTransportError
-
-            if isinstance(e, LoginError):
+            if isinstance(e, NioLoginError) and hasattr(e, 'status_code'):
                 # Handle specific login error responses
                 if e.status_code == "M_FORBIDDEN" or e.status_code == 401:
                     logger.error("Password verification failed: Invalid credentials.")
@@ -2343,7 +2359,7 @@ async def logout_matrix_bot(password: str):
                 else:
                     logger.error(f"Password verification failed: {e.status_code}")
                     logger.debug(f"Full error details: {e}")
-            elif isinstance(e, (LocalTransportError, RemoteTransportError, LocalProtocolError, RemoteProtocolError)):
+            elif isinstance(e, (NioLocalTransportError, NioRemoteTransportError, NioLocalProtocolError, NioRemoteProtocolError)):
                 logger.error("Password verification failed: Network connection error.")
                 logger.error(
                     "Please check your internet connection and Matrix server availability."
@@ -2400,10 +2416,7 @@ async def logout_matrix_bot(password: str):
                 )
         except Exception as e:
             # Handle nio logout exceptions with specific messages
-            from nio.responses import LogoutError, ErrorResponse
-            from nio.exceptions import LocalProtocolError, RemoteProtocolError, LocalTransportError, RemoteTransportError
-
-            if isinstance(e, LogoutError):
+            if isinstance(e, NioLogoutError) and hasattr(e, 'status_code'):
                 # Handle specific logout error responses
                 if e.status_code == "M_FORBIDDEN" or e.status_code == 401:
                     logger.warning(
@@ -2417,7 +2430,7 @@ async def logout_matrix_bot(password: str):
                     logger.warning(
                         f"Server logout failed ({e.status_code}), proceeding with local cleanup."
                     )
-            elif isinstance(e, (LocalTransportError, RemoteTransportError, LocalProtocolError, RemoteProtocolError)):
+            elif isinstance(e, (NioLocalTransportError, NioRemoteTransportError, NioLocalProtocolError, NioRemoteProtocolError)):
                 logger.warning(
                     "Server logout failed due to network issues, proceeding with local cleanup."
                 )
