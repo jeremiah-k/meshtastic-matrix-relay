@@ -309,7 +309,7 @@ def msg_regenerate_credentials():
 def _create_ssl_context():
     """
     Create an SSLContext for Matrix client connections, preferring certifi's CA bundle when available.
-    
+
     Returns:
         ssl.SSLContext | None: An SSLContext configured with certifi's CA file if certifi is present, otherwise the system default SSLContext. Returns None only if context creation fails.
     """
@@ -332,13 +332,13 @@ def _create_ssl_context():
 def _cleanup_local_session_data():
     """
     Remove local Matrix session artifacts: credentials.json and any E2EE store directories.
-    
+
     This cleans up the on-disk session state used by the Matrix client. It removes:
     - the credentials file at <base_dir>/credentials.json (if present), and
     - E2EE store directories: the default store dir returned by get_e2ee_store_dir()
       plus any user-configured overrides found in the loaded config under
       matrix.e2ee.store_path or matrix.encryption.store_path.
-    
+
     Returns:
         bool: True if all targeted files/directories were removed successfully;
               False if any removal failed (for example due to permissions). The
@@ -416,19 +416,19 @@ def _cleanup_local_session_data():
 def _handle_matrix_error(exception: Exception, context: str, log_level: str = "error"):
     """
     Classify a Matrix-related exception and emit user-facing and logged messages.
-    
+
     Determines whether the provided exception represents credential, network,
     server, or other errors (using known nio exception types or message inspection),
     chooses messages appropriate to the given context (verification vs non-verification),
     logs them at the specified level ("error" or "warning"), prints concise feedback
     for CLI users, and signals the exception was handled.
-    
+
     Parameters:
         exception: The exception instance to classify and report.
         context: Short context string describing the operation (e.g., "Password verification",
             "Server logout"); used to select phrasing and to detect verification flows.
         log_level: Logging level to use; accepted values are "error" (default) or "warning".
-    
+
     Returns:
         bool: Always returns True to indicate the exception was handled and reported.
     """
@@ -551,15 +551,15 @@ def _handle_matrix_error(exception: Exception, context: str, log_level: str = "e
 async def logout_matrix_bot(password: str):
     """
     Log out the configured Matrix account and remove local session data.
-    
+
     Verifies the provided Matrix password by performing a temporary login, then attempts to
     log out the active session on the homeserver (invalidating the access token) and remove
     local session artifacts (credentials.json and any E2EE store). If there is no active
     session, the function reports that and returns True.
-    
+
     Parameters:
         password (str): The Matrix account password used to verify the session before logout.
-    
+
     Returns:
         bool: True when local cleanup (and server logout, if applicable) completed successfully;
               False on failure. If matrix-nio is not installed, prints an error and returns False.

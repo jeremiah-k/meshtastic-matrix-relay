@@ -302,9 +302,9 @@ def load_meshtastic_config_from_env():
 def load_logging_config_from_env():
     """
     Load logging configuration from environment variables.
-    
+
     Reads the logging-related environment variables defined by the module's mappings and returns a dict of parsed values. If a filename is present in the resulting mapping, adds "log_to_file": True to indicate file logging should be used.
-    
+
     Returns:
         dict | None: Parsed logging configuration when any relevant environment variables are set; otherwise None.
     """
@@ -496,24 +496,24 @@ _DATABASE_ENV_VAR_MAPPINGS = [
 def _load_config_from_env_mapping(mappings):
     """
     Build a configuration dictionary from environment variables based on a mapping specification.
-    
+
     Each mapping entry should be a dict with:
     - "env_var" (str): environment variable name to read.
     - "config_key" (str): destination key in the resulting config dict.
     - "type" (str): one of "string", "int", "float", "bool", or "enum".
-    
+
     Optional keys (depending on "type"):
     - "min_value", "max_value" (int/float): numeric bounds for "int" or "float" conversions.
     - "valid_values" (iterable): allowed values for "enum".
     - "transform" (callable): function applied to the raw env value before enum validation.
-    
+
     Behavior:
     - Values are converted/validated according to their type; invalid conversions or values are skipped and an error is logged.
     - Unknown mapping types are skipped and an error is logged.
-    
+
     Parameters:
         mappings (iterable): Iterable of mapping dicts as described above.
-    
+
     Returns:
         dict | None: A dict of converted configuration values, or None if no mapped environment variables were present.
     """

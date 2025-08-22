@@ -29,7 +29,7 @@ lint:
     - markdownlint@0.45.0
     - osv-scanner@2.2.1
     - prettier@3.6.2
-    - ruff@0.12.9
+    - ruff@0.12.10
     - trufflehog@3.90.5
     - yamllint@1.37.1
   # Remove map_plugin.py after staticmaps is updated and we're able to work on it again

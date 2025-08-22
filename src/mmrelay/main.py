@@ -60,7 +60,7 @@ _banner_printed = False
 def print_banner():
     """
     Log the MMRelay startup banner with version information once.
-    
+
     This records an informational message "Starting MMRelay version <version>" via the module logger
     the first time it is called and sets a module-level flag to prevent subsequent prints.
     """

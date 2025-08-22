@@ -93,12 +93,12 @@ _BUILTIN_MODULES = {
 def ensure_builtins_not_mocked():
     """
     Restore any standard library modules that were replaced with mocks during test setup.
-    
+
     This function iterates the internal _BUILTIN_MODULES mapping and, for each entry whose
     corresponding module in sys.modules appears to be a mock (detected by the presence of
     a "_mock_name" attribute), replaces that mocked entry with the original module object
     from _BUILTIN_MODULES. It also ensures the logging module is restored if it was mocked.
-    
+
     Side effects:
     - Mutates sys.modules entries for built-in modules when mocks are detected.
     """
@@ -144,10 +144,10 @@ class MockWhoamiError(Exception):
     def __init__(self, message="Whoami error"):
         """
         Initialize the Whoami error exception.
-        
+
         Parameters:
             message (str): Human-readable error message. Defaults to "Whoami error".
-        
+
         Attributes:
             message (str): The provided message (also available as the exception's first arg).
         """
@@ -172,7 +172,7 @@ class MockPILImage:
     def save(self, *args, **kwargs):
         """
         No-op save method that accepts any positional and keyword arguments and does nothing.
-        
+
         This placeholder satisfies interfaces that expect a `save` method (for example, objects that persist state or files)
         but intentionally performs no action. It accepts arbitrary arguments for compatibility and always returns None.
         """
@@ -212,15 +212,15 @@ class MockLatLng:
     def from_degrees(cls, lat, lng):
         """
         Create a new instance representing the given latitude and longitude in degrees.
-        
+
         This is a stand-in/mock implementation used in tests. Parameters `lat` and `lng`
         are expected to be numeric degrees but are not validated or stored by this mock;
         the method simply returns a new instance of the class.
-        
+
         Parameters:
             lat (float): Latitude in degrees (mock parameter, not stored).
             lng (float): Longitude in degrees (mock parameter, not stored).
-        
+
         Returns:
             object: A new instance of the class (empty/mock).
         """
@@ -232,7 +232,7 @@ class MockLatLngRect:
     def from_point(cls, point):
         """
         Create a new instance from a point.
-        
+
         This stand-in implementation ignores the provided `point` and returns a default instance of the class.
         Parameters:
             point: The input point (ignored by this implementation).
@@ -254,9 +254,9 @@ sys.modules["s2sphere"] = MockS2Module()
 def meshtastic_loop_safety(monkeypatch):
     """
     Create and provide a dedicated asyncio event loop for tests that interact with meshtastic_utils, and ensure it is fully cleaned up after the test module.
-    
+
     This module-scoped pytest fixture creates a fresh event loop, assigns it to mmrelay.meshtastic_utils.event_loop for use during tests, yields the loop, then cancels any remaining tasks, waits for them to finish, closes the loop, and clears the global event loop reference on teardown.
-    
+
     Yields:
         asyncio.AbstractEventLoop: the newly created event loop for the test module.
     """
@@ -296,9 +296,9 @@ def reset_plugin_loader_cache():
 def cleanup_asyncmock_objects(request):
     """
     Force garbage collection after tests that commonly create AsyncMock objects to avoid "never awaited" RuntimeWarning messages.
-    
+
     This fixture yields to run the test, then inspects the requesting test filename; if it matches a known set of test-name patterns that use AsyncMock, it runs gc.collect() inside a warnings suppression context that ignores "never awaited" RuntimeWarning messages raised by lingering coroutine objects.
-    
+
     Parameters:
         request: The pytest `Request` object for the executing test (used to determine the test filename).
     """

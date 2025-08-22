@@ -512,7 +512,7 @@ class TestMeshtasticEnvironmentVariables(unittest.TestCase):
     def tearDown(self):
         """
         Clear environment variables named in self.env_vars from the process environment.
-        
+
         This teardown helper removes each variable listed in self.env_vars from os.environ if present, ensuring test isolation by reverting any environment changes made during a test. It mutates the process environment and returns None.
         """
         for var in self.env_vars:
@@ -607,7 +607,7 @@ class TestLoggingEnvironmentVariables(unittest.TestCase):
     def setUp(self):
         """
         Clear logging-related environment variables before each test.
-        
+
         Executed before each test case; removes MMRELAY_LOGGING_LEVEL and MMRELAY_LOG_FILE from os.environ to ensure tests run without influence from external logging configuration.
         """
         self.env_vars = ["MMRELAY_LOGGING_LEVEL", "MMRELAY_LOG_FILE"]
@@ -618,7 +618,7 @@ class TestLoggingEnvironmentVariables(unittest.TestCase):
     def tearDown(self):
         """
         Clear environment variables named in self.env_vars from the process environment.
-        
+
         This teardown helper removes each variable listed in self.env_vars from os.environ if present, ensuring test isolation by reverting any environment changes made during a test. It mutates the process environment and returns None.
         """
         for var in self.env_vars:

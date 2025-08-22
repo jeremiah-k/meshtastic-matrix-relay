@@ -374,12 +374,13 @@ class TestLogUtils(unittest.TestCase):
                 "debug": {
                     "matrix_nio": "warning",
                     "bleak": "error",
-                    "meshtastic": "info"
+                    "meshtastic": "info",
                 }
             }
         }
 
         import mmrelay.log_utils
+
         mmrelay.log_utils.config = config
         mmrelay.log_utils._component_debug_configured = False
 
@@ -397,6 +398,7 @@ class TestLogUtils(unittest.TestCase):
         # Test boolean true
         config1 = {"logging": {"debug": {"matrix_nio": True}}}
         import mmrelay.log_utils
+
         mmrelay.log_utils.config = config1
         mmrelay.log_utils._component_debug_configured = False
 
@@ -420,16 +422,10 @@ class TestLogUtils(unittest.TestCase):
         """
         Test that disabled components are completely suppressed (CRITICAL+1 level).
         """
-        config = {
-            "logging": {
-                "debug": {
-                    "matrix_nio": False,
-                    "bleak": False
-                }
-            }
-        }
+        config = {"logging": {"debug": {"matrix_nio": False, "bleak": False}}}
 
         import mmrelay.log_utils
+
         mmrelay.log_utils.config = config
         mmrelay.log_utils._component_debug_configured = False
 
@@ -446,14 +442,12 @@ class TestLogUtils(unittest.TestCase):
         """
         config = {
             "logging": {
-                "debug": {
-                    "matrix_nio": "invalid_level",
-                    "bleak": "another_bad_level"
-                }
+                "debug": {"matrix_nio": "invalid_level", "bleak": "another_bad_level"}
             }
         }
 
         import mmrelay.log_utils
+
         mmrelay.log_utils.config = config
         mmrelay.log_utils._component_debug_configured = False
 

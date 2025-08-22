@@ -135,9 +135,9 @@ def _submit_coro(coro, loop=None):
 def _get_device_metadata(client):
     """
     Retrieve device metadata from a Meshtastic client.
-    
+
     Attempts to call client.localNode.getMetadata() to extract a firmware version and capture the raw output. If the client lacks a usable localNode.getMetadata method or parsing fails, returns defaults. The captured raw output is truncated to 4096 characters.
-    
+
     Returns:
         dict: {
             "firmware_version": str,  # parsed firmware version or "unknown"
@@ -229,13 +229,13 @@ def serial_port_exists(port_name):
 def connect_meshtastic(passed_config=None, force_connect=False):
     """
     Establish and return a Meshtastic client connection (serial, BLE, or TCP), with configurable retries and event subscription.
-    
+
     Attempts to (re)connect using the module configuration and updates module-level state on success (meshtastic_client, matrix_rooms, and event subscriptions). Validates required configuration keys, supports the legacy "network" alias for TCP, verifies serial port presence before connecting, and performs exponential backoff on connection failures. Subscribes once to message and connection-lost events when a connection is established.
-    
+
     Parameters:
         passed_config (dict, optional): Configuration to use for the connection; if provided, replaces the module-level config and may update matrix_rooms.
         force_connect (bool, optional): If True, forces creating a new connection even if one already exists.
-    
+
     Returns:
         The connected Meshtastic client instance on success, or None if connection cannot be established or shutdown is in progress.
     """
@@ -907,7 +907,7 @@ def on_meshtastic_message(packet, interface):
 async def check_connection():
     """
     Periodically verify Meshtastic connection health and trigger reconnection when the device is unresponsive.
-    
+
     Checks run continuously until shutdown. Behavior:
     - Controlled by config['meshtastic']['health_check']:
       - 'enabled' (bool, default True) — enable/disable periodic checks.

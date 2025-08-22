@@ -165,21 +165,21 @@ def get_room_encryption_warnings(
 ) -> List[str]:
     """
     Return user-facing warnings for encrypted rooms when E2EE is not fully ready.
-    
+
     If the provided E2EE status has overall_status == "ready", returns an empty list.
     Scans the given rooms mapping for items whose `encrypted` attribute is truthy and
     produces one or two warning lines per situation:
     - A line noting how many encrypted rooms were detected and the reason (platform unsupported,
       disabled, or incomplete).
     - A follow-up line indicating whether messages to those rooms will be blocked or may be blocked.
-    
+
     Parameters:
         rooms: Mapping of room_id -> room object. Room objects are expected to expose
             an `encrypted` attribute and optionally a `display_name` attribute; room_id is
             used as a fallback name.
         e2ee_status: E2EE status dictionary as returned by get_e2ee_status(); this function
             reads the `overall_status` key to decide warning text.
-    
+
     Returns:
         List[str]: Formatted warning lines (empty if no relevant warnings).
     """
@@ -342,18 +342,18 @@ def get_e2ee_error_message(e2ee_status: Dict[str, Any]) -> str:
 def get_e2ee_fix_instructions(e2ee_status: Dict[str, Any]) -> List[str]:
     """
     Return ordered, user-facing instructions to resolve E2EE setup problems.
-    
+
     If E2EE is already ready, returns a single confirmation line. If the platform is unsupported,
     returns platform-specific guidance. Otherwise returns a numbered sequence of actionable steps
     (as separate list lines) to install required E2EE dependencies, provision Matrix credentials,
     enable E2EE in the configuration, and finally verify the configuration. Command and config
     snippets appear as indented lines in the returned list.
-    
+
     Parameters:
         e2ee_status (dict): Status mapping produced by get_e2ee_status(). The function reads the
             following keys to decide which steps to include: "overall_status",
             "platform_supported", "dependencies_installed", "credentials_available", and "enabled".
-    
+
     Returns:
         List[str]: Ordered, human-readable instruction lines. Each step is a separate string;
             related commands or configuration snippets are returned as additional indented strings.

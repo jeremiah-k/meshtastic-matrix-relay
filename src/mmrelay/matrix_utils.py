@@ -108,14 +108,14 @@ def _display_room_channel_mappings(
 ) -> None:
     """
     Log Matrix rooms grouped by Meshtastic channel, showing mapping counts and E2EE/encryption indicators.
-    
+
     Reads the "matrix_rooms" entry from config (accepting either dict or list form), builds a mapping from room ID to the configured "meshtastic_channel", then groups and logs rooms ordered by channel number. For each room logs an emoji/status depending on the room's encryption flag and the provided e2ee_status["overall_status"] (common values: "ready", "unavailable", "disabled"); unmapped rooms are listed separately as not relayed.
-    
+
     Parameters:
         rooms (dict): Mapping of room_id -> room object (room objects should expose at least `display_name` and `encrypted` attributes or fall back to the room_id).
         config (dict): Configuration dict containing a "matrix_rooms" section; entries should include "id" and "meshtastic_channel" when using dict/list room formats.
         e2ee_status (dict): E2EE status information; function expects an "overall_status" key used to determine messaging/encryption indicators.
-    
+
     Returns:
         None
     """
@@ -213,12 +213,12 @@ def _display_room_channel_mappings(
 def _can_auto_create_credentials(matrix_config: dict) -> bool:
     """
     Return True if the Matrix config provides non-empty strings for homeserver, a user id (bot_user_id or user_id), and password.
-    
+
     Checks that the `matrix_config` contains the required fields to perform an automatic login flow by ensuring each value exists and is a non-blank string.
-    
+
     Parameters:
         matrix_config (dict): The `matrix` section from config.yaml.
-    
+
     Returns:
         bool: True when homeserver, (bot_user_id or user_id), and password are all present and non-empty strings; otherwise False.
     """
@@ -982,15 +982,15 @@ async def login_matrix_bot(
 ):
     """
     Perform an interactive Matrix login for the bot, enable end-to-end encryption, and persist credentials for later use.
-    
+
     This coroutine attempts server discovery for the provided homeserver, logs in as the given username, initializes an encrypted client store, and saves resulting credentials (homeserver, user_id, access_token, device_id) to credentials.json so the relay can restore the session non-interactively. If an existing credentials.json contains a matching user_id, the device_id will be reused when available.
-    
+
     Parameters:
         homeserver (str | None): Homeserver URL to use. If None, the user is prompted.
         username (str | None): Matrix username (without or with leading "@"). If None, the user is prompted.
         password (str | None): Password for the account. If None, the user is prompted securely.
         logout_others (bool | None): If True, attempts to log out other sessions after login. If None, the user is prompted. (Note: full "logout others" behavior may be limited.)
-    
+
     Returns:
         bool: True on successful login and credentials persisted; False on failure. The function handles errors internally and returns False rather than raising.
     """
@@ -1192,9 +1192,9 @@ async def login_matrix_bot(
 async def join_matrix_room(matrix_client, room_id_or_alias: str) -> None:
     """
     Join a Matrix room by ID or alias, resolving aliases and updating the local matrix_rooms mapping.
-    
+
     If given a room alias (starts with '#'), the alias is resolved to a room ID and any entry in the global matrix_rooms list that referenced that alias will be replaced with the resolved room ID. If the bot is not already in the resolved room (or provided room ID), the function attempts to join it. Successes and failures are logged; exceptions are caught and handled internally (the function does not raise).
-    
+
     Parameters:
         room_id_or_alias (str): Room ID (e.g. "!abcdef:server") or alias (e.g. "#room:server") to join.
     """

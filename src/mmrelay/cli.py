@@ -1070,14 +1070,14 @@ def handle_config_command(args):
 def handle_auth_command(args):
     """
     Dispatch the "auth" CLI subcommand to the appropriate handler.
-    
+
     If args.auth_command is "status" calls handle_auth_status; if "logout" calls handle_auth_logout;
     any other value (or missing attribute) defaults to handle_auth_login.
-    
+
     Parameters:
         args (argparse.Namespace): Parsed CLI arguments. Expected to optionally provide `auth_command`
             with one of "login", "status", or "logout".
-    
+
     Returns:
         int: Exit code from the invoked handler (0 = success, non-zero = failure).
     """
@@ -1126,12 +1126,12 @@ def handle_auth_login(args):
 def handle_auth_status(args):
     """
     Show Matrix authentication status by locating and reading a credentials.json file.
-    
+
     Searches candidate config directories derived from the provided parsed-arguments namespace for a credentials.json file. If found and readable, prints the file path and the homeserver, user_id, and device_id values. If the file is unreadable or not found, prints guidance to run the authentication flow.
-    
+
     Parameters:
         args (argparse.Namespace): Parsed CLI arguments used to determine the list of config paths to search.
-    
+
     Returns:
         int: Exit code — 0 if a readable credentials.json was found, 1 otherwise.
     """
@@ -1170,9 +1170,9 @@ def handle_auth_status(args):
 def handle_auth_logout(args):
     """
     Log out the bot from Matrix and remove local session artifacts.
-    
+
     Prompts for a verification password (unless provided via args.password), warns if the password was supplied on the command line, asks for confirmation unless args.yes is True, and then performs the logout by calling the logout_matrix_bot routine. On success the function returns 0; on failure or cancellation it returns 1. KeyboardInterrupt is treated as a cancellation and returns 1.
-    
+
     Parameters:
         args (argparse.Namespace): CLI arguments. Relevant attributes:
             password (str | None): If provided and non-empty, used as the verification password.
@@ -1232,7 +1232,7 @@ def handle_auth_logout(args):
 def handle_service_command(args):
     """
     Handle service-related CLI subcommands.
-    
+
     Currently supports the "install" subcommand which attempts to import and run mmrelay.setup_utils.install_service.
     Returns 0 on success, 1 on failure or for unknown subcommands. Prints an error message if setup utilities cannot be imported.
     """

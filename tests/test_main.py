@@ -60,7 +60,7 @@ from mmrelay.main import main, print_banner, run_main
 def _close_coro_if_possible(coro: Any) -> None:
     """
     Close an awaitable/coroutine object if it exposes a close() method to prevent ResourceWarning during tests.
-    
+
     Parameters:
         coro: An awaitable object (e.g., coroutine object or generator-based coroutine). If it has a `close()` method it will be called; otherwise the object is left untouched.
     """
@@ -446,7 +446,7 @@ class TestRunMain(unittest.TestCase):
     ):
         """
         Verify run_main returns 1 when the loaded configuration is missing required keys.
-        
+
         Sets up a minimal incomplete config (only matrix.homeserver) and ensures run_main detects the missing fields and returns a non-zero exit code. Uses the coroutine cleanup helper for asyncio.run to avoid ResourceWarnings.
         """
         # Mock incomplete configuration
@@ -784,7 +784,7 @@ def test_main_database_wipe_config(
 ):
     """
     Verify that main() triggers a message-map wipe when the configuration includes a database/message-map wipe_on_restart flag (supports both current "database" and legacy "db" keys) and that the message queue processor is started.
-    
+
     Detailed behavior:
     - Builds a minimal config with one Matrix room and a database section under the provided `db_key` where `msg_map.wipe_on_restart` is True.
     - Mocks Matrix and Meshtastic connections and the message queue to avoid external I/O.
@@ -817,7 +817,7 @@ def test_main_database_wipe_config(
         async def mock_sync_forever(*args, **kwargs):
             """
             Coroutine used in tests to simulate an async run loop that immediately interrupts execution.
-            
+
             Awaits a very short sleep (0.01s) to yield control, then raises KeyboardInterrupt to terminate callers (e.g., to stop startup loops cleanly during tests).
             """
             await asyncio.sleep(0.01)  # Very short delay
@@ -1091,7 +1091,7 @@ class TestMainAsyncFunction(unittest.TestCase):
     def tearDown(self):
         """
         Tear down test fixtures and purge global state to prevent cross-test contamination.
-        
+
         Calls the module-level global-state reset routine and runs a full garbage
         collection pass to ensure AsyncMock objects and other leaked resources are
         collected. This is required to avoid test hangs and interference between tests.
@@ -1106,7 +1106,7 @@ class TestMainAsyncFunction(unittest.TestCase):
     def _reset_global_state(self):
         """
         Reset global state across mmrelay modules to ensure test isolation.
-        
+
         This clears or restores to defaults module-level globals that are set by runtime
         calls (for example during set_config or application startup). It affects:
         - mmrelay.meshtastic_utils: config, matrix_rooms, meshtastic_client, event_loop,
@@ -1117,7 +1117,7 @@ class TestMainAsyncFunction(unittest.TestCase):
         - mmrelay.main: banner printed flag.
         - mmrelay.plugin_loader: invokes _reset_caches_for_tests() if available.
         - mmrelay.message_queue: calls get_message_queue().stop() if present.
-        
+
         Intended for use in test setup/teardown to avoid cross-test contamination and
         previously-observed hanging tests caused by leftover global state. Side effects:
         it mutates imported mmrelay modules and may call cleanup helpers (such as

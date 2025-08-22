@@ -203,7 +203,7 @@ class TestRoomListFormatting(unittest.TestCase):
     def setUp(self):
         """
         Skip the test when optional E2EE-related imports are not available.
-        
+
         If the module-level IMPORTS_AVAILABLE is False, calls self.skipTest with a clear message so tests that depend on optional imports are skipped rather than failing.
         """
         if not IMPORTS_AVAILABLE:
@@ -284,7 +284,7 @@ class TestEncryptionWarnings(unittest.TestCase):
     def setUp(self):
         """
         Skip the test when optional E2EE-related imports are not available.
-        
+
         If the module-level IMPORTS_AVAILABLE is False, calls self.skipTest with a clear message so tests that depend on optional imports are skipped rather than failing.
         """
         if not IMPORTS_AVAILABLE:
@@ -345,7 +345,7 @@ class TestE2EEErrorMessages(unittest.TestCase):
     def setUp(self):
         """
         Skip the test when optional E2EE-related imports are not available.
-        
+
         If the module-level IMPORTS_AVAILABLE is False, calls self.skipTest with a clear message so tests that depend on optional imports are skipped rather than failing.
         """
         if not IMPORTS_AVAILABLE:
@@ -397,7 +397,7 @@ class TestActualEncryptionVerification(unittest.TestCase):
     def setUp(self):
         """
         Skip the test when optional E2EE-related imports are not available.
-        
+
         If the module-level IMPORTS_AVAILABLE is False, calls self.skipTest with a clear message so tests that depend on optional imports are skipped rather than failing.
         """
         if not IMPORTS_AVAILABLE:
@@ -416,9 +416,9 @@ class TestActualEncryptionVerification(unittest.TestCase):
             def emit(self, record):
                 """
                 Append the formatted message from a LogRecord to the outer `log_capture` list.
-                
+
                 This handler extracts the record's message (via LogRecord.getMessage()) and appends it to the surrounding `log_capture` list for later inspection by tests.
-                
+
                 Parameters:
                     record (logging.LogRecord): The LogRecord whose formatted message will be captured.
                 """

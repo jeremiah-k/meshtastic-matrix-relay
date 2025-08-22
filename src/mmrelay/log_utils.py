@@ -59,12 +59,12 @@ _COMPONENT_LOGGERS = {
 def configure_component_debug_logging():
     """
     Configure log levels for external component loggers based on config["logging"]["debug"].
-    
+
     Reads per-component entries under `config["logging"]["debug"]` and applies one of:
     - falsy or missing: silence the component by setting its loggers to CRITICAL+1
     - boolean True: enable DEBUG for the component's loggers
     - string: interpret as a logging level name (case-insensitive); invalid names fall back to DEBUG
-    
+
     This function mutates the levels of loggers listed in _COMPONENT_LOGGERS and runs only once per process; no-op if called again or if global `config` is None.
     """
     global _component_debug_configured, config
