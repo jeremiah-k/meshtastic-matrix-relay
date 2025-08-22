@@ -25,12 +25,36 @@ from mmrelay.plugins.weather_plugin import Plugin
 
 
 def _normalize_emoji(s: str) -> str:
-    """Strip text/emoji variation selectors to avoid platform-specific failures."""
+    """
+    Normalize emoji/text by removing Unicode variation selectors U+FE0F and U+FE0E.
+    
+    This removes common emoji/text variation selector characters so comparisons of strings
+    containing emoji are not affected by platform-dependent presentation differences.
+    
+    Parameters:
+        s (str): Input string that may contain variation selector characters.
+    
+    Returns:
+        str: The input string with U+FE0F and U+FE0E removed.
+    """
     return s.replace("\uFE0F", "").replace("\uFE0E", "")
 
 
 def _make_ok_response(payload):
-    """Create a mock response with the given payload."""
+    """
+    Create a unittest-friendly mock HTTP response that returns a fixed JSON payload.
+    
+    The returned object is a MagicMock configured so:
+    - .json() returns the provided payload.
+    - .raise_for_status() does nothing (simulates a 2xx response).
+    - .status_code is set to 200.
+    
+    Parameters:
+        payload: The Python object that should be returned by the mock's .json() method.
+    
+    Returns:
+        A MagicMock configured as described above.
+    """
     r = MagicMock()
     r.json.return_value = payload
     r.raise_for_status.return_value = None
@@ -43,7 +67,9 @@ class TestWeatherPlugin(unittest.TestCase):
 
     def setUp(self):
         """
-        Initialize the test environment for each test case by creating a Plugin instance with mocked dependencies and sample weather data.
+        Set up a controlled test environment before each test.
+        
+        Creates a Plugin instance with mocked dependencies (logger, is_channel_enabled, get_response_delay) and a default config (units: "metric"). Also provides self.sample_weather_data: a two-day (48-hour) mock Open-Meteo-like payload with a current_weather timestamp of "2023-08-20T10:00" and hourly arrays for time, temperature_2m, precipitation_probability, weathercode, and is_day. The sample data is structured so tests can reference the current value (10:00), the +2h forecast (12:00) and the +5h forecast (15:00).
         """
         self.plugin = Plugin()
         self.plugin.logger = MagicMock()
