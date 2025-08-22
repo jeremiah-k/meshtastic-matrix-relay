@@ -25,12 +25,13 @@ class Plugin(BasePlugin):
         url = (
             f"https://api.open-meteo.com/v1/forecast?"
             f"latitude={latitude}&longitude={longitude}&"
-            f"hourly=temperature_2m,precipitation_probability,weathercode,cloudcover&"
-            f"forecast_days=1&current_weather=true"
+            f"hourly=temperature_2m,precipitation_probability,weathercode,is_day&"
+            f"forecast_days=2&timezone=auto&current_weather=true"
         )
 
         try:
             response = requests.get(url, timeout=10)
+            response.raise_for_status()
             data = response.json()
 
             # Extract relevant weather data
@@ -39,9 +40,14 @@ class Plugin(BasePlugin):
             is_day = data["current_weather"]["is_day"]
             current_time_str = data["current_weather"]["time"]
 
-            # Parse current time to get the hour
-            current_time = datetime.fromisoformat(current_time_str.replace("Z", "+00:00"))
-            current_hour = current_time.hour
+            # Parse current time to get the hour with defensive handling
+            current_hour = 0
+            try:
+                current_time = datetime.fromisoformat(current_time_str.replace("Z", "+00:00"))
+                current_hour = current_time.hour
+            except Exception as ex:
+                self.logger.warning(f"Unexpected current_weather.time '{current_time_str}': {ex}. Defaulting to hour=0.")
+                current_hour = 0
 
             # Calculate indices for +2h and +5h forecasts
             # API returns hourly data starting from 00:00 of the current day
@@ -60,12 +66,16 @@ class Plugin(BasePlugin):
                 forecast_2h_index
             ]
             forecast_2h_weather_code = data["hourly"]["weathercode"][forecast_2h_index]
+            # Get hour-specific day/night flag for +2h forecast
+            forecast_2h_is_day = data["hourly"].get("is_day", [is_day])[forecast_2h_index] if data["hourly"].get("is_day") else is_day
 
             forecast_5h_temp = data["hourly"]["temperature_2m"][forecast_5h_index]
             forecast_5h_precipitation = data["hourly"]["precipitation_probability"][
                 forecast_5h_index
             ]
             forecast_5h_weather_code = data["hourly"]["weathercode"][forecast_5h_index]
+            # Get hour-specific day/night flag for +5h forecast
+            forecast_5h_is_day = data["hourly"].get("is_day", [is_day])[forecast_5h_index] if data["hourly"].get("is_day") else is_day
 
             if units == "imperial":
                 # Convert temperatures from Celsius to Fahrenheit
@@ -119,11 +129,11 @@ class Plugin(BasePlugin):
                 f"{current_temp}{temperature_unit} | "
             )
             forecast += (
-                f"+2h: {weather_code_to_text(forecast_2h_weather_code, is_day)} - "
+                f"+2h: {weather_code_to_text(forecast_2h_weather_code, forecast_2h_is_day)} - "
                 f"{forecast_2h_temp}{temperature_unit} {forecast_2h_precipitation}% | "
             )
             forecast += (
-                f"+5h: {weather_code_to_text(forecast_5h_weather_code, is_day)} - "
+                f"+5h: {weather_code_to_text(forecast_5h_weather_code, forecast_5h_is_day)} - "
                 f"{forecast_5h_temp}{temperature_unit} {forecast_5h_precipitation}%"
             )
 
@@ -132,6 +142,9 @@ class Plugin(BasePlugin):
         except requests.exceptions.RequestException as e:
             self.logger.error(f"Error fetching weather data: {e}")
             return "Error fetching weather data."
+        except (KeyError, TypeError, ValueError) as e:
+            self.logger.error(f"Malformed weather data: {e}")
+            return "Error parsing weather data."
 
     async def handle_meshtastic_message(
         self, packet, formatted_message, longname, meshnet_name

@@ -12,6 +12,7 @@ Tests the weather forecast functionality including:
 - Error handling for API failures
 """
 
+import copy
 import os
 import sys
 import unittest
@@ -133,6 +134,33 @@ class TestWeatherPlugin(unittest.TestCase):
                     95,  # 23:00
                 ]
                 + [1] * 24,  # Next day data
+                "is_day": [
+                    0,   # 00:00 - night
+                    0,   # 01:00 - night
+                    0,   # 02:00 - night
+                    0,   # 03:00 - night
+                    0,   # 04:00 - night
+                    0,   # 05:00 - night
+                    1,   # 06:00 - day
+                    1,   # 07:00 - day
+                    1,   # 08:00 - day
+                    1,   # 09:00 - day
+                    1,   # 10:00 (current time) - day
+                    1,   # 11:00 - day
+                    1,   # 12:00 (+2h from current) - day
+                    1,   # 13:00 - day
+                    1,   # 14:00 - day
+                    1,   # 15:00 (+5h from current) - day
+                    1,   # 16:00 - day
+                    1,   # 17:00 - day
+                    1,   # 18:00 - day
+                    0,   # 19:00 - night
+                    0,   # 20:00 - night
+                    0,   # 21:00 - night
+                    0,   # 22:00 - night
+                    0,   # 23:00 - night
+                ]
+                + [1] * 24,  # Next day data (all day)
             },
         }
 
@@ -193,6 +221,7 @@ class TestWeatherPlugin(unittest.TestCase):
         """
         mock_response = MagicMock()
         mock_response.json.return_value = self.sample_weather_data
+        mock_response.raise_for_status.return_value = None
         mock_get.return_value = mock_response
 
         self.plugin.config = {"units": "metric"}
@@ -207,6 +236,11 @@ class TestWeatherPlugin(unittest.TestCase):
             "longitude=-74.006", call_args
         )  # May be formatted without trailing zero
         self.assertIn("api.open-meteo.com", call_args)
+        self.assertIn("forecast_days=2", call_args)
+        self.assertIn("timezone=auto", call_args)
+
+        # Verify timeout is set
+        self.assertEqual(mock_get.call_args.kwargs.get("timeout"), 10)
 
         # Should contain current weather
         self.assertIn("Now: 🌤️ Mainly clear", forecast)
@@ -231,6 +265,7 @@ class TestWeatherPlugin(unittest.TestCase):
         """
         mock_response = MagicMock()
         mock_response.json.return_value = self.sample_weather_data
+        mock_response.raise_for_status.return_value = None
         mock_get.return_value = mock_response
 
         self.plugin.config = {"units": "imperial"}
@@ -259,11 +294,13 @@ class TestWeatherPlugin(unittest.TestCase):
                 "temperature_2m": [10.0 + h for h in range(24)],  # 10.0, 11.0, 12.0, ...
                 "precipitation_probability": [h * 2 for h in range(24)],  # 0, 2, 4, ...
                 "weathercode": [1] * 24,
+                "is_day": [0 if h < 6 or h > 18 else 1 for h in range(24)],  # Night before 6am and after 6pm
             },
         }
 
         mock_response = MagicMock()
         mock_response.json.return_value = early_morning_data
+        mock_response.raise_for_status.return_value = None
         mock_get.return_value = mock_response
 
         forecast = self.plugin.generate_forecast(40.7128, -74.0060)
@@ -294,11 +331,13 @@ class TestWeatherPlugin(unittest.TestCase):
                 "temperature_2m": [15.0 + (h % 12) for h in range(48)],  # Varying temps
                 "precipitation_probability": [h for h in range(48)],
                 "weathercode": [2] * 48,
+                "is_day": [0 if h % 24 < 6 or h % 24 > 18 else 1 for h in range(48)],  # Day/night cycle
             },
         }
 
         mock_response = MagicMock()
         mock_response.json.return_value = late_evening_data
+        mock_response.raise_for_status.return_value = None
         mock_get.return_value = mock_response
 
         forecast = self.plugin.generate_forecast(40.7128, -74.0060)
@@ -328,11 +367,13 @@ class TestWeatherPlugin(unittest.TestCase):
                 "temperature_2m": [20.0] * 24,
                 "precipitation_probability": [10] * 24,
                 "weathercode": [1] * 24,
+                "is_day": [0 if h < 6 or h > 18 else 1 for h in range(24)],  # Day/night cycle
             },
         }
 
         mock_response = MagicMock()
         mock_response.json.return_value = limited_data
+        mock_response.raise_for_status.return_value = None
         mock_get.return_value = mock_response
 
         forecast = self.plugin.generate_forecast(40.7128, -74.0060)
@@ -359,11 +400,13 @@ class TestWeatherPlugin(unittest.TestCase):
                 "temperature_2m": [25.0] * 24,
                 "precipitation_probability": [5] * 24,
                 "weathercode": [0] * 24,
+                "is_day": [0 if h < 6 or h > 18 else 1 for h in range(24)],  # Day/night cycle
             },
         }
 
         mock_response = MagicMock()
         mock_response.json.return_value = timezone_data
+        mock_response.raise_for_status.return_value = None
         mock_get.return_value = mock_response
 
         # Should not raise an exception and should parse correctly
@@ -372,15 +415,45 @@ class TestWeatherPlugin(unittest.TestCase):
         self.assertIn("☀️ Clear sky", forecast)
 
     @patch("requests.get")
+    def test_generate_forecast_timezone_offset_parsing(self, mock_get):
+        """Test datetime parsing with timezone offset format."""
+        offset_data = {
+            "current_weather": {
+                "temperature": 22.0,
+                "weathercode": 2,
+                "is_day": 1,
+                "time": "2023-08-20T16:30:00+02:30",  # Timezone offset format
+            },
+            "hourly": {
+                "time": [f"2023-08-20T{h:02d}:00" for h in range(24)],
+                "temperature_2m": [22.0] * 24,
+                "precipitation_probability": [8] * 24,
+                "weathercode": [2] * 24,
+                "is_day": [0 if h < 6 or h > 18 else 1 for h in range(24)],  # Day/night cycle
+            },
+        }
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = offset_data
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+
+        # Should parse timezone offset correctly (16:30 -> hour 16)
+        forecast = self.plugin.generate_forecast(40.7128, -74.0060)
+        self.assertIn("22.0°C", forecast)
+        self.assertIn("⛅️ Partly cloudy", forecast)
+
+    @patch("requests.get")
     def test_generate_forecast_night_weather_codes(self, mock_get):
         """
         Test that the forecast generation uses night-specific weather descriptions and emojis when night weather codes are present in the API response.
         """
-        night_weather_data = self.sample_weather_data.copy()
+        night_weather_data = copy.deepcopy(self.sample_weather_data)
         night_weather_data["current_weather"]["is_day"] = 0  # Night time
 
         mock_response = MagicMock()
         mock_response.json.return_value = night_weather_data
+        mock_response.raise_for_status.return_value = None
         mock_get.return_value = mock_response
 
         forecast = self.plugin.generate_forecast(40.7128, -74.0060)
@@ -400,6 +473,7 @@ class TestWeatherPlugin(unittest.TestCase):
 
         mock_response = MagicMock()
         mock_response.json.return_value = unknown_weather_data
+        mock_response.raise_for_status.return_value = None
         mock_get.return_value = mock_response
 
         forecast = self.plugin.generate_forecast(40.7128, -74.0060)
@@ -517,6 +591,7 @@ class TestWeatherPlugin(unittest.TestCase):
         # Mock weather API response
         mock_response = MagicMock()
         mock_response.json.return_value = self.sample_weather_data
+        mock_response.raise_for_status.return_value = None
         mock_get.return_value = mock_response
 
         # Mock meshtastic client
@@ -625,6 +700,7 @@ class TestWeatherPlugin(unittest.TestCase):
         # Mock weather API response
         mock_response = MagicMock()
         mock_response.json.return_value = self.sample_weather_data
+        mock_response.raise_for_status.return_value = None
         mock_get.return_value = mock_response
 
         # Mock meshtastic client
