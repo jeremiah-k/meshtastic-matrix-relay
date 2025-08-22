@@ -24,6 +24,13 @@ Usage:
 
 import asyncio
 import logging
+import os
+import ssl
+
+try:
+    import certifi
+except ImportError:
+    certifi = None
 
 # Import Matrix-related modules for logout functionality
 try:
@@ -294,6 +301,105 @@ def msg_regenerate_credentials():
         str: Message instructing the user to run the auth login command again to produce new credentials containing a `device_id`.
     """
     return f"Please run '{get_command('auth_login')}' again to generate new credentials that include a device_id."
+
+
+# Helper functions moved from matrix_utils to break circular dependency
+
+
+def _create_ssl_context():
+    """
+    Create an SSL context using certifi's certificates for Matrix client connections.
+
+    This helper function centralizes SSL context creation to ensure consistent
+    certificate validation across all Matrix client instances.
+
+    Returns:
+        ssl.SSLContext: SSL context with certifi certificates, or system default if certifi fails
+    """
+    try:
+        if certifi:
+            return ssl.create_default_context(cafile=certifi.where())
+        else:
+            return ssl.create_default_context()
+    except Exception as e:
+        logger.warning(
+            f"Failed to create certifi-backed SSL context, falling back to system default: {e}"
+        )
+        try:
+            return ssl.create_default_context()
+        except Exception as fallback_e:
+            logger.error(f"Failed to create system default SSL context: {fallback_e}")
+            return None
+
+
+def _cleanup_local_session_data():
+    """
+    Helper function to clean up local session data (credentials.json and E2EE store).
+
+    Returns:
+        bool: True if cleanup was successful, False otherwise
+    """
+    import shutil
+
+    logger.info("Clearing local session data...")
+    success = True
+
+    # Remove credentials.json
+    config_dir = get_base_dir()
+    credentials_path = os.path.join(config_dir, "credentials.json")
+
+    if os.path.exists(credentials_path):
+        try:
+            os.remove(credentials_path)
+            logger.info(f"Removed credentials file: {credentials_path}")
+        except (OSError, PermissionError) as e:
+            logger.error(f"Failed to remove credentials file: {e}")
+            success = False
+    else:
+        logger.info("No credentials file found to remove")
+
+    # Clear E2EE store directory (default and any configured override)
+    candidate_store_paths = {get_e2ee_store_dir()}
+    try:
+        from mmrelay.config import load_config
+
+        cfg = load_config(args=None) or {}
+        matrix_cfg = cfg.get("matrix", {})
+        for section in ("e2ee", "encryption"):
+            override = os.path.expanduser(
+                matrix_cfg.get(section, {}).get("store_path", "")
+            )
+            if override:
+                candidate_store_paths.add(override)
+    except Exception as e:
+        logger.debug(
+            f"Could not resolve configured E2EE store path: {type(e).__name__}"
+        )
+
+    any_store_found = False
+    for store_path in sorted(candidate_store_paths):
+        if os.path.exists(store_path):
+            any_store_found = True
+            try:
+                shutil.rmtree(store_path)
+                logger.info(f"Removed E2EE store directory: {store_path}")
+            except (OSError, PermissionError) as e:
+                logger.error(
+                    f"Failed to remove E2EE store directory '{store_path}': {e}"
+                )
+                success = False
+    if not any_store_found:
+        logger.info("No E2EE store directory found to remove")
+
+    if success:
+        logger.info("✅ Logout completed successfully!")
+        logger.info("All Matrix sessions and local data have been cleared.")
+        logger.info("Run 'mmrelay auth login' to authenticate again.")
+    else:
+        logger.warning("Logout completed with some errors.")
+        logger.warning("Some files may not have been removed due to permission issues.")
+
+    return success
 
 
 # CLI-specific functions (can use print statements for user interaction)

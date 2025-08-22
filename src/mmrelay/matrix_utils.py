@@ -52,6 +52,8 @@ except ImportError:
     NioRemoteTransportError = Exception
 
 from mmrelay.cli_utils import (
+    _cleanup_local_session_data,
+    _create_ssl_context,
     msg_require_auth_login,
     msg_retry_auth_login,
 )
@@ -209,27 +211,7 @@ def _display_room_channel_mappings(
                 logger.info(f"    ❌ {room_name} (not relayed)")
 
 
-def _create_ssl_context():
-    """
-    Create an SSL context using certifi's certificates for Matrix client connections.
 
-    This helper function centralizes SSL context creation to ensure consistent
-    certificate validation across all Matrix client instances.
-
-    Returns:
-        ssl.SSLContext: SSL context with certifi certificates, or system default if certifi fails
-    """
-    try:
-        return ssl.create_default_context(cafile=certifi.where())
-    except Exception as e:
-        logger.warning(
-            f"Failed to create certifi-backed SSL context, falling back to system default: {e}"
-        )
-        try:
-            return ssl.create_default_context()
-        except Exception as fallback_e:
-            logger.error(f"Failed to create system default SSL context: {fallback_e}")
-            return None
 
 
 def _can_auto_create_credentials(matrix_config: dict) -> bool:
@@ -2353,71 +2335,4 @@ async def on_room_member(room: MatrixRoom, event: RoomMemberEvent) -> None:
     pass
 
 
-def _cleanup_local_session_data():
-    """
-    Helper function to clean up local session data (credentials.json and E2EE store).
 
-    Returns:
-        bool: True if cleanup was successful, False otherwise
-    """
-    import shutil
-
-    logger.info("Clearing local session data...")
-    success = True
-
-    # Remove credentials.json
-    config_dir = get_base_dir()
-    credentials_path = os.path.join(config_dir, "credentials.json")
-
-    if os.path.exists(credentials_path):
-        try:
-            os.remove(credentials_path)
-            logger.info(f"Removed credentials file: {credentials_path}")
-        except (OSError, PermissionError) as e:
-            logger.error(f"Failed to remove credentials file: {e}")
-            success = False
-    else:
-        logger.info("No credentials file found to remove")
-
-    # Clear E2EE store directory (default and any configured override)
-    candidate_store_paths = {get_e2ee_store_dir()}
-    try:
-        from mmrelay.config import load_config
-
-        cfg = load_config(args=None) or {}
-        matrix_cfg = cfg.get("matrix", {})
-        for section in ("e2ee", "encryption"):
-            override = os.path.expanduser(
-                matrix_cfg.get(section, {}).get("store_path", "")
-            )
-            if override:
-                candidate_store_paths.add(override)
-    except Exception as e:
-        logger.debug(
-            f"Could not resolve configured E2EE store path: {type(e).__name__}"
-        )
-
-    any_store_found = False
-    for store_path in sorted(candidate_store_paths):
-        if os.path.exists(store_path):
-            any_store_found = True
-            try:
-                shutil.rmtree(store_path)
-                logger.info(f"Removed E2EE store directory: {store_path}")
-            except (OSError, PermissionError) as e:
-                logger.error(
-                    f"Failed to remove E2EE store directory '{store_path}': {e}"
-                )
-                success = False
-    if not any_store_found:
-        logger.info("No E2EE store directory found to remove")
-
-    if success:
-        logger.info("✅ Logout completed successfully!")
-        logger.info("All Matrix sessions and local data have been cleared.")
-        logger.info("Run 'mmrelay auth login' to authenticate again.")
-    else:
-        logger.warning("Logout completed with some errors.")
-        logger.warning("Some files may not have been removed due to permission issues.")
-
-    return success
