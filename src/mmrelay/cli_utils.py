@@ -29,16 +29,31 @@ from typing import Optional
 
 # Import Matrix-related modules for logout functionality
 try:
-    from nio import AsyncClient, NioLoginError, NioLogoutError
+    from nio import AsyncClient
+    from nio.responses import LoginError, LogoutError
     from nio.exceptions import (
-        NioLocalTransportError,
-        NioRemoteTransportError,
-        NioLocalProtocolError,
-        NioRemoteProtocolError,
+        LocalTransportError,
+        RemoteTransportError,
+        LocalProtocolError,
+        RemoteProtocolError,
     )
+    # Create aliases for backward compatibility
+    NioLoginError = LoginError
+    NioLogoutError = LogoutError
+    NioLocalTransportError = LocalTransportError
+    NioRemoteTransportError = RemoteTransportError
+    NioLocalProtocolError = LocalProtocolError
+    NioRemoteProtocolError = RemoteProtocolError
 except ImportError:
     # Handle case where matrix-nio is not installed
     AsyncClient = None
+    LoginError = Exception
+    LogoutError = Exception
+    LocalTransportError = Exception
+    RemoteTransportError = Exception
+    LocalProtocolError = Exception
+    RemoteProtocolError = Exception
+    # Create aliases for backward compatibility
     NioLoginError = Exception
     NioLogoutError = Exception
     NioLocalTransportError = Exception
@@ -311,6 +326,12 @@ async def logout_matrix_bot(password: str):
         _cleanup_local_session_data,
         MATRIX_LOGIN_TIMEOUT,
     )
+
+    # Check if matrix-nio is available
+    if AsyncClient is None:
+        logger.error("Matrix-nio library not available. Cannot perform logout.")
+        print("❌ Matrix-nio library not available. Cannot perform logout.")
+        return False
 
     # Load current credentials
     credentials = load_credentials()
