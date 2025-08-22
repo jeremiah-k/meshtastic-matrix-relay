@@ -134,20 +134,16 @@ def _submit_coro(coro, loop=None):
 
 def _get_device_metadata(client):
     """
-    Get device metadata including firmware version from a Meshtastic client.
-
-    This function calls getMetadata() on the client's localNode and captures the output
-    to extract firmware version and other metadata. The console output is suppressed
-    to avoid spam in logs.
-
-    Parameters:
-        client: Meshtastic client instance with localNode.getMetadata() method
-
+    Retrieve device metadata from a Meshtastic client.
+    
+    Attempts to call client.localNode.getMetadata() to extract a firmware version and capture the raw output. If the client lacks a usable localNode.getMetadata method or parsing fails, returns defaults. The captured raw output is truncated to 4096 characters.
+    
     Returns:
-        dict: Dictionary containing parsed metadata with keys:
-            - 'firmware_version': Firmware version string or 'unknown' if not found
-            - 'raw_output': Complete captured output from getMetadata()
-            - 'success': Boolean indicating if metadata was retrieved successfully
+        dict: {
+            "firmware_version": str,  # parsed firmware version or "unknown"
+            "raw_output": str,        # captured output from getMetadata() (possibly truncated)
+            "success": bool           # True when a firmware_version was successfully parsed
+        }
     """
     result = {"firmware_version": "unknown", "raw_output": "", "success": False}
 
@@ -232,16 +228,16 @@ def serial_port_exists(port_name):
 
 def connect_meshtastic(passed_config=None, force_connect=False):
     """
-    Establishes a connection to a Meshtastic device using serial, BLE, or TCP, with automatic retries and event subscriptions.
-
-    If a configuration is provided, updates the global configuration and Matrix room mappings. Prevents concurrent or duplicate connection attempts, validates required configuration fields, and supports both legacy and current connection types. Verifies serial port existence before connecting and handles connection failures with exponential backoff. Subscribes to message and connection lost events upon successful connection.
-
+    Establish and return a Meshtastic client connection (serial, BLE, or TCP), with configurable retries and event subscription.
+    
+    Attempts to (re)connect using the module configuration and updates module-level state on success (meshtastic_client, matrix_rooms, and event subscriptions). Validates required configuration keys, supports the legacy "network" alias for TCP, verifies serial port presence before connecting, and performs exponential backoff on connection failures. Subscribes once to message and connection-lost events when a connection is established.
+    
     Parameters:
-        passed_config (dict, optional): Configuration dictionary for the connection.
-        force_connect (bool, optional): If True, forces a new connection even if one already exists.
-
+        passed_config (dict, optional): Configuration to use for the connection; if provided, replaces the module-level config and may update matrix_rooms.
+        force_connect (bool, optional): If True, forces creating a new connection even if one already exists.
+    
     Returns:
-        The connected Meshtastic client instance, or None if connection fails or shutdown is in progress.
+        The connected Meshtastic client instance on success, or None if connection cannot be established or shutdown is in progress.
     """
     global meshtastic_client, shutting_down, reconnecting, config, matrix_rooms
     if shutting_down:
@@ -910,9 +906,15 @@ def on_meshtastic_message(packet, interface):
 
 async def check_connection():
     """
-    Periodically checks the health of the Meshtastic connection and triggers reconnection if the device becomes unresponsive.
-
-    For non-BLE connections, performs a metadata check at configurable intervals to verify device responsiveness. If the check fails or the firmware version is missing, initiates reconnection unless already in progress. BLE connections are excluded from periodic checks due to real-time disconnection detection. The function runs continuously until shutdown is requested, with health check behavior controlled by configuration.
+    Periodically verify Meshtastic connection health and trigger reconnection when the device is unresponsive.
+    
+    Checks run continuously until shutdown. Behavior:
+    - Controlled by config['meshtastic']['health_check']:
+      - 'enabled' (bool, default True) — enable/disable periodic checks.
+      - 'heartbeat_interval' (int, seconds, default 60) — check interval. Backwards-compatible: if 'heartbeat_interval' exists directly under config['meshtastic'], that value is used.
+    - For non-BLE connections, calls _get_device_metadata(client). If metadata parsing fails, performs a fallback probe via client.getMyNodeInfo(); if both fail, on_lost_meshtastic_connection(...) is invoked to start reconnection.
+    - BLE connections are excluded from periodic checks because the underlying library detects disconnections in real time.
+    - No return value; runs as a background coroutine until global shutting_down is True.
     """
     global meshtastic_client, shutting_down, config
 

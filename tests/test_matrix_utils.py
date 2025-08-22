@@ -854,12 +854,30 @@ async def test_connect_matrix_success(matrix_config):
 
         # Create proper async mock methods that return coroutines
         async def mock_whoami():
+            """
+            Asynchronous test helper that simulates a Matrix client's `whoami()` response.
+            
+            Returns:
+                MagicMock: A mock object with `device_id` set to "test_device_id", matching the shape returned by an AsyncClient.whoami() call.
+            """
             return MagicMock(device_id="test_device_id")
 
         async def mock_sync(*args, **kwargs):
+            """
+            Asynchronous stub that ignores all arguments and returns a MagicMock instance.
+            
+            Used in tests to mock async sync-like calls; can be awaited like a coroutine and will yield a MagicMock.
+            Returns:
+                MagicMock: A new MagicMock instance on each call.
+            """
             return MagicMock()
 
         async def mock_get_displayname(*args, **kwargs):
+            """
+            Coroutine used in tests to simulate fetching a user's display name.
+            
+            Returns a MagicMock object with a `displayname` attribute set to "Test Bot".
+            """
             return MagicMock(displayname="Test Bot")
 
         mock_client_instance.whoami = mock_whoami
@@ -895,9 +913,21 @@ async def test_connect_matrix_without_credentials(matrix_config):
 
         # Create proper async mock methods that return coroutines
         async def mock_sync(*args, **kwargs):
+            """
+            Asynchronous stub that ignores all arguments and returns a MagicMock instance.
+            
+            Used in tests to mock async sync-like calls; can be awaited like a coroutine and will yield a MagicMock.
+            Returns:
+                MagicMock: A new MagicMock instance on each call.
+            """
             return MagicMock()
 
         async def mock_get_displayname(*args, **kwargs):
+            """
+            Coroutine used in tests to simulate fetching a user's display name.
+            
+            Returns a MagicMock object with a `displayname` attribute set to "Test Bot".
+            """
             return MagicMock(displayname="Test Bot")
 
         mock_client_instance.sync = mock_sync

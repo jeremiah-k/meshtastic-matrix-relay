@@ -301,12 +301,12 @@ def load_meshtastic_config_from_env():
 
 def load_logging_config_from_env():
     """
-    Load logging configuration from environment variables and return it as a dict.
-
-    Reads logging-related environment variables (per the module's logging env mappings) and, if a filename is provided, sets "log_to_file" to True in the returned mapping.
-
+    Load logging configuration from environment variables.
+    
+    Reads the logging-related environment variables defined by the module's mappings and returns a dict of parsed values. If a filename is present in the resulting mapping, adds "log_to_file": True to indicate file logging should be used.
+    
     Returns:
-        dict or None: A dictionary with logging configuration values when any relevant environment variables are set; otherwise None.
+        dict | None: Parsed logging configuration when any relevant environment variables are set; otherwise None.
     """
     config = _load_config_from_env_mapping(_LOGGING_ENV_VAR_MAPPINGS)
     if config:
@@ -495,23 +495,27 @@ _DATABASE_ENV_VAR_MAPPINGS = [
 
 def _load_config_from_env_mapping(mappings):
     """
-    Build a configuration dict from environment variables according to a mapping specification.
-
-    The function iterates the provided mapping entries, reads each mapping's environment variable,
-    converts/validates the value according to the mapping's "type", and places the result under
-    the mapping's "config_key" in the returned dict. Supported mapping keys on each entry:
-    - "env_var" (str): name of the environment variable to read.
-    - "config_key" (str): key to use in the resulting configuration dictionary.
+    Build a configuration dictionary from environment variables based on a mapping specification.
+    
+    Each mapping entry should be a dict with:
+    - "env_var" (str): environment variable name to read.
+    - "config_key" (str): destination key in the resulting config dict.
     - "type" (str): one of "string", "int", "float", "bool", or "enum".
-    Optional keys depending on "type":
-    - "min_value", "max_value" (for int/float): numeric bounds validated during conversion.
-    - "valid_values" (for enum): iterable of allowed values.
-    - "transform" (for enum): callable applied to the raw env value before validation.
-
+    
+    Optional keys (depending on "type"):
+    - "min_value", "max_value" (int/float): numeric bounds for "int" or "float" conversions.
+    - "valid_values" (iterable): allowed values for "enum".
+    - "transform" (callable): function applied to the raw env value before enum validation.
+    
     Behavior:
-    - Values that fail conversion or validation are skipped (an error is logged).
-    - Unknown mapping types are skipped (an error is logged).
-    - Returns a dict of found/converted settings, or None if no environment variables from the mapping were present.
+    - Values are converted/validated according to their type; invalid conversions or values are skipped and an error is logged.
+    - Unknown mapping types are skipped and an error is logged.
+    
+    Parameters:
+        mappings (iterable): Iterable of mapping dicts as described above.
+    
+    Returns:
+        dict | None: A dict of converted configuration values, or None if no mapped environment variables were present.
     """
     config = {}
 

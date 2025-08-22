@@ -974,11 +974,12 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
 
     def tearDown(self):
         """
-        Tear down test fixtures by restoring the meshtastic_utils module's global state.
-
-        Specifically restores:
-        - mu.event_loop to the saved original event loop
-        - mu._submit_coro to the previously mocked implementation
+        Restore mmrelay.meshtastic_utils global state saved during setUp.
+        
+        Restores the module-level event_loop and _submit_coro attributes to the
+        original values captured in setUp (self.original_event_loop and
+        self.mocked_submit_coro). This ensures other tests are not affected by the
+        test-specific event loop or submit coroutine replacement.
         """
         import mmrelay.meshtastic_utils as mu
 
@@ -1013,9 +1014,9 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
         async def failing_coro():
             """
             Coroutine that immediately raises a ValueError when awaited.
-
-            This async helper is intended for tests: awaiting this coroutine will always raise
-            a ValueError with message "Test exception".
+            
+            Intended for tests: awaiting this coroutine always raises ValueError("Test exception").
+            
             Raises:
                 ValueError: Always raised when the coroutine is awaited.
             """

@@ -58,7 +58,12 @@ from mmrelay.main import main, print_banner, run_main
 
 
 def _close_coro_if_possible(coro: Any) -> None:
-    """Close a coroutine/awaitable if it exposes close() to avoid ResourceWarning in tests."""
+    """
+    Close an awaitable/coroutine object if it exposes a close() method to prevent ResourceWarning during tests.
+    
+    Parameters:
+        coro: An awaitable object (e.g., coroutine object or generator-based coroutine). If it has a `close()` method it will be called; otherwise the object is left untouched.
+    """
     if inspect.isawaitable(coro) and hasattr(coro, "close"):
         coro.close()
     return None
@@ -440,9 +445,9 @@ class TestRunMain(unittest.TestCase):
         self, mock_print_banner, mock_load_config, mock_set_config, mock_asyncio_run
     ):
         """
-        Test that run_main returns 1 when required configuration keys are missing.
-
-        This verifies that the application detects incomplete configuration and exits with an error code.
+        Verify run_main returns 1 when the loaded configuration is missing required keys.
+        
+        Sets up a minimal incomplete config (only matrix.homeserver) and ensures run_main detects the missing fields and returns a non-zero exit code. Uses the coroutine cleanup helper for asyncio.run to avoid ResourceWarnings.
         """
         # Mock incomplete configuration
         mock_config = {"matrix": {"homeserver": "https://matrix.org"}}  # Missing keys
@@ -777,7 +782,15 @@ def test_main_database_wipe_config(
     mock_init_db,
     db_key,
 ):
-    """Test main function with database wipe configuration (current and legacy)."""
+    """
+    Verify that main() triggers a message-map wipe when the configuration includes a database/message-map wipe_on_restart flag (supports both current "database" and legacy "db" keys) and that the message queue processor is started.
+    
+    Detailed behavior:
+    - Builds a minimal config with one Matrix room and a database section under the provided `db_key` where `msg_map.wipe_on_restart` is True.
+    - Mocks Matrix and Meshtastic connections and the message queue to avoid external I/O.
+    - Runs main(config) until a short KeyboardInterrupt stops the startup sequence.
+    - Asserts that wipe_message_map() was invoked and that the message queue's processor was started.
+    """
     # Mock config with database wipe settings
     config = {
         "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
@@ -802,6 +815,11 @@ def test_main_database_wipe_config(
 
         # Set up sync_forever to raise KeyboardInterrupt after a short delay
         async def mock_sync_forever(*args, **kwargs):
+            """
+            Coroutine used in tests to simulate an async run loop that immediately interrupts execution.
+            
+            Awaits a very short sleep (0.01s) to yield control, then raises KeyboardInterrupt to terminate callers (e.g., to stop startup loops cleanly during tests).
+            """
             await asyncio.sleep(0.01)  # Very short delay
             raise KeyboardInterrupt()
 
@@ -1072,10 +1090,12 @@ class TestMainAsyncFunction(unittest.TestCase):
 
     def tearDown(self):
         """
-        Clean up after each test to prevent contamination.
-
-        CRITICAL: This method prevents test contamination by cleaning up global
-        state and AsyncMock objects after each test. DO NOT REMOVE.
+        Tear down test fixtures and purge global state to prevent cross-test contamination.
+        
+        Calls the module-level global-state reset routine and runs a full garbage
+        collection pass to ensure AsyncMock objects and other leaked resources are
+        collected. This is required to avoid test hangs and interference between tests.
+        Do not remove.
         """
         self._reset_global_state()
         # Force garbage collection to clean up AsyncMock objects
@@ -1085,30 +1105,23 @@ class TestMainAsyncFunction(unittest.TestCase):
 
     def _reset_global_state(self):
         """
-        Reset all global state in mmrelay modules to ensure complete test isolation.
-
-        CRITICAL: This method solves the hanging test issue by resetting ALL global
-        variables that could persist between tests and cause contamination.
-
-        ROOT CAUSE OF HANGING TESTS:
-        - test_main_async_event_loop_setup calls run_main() which calls set_config()
-        - set_config() sets global variables in ALL mmrelay modules
-        - test_main_async_initialization_sequence inherits contaminated global state
-        - Contaminated state causes the second test to hang indefinitely
-
-        SOLUTION:
-        This method resets ALL global variables in ALL mmrelay modules to their
-        default/None state, ensuring each test starts with completely clean state.
-
-        MODULES RESET:
-        - mmrelay.meshtastic_utils: config, matrix_rooms, meshtastic_client, event_loop, etc.
-        - mmrelay.matrix_utils: config, matrix_homeserver, matrix_client, bot_user_id, etc.
-        - mmrelay.config: custom_data_dir
-        - mmrelay.plugin_loader: caches
-        - mmrelay.message_queue: proper cleanup
-
-        DO NOT REMOVE OR MODIFY this method without understanding the full implications.
-        Removing any part of this reset could cause the hanging test issue to return.
+        Reset global state across mmrelay modules to ensure test isolation.
+        
+        This clears or restores to defaults module-level globals that are set by runtime
+        calls (for example during set_config or application startup). It affects:
+        - mmrelay.meshtastic_utils: config, matrix_rooms, meshtastic_client, event_loop,
+          reconnecting/shutting_down flags, reconnect_task, and subscription flags.
+        - mmrelay.matrix_utils: config, matrix_homeserver, matrix_rooms, matrix_access_token,
+          bot_user_id, bot_user_name, matrix_client, and bot_start_time (reset to now).
+        - mmrelay.config: custom_data_dir (reset if present).
+        - mmrelay.main: banner printed flag.
+        - mmrelay.plugin_loader: invokes _reset_caches_for_tests() if available.
+        - mmrelay.message_queue: calls get_message_queue().stop() if present.
+        
+        Intended for use in test setup/teardown to avoid cross-test contamination and
+        previously-observed hanging tests caused by leftover global state. Side effects:
+        it mutates imported mmrelay modules and may call cleanup helpers (such as
+        message queue stop).
         """
         import sys
 
