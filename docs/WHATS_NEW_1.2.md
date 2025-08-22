@@ -17,7 +17,7 @@ MMRelay 1.2 introduces Matrix End-to-End Encryption support, enhanced authentica
 
 ```bash
 # Install with E2EE support (Linux/macOS only)
-pipx install mmrelay[e2e]
+pipx install 'mmrelay[e2e]'
 ```
 
 ### E2EE Configuration
@@ -92,7 +92,7 @@ matrix:
 
 ```bash
 # Upgrade MMRelay with E2EE support
-pipx install --upgrade mmrelay[e2e]
+pipx install --upgrade 'mmrelay[e2e]'
 
 # Set up modern authentication (recommended)
 mmrelay auth login

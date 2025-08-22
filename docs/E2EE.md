@@ -17,10 +17,10 @@ MMRelay can participate in encrypted Matrix rooms, allowing your Meshtastic netw
 
 ```bash
 # Install MMRelay with E2EE support (recommended)
-pipx install mmrelay[e2e]
+pipx install 'mmrelay[e2e]'
 
 # Or using pip
-pip install mmrelay[e2e]
+pip install 'mmrelay[e2e]'
 ```
 
 ### 2. Enable E2EE in Configuration
@@ -67,7 +67,7 @@ That's it! MMRelay will automatically encrypt messages for encrypted rooms and d
 
 - **Python 3.9 or higher**
 - **Linux or macOS** (E2EE is not supported on Windows due to library limitations)
-- **MMRelay v1.2+** with E2EE support: `pipx install mmrelay[e2e]`
+- **MMRelay v1.2+** with E2EE support: `pipx install 'mmrelay[e2e]'`
 
 ### Windows Limitation
 
@@ -232,7 +232,7 @@ The `credentials.json` file contains:
 **Solution**: Install E2EE dependencies (Linux/macOS only):
 
 ```bash
-pipx install mmrelay[e2e]
+pipx install 'mmrelay[e2e]'
 ```
 
 #### "Failed to decrypt event" error in logs

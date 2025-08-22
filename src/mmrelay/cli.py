@@ -240,7 +240,7 @@ def _validate_e2ee_dependencies():
         return True
     except ImportError:
         print("❌ Error: E2EE enabled but dependencies not installed")
-        print("   Install E2EE support: pipx install mmrelay[e2e]")
+        print("   Install E2EE support: pipx install 'mmrelay[e2e]'")
         return False
 
 
@@ -454,7 +454,7 @@ def _analyze_e2ee_setup(config, config_path):
     except ImportError:
         analysis["dependencies_available"] = False
         analysis["recommendations"].append(
-            "Install E2EE dependencies: pipx install mmrelay[e2e]"
+            "Install E2EE dependencies: pipx install 'mmrelay[e2e]'"
         )
 
     # Check config setting
@@ -675,7 +675,7 @@ def _print_environment_summary():
             print("   E2EE Support: ✅ Available and installed")
         except ImportError:
             print("   E2EE Support: ⚠️  Available but not installed")
-            print("   Install: pipx install mmrelay[e2e]")
+            print("   Install: pipx install 'mmrelay[e2e]'")
 
 
 def check_config(args=None):

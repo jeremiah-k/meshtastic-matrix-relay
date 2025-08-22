@@ -12,7 +12,7 @@ matrix:
   # NOTE: E2EE requires credentials.json instead of access_token for new sessions
   #
   # SETUP INSTRUCTIONS:
-  # 1. Install E2EE dependencies: pipx install mmrelay[e2e]
+  # 1. Install E2EE dependencies: pipx install 'mmrelay[e2e]'
   # 2. Enable E2EE in config: uncomment and set enabled: true below
   # 3. Create credentials: mmrelay auth login
   # 4. The auth login command will create credentials.json with your Matrix login
