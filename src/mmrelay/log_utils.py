@@ -38,7 +38,14 @@ _component_debug_configured = False
 
 # Component logger mapping for data-driven configuration
 _COMPONENT_LOGGERS = {
-    "matrix_nio": ["nio", "nio.client", "nio.http", "nio.crypto", "nio.responses"],
+    "matrix_nio": [
+        "nio",
+        "nio.client",
+        "nio.http",
+        "nio.crypto",
+        "nio.responses",
+        "nio.rooms",
+    ],
     "bleak": ["bleak", "bleak.backends"],
     "meshtastic": [
         "meshtastic",

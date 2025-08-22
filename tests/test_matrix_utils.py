@@ -1700,6 +1700,7 @@ async def test_login_matrix_bot_login_failure(mock_input, mock_getpass):
 
 
 @pytest.mark.asyncio
+@patch("mmrelay.cli_utils.AsyncClient", MagicMock(spec=True))
 async def test_logout_matrix_bot_no_credentials():
     """Test logout when no credentials exist."""
     with patch("mmrelay.matrix_utils.load_credentials", return_value=None):
@@ -1708,6 +1709,7 @@ async def test_logout_matrix_bot_no_credentials():
 
 
 @pytest.mark.asyncio
+@patch("mmrelay.cli_utils.AsyncClient", MagicMock(spec=True))
 async def test_logout_matrix_bot_invalid_credentials():
     """Test logout with invalid/incomplete credentials falls back to local cleanup."""
     with patch(
