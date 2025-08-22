@@ -4,6 +4,7 @@ import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from nio import AsyncClient
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -1583,12 +1584,15 @@ def test_validate_prefix_format_comprehensive():
 
 
 @patch("mmrelay.matrix_utils.save_credentials")
-@patch("nio.AsyncClient")
+@patch.object(AsyncClient, "discovery_info")
+@patch.object(AsyncClient, "login")
+@patch.object(AsyncClient, "whoami")
+@patch.object(AsyncClient, "close")
 @patch("mmrelay.matrix_utils.getpass.getpass")
 @patch("mmrelay.matrix_utils.input")
 @patch("mmrelay.cli_utils._create_ssl_context")
 async def test_login_matrix_bot_success(
-    mock_ssl_context, mock_input, mock_getpass, mock_async_client, mock_save_credentials
+    mock_ssl_context, mock_input, mock_getpass, mock_close, mock_whoami, mock_login, mock_discovery_info, mock_save_credentials
 ):
     """Test successful login_matrix_bot execution."""
     # Mock user inputs
@@ -1602,36 +1606,13 @@ async def test_login_matrix_bot_success(
     # Mock SSL context
     mock_ssl_context.return_value = None
 
-    # Create a mock client that can handle both discovery and login operations
-    mock_client = MagicMock()
+    # Set up the method mocks to return proper responses
+    mock_discovery_info.return_value = MagicMock(homeserver_url="https://matrix.org")
+    mock_login.return_value = MagicMock(access_token="test_token", device_id="test_device")
+    mock_whoami.return_value = MagicMock(user_id="@testuser:matrix.org")
+    mock_close.return_value = None
 
-    # Set up async methods that return proper coroutines
-    async def mock_discovery_info():
-        print("DEBUG: discovery_info called")
-        return MagicMock(homeserver_url="https://matrix.org")
-
-    async def mock_login(*args, **kwargs):
-        print("DEBUG: login called")
-        return MagicMock(access_token="test_token", device_id="test_device")
-
-    async def mock_whoami():
-        print("DEBUG: whoami called")
-        return MagicMock(user_id="@testuser:matrix.org")
-
-    async def mock_close():
-        print("DEBUG: close called")
-        return None
-
-    # Set up the mock client with all needed methods
-    mock_client.discovery_info = mock_discovery_info
-    mock_client.login = mock_login
-    mock_client.whoami = mock_whoami
-    mock_client.close = mock_close
-    mock_client.device_id = None  # Can be set by the login function
-
-    # Make AsyncClient always return this mock client
-    mock_async_client.return_value = mock_client
-    print(f"DEBUG: mock_async_client set up: {mock_async_client}")
+    print(f"DEBUG: Method mocks set up")
 
     # Call the function
     result = await login_matrix_bot()
@@ -1639,8 +1620,11 @@ async def test_login_matrix_bot_success(
     # Verify success
     assert result is True
     mock_save_credentials.assert_called_once()
-    # AsyncClient should be called twice: once for discovery, once for main login
-    assert mock_async_client.call_count == 2
+    # Verify the methods were called
+    mock_discovery_info.assert_called()
+    mock_login.assert_called()
+    mock_whoami.assert_called()
+    mock_close.assert_called()
 
 
 @patch("mmrelay.matrix_utils.input")
@@ -1908,8 +1892,8 @@ async def test_logout_matrix_bot_timeout():
 
 def test_cleanup_local_session_data_success():
     """Test successful cleanup of local session data."""
-    with patch("mmrelay.matrix_utils.get_base_dir", return_value="/test/config"), patch(
-        "mmrelay.matrix_utils.get_e2ee_store_dir", return_value="/test/store"
+    with patch("mmrelay.config.get_base_dir", return_value="/test/config"), patch(
+        "mmrelay.config.get_e2ee_store_dir", return_value="/test/store"
     ), patch("os.path.exists") as mock_exists, patch("os.remove") as mock_remove, patch(
         "shutil.rmtree"
     ) as mock_rmtree:
@@ -1926,8 +1910,8 @@ def test_cleanup_local_session_data_success():
 
 def test_cleanup_local_session_data_files_not_exist():
     """Test cleanup when files don't exist."""
-    with patch("mmrelay.matrix_utils.get_base_dir", return_value="/test/config"), patch(
-        "mmrelay.matrix_utils.get_e2ee_store_dir", return_value="/test/store"
+    with patch("mmrelay.config.get_base_dir", return_value="/test/config"), patch(
+        "mmrelay.config.get_e2ee_store_dir", return_value="/test/store"
     ), patch("os.path.exists", return_value=False):
 
         result = _cleanup_local_session_data()
@@ -1937,8 +1921,8 @@ def test_cleanup_local_session_data_files_not_exist():
 
 def test_cleanup_local_session_data_permission_error():
     """Test cleanup with permission errors."""
-    with patch("mmrelay.matrix_utils.get_base_dir", return_value="/test/config"), patch(
-        "mmrelay.matrix_utils.get_e2ee_store_dir", return_value="/test/store"
+    with patch("mmrelay.config.get_base_dir", return_value="/test/config"), patch(
+        "mmrelay.config.get_e2ee_store_dir", return_value="/test/store"
     ), patch("os.path.exists", return_value=True), patch(
         "os.remove", side_effect=PermissionError("Access denied")
     ), patch(

@@ -340,6 +340,7 @@ def _cleanup_local_session_data():
         bool: True if cleanup was successful, False otherwise
     """
     import shutil
+    from mmrelay.config import get_base_dir, get_e2ee_store_dir
 
     logger.info("Clearing local session data...")
     success = True
@@ -513,8 +514,6 @@ async def logout_matrix_bot(password: str):
     # Import inside function to avoid circular imports
     from mmrelay.matrix_utils import (
         MATRIX_LOGIN_TIMEOUT,
-        _cleanup_local_session_data,
-        _create_ssl_context,
         load_credentials,
     )
 
