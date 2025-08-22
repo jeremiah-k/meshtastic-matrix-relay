@@ -34,8 +34,6 @@ matrix:
   # E2EE Configuration
   e2ee:
     enabled: true
-    # Optional: Configure key sharing delay (default: 5 seconds)
-    # key_sharing_delay_seconds: 5
     # Optional: Custom store path (default: ~/.mmrelay/store)
     # store_path: ~/.mmrelay/store
 ```

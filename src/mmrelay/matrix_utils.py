@@ -66,6 +66,7 @@ from mmrelay.constants.config import (
     CONFIG_SECTION_MATRIX,
     DEFAULT_BROADCAST_ENABLED,
     DEFAULT_DETECTION_SENSOR,
+    E2EE_KEY_SHARING_DELAY_SECONDS,
 )
 from mmrelay.constants.database import DEFAULT_MSGS_TO_KEEP
 from mmrelay.constants.formats import (
@@ -957,14 +958,12 @@ async def connect_matrix(passed_config=None):
     # happens asynchronously. Without this delay, outgoing messages may be sent unencrypted
     # even to encrypted rooms. While not ideal, this timing-based approach is necessary
     # because matrix-nio doesn't provide event-driven alternatives to detect when key
-    # sharing is complete. The delay can be configured via matrix.e2ee.key_sharing_delay_seconds.
+    # sharing is complete.
     if e2ee_enabled:
-        # Make the delay configurable, default to 5 seconds
-        delay = (
-            config.get("matrix", {}).get("e2ee", {}).get("key_sharing_delay_seconds", 5)
+        logger.debug(
+            f"Waiting for {E2EE_KEY_SHARING_DELAY_SECONDS} seconds to allow for key sharing..."
         )
-        logger.debug(f"Waiting for {delay} seconds to allow for key sharing...")
-        await asyncio.sleep(delay)
+        await asyncio.sleep(E2EE_KEY_SHARING_DELAY_SECONDS)
 
     # Fetch the bot's display name
     response = await matrix_client.get_displayname(bot_user_id)

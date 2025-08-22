@@ -26,7 +26,6 @@ pipx install 'mmrelay[e2e]'
 matrix:
   e2ee:
     enabled: true
-    key_sharing_delay_seconds: 5
     store_path: ~/.mmrelay/store
 ```
 
