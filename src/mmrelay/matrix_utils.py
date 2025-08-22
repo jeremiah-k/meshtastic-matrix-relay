@@ -2326,33 +2326,56 @@ async def logout_matrix_bot(password: str):
             )
             return False
         except Exception as e:
-            # Handle common nio login exceptions with specific user messages
-            error_msg = str(e).lower()
-            if "forbidden" in error_msg or "401" in error_msg:
-                logger.error("Password verification failed: Invalid credentials.")
-                logger.error("Please check your username and password.")
-            elif (
-                "network" in error_msg
-                or "connection" in error_msg
-                or "timeout" in error_msg
-            ):
+            # Handle nio login exceptions with specific user messages
+            from nio.responses import LoginError, ErrorResponse
+            from nio.exceptions import LocalProtocolError, RemoteProtocolError, LocalTransportError, RemoteTransportError
+
+            if isinstance(e, LoginError):
+                # Handle specific login error responses
+                if e.status_code == "M_FORBIDDEN" or e.status_code == 401:
+                    logger.error("Password verification failed: Invalid credentials.")
+                    logger.error("Please check your username and password.")
+                elif e.status_code in [500, 502, 503]:
+                    logger.error("Password verification failed: Matrix server error.")
+                    logger.error(
+                        "Please try again later or contact your Matrix server administrator."
+                    )
+                else:
+                    logger.error(f"Password verification failed: {e.status_code}")
+                    logger.debug(f"Full error details: {e}")
+            elif isinstance(e, (LocalTransportError, RemoteTransportError, LocalProtocolError, RemoteProtocolError)):
                 logger.error("Password verification failed: Network connection error.")
                 logger.error(
                     "Please check your internet connection and Matrix server availability."
                 )
-            elif (
-                "server" in error_msg
-                or "500" in error_msg
-                or "502" in error_msg
-                or "503" in error_msg
-            ):
-                logger.error("Password verification failed: Matrix server error.")
-                logger.error(
-                    "Please try again later or contact your Matrix server administrator."
-                )
             else:
-                logger.error(f"Password verification failed: {type(e).__name__}")
-                logger.debug(f"Full error details: {e}")
+                # Fallback to string matching for unknown exceptions
+                error_msg = str(e).lower()
+                if "forbidden" in error_msg or "401" in error_msg:
+                    logger.error("Password verification failed: Invalid credentials.")
+                    logger.error("Please check your username and password.")
+                elif (
+                    "network" in error_msg
+                    or "connection" in error_msg
+                    or "timeout" in error_msg
+                ):
+                    logger.error("Password verification failed: Network connection error.")
+                    logger.error(
+                        "Please check your internet connection and Matrix server availability."
+                    )
+                elif (
+                    "server" in error_msg
+                    or "500" in error_msg
+                    or "502" in error_msg
+                    or "503" in error_msg
+                ):
+                    logger.error("Password verification failed: Matrix server error.")
+                    logger.error(
+                        "Please try again later or contact your Matrix server administrator."
+                    )
+                else:
+                    logger.error(f"Password verification failed: {type(e).__name__}")
+                    logger.debug(f"Full error details: {e}")
             return False
         finally:
             await temp_client.close()
@@ -2376,24 +2399,47 @@ async def logout_matrix_bot(password: str):
                     "Logout response unclear, proceeding with local cleanup."
                 )
         except Exception as e:
-            # Handle common logout exceptions with specific messages
-            error_msg = str(e).lower()
-            if (
-                "network" in error_msg
-                or "connection" in error_msg
-                or "timeout" in error_msg
-            ):
+            # Handle nio logout exceptions with specific messages
+            from nio.responses import LogoutError, ErrorResponse
+            from nio.exceptions import LocalProtocolError, RemoteProtocolError, LocalTransportError, RemoteTransportError
+
+            if isinstance(e, LogoutError):
+                # Handle specific logout error responses
+                if e.status_code == "M_FORBIDDEN" or e.status_code == 401:
+                    logger.warning(
+                        "Server logout failed due to invalid token (already logged out?), proceeding with local cleanup."
+                    )
+                elif e.status_code in [500, 502, 503]:
+                    logger.warning(
+                        "Server logout failed due to server error, proceeding with local cleanup."
+                    )
+                else:
+                    logger.warning(
+                        f"Server logout failed ({e.status_code}), proceeding with local cleanup."
+                    )
+            elif isinstance(e, (LocalTransportError, RemoteTransportError, LocalProtocolError, RemoteProtocolError)):
                 logger.warning(
                     "Server logout failed due to network issues, proceeding with local cleanup."
                 )
-            elif "401" in error_msg or "forbidden" in error_msg:
-                logger.warning(
-                    "Server logout failed due to invalid token (already logged out?), proceeding with local cleanup."
-                )
             else:
-                logger.warning(
-                    f"Server logout failed ({type(e).__name__}), proceeding with local cleanup."
-                )
+                # Fallback to string matching for unknown exceptions
+                error_msg = str(e).lower()
+                if (
+                    "network" in error_msg
+                    or "connection" in error_msg
+                    or "timeout" in error_msg
+                ):
+                    logger.warning(
+                        "Server logout failed due to network issues, proceeding with local cleanup."
+                    )
+                elif "401" in error_msg or "forbidden" in error_msg:
+                    logger.warning(
+                        "Server logout failed due to invalid token (already logged out?), proceeding with local cleanup."
+                    )
+                else:
+                    logger.warning(
+                        f"Server logout failed ({type(e).__name__}), proceeding with local cleanup."
+                    )
             logger.debug(f"Logout error details: {e}")
         finally:
             await main_client.close()
@@ -2441,10 +2487,10 @@ def _cleanup_local_session_data():
         from mmrelay.config import load_config
 
         cfg = load_config(args=None) or {}
-        matrix_cfg = cfg.get("matrix", {}) or {}
+        matrix_cfg = cfg.get("matrix", {})
         for section in ("e2ee", "encryption"):
             override = os.path.expanduser(
-                (matrix_cfg.get(section, {}) or {}).get("store_path", "") or ""
+                matrix_cfg.get(section, {}).get("store_path", "")
             )
             if override:
                 candidate_store_paths.add(override)

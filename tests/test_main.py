@@ -1150,8 +1150,8 @@ class TestMainAsyncFunction(unittest.TestCase):
         # Reset main module globals if any
         if "mmrelay.main" in sys.modules:
             module = sys.modules["mmrelay.main"]
-            # Reset any module-level state if present
-            pass
+            # Reset banner printed state to ensure consistent test behavior
+            module._banner_printed = False
 
         # Reset plugin_loader caches
         if "mmrelay.plugin_loader" in sys.modules:
