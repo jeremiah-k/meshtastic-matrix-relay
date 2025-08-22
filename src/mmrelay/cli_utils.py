@@ -299,6 +299,107 @@ def msg_regenerate_credentials():
 # CLI-specific functions (can use print statements for user interaction)
 
 
+def _handle_matrix_error(exception: Exception, context: str, log_level: str = "error"):
+    """
+    Handle Matrix-related exceptions with user-friendly messages.
+
+    Args:
+        exception: The exception to handle
+        context: Context string (e.g., "Password verification", "Server logout")
+        log_level: Logging level to use ("error" or "warning")
+
+    Returns:
+        bool: True if this was a handled Matrix exception, False otherwise
+    """
+    log_func = logger.error if log_level == "error" else logger.warning
+    emoji = "❌" if log_level == "error" else "⚠️ "
+
+    # Handle specific Matrix-nio exceptions
+    if isinstance(exception, (NioLoginError, NioLogoutError)) and hasattr(exception, "status_code"):
+        if (hasattr(exception, "errcode") and exception.errcode == "M_FORBIDDEN") or exception.status_code == 401:
+            if "verification" in context.lower():
+                log_func(f"{context} failed: Invalid credentials.")
+                log_func("Please check your username and password.")
+                print(f"{emoji} {context} failed: Invalid credentials.")
+                print("Please check your username and password.")
+            else:
+                log_func(f"{context} failed due to invalid token (already logged out?), proceeding with local cleanup.")
+                print(f"{emoji} {context} failed due to invalid token (already logged out?), proceeding with local cleanup.")
+        elif exception.status_code in [500, 502, 503]:
+            if "verification" in context.lower():
+                log_func(f"{context} failed: Matrix server error.")
+                log_func("Please try again later or contact your Matrix server administrator.")
+                print(f"{emoji} {context} failed: Matrix server error.")
+                print("Please try again later or contact your Matrix server administrator.")
+            else:
+                log_func(f"{context} failed due to server error, proceeding with local cleanup.")
+                print(f"{emoji} {context} failed due to server error, proceeding with local cleanup.")
+        else:
+            if "verification" in context.lower():
+                log_func(f"{context} failed: {exception.status_code}")
+                logger.debug(f"Full error details: {exception}")
+                print(f"{emoji} {context} failed: {exception.status_code}")
+            else:
+                log_func(f"{context} failed ({exception.status_code}), proceeding with local cleanup.")
+                print(f"{emoji} {context} failed ({exception.status_code}), proceeding with local cleanup.")
+        return True
+
+    # Handle network/transport exceptions
+    elif isinstance(exception, (NioLocalTransportError, NioRemoteTransportError, NioLocalProtocolError, NioRemoteProtocolError)):
+        if "verification" in context.lower():
+            log_func(f"{context} failed: Network connection error.")
+            log_func("Please check your internet connection and Matrix server availability.")
+            print(f"{emoji} {context} failed: Network connection error.")
+            print("Please check your internet connection and Matrix server availability.")
+        else:
+            log_func(f"{context} failed due to network issues, proceeding with local cleanup.")
+            print(f"{emoji} {context} failed due to network issues, proceeding with local cleanup.")
+        return True
+
+    # Fallback to string matching for unknown exceptions
+    error_msg = str(exception).lower()
+    if "forbidden" in error_msg or "401" in error_msg:
+        if "verification" in context.lower():
+            log_func(f"{context} failed: Invalid credentials.")
+            log_func("Please check your username and password.")
+            print(f"{emoji} {context} failed: Invalid credentials.")
+            print("Please check your username and password.")
+        else:
+            log_func(f"{context} failed due to invalid token (already logged out?), proceeding with local cleanup.")
+            print(f"{emoji} {context} failed due to invalid token (already logged out?), proceeding with local cleanup.")
+        return True
+    elif "network" in error_msg or "connection" in error_msg or "timeout" in error_msg:
+        if "verification" in context.lower():
+            log_func(f"{context} failed: Network connection error.")
+            log_func("Please check your internet connection and Matrix server availability.")
+            print(f"{emoji} {context} failed: Network connection error.")
+            print("Please check your internet connection and Matrix server availability.")
+        else:
+            log_func(f"{context} failed due to network issues, proceeding with local cleanup.")
+            print(f"{emoji} {context} failed due to network issues, proceeding with local cleanup.")
+        return True
+    elif "server" in error_msg or "500" in error_msg or "502" in error_msg or "503" in error_msg:
+        if "verification" in context.lower():
+            log_func(f"{context} failed: Matrix server error.")
+            log_func("Please try again later or contact your Matrix server administrator.")
+            print(f"{emoji} {context} failed: Matrix server error.")
+            print("Please try again later or contact your Matrix server administrator.")
+        else:
+            log_func(f"{context} failed due to server error, proceeding with local cleanup.")
+            print(f"{emoji} {context} failed due to server error, proceeding with local cleanup.")
+        return True
+    else:
+        # Generic fallback
+        if "verification" in context.lower():
+            log_func(f"{context} failed: {type(exception).__name__}")
+            logger.debug(f"Full error details: {exception}")
+            print(f"{emoji} {context} failed: {type(exception).__name__}")
+        else:
+            log_func(f"{context} failed ({type(exception).__name__}), proceeding with local cleanup.")
+            print(f"{emoji} {context} failed ({type(exception).__name__}), proceeding with local cleanup.")
+        return True
+
+
 async def logout_matrix_bot(password: str):
     """
     Log out from Matrix and clear all local session data.
@@ -401,87 +502,7 @@ async def logout_matrix_bot(password: str):
             )
             return False
         except Exception as e:
-            # Handle nio login exceptions with specific user messages
-            if isinstance(e, NioLoginError) and hasattr(e, "status_code"):
-                # Handle specific login error responses
-                if (
-                    hasattr(e, "errcode") and e.errcode == "M_FORBIDDEN"
-                ) or e.status_code == 401:
-                    logger.error("Password verification failed: Invalid credentials.")
-                    logger.error("Please check your username and password.")
-                    print("❌ Password verification failed: Invalid credentials.")
-                    print("Please check your username and password.")
-                elif e.status_code in [500, 502, 503]:
-                    logger.error("Password verification failed: Matrix server error.")
-                    logger.error(
-                        "Please try again later or contact your Matrix server administrator."
-                    )
-                    print("❌ Password verification failed: Matrix server error.")
-                    print(
-                        "Please try again later or contact your Matrix server administrator."
-                    )
-                else:
-                    logger.error(f"Password verification failed: {e.status_code}")
-                    logger.debug(f"Full error details: {e}")
-                    print(f"❌ Password verification failed: {e.status_code}")
-            elif isinstance(
-                e,
-                (
-                    NioLocalTransportError,
-                    NioRemoteTransportError,
-                    NioLocalProtocolError,
-                    NioRemoteProtocolError,
-                ),
-            ):
-                logger.error("Password verification failed: Network connection error.")
-                logger.error(
-                    "Please check your internet connection and Matrix server availability."
-                )
-                print("❌ Password verification failed: Network connection error.")
-                print(
-                    "Please check your internet connection and Matrix server availability."
-                )
-            else:
-                # Fallback to string matching for unknown exceptions
-                error_msg = str(e).lower()
-                if "forbidden" in error_msg or "401" in error_msg:
-                    logger.error("Password verification failed: Invalid credentials.")
-                    logger.error("Please check your username and password.")
-                    print("❌ Password verification failed: Invalid credentials.")
-                    print("Please check your username and password.")
-                elif (
-                    "network" in error_msg
-                    or "connection" in error_msg
-                    or "timeout" in error_msg
-                ):
-                    logger.error(
-                        "Password verification failed: Network connection error."
-                    )
-                    logger.error(
-                        "Please check your internet connection and Matrix server availability."
-                    )
-                    print("❌ Password verification failed: Network connection error.")
-                    print(
-                        "Please check your internet connection and Matrix server availability."
-                    )
-                elif (
-                    "server" in error_msg
-                    or "500" in error_msg
-                    or "502" in error_msg
-                    or "503" in error_msg
-                ):
-                    logger.error("Password verification failed: Matrix server error.")
-                    logger.error(
-                        "Please try again later or contact your Matrix server administrator."
-                    )
-                    print("❌ Password verification failed: Matrix server error.")
-                    print(
-                        "Please try again later or contact your Matrix server administrator."
-                    )
-                else:
-                    logger.error(f"Password verification failed: {type(e).__name__}")
-                    logger.debug(f"Full error details: {e}")
-                    print(f"❌ Password verification failed: {type(e).__name__}")
+            _handle_matrix_error(e, "Password verification", "error")
             return False
         finally:
             await temp_client.close()
@@ -508,75 +529,7 @@ async def logout_matrix_bot(password: str):
                 )
                 print("⚠️  Logout response unclear, proceeding with local cleanup.")
         except Exception as e:
-            # Handle nio logout exceptions with specific messages
-            if isinstance(e, NioLogoutError) and hasattr(e, "status_code"):
-                # Handle specific logout error responses
-                if (
-                    hasattr(e, "errcode") and e.errcode == "M_FORBIDDEN"
-                ) or e.status_code == 401:
-                    logger.warning(
-                        "Server logout failed due to invalid token (already logged out?), proceeding with local cleanup."
-                    )
-                    print(
-                        "⚠️  Server logout failed due to invalid token (already logged out?), proceeding with local cleanup."
-                    )
-                elif e.status_code in [500, 502, 503]:
-                    logger.warning(
-                        "Server logout failed due to server error, proceeding with local cleanup."
-                    )
-                    print(
-                        "⚠️  Server logout failed due to server error, proceeding with local cleanup."
-                    )
-                else:
-                    logger.warning(
-                        f"Server logout failed ({e.status_code}), proceeding with local cleanup."
-                    )
-                    print(
-                        f"⚠️  Server logout failed ({e.status_code}), proceeding with local cleanup."
-                    )
-            elif isinstance(
-                e,
-                (
-                    NioLocalTransportError,
-                    NioRemoteTransportError,
-                    NioLocalProtocolError,
-                    NioRemoteProtocolError,
-                ),
-            ):
-                logger.warning(
-                    "Server logout failed due to network issues, proceeding with local cleanup."
-                )
-                print(
-                    "⚠️  Server logout failed due to network issues, proceeding with local cleanup."
-                )
-            else:
-                # Fallback to string matching for unknown exceptions
-                error_msg = str(e).lower()
-                if (
-                    "network" in error_msg
-                    or "connection" in error_msg
-                    or "timeout" in error_msg
-                ):
-                    logger.warning(
-                        "Server logout failed due to network issues, proceeding with local cleanup."
-                    )
-                    print(
-                        "⚠️  Server logout failed due to network issues, proceeding with local cleanup."
-                    )
-                elif "401" in error_msg or "forbidden" in error_msg:
-                    logger.warning(
-                        "Server logout failed due to invalid token (already logged out?), proceeding with local cleanup."
-                    )
-                    print(
-                        "⚠️  Server logout failed due to invalid token (already logged out?), proceeding with local cleanup."
-                    )
-                else:
-                    logger.warning(
-                        f"Server logout failed ({type(e).__name__}), proceeding with local cleanup."
-                    )
-                    print(
-                        f"⚠️  Server logout failed ({type(e).__name__}), proceeding with local cleanup."
-                    )
+            _handle_matrix_error(e, "Server logout", "warning")
             logger.debug(f"Logout error details: {e}")
         finally:
             await main_client.close()
