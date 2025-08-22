@@ -52,7 +52,6 @@ except ImportError:
     NioRemoteTransportError = Exception
 
 from mmrelay.cli_utils import (
-    _cleanup_local_session_data,
     _create_ssl_context,
     msg_require_auth_login,
     msg_retry_auth_login,
@@ -1399,7 +1398,12 @@ async def matrix_relay(
 
                     # Create the quoted reply format
                     safe_original = html.escape(original_text or "")
-                    quoted_text = f"> <@{bot_user_id}> [{original_sender_display}]: {safe_original}"
+                    safe_sender_display = re.sub(
+                        r"([\\`*_{}[\]()#+.!-])", r"\\\1", original_sender_display
+                    )
+                    quoted_text = (
+                        f"> <@{bot_user_id}> [{safe_sender_display}]: {safe_original}"
+                    )
                     content["body"] = f"{quoted_text}\n\n{plain_body}"
 
                     # Always use HTML formatting for replies since we need the mx-reply structure
