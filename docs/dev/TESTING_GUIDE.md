@@ -8,7 +8,7 @@ This guide covers testing patterns and best practices for the meshtastic-matrix-
 
 When testing functions that call async code via `asyncio.run()`, using `AsyncMock` can lead to RuntimeWarnings about unawaited coroutines:
 
-```
+```text
 RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
 ```
 
@@ -188,7 +188,7 @@ def test_output_messages(self, mock_print):
 
 If you see warnings like:
 
-```
+```text
 RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
 ```
 

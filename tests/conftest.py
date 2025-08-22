@@ -78,7 +78,7 @@ sys.modules["s2sphere"] = MagicMock()
 
 
 # Now that mocks are in place, we can import the application code
-import mmrelay.meshtastic_utils as mu
+import mmrelay.meshtastic_utils as mu  # noqa: E402
 
 # Store references to prevent accidental mocking
 _BUILTIN_MODULES = {
