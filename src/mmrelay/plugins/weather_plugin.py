@@ -45,7 +45,7 @@ class Plugin(BasePlugin):
             try:
                 current_time = datetime.fromisoformat(current_time_str.replace("Z", "+00:00"))
                 current_hour = current_time.hour
-            except Exception as ex:
+            except ValueError as ex:
                 self.logger.warning(f"Unexpected current_weather.time '{current_time_str}': {ex}. Defaulting to hour=0.")
                 current_hour = 0
 
@@ -67,7 +67,7 @@ class Plugin(BasePlugin):
             ]
             forecast_2h_weather_code = data["hourly"]["weathercode"][forecast_2h_index]
             # Get hour-specific day/night flag for +2h forecast
-            forecast_2h_is_day = data["hourly"].get("is_day", [is_day])[forecast_2h_index] if data["hourly"].get("is_day") else is_day
+            forecast_2h_is_day = data["hourly"]["is_day"][forecast_2h_index] if data["hourly"].get("is_day") else is_day
 
             forecast_5h_temp = data["hourly"]["temperature_2m"][forecast_5h_index]
             forecast_5h_precipitation = data["hourly"]["precipitation_probability"][
@@ -75,7 +75,7 @@ class Plugin(BasePlugin):
             ]
             forecast_5h_weather_code = data["hourly"]["weathercode"][forecast_5h_index]
             # Get hour-specific day/night flag for +5h forecast
-            forecast_5h_is_day = data["hourly"].get("is_day", [is_day])[forecast_5h_index] if data["hourly"].get("is_day") else is_day
+            forecast_5h_is_day = data["hourly"]["is_day"][forecast_5h_index] if data["hourly"].get("is_day") else is_day
 
             if units == "imperial":
                 # Convert temperatures from Celsius to Fahrenheit
