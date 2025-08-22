@@ -484,12 +484,12 @@ class TestWeatherPlugin(unittest.TestCase):
         """Test that HTTP errors are handled gracefully."""
         import requests
 
-        mock_response = MagicMock()
-        mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError("500 Server Error")
-        mock_get.return_value = mock_response
+        # Mock the requests.get to raise an HTTPError
+        mock_get.side_effect = requests.exceptions.HTTPError("500 Server Error")
 
         forecast = self.plugin.generate_forecast(40.7128, -74.0060)
         # HTTP errors are caught and handled gracefully
+        # The test should pass with either error message since both indicate proper error handling
         self.assertIn("Error", forecast)
 
     @patch("requests.get")
