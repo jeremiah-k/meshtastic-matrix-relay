@@ -340,6 +340,7 @@ def _cleanup_local_session_data():
         bool: True if cleanup was successful, False otherwise
     """
     import shutil
+
     from mmrelay.config import get_base_dir, get_e2ee_store_dir
 
     logger.info("Clearing local session data...")
@@ -427,8 +428,12 @@ def _handle_matrix_error(exception: Exception, context: str, log_level: str = "e
     error_detail = None
 
     # Handle specific Matrix-nio exceptions
-    if isinstance(exception, (NioLoginError, NioLogoutError)) and hasattr(exception, "status_code"):
-        if (hasattr(exception, "errcode") and exception.errcode == "M_FORBIDDEN") or exception.status_code == 401:
+    if isinstance(exception, (NioLoginError, NioLogoutError)) and hasattr(
+        exception, "status_code"
+    ):
+        if (
+            hasattr(exception, "errcode") and exception.errcode == "M_FORBIDDEN"
+        ) or exception.status_code == 401:
             error_category = "credentials"
         elif exception.status_code in [500, 502, 503]:
             error_category = "server"
@@ -436,16 +441,33 @@ def _handle_matrix_error(exception: Exception, context: str, log_level: str = "e
             error_category = "other"
             error_detail = str(exception.status_code)
     # Handle network/transport exceptions
-    elif isinstance(exception, (NioLocalTransportError, NioRemoteTransportError, NioLocalProtocolError, NioRemoteProtocolError)):
+    elif isinstance(
+        exception,
+        (
+            NioLocalTransportError,
+            NioRemoteTransportError,
+            NioLocalProtocolError,
+            NioRemoteProtocolError,
+        ),
+    ):
         error_category = "network"
     else:
         # Fallback to string matching for unknown exceptions
         error_msg = str(exception).lower()
         if "forbidden" in error_msg or "401" in error_msg:
             error_category = "credentials"
-        elif "network" in error_msg or "connection" in error_msg or "timeout" in error_msg:
+        elif (
+            "network" in error_msg
+            or "connection" in error_msg
+            or "timeout" in error_msg
+        ):
             error_category = "network"
-        elif "server" in error_msg or "500" in error_msg or "502" in error_msg or "503" in error_msg:
+        elif (
+            "server" in error_msg
+            or "500" in error_msg
+            or "502" in error_msg
+            or "503" in error_msg
+        ):
             error_category = "server"
         else:
             error_category = "other"
@@ -459,34 +481,56 @@ def _handle_matrix_error(exception: Exception, context: str, log_level: str = "e
             print(f"{emoji} {context} failed: Invalid credentials.")
             print("Please check your username and password.")
         else:
-            log_func(f"{context} failed due to invalid token (already logged out?), proceeding with local cleanup.")
-            print(f"{emoji} {context} failed due to invalid token (already logged out?), proceeding with local cleanup.")
+            log_func(
+                f"{context} failed due to invalid token (already logged out?), proceeding with local cleanup."
+            )
+            print(
+                f"{emoji} {context} failed due to invalid token (already logged out?), proceeding with local cleanup."
+            )
     elif error_category == "network":
         if is_verification:
             log_func(f"{context} failed: Network connection error.")
-            log_func("Please check your internet connection and Matrix server availability.")
+            log_func(
+                "Please check your internet connection and Matrix server availability."
+            )
             print(f"{emoji} {context} failed: Network connection error.")
-            print("Please check your internet connection and Matrix server availability.")
+            print(
+                "Please check your internet connection and Matrix server availability."
+            )
         else:
-            log_func(f"{context} failed due to network issues, proceeding with local cleanup.")
-            print(f"{emoji} {context} failed due to network issues, proceeding with local cleanup.")
+            log_func(
+                f"{context} failed due to network issues, proceeding with local cleanup."
+            )
+            print(
+                f"{emoji} {context} failed due to network issues, proceeding with local cleanup."
+            )
     elif error_category == "server":
         if is_verification:
             log_func(f"{context} failed: Matrix server error.")
-            log_func("Please try again later or contact your Matrix server administrator.")
+            log_func(
+                "Please try again later or contact your Matrix server administrator."
+            )
             print(f"{emoji} {context} failed: Matrix server error.")
             print("Please try again later or contact your Matrix server administrator.")
         else:
-            log_func(f"{context} failed due to server error, proceeding with local cleanup.")
-            print(f"{emoji} {context} failed due to server error, proceeding with local cleanup.")
+            log_func(
+                f"{context} failed due to server error, proceeding with local cleanup."
+            )
+            print(
+                f"{emoji} {context} failed due to server error, proceeding with local cleanup."
+            )
     else:  # error_category == "other"
         if is_verification:
             log_func(f"{context} failed: {error_detail or 'Unknown error'}")
             logger.debug(f"Full error details: {exception}")
             print(f"{emoji} {context} failed: {error_detail or 'Unknown error'}")
         else:
-            log_func(f"{context} failed ({error_detail or 'Unknown error'}), proceeding with local cleanup.")
-            print(f"{emoji} {context} failed ({error_detail or 'Unknown error'}), proceeding with local cleanup.")
+            log_func(
+                f"{context} failed ({error_detail or 'Unknown error'}), proceeding with local cleanup."
+            )
+            print(
+                f"{emoji} {context} failed ({error_detail or 'Unknown error'}), proceeding with local cleanup."
+            )
 
     return True
 

@@ -211,9 +211,6 @@ def _display_room_channel_mappings(
                 logger.info(f"    ❌ {room_name} (not relayed)")
 
 
-
-
-
 def _can_auto_create_credentials(matrix_config: dict) -> bool:
     """
     Check if we can automatically create credentials from config.yaml.
@@ -2333,6 +2330,3 @@ async def on_room_member(room: MatrixRoom, event: RoomMemberEvent) -> None:
     # but no explicit action is needed since room.user_name() automatically
     # handles room-specific display names after the room state is updated.
     pass
-
-
-

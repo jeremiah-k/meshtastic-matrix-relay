@@ -127,7 +127,9 @@ async def main(config):
     # Check if Matrix connection was successful
     if matrix_client is None:
         # The error is logged by connect_matrix, so we can just raise here.
-        raise ConnectionError("Failed to connect to Matrix. Cannot continue without Matrix client.")
+        raise ConnectionError(
+            "Failed to connect to Matrix. Cannot continue without Matrix client."
+        )
 
     # Join the rooms specified in the config.yaml
     for room in matrix_rooms:
