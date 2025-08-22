@@ -14,6 +14,7 @@ MMRelay 1.2 introduces Matrix End-to-End Encryption support, enhanced authentica
 - **Cross-Platform**: Full support on Linux/macOS, regular Matrix communication on Windows
 
 ### New E2EE Installation
+
 ```bash
 # Install with E2EE support (Linux/macOS only)
 pipx install mmrelay[e2e]
@@ -32,12 +33,14 @@ matrix:
 ## 🔑 Enhanced Authentication Management
 
 ### New Authentication Commands
+
 - **`mmrelay auth logout`**: Secure session cleanup with server-side token invalidation
   - Verifies Matrix password for security
   - Removes credentials and E2EE store
   - Invalidates server-side access tokens
 
 ### Improved Authentication Flow
+
 - **OIDC Compatibility**: `mmrelay auth login` now uses modern OIDC flows compatible with Matrix 2.0
 - **MAS Support**: Compatible with Matrix Authentication Service used by matrix.org
 - **Token Rotation**: Automatic handling of token refresh, preventing authentication expiration
@@ -47,6 +50,7 @@ matrix:
 **New rich text messaging capability** - Send formatted messages to Matrix rooms.
 
 ### HTML Features
+
 - **Rich Text Messages**: Support for bold, italic, links, and other HTML formatting
 - **Plugin Integration**: Plugins can send formatted messages using `formatted=True`
 - **Backward Compatibility**: Plain text fallback for clients that don't support HTML
@@ -54,6 +58,7 @@ matrix:
 ## 🐳 Enhanced Docker Support
 
 ### New Docker Features
+
 - **Prebuilt Docker Images**: Official prebuilt images for faster deployment
 - **Enhanced Docker Compose**: Comprehensive examples and improved documentation
 - **Secure File Permissions**: Automatic secure permissions for configuration files
@@ -62,6 +67,7 @@ matrix:
 ## ⚙️ Configuration & Validation Improvements
 
 ### New Configuration Features
+
 - **Enhanced Validation**: `mmrelay config check` with detailed error reporting and fix suggestions
 - **Secure File Creation**: Automatic secure permissions for configuration files
 - **Improved Error Messages**: Better debugging information and recovery suggestions
@@ -69,11 +75,13 @@ matrix:
 ## 🧪 Quality & Infrastructure Improvements
 
 ### Testing Enhancements
+
 - **Improved Test Coverage**: Significant increase from ~70% to 90%+ total coverage
-- **Full Test Suite CI**: Manual comprehensive testing workflow across Python 3.10-3.12
+- **Full Test Suite CI**: CI covers Python 3.10-3.12; runtime supports Python 3.9+
 - **Component Coverage**: Dedicated coverage tracking for major feature areas
 
 ### Documentation & Developer Experience
+
 - **Docker Guide Restructure**: Clearer deployment paths and comprehensive examples
 - **Enhanced E2EE Documentation**: Complete setup and troubleshooting guides
 - **Improved Error Messages**: Better debugging information and recovery suggestions
@@ -81,6 +89,7 @@ matrix:
 ## ⬆️ Upgrading from 1.1.4
 
 ### Simple Upgrade Process
+
 ```bash
 # Upgrade MMRelay with E2EE support
 pipx install --upgrade mmrelay[e2e]
@@ -90,6 +99,7 @@ mmrelay auth login
 ```
 
 ### Backward Compatibility
+
 - **Existing Configurations**: All 1.1.4 configurations continue to work unchanged
 - **Gradual Migration**: Add new features (E2EE, HTML formatting, enhanced Docker support) as desired
 - **No Breaking Changes**: Seamless upgrade experience

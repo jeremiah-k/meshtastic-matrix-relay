@@ -1017,7 +1017,17 @@ class TestWeatherPlugin(unittest.TestCase):
                     "2023-10-15T18:00",
                     "2023-10-15T19:00",
                 ],
-                "temperature_2m": [10.0, 11.0, 12.0, 13.0, 15.0, 16.0, 17.0, 18.0, 19.0],
+                "temperature_2m": [
+                    10.0,
+                    11.0,
+                    12.0,
+                    13.0,
+                    15.0,
+                    16.0,
+                    17.0,
+                    18.0,
+                    19.0,
+                ],
                 "precipitation_probability": [0, 5, 10, 15, 20, 25, 30, 35, 40],
                 "weathercode": [0, 1, 2, 3, 0, 1, 2, 3, 0],
                 "is_day": [1, 1, 1, 1, 1, 1, 1, 0, 0],
@@ -1028,7 +1038,7 @@ class TestWeatherPlugin(unittest.TestCase):
             mock_get.return_value = _make_ok_response(mock_response_data)
 
             # Mock logger to capture warning
-            with patch.object(self.plugin, 'logger') as mock_logger:
+            with patch.object(self.plugin, "logger") as mock_logger:
                 result = self.plugin.generate_forecast(40.7128, -74.0060)
 
                 # Should still return a forecast (using fallback indexing)
@@ -1078,7 +1088,9 @@ class TestWeatherPlugin(unittest.TestCase):
             mock_client = MagicMock()
             mock_client.myInfo.my_node_num = 987654321  # Different from sender
 
-            with patch("mmrelay.meshtastic_utils.connect_meshtastic", return_value=mock_client):
+            with patch(
+                "mmrelay.meshtastic_utils.connect_meshtastic", return_value=mock_client
+            ):
                 # Call the method
                 await self.plugin.handle_meshtastic_message(
                     packet, "!weather", "TestNode", "TestMesh"
@@ -1090,6 +1102,7 @@ class TestWeatherPlugin(unittest.TestCase):
                 )
 
         import asyncio
+
         asyncio.run(run_test())
 
 

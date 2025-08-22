@@ -195,7 +195,9 @@ class Plugin(BasePlugin):
             # Handle requests-related exceptions using safe attribute checking
             try:
                 # Check if this is a requests exception by checking the module
-                if hasattr(requests, 'RequestException') and isinstance(e, requests.RequestException):
+                if hasattr(requests, "RequestException") and isinstance(
+                    e, requests.RequestException
+                ):
                     self.logger.error(f"Error fetching weather data: {e}")
                     return "Error fetching weather data."
             except (AttributeError, TypeError):
