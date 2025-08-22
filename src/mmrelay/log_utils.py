@@ -75,9 +75,10 @@ def configure_component_debug_logging():
             for logger_name in loggers:
                 logging.getLogger(logger_name).setLevel(logging.DEBUG)
         else:
-            # Suppress INFO messages from external libraries when debug is disabled
+            # Suppress external library messages when debug is disabled
+            # Use ERROR level to minimize noise while allowing mmrelay debug logging
             for logger_name in loggers:
-                logging.getLogger(logger_name).setLevel(logging.WARNING)
+                logging.getLogger(logger_name).setLevel(logging.ERROR)
 
     _component_debug_configured = True
 
