@@ -103,7 +103,6 @@ from mmrelay.message_queue import get_message_queue, queue_message
 logger = get_logger(name="Matrix")
 
 
-@lru_cache(maxsize=1)
 def _display_room_channel_mappings(rooms: Dict[str, Any], config: Dict[str, Any], e2ee_status: Dict[str, Any]) -> None:
     """
     Display Matrix rooms organized by Meshtastic channel with improved formatting.
@@ -2383,8 +2382,6 @@ async def logout_matrix_bot(password: str):
     credentials = load_credentials()
     if not credentials:
         logger.info("No active session found. Already logged out.")
-        print("✅ No active Matrix session found.")
-        print("You are already logged out.")
         return True
 
     homeserver = credentials.get("homeserver")
@@ -2394,8 +2391,7 @@ async def logout_matrix_bot(password: str):
 
     if not all([homeserver, user_id, access_token, device_id]):
         logger.error("Invalid credentials found. Cannot verify logout.")
-        print("❌ Invalid credentials found.")
-        print("Proceeding with local cleanup only...")
+        logger.info("Proceeding with local cleanup only...")
 
         # Still try to clean up local files
         return _cleanup_local_session_data()
@@ -2496,11 +2492,13 @@ async def logout_matrix_bot(password: str):
             access_token=access_token,
         )
 
+        server_logout_success = False
         try:
             # Logout from the server (invalidates the access token)
             logout_response = await main_client.logout()
             if hasattr(logout_response, "transport_response"):
                 logger.info("Successfully logged out from Matrix server.")
+                server_logout_success = True
             else:
                 logger.warning(
                     "Logout response unclear, proceeding with local cleanup."
@@ -2576,14 +2574,11 @@ def _cleanup_local_session_data():
         try:
             os.remove(credentials_path)
             logger.info(f"Removed credentials file: {credentials_path}")
-            print(f"✅ Removed credentials file: {credentials_path}")
         except (OSError, PermissionError) as e:
             logger.error(f"Failed to remove credentials file: {e}")
-            print(f"❌ Failed to remove credentials file: {e}")
             success = False
     else:
         logger.info("No credentials file found to remove")
-        print("ℹ️  No credentials file found")
 
     # Clear E2EE store directory (default and any configured override)
     candidate_store_paths = {get_e2ee_store_dir()}
@@ -2610,29 +2605,20 @@ def _cleanup_local_session_data():
             try:
                 shutil.rmtree(store_path)
                 logger.info(f"Removed E2EE store directory: {store_path}")
-                print(f"✅ Removed E2EE store directory: {store_path}")
             except (OSError, PermissionError) as e:
                 logger.error(
                     f"Failed to remove E2EE store directory '{store_path}': {e}"
                 )
-                print(f"❌ Failed to remove E2EE store directory '{store_path}': {e}")
                 success = False
     if not any_store_found:
         logger.info("No E2EE store directory found to remove")
-        print("ℹ️  No E2EE store directory found")
 
     if success:
         logger.info("✅ Logout completed successfully!")
         logger.info("All Matrix sessions and local data have been cleared.")
         logger.info("Run 'mmrelay auth login' to authenticate again.")
-        print()
-        print("✅ Logout completed successfully!")
-        print("All Matrix sessions and local data have been cleared.")
-        print("Run 'mmrelay auth login' to authenticate again.")
     else:
         logger.warning("Logout completed with some errors.")
-        print()
-        print("⚠️  Logout completed with some errors.")
-        print("Some files may not have been removed due to permission issues.")
+        logger.warning("Some files may not have been removed due to permission issues.")
 
     return success
