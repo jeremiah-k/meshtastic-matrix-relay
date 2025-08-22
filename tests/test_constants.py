@@ -182,7 +182,10 @@ class TestConstantsImports:
         Verify that a representative sample of constants used in the main codebase are importable and have the expected types.
         """
         # Test a sampling of constants that are imported in the main codebase
-        from mmrelay.constants.config import CONFIG_SECTION_MATRIX
+        from mmrelay.constants.config import (
+            CONFIG_SECTION_MATRIX,
+            E2EE_KEY_SHARING_DELAY_SECONDS,
+        )
         from mmrelay.constants.formats import TEXT_MESSAGE_APP
         from mmrelay.constants.network import CONNECTION_TYPE_TCP
         from mmrelay.constants.queue import DEFAULT_MESSAGE_DELAY
@@ -191,6 +194,7 @@ class TestConstantsImports:
         assert isinstance(CONNECTION_TYPE_TCP, str)
         assert isinstance(DEFAULT_MESSAGE_DELAY, (int, float))
         assert isinstance(TEXT_MESSAGE_APP, (int, str))
+        assert isinstance(E2EE_KEY_SHARING_DELAY_SECONDS, int)
 
 
 class TestConstantsConsistency:
@@ -265,3 +269,6 @@ class TestConstantsConsistency:
 
         # Log size should be reasonable
         assert 1 <= messages.DEFAULT_LOG_SIZE_MB <= 100
+
+        # E2EE key sharing delay should be reasonable
+        assert 1 <= config.E2EE_KEY_SHARING_DELAY_SECONDS <= 30
