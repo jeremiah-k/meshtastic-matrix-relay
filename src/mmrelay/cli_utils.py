@@ -23,20 +23,19 @@ Usage:
 """
 
 import asyncio
-import os
 import logging
-from typing import Optional
 
 # Import Matrix-related modules for logout functionality
 try:
     from nio import AsyncClient
-    from nio.responses import LoginError, LogoutError
     from nio.exceptions import (
-        LocalTransportError,
-        RemoteTransportError,
         LocalProtocolError,
+        LocalTransportError,
         RemoteProtocolError,
+        RemoteTransportError,
     )
+    from nio.responses import LoginError, LogoutError
+
     # Create aliases for backward compatibility
     NioLoginError = LoginError
     NioLogoutError = LogoutError
@@ -299,6 +298,7 @@ def msg_regenerate_credentials():
 
 # CLI-specific functions (can use print statements for user interaction)
 
+
 async def logout_matrix_bot(password: str):
     """
     Log out from Matrix and clear all local session data.
@@ -321,10 +321,10 @@ async def logout_matrix_bot(password: str):
 
     # Import inside function to avoid circular imports
     from mmrelay.matrix_utils import (
-        load_credentials,
-        _create_ssl_context,
-        _cleanup_local_session_data,
         MATRIX_LOGIN_TIMEOUT,
+        _cleanup_local_session_data,
+        _create_ssl_context,
+        load_credentials,
     )
 
     # Check if matrix-nio is available
@@ -396,7 +396,9 @@ async def logout_matrix_bot(password: str):
             logger.error(
                 "Password verification timed out. Please check your network connection."
             )
-            print("❌ Password verification timed out. Please check your network connection.")
+            print(
+                "❌ Password verification timed out. Please check your network connection."
+            )
             return False
         except Exception as e:
             # Handle nio login exceptions with specific user messages
@@ -415,7 +417,9 @@ async def logout_matrix_bot(password: str):
                         "Please try again later or contact your Matrix server administrator."
                     )
                     print("❌ Password verification failed: Matrix server error.")
-                    print("Please try again later or contact your Matrix server administrator.")
+                    print(
+                        "Please try again later or contact your Matrix server administrator."
+                    )
                 else:
                     logger.error(f"Password verification failed: {e.status_code}")
                     logger.debug(f"Full error details: {e}")
@@ -434,7 +438,9 @@ async def logout_matrix_bot(password: str):
                     "Please check your internet connection and Matrix server availability."
                 )
                 print("❌ Password verification failed: Network connection error.")
-                print("Please check your internet connection and Matrix server availability.")
+                print(
+                    "Please check your internet connection and Matrix server availability."
+                )
             else:
                 # Fallback to string matching for unknown exceptions
                 error_msg = str(e).lower()
@@ -455,7 +461,9 @@ async def logout_matrix_bot(password: str):
                         "Please check your internet connection and Matrix server availability."
                     )
                     print("❌ Password verification failed: Network connection error.")
-                    print("Please check your internet connection and Matrix server availability.")
+                    print(
+                        "Please check your internet connection and Matrix server availability."
+                    )
                 elif (
                     "server" in error_msg
                     or "500" in error_msg
@@ -467,7 +475,9 @@ async def logout_matrix_bot(password: str):
                         "Please try again later or contact your Matrix server administrator."
                     )
                     print("❌ Password verification failed: Matrix server error.")
-                    print("Please try again later or contact your Matrix server administrator.")
+                    print(
+                        "Please try again later or contact your Matrix server administrator."
+                    )
                 else:
                     logger.error(f"Password verification failed: {type(e).__name__}")
                     logger.debug(f"Full error details: {e}")
@@ -507,17 +517,23 @@ async def logout_matrix_bot(password: str):
                     logger.warning(
                         "Server logout failed due to invalid token (already logged out?), proceeding with local cleanup."
                     )
-                    print("⚠️  Server logout failed due to invalid token (already logged out?), proceeding with local cleanup.")
+                    print(
+                        "⚠️  Server logout failed due to invalid token (already logged out?), proceeding with local cleanup."
+                    )
                 elif e.status_code in [500, 502, 503]:
                     logger.warning(
                         "Server logout failed due to server error, proceeding with local cleanup."
                     )
-                    print("⚠️  Server logout failed due to server error, proceeding with local cleanup.")
+                    print(
+                        "⚠️  Server logout failed due to server error, proceeding with local cleanup."
+                    )
                 else:
                     logger.warning(
                         f"Server logout failed ({e.status_code}), proceeding with local cleanup."
                     )
-                    print(f"⚠️  Server logout failed ({e.status_code}), proceeding with local cleanup.")
+                    print(
+                        f"⚠️  Server logout failed ({e.status_code}), proceeding with local cleanup."
+                    )
             elif isinstance(
                 e,
                 (
@@ -530,7 +546,9 @@ async def logout_matrix_bot(password: str):
                 logger.warning(
                     "Server logout failed due to network issues, proceeding with local cleanup."
                 )
-                print("⚠️  Server logout failed due to network issues, proceeding with local cleanup.")
+                print(
+                    "⚠️  Server logout failed due to network issues, proceeding with local cleanup."
+                )
             else:
                 # Fallback to string matching for unknown exceptions
                 error_msg = str(e).lower()
@@ -542,17 +560,23 @@ async def logout_matrix_bot(password: str):
                     logger.warning(
                         "Server logout failed due to network issues, proceeding with local cleanup."
                     )
-                    print("⚠️  Server logout failed due to network issues, proceeding with local cleanup.")
+                    print(
+                        "⚠️  Server logout failed due to network issues, proceeding with local cleanup."
+                    )
                 elif "401" in error_msg or "forbidden" in error_msg:
                     logger.warning(
                         "Server logout failed due to invalid token (already logged out?), proceeding with local cleanup."
                     )
-                    print("⚠️  Server logout failed due to invalid token (already logged out?), proceeding with local cleanup.")
+                    print(
+                        "⚠️  Server logout failed due to invalid token (already logged out?), proceeding with local cleanup."
+                    )
                 else:
                     logger.warning(
                         f"Server logout failed ({type(e).__name__}), proceeding with local cleanup."
                     )
-                    print(f"⚠️  Server logout failed ({type(e).__name__}), proceeding with local cleanup.")
+                    print(
+                        f"⚠️  Server logout failed ({type(e).__name__}), proceeding with local cleanup."
+                    )
             logger.debug(f"Logout error details: {e}")
         finally:
             await main_client.close()

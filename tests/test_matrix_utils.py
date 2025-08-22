@@ -25,7 +25,6 @@ from mmrelay.matrix_utils import (
     get_user_display_name,
     join_matrix_room,
     login_matrix_bot,
-
     matrix_relay,
     message_storage_enabled,
     on_room_message,

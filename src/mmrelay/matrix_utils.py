@@ -2369,7 +2369,6 @@ async def on_room_member(room: MatrixRoom, event: RoomMemberEvent) -> None:
     pass
 
 
-
 def _cleanup_local_session_data():
     """
     Helper function to clean up local session data (credentials.json and E2EE store).
