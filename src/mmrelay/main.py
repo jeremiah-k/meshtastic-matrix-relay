@@ -53,8 +53,9 @@ from mmrelay.plugin_loader import load_plugins
 # Initialize logger
 logger = get_logger(name=APP_DISPLAY_NAME)
 
-# Set the logging level for 'nio' to ERROR to suppress warnings
+# Set the logging level for 'nio' loggers to ERROR to suppress warnings
 logging.getLogger("nio").setLevel(logging.ERROR)
+logging.getLogger("nio.responses").setLevel(logging.ERROR)
 
 
 # Flag to track if banner has been printed
