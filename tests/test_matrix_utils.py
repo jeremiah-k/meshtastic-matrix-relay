@@ -849,22 +849,24 @@ async def test_connect_matrix_success(matrix_config):
         # Mock SSL context creation
         mock_ssl_context.return_value = MagicMock()
 
-        # Mock the AsyncClient instance - use MagicMock to prevent coroutine warnings
+        # Mock the AsyncClient instance with proper async methods
         mock_client_instance = MagicMock()
-        mock_client_instance.whoami = AsyncMock()
-        mock_client_instance.sync = AsyncMock()
-        mock_client_instance.get_displayname = AsyncMock()
+        mock_client_instance.rooms = {}  # Add rooms attribute
+
+        # Create proper async mock methods that return coroutines
+        async def mock_whoami():
+            return MagicMock(device_id="test_device_id")
+
+        async def mock_sync(*args, **kwargs):
+            return MagicMock()
+
+        async def mock_get_displayname(*args, **kwargs):
+            return MagicMock(displayname="Test Bot")
+
+        mock_client_instance.whoami = mock_whoami
+        mock_client_instance.sync = mock_sync
+        mock_client_instance.get_displayname = mock_get_displayname
         mock_async_client.return_value = mock_client_instance
-
-        # Mock whoami response
-        mock_whoami_response = MagicMock()
-        mock_whoami_response.device_id = "test_device_id"
-        mock_client_instance.whoami.return_value = mock_whoami_response
-
-        # Mock get_displayname response
-        mock_displayname_response = MagicMock()
-        mock_displayname_response.displayname = "Test Bot"
-        mock_client_instance.get_displayname.return_value = mock_displayname_response
 
         result = await connect_matrix(matrix_config)
 
@@ -887,18 +889,21 @@ async def test_connect_matrix_without_credentials(matrix_config):
         # Mock SSL context creation
         mock_ssl_context.return_value = MagicMock()
 
-        # Use MagicMock instead of AsyncMock to prevent coroutine warnings
+        # Mock the AsyncClient instance with proper async methods
         mock_client_instance = MagicMock()
-        mock_client_instance.sync = AsyncMock()  # Add missing sync method
         mock_client_instance.rooms = {}  # Add missing rooms attribute
         mock_client_instance.device_id = None  # Set device_id to None for legacy config
-        mock_client_instance.get_displayname = AsyncMock()
-        mock_async_client.return_value = mock_client_instance
 
-        # Mock get_displayname response
-        mock_displayname_response = MagicMock()
-        mock_displayname_response.displayname = "Test Bot"
-        mock_client_instance.get_displayname.return_value = mock_displayname_response
+        # Create proper async mock methods that return coroutines
+        async def mock_sync(*args, **kwargs):
+            return MagicMock()
+
+        async def mock_get_displayname(*args, **kwargs):
+            return MagicMock(displayname="Test Bot")
+
+        mock_client_instance.sync = mock_sync
+        mock_client_instance.get_displayname = mock_get_displayname
+        mock_async_client.return_value = mock_client_instance
 
         result = await connect_matrix(matrix_config)
 
@@ -1579,11 +1584,12 @@ def test_validate_prefix_format_comprehensive():
 
 
 @patch("mmrelay.matrix_utils.save_credentials")
-@patch("mmrelay.matrix_utils.AsyncClient")
+@patch("mmrelay.cli_utils.AsyncClient")
 @patch("mmrelay.matrix_utils.getpass.getpass")
 @patch("mmrelay.matrix_utils.input")
+@patch("mmrelay.matrix_utils._create_ssl_context")
 async def test_login_matrix_bot_success(
-    mock_input, mock_getpass, mock_async_client, mock_save_credentials
+    mock_input, mock_getpass, mock_async_client, mock_save_credentials, mock_ssl_context
 ):
     """Test successful login_matrix_bot execution."""
     # Mock user inputs
@@ -1594,14 +1600,23 @@ async def test_login_matrix_bot_success(
     ]
     mock_getpass.return_value = "testpass"  # password
 
-    # Mock AsyncClient instance
-    mock_client = AsyncMock()
-    mock_client.login.return_value = MagicMock(
+    # Mock SSL context
+    mock_ssl_context.return_value = None
+
+    # Mock AsyncClient instance - need to handle both discovery and main client
+    mock_discovery_client = AsyncMock()
+    mock_discovery_client.discovery_info = AsyncMock()
+    mock_discovery_client.close = AsyncMock()
+
+    mock_main_client = AsyncMock()
+    mock_main_client.login.return_value = MagicMock(
         access_token="test_token", device_id="test_device"
     )
-    mock_client.whoami.return_value = MagicMock(user_id="@testuser:matrix.org")
-    mock_client.close = AsyncMock()
-    mock_async_client.return_value = mock_client
+    mock_main_client.whoami.return_value = MagicMock(user_id="@testuser:matrix.org")
+    mock_main_client.close = AsyncMock()
+
+    # Return different clients for discovery and main login
+    mock_async_client.side_effect = [mock_discovery_client, mock_main_client]
 
     # Call the function
     result = await login_matrix_bot()
@@ -1609,15 +1624,18 @@ async def test_login_matrix_bot_success(
     # Verify success
     assert result is True
     mock_save_credentials.assert_called_once()
-    mock_client.login.assert_called_once_with("testpass", device_name="mmrelay-e2ee")
-    # close() is called twice: once for discovery client, once for main client
-    assert mock_client.close.call_count == 2
+    mock_main_client.login.assert_called_once_with("testpass", device_name="mmrelay-e2ee")
+    # close() is called on both discovery and main clients
+    mock_discovery_client.close.assert_called_once()
+    mock_main_client.close.assert_called_once()
 
 
 @patch("mmrelay.matrix_utils.input")
 async def test_login_matrix_bot_with_parameters(mock_input):
     """Test login_matrix_bot with provided parameters."""
-    with patch("mmrelay.matrix_utils.AsyncClient") as mock_async_client:
+    with patch("mmrelay.cli_utils.AsyncClient") as mock_async_client, patch(
+        "mmrelay.matrix_utils._create_ssl_context", return_value=None
+    ):
         # Mock AsyncClient instance
         mock_client = AsyncMock()
         mock_client.login.return_value = MagicMock(
@@ -1652,7 +1670,9 @@ async def test_login_matrix_bot_login_failure(mock_input, mock_getpass):
     ]
     mock_getpass.return_value = "wrongpass"  # password
 
-    with patch("mmrelay.matrix_utils.AsyncClient") as mock_async_client:
+    with patch("mmrelay.cli_utils.AsyncClient") as mock_async_client, patch(
+        "mmrelay.matrix_utils._create_ssl_context", return_value=None
+    ):
         # Mock AsyncClient instance with login failure
         mock_client = AsyncMock()
         mock_client.login.side_effect = Exception("Login failed")
