@@ -183,7 +183,7 @@ def get_room_encryption_warnings(
     encrypted_rooms = []
 
     # Handle invalid rooms input
-    if not rooms or not hasattr(rooms, 'items'):
+    if not rooms or not hasattr(rooms, "items"):
         return warnings
 
     for room_id, room in rooms.items():
@@ -235,7 +235,7 @@ def format_room_list(rooms: Dict[str, Any], e2ee_status: Dict[str, Any]) -> List
     room_lines = []
 
     # Handle invalid rooms input
-    if not rooms or not hasattr(rooms, 'items'):
+    if not rooms or not hasattr(rooms, "items"):
         return room_lines
 
     for room_id, room in rooms.items():

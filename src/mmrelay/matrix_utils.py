@@ -9,8 +9,7 @@ import re
 import ssl
 import sys
 import time
-from functools import lru_cache
-from typing import Union, Dict, Any
+from typing import Any, Dict, Union
 from urllib.parse import urlparse
 
 import certifi
@@ -33,13 +32,13 @@ from PIL import Image
 
 # Import nio exception types with error handling for test environments
 try:
-    from nio.responses import LoginError as NioLoginError, LogoutError as NioLogoutError, ErrorResponse as NioErrorResponse
-    from nio.exceptions import (
-        LocalProtocolError as NioLocalProtocolError,
-        RemoteProtocolError as NioRemoteProtocolError,
-        LocalTransportError as NioLocalTransportError,
-        RemoteTransportError as NioRemoteTransportError
-    )
+    from nio.exceptions import LocalProtocolError as NioLocalProtocolError
+    from nio.exceptions import LocalTransportError as NioLocalTransportError
+    from nio.exceptions import RemoteProtocolError as NioRemoteProtocolError
+    from nio.exceptions import RemoteTransportError as NioRemoteTransportError
+    from nio.responses import ErrorResponse as NioErrorResponse
+    from nio.responses import LoginError as NioLoginError
+    from nio.responses import LogoutError as NioLogoutError
 except ImportError:
     # Fallback for test environments where nio imports might fail
     NioLoginError = Exception
@@ -103,7 +102,9 @@ from mmrelay.message_queue import get_message_queue, queue_message
 logger = get_logger(name="Matrix")
 
 
-def _display_room_channel_mappings(rooms: Dict[str, Any], config: Dict[str, Any], e2ee_status: Dict[str, Any]) -> None:
+def _display_room_channel_mappings(
+    rooms: Dict[str, Any], config: Dict[str, Any], e2ee_status: Dict[str, Any]
+) -> None:
     """
     Display Matrix rooms organized by Meshtastic channel with improved formatting.
 
@@ -155,12 +156,12 @@ def _display_room_channel_mappings(rooms: Dict[str, Any], config: Dict[str, Any]
         else:
             unmapped_rooms.append((room_id, room))
 
-
-
     # Display header
     total_rooms = len(rooms)
     mapped_rooms = sum(len(room_list) for room_list in channels.values())
-    logger.info(f"Matrix Rooms → Meshtastic Channels ({mapped_rooms}/{total_rooms} mapped):")
+    logger.info(
+        f"Matrix Rooms → Meshtastic Channels ({mapped_rooms}/{total_rooms} mapped):"
+    )
 
     # Display rooms organized by channel (sorted by channel number)
     for channel in sorted(channels.keys()):
@@ -180,11 +181,17 @@ def _display_room_channel_mappings(rooms: Dict[str, Any], config: Dict[str, Any]
             else:
                 if encrypted:
                     if e2ee_status["overall_status"] == "unavailable":
-                        logger.info(f"    ⚠️ {room_name} (E2EE not supported - messages blocked)")
+                        logger.info(
+                            f"    ⚠️ {room_name} (E2EE not supported - messages blocked)"
+                        )
                     elif e2ee_status["overall_status"] == "disabled":
-                        logger.info(f"    ⚠️ {room_name} (E2EE disabled - messages blocked)")
+                        logger.info(
+                            f"    ⚠️ {room_name} (E2EE disabled - messages blocked)"
+                        )
                     else:
-                        logger.info(f"    ⚠️ {room_name} (E2EE incomplete - messages may be blocked)")
+                        logger.info(
+                            f"    ⚠️ {room_name} (E2EE incomplete - messages may be blocked)"
+                        )
                 else:
                     logger.info(f"    ✅ {room_name}")
 
@@ -924,7 +931,6 @@ async def connect_matrix(passed_config=None):
             # List all rooms with unified E2EE status display
             from mmrelay.config import config_path
             from mmrelay.e2ee_utils import (
-                format_room_list,
                 get_e2ee_status,
                 get_room_encryption_warnings,
             )
@@ -942,7 +948,9 @@ async def connect_matrix(passed_config=None):
 
             # Debug information
             encrypted_count = sum(
-                1 for room in matrix_client.rooms.values() if getattr(room, "encrypted", False)
+                1
+                for room in matrix_client.rooms.values()
+                if getattr(room, "encrypted", False)
             )
             logger.debug(
                 f"Found {encrypted_count} encrypted rooms out of {len(matrix_client.rooms)} total rooms"
@@ -2433,9 +2441,11 @@ async def logout_matrix_bot(password: str):
             return False
         except Exception as e:
             # Handle nio login exceptions with specific user messages
-            if isinstance(e, NioLoginError) and hasattr(e, 'status_code'):
+            if isinstance(e, NioLoginError) and hasattr(e, "status_code"):
                 # Handle specific login error responses
-                if (hasattr(e, "errcode") and e.errcode == "M_FORBIDDEN") or e.status_code == 401:
+                if (
+                    hasattr(e, "errcode") and e.errcode == "M_FORBIDDEN"
+                ) or e.status_code == 401:
                     logger.error("Password verification failed: Invalid credentials.")
                     logger.error("Please check your username and password.")
                 elif e.status_code in [500, 502, 503]:
@@ -2446,7 +2456,15 @@ async def logout_matrix_bot(password: str):
                 else:
                     logger.error(f"Password verification failed: {e.status_code}")
                     logger.debug(f"Full error details: {e}")
-            elif isinstance(e, (NioLocalTransportError, NioRemoteTransportError, NioLocalProtocolError, NioRemoteProtocolError)):
+            elif isinstance(
+                e,
+                (
+                    NioLocalTransportError,
+                    NioRemoteTransportError,
+                    NioLocalProtocolError,
+                    NioRemoteProtocolError,
+                ),
+            ):
                 logger.error("Password verification failed: Network connection error.")
                 logger.error(
                     "Please check your internet connection and Matrix server availability."
@@ -2462,7 +2480,9 @@ async def logout_matrix_bot(password: str):
                     or "connection" in error_msg
                     or "timeout" in error_msg
                 ):
-                    logger.error("Password verification failed: Network connection error.")
+                    logger.error(
+                        "Password verification failed: Network connection error."
+                    )
                     logger.error(
                         "Please check your internet connection and Matrix server availability."
                     )
@@ -2492,22 +2512,22 @@ async def logout_matrix_bot(password: str):
             access_token=access_token,
         )
 
-        server_logout_success = False
         try:
             # Logout from the server (invalidates the access token)
             logout_response = await main_client.logout()
             if hasattr(logout_response, "transport_response"):
                 logger.info("Successfully logged out from Matrix server.")
-                server_logout_success = True
             else:
                 logger.warning(
                     "Logout response unclear, proceeding with local cleanup."
                 )
         except Exception as e:
             # Handle nio logout exceptions with specific messages
-            if isinstance(e, NioLogoutError) and hasattr(e, 'status_code'):
+            if isinstance(e, NioLogoutError) and hasattr(e, "status_code"):
                 # Handle specific logout error responses
-                if (hasattr(e, "errcode") and e.errcode == "M_FORBIDDEN") or e.status_code == 401:
+                if (
+                    hasattr(e, "errcode") and e.errcode == "M_FORBIDDEN"
+                ) or e.status_code == 401:
                     logger.warning(
                         "Server logout failed due to invalid token (already logged out?), proceeding with local cleanup."
                     )
@@ -2519,7 +2539,15 @@ async def logout_matrix_bot(password: str):
                     logger.warning(
                         f"Server logout failed ({e.status_code}), proceeding with local cleanup."
                     )
-            elif isinstance(e, (NioLocalTransportError, NioRemoteTransportError, NioLocalProtocolError, NioRemoteProtocolError)):
+            elif isinstance(
+                e,
+                (
+                    NioLocalTransportError,
+                    NioRemoteTransportError,
+                    NioLocalProtocolError,
+                    NioRemoteProtocolError,
+                ),
+            ):
                 logger.warning(
                     "Server logout failed due to network issues, proceeding with local cleanup."
                 )

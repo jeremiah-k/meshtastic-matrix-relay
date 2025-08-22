@@ -249,8 +249,6 @@ class TestMatrixUtilsEdgeCases(unittest.TestCase):
 
         asyncio.run(run_test())
 
-
-
     @patch("mmrelay.matrix_utils.logger")
     def test_join_matrix_room_with_invalid_alias(self, mock_logger):
         """

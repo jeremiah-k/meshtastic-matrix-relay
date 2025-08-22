@@ -267,8 +267,6 @@ class TestRoomListFormatting(unittest.TestCase):
             room_lines,
         )
 
-
-
     def test_room_list_with_invalid_rooms(self):
         """Test room list formatting with invalid rooms object"""
         # Test with None
@@ -331,8 +329,6 @@ class TestEncryptionWarnings(unittest.TestCase):
         warnings = get_room_encryption_warnings(rooms, e2ee_status)
 
         self.assertEqual(len(warnings), 0)
-
-
 
     def test_warnings_with_invalid_rooms(self):
         """Test encryption warnings with invalid rooms object"""
