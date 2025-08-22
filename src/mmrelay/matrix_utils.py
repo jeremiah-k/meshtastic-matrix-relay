@@ -110,7 +110,7 @@ def _display_room_channel_mappings(
     """
     Log Matrix rooms grouped by Meshtastic channel, showing mapping counts and E2EE/encryption indicators.
 
-    Reads the "matrix_rooms" entry from config (accepting either dict or list form), builds a mapping from room ID to the configured "meshtastic_channel", then groups and logs rooms ordered by channel number. For each room logs an emoji/status depending on the room's encryption flag and the provided e2ee_status["overall_status"] (common values: "ready", "unavailable", "disabled"); unmapped rooms are listed separately as not relayed.
+    Reads the "matrix_rooms" entry from config (accepting either dict or list form), builds a mapping from room ID to the configured "meshtastic_channel", then groups and logs rooms ordered by channel number. For each room logs an emoji/status depending on the room's encryption flag and the provided e2ee_status["overall_status"] (common values: "ready", "unavailable", "disabled").
 
     Parameters:
         rooms (dict): Mapping of room_id -> room object (room objects should expose at least `display_name` and `encrypted` attributes or fall back to the room_id).
@@ -149,7 +149,6 @@ def _display_room_channel_mappings(
 
     # Group rooms by channel
     channels = {}
-    unmapped_rooms = []
 
     for room_id, room in rooms.items():
         if room_id in room_to_channel:
@@ -157,15 +156,10 @@ def _display_room_channel_mappings(
             if channel not in channels:
                 channels[channel] = []
             channels[channel].append((room_id, room))
-        else:
-            unmapped_rooms.append((room_id, room))
 
     # Display header
-    total_rooms = len(rooms)
     mapped_rooms = sum(len(room_list) for room_list in channels.values())
-    logger.info(
-        f"Matrix Rooms → Meshtastic Channels ({mapped_rooms}/{total_rooms} mapped):"
-    )
+    logger.info(f"Matrix Rooms → Meshtastic Channels ({mapped_rooms} configured):")
 
     # Display rooms organized by channel (sorted by channel number)
     for channel in sorted(channels.keys()):
@@ -198,17 +192,6 @@ def _display_room_channel_mappings(
                         )
                 else:
                     logger.info(f"    ✅ {room_name}")
-
-    # Display unmapped rooms if any
-    if unmapped_rooms:
-        logger.info("  Unmapped rooms (no channel configured):")
-        for room_id, room in unmapped_rooms:
-            room_name = getattr(room, "display_name", room_id)
-            encrypted = getattr(room, "encrypted", False)
-            if encrypted:
-                logger.info(f"    ⚠️ {room_name} (not relayed)")
-            else:
-                logger.info(f"    ❌ {room_name} (not relayed)")
 
 
 def _can_auto_create_credentials(matrix_config: dict) -> bool:
