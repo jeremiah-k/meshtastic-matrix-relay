@@ -17,9 +17,9 @@ COPY requirements.txt setup.py ./
 COPY README.md ./
 COPY src/ ./src/
 
-# Install dependencies and application package
+# Install dependencies and application package with E2EE support
 RUN pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir --no-deps .
+    pip install --no-cache-dir --no-deps ".[e2e]"
 
 # Runtime stage
 FROM python:3.11-slim-bookworm

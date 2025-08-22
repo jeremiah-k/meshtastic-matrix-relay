@@ -123,6 +123,14 @@ async def main(config):
     # Connect to Matrix
     matrix_client = await connect_matrix(passed_config=config)
 
+    # Check if Matrix connection was successful
+    if matrix_client is None:
+        matrix_logger.error("Failed to connect to Matrix. Cannot continue without Matrix client.")
+        matrix_logger.error("Please check your Matrix configuration and ensure all required dependencies are installed.")
+        if config.get("matrix", {}).get("e2ee", {}).get("enabled", False):
+            matrix_logger.error("E2EE is enabled but dependencies may be missing. Try installing with: pip install 'mmrelay[e2e]'")
+        return
+
     # Join the rooms specified in the config.yaml
     for room in matrix_rooms:
         await join_matrix_room(matrix_client, room["id"])
