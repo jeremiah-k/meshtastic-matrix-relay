@@ -10,7 +10,7 @@ import ssl
 import sys
 import time
 from functools import lru_cache
-from typing import Union
+from typing import Union, Dict, Any
 from urllib.parse import urlparse
 
 import certifi
@@ -104,6 +104,94 @@ logger = get_logger(name="Matrix")
 
 
 @lru_cache(maxsize=1)
+def _display_room_channel_mappings(rooms: Dict[str, Any], config: Dict[str, Any], e2ee_status: Dict[str, Any]) -> None:
+    """
+    Display Matrix rooms organized by Meshtastic channel with improved formatting.
+
+    Shows room-to-channel mappings ordered by channel number, with encryption status
+    and clear channel organization.
+
+    Args:
+        rooms: Dictionary of room_id -> room objects from Matrix client
+        config: Configuration dictionary containing matrix_rooms mapping
+        e2ee_status: E2EE status dictionary for encryption indicators
+    """
+    if not rooms:
+        logger.info("Bot is not in any Matrix rooms")
+        return
+
+    # Get matrix_rooms configuration
+    matrix_rooms_config = config.get("matrix_rooms", [])
+    if not matrix_rooms_config:
+        logger.info("No matrix_rooms configuration found")
+        return
+
+    # Create mapping of room_id -> channel number
+    room_to_channel = {}
+    for room_config in matrix_rooms_config:
+        room_id = room_config.get("id")
+        channel = room_config.get("meshtastic_channel")
+        if room_id and channel is not None:
+            room_to_channel[room_id] = channel
+
+    # Group rooms by channel
+    channels = {}
+    unmapped_rooms = []
+
+    for room_id, room in rooms.items():
+        if room_id in room_to_channel:
+            channel = room_to_channel[room_id]
+            if channel not in channels:
+                channels[channel] = []
+            channels[channel].append((room_id, room))
+        else:
+            unmapped_rooms.append((room_id, room))
+
+
+
+    # Display header
+    total_rooms = len(rooms)
+    mapped_rooms = sum(len(room_list) for room_list in channels.values())
+    logger.info(f"Matrix Rooms → Meshtastic Channels ({mapped_rooms}/{total_rooms} mapped):")
+
+    # Display rooms organized by channel (sorted by channel number)
+    for channel in sorted(channels.keys()):
+        room_list = channels[channel]
+        logger.info(f"  Channel {channel}:")
+
+        for room_id, room in room_list:
+            room_name = getattr(room, "display_name", room_id)
+            encrypted = getattr(room, "encrypted", False)
+
+            # Format with encryption status
+            if e2ee_status["overall_status"] == "ready":
+                if encrypted:
+                    logger.info(f"    🔒 {room_name}")
+                else:
+                    logger.info(f"    ✅ {room_name}")
+            else:
+                if encrypted:
+                    if e2ee_status["overall_status"] == "unavailable":
+                        logger.info(f"    ⚠️ {room_name} (E2EE not supported - messages blocked)")
+                    elif e2ee_status["overall_status"] == "disabled":
+                        logger.info(f"    ⚠️ {room_name} (E2EE disabled - messages blocked)")
+                    else:
+                        logger.info(f"    ⚠️ {room_name} (E2EE incomplete - messages may be blocked)")
+                else:
+                    logger.info(f"    ✅ {room_name}")
+
+    # Display unmapped rooms if any
+    if unmapped_rooms:
+        logger.info("  Unmapped rooms (no channel configured):")
+        for room_id, room in unmapped_rooms:
+            room_name = getattr(room, "display_name", room_id)
+            encrypted = getattr(room, "encrypted", False)
+            if encrypted:
+                logger.info(f"    ⚠️ {room_name} (not relayed)")
+            else:
+                logger.info(f"    ❌ {room_name} (not relayed)")
+
+
 def _create_ssl_context():
     """
     Create an SSL context using certifi's certificates for Matrix client connections.
@@ -512,7 +600,6 @@ async def connect_matrix(passed_config=None):
         credentials_path = os.path.join(config_dir, "credentials.json")
 
         if os.path.exists(credentials_path):
-            logger.info(f"Found credentials at {credentials_path}")
             with open(credentials_path, "r") as f:
                 credentials = json.load(f)
     except Exception as e:
@@ -525,9 +612,8 @@ async def connect_matrix(passed_config=None):
         bot_user_id = credentials["user_id"]
         e2ee_device_id = credentials.get("device_id")
 
-        # Log credentials loading
-        logger.info(f"Using credentials from {credentials_path}")
-        logger.info(f"Loaded device_id: {e2ee_device_id}")
+        # Log consolidated credentials info
+        logger.info(f"Using Matrix credentials (device: {e2ee_device_id})")
 
         # If device_id is missing, warn but proceed; we'll learn and persist it after restore_login().
         if not isinstance(e2ee_device_id, str) or not e2ee_device_id.strip():
@@ -838,12 +924,8 @@ async def connect_matrix(passed_config=None):
             # Get comprehensive E2EE status
             e2ee_status = get_e2ee_status(config, config_path)
 
-            logger.info("Bot is in the following rooms:")
-
-            # Format room list with appropriate encryption indicators
-            room_lines = format_room_list(matrix_client.rooms, e2ee_status)
-            for line in room_lines:
-                logger.info(line)
+            # Display rooms with channel mappings
+            _display_room_channel_mappings(matrix_client.rooms, config, e2ee_status)
 
             # Show warnings for encrypted rooms when E2EE is not ready
             warnings = get_room_encryption_warnings(matrix_client.rooms, e2ee_status)
