@@ -493,6 +493,33 @@ class TestWeatherPlugin(unittest.TestCase):
         self.assertIn("Error", forecast)
 
     @patch("requests.get")
+    def test_generate_forecast_empty_hourly_data(self, mock_get):
+        """Test that empty hourly data is handled gracefully."""
+        empty_hourly_data = {
+            "current_weather": {
+                "temperature": 20.0,
+                "weathercode": 1,
+                "is_day": 1,
+                "time": "2023-08-20T14:00",
+            },
+            "hourly": {
+                "time": [],
+                "temperature_2m": [],  # Empty array
+                "precipitation_probability": [],
+                "weathercode": [],
+                "is_day": [],
+            },
+        }
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = empty_hourly_data
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+
+        forecast = self.plugin.generate_forecast(40.7128, -74.0060)
+        self.assertEqual(forecast, "Weather data temporarily unavailable.")
+
+    @patch("requests.get")
     def test_generate_forecast_timestamp_anchoring(self, mock_get):
         """Test that forecast indexing uses timestamp anchoring when available."""
         # Create data where timestamp anchoring would give different results than hour-of-day

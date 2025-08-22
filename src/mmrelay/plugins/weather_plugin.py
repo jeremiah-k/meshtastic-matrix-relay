@@ -48,7 +48,6 @@ class Plugin(BasePlugin):
                 current_hour = current_time.hour
             except ValueError as ex:
                 self.logger.warning(f"Unexpected current_weather.time '{current_time_str}': {ex}. Defaulting to hour=0.")
-                current_hour = 0
 
             # Calculate indices for +2h and +5h forecasts
             # Try to anchor to hourly timestamps for robustness, fall back to hour-of-day
@@ -66,8 +65,12 @@ class Plugin(BasePlugin):
             forecast_2h_index = base_index + 2
             forecast_5h_index = base_index + 5
 
-            # Clamp indices to the available dataset length
-            max_index = len(data["hourly"]["temperature_2m"]) - 1
+            # Guard against empty hourly series before clamping
+            temps = data["hourly"].get("temperature_2m") or []
+            if not temps:
+                self.logger.warning("No hourly temperature data returned.")
+                return "Weather data temporarily unavailable."
+            max_index = len(temps) - 1
             forecast_2h_index = min(forecast_2h_index, max_index)
             forecast_5h_index = min(forecast_5h_index, max_index)
 
@@ -150,12 +153,12 @@ class Plugin(BasePlugin):
             return forecast
 
         except Exception as e:
-            # Handle HTTP errors specifically
-            if hasattr(e, '__module__') and 'requests' in e.__module__:
+            # Handle HTTP/network errors from requests
+            if 'requests' in str(type(e).__module__) or 'HTTPError' in str(type(e).__name__):
                 self.logger.error(f"Error fetching weather data: {e}")
                 return "Error fetching weather data."
             # Handle data parsing errors
-            elif isinstance(e, (KeyError, IndexError, ValueError, TypeError)):
+            elif isinstance(e, (KeyError, IndexError, TypeError, ValueError, AttributeError)):
                 self.logger.error(f"Malformed weather data: {e}")
                 return "Error parsing weather data."
             else:
