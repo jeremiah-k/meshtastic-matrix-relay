@@ -78,7 +78,7 @@ matrix:
 - **Enhanced E2EE Documentation**: Complete setup and troubleshooting guides
 - **Improved Error Messages**: Better debugging information and recovery suggestions
 
-## � Upgrading from 1.1.4
+## ⬆️ Upgrading from 1.1.4
 
 ### Simple Upgrade Process
 ```bash
