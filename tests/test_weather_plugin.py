@@ -24,6 +24,19 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from mmrelay.plugins.weather_plugin import Plugin
 
 
+def _normalize_emoji(s: str) -> str:
+    """Strip text/emoji variation selectors to avoid platform-specific failures."""
+    return s.replace("\uFE0F", "").replace("\uFE0E", "")
+
+
+def _make_ok_response(payload):
+    """Create a mock response with the given payload."""
+    r = MagicMock()
+    r.json.return_value = payload
+    r.raise_for_status.return_value = None
+    return r
+
+
 class TestWeatherPlugin(unittest.TestCase):
     """Test cases for the weather plugin."""
 
@@ -219,9 +232,7 @@ class TestWeatherPlugin(unittest.TestCase):
 
         Verifies that the plugin requests weather data with the correct API parameters, parses the response, and formats the forecast string with Celsius temperatures, weather descriptions, emojis, and precipitation probabilities.
         """
-        mock_response = MagicMock()
-        mock_response.json.return_value = self.sample_weather_data
-        mock_response.raise_for_status.return_value = None
+        mock_response = _make_ok_response(self.sample_weather_data)
         mock_get.return_value = mock_response
 
         self.plugin.config = {"units": "metric"}
@@ -232,29 +243,39 @@ class TestWeatherPlugin(unittest.TestCase):
         mock_get.assert_called_once()
         # Ensure HTTP errors would surface
         mock_response.raise_for_status.assert_called_once()
-        call_args = mock_get.call_args[0][0]
-        self.assertIn("latitude=40.7128", call_args)
-        self.assertIn(
-            "longitude=-74.006", call_args
-        )  # May be formatted without trailing zero
-        self.assertIn("api.open-meteo.com", call_args)
-        self.assertIn("forecast_days=2", call_args)
-        self.assertIn("timezone=auto", call_args)
+
+        # Accept both styles: URL with querystring or kwargs["params"]
+        args, kwargs = mock_get.call_args
+        url = args[0]
+        params = kwargs.get("params")
+        self.assertIn("api.open-meteo.com", url)
+        if params:
+            self.assertEqual(float(params.get("latitude")), 40.7128)
+            # Longitude formatting may vary; compare numerically (allow slight rounding)
+            self.assertAlmostEqual(float(params.get("longitude")), -74.0060, places=3)
+            self.assertEqual(int(params.get("forecast_days")), 2)
+            self.assertEqual(params.get("timezone"), "auto")
+        else:
+            self.assertIn("latitude=40.7128", url)
+            # May be formatted without trailing zero
+            self.assertIn("longitude=-74.006", url)
+            self.assertIn("forecast_days=2", url)
+            self.assertIn("timezone=auto", url)
 
         # Verify timeout is set
         self.assertEqual(mock_get.call_args.kwargs.get("timeout"), 10)
 
         # Should contain current weather
-        self.assertIn("Now: 🌤️ Mainly clear", forecast)
+        self.assertIn(_normalize_emoji("Now: 🌤️ Mainly clear"), _normalize_emoji(forecast))
         self.assertIn("22.5°C", forecast)
 
         # Should contain 2h forecast (index 12: weathercode 63 = Moderate rain)
-        self.assertIn("+2h: 🌧️ Moderate rain", forecast)
+        self.assertIn(_normalize_emoji("+2h: 🌧️ Moderate rain"), _normalize_emoji(forecast))
         self.assertIn("21.0°C", forecast)
         self.assertIn("5%", forecast)
 
         # Should contain 5h forecast (index 15: weathercode 65 = Heavy rain)
-        self.assertIn("+5h: 🌧️ Heavy rain", forecast)
+        self.assertIn(_normalize_emoji("+5h: 🌧️ Heavy rain"), _normalize_emoji(forecast))
         self.assertIn("23.0°C", forecast)
         self.assertIn("20%", forecast)
 
@@ -265,10 +286,7 @@ class TestWeatherPlugin(unittest.TestCase):
 
         Verifies that the forecast output includes correctly converted and rounded Fahrenheit temperatures based on sample weather data.
         """
-        mock_response = MagicMock()
-        mock_response.json.return_value = self.sample_weather_data
-        mock_response.raise_for_status.return_value = None
-        mock_get.return_value = mock_response
+        mock_get.return_value = _make_ok_response(self.sample_weather_data)
 
         self.plugin.config = {"units": "imperial"}
 
@@ -300,10 +318,7 @@ class TestWeatherPlugin(unittest.TestCase):
             },
         }
 
-        mock_response = MagicMock()
-        mock_response.json.return_value = early_morning_data
-        mock_response.raise_for_status.return_value = None
-        mock_get.return_value = mock_response
+        mock_get.return_value = _make_ok_response(early_morning_data)
 
         forecast = self.plugin.generate_forecast(40.7128, -74.0060)
 
@@ -337,10 +352,7 @@ class TestWeatherPlugin(unittest.TestCase):
             },
         }
 
-        mock_response = MagicMock()
-        mock_response.json.return_value = late_evening_data
-        mock_response.raise_for_status.return_value = None
-        mock_get.return_value = mock_response
+        mock_get.return_value = _make_ok_response(late_evening_data)
 
         forecast = self.plugin.generate_forecast(40.7128, -74.0060)
 
@@ -373,10 +385,7 @@ class TestWeatherPlugin(unittest.TestCase):
             },
         }
 
-        mock_response = MagicMock()
-        mock_response.json.return_value = limited_data
-        mock_response.raise_for_status.return_value = None
-        mock_get.return_value = mock_response
+        mock_get.return_value = _make_ok_response(limited_data)
 
         forecast = self.plugin.generate_forecast(40.7128, -74.0060)
 
@@ -407,10 +416,7 @@ class TestWeatherPlugin(unittest.TestCase):
             },
         }
 
-        mock_response = MagicMock()
-        mock_response.json.return_value = timezone_data
-        mock_response.raise_for_status.return_value = None
-        mock_get.return_value = mock_response
+        mock_get.return_value = _make_ok_response(timezone_data)
 
         # Should not raise an exception and should parse correctly
         forecast = self.plugin.generate_forecast(40.7128, -74.0060)
@@ -436,10 +442,7 @@ class TestWeatherPlugin(unittest.TestCase):
             },
         }
 
-        mock_response = MagicMock()
-        mock_response.json.return_value = offset_data
-        mock_response.raise_for_status.return_value = None
-        mock_get.return_value = mock_response
+        mock_get.return_value = _make_ok_response(offset_data)
 
         # Should parse timezone offset correctly (16:30 -> hour 16)
         forecast = self.plugin.generate_forecast(40.7128, -74.0060)
@@ -465,17 +468,14 @@ class TestWeatherPlugin(unittest.TestCase):
             },
         }
 
-        mock_response = MagicMock()
-        mock_response.json.return_value = invalid_time_data
-        mock_response.raise_for_status.return_value = None
-        mock_get.return_value = mock_response
+        mock_get.return_value = _make_ok_response(invalid_time_data)
 
         # Should not raise; falls back to hour=0 -> +2h index 2, +5h index 5
         forecast = self.plugin.generate_forecast(40.7128, -74.0060)
         self.assertIn("Now:", forecast)
         self.assertIn("20.0°C", forecast)  # Current temp
-        self.assertIn("2°C", forecast)     # +2h temp (index 2)
-        self.assertIn("5°C", forecast)     # +5h temp (index 5)
+        self.assertIn("2°C", forecast)     # +2h temp (index 2) - integer temps don't show .0
+        self.assertIn("5°C", forecast)     # +5h temp (index 5) - integer temps don't show .0
         self.assertIn("2%", forecast)      # +2h precipitation
         self.assertIn("5%", forecast)      # +5h precipitation
 
@@ -581,7 +581,7 @@ class TestWeatherPlugin(unittest.TestCase):
 
         Mocks the weather API response to include an unrecognized weather code and verifies that the generated forecast string indicates an unknown weather condition.
         """
-        unknown_weather_data = self.sample_weather_data.copy()
+        unknown_weather_data = copy.deepcopy(self.sample_weather_data)
         unknown_weather_data["current_weather"]["weathercode"] = 999  # Unknown code
 
         mock_response = MagicMock()
