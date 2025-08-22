@@ -50,9 +50,20 @@ class Plugin(BasePlugin):
                 current_hour = 0
 
             # Calculate indices for +2h and +5h forecasts
-            # API returns hourly data starting from 00:00 of the current day
-            forecast_2h_index = current_hour + 2
-            forecast_5h_index = current_hour + 5
+            # Try to anchor to hourly timestamps for robustness, fall back to hour-of-day
+            base_index = current_hour
+            hourly_times = data["hourly"].get("time", [])
+            if hourly_times:
+                try:
+                    # Normalize current time to the hour and find it in hourly timestamps
+                    base_key = current_time.replace(minute=0, second=0, microsecond=0).strftime("%Y-%m-%dT%H:00")
+                    base_index = hourly_times.index(base_key)
+                except (ValueError, AttributeError):
+                    # Fall back to hour-of-day if hourly timestamps are unavailable/mismatched
+                    base_index = current_hour
+
+            forecast_2h_index = base_index + 2
+            forecast_5h_index = base_index + 5
 
             # Ensure indices don't exceed array bounds (24 hours in a day)
             max_index = len(data["hourly"]["temperature_2m"]) - 1

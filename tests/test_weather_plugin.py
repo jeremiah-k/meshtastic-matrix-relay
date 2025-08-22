@@ -444,6 +444,43 @@ class TestWeatherPlugin(unittest.TestCase):
         self.assertIn("⛅️ Partly cloudy", forecast)
 
     @patch("requests.get")
+    def test_generate_forecast_timestamp_anchoring(self, mock_get):
+        """Test that forecast indexing uses timestamp anchoring when available."""
+        # Create data where timestamp anchoring would give different results than hour-of-day
+        anchoring_data = {
+            "current_weather": {
+                "temperature": 20.0,
+                "weathercode": 1,
+                "is_day": 1,
+                "time": "2023-08-20T14:00:00",  # 2:00 PM
+            },
+            "hourly": {
+                # Start timestamps at 12:00 instead of 00:00 to test anchoring
+                "time": [f"2023-08-20T{h:02d}:00" for h in range(12, 24)],
+                "temperature_2m": [15.0 + h for h in range(12)],  # 15.0, 16.0, 17.0, ...
+                "precipitation_probability": [h * 3 for h in range(12)],  # 0, 3, 6, ...
+                "weathercode": [1] * 12,
+                "is_day": [1] * 12,
+            },
+        }
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = anchoring_data
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+
+        forecast = self.plugin.generate_forecast(40.7128, -74.0060)
+
+        # With timestamp anchoring: 14:00 is at index 2 in the array (12:00, 13:00, 14:00, ...)
+        # +2h forecast should be index 4 (16:00): temp 19.0°C, precip 12%
+        # +5h forecast should be index 7 (19:00): temp 22.0°C, precip 21%
+        self.assertIn("20.0°C", forecast)  # Current temp
+        self.assertIn("19.0°C", forecast)  # +2h temp
+        self.assertIn("22.0°C", forecast)  # +5h temp
+        self.assertIn("12%", forecast)     # +2h precipitation
+        self.assertIn("21%", forecast)     # +5h precipitation
+
+    @patch("requests.get")
     def test_generate_forecast_night_weather_codes(self, mock_get):
         """
         Test that the forecast generation uses night-specific weather descriptions and emojis when night weather codes are present in the API response.
