@@ -2348,7 +2348,7 @@ async def logout_matrix_bot(password: str):
             # Handle nio login exceptions with specific user messages
             if isinstance(e, NioLoginError) and hasattr(e, 'status_code'):
                 # Handle specific login error responses
-                if e.status_code == "M_FORBIDDEN" or e.status_code == 401:
+                if (hasattr(e, "errcode") and e.errcode == "M_FORBIDDEN") or e.status_code == 401:
                     logger.error("Password verification failed: Invalid credentials.")
                     logger.error("Please check your username and password.")
                 elif e.status_code in [500, 502, 503]:
@@ -2418,7 +2418,7 @@ async def logout_matrix_bot(password: str):
             # Handle nio logout exceptions with specific messages
             if isinstance(e, NioLogoutError) and hasattr(e, 'status_code'):
                 # Handle specific logout error responses
-                if e.status_code == "M_FORBIDDEN" or e.status_code == 401:
+                if (hasattr(e, "errcode") and e.errcode == "M_FORBIDDEN") or e.status_code == 401:
                     logger.warning(
                         "Server logout failed due to invalid token (already logged out?), proceeding with local cleanup."
                     )
