@@ -54,27 +54,17 @@ matrix:
 ## 🐳 Enhanced Docker Support
 
 ### New Docker Features
-- **Environment Variable Authentication**: Configure Matrix credentials via environment variables
 - **Prebuilt Docker Images**: Official prebuilt images for faster deployment
-- **Enhanced Docker Compose**: Comprehensive examples with environment variable configuration
+- **Enhanced Docker Compose**: Comprehensive examples and improved documentation
 - **Secure File Permissions**: Automatic secure permissions for configuration files
-
-### Docker Environment Variables
-```yaml
-environment:
-  - MATRIX_HOMESERVER=https://matrix.org
-  - MATRIX_BOT_USER_ID=@bot:matrix.org
-  - MATRIX_ACCESS_TOKEN=your_token
-  - MESHTASTIC_CONNECTION_TYPE=serial
-  - MESHTASTIC_SERIAL_PORT=/dev/ttyUSB0
-```
+- **Improved Volume Management**: Better separation of config and data volumes
 
 ## ⚙️ Configuration & Validation Improvements
 
 ### New Configuration Features
 - **Enhanced Validation**: `mmrelay config check` with detailed error reporting and fix suggestions
-- **Environment Variable Support**: Configure operational settings via environment variables
 - **Secure File Creation**: Automatic secure permissions for configuration files
+- **Improved Error Messages**: Better debugging information and recovery suggestions
 
 ## 🧪 Quality & Infrastructure Improvements
 
@@ -101,7 +91,7 @@ mmrelay auth login
 
 ### Backward Compatibility
 - **Existing Configurations**: All 1.1.4 configurations continue to work unchanged
-- **Gradual Migration**: Add new features (E2EE, HTML formatting, Docker env vars) as desired
+- **Gradual Migration**: Add new features (E2EE, HTML formatting, enhanced Docker support) as desired
 - **No Breaking Changes**: Seamless upgrade experience
 
 ---
