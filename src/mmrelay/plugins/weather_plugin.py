@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime
 
 import requests
 from meshtastic.mesh_interface import BROADCAST_NUM
@@ -36,11 +37,23 @@ class Plugin(BasePlugin):
             current_temp = data["current_weather"]["temperature"]
             current_weather_code = data["current_weather"]["weathercode"]
             is_day = data["current_weather"]["is_day"]
+            current_time_str = data["current_weather"]["time"]
 
-            # Get indices for +2h and +5h forecasts
-            # Assuming hourly data starts from current hour
-            forecast_2h_index = 2
-            forecast_5h_index = 5
+            # Parse current time to get the hour
+            current_time = datetime.fromisoformat(current_time_str.replace("Z", "+00:00"))
+            current_hour = current_time.hour
+
+            # Calculate indices for +2h and +5h forecasts
+            # API returns hourly data starting from 00:00 of the current day
+            forecast_2h_index = current_hour + 2
+            forecast_5h_index = current_hour + 5
+
+            # Ensure indices don't exceed array bounds (24 hours in a day)
+            max_index = len(data["hourly"]["temperature_2m"]) - 1
+            if forecast_2h_index > max_index:
+                forecast_2h_index = max_index
+            if forecast_5h_index > max_index:
+                forecast_5h_index = max_index
 
             forecast_2h_temp = data["hourly"]["temperature_2m"][forecast_2h_index]
             forecast_2h_precipitation = data["hourly"]["precipitation_probability"][
