@@ -67,6 +67,10 @@ def configure_component_debug_logging():
         if debug_config.get(component, False):
             for logger_name in loggers:
                 logging.getLogger(logger_name).setLevel(logging.DEBUG)
+        else:
+            # Suppress INFO messages from external libraries when debug is disabled
+            for logger_name in loggers:
+                logging.getLogger(logger_name).setLevel(logging.WARNING)
 
     _component_debug_configured = True
 
