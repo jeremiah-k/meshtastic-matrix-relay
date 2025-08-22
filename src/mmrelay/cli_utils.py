@@ -313,53 +313,40 @@ def _handle_matrix_error(exception: Exception, context: str, log_level: str = "e
     """
     log_func = logger.error if log_level == "error" else logger.warning
     emoji = "❌" if log_level == "error" else "⚠️ "
+    is_verification = "verification" in context.lower()
+
+    # Determine error category and details
+    error_category = None
+    error_detail = None
 
     # Handle specific Matrix-nio exceptions
     if isinstance(exception, (NioLoginError, NioLogoutError)) and hasattr(exception, "status_code"):
         if (hasattr(exception, "errcode") and exception.errcode == "M_FORBIDDEN") or exception.status_code == 401:
-            if "verification" in context.lower():
-                log_func(f"{context} failed: Invalid credentials.")
-                log_func("Please check your username and password.")
-                print(f"{emoji} {context} failed: Invalid credentials.")
-                print("Please check your username and password.")
-            else:
-                log_func(f"{context} failed due to invalid token (already logged out?), proceeding with local cleanup.")
-                print(f"{emoji} {context} failed due to invalid token (already logged out?), proceeding with local cleanup.")
+            error_category = "credentials"
         elif exception.status_code in [500, 502, 503]:
-            if "verification" in context.lower():
-                log_func(f"{context} failed: Matrix server error.")
-                log_func("Please try again later or contact your Matrix server administrator.")
-                print(f"{emoji} {context} failed: Matrix server error.")
-                print("Please try again later or contact your Matrix server administrator.")
-            else:
-                log_func(f"{context} failed due to server error, proceeding with local cleanup.")
-                print(f"{emoji} {context} failed due to server error, proceeding with local cleanup.")
+            error_category = "server"
         else:
-            if "verification" in context.lower():
-                log_func(f"{context} failed: {exception.status_code}")
-                logger.debug(f"Full error details: {exception}")
-                print(f"{emoji} {context} failed: {exception.status_code}")
-            else:
-                log_func(f"{context} failed ({exception.status_code}), proceeding with local cleanup.")
-                print(f"{emoji} {context} failed ({exception.status_code}), proceeding with local cleanup.")
-        return True
-
+            error_category = "other"
+            error_detail = str(exception.status_code)
     # Handle network/transport exceptions
     elif isinstance(exception, (NioLocalTransportError, NioRemoteTransportError, NioLocalProtocolError, NioRemoteProtocolError)):
-        if "verification" in context.lower():
-            log_func(f"{context} failed: Network connection error.")
-            log_func("Please check your internet connection and Matrix server availability.")
-            print(f"{emoji} {context} failed: Network connection error.")
-            print("Please check your internet connection and Matrix server availability.")
+        error_category = "network"
+    else:
+        # Fallback to string matching for unknown exceptions
+        error_msg = str(exception).lower()
+        if "forbidden" in error_msg or "401" in error_msg:
+            error_category = "credentials"
+        elif "network" in error_msg or "connection" in error_msg or "timeout" in error_msg:
+            error_category = "network"
+        elif "server" in error_msg or "500" in error_msg or "502" in error_msg or "503" in error_msg:
+            error_category = "server"
         else:
-            log_func(f"{context} failed due to network issues, proceeding with local cleanup.")
-            print(f"{emoji} {context} failed due to network issues, proceeding with local cleanup.")
-        return True
+            error_category = "other"
+            error_detail = type(exception).__name__
 
-    # Fallback to string matching for unknown exceptions
-    error_msg = str(exception).lower()
-    if "forbidden" in error_msg or "401" in error_msg:
-        if "verification" in context.lower():
+    # Generate appropriate messages based on category and context
+    if error_category == "credentials":
+        if is_verification:
             log_func(f"{context} failed: Invalid credentials.")
             log_func("Please check your username and password.")
             print(f"{emoji} {context} failed: Invalid credentials.")
@@ -367,9 +354,8 @@ def _handle_matrix_error(exception: Exception, context: str, log_level: str = "e
         else:
             log_func(f"{context} failed due to invalid token (already logged out?), proceeding with local cleanup.")
             print(f"{emoji} {context} failed due to invalid token (already logged out?), proceeding with local cleanup.")
-        return True
-    elif "network" in error_msg or "connection" in error_msg or "timeout" in error_msg:
-        if "verification" in context.lower():
+    elif error_category == "network":
+        if is_verification:
             log_func(f"{context} failed: Network connection error.")
             log_func("Please check your internet connection and Matrix server availability.")
             print(f"{emoji} {context} failed: Network connection error.")
@@ -377,9 +363,8 @@ def _handle_matrix_error(exception: Exception, context: str, log_level: str = "e
         else:
             log_func(f"{context} failed due to network issues, proceeding with local cleanup.")
             print(f"{emoji} {context} failed due to network issues, proceeding with local cleanup.")
-        return True
-    elif "server" in error_msg or "500" in error_msg or "502" in error_msg or "503" in error_msg:
-        if "verification" in context.lower():
+    elif error_category == "server":
+        if is_verification:
             log_func(f"{context} failed: Matrix server error.")
             log_func("Please try again later or contact your Matrix server administrator.")
             print(f"{emoji} {context} failed: Matrix server error.")
@@ -387,17 +372,16 @@ def _handle_matrix_error(exception: Exception, context: str, log_level: str = "e
         else:
             log_func(f"{context} failed due to server error, proceeding with local cleanup.")
             print(f"{emoji} {context} failed due to server error, proceeding with local cleanup.")
-        return True
-    else:
-        # Generic fallback
-        if "verification" in context.lower():
-            log_func(f"{context} failed: {type(exception).__name__}")
+    else:  # error_category == "other"
+        if is_verification:
+            log_func(f"{context} failed: {error_detail or 'Unknown error'}")
             logger.debug(f"Full error details: {exception}")
-            print(f"{emoji} {context} failed: {type(exception).__name__}")
+            print(f"{emoji} {context} failed: {error_detail or 'Unknown error'}")
         else:
-            log_func(f"{context} failed ({type(exception).__name__}), proceeding with local cleanup.")
-            print(f"{emoji} {context} failed ({type(exception).__name__}), proceeding with local cleanup.")
-        return True
+            log_func(f"{context} failed ({error_detail or 'Unknown error'}), proceeding with local cleanup.")
+            print(f"{emoji} {context} failed ({error_detail or 'Unknown error'}), proceeding with local cleanup.")
+
+    return True
 
 
 async def logout_matrix_bot(password: str):

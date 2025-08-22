@@ -841,7 +841,7 @@ async def test_connect_matrix_success(matrix_config):
     Verifies that the client is instantiated, SSL context is created, and the client is authenticated and configured as expected.
     """
     with patch("mmrelay.matrix_utils.matrix_client", None), patch(
-        "mmrelay.cli_utils.AsyncClient"
+        "mmrelay.matrix_utils.AsyncClient"
     ) as mock_async_client, patch("mmrelay.matrix_utils.logger"), patch(
         "ssl.create_default_context"
     ) as mock_ssl_context:
@@ -879,7 +879,7 @@ async def test_connect_matrix_without_credentials(matrix_config):
     Test that `connect_matrix` returns the Matrix client successfully when using legacy config without credentials.json.
     """
     with patch("mmrelay.matrix_utils.matrix_client", None), patch(
-        "mmrelay.cli_utils.AsyncClient"
+        "mmrelay.matrix_utils.AsyncClient"
     ) as mock_async_client, patch("mmrelay.matrix_utils.logger"), patch(
         "ssl.create_default_context"
     ) as mock_ssl_context:
@@ -1380,7 +1380,7 @@ def test_save_credentials(mock_json_dump, mock_open, mock_get_base_dir):
 @patch("builtins.open")
 @patch("mmrelay.matrix_utils.json.load")
 @patch("mmrelay.matrix_utils.ssl.create_default_context")
-@patch("mmrelay.cli_utils.AsyncClient")
+@patch("mmrelay.matrix_utils.AsyncClient")
 @patch("mmrelay.matrix_utils.logger")
 async def test_connect_matrix_with_e2ee_credentials(
     mock_logger,
@@ -1461,7 +1461,7 @@ async def test_connect_matrix_with_e2ee_credentials(
 @pytest.mark.asyncio
 @patch("mmrelay.config.load_credentials")
 @patch("mmrelay.matrix_utils.ssl.create_default_context")
-@patch("mmrelay.cli_utils.AsyncClient")
+@patch("mmrelay.matrix_utils.AsyncClient")
 async def test_connect_matrix_legacy_config(
     mock_async_client, mock_ssl_context, mock_load_credentials
 ):
@@ -1579,7 +1579,7 @@ def test_validate_prefix_format_comprehensive():
 
 
 @patch("mmrelay.matrix_utils.save_credentials")
-@patch("mmrelay.cli_utils.AsyncClient")
+@patch("mmrelay.matrix_utils.AsyncClient")
 @patch("mmrelay.matrix_utils.getpass.getpass")
 @patch("mmrelay.matrix_utils.input")
 async def test_login_matrix_bot_success(
@@ -1617,7 +1617,7 @@ async def test_login_matrix_bot_success(
 @patch("mmrelay.matrix_utils.input")
 async def test_login_matrix_bot_with_parameters(mock_input):
     """Test login_matrix_bot with provided parameters."""
-    with patch("mmrelay.cli_utils.AsyncClient") as mock_async_client:
+    with patch("mmrelay.matrix_utils.AsyncClient") as mock_async_client:
         # Mock AsyncClient instance
         mock_client = AsyncMock()
         mock_client.login.return_value = MagicMock(
@@ -1652,7 +1652,7 @@ async def test_login_matrix_bot_login_failure(mock_input, mock_getpass):
     ]
     mock_getpass.return_value = "wrongpass"  # password
 
-    with patch("mmrelay.cli_utils.AsyncClient") as mock_async_client:
+    with patch("mmrelay.matrix_utils.AsyncClient") as mock_async_client:
         # Mock AsyncClient instance with login failure
         mock_client = AsyncMock()
         mock_client.login.side_effect = Exception("Login failed")
@@ -1745,7 +1745,9 @@ async def test_logout_matrix_bot_password_verification_success():
         "mmrelay.matrix_utils.load_credentials", return_value=mock_credentials
     ), patch("mmrelay.cli_utils.AsyncClient") as mock_async_client, patch(
         "mmrelay.matrix_utils._cleanup_local_session_data", return_value=True
-    ) as mock_cleanup:
+    ) as mock_cleanup, patch(
+        "mmrelay.matrix_utils._create_ssl_context", return_value=None
+    ):
 
         # Mock temporary client for password verification
         mock_temp_client = AsyncMock()
@@ -1783,7 +1785,9 @@ async def test_logout_matrix_bot_password_verification_failure():
 
     with patch(
         "mmrelay.matrix_utils.load_credentials", return_value=mock_credentials
-    ), patch("mmrelay.cli_utils.AsyncClient") as mock_async_client:
+    ), patch("mmrelay.cli_utils.AsyncClient") as mock_async_client, patch(
+        "mmrelay.matrix_utils._create_ssl_context", return_value=None
+    ):
 
         # Mock temporary client with login failure
         mock_temp_client = AsyncMock()
@@ -1812,7 +1816,9 @@ async def test_logout_matrix_bot_server_logout_failure():
         "mmrelay.matrix_utils.load_credentials", return_value=mock_credentials
     ), patch("mmrelay.cli_utils.AsyncClient") as mock_async_client, patch(
         "mmrelay.matrix_utils._cleanup_local_session_data", return_value=True
-    ) as mock_cleanup:
+    ) as mock_cleanup, patch(
+        "mmrelay.matrix_utils._create_ssl_context", return_value=None
+    ):
 
         # Mock temporary client for password verification
         mock_temp_client = AsyncMock()
@@ -1848,7 +1854,9 @@ async def test_logout_matrix_bot_timeout():
         "mmrelay.matrix_utils.load_credentials", return_value=mock_credentials
     ), patch("mmrelay.cli_utils.AsyncClient") as mock_async_client, patch(
         "asyncio.wait_for"
-    ) as mock_wait_for:
+    ) as mock_wait_for, patch(
+        "mmrelay.matrix_utils._create_ssl_context", return_value=None
+    ):
 
         mock_temp_client = AsyncMock()
         mock_temp_client.close = AsyncMock()

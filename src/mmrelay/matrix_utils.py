@@ -12,7 +12,9 @@ import time
 from typing import Any, Dict, Union
 from urllib.parse import urlparse
 
+import bleach
 import certifi
+import markdown
 import meshtastic.protobuf.portnums_pb2
 from nio import (
     AsyncClient,
@@ -1350,49 +1352,31 @@ async def matrix_relay(
 
         # Process markdown to HTML if needed (like base plugin does)
         if has_markdown or has_html:
-            try:
-                import markdown as _md
+            raw_html = markdown.markdown(message)
 
-                raw_html = _md.markdown(message)
+            # Sanitize HTML to prevent injection attacks
+            formatted_body = bleach.clean(
+                raw_html,
+                tags=[
+                    "b",
+                    "strong",
+                    "i",
+                    "em",
+                    "code",
+                    "pre",
+                    "br",
+                    "blockquote",
+                    "a",
+                    "ul",
+                    "ol",
+                    "li",
+                    "p",
+                ],
+                attributes={"a": ["href"]},
+                strip=True,
+            )
 
-                # Sanitize HTML to prevent injection attacks
-                try:
-                    import bleach
-
-                    formatted_body = bleach.clean(
-                        raw_html,
-                        tags=[
-                            "b",
-                            "strong",
-                            "i",
-                            "em",
-                            "code",
-                            "pre",
-                            "br",
-                            "blockquote",
-                            "a",
-                            "ul",
-                            "ol",
-                            "li",
-                            "p",
-                        ],
-                        attributes={"a": ["href"]},
-                        strip=True,
-                    )
-                except ImportError:
-                    # Conservative fallback: strip all HTML tags if bleach unavailable
-                    logger.debug(
-                        "bleach not available for HTML sanitization, stripping all HTML tags"
-                    )
-                    formatted_body = re.sub(r"</?[^>]*>", "", raw_html)
-
-                plain_body = re.sub(r"</?[^>]*>", "", formatted_body)
-            except ImportError:
-                # Fallback: treat as plain text
-                formatted_body = html.escape(message).replace("\n", "<br/>")
-                plain_body = message
-                has_markdown = False
-                has_html = False
+            plain_body = re.sub(r"</?[^>]*>", "", formatted_body)
         else:
             formatted_body = html.escape(message).replace("\n", "<br/>")
             plain_body = message
