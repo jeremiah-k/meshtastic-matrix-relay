@@ -4,11 +4,14 @@ Pytest configuration and fixtures for MMRelay tests.
 This file sets up comprehensive mocking for external dependencies
 to ensure tests can run without requiring actual hardware or network connections.
 """
+
 import os
 import sys
 
 # Add src directory to path to allow for package imports
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
+sys.path.insert(
+    0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
+)
 
 import asyncio
 import logging
@@ -76,7 +79,6 @@ sys.modules["s2sphere"] = MagicMock()
 
 # Now that mocks are in place, we can import the application code
 import mmrelay.meshtastic_utils as mu
-
 
 # Store references to prevent accidental mocking
 _BUILTIN_MODULES = {

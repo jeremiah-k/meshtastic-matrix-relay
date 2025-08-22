@@ -354,7 +354,7 @@ class TestHandleMatrixError:
 
     @patch("mmrelay.cli_utils.logger")
     def test_handle_matrix_error_credentials(self, mock_logger):
-        from mmrelay.cli_utils import _handle_matrix_error, NioLoginError
+        from mmrelay.cli_utils import NioLoginError, _handle_matrix_error
 
         error = NioLoginError("Forbidden")
         error.status_code = 401
@@ -365,7 +365,7 @@ class TestHandleMatrixError:
 
     @patch("mmrelay.cli_utils.logger")
     def test_handle_matrix_error_network(self, mock_logger):
-        from mmrelay.cli_utils import _handle_matrix_error, NioLocalTransportError
+        from mmrelay.cli_utils import NioLocalTransportError, _handle_matrix_error
 
         error = NioLocalTransportError("Connection failed")
         result = _handle_matrix_error(error, "Server logout", log_level="warning")

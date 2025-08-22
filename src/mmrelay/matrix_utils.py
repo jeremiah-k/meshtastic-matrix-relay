@@ -6,14 +6,12 @@ import json
 import logging
 import os
 import re
-import ssl
 import sys
 import time
 from typing import Any, Dict, Union
 from urllib.parse import urlparse
 
 import bleach
-import certifi
 import markdown
 import meshtastic.protobuf.portnums_pb2
 from nio import (
