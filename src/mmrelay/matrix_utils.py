@@ -126,25 +126,22 @@ def _display_room_channel_mappings(rooms: Dict[str, Any], config: Dict[str, Any]
         logger.info("No matrix_rooms configuration found")
         return
 
-    # Create mapping of room_id -> channel number
-    # Handle both dict and list formats for matrix_rooms configuration
-    room_to_channel = {}
+    # Normalize matrix_rooms configuration to list format
     if isinstance(matrix_rooms_config, dict):
-        # Dict format: {"room_name": {"id": "...", "meshtastic_channel": 0}}
-        for room_name, room_config in matrix_rooms_config.items():
-            if isinstance(room_config, dict):
-                room_id = room_config.get("id")
-                channel = room_config.get("meshtastic_channel")
-                if room_id and channel is not None:
-                    room_to_channel[room_id] = channel
+        # Convert dict format to list format
+        matrix_rooms_list = list(matrix_rooms_config.values())
     else:
-        # List format: [{"id": "...", "meshtastic_channel": 0}]
-        for room_config in matrix_rooms_config:
-            if isinstance(room_config, dict):
-                room_id = room_config.get("id")
-                channel = room_config.get("meshtastic_channel")
-                if room_id and channel is not None:
-                    room_to_channel[room_id] = channel
+        # Already in list format
+        matrix_rooms_list = matrix_rooms_config
+
+    # Create mapping of room_id -> channel number
+    room_to_channel = {}
+    for room_config in matrix_rooms_list:
+        if isinstance(room_config, dict):
+            room_id = room_config.get("id")
+            channel = room_config.get("meshtastic_channel")
+            if room_id and channel is not None:
+                room_to_channel[room_id] = channel
 
     # Group rooms by channel
     channels = {}
