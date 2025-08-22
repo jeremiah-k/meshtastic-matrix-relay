@@ -1383,7 +1383,7 @@ def test_save_credentials(mock_json_dump, mock_open, mock_get_base_dir):
 @patch("mmrelay.matrix_utils.os.path.exists")
 @patch("builtins.open")
 @patch("mmrelay.matrix_utils.json.load")
-@patch("mmrelay.matrix_utils.ssl.create_default_context")
+@patch("mmrelay.matrix_utils._create_ssl_context")
 @patch("mmrelay.matrix_utils.AsyncClient")
 @patch("mmrelay.matrix_utils.logger")
 async def test_connect_matrix_with_e2ee_credentials(
@@ -1464,7 +1464,7 @@ async def test_connect_matrix_with_e2ee_credentials(
 
 @pytest.mark.asyncio
 @patch("mmrelay.config.load_credentials")
-@patch("mmrelay.matrix_utils.ssl.create_default_context")
+@patch("mmrelay.matrix_utils._create_ssl_context")
 @patch("mmrelay.matrix_utils.AsyncClient")
 async def test_connect_matrix_legacy_config(
     mock_async_client, mock_ssl_context, mock_load_credentials
