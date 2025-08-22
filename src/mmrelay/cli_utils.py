@@ -308,13 +308,10 @@ def msg_regenerate_credentials():
 
 def _create_ssl_context():
     """
-    Create an SSL context using certifi's certificates for Matrix client connections.
-
-    This helper function centralizes SSL context creation to ensure consistent
-    certificate validation across all Matrix client instances.
-
+    Create an SSLContext for Matrix client connections, preferring certifi's CA bundle when available.
+    
     Returns:
-        ssl.SSLContext: SSL context with certifi certificates, or system default if certifi fails
+        ssl.SSLContext | None: An SSLContext configured with certifi's CA file if certifi is present, otherwise the system default SSLContext. Returns None only if context creation fails.
     """
     try:
         if certifi:
@@ -334,10 +331,19 @@ def _create_ssl_context():
 
 def _cleanup_local_session_data():
     """
-    Helper function to clean up local session data (credentials.json and E2EE store).
-
+    Remove local Matrix session artifacts: credentials.json and any E2EE store directories.
+    
+    This cleans up the on-disk session state used by the Matrix client. It removes:
+    - the credentials file at <base_dir>/credentials.json (if present), and
+    - E2EE store directories: the default store dir returned by get_e2ee_store_dir()
+      plus any user-configured overrides found in the loaded config under
+      matrix.e2ee.store_path or matrix.encryption.store_path.
+    
     Returns:
-        bool: True if cleanup was successful, False otherwise
+        bool: True if all targeted files/directories were removed successfully;
+              False if any removal failed (for example due to permissions). The
+              function makes a best-effort attempt and will still try all removals
+              even if some fail.
     """
     import shutil
 
@@ -409,15 +415,22 @@ def _cleanup_local_session_data():
 
 def _handle_matrix_error(exception: Exception, context: str, log_level: str = "error"):
     """
-    Handle Matrix-related exceptions with user-friendly messages.
-
-    Args:
-        exception: The exception to handle
-        context: Context string (e.g., "Password verification", "Server logout")
-        log_level: Logging level to use ("error" or "warning")
-
+    Classify a Matrix-related exception and emit user-facing and logged messages.
+    
+    Determines whether the provided exception represents credential, network,
+    server, or other errors (using known nio exception types or message inspection),
+    chooses messages appropriate to the given context (verification vs non-verification),
+    logs them at the specified level ("error" or "warning"), prints concise feedback
+    for CLI users, and signals the exception was handled.
+    
+    Parameters:
+        exception: The exception instance to classify and report.
+        context: Short context string describing the operation (e.g., "Password verification",
+            "Server logout"); used to select phrasing and to detect verification flows.
+        log_level: Logging level to use; accepted values are "error" (default) or "warning".
+    
     Returns:
-        bool: True if this was a handled Matrix exception, False otherwise
+        bool: Always returns True to indicate the exception was handled and reported.
     """
     log_func = logger.error if log_level == "error" else logger.warning
     emoji = "❌" if log_level == "error" else "⚠️ "
@@ -537,22 +550,19 @@ def _handle_matrix_error(exception: Exception, context: str, log_level: str = "e
 
 async def logout_matrix_bot(password: str):
     """
-    Log out from Matrix and clear all local session data.
-
-    This is a CLI function that can use print statements for user feedback.
-    It calls library functions from matrix_utils for the actual Matrix operations.
-
-    This function will:
-    1. Verify the password against the current Matrix session
-    2. Log out from the Matrix server (invalidating the access token)
-    3. Clear credentials.json
-    4. Clear the E2EE store directory
-
-    Args:
-        password: The Matrix password for verification (required)
-
+    Log out the configured Matrix account and remove local session data.
+    
+    Verifies the provided Matrix password by performing a temporary login, then attempts to
+    log out the active session on the homeserver (invalidating the access token) and remove
+    local session artifacts (credentials.json and any E2EE store). If there is no active
+    session, the function reports that and returns True.
+    
+    Parameters:
+        password (str): The Matrix account password used to verify the session before logout.
+    
     Returns:
-        bool: True if logout was successful, False otherwise
+        bool: True when local cleanup (and server logout, if applicable) completed successfully;
+              False on failure. If matrix-nio is not installed, prints an error and returns False.
     """
 
     # Import inside function to avoid circular imports

@@ -202,11 +202,9 @@ class TestRoomListFormatting(unittest.TestCase):
 
     def setUp(self):
         """
-        Skip the test if required module imports are unavailable.
-
-        Checks the module-level IMPORTS_AVAILABLE flag and calls self.skipTest with
-        a clear message when necessary so tests that depend on optional imports are
-        silently skipped instead of failing.
+        Skip the test when optional E2EE-related imports are not available.
+        
+        If the module-level IMPORTS_AVAILABLE is False, calls self.skipTest with a clear message so tests that depend on optional imports are skipped rather than failing.
         """
         if not IMPORTS_AVAILABLE:
             self.skipTest("Required imports not available")
@@ -285,11 +283,9 @@ class TestEncryptionWarnings(unittest.TestCase):
 
     def setUp(self):
         """
-        Skip the test if required module imports are unavailable.
-
-        Checks the module-level IMPORTS_AVAILABLE flag and calls self.skipTest with
-        a clear message when necessary so tests that depend on optional imports are
-        silently skipped instead of failing.
+        Skip the test when optional E2EE-related imports are not available.
+        
+        If the module-level IMPORTS_AVAILABLE is False, calls self.skipTest with a clear message so tests that depend on optional imports are skipped rather than failing.
         """
         if not IMPORTS_AVAILABLE:
             self.skipTest("Required imports not available")
@@ -348,11 +344,9 @@ class TestE2EEErrorMessages(unittest.TestCase):
 
     def setUp(self):
         """
-        Skip the test if required module imports are unavailable.
-
-        Checks the module-level IMPORTS_AVAILABLE flag and calls self.skipTest with
-        a clear message when necessary so tests that depend on optional imports are
-        silently skipped instead of failing.
+        Skip the test when optional E2EE-related imports are not available.
+        
+        If the module-level IMPORTS_AVAILABLE is False, calls self.skipTest with a clear message so tests that depend on optional imports are skipped rather than failing.
         """
         if not IMPORTS_AVAILABLE:
             self.skipTest("Required imports not available")
@@ -402,11 +396,9 @@ class TestActualEncryptionVerification(unittest.TestCase):
 
     def setUp(self):
         """
-        Skip the test if required module imports are unavailable.
-
-        Checks the module-level IMPORTS_AVAILABLE flag and calls self.skipTest with
-        a clear message when necessary so tests that depend on optional imports are
-        silently skipped instead of failing.
+        Skip the test when optional E2EE-related imports are not available.
+        
+        If the module-level IMPORTS_AVAILABLE is False, calls self.skipTest with a clear message so tests that depend on optional imports are skipped rather than failing.
         """
         if not IMPORTS_AVAILABLE:
             self.skipTest("Required imports not available")
@@ -423,12 +415,12 @@ class TestActualEncryptionVerification(unittest.TestCase):
         class TestLogHandler(logging.Handler):
             def emit(self, record):
                 """
-                Append the log record's formatted message to the surrounding `log_capture` list.
-
-                This handler extracts the record's message (via LogRecord.getMessage()) and appends it to the outer-scope `log_capture` list for later inspection in tests.
-
+                Append the formatted message from a LogRecord to the outer `log_capture` list.
+                
+                This handler extracts the record's message (via LogRecord.getMessage()) and appends it to the surrounding `log_capture` list for later inspection by tests.
+                
                 Parameters:
-                    record (logging.LogRecord): The log record to process.
+                    record (logging.LogRecord): The LogRecord whose formatted message will be captured.
                 """
                 log_capture.append(record.getMessage())
 
