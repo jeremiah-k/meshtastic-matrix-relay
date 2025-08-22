@@ -29,28 +29,7 @@ Visit our [Wiki](https://github.com/jeremiah-k/meshtastic-matrix-relay/wiki) for
 
 ---
 
-## Quick Start
 
-MMRelay runs on Linux, macOS, and Windows.
-
-```bash
-# Install using pipx for isolated installation (recommended)
-pipx install mmrelay
-
-# Generate a sample configuration file & then edit it
-mmrelay config generate
-
-# (Recommended) Validate your configuration
-mmrelay config check
-
-# (Optional) If you plan to use E2EE with encrypted Matrix rooms:
-# mmrelay auth login
-
-# Install the service (or run manually without this step)
-mmrelay service install
-```
-
-For detailed installation and configuration instructions, see the [Installation Guide](docs/INSTRUCTIONS.md).
 
 ## Docker
 

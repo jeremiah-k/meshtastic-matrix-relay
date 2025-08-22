@@ -73,7 +73,7 @@ That's it! MMRelay will automatically encrypt messages for encrypted rooms and d
 
 **E2EE is not available on Windows** due to technical limitations with the required cryptographic libraries. The `python-olm` library requires native C libraries that are difficult to compile and install on Windows systems.
 
-**Windows users can still use MMRelay** for regular (unencrypted) Matrix communication. You can use `mmrelay auth login` to create credentials on Windows (E2EE not available), or alternatively configure Matrix credentials directly in `config.yaml`.
+**Windows users can still use MMRelay** for regular (unencrypted) Matrix communication. Use `mmrelay auth login` to create credentials on Windows (recommended, E2EE not available). Manual access token configuration is also possible but not recommended due to Matrix Authentication Service (MAS) compatibility issues.
 
 ## The `auth login` Command
 
@@ -214,14 +214,16 @@ The `credentials.json` file contains:
 **Solutions**:
 
 - **Use Linux or macOS** for full E2EE support
-- **On Windows**: `mmrelay auth login` still works for regular Matrix communication
-- **Alternative**: Configure credentials manually in `config.yaml`:
+- **On Windows**: `mmrelay auth login` still works for regular Matrix communication (recommended)
+- **Legacy alternative**: Configure credentials manually in `config.yaml`:
   ```yaml
   matrix:
     homeserver: https://your-matrix-server.org
     access_token: your_access_token
     bot_user_id: @yourbot:your-matrix-server.org
   ```
+
+⚠️ **Important**: Manual access tokens may expire on homeservers using Matrix Authentication Service (MAS), including matrix.org. Use `mmrelay auth login` even on Windows for reliable authentication.
 
 **Note**: Credentials created with `mmrelay auth login` on Windows will work with E2EE if you later use them on Linux/macOS.
 
