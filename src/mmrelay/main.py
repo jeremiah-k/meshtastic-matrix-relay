@@ -5,16 +5,22 @@ It uses Meshtastic-python and Matrix nio client library to interface with the ra
 
 import asyncio
 import concurrent.futures
-import logging
 import signal
 import sys
 
-from nio import ReactionEvent, RoomMessageEmote, RoomMessageNotice, RoomMessageText
+from nio import (
+    MegolmEvent,
+    ReactionEvent,
+    RoomMessageEmote,
+    RoomMessageNotice,
+    RoomMessageText,
+)
 from nio.events.room_events import RoomMemberEvent
 
 # Import version from package
 # Import meshtastic_utils as a module to set event_loop
 from mmrelay import __version__, meshtastic_utils
+from mmrelay.cli_utils import msg_suggest_check_config, msg_suggest_generate_config
 from mmrelay.constants.app import APP_DISPLAY_NAME, WINDOWS_PLATFORM
 from mmrelay.db_utils import (
     initialize_database,
@@ -23,9 +29,16 @@ from mmrelay.db_utils import (
     wipe_message_map,
 )
 from mmrelay.log_utils import get_logger
-from mmrelay.matrix_utils import connect_matrix, join_matrix_room
+from mmrelay.matrix_utils import (
+    connect_matrix,
+    join_matrix_room,
+)
 from mmrelay.matrix_utils import logger as matrix_logger
-from mmrelay.matrix_utils import on_room_member, on_room_message
+from mmrelay.matrix_utils import (
+    on_decryption_failure,
+    on_room_member,
+    on_room_message,
+)
 from mmrelay.meshtastic_utils import connect_meshtastic
 from mmrelay.meshtastic_utils import logger as meshtastic_logger
 from mmrelay.message_queue import (
@@ -39,20 +52,22 @@ from mmrelay.plugin_loader import load_plugins
 # Initialize logger
 logger = get_logger(name=APP_DISPLAY_NAME)
 
-# Set the logging level for 'nio' to ERROR to suppress warnings
-logging.getLogger("nio").setLevel(logging.ERROR)
-
 
 # Flag to track if banner has been printed
 _banner_printed = False
 
 
 def print_banner():
-    """Print a simple startup message with version information."""
+    """
+    Log the MMRelay startup banner with version information once.
+
+    This records an informational message "Starting MMRelay version <version>" via the module logger
+    the first time it is called and sets a module-level flag to prevent subsequent prints.
+    """
     global _banner_printed
     # Only print the banner once
     if not _banner_printed:
-        logger.info(f"Starting MMRelay v{__version__}")
+        logger.info(f"Starting MMRelay version {__version__}")
         _banner_printed = True
 
 
@@ -109,6 +124,13 @@ async def main(config):
     # Connect to Matrix
     matrix_client = await connect_matrix(passed_config=config)
 
+    # Check if Matrix connection was successful
+    if matrix_client is None:
+        # The error is logged by connect_matrix, so we can just raise here.
+        raise ConnectionError(
+            "Failed to connect to Matrix. Cannot continue without Matrix client."
+        )
+
     # Join the rooms specified in the config.yaml
     for room in matrix_rooms:
         await join_matrix_room(matrix_client, room["id"])
@@ -116,12 +138,14 @@ async def main(config):
     # Register the message callback for Matrix
     matrix_logger.info("Listening for inbound Matrix messages...")
     matrix_client.add_event_callback(
-        on_room_message, (RoomMessageText, RoomMessageNotice, RoomMessageEmote)
+        on_room_message,
+        (RoomMessageText, RoomMessageNotice, RoomMessageEmote, ReactionEvent),
     )
-    # Add ReactionEvent callback so we can handle matrix reactions
-    matrix_client.add_event_callback(on_room_message, ReactionEvent)
+    # Add E2EE callbacks - MegolmEvent only goes to decryption failure handler
+    # Successfully decrypted messages will be converted to RoomMessageText etc. by matrix-nio
+    matrix_client.add_event_callback(on_decryption_failure, (MegolmEvent,))
     # Add RoomMemberEvent callback to track room-specific display name changes
-    matrix_client.add_event_callback(on_room_member, RoomMemberEvent)
+    matrix_client.add_event_callback(on_room_member, (RoomMemberEvent,))
 
     # Set up shutdown event
     shutdown_event = asyncio.Event()
@@ -171,14 +195,32 @@ async def main(config):
                     [sync_task, shutdown_task],
                     return_when=asyncio.FIRST_COMPLETED,
                 )
-                if shutdown_event.is_set():
-                    matrix_logger.info("Shutdown event detected. Stopping sync loop...")
-                    sync_task.cancel()
+
+                # Cancel any pending tasks
+                for task in pending:
+                    task.cancel()
                     try:
-                        await sync_task
+                        await task
                     except asyncio.CancelledError:
                         pass
+
+                if shutdown_event.is_set():
+                    matrix_logger.info("Shutdown event detected. Stopping sync loop...")
                     break
+
+                # Check if sync_task completed with an exception
+                if sync_task in done:
+                    try:
+                        # This will raise the exception if the task failed
+                        sync_task.result()
+                        # If we get here, sync completed normally (shouldn't happen with sync_forever)
+                        matrix_logger.warning(
+                            "Matrix sync_forever completed unexpectedly"
+                        )
+                    except Exception as e:
+                        # Log the exception and continue to retry
+                        matrix_logger.error(f"Matrix sync failed: {e}")
+                        # The outer try/catch will handle the retry logic
 
             except Exception as e:
                 if shutdown_event.is_set():
@@ -246,13 +288,16 @@ async def main(config):
 
 
 def run_main(args):
-    """Run the main functionality of the application.
+    """
+    Run the application's top-level startup sequence and invoke the main async runner.
 
-    Args:
-        args: The parsed command-line arguments
+    Performs initial setup (prints banner, optionally sets a custom data directory, loads and applies configuration and logging overrides), validates that required configuration sections are present (required keys differ if credentials.json is present), then runs the main coroutine. Returns an exit code: 0 for successful run or user interrupt, 1 for configuration errors or unhandled exceptions.
+
+    Parameters:
+        args: Parsed command-line arguments (may be None). Recognized options used here include `data_dir` and `log_level`.
 
     Returns:
-        int: Exit code (0 for success, non-zero for failure)
+        int: Exit code (0 on success or user-initiated interrupt, 1 on failure such as invalid config or runtime error).
     """
     # Print the banner at startup
     print_banner()
@@ -317,7 +362,17 @@ def run_main(args):
         config_rich_logger.info(f"Log file location: {log_file_path}")
 
     # Check if config exists and has the required keys
-    required_keys = ["matrix", "meshtastic", "matrix_rooms"]
+    # Note: matrix section is optional if credentials.json exists
+    from mmrelay.config import load_credentials
+
+    credentials = load_credentials()
+
+    if credentials:
+        # With credentials.json, only meshtastic and matrix_rooms are required
+        required_keys = ["meshtastic", "matrix_rooms"]
+    else:
+        # Without credentials.json, all sections are required
+        required_keys = ["matrix", "meshtastic", "matrix_rooms"]
 
     # Check each key individually for better debugging
     for key in required_keys:
@@ -327,10 +382,21 @@ def run_main(args):
     if not config or not all(key in config for key in required_keys):
         # Exit with error if no config exists
         missing_keys = [key for key in required_keys if key not in config]
-        logger.error(
-            f"Configuration is missing required keys: {missing_keys}. "
-            "Please create a valid config.yaml file or use --generate-config to create one."
-        )
+        if credentials:
+            logger.error(f"Configuration is missing required keys: {missing_keys}")
+            logger.error("Matrix authentication will use credentials.json")
+            logger.error("Next steps:")
+            logger.error(
+                f"  • Create a valid config.yaml file or {msg_suggest_generate_config()}"
+            )
+            logger.error(f"  • {msg_suggest_check_config()}")
+        else:
+            logger.error(f"Configuration is missing required keys: {missing_keys}")
+            logger.error("Next steps:")
+            logger.error(
+                f"  • Create a valid config.yaml file or {msg_suggest_generate_config()}"
+            )
+            logger.error(f"  • {msg_suggest_check_config()}")
         return 1
 
     try:
@@ -340,7 +406,11 @@ def run_main(args):
         logger.info("Interrupted by user. Exiting.")
         return 0
     except Exception as e:
+        import traceback
+
         logger.error(f"Error running main functionality: {e}")
+        logger.error("Full traceback:")
+        logger.error(traceback.format_exc())
         return 1
 
 

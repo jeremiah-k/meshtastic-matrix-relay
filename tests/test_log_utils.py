@@ -365,6 +365,98 @@ class TestLogUtils(unittest.TestCase):
         # Should create logger without issues
         self.assertIsInstance(logger, logging.Logger)
 
+    def test_configure_component_debug_logging_string_levels(self):
+        """
+        Test that string-based log levels work correctly for component debug logging.
+        """
+        config = {
+            "logging": {
+                "debug": {
+                    "matrix_nio": "warning",
+                    "bleak": "error",
+                    "meshtastic": "info",
+                }
+            }
+        }
+
+        import mmrelay.log_utils
+
+        mmrelay.log_utils.config = config
+        mmrelay.log_utils._component_debug_configured = False
+
+        configure_component_debug_logging()
+
+        # Check that string levels are correctly applied
+        self.assertEqual(logging.getLogger("nio").level, logging.WARNING)
+        self.assertEqual(logging.getLogger("bleak").level, logging.ERROR)
+        self.assertEqual(logging.getLogger("meshtastic").level, logging.INFO)
+
+    def test_configure_component_debug_logging_boolean_vs_string_debug(self):
+        """
+        Test that boolean true and string "debug" result in the same DEBUG level.
+        """
+        # Test boolean true
+        config1 = {"logging": {"debug": {"matrix_nio": True}}}
+        import mmrelay.log_utils
+
+        mmrelay.log_utils.config = config1
+        mmrelay.log_utils._component_debug_configured = False
+
+        configure_component_debug_logging()
+        boolean_level = logging.getLogger("nio").level
+
+        # Reset and test string "debug"
+        mmrelay.log_utils._component_debug_configured = False
+        config2 = {"logging": {"debug": {"matrix_nio": "debug"}}}
+        mmrelay.log_utils.config = config2
+
+        configure_component_debug_logging()
+        string_level = logging.getLogger("nio").level
+
+        # Both should result in DEBUG level
+        self.assertEqual(boolean_level, logging.DEBUG)
+        self.assertEqual(string_level, logging.DEBUG)
+        self.assertEqual(boolean_level, string_level)
+
+    def test_configure_component_debug_logging_disabled_components_suppressed(self):
+        """
+        Test that disabled components are completely suppressed (CRITICAL+1 level).
+        """
+        config = {"logging": {"debug": {"matrix_nio": False, "bleak": False}}}
+
+        import mmrelay.log_utils
+
+        mmrelay.log_utils.config = config
+        mmrelay.log_utils._component_debug_configured = False
+
+        configure_component_debug_logging()
+
+        # Disabled components should be set to CRITICAL+1 (completely suppressed)
+        expected_level = logging.CRITICAL + 1
+        self.assertEqual(logging.getLogger("nio").level, expected_level)
+        self.assertEqual(logging.getLogger("bleak").level, expected_level)
+
+    def test_configure_component_debug_logging_invalid_string_level(self):
+        """
+        Test that invalid string log levels fall back to DEBUG.
+        """
+        config = {
+            "logging": {
+                "debug": {"matrix_nio": "invalid_level", "bleak": "another_bad_level"}
+            }
+        }
+
+        import mmrelay.log_utils
+
+        mmrelay.log_utils.config = config
+        mmrelay.log_utils._component_debug_configured = False
+
+        configure_component_debug_logging()
+
+        # Invalid levels should fall back to DEBUG
+        self.assertEqual(logging.getLogger("nio").level, logging.DEBUG)
+        self.assertEqual(logging.getLogger("bleak").level, logging.DEBUG)
+
     def test_get_logger_file_creation_error(self):
         """
         Test that `get_logger` handles file creation errors gracefully when given an invalid log file path.

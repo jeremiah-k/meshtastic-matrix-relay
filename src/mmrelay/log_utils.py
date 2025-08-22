@@ -38,7 +38,14 @@ _component_debug_configured = False
 
 # Component logger mapping for data-driven configuration
 _COMPONENT_LOGGERS = {
-    "matrix_nio": ["nio", "nio.client", "nio.http", "nio.crypto"],
+    "matrix_nio": [
+        "nio",
+        "nio.client",
+        "nio.http",
+        "nio.crypto",
+        "nio.responses",
+        "nio.rooms",
+    ],
     "bleak": ["bleak", "bleak.backends"],
     "meshtastic": [
         "meshtastic",
@@ -51,9 +58,14 @@ _COMPONENT_LOGGERS = {
 
 def configure_component_debug_logging():
     """
-    Enables debug-level logging for selected external components based on configuration settings.
+    Configure log levels for external component loggers based on config["logging"]["debug"].
 
-    This function sets the log level to DEBUG for specific libraries (matrix_nio, bleak, meshtastic) if enabled in the global configuration under `logging.debug`. It ensures that component debug logging is configured only once per application run.
+    Reads per-component entries under `config["logging"]["debug"]` and applies one of:
+    - falsy or missing: silence the component by setting its loggers to CRITICAL+1
+    - boolean True: enable DEBUG for the component's loggers
+    - string: interpret as a logging level name (case-insensitive); invalid names fall back to DEBUG
+
+    This function mutates the levels of loggers listed in _COMPONENT_LOGGERS and runs only once per process; no-op if called again or if global `config` is None.
     """
     global _component_debug_configured, config
 
@@ -64,9 +76,31 @@ def configure_component_debug_logging():
     debug_config = config.get("logging", {}).get("debug", {})
 
     for component, loggers in _COMPONENT_LOGGERS.items():
-        if debug_config.get(component, False):
+        component_config = debug_config.get(component)
+
+        if component_config:
+            # Component debug is enabled - check if it's a boolean or a log level
+            if isinstance(component_config, bool):
+                # Legacy boolean format - default to DEBUG
+                log_level = logging.DEBUG
+            elif isinstance(component_config, str):
+                # String log level format (e.g., "warning", "error", "debug")
+                try:
+                    log_level = getattr(logging, component_config.upper())
+                except AttributeError:
+                    # Invalid log level, fall back to DEBUG
+                    log_level = logging.DEBUG
+            else:
+                # Invalid config, fall back to DEBUG
+                log_level = logging.DEBUG
+
             for logger_name in loggers:
-                logging.getLogger(logger_name).setLevel(logging.DEBUG)
+                logging.getLogger(logger_name).setLevel(log_level)
+        else:
+            # Component debug is disabled - completely suppress external library logging
+            # Use a level higher than CRITICAL to effectively disable all messages
+            for logger_name in loggers:
+                logging.getLogger(logger_name).setLevel(logging.CRITICAL + 1)
 
     _component_debug_configured = True
 

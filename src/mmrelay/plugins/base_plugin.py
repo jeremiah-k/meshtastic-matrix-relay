@@ -114,10 +114,22 @@ class BasePlugin(ABC):
                     break
 
             # Get the list of mapped channels
-            self.mapped_channels = [
-                room.get("meshtastic_channel")
-                for room in config.get("matrix_rooms", [])
-            ]
+            # Handle both list format and dict format for matrix_rooms
+            matrix_rooms = config.get("matrix_rooms", [])
+            if isinstance(matrix_rooms, dict):
+                # Dict format: {"room_name": {"id": "...", "meshtastic_channel": 0}}
+                self.mapped_channels = [
+                    room_config.get("meshtastic_channel")
+                    for room_config in matrix_rooms.values()
+                    if isinstance(room_config, dict)
+                ]
+            else:
+                # List format: [{"id": "...", "meshtastic_channel": 0}]
+                self.mapped_channels = [
+                    room.get("meshtastic_channel")
+                    for room in matrix_rooms
+                    if isinstance(room, dict)
+                ]
         else:
             self.mapped_channels = []
 

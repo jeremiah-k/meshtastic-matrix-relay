@@ -8,8 +8,11 @@ import pytest
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from mmrelay.cli_utils import _cleanup_local_session_data, logout_matrix_bot
+from mmrelay.config import get_e2ee_store_dir, load_credentials, save_credentials
 from mmrelay.matrix_utils import (
     _add_truncated_vars,
+    _can_auto_create_credentials,
     _create_mapping_info,
     _get_msgs_to_keep_config,
     bot_command,
@@ -20,6 +23,7 @@ from mmrelay.matrix_utils import (
     get_meshtastic_prefix,
     get_user_display_name,
     join_matrix_room,
+    login_matrix_bot,
     matrix_relay,
     message_storage_enabled,
     on_room_message,
@@ -844,37 +848,55 @@ async def test_connect_matrix_success(matrix_config):
         # Mock SSL context creation
         mock_ssl_context.return_value = MagicMock()
 
-        # Mock the AsyncClient instance - use MagicMock to prevent coroutine warnings
+        # Mock the AsyncClient instance with proper async methods
         mock_client_instance = MagicMock()
-        mock_client_instance.whoami = AsyncMock()
-        mock_client_instance.sync = AsyncMock()
-        mock_client_instance.get_displayname = AsyncMock()
+        mock_client_instance.rooms = {}  # Add rooms attribute
+
+        # Create proper async mock methods that return coroutines
+        async def mock_whoami():
+            """
+            Asynchronous test helper that simulates a Matrix client's `whoami()` response.
+
+            Returns:
+                MagicMock: A mock object with `device_id` set to "test_device_id", matching the shape returned by an AsyncClient.whoami() call.
+            """
+            return MagicMock(device_id="test_device_id")
+
+        async def mock_sync(*args, **kwargs):
+            """
+            Asynchronous stub that ignores all arguments and returns a MagicMock instance.
+
+            Used in tests to mock async sync-like calls; can be awaited like a coroutine and will yield a MagicMock.
+            Returns:
+                MagicMock: A new MagicMock instance on each call.
+            """
+            return MagicMock()
+
+        async def mock_get_displayname(*args, **kwargs):
+            """
+            Coroutine used in tests to simulate fetching a user's display name.
+
+            Returns a MagicMock object with a `displayname` attribute set to "Test Bot".
+            """
+            return MagicMock(displayname="Test Bot")
+
+        mock_client_instance.whoami = mock_whoami
+        mock_client_instance.sync = mock_sync
+        mock_client_instance.get_displayname = mock_get_displayname
         mock_async_client.return_value = mock_client_instance
-
-        # Mock whoami response
-        mock_whoami_response = MagicMock()
-        mock_whoami_response.device_id = "test_device_id"
-        mock_client_instance.whoami.return_value = mock_whoami_response
-
-        # Mock get_displayname response
-        mock_displayname_response = MagicMock()
-        mock_displayname_response.displayname = "Test Bot"
-        mock_client_instance.get_displayname.return_value = mock_displayname_response
 
         result = await connect_matrix(matrix_config)
 
         # Verify client was created and configured
         mock_async_client.assert_called_once()
         assert result == mock_client_instance
-        mock_client_instance.whoami.assert_called_once()
+        # Note: whoami() is no longer called in the new E2EE implementation
 
 
-async def test_connect_matrix_whoami_error(matrix_config):
+async def test_connect_matrix_without_credentials(matrix_config):
     """
-    Test that `connect_matrix` returns the Matrix client with `device_id` set to None when the `whoami` call fails during authentication.
+    Test that `connect_matrix` returns the Matrix client successfully when using legacy config without credentials.json.
     """
-    from nio import WhoamiError
-
     with patch("mmrelay.matrix_utils.matrix_client", None), patch(
         "mmrelay.matrix_utils.AsyncClient"
     ) as mock_async_client, patch("mmrelay.matrix_utils.logger"), patch(
@@ -884,21 +906,39 @@ async def test_connect_matrix_whoami_error(matrix_config):
         # Mock SSL context creation
         mock_ssl_context.return_value = MagicMock()
 
-        # Use MagicMock instead of AsyncMock to prevent coroutine warnings
+        # Mock the AsyncClient instance with proper async methods
         mock_client_instance = MagicMock()
-        mock_client_instance.whoami = AsyncMock()
-        mock_client_instance.get_displayname = AsyncMock()
-        mock_async_client.return_value = mock_client_instance
+        mock_client_instance.rooms = {}  # Add missing rooms attribute
+        mock_client_instance.device_id = None  # Set device_id to None for legacy config
 
-        # Mock whoami error
-        mock_whoami_error = WhoamiError("Authentication failed")
-        mock_client_instance.whoami.return_value = mock_whoami_error
+        # Create proper async mock methods that return coroutines
+        async def mock_sync(*args, **kwargs):
+            """
+            Asynchronous stub that ignores all arguments and returns a MagicMock instance.
+
+            Used in tests to mock async sync-like calls; can be awaited like a coroutine and will yield a MagicMock.
+            Returns:
+                MagicMock: A new MagicMock instance on each call.
+            """
+            return MagicMock()
+
+        async def mock_get_displayname(*args, **kwargs):
+            """
+            Coroutine used in tests to simulate fetching a user's display name.
+
+            Returns a MagicMock object with a `displayname` attribute set to "Test Bot".
+            """
+            return MagicMock(displayname="Test Bot")
+
+        mock_client_instance.sync = mock_sync
+        mock_client_instance.get_displayname = mock_get_displayname
+        mock_async_client.return_value = mock_client_instance
 
         result = await connect_matrix(matrix_config)
 
-        # Should still return client but with None device_id
+        # Should return client successfully
         assert result == mock_client_instance
-        assert mock_client_instance.device_id is None
+        # Note: device_id remains None for legacy config without E2EE
 
 
 @patch("mmrelay.matrix_utils.matrix_client")
@@ -1289,3 +1329,715 @@ async def test_send_room_image():
     content = call_args[1]["content"]
     assert content["msgtype"] == "m.image"
     assert content["url"] == "mxc://matrix.org/test123"
+
+
+# E2EE Configuration Tests
+
+
+@patch("mmrelay.config.os.makedirs")
+def test_get_e2ee_store_dir(mock_makedirs):
+    """Test E2EE store directory creation."""
+    store_dir = get_e2ee_store_dir()
+    assert store_dir is not None
+    assert "store" in store_dir
+    # Verify makedirs was called but don't check if directory actually exists
+    mock_makedirs.assert_called_once()
+
+
+@patch("mmrelay.config.get_base_dir")
+@patch("os.path.exists")
+@patch("builtins.open")
+@patch("json.load")
+def test_load_credentials_success(
+    mock_json_load, mock_open, mock_exists, mock_get_base_dir
+):
+    """Test successful credentials loading."""
+    mock_get_base_dir.return_value = "/test/config"
+    mock_exists.return_value = True
+    mock_json_load.return_value = {
+        "homeserver": "https://matrix.example.org",
+        "user_id": "@bot:example.org",
+        "access_token": "test_token",
+        "device_id": "TEST_DEVICE",
+    }
+
+    credentials = load_credentials()
+
+    assert credentials is not None
+    assert credentials["homeserver"] == "https://matrix.example.org"
+    assert credentials["user_id"] == "@bot:example.org"
+    assert credentials["access_token"] == "test_token"
+    assert credentials["device_id"] == "TEST_DEVICE"
+
+
+@patch("mmrelay.config.get_base_dir")
+@patch("os.path.exists")
+def test_load_credentials_file_not_exists(mock_exists, mock_get_base_dir):
+    """Test credentials loading when file doesn't exist."""
+    mock_get_base_dir.return_value = "/test/config"
+    mock_exists.return_value = False
+
+    credentials = load_credentials()
+
+    assert credentials is None
+
+
+@patch("mmrelay.config.get_base_dir")
+@patch("builtins.open")
+@patch("json.dump")
+def test_save_credentials(mock_json_dump, mock_open, mock_get_base_dir):
+    """Test credentials saving."""
+    mock_get_base_dir.return_value = "/test/config"
+
+    test_credentials = {
+        "homeserver": "https://matrix.example.org",
+        "user_id": "@bot:example.org",
+        "access_token": "test_token",
+        "device_id": "TEST_DEVICE",
+    }
+
+    save_credentials(test_credentials)
+
+    mock_open.assert_called_once()
+    mock_json_dump.assert_called_once_with(
+        test_credentials, mock_open().__enter__(), indent=2
+    )
+
+
+# E2EE Client Initialization Tests
+
+
+@pytest.mark.asyncio
+@patch("mmrelay.matrix_utils.os.makedirs")
+@patch("mmrelay.matrix_utils.os.listdir")
+@patch("mmrelay.matrix_utils.os.path.exists")
+@patch("builtins.open")
+@patch("mmrelay.matrix_utils.json.load")
+@patch("mmrelay.matrix_utils._create_ssl_context")
+@patch("mmrelay.matrix_utils.AsyncClient")
+@patch("mmrelay.matrix_utils.logger")
+async def test_connect_matrix_with_e2ee_credentials(
+    mock_logger,
+    mock_async_client,
+    mock_ssl_context,
+    mock_json_load,
+    mock_open,
+    mock_exists,
+    mock_listdir,
+    mock_makedirs,
+):
+    """Test Matrix connection with E2EE credentials."""
+    # Mock credentials.json loading
+    mock_exists.return_value = True
+    mock_json_load.return_value = {
+        "homeserver": "https://matrix.example.org",
+        "user_id": "@bot:example.org",
+        "access_token": "test_token",
+        "device_id": "TEST_DEVICE",
+    }
+
+    # Mock directory operations
+    mock_listdir.return_value = ["test.db"]  # Mock existing store files
+
+    # Mock SSL context
+    mock_ssl_context.return_value = MagicMock()
+
+    # Mock AsyncClient instance with simpler, more stable mocking
+    mock_client_instance = MagicMock()
+    mock_client_instance.rooms = {}
+
+    # Use simple return values instead of complex AsyncMock to avoid inspect issues
+    async def mock_sync(*args, **kwargs):
+        return MagicMock()
+
+    async def mock_whoami(*args, **kwargs):
+        return MagicMock(device_id="TEST_DEVICE")
+
+    async def mock_keys_upload(*args, **kwargs):
+        return MagicMock()
+
+    async def mock_get_displayname(*args, **kwargs):
+        return MagicMock(displayname="Test Bot")
+
+    mock_client_instance.sync = mock_sync
+    mock_client_instance.whoami = mock_whoami
+    mock_client_instance.load_store = MagicMock()
+    mock_client_instance.should_upload_keys = True
+    mock_client_instance.keys_upload = mock_keys_upload
+    mock_client_instance.get_displayname = mock_get_displayname
+    mock_async_client.return_value = mock_client_instance
+
+    # Test config with E2EE enabled
+    test_config = {
+        "matrix": {"e2ee": {"enabled": True, "store_path": "/test/store"}},
+        "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+    }
+
+    # Mock olm import to simulate E2EE availability
+    with patch("builtins.__import__") as mock_import:
+        mock_import.return_value = MagicMock()  # Mock olm module
+
+        client = await connect_matrix(test_config)
+
+        assert client is not None
+        assert client == mock_client_instance
+
+        # Verify AsyncClient was created with E2EE configuration
+        mock_async_client.assert_called_once()
+        call_args = mock_async_client.call_args
+        assert call_args[1]["store_path"] == "/test/store"
+
+        # Verify E2EE initialization sequence was called
+        # Since we're using simple functions, we can't assert calls, but we can verify the client was returned
+        # The fact that connect_matrix completed successfully means all the async calls worked
+
+
+@pytest.mark.asyncio
+@patch("mmrelay.config.load_credentials")
+@patch("mmrelay.matrix_utils._create_ssl_context")
+@patch("mmrelay.matrix_utils.AsyncClient")
+async def test_connect_matrix_legacy_config(
+    mock_async_client, mock_ssl_context, mock_load_credentials
+):
+    """Test Matrix connection with legacy config (no E2EE)."""
+    # No credentials.json available
+    mock_load_credentials.return_value = None
+
+    # Mock SSL context
+    mock_ssl_context.return_value = MagicMock()
+
+    # Mock AsyncClient instance
+    mock_client_instance = MagicMock()
+    mock_client_instance.sync = AsyncMock()
+    mock_client_instance.rooms = {}
+    mock_client_instance.whoami = AsyncMock()
+    mock_client_instance.whoami.return_value = MagicMock(device_id="LEGACY_DEVICE")
+    mock_client_instance.get_displayname = AsyncMock()
+    mock_client_instance.get_displayname.return_value = MagicMock(
+        displayname="Test Bot"
+    )
+    mock_async_client.return_value = mock_client_instance
+
+    # Legacy config without E2EE
+    test_config = {
+        "matrix": {
+            "homeserver": "https://matrix.example.org",
+            "access_token": "legacy_token",
+            "bot_user_id": "@bot:example.org",
+        },
+        "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+    }
+
+    # Mock the global matrix_client to None to ensure fresh creation
+    with patch("mmrelay.matrix_utils.matrix_client", None):
+        client = await connect_matrix(test_config)
+
+        assert client is not None
+        assert client == mock_client_instance
+
+        # Verify AsyncClient was created without E2EE
+        mock_async_client.assert_called_once()
+        call_args = mock_async_client.call_args
+        assert call_args[1]["device_id"] is None
+        assert call_args[1]["store_path"] is None
+
+        # Verify sync was called
+        mock_client_instance.sync.assert_called()
+        # Note: whoami() is no longer called in the new E2EE implementation
+
+
+def test_truncate_message_with_truncation():
+    """Test truncate_message for both short and long messages."""
+    from mmrelay.matrix_utils import truncate_message
+
+    # Test with a message shorter than the limit
+    assert truncate_message("short", max_bytes=10) == "short"
+
+    # Test with a message longer than the limit
+    long_msg = "This is a very long message that needs to be truncated."
+    truncated = truncate_message(long_msg, max_bytes=20)
+    assert truncated == "This is a very long "
+
+
+def test_strip_quoted_lines_comprehensive():
+    """Test strip_quoted_lines with and without quoted content."""
+    from mmrelay.matrix_utils import strip_quoted_lines
+
+    # Text without quoted lines should be joined
+    normal_text = "Just normal text\nwith line breaks"
+    assert strip_quoted_lines(normal_text) == "Just normal text with line breaks"
+
+    # Text with quoted lines should have them stripped
+    quoted_text = "> quoted line\nThis is a reply\n> another quote"
+    assert strip_quoted_lines(quoted_text) == "This is a reply"
+
+    # Empty and all-quotes text should result in empty string
+    assert strip_quoted_lines("") == ""
+    assert strip_quoted_lines("> quote1\n> quote2") == ""
+
+
+def test_validate_prefix_format_comprehensive():
+    """Test validate_prefix_format with valid and invalid format strings."""
+    from mmrelay.matrix_utils import validate_prefix_format
+
+    # Function expects a dict, not a list
+    available_vars = {"user": "testuser", "message": "testmsg", "user10": "testuser10"}
+
+    # Valid format strings should return (True, None)
+    valid_formats = [
+        "[{user}]",
+        "{user}: {message}",
+        "{user10}",
+        "No variables here",
+        "",
+    ]
+
+    for format_str in valid_formats:
+        is_valid, error_msg = validate_prefix_format(format_str, available_vars)
+        assert is_valid is True
+        assert error_msg is None
+
+    # Invalid format strings should return (False, error_message)
+    available_vars_limited = {"user": "testuser", "message": "testmsg"}
+    invalid_formats = [
+        "{unknown_var}",
+        "{user} {unknown}",
+        "{user10}",  # not in available_vars_limited
+    ]
+
+    for format_str in invalid_formats:
+        is_valid, error_msg = validate_prefix_format(format_str, available_vars_limited)
+        assert is_valid is False
+        assert error_msg is not None
+        assert isinstance(error_msg, str)
+
+
+@patch("mmrelay.matrix_utils.save_credentials")
+@patch("mmrelay.matrix_utils.AsyncClient")
+@patch("mmrelay.matrix_utils.getpass.getpass")
+@patch("mmrelay.matrix_utils.input")
+@patch("mmrelay.cli_utils._create_ssl_context")
+async def test_login_matrix_bot_success(
+    mock_ssl_context, mock_input, mock_getpass, mock_async_client, mock_save_credentials
+):
+    """Test successful login_matrix_bot execution."""
+    # Mock user inputs
+    mock_input.side_effect = [
+        "https://matrix.org",  # homeserver
+        "testuser",  # username
+        "y",  # logout_others
+    ]
+    mock_getpass.return_value = "testpass"  # password
+
+    # Mock SSL context
+    mock_ssl_context.return_value = None
+
+    # Mock the two clients that will be created
+    mock_discovery_client = AsyncMock()
+    mock_main_client = AsyncMock()
+
+    # Set up the side effect to return the two mock clients in order
+    mock_async_client.side_effect = [mock_discovery_client, mock_main_client]
+
+    # Configure the discovery client
+    mock_discovery_client.discovery_info.return_value = MagicMock(
+        homeserver_url="https://matrix.org"
+    )
+
+    # Configure the main client
+    mock_main_client.login.return_value = MagicMock(
+        access_token="test_token", device_id="test_device"
+    )
+
+    # Call the function
+    result = await login_matrix_bot()
+
+    # Verify success
+    assert result is True
+    mock_save_credentials.assert_called_once()
+
+    # Verify discovery client calls
+    mock_discovery_client.discovery_info.assert_awaited_once()
+    mock_discovery_client.close.assert_awaited_once()
+
+    # Verify main client calls
+    mock_main_client.login.assert_awaited_once()
+    mock_main_client.close.assert_awaited_once()
+
+    # AsyncClient should be called twice: once for discovery, once for main login
+    assert mock_async_client.call_count == 2
+
+
+@patch("mmrelay.matrix_utils.input")
+async def test_login_matrix_bot_with_parameters(mock_input):
+    """Test login_matrix_bot with provided parameters."""
+    with patch("mmrelay.matrix_utils.AsyncClient") as mock_async_client, patch(
+        "mmrelay.cli_utils._create_ssl_context", return_value=None
+    ):
+        # Mock AsyncClient instance
+        mock_client = AsyncMock()
+        mock_client.login.return_value = MagicMock(
+            access_token="test_token", device_id="test_device"
+        )
+        mock_client.whoami.return_value = MagicMock(user_id="@testuser:matrix.org")
+        mock_client.close = AsyncMock()
+        mock_async_client.return_value = mock_client
+
+        with patch("mmrelay.matrix_utils.save_credentials"):
+            # Call with parameters (should not prompt for input)
+            result = await login_matrix_bot(
+                homeserver="https://matrix.org",
+                username="testuser",
+                password="testpass",
+            )
+
+            # Verify success and no input prompts
+            assert result is True
+            mock_input.assert_not_called()
+
+
+@patch("mmrelay.matrix_utils.getpass.getpass")
+@patch("mmrelay.matrix_utils.input")
+async def test_login_matrix_bot_login_failure(mock_input, mock_getpass):
+    """Test login_matrix_bot when login fails."""
+    # Mock user inputs
+    mock_input.side_effect = [
+        "https://matrix.org",  # homeserver
+        "testuser",  # username
+        "y",  # logout_others
+    ]
+    mock_getpass.return_value = "wrongpass"  # password
+
+    with patch("mmrelay.matrix_utils.AsyncClient") as mock_async_client, patch(
+        "mmrelay.cli_utils._create_ssl_context", return_value=None
+    ):
+        # Mock AsyncClient instance with login failure
+        mock_client = AsyncMock()
+        mock_client.login.side_effect = Exception("Login failed")
+        mock_client.close = AsyncMock()
+        mock_async_client.return_value = mock_client
+
+        # Call the function
+        result = await login_matrix_bot()
+
+        # Verify failure
+        assert result is False
+        # close() is called twice: once for discovery client, once for main client
+        assert mock_client.close.call_count == 2
+
+
+# Matrix logout tests
+
+
+@pytest.mark.asyncio
+@patch("mmrelay.cli_utils.AsyncClient", MagicMock(spec=True))
+async def test_logout_matrix_bot_no_credentials():
+    """Test logout when no credentials exist."""
+    with patch("mmrelay.matrix_utils.load_credentials", return_value=None):
+        result = await logout_matrix_bot(password="test_password")
+        assert result is True
+
+
+@pytest.mark.asyncio
+@patch("mmrelay.cli_utils.AsyncClient", MagicMock(spec=True))
+async def test_logout_matrix_bot_invalid_credentials():
+    """Test logout with invalid/incomplete credentials falls back to local cleanup."""
+    with patch(
+        "mmrelay.cli_utils._cleanup_local_session_data", return_value=True
+    ) as mock_cleanup:
+        # Test missing homeserver - should fall back to local cleanup
+        with patch(
+            "mmrelay.matrix_utils.load_credentials", return_value={"user_id": "test"}
+        ):
+            result = await logout_matrix_bot(password="test_password")
+            assert result is True  # Should succeed with local cleanup
+            mock_cleanup.assert_called_once()
+
+        mock_cleanup.reset_mock()
+
+        # Test missing user_id
+        with patch(
+            "mmrelay.matrix_utils.load_credentials",
+            return_value={"homeserver": "matrix.org"},
+        ):
+            result = await logout_matrix_bot(password="test_password")
+            assert result is True  # Should succeed with local cleanup
+            mock_cleanup.assert_called_once()
+
+        mock_cleanup.reset_mock()
+
+        # Test missing access_token
+        with patch(
+            "mmrelay.matrix_utils.load_credentials",
+            return_value={"homeserver": "matrix.org", "user_id": "@test:matrix.org"},
+        ):
+            result = await logout_matrix_bot(password="test_password")
+            assert result is True  # Should succeed with local cleanup
+            mock_cleanup.assert_called_once()
+
+        mock_cleanup.reset_mock()
+
+        # Test missing device_id
+        with patch(
+            "mmrelay.matrix_utils.load_credentials",
+            return_value={
+                "homeserver": "matrix.org",
+                "user_id": "@test:matrix.org",
+                "access_token": "test_token",
+            },
+        ):
+            result = await logout_matrix_bot(password="test_password")
+            assert result is True  # Should succeed with local cleanup
+            mock_cleanup.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_logout_matrix_bot_password_verification_success():
+    """Test successful logout with password verification."""
+    mock_credentials = {
+        "homeserver": "https://matrix.org",
+        "user_id": "@test:matrix.org",
+        "access_token": "test_token",
+        "device_id": "test_device",
+    }
+
+    with patch(
+        "mmrelay.matrix_utils.load_credentials", return_value=mock_credentials
+    ), patch("mmrelay.cli_utils.AsyncClient") as mock_async_client, patch(
+        "mmrelay.cli_utils._cleanup_local_session_data", return_value=True
+    ) as mock_cleanup, patch(
+        "mmrelay.cli_utils._create_ssl_context", return_value=None
+    ):
+
+        # Mock temporary client for password verification
+        mock_temp_client = AsyncMock()
+        mock_temp_client.login.return_value = MagicMock(access_token="temp_token")
+        mock_temp_client.logout = AsyncMock()
+        mock_temp_client.close = AsyncMock()
+
+        # Mock main client for logout
+        mock_main_client = AsyncMock()
+        mock_main_client.restore_login = MagicMock()
+        mock_main_client.logout.return_value = MagicMock(transport_response=True)
+        mock_main_client.close = AsyncMock()
+
+        # Configure AsyncClient to return different instances
+        mock_async_client.side_effect = [mock_temp_client, mock_main_client]
+
+        result = await logout_matrix_bot(password="test_password")
+
+        assert result is True
+        mock_temp_client.login.assert_called_once()
+        mock_temp_client.logout.assert_called_once()
+        mock_main_client.logout.assert_called_once()
+        mock_cleanup.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_logout_matrix_bot_password_verification_failure():
+    """Test logout with failed password verification."""
+    mock_credentials = {
+        "homeserver": "https://matrix.org",
+        "user_id": "@test:matrix.org",
+        "access_token": "test_token",
+        "device_id": "test_device",
+    }
+
+    with patch(
+        "mmrelay.matrix_utils.load_credentials", return_value=mock_credentials
+    ), patch("mmrelay.cli_utils.AsyncClient") as mock_async_client, patch(
+        "mmrelay.cli_utils._create_ssl_context", return_value=None
+    ):
+
+        # Mock temporary client with login failure
+        mock_temp_client = AsyncMock()
+        mock_temp_client.login.side_effect = Exception("Invalid password")
+        mock_temp_client.close = AsyncMock()
+        mock_async_client.return_value = mock_temp_client
+
+        result = await logout_matrix_bot(password="wrong_password")
+
+        assert result is False
+        mock_temp_client.login.assert_called_once()
+        mock_temp_client.close.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_logout_matrix_bot_server_logout_failure():
+    """Test logout when server logout fails but local cleanup succeeds."""
+    mock_credentials = {
+        "homeserver": "https://matrix.org",
+        "user_id": "@test:matrix.org",
+        "access_token": "test_token",
+        "device_id": "test_device",
+    }
+
+    with patch(
+        "mmrelay.matrix_utils.load_credentials", return_value=mock_credentials
+    ), patch("mmrelay.cli_utils.AsyncClient") as mock_async_client, patch(
+        "mmrelay.cli_utils._cleanup_local_session_data", return_value=True
+    ) as mock_cleanup, patch(
+        "mmrelay.cli_utils._create_ssl_context", return_value=None
+    ):
+
+        # Mock temporary client for password verification
+        mock_temp_client = AsyncMock()
+        mock_temp_client.login.return_value = MagicMock(access_token="temp_token")
+        mock_temp_client.logout = AsyncMock()
+        mock_temp_client.close = AsyncMock()
+
+        # Mock main client with logout failure
+        mock_main_client = AsyncMock()
+        mock_main_client.restore_login = MagicMock()
+        mock_main_client.logout.side_effect = Exception("Server error")
+        mock_main_client.close = AsyncMock()
+
+        mock_async_client.side_effect = [mock_temp_client, mock_main_client]
+
+        result = await logout_matrix_bot(password="test_password")
+
+        assert result is True  # Should still succeed due to local cleanup
+        mock_cleanup.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_logout_matrix_bot_timeout():
+    """Test logout with timeout during password verification."""
+    mock_credentials = {
+        "homeserver": "https://matrix.org",
+        "user_id": "@test:matrix.org",
+        "access_token": "test_token",
+        "device_id": "test_device",
+    }
+
+    with patch(
+        "mmrelay.matrix_utils.load_credentials", return_value=mock_credentials
+    ), patch("mmrelay.cli_utils.AsyncClient") as mock_async_client, patch(
+        "asyncio.wait_for"
+    ) as mock_wait_for, patch(
+        "mmrelay.cli_utils._create_ssl_context", return_value=None
+    ):
+
+        mock_temp_client = AsyncMock()
+        mock_temp_client.close = AsyncMock()
+        mock_async_client.return_value = mock_temp_client
+
+        # Mock timeout
+        import asyncio
+
+        mock_wait_for.side_effect = asyncio.TimeoutError()
+
+        result = await logout_matrix_bot(password="test_password")
+
+        assert result is False
+        mock_temp_client.close.assert_called_once()
+
+
+def test_cleanup_local_session_data_success():
+    """Test successful cleanup of local session data."""
+    with patch("mmrelay.config.get_base_dir", return_value="/test/config"), patch(
+        "mmrelay.config.get_e2ee_store_dir", return_value="/test/store"
+    ), patch("os.path.exists") as mock_exists, patch("os.remove") as mock_remove, patch(
+        "shutil.rmtree"
+    ) as mock_rmtree:
+
+        # Mock files exist
+        mock_exists.return_value = True
+
+        result = _cleanup_local_session_data()
+
+        assert result is True
+        mock_remove.assert_called_once_with("/test/config/credentials.json")
+        mock_rmtree.assert_called_once_with("/test/store")
+
+
+def test_cleanup_local_session_data_files_not_exist():
+    """Test cleanup when files don't exist."""
+    with patch("mmrelay.config.get_base_dir", return_value="/test/config"), patch(
+        "mmrelay.config.get_e2ee_store_dir", return_value="/test/store"
+    ), patch("os.path.exists", return_value=False):
+
+        result = _cleanup_local_session_data()
+
+        assert result is True  # Should still succeed
+
+
+def test_cleanup_local_session_data_permission_error():
+    """Test cleanup with permission errors."""
+    with patch("mmrelay.config.get_base_dir", return_value="/test/config"), patch(
+        "mmrelay.config.get_e2ee_store_dir", return_value="/test/store"
+    ), patch("os.path.exists", return_value=True), patch(
+        "os.remove", side_effect=PermissionError("Access denied")
+    ), patch(
+        "shutil.rmtree", side_effect=PermissionError("Access denied")
+    ):
+
+        result = _cleanup_local_session_data()
+
+        assert result is False  # Should fail due to permission errors
+
+
+def test_can_auto_create_credentials_success():
+    """Test successful detection of auto-create capability."""
+    matrix_config = {
+        "homeserver": "https://matrix.example.org",
+        "bot_user_id": "@bot:example.org",
+        "password": "test_password",
+    }
+
+    result = _can_auto_create_credentials(matrix_config)
+    assert result is True
+
+
+def test_can_auto_create_credentials_missing_homeserver():
+    """Test failure when homeserver is missing."""
+    matrix_config = {"bot_user_id": "@bot:example.org", "password": "test_password"}
+
+    result = _can_auto_create_credentials(matrix_config)
+    assert result is False
+
+
+def test_can_auto_create_credentials_missing_user_id():
+    """Test failure when bot_user_id is missing."""
+    matrix_config = {
+        "homeserver": "https://matrix.example.org",
+        "password": "test_password",
+    }
+
+    result = _can_auto_create_credentials(matrix_config)
+    assert result is False
+
+
+def test_can_auto_create_credentials_missing_password():
+    """Test failure when password is missing."""
+    matrix_config = {
+        "homeserver": "https://matrix.example.org",
+        "bot_user_id": "@bot:example.org",
+    }
+
+    result = _can_auto_create_credentials(matrix_config)
+    assert result is False
+
+
+def test_can_auto_create_credentials_empty_values():
+    """Test failure when required fields are empty."""
+    matrix_config = {
+        "homeserver": "",
+        "bot_user_id": "@bot:example.org",
+        "password": "test_password",
+    }
+
+    result = _can_auto_create_credentials(matrix_config)
+    assert result is False
+
+
+def test_can_auto_create_credentials_none_values():
+    """Test failure when required fields are None."""
+    matrix_config = {
+        "homeserver": "https://matrix.example.org",
+        "bot_user_id": None,
+        "password": "test_password",
+    }
+
+    result = _can_auto_create_credentials(matrix_config)
+    assert result is False

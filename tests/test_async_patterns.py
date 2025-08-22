@@ -45,14 +45,14 @@ class TestAsyncPatterns(unittest.TestCase):
         """
         Test that async functions are properly awaited without generating coroutine warnings.
 
-        Ensures that the `connect_matrix` async function is awaited correctly, returning a client and invoking the `whoami` method as expected.
+        Ensures that the `connect_matrix` async function is awaited correctly, returning a client and performing sync operations as expected.
         """
 
         async def test_coroutine():
             """
             Asynchronously tests the Matrix connection coroutine, ensuring proper awaiting and client initialization.
 
-            Simulates the Matrix connection process by mocking SSL context, certificate path, and Matrix AsyncClient. Verifies that the `connect_matrix` function awaits the `whoami` method and returns a valid client instance.
+            Simulates the Matrix connection process by mocking SSL context, certificate path, and Matrix AsyncClient. Verifies that the `connect_matrix` function awaits the sync method and returns a valid client instance.
             """
             # Ensure matrix_client is None to avoid early return
             with patch("mmrelay.matrix_utils.matrix_client", None):
@@ -67,10 +67,10 @@ class TestAsyncPatterns(unittest.TestCase):
                             "mmrelay.matrix_utils.AsyncClient"
                         ) as mock_client_class:
                             mock_client = AsyncMock()
-                            # Mock successful whoami response
-                            mock_whoami_response = MagicMock()
-                            mock_whoami_response.device_id = "test_device"
-                            mock_client.whoami.return_value = mock_whoami_response
+                            mock_client.rooms = {}
+                            # Mock successful sync response
+                            mock_sync_response = MagicMock()
+                            mock_client.sync.return_value = mock_sync_response
                             mock_client_class.return_value = mock_client
 
                             # Test that connect_matrix properly awaits
@@ -79,8 +79,8 @@ class TestAsyncPatterns(unittest.TestCase):
                             # Should return the client
                             self.assertIsNotNone(result)
 
-                            # Verify whoami was called (awaited)
-                            mock_client.whoami.assert_called_once()
+                            # Verify sync was called (awaited) - this is the main async operation now
+                            mock_client.sync.assert_called()
 
         # Run the async test
         asyncio.run(test_coroutine())
@@ -152,19 +152,20 @@ class TestAsyncPatterns(unittest.TestCase):
                             "mmrelay.matrix_utils.AsyncClient"
                         ) as mock_client_class:
                             mock_client = AsyncMock()
+                            mock_client.rooms = {}
 
-                            # Make whoami take longer than timeout
-                            async def slow_whoami():
+                            # Make sync take longer than timeout
+                            async def slow_sync(*args, **kwargs):
                                 """
-                                Simulates a delayed asynchronous retrieval of device identity information.
+                                Simulates a delayed asynchronous sync operation.
 
                                 Returns:
-                                    MagicMock: A mock object with a `device_id` attribute set to "test_device".
+                                    MagicMock: A mock sync response object.
                                 """
                                 await asyncio.sleep(2)  # 2 second delay
-                                return MagicMock(device_id="test_device")
+                                return MagicMock()
 
-                            mock_client.whoami = slow_whoami
+                            mock_client.sync = slow_sync
                             mock_client_class.return_value = mock_client
 
                             # Test with short timeout
@@ -200,7 +201,8 @@ class TestAsyncPatterns(unittest.TestCase):
                 # Mock Matrix client that raises an exception
                 with patch("mmrelay.matrix_utils.AsyncClient") as mock_client_class:
                     mock_client = AsyncMock()
-                    mock_client.whoami.side_effect = Exception("Connection failed")
+                    mock_client.rooms = {}
+                    mock_client.sync.side_effect = Exception("Connection failed")
                     mock_client_class.return_value = mock_client
 
                     # Should handle the exception gracefully
@@ -382,6 +384,7 @@ class TestAsyncPatterns(unittest.TestCase):
             mock_client.room_send = AsyncMock(
                 return_value=MagicMock(event_id="$event123")
             )
+            mock_client.rooms = {}  # Add rooms attribute for E2EE compatibility
 
             # Mock room
             mock_room = MagicMock()
@@ -392,18 +395,29 @@ class TestAsyncPatterns(unittest.TestCase):
                     "mmrelay.matrix_utils.matrix_rooms",
                     [{"id": "!room1:matrix.org", "meshtastic_channel": 0}],
                 ):
-                    # Test matrix_relay async operation
-                    await matrix_relay(
-                        room_id="!room1:matrix.org",
-                        message="Test message",
-                        longname="TestNode",
-                        shortname="TN",
-                        meshnet_name="TestMesh",
-                        portnum=1,
-                    )
+                    with patch(
+                        "mmrelay.matrix_utils.config",
+                        {
+                            "matrix": {"enabled": True},
+                            "meshtastic": {"meshnet_name": "TestMesh"},
+                        },
+                    ):
+                        with patch(
+                            "mmrelay.matrix_utils.connect_matrix",
+                            return_value=mock_client,
+                        ):
+                            # Test matrix_relay async operation
+                            await matrix_relay(
+                                room_id="!room1:matrix.org",
+                                message="Test message",
+                                longname="TestNode",
+                                shortname="TN",
+                                meshnet_name="TestMesh",
+                                portnum=1,
+                            )
 
-                    # Verify async method was called
-                    mock_client.room_send.assert_called_once()
+                            # Verify async method was called
+                            mock_client.room_send.assert_called_once()
 
         # Run the matrix relay test
         asyncio.run(test_matrix_relay())

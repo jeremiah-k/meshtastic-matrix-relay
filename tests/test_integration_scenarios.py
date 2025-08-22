@@ -431,6 +431,7 @@ plugins:
             mock_ssl.return_value = MagicMock()
             with patch("mmrelay.matrix_utils.AsyncClient") as mock_client_class:
                 mock_client = AsyncMock()
+                mock_client.rooms = {}
                 # Mock whoami to return a WhoamiError (this is what connect_matrix actually calls)
                 from nio import WhoamiError
 

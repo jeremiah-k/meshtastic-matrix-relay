@@ -27,7 +27,12 @@ cd meshtastic-matrix-relay
 
 # Install in development mode using pipx (recommended)
 pipx install -e .
-pipx uninstall mmrelay # each time before testing new changes
+
+# For E2EE development (Linux/macOS only)
+pipx install -e '.[e2e]'
+
+# Uninstall before testing new changes
+pipx uninstall mmrelay
 ```
 
 ## Configuration
@@ -46,7 +51,7 @@ MMRelay includes a built-in command to generate a sample configuration file in t
 
 ```bash
 # Generate a sample configuration file
-mmrelay --generate-config
+mmrelay config generate
 
 # Edit the generated configuration file with your preferred editor
 nano ~/.mmrelay/config.yaml
@@ -58,12 +63,43 @@ This command will:
 2. Create the necessary directory structure if it doesn't exist
 3. Generate a sample configuration file at `~/.mmrelay/config.yaml`
 
+### Matrix Authentication Setup
+
+**Recommended Method (v1.2+)**: Use the built-in authentication command:
+
+```bash
+mmrelay auth login
+```
+
+This interactive command will:
+
+- Prompt for your Matrix homeserver, username, and password
+- Create secure credentials and save to `~/.mmrelay/credentials.json`
+- Set up encryption keys for secure communication (Linux/macOS)
+- Work for regular Matrix communication on all platforms
+
+**Platform Notes**:
+
+- **Linux/macOS**: Full E2EE support with automatic encryption
+- **Windows**: Regular Matrix communication (E2EE not available due to library limitations)
+
+**Alternative Method**: You can manually configure Matrix credentials in `config.yaml`:
+
+```yaml
+matrix:
+  homeserver: https://your-matrix-server.org
+  access_token: your_access_token
+  bot_user_id: @yourbot:your-matrix-server.org
+```
+
 ### Configuration Tips
 
 - Review the comments in the sample configuration file for detailed explanations
-- At minimum, you'll need to configure your Matrix credentials and Meshtastic connection
+- Use `mmrelay auth login` for Matrix authentication (recommended)
+- Configure your Meshtastic connection details in the config file
 - For advanced setups, check the plugin configuration options
 - For advanced features like message prefix customization and debug logging, see the [Extra Configuration Guide](EXTRA_CONFIGURATION.md)
+- For E2EE setup and troubleshooting, see the [E2EE Guide](E2EE.md)
 
 ## Running MMRelay
 
@@ -94,22 +130,31 @@ Options:
                         Set logging level
   --logfile PATH        Path to log file (can be overridden by --data-dir)
   --version             Show version and exit
-  --generate-config     Generate a sample config.yaml file
-  --check-config        Check if the configuration file is valid
-  --install-service     Install or update the systemd user service
+Commands:
+  config                Configuration management
+    generate            Create a sample config.yaml file with default settings
+    check               Validate configuration file syntax and completeness
+  auth                  Authentication management
+    login               Authenticate with Matrix and save credentials for E2EE support
+    status              Check current authentication status
+  service               Service management
+    install             Install or update the systemd user service for MMRelay
 ```
 
 #### Useful Commands
 
 ```bash
 # Generate a sample configuration file
-mmrelay --generate-config
+mmrelay config generate
 
 # Validate your configuration
-mmrelay --check-config
+mmrelay config check
 
 # Install as a systemd user service (Linux only)
-mmrelay --install-service
+mmrelay service install
+
+# Set up Matrix E2EE authentication (for encrypted rooms)
+mmrelay auth login
 ```
 
 ## Running as a Service
@@ -119,7 +164,7 @@ mmrelay --install-service
 For automatic startup and management on Linux systems, MMRelay includes a built-in command to set up a systemd user service:
 
 ```bash
-mmrelay --install-service
+mmrelay service install
 ```
 
 This command will:
@@ -175,7 +220,7 @@ make run      # Start the container
 make logs     # View logs
 ```
 
-For detailed Docker commands, configuration options, connection types, and troubleshooting, see the [Docker Guide](../DOCKER.md).
+For detailed Docker commands, configuration options, connection types, and troubleshooting, see the [Docker Guide](DOCKER.md).
 
 ## Development
 

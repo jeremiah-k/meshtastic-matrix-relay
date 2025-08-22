@@ -10,14 +10,40 @@ services:
       - PYTHONUNBUFFERED=1
       - MPLCONFIGDIR=/tmp/matplotlib
 
-    volumes:
-      # Configuration - uses standard ~/.mmrelay/config.yaml location
-      # Create this first with: make config
-      - ${MMRELAY_HOME}/.mmrelay/config.yaml:/app/config.yaml:ro
+      # Matrix Authentication: Use 'mmrelay auth login' on host system to create credentials.json
+      # The credentials file will be automatically loaded from the volume mount below
 
+      # Meshtastic Connection Settings - Uncomment and configure as needed
+      # TCP Connection (most common)
+      # - MMRELAY_MESHTASTIC_CONNECTION_TYPE=tcp
+      # - MMRELAY_MESHTASTIC_HOST=192.168.1.100
+      # - MMRELAY_MESHTASTIC_PORT=4403  # Default port
+
+      # Serial Connection (uncomment for serial)
+      # - MMRELAY_MESHTASTIC_CONNECTION_TYPE=serial
+      # - MMRELAY_MESHTASTIC_SERIAL_PORT=/dev/ttyUSB0
+
+      # BLE Connection (uncomment for Bluetooth)
+      # - MMRELAY_MESHTASTIC_CONNECTION_TYPE=ble
+      # - MMRELAY_MESHTASTIC_BLE_ADDRESS=AA:BB:CC:DD:EE:FF
+
+      # Meshtastic Operational Settings
+      # - MMRELAY_MESHTASTIC_BROADCAST_ENABLED=true
+      # - MMRELAY_MESHTASTIC_MESHNET_NAME=My Mesh Network
+      # - MMRELAY_MESHTASTIC_MESSAGE_DELAY=2.2  # Minimum 2.0 seconds
+
+      # System Configuration
+      # - MMRELAY_LOGGING_LEVEL=INFO  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+      # - MMRELAY_LOG_FILE=/app/data/logs/mmrelay.log  # Enables file logging
+      # - MMRELAY_DATABASE_PATH=/app/data/meshtastic.sqlite
+
+      # Note: Environment variables for Meshtastic, logging, and database settings take precedence over config.yaml
+
+    volumes:
       # Map entire ~/.mmrelay directory to /app/data to maintain proper structure
-      # This includes plugins/, data/, logs/, and any other subdirectories
+      # This includes config.yaml, plugins/, data/, logs/, credentials.json, and any other subdirectories
       # The --data-dir parameter in CMD points to /app/data
+      # Create config.yaml first with: make config
       - ${MMRELAY_HOME}/.mmrelay:/app/data
 
     # For TCP connections (most common) - Meshtastic typically uses port 4403

@@ -3,6 +3,27 @@ matrix:
   access_token: reaalllllyloooooongsecretttttcodeeeeeeforrrrbot # See: https://t2bot.io/docs/access_tokens/
   bot_user_id: "@botuser:example.matrix.org"
 
+  # Alternative: Automatic credentials creation (Docker-friendly)
+  # If you provide password instead of access_token, MMRelay will automatically
+  # create credentials.json on startup. Useful for Docker deployments.
+  #password: your_matrix_password_here  # Uncomment and set your Matrix password
+
+  # End-to-End Encryption (E2EE) configuration
+  # NOTE: E2EE requires credentials.json instead of access_token for new sessions
+  #
+  # SETUP INSTRUCTIONS:
+  # 1. Install E2EE dependencies: pipx install mmrelay[e2e]
+  # 2. Enable E2EE in config: uncomment and set enabled: true below
+  # 3. Create credentials: mmrelay auth login
+  # 4. The auth login command will create credentials.json with your Matrix login
+  # 5. Restart mmrelay - it will use credentials.json and enable E2EE automatically
+  #
+  #e2ee:
+  #  # Optional: When credentials.json is present, MMRelay auto-enables E2EE.
+  #  # Configure this section only if you want to override defaults (e.g., store_path).
+  #  enabled: false                        # Explicit toggle if you need to force-enable/disable (usually not needed)
+  #  store_path: ~/.mmrelay/store          # Optional path for encryption keys storage
+
   # Message prefix customization (Meshtastic → Matrix direction)
   #prefix_enabled: true # Enable prefixes on messages from mesh (e.g., "[Alice/MyMesh]: message")
   #prefix_format: "[{long}/{mesh}]: " # Default format. Variables: {long1-20}, {long}, {short}, {mesh1-20}, {mesh}
@@ -48,10 +69,14 @@ logging:
   #color_enabled: true                        # Set to false to disable colored console output
 
   # Component-specific debug logging (useful for troubleshooting)
+  # When disabled (false or omitted), external library logs are completely suppressed
+  # When enabled, you can use: true (DEBUG level) or specify level: "debug", "info", "warning", "error"
   #debug:
-  #  matrix_nio: false                         # Enable matrix-nio debug logging for Matrix client issues
-  #  bleak: false                              # Enable BLE (bleak) debug logging for Bluetooth connection issues
-  #  meshtastic: false                         # Enable meshtastic library debug logging for device communication issues
+  #  matrix_nio: false                         # Disable matrix-nio logging (default: completely suppressed)
+  #  #matrix_nio: true                         # Enable matrix-nio debug logging
+  #  #matrix_nio: "warning"                    # Enable matrix-nio warning+ logging
+  #  bleak: false                              # Disable BLE (bleak) logging (default: completely suppressed)
+  #  meshtastic: false                         # Disable meshtastic library logging (default: completely suppressed)
 
 #database:
 #  path: ~/.mmrelay/data/meshtastic.sqlite   # Default location
