@@ -150,17 +150,17 @@ class Plugin(BasePlugin):
             return forecast
 
         except Exception as e:
-            # Handle both HTTP errors and data parsing errors
-            error_type = str(type(e))
-            error_msg = str(e)
-            if ("HTTPError" in error_type or "RequestException" in error_type or
-                "ConnectionError" in error_type or "Timeout" in error_type or
-                "HTTP" in error_msg or "requests" in error_type.lower()):
+            # Handle HTTP errors specifically
+            if hasattr(e, '__module__') and 'requests' in e.__module__:
                 self.logger.error(f"Error fetching weather data: {e}")
                 return "Error fetching weather data."
-            else:
+            # Handle data parsing errors
+            elif isinstance(e, (KeyError, IndexError, ValueError, TypeError)):
                 self.logger.error(f"Malformed weather data: {e}")
                 return "Error parsing weather data."
+            else:
+                # Re-raise unexpected exceptions
+                raise
 
     async def handle_meshtastic_message(
         self, packet, formatted_message, longname, meshnet_name
