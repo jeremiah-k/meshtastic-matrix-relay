@@ -16,44 +16,15 @@ A powerful and easy-to-use relay between Meshtastic devices and Matrix chat room
 - Supports mapping multiple rooms and channels 1:1
 - Relays messages to/from an MQTT broker, if configured in the Meshtastic firmware
 - ✨️ _Bidirectional replies and reactions support_ ✨️
-- ✨️ _Native Docker support_ ✨️
 - 🔐 **Matrix End-to-End Encryption (E2EE) support** 🔐 **NEW in v1.2!**
 
-**MMRelay v1.2** introduces full **Matrix End-to-End Encryption** support for secure communication in encrypted rooms. Messages are automatically encrypted/decrypted when communicating with encrypted Matrix rooms, with simple setup using `mmrelay auth login` or automatic credentials creation from config.yaml for Docker deployments.
+**MMRelay v1.2** introduces full **Matrix End-to-End Encryption** support for secure communication in encrypted rooms. Messages are automatically encrypted/decrypted when communicating with encrypted Matrix rooms, with simple setup using `mmrelay auth login` or automatic credentials creation from config.yaml.
 
 ## Documentation
 
 Visit our [Wiki](https://github.com/jeremiah-k/meshtastic-matrix-relay/wiki) for comprehensive guides and information.
 
 - [Installation Instructions](docs/INSTRUCTIONS.md) - Setup and configuration guide
-
----
-
-## Docker
-
-MMRelay includes official Docker support for easy deployment and management:
-
-```bash
-# Recommended: Prebuilt images (fastest setup)
-make setup-prebuilt  # Copy config and open editor (first time)
-make run              # Start the container
-make logs             # View logs
-
-# Alternative: Build from source (easy with make commands)
-make setup            # Copy config and open editor (first time)
-make build            # Build Docker image from source
-make run              # Start the container
-```
-
-**Don't want to clone the repo?** The [Docker Guide](docs/DOCKER.md) covers multiple deployment methods including direct docker-compose usage without cloning.
-
----
-
-## Windows Installer
-
-![Windows Installer Screenshot](https://user-images.githubusercontent.com/1770544/235249050-8c79107a-50cc-4803-b989-39e58100342d.png)
-
-The latest installer is available in the [releases section](https://github.com/jeremiah-k/meshtastic-matrix-relay/releases).
 
 ---
 
