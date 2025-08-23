@@ -29,6 +29,8 @@ MMRelay supports multiple deployment methods including Docker, pip installation,
 
 - [Installation Instructions](docs/INSTRUCTIONS.md) - Setup and configuration guide
 - [Docker Guide](docs/DOCKER.md) - Docker deployment methods
+- [What's New in v1.2](docs/WHATS_NEW_1.2.md) - New features and improvements
+- [E2EE Setup Guide](docs/E2EE.md) - Matrix End-to-End Encryption configuration
 
 ---
 
