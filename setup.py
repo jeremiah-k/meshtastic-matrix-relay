@@ -33,12 +33,16 @@ setup(
     },
     classifiers=[
         "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
         "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
         "Operating System :: OS Independent",
         "Development Status :: 4 - Beta",
         "Topic :: Communications",
     ],
-    python_requires=">=3.8",
+    python_requires=">=3.9",
     install_requires=[
         "meshtastic>=2.6.4",
         "Pillow==11.3.0",

@@ -65,7 +65,7 @@ This command will:
 
 ### Matrix Authentication Setup
 
-**Recommended Method (v1.2+)**: Use the built-in authentication command:
+**Standard Method (v1.2+)**: Use the built-in authentication command:
 
 ```bash
 mmrelay auth login
@@ -76,14 +76,22 @@ This interactive command will:
 - Prompt for your Matrix homeserver, username, and password
 - Create secure credentials and save to `~/.mmrelay/credentials.json`
 - Set up encryption keys for secure communication (Linux/macOS)
-- Work for regular Matrix communication on all platforms
+- Works for regular Matrix communication on all platforms
+- **Use modern OIDC authentication** compatible with Matrix 2.0 and MAS (Matrix Authentication Service)
+
+**Why use `mmrelay auth login`?**
+
+- **Future-proof**: Compatible with Matrix Authentication Service (MAS) used by matrix.org and other modern homeservers.
+- **Token rotation**: Automatically handles token refresh, preventing authentication expiration.
+- **Required for E2EE**: Essential for encrypted room support.
+- **Secure**: Uses proper OIDC flows instead of long-lived access tokens.
 
 **Platform Notes**:
 
 - **Linux/macOS**: Full E2EE support with automatic encryption
 - **Windows**: Regular Matrix communication (E2EE not available due to library limitations)
 
-**Alternative Method**: You can manually configure Matrix credentials in `config.yaml`:
+**Legacy Method (Not Recommended)**: Manual access token configuration:
 
 ```yaml
 matrix:
@@ -92,10 +100,12 @@ matrix:
   bot_user_id: @yourbot:your-matrix-server.org
 ```
 
+⚠️ **Important**: Manual access tokens may expire on homeservers using Matrix Authentication Service (MAS), including matrix.org. Use `mmrelay auth login` for reliable authentication.
+
 ### Configuration Tips
 
 - Review the comments in the sample configuration file for detailed explanations
-- Use `mmrelay auth login` for Matrix authentication (recommended)
+- **Always use `mmrelay auth login` for Matrix authentication** (standard method, required for E2EE)
 - Configure your Meshtastic connection details in the config file
 - For advanced setups, check the plugin configuration options
 - For advanced features like message prefix customization and debug logging, see the [Extra Configuration Guide](EXTRA_CONFIGURATION.md)
@@ -136,6 +146,7 @@ Commands:
     check               Validate configuration file syntax and completeness
   auth                  Authentication management
     login               Authenticate with Matrix and save credentials for E2EE support
+    logout              Secure session cleanup with server-side token invalidation
     status              Check current authentication status
   service               Service management
     install             Install or update the systemd user service for MMRelay

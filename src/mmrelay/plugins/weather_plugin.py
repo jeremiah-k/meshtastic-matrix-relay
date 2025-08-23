@@ -8,8 +8,6 @@ from mmrelay.constants.formats import TEXT_MESSAGE_APP
 from mmrelay.plugins.base_plugin import BasePlugin
 
 
-
-
 class Plugin(BasePlugin):
     plugin_name = "weather"
 
@@ -23,19 +21,19 @@ class Plugin(BasePlugin):
     def generate_forecast(self, latitude, longitude):
         """
         Generate a concise one-line weather forecast for the given GPS coordinates.
-        
+
         Builds and queries the Open-Meteo API for current conditions and hour-aligned forecasts ~+2h and ~+5h, formats temperatures according to the plugin configuration (`self.config["units"]`, default "metric"), and returns a single-line summary including current conditions and the two forecast points.
-        
+
         Parameters:
             latitude (float): Latitude in decimal degrees.
             longitude (float): Longitude in decimal degrees.
-        
+
         Returns:
             str: A single-line forecast such as
                  "Now: ☀️ Clear sky - 12.3°C | +2h: 🌧️ Light rain - 13.1°C 20% | +5h: ⛅️ Partly cloudy - 10.8°C 5%".
                  On recoverable failures returns a short error message: "Weather data temporarily unavailable.",
                  "Error fetching weather data.", or "Error parsing weather data.".
-        
+
         Notes:
             - Temperature units are determined by `self.config.get("units", "metric")` ("metric" -> °C, "imperial" -> °F).
             - The function attempts to anchor forecasts to hourly timestamps when available; if timestamps cannot be matched it falls back to hour-of-day indexing (may be less accurate).
@@ -67,10 +65,14 @@ class Plugin(BasePlugin):
             current_hour = 0
             current_time = None
             try:
-                current_time = datetime.fromisoformat(current_time_str.replace("Z", "+00:00"))
+                current_time = datetime.fromisoformat(
+                    current_time_str.replace("Z", "+00:00")
+                )
                 current_hour = current_time.hour
             except ValueError as ex:
-                self.logger.warning(f"Unexpected current_weather.time '{current_time_str}': {ex}. Defaulting to hour=0.")
+                self.logger.warning(
+                    f"Unexpected current_weather.time '{current_time_str}': {ex}. Defaulting to hour=0."
+                )
 
             # Calculate indices for +2h and +5h forecasts
             # Try to anchor to hourly timestamps for robustness, fall back to hour-of-day
@@ -79,7 +81,9 @@ class Plugin(BasePlugin):
             if hourly_times and current_time:
                 try:
                     # Normalize current time to the hour and find it in hourly timestamps
-                    base_key = current_time.replace(minute=0, second=0, microsecond=0).strftime("%Y-%m-%dT%H:00")
+                    base_key = current_time.replace(
+                        minute=0, second=0, microsecond=0
+                    ).strftime("%Y-%m-%dT%H:00")
                     base_index = hourly_times.index(base_key)
                 except (ValueError, AttributeError):
                     # Fall back to hour-of-day if hourly timestamps are unavailable/mismatched
@@ -106,7 +110,11 @@ class Plugin(BasePlugin):
             ]
             forecast_2h_weather_code = data["hourly"]["weathercode"][forecast_2h_index]
             # Get hour-specific day/night flag for +2h forecast
-            forecast_2h_is_day = data["hourly"]["is_day"][forecast_2h_index] if data["hourly"].get("is_day") else is_day
+            forecast_2h_is_day = (
+                data["hourly"]["is_day"][forecast_2h_index]
+                if data["hourly"].get("is_day")
+                else is_day
+            )
 
             forecast_5h_temp = data["hourly"]["temperature_2m"][forecast_5h_index]
             forecast_5h_precipitation = data["hourly"]["precipitation_probability"][
@@ -114,7 +122,11 @@ class Plugin(BasePlugin):
             ]
             forecast_5h_weather_code = data["hourly"]["weathercode"][forecast_5h_index]
             # Get hour-specific day/night flag for +5h forecast
-            forecast_5h_is_day = data["hourly"]["is_day"][forecast_5h_index] if data["hourly"].get("is_day") else is_day
+            forecast_5h_is_day = (
+                data["hourly"]["is_day"][forecast_5h_index]
+                if data["hourly"].get("is_day")
+                else is_day
+            )
 
             if units == "imperial":
                 # Convert temperatures from Celsius to Fahrenheit
@@ -180,17 +192,25 @@ class Plugin(BasePlugin):
 
         except Exception as e:
             # Handle HTTP/network errors from requests
-            # Use robust detection that works across different environments
-            exception_type = type(e)
-            exception_module = getattr(exception_type, '__module__', '')
-            exception_name = getattr(exception_type, '__name__', '')
+            # Handle requests-related exceptions using safe attribute checking
+            try:
+                # Check if this is a requests exception by checking the module
+                if hasattr(requests, "RequestException") and isinstance(
+                    e, requests.RequestException
+                ):
+                    self.logger.error(f"Error fetching weather data: {e}")
+                    return "Error fetching weather data."
+            except (AttributeError, TypeError):
+                # Fallback to string-based detection if isinstance fails
+                exception_module = getattr(type(e), "__module__", "")
+                if "requests" in exception_module:
+                    self.logger.error(f"Error fetching weather data: {e}")
+                    return "Error fetching weather data."
 
-            if ('requests' in exception_module and
-                ('Exception' in exception_name or 'Error' in exception_name)):
-                self.logger.error(f"Error fetching weather data: {e}")
-                return "Error fetching weather data."
             # Handle data parsing errors
-            elif isinstance(e, (KeyError, IndexError, TypeError, ValueError, AttributeError)):
+            if isinstance(
+                e, (KeyError, IndexError, TypeError, ValueError, AttributeError)
+            ):
                 self.logger.error(f"Malformed weather data: {e}")
                 return "Error parsing weather data."
             else:

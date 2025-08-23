@@ -66,6 +66,7 @@ from mmrelay.constants.config import (
     CONFIG_SECTION_MATRIX,
     DEFAULT_BROADCAST_ENABLED,
     DEFAULT_DETECTION_SENSOR,
+    E2EE_KEY_SHARING_DELAY_SECONDS,
 )
 from mmrelay.constants.database import DEFAULT_MSGS_TO_KEEP
 from mmrelay.constants.formats import (
@@ -109,7 +110,7 @@ def _display_room_channel_mappings(
     """
     Log Matrix rooms grouped by Meshtastic channel, showing mapping counts and E2EE/encryption indicators.
 
-    Reads the "matrix_rooms" entry from config (accepting either dict or list form), builds a mapping from room ID to the configured "meshtastic_channel", then groups and logs rooms ordered by channel number. For each room logs an emoji/status depending on the room's encryption flag and the provided e2ee_status["overall_status"] (common values: "ready", "unavailable", "disabled"); unmapped rooms are listed separately as not relayed.
+    Reads the "matrix_rooms" entry from config (accepting either dict or list form), builds a mapping from room ID to the configured "meshtastic_channel", then groups and logs rooms ordered by channel number. For each room logs an emoji/status depending on the room's encryption flag and the provided e2ee_status["overall_status"] (common values: "ready", "unavailable", "disabled").
 
     Parameters:
         rooms (dict): Mapping of room_id -> room object (room objects should expose at least `display_name` and `encrypted` attributes or fall back to the room_id).
@@ -148,7 +149,6 @@ def _display_room_channel_mappings(
 
     # Group rooms by channel
     channels = {}
-    unmapped_rooms = []
 
     for room_id, room in rooms.items():
         if room_id in room_to_channel:
@@ -156,15 +156,10 @@ def _display_room_channel_mappings(
             if channel not in channels:
                 channels[channel] = []
             channels[channel].append((room_id, room))
-        else:
-            unmapped_rooms.append((room_id, room))
 
     # Display header
-    total_rooms = len(rooms)
     mapped_rooms = sum(len(room_list) for room_list in channels.values())
-    logger.info(
-        f"Matrix Rooms → Meshtastic Channels ({mapped_rooms}/{total_rooms} mapped):"
-    )
+    logger.info(f"Matrix Rooms → Meshtastic Channels ({mapped_rooms} configured):")
 
     # Display rooms organized by channel (sorted by channel number)
     for channel in sorted(channels.keys()):
@@ -197,17 +192,6 @@ def _display_room_channel_mappings(
                         )
                 else:
                     logger.info(f"    ✅ {room_name}")
-
-    # Display unmapped rooms if any
-    if unmapped_rooms:
-        logger.info("  Unmapped rooms (no channel configured):")
-        for room_id, room in unmapped_rooms:
-            room_name = getattr(room, "display_name", room_id)
-            encrypted = getattr(room, "encrypted", False)
-            if encrypted:
-                logger.info(f"    ⚠️ {room_name} (not relayed)")
-            else:
-                logger.info(f"    ❌ {room_name} (not relayed)")
 
 
 def _can_auto_create_credentials(matrix_config: dict) -> bool:
@@ -610,7 +594,7 @@ async def connect_matrix(passed_config=None):
         e2ee_device_id = credentials.get("device_id")
 
         # Log consolidated credentials info
-        logger.info(f"Using Matrix credentials (device: {e2ee_device_id})")
+        logger.debug(f"Using Matrix credentials (device: {e2ee_device_id})")
 
         # If device_id is missing, warn but proceed; we'll learn and persist it after restore_login().
         if not isinstance(e2ee_device_id, str) or not e2ee_device_id.strip():
@@ -756,10 +740,12 @@ async def connect_matrix(passed_config=None):
                         from nio.crypto import OlmDevice  # noqa: F401
                         from nio.store import SqliteStore  # noqa: F401
 
-                        logger.info("All E2EE dependencies are available")
+                        logger.debug("All E2EE dependencies are available")
                     except ImportError as e:
                         logger.error(f"Missing E2EE dependency: {e}")
-                        logger.error("Please reinstall with: pipx install mmrelay[e2e]")
+                        logger.error(
+                            "Please reinstall with: pipx install 'mmrelay[e2e]'"
+                        )
                         raise RuntimeError(
                             "Missing E2EE dependency (Olm/SqliteStore)"
                         ) from e
@@ -798,7 +784,7 @@ async def connect_matrix(passed_config=None):
                     )
                     db_files = [f for f in store_files if f.endswith(".db")]
                     if db_files:
-                        logger.info(
+                        logger.debug(
                             f"Found existing E2EE store files: {', '.join(db_files)}"
                         )
                     else:
@@ -806,7 +792,7 @@ async def connect_matrix(passed_config=None):
                             "No existing E2EE store files found. Encryption may not work correctly."
                         )
 
-                    logger.info(f"Using E2EE store path: {e2ee_store_path}")
+                    logger.debug(f"Using E2EE store path: {e2ee_store_path}")
 
                     # If device_id is not present in credentials, we can attempt to learn it later.
                     if not e2ee_device_id:
@@ -817,7 +803,7 @@ async def connect_matrix(passed_config=None):
                     logger.warning(
                         "E2EE is enabled in config but python-olm is not installed."
                     )
-                    logger.warning("Install mmrelay[e2e] to use E2EE features.")
+                    logger.warning("Install 'mmrelay[e2e]' to use E2EE features.")
                     e2ee_enabled = False
     except (KeyError, TypeError):
         # E2EE not configured
@@ -884,14 +870,14 @@ async def connect_matrix(passed_config=None):
                 await matrix_client.keys_upload()
                 logger.info("Encryption keys uploaded successfully")
             else:
-                logger.info("No key upload needed - keys already present")
+                logger.debug("No key upload needed - keys already present")
         except Exception as e:
             logger.error(f"Failed to upload E2EE keys: {e}")
             # E2EE might still work, so we don't disable it here
             logger.error("Consider regenerating credentials with: mmrelay auth login")
 
     # Perform initial sync to populate rooms (needed for message delivery)
-    logger.info("Performing initial sync to initialize rooms...")
+    logger.debug("Performing initial sync to initialize rooms...")
     try:
         # A full_state=True sync is required to get room encryption state
         sync_response = await asyncio.wait_for(
@@ -955,14 +941,12 @@ async def connect_matrix(passed_config=None):
     # happens asynchronously. Without this delay, outgoing messages may be sent unencrypted
     # even to encrypted rooms. While not ideal, this timing-based approach is necessary
     # because matrix-nio doesn't provide event-driven alternatives to detect when key
-    # sharing is complete. The delay can be configured via matrix.e2ee.key_sharing_delay_seconds.
+    # sharing is complete.
     if e2ee_enabled:
-        # Make the delay configurable, default to 5 seconds
-        delay = (
-            config.get("matrix", {}).get("e2ee", {}).get("key_sharing_delay_seconds", 5)
+        logger.debug(
+            f"Waiting for {E2EE_KEY_SHARING_DELAY_SECONDS} seconds to allow for key sharing..."
         )
-        logger.debug(f"Waiting for {delay} seconds to allow for key sharing...")
-        await asyncio.sleep(delay)
+        await asyncio.sleep(E2EE_KEY_SHARING_DELAY_SECONDS)
 
     # Fetch the bot's display name
     response = await matrix_client.get_displayname(bot_user_id)
@@ -1099,7 +1083,7 @@ async def login_matrix_bot(
         # Get the E2EE store path
         store_path = get_e2ee_store_dir()
         os.makedirs(store_path, exist_ok=True)
-        logger.info(f"Using E2EE store path: {store_path}")
+        logger.debug(f"Using E2EE store path: {store_path}")
 
         # Create client config for E2EE
         client_config = AsyncClientConfig(
