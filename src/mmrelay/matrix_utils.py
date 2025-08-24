@@ -871,6 +871,79 @@ async def connect_matrix(passed_config=None):
                 logger.info("Encryption keys uploaded successfully")
             else:
                 logger.debug("No key upload needed - keys already present")
+
+            # Set up cross-signing for automatic device verification
+            try:
+                # Check if cross-signing keys already exist
+                if not matrix_client.olm.account.cross_signing_keys:
+                    logger.info(
+                        "Setting up cross-signing for automatic device verification..."
+                    )
+                    cross_signing_response = await matrix_client.setup_cross_signing()
+
+                    # Check if setup was successful
+                    from nio.responses import KeysDeviceSigningUploadResponse
+
+                    if isinstance(
+                        cross_signing_response, KeysDeviceSigningUploadResponse
+                    ):
+                        logger.info(
+                            "✅ Cross-signing setup complete - device verified automatically"
+                        )
+                        logger.debug(
+                            "Private cross-signing keys stored securely in device database"
+                        )
+                    else:
+                        logger.warning(
+                            f"Cross-signing setup failed: {cross_signing_response}"
+                        )
+                        logger.info("Device verification will require manual setup")
+                else:
+                    logger.debug(
+                        "Cross-signing keys already exist - device should be verified"
+                    )
+
+                    # Optionally verify own device if not already verified
+                    try:
+                        own_device = matrix_client.olm.device_store.get(
+                            bot_user_id, matrix_client.device_id
+                        )
+                        if own_device and hasattr(own_device, "trust_state"):
+                            from nio.crypto.device import TrustState
+
+                            if own_device.trust_state != TrustState.verified:
+                                logger.debug(
+                                    "Own device not verified - attempting verification with existing keys"
+                                )
+                                # Try to verify with existing self-signing key
+                                if (
+                                    "self_signing"
+                                    in matrix_client.olm.account.cross_signing_keys
+                                ):
+                                    await matrix_client.verify_own_device(
+                                        matrix_client.olm.account.cross_signing_keys[
+                                            "self_signing"
+                                        ]
+                                    )
+                                    logger.info(
+                                        "✅ Device verified using existing cross-signing keys"
+                                    )
+                            else:
+                                logger.debug("Own device already verified")
+                    except Exception as verify_e:
+                        logger.debug(
+                            f"Could not verify own device with existing keys: {verify_e}"
+                        )
+
+            except Exception as cross_signing_e:
+                logger.warning(f"Cross-signing setup failed: {cross_signing_e}")
+                logger.info(
+                    "Continuing without cross-signing - encrypted messages may show as unverified"
+                )
+                logger.debug(
+                    "This is normal for first-time setup or if cross-signing is not supported"
+                )
+
         except Exception as e:
             logger.error(f"Failed to upload E2EE keys: {e}")
             # E2EE might still work, so we don't disable it here
