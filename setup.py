@@ -46,7 +46,7 @@ setup(
     install_requires=[
         "meshtastic>=2.6.4",
         "Pillow==11.3.0",
-        "matrix-nio==0.25.2",
+        "matrix-nio @ git+https://github.com/jeremiah-k/matrix-nio.git@automatic-cross-signing",
         "matplotlib==3.10.1",
         "requests==2.32.4",
         "markdown==3.8.2",
@@ -61,7 +61,7 @@ setup(
     ],
     extras_require={
         "e2e": [
-            "matrix-nio[e2e]==0.25.2",
+            "matrix-nio[e2e] @ git+https://github.com/jeremiah-k/matrix-nio.git@automatic-cross-signing",
             "python-olm",
         ],
     },
