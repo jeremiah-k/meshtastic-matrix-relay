@@ -142,6 +142,8 @@ var
   auth_result: Integer;
   cfgPath: string;
   cfgContent: string;
+  cfgLines: TArrayOfString;
+  i: Integer;
 begin
   If Not OverwriteConfig.Values[0] then
     Exit;
@@ -264,11 +266,9 @@ begin
         MsgBox('✅ Matrix authentication successful!' + #13#10 + 'MM Relay is ready to use.', mbInformation, MB_OK);
         // Scrub password from config.yaml after successful authentication
         cfgPath := sAppDir + '\config.yaml';
-        var cfgLines: TArrayOfString;
         if LoadStringsFromFile(cfgPath, cfgLines) then
         begin
           // Remove any line that contains password
-          var i: Integer;
           for i := 0 to GetArrayLength(cfgLines) - 1 do
           begin
             if Pos('  password:', cfgLines[i]) = 1 then
