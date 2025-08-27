@@ -335,12 +335,15 @@ def _validate_matrix_authentication(config_path, matrix_section):
           and whether E2EE support is available.
     """
     has_valid_credentials = _validate_credentials_json(config_path)
-    has_access_token = bool(matrix_section and CONFIG_KEY_ACCESS_TOKEN in matrix_section)
-    has_password = bool(
-        matrix_section
-        and "password" in matrix_section
-        and CONFIG_KEY_HOMESERVER in matrix_section
-        and CONFIG_KEY_BOT_USER_ID in matrix_section
+    token = (matrix_section or {}).get(CONFIG_KEY_ACCESS_TOKEN)
+    has_access_token = isinstance(token, str) and token.strip() != ""
+
+    pwd = (matrix_section or {}).get("password")
+    has_password = (
+        isinstance(matrix_section, dict)
+        and isinstance(pwd, str) and pwd.strip() != ""
+        and bool(matrix_section.get(CONFIG_KEY_HOMESERVER))
+        and bool(matrix_section.get(CONFIG_KEY_BOT_USER_ID))
     )
 
     if has_valid_credentials:
@@ -785,10 +788,12 @@ def check_config(args=None):
 
                     matrix_section = config[CONFIG_SECTION_MATRIX]
                     required_matrix_fields = [CONFIG_KEY_HOMESERVER, CONFIG_KEY_BOT_USER_ID]
-                    has_token = CONFIG_KEY_ACCESS_TOKEN in matrix_section
-                    has_password = "password" in matrix_section
+                    token = matrix_section.get(CONFIG_KEY_ACCESS_TOKEN)
+                    pwd = matrix_section.get("password")
+                    has_token = isinstance(token, str) and token.strip() != ""
+                    has_password = isinstance(pwd, str) and pwd.strip() != ""
                     if not (has_token or has_password):
-                        print("Error: Missing authentication in 'matrix' section: provide either 'access_token' or 'password'")
+                        print("Error: Missing authentication in 'matrix' section: provide non-empty 'access_token' or 'password'")
                         print(f"   {msg_or_run_auth_login()}")
                         return False
 

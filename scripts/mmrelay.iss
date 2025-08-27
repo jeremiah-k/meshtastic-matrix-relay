@@ -283,14 +283,21 @@ begin
         cfgPath := sAppDir + '\config.yaml';
         if LoadStringsFromFile(cfgPath, cfgLines) then
         begin
-          // Remove any line that contains password
+          // Remove any line that contains password entirely
+          var newLines: TArrayOfString;
+          var newIndex: Integer;
+          newIndex := 0;
+          SetArrayLength(newLines, GetArrayLength(cfgLines));
           for i := 0 to GetArrayLength(cfgLines) - 1 do
           begin
-            if Pos('password:', Trim(cfgLines[i])) = 1 then
+            if Pos('password:', Trim(cfgLines[i])) <> 1 then
             begin
-              cfgLines[i] := '  # password removed after successful auth';
+              newLines[newIndex] := cfgLines[i];
+              newIndex := newIndex + 1;
             end;
           end;
+          SetArrayLength(newLines, newIndex);
+          cfgLines := newLines;
           SaveStringsToFile(cfgPath, cfgLines, False);
         end;
       end
@@ -304,5 +311,4 @@ begin
       MsgBox('❌ Could not run authentication command.' + #13#10 + 'Please run manually: mmrelay auth login', mbError, MB_OK);
     end;
     end;
-  end;
 end;
