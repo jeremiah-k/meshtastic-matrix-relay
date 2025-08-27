@@ -198,7 +198,7 @@ mmrelay auth login
 
 ### Password-based Authentication in config.yaml
 
-Alternative authentication method using password for automatic credential creation.
+Alternative authentication method using a password for automatic credential creation.
 
 ```yaml
 # In your config.yaml file
@@ -210,8 +210,8 @@ matrix:
 
 **Features:**
 
-- Automatically creates credentials.json on startup
-- Matrix 2.0/MAS compatible authentication
+- Automatic `credentials.json` creation on startup
+- Compatible with Matrix 2.0/MAS authentication
 - E2EE support when dependencies are available
 
 ### Authentication Precedence

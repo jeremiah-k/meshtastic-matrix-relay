@@ -18,10 +18,10 @@ Source: "..\dist\mmrelay.exe"; DestDir: "{app}"; Flags: recursesubdirs createall
 [Icons]
 Name: "{group}\MM Relay"; Filename: "{app}\mmrelay.bat"
 Name: "{group}\MM Relay Config"; Filename: "{app}\config.yaml"; IconFilename: "{sys}\notepad.exe"; WorkingDir: "{app}"; Parameters: "config.yaml";
-Name: "{group}\Setup Authentication"; Filename: "{app}\setup-auth.bat"; Comment: "Set up Matrix authentication for MM Relay"
+Name: "{group}\Setup Authentication"; Filename: "{app}\setup-auth.bat"; Comment: "Set up Matrix authentication for MM Relay"; Check: FileExists(ExpandConstant('{app}\setup-auth.bat'))
 
 [Run]
-Filename: "{app}\setup-auth.bat"; Description: "Set up Matrix authentication (recommended first step)"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\setup-auth.bat"; Description: "Set up Matrix authentication (recommended first step)"; Flags: nowait postinstall skipifsilent; Check: FileExists(ExpandConstant('{app}\setup-auth.bat'))
 Filename: "{app}\mmrelay.bat"; Description: "Launch MM Relay"; Flags: nowait postinstall skipifsilent unchecked
 
 [Code]
@@ -132,6 +132,7 @@ var
   ble_address: string;
   log_level: string;
   batch_file: string;
+  setup_auth_batch: string;
   HomeserverURL: string;
   ServerName: string;
   ProtocolPos: Integer;
@@ -213,6 +214,21 @@ begin
   if Not SaveStringToFile(sAppDir + '/mmrelay.bat', batch_file, false) then
   begin
     MsgBox('Could not create batch file "mmrelay.bat". Close any applications that may have it open and re-run setup', mbError, MB_OK);
+  end;
+
+  // Create setup-auth.bat for manual authentication
+  setup_auth_batch := '@echo off' + #13#10 +
+                      'echo Setting up Matrix authentication for MM Relay...' + #13#10 +
+                      'echo.' + #13#10 +
+                      'cd /d "' + sAppDir + '"' + #13#10 +
+                      '"' + sAppDir + '\mmrelay.exe" auth login' + #13#10 +
+                      'echo.' + #13#10 +
+                      'echo Authentication setup complete.' + #13#10 +
+                      'pause';
+
+  if Not SaveStringToFile(sAppDir + '/setup-auth.bat', setup_auth_batch, false) then
+  begin
+    MsgBox('Could not create setup batch file "setup-auth.bat". Close any applications that may have it open and re-run setup', mbError, MB_OK);
   end;
 
   // Set up Matrix authentication directly during installation
