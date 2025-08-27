@@ -136,6 +136,9 @@ var
   ServerName: string;
   ProtocolPos: Integer;
   PathPos: Integer;
+  bot_user_id: string;
+  auth_command: string;
+  auth_result: Integer;
 begin
   If Not OverwriteConfig.Values[0] then
     Exit;
@@ -174,11 +177,7 @@ begin
   if PathPos > 0 then
     ServerName := Copy(ServerName, 1, PathPos - 1);
 
-  config := 'matrix:' + #13#10 +
-            '  homeserver: "' + MatrixPage.Values[0] + '"' + #13#10 +
-            '  bot_user_id: "@' + MatrixPage.Values[1] + ':' + ServerName + '"' + #13#10 +
-            '  password: "' + MatrixPage.Values[2] + '"' + #13#10 +
-            'matrix_rooms:' + #13#10 +
+  config := 'matrix_rooms:' + #13#10 +
             '  - id: "' + MatrixMeshtasticPage.Values[0] + '"' + #13#10 +
             '    meshtastic_channel: ' + MatrixMeshtasticPage.Values[1] + #13#10 +
             'meshtastic:' + #13#10 +
@@ -216,21 +215,29 @@ begin
     MsgBox('Could not create batch file "mmrelay.bat". Close any applications that may have it open and re-run setup', mbError, MB_OK);
   end;
 
-  // Create a setup batch file for authentication
-  batch_file := '@echo off' + #13#10 +
-                'cd /d "' + sAppDir + '"' + #13#10 +
-                'echo MM Relay Authentication Setup' + #13#10 +
-                'echo.' + #13#10 +
-                'echo This will set up secure Matrix authentication for MM Relay.' + #13#10 +
-                'echo Your credentials will be saved to credentials.json' + #13#10 +
-                'echo.' + #13#10 +
-                '"' + sAppDir + '\mmrelay.exe" auth login' + #13#10 +
-                'echo.' + #13#10 +
-                'echo Setup complete! You can now run MM Relay.' + #13#10 +
-                'pause';
-
-  if Not SaveStringToFile(sAppDir + '/setup-auth.bat', batch_file, false) then
+  // Set up Matrix authentication directly during installation
+  if (MatrixPage.Values[0] <> '') and (MatrixPage.Values[1] <> '') and (MatrixPage.Values[2] <> '') then
   begin
-    MsgBox('Could not create setup batch file "setup-auth.bat". Close any applications that may have it open and re-run setup', mbError, MB_OK);
+    // Build the full bot user ID
+    bot_user_id := '@' + MatrixPage.Values[1] + ':' + ServerName;
+
+    // Run authentication command
+    auth_command := '"' + sAppDir + '\mmrelay.exe" auth login --homeserver "' + MatrixPage.Values[0] + '" --username "' + bot_user_id + '" --password "' + MatrixPage.Values[2] + '" --non-interactive';
+
+    if Exec('cmd.exe', '/c ' + auth_command, sAppDir, SW_HIDE, ewWaitUntilTerminated, auth_result) then
+    begin
+      if auth_result = 0 then
+      begin
+        MsgBox('✅ Matrix authentication successful!' + #13#10 + 'MM Relay is ready to use.', mbInformation, MB_OK);
+      end
+      else
+      begin
+        MsgBox('❌ Matrix authentication failed.' + #13#10 + 'Please check your credentials and try running:' + #13#10 + 'mmrelay auth login', mbError, MB_OK);
+      end;
+    end
+    else
+    begin
+      MsgBox('❌ Could not run authentication command.' + #13#10 + 'Please run manually: mmrelay auth login', mbError, MB_OK);
+    end;
   end;
 end;

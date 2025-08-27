@@ -141,10 +141,27 @@ def parse_arguments():
     auth_subparsers = auth_parser.add_subparsers(
         dest="auth_command", help="Auth commands"
     )
-    auth_subparsers.add_parser(
+    login_parser = auth_subparsers.add_parser(
         "login",
         help="Authenticate with Matrix",
         description="Set up Matrix authentication for E2EE support",
+    )
+    login_parser.add_argument(
+        "--homeserver",
+        help="Matrix homeserver URL (e.g., https://matrix.org)",
+    )
+    login_parser.add_argument(
+        "--username",
+        help="Matrix username (with or without @ and :server)",
+    )
+    login_parser.add_argument(
+        "--password",
+        help="Matrix password (will prompt securely if not provided)",
+    )
+    login_parser.add_argument(
+        "--non-interactive",
+        action="store_true",
+        help="Non-interactive mode (fail if any required info is missing)",
     )
 
     auth_subparsers.add_parser(
@@ -1096,24 +1113,50 @@ def handle_auth_command(args):
 
 def handle_auth_login(args):
     """
-    Run the interactive Matrix bot login flow and return a CLI-style exit code.
+    Run the Matrix bot login flow and return a CLI-style exit code.
 
-    Runs the login_matrix_bot coroutine to perform authentication for the Matrix/E2EE bot and prints a short header. Returns 0 on successful authentication; returns 1 if the login fails, is cancelled by the user (KeyboardInterrupt), or an unexpected error occurs.
+    Runs the login_matrix_bot coroutine to perform authentication for the Matrix/E2EE bot.
+    Can run interactively (prompting for inputs) or non-interactively using provided arguments.
+    Returns 0 on successful authentication; returns 1 if the login fails, is cancelled by the user (KeyboardInterrupt), or an unexpected error occurs.
 
     Parameters:
-        args: Parsed command-line arguments (not used by this handler).
+        args: Parsed command-line arguments containing optional homeserver, username, password, and non_interactive flags.
     """
     import asyncio
 
     from mmrelay.matrix_utils import login_matrix_bot
 
-    # Show header
-    print("Matrix Bot Authentication for E2EE")
-    print("===================================")
+    # Extract arguments
+    homeserver = getattr(args, "homeserver", None)
+    username = getattr(args, "username", None)
+    password = getattr(args, "password", None)
+    non_interactive = getattr(args, "non_interactive", False)
+
+    # In non-interactive mode, check that all required parameters are provided
+    if non_interactive:
+        missing_params = []
+        if not homeserver:
+            missing_params.append("--homeserver")
+        if not username:
+            missing_params.append("--username")
+        if not password:
+            missing_params.append("--password")
+
+        if missing_params:
+            print(f"❌ Error: Non-interactive mode requires all parameters: {', '.join(missing_params)}")
+            return 1
+    else:
+        # Show header for interactive mode
+        print("Matrix Bot Authentication for E2EE")
+        print("===================================")
 
     try:
-        # For now, use the existing login function
-        result = asyncio.run(login_matrix_bot())
+        result = asyncio.run(login_matrix_bot(
+            homeserver=homeserver,
+            username=username,
+            password=password,
+            logout_others=False  # Default to not logging out others for non-interactive
+        ))
         return 0 if result else 1
     except KeyboardInterrupt:
         print("\nAuthentication cancelled by user.")
