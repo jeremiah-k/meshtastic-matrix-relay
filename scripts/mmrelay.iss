@@ -154,9 +154,13 @@ begin
   If Not OverwriteConfig.Values[0] then
     Exit;
 
-  if (FileExists(sAppDir + '\config.yaml')) then
+  if FileExists(sAppDir + '\config.yaml') then
   begin
-    RenameFile(sAppDir + '\config.yaml', sAppDir + '\config-old.yaml');
+    if not RenameFile(sAppDir + '\config.yaml', sAppDir + '\config-old.yaml') then
+    begin
+      MsgBox('Could not rename existing "config.yaml". Close any applications that may have it open and re-run setup.', mbError, MB_OK);
+      Abort;
+    end;
   end;
 
   connection_type := LowerCase(Trim(MeshtasticPage.Values[0]));
@@ -215,7 +219,7 @@ begin
   // append password line only when provided
   if MatrixPage.Values[2] <> '' then
   begin
-    config := config + '  password: "' + MatrixPage.Values[2] + '"' + #13#10;
+    config := config + '  password: ''' + StringChange(MatrixPage.Values[2], '''', '''''') + '''' + #13#10;
   end;
   config := config +
             'matrix_rooms:' + #13#10 +
