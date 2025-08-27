@@ -18,9 +18,11 @@ Source: "..\dist\mmrelay.exe"; DestDir: "{app}"; Flags: recursesubdirs createall
 [Icons]
 Name: "{group}\MM Relay"; Filename: "{app}\mmrelay.bat"
 Name: "{group}\MM Relay Config"; Filename: "{app}\config.yaml"; IconFilename: "{sys}\notepad.exe"; WorkingDir: "{app}"; Parameters: "config.yaml";
+Name: "{group}\Setup Authentication"; Filename: "{app}\setup-auth.bat"; Comment: "Set up Matrix authentication for MM Relay"
 
 [Run]
-Filename: "{app}\mmrelay.bat"; Description: "Launch MM Relay"; Flags: nowait postinstall
+Filename: "{app}\setup-auth.bat"; Description: "Set up Matrix authentication (recommended first step)"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\mmrelay.bat"; Description: "Launch MM Relay"; Flags: nowait postinstall skipifsilent unchecked
 
 [Code]
 var
@@ -68,28 +70,24 @@ begin
   OverwriteConfig.Values[0] := False;
 
   MatrixPage.Add('Homeserver (example: https://matrix.org):', False);
-  MatrixPage.Add('Bot user ID (example: @mybotuser:matrix.org):', False);
-  MatrixPage.Add('Access token (example: YOUR_ACCESS_TOKEN_HERE):', False);
+  MatrixPage.Add('Bot username (example: mybotuser):', False);
+  MatrixPage.Add('Password:', True);
 
   TokenInfoLabel := TLabel.Create(WizardForm);
-  TokenInfoLabel.Caption := 'For instructions on where to find your access token, visit:';
+  TokenInfoLabel.Caption := 'MMRelay will use modern authentication (compatible with Matrix 2.0/MAS).';
   TokenInfoLabel.Parent := MatrixPage.Surface;
   TokenInfoLabel.Left := 0;
   TokenInfoLabel.Top := MatrixPage.Edits[2].Top + MatrixPage.Edits[2].Height + 8;
 
   TokenInfoLink := TNewStaticText.Create(WizardForm);
-  TokenInfoLink.Caption := 'https://t2bot.io/docs/access_tokens/';
-  TokenInfoLink.Cursor := crHand;
-  TokenInfoLink.Font.Color := clBlue;
-  TokenInfoLink.Font.Style := [fsUnderline];
-  TokenInfoLink.OnClick := @TokenInfoLinkClick;
+  TokenInfoLink.Caption := 'No access tokens needed - secure OIDC authentication will be used automatically.';
   TokenInfoLink.Parent := MatrixPage.Surface;
   TokenInfoLink.Left := TokenInfoLabel.Left;
   TokenInfoLink.Top := TokenInfoLabel.Top + TokenInfoLabel.Height;
 
   MatrixPage.Edits[0].Hint := 'https://example.matrix.org';
-  MatrixPage.Edits[1].Hint := '@botuser:example.matrix.org';
-  MatrixPage.Edits[2].Hint := 'reaalllllyloooooongsecretttttcodeeeeeeforrrrbot';
+  MatrixPage.Edits[1].Hint := 'mybotuser (without @ or :server)';
+  MatrixPage.Edits[2].Hint := 'Your Matrix account password';
 
   MeshtasticPage.Add('Connection type (network, serial, or ble):', False);
   MeshtasticPage.Add('Serial port (if serial):', False);
@@ -165,8 +163,8 @@ begin
 
   config := 'matrix:' + #13#10 +
             '  homeserver: "' + MatrixPage.Values[0] + '"' + #13#10 +
-            '  bot_user_id: "' + MatrixPage.Values[1] + '"' + #13#10 +
-            '  access_token: "' + MatrixPage.Values[2] + '"' + #13#10 +
+            '  bot_user_id: "@' + MatrixPage.Values[1] + ':' + Copy(MatrixPage.Values[0], Pos('://', MatrixPage.Values[0]) + 3, Length(MatrixPage.Values[0])) + '"' + #13#10 +
+            '  password: "' + MatrixPage.Values[2] + '"' + #13#10 +
             'matrix_rooms:' + #13#10 +
             '  - id: "' + MatrixMeshtasticPage.Values[0] + '"' + #13#10 +
             '    meshtastic_channel: ' + MatrixMeshtasticPage.Values[1] + #13#10 +
@@ -191,11 +189,35 @@ begin
     MsgBox('Could not create config file "config.yaml". Close any applications that may have it open and re-run setup', mbInformation, MB_OK);
   end;
 
-  batch_file := '"' + sAppDir + '\mmrelay.exe" --config config.yaml ' + #13#10 +
+  batch_file := '@echo off' + #13#10 +
+                'cd /d "' + sAppDir + '"' + #13#10 +
+                'echo Starting MM Relay...' + #13#10 +
+                'echo.' + #13#10 +
+                '"' + sAppDir + '\mmrelay.exe" --config "' + sAppDir + '\config.yaml"' + #13#10 +
+                'echo.' + #13#10 +
+                'echo MM Relay has stopped.' + #13#10 +
                 'pause';
 
   if Not SaveStringToFile(sAppDir + '/mmrelay.bat', batch_file, false) then
   begin
-    MsgBox('Could not create batch file "relay.bat". Close any applications that may have it open and re-run setup', mbInformation, MB_OK);
+    MsgBox('Could not create batch file "mmrelay.bat". Close any applications that may have it open and re-run setup', mbInformation, MB_OK);
+  end;
+
+  // Create a setup batch file for authentication
+  batch_file := '@echo off' + #13#10 +
+                'cd /d "' + sAppDir + '"' + #13#10 +
+                'echo MM Relay Authentication Setup' + #13#10 +
+                'echo.' + #13#10 +
+                'echo This will set up secure Matrix authentication for MM Relay.' + #13#10 +
+                'echo Your credentials will be saved to credentials.json' + #13#10 +
+                'echo.' + #13#10 +
+                '"' + sAppDir + '\mmrelay.exe" auth login' + #13#10 +
+                'echo.' + #13#10 +
+                'echo Setup complete! You can now run MM Relay.' + #13#10 +
+                'pause';
+
+  if Not SaveStringToFile(sAppDir + '/setup-auth.bat', batch_file, false) then
+  begin
+    MsgBox('Could not create setup batch file "setup-auth.bat". Close any applications that may have it open and re-run setup', mbInformation, MB_OK);
   end;
 end;

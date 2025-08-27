@@ -196,22 +196,23 @@ mmrelay auth login
 - **Convenience**: No manual token capture from browser sessions required
 - **Secure Storage**: Credentials stored with restricted file permissions (600 on Unix systems)
 
-### Manual Access Token in config.yaml
+### Password-based Authentication in config.yaml
 
-Alternative authentication method using manually captured access tokens.
+Alternative authentication method using password for automatic credential creation.
 
 ```yaml
 # In your config.yaml file
 matrix:
   homeserver: https://matrix.example.org
-  access_token: your_access_token_here  # Captured from browser session
+  password: your_matrix_password  # Your Matrix account password
   bot_user_id: @yourbot:example.org
 ```
 
-**Limitations:**
+**Features:**
 
-- No E2EE support - cannot participate in encrypted Matrix rooms
-- Manual token management - requires capturing access tokens from browser sessions
+- Automatic credentials.json creation on startup
+- Compatible with Matrix 2.0/MAS authentication
+- E2EE support when dependencies are available
 
 ### Authentication Precedence
 
@@ -454,23 +455,17 @@ services:
 - File-based credential storage
 - Flexible operational configuration
 
-### Method 2: Manual Access Token + Environment Variables (No E2EE)
+### Method 2: Password-based Authentication + Environment Variables
 
-Alternative approach using manually captured access tokens. **⚠️ This method cannot participate in encrypted Matrix rooms.**
+Alternative approach using password-based authentication for automatic credential creation.
 
-#### Step 1: Capture access token manually
-
-1. Log into Matrix in your browser
-2. Go to Settings → Help & About → Advanced → Access Token
-3. Copy the access token
-
-#### Step 2: Add to config.yaml
+#### Step 1: Add password to config.yaml
 
 ```yaml
 # In your ~/.mmrelay/config.yaml
 matrix:
   homeserver: https://matrix.example.org
-  access_token: your_captured_access_token_here
+  password: your_matrix_password
   bot_user_id: @yourbot:example.org
 
 matrix_rooms:

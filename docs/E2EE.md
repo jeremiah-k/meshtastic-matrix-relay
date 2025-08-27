@@ -213,15 +213,15 @@ The `credentials.json` file contains:
 
 - **Use Linux or macOS** for full E2EE support
 - **On Windows**: `mmrelay auth login` still works for regular Matrix communication (recommended)
-- **Legacy alternative**: Configure credentials manually in `config.yaml`:
+- **Alternative**: Configure password-based authentication in `config.yaml`:
   ```yaml
   matrix:
     homeserver: https://your-matrix-server.org
-    access_token: your_access_token
+    password: your_matrix_password
     bot_user_id: @yourbot:your-matrix-server.org
   ```
 
-⚠️ **Important**: Manual access tokens may expire on homeservers using Matrix Authentication Service (MAS), including matrix.org. Use `mmrelay auth login` even on Windows for reliable authentication.
+This method automatically creates secure credentials.json and is compatible with Matrix 2.0/MAS. Use `mmrelay auth login` for the most secure interactive setup.
 
 **Note**: Credentials created with `mmrelay auth login` on Windows will work with E2EE if you later use them on Linux/macOS.
 
