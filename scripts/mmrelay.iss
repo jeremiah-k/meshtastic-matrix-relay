@@ -267,7 +267,7 @@ begin
         if LoadStringFromFile(cfgPath, cfgContent) then
         begin
           // Replace the password line with a commented placeholder
-          cfgContent := StringReplace(cfgContent, #13#10 + '  password: ', #13#10 + '  # password (removed after successful auth): ', [rfReplaceAll]);
+          cfgContent := StringReplace(cfgContent, #13#10 + '  password:', #13#10 + '  # password (removed after successful auth):', [rfReplaceAll]);
           SaveStringToFile(cfgPath, cfgContent, False);
         end;
       end
