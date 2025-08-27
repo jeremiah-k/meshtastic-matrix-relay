@@ -140,6 +140,8 @@ var
   bot_user_id: string;
   auth_command: string;
   auth_result: Integer;
+  cfgPath: string;
+  cfgContent: string;
 begin
   If Not OverwriteConfig.Values[0] then
     Exit;
@@ -261,7 +263,6 @@ begin
       begin
         MsgBox('✅ Matrix authentication successful!' + #13#10 + 'MM Relay is ready to use.', mbInformation, MB_OK);
         // Scrub password from config.yaml after successful authentication
-        var cfgPath, cfgContent: string;
         cfgPath := sAppDir + '\config.yaml';
         if LoadStringFromFile(cfgPath, cfgContent) then
         begin
