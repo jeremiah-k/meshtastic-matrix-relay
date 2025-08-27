@@ -138,6 +138,10 @@ var
   ble_address: string;
   log_level: string;
   batch_file: string;
+  HomeserverURL: string;
+  ServerName: string;
+  ProtocolPos: Integer;
+  PathPos: Integer;
 begin
   If Not OverwriteConfig.Values[0] then
     Exit;
@@ -161,9 +165,24 @@ begin
     log_level := 'info';
   end;
 
+  // Parse homeserver URL to extract server name (without path)
+  HomeserverURL := MatrixPage.Values[0];
+
+  // Remove protocol from URL to get server name with path
+  ProtocolPos := Pos('://', HomeserverURL);
+  if ProtocolPos > 0 then
+    ServerName := Copy(HomeserverURL, ProtocolPos + 3, Length(HomeserverURL))
+  else
+    ServerName := HomeserverURL;
+
+  // Remove path from server name
+  PathPos := Pos('/', ServerName);
+  if PathPos > 0 then
+    ServerName := Copy(ServerName, 1, PathPos - 1);
+
   config := 'matrix:' + #13#10 +
             '  homeserver: "' + MatrixPage.Values[0] + '"' + #13#10 +
-            '  bot_user_id: "@' + MatrixPage.Values[1] + ':' + Copy(MatrixPage.Values[0], Pos('://', MatrixPage.Values[0]) + 3, Length(MatrixPage.Values[0])) + '"' + #13#10 +
+            '  bot_user_id: "@' + MatrixPage.Values[1] + ':' + ServerName + '"' + #13#10 +
             '  password: "' + MatrixPage.Values[2] + '"' + #13#10 +
             'matrix_rooms:' + #13#10 +
             '  - id: "' + MatrixMeshtasticPage.Values[0] + '"' + #13#10 +

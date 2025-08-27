@@ -467,6 +467,13 @@ matrix:
   homeserver: https://matrix.example.org
   password: your_matrix_password
   bot_user_id: @yourbot:example.org
+```
+
+**Features:**
+
+- Automatic credentials.json creation on startup
+- Compatible with Matrix 2.0/MAS authentication
+- E2EE support when dependencies are available
 
 matrix_rooms:
   - id: "#yourroom:example.org"
