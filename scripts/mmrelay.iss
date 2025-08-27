@@ -206,10 +206,10 @@ begin
   config := 'matrix:' + #13#10 +
             '  homeserver: "' + HomeserverURL + '"' + #13#10 +
             '  bot_user_id: "' + bot_user_id + '"' + #13#10;
-            // append password line only when provided
-            if MatrixPage.Values[2] <> '' then
-              config := config + '  password: ''' + StringChange(MatrixPage.Values[2], '''', '''''') + '''' + #13#10;
-            config := config +
+  // append password line only when provided
+  if MatrixPage.Values[2] <> '' then
+    config := config + '  password: ''' + StringChange(MatrixPage.Values[2], '''', '''''') + '''' + #13#10;
+  config := config +
             'matrix_rooms:' + #13#10 +
             '  - id: "' + MatrixMeshtasticPage.Values[0] + '"' + #13#10 +
             '    meshtastic_channel: ' + MatrixMeshtasticPage.Values[1] + #13#10 +
