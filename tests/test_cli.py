@@ -1862,5 +1862,420 @@ class TestServiceCommand(unittest.TestCase):
         mock_print.assert_called_once_with("Unknown service command: None")
 
 
+class TestValidateE2EEDependencies(unittest.TestCase):
+    """Test cases for _validate_e2ee_dependencies function."""
+
+    @patch("sys.platform", "win32")
+    @patch("builtins.print")
+    def test_validate_e2ee_dependencies_windows_platform(self, mock_print):
+        """Test E2EE validation on Windows platform (should fail)."""
+        from mmrelay.cli import _validate_e2ee_dependencies
+
+        result = _validate_e2ee_dependencies()
+
+        # Verify results
+        self.assertFalse(result)
+        mock_print.assert_any_call("❌ Error: E2EE is not supported on Windows")
+        mock_print.assert_any_call("   Reason: python-olm library requires native C libraries")
+        mock_print.assert_any_call("   Solution: Use Linux or macOS for E2EE support")
+
+    @patch("sys.platform", "linux")
+    @patch("builtins.print")
+    def test_validate_e2ee_dependencies_linux_success(self, mock_print):
+        """Test E2EE validation on Linux with all dependencies available."""
+        # Mock successful imports
+        with patch.dict("sys.modules", {
+            "olm": MagicMock(),
+            "nio.crypto": MagicMock(),
+            "nio.store": MagicMock()
+        }):
+            from mmrelay.cli import _validate_e2ee_dependencies
+            result = _validate_e2ee_dependencies()
+
+        # Verify results
+        self.assertTrue(result)
+        mock_print.assert_called_once_with("✅ E2EE dependencies are installed")
+
+    @patch("sys.platform", "linux")
+    @patch("builtins.print")
+    def test_validate_e2ee_dependencies_linux_missing_olm(self, mock_print):
+        """Test E2EE validation on Linux with missing olm dependency."""
+        from mmrelay.cli import _validate_e2ee_dependencies
+
+        # Simulate missing olm module by making import fail
+        import builtins
+        original_import = builtins.__import__
+        def mock_import(name, *args, **kwargs):
+            if name == "olm":
+                raise ImportError("No module named 'olm'")
+            return original_import(name, *args, **kwargs)
+
+        with patch("builtins.__import__", side_effect=mock_import):
+            result = _validate_e2ee_dependencies()
+
+        # Verify results
+        self.assertFalse(result)
+        mock_print.assert_any_call("❌ Error: E2EE enabled but dependencies not installed")
+        mock_print.assert_any_call("   Install E2EE support: pipx install 'mmrelay[e2e]'")
+
+    @patch("sys.platform", "darwin")
+    @patch("builtins.print")
+    def test_validate_e2ee_dependencies_macos_success(self, mock_print):
+        """Test E2EE validation on macOS with all dependencies available."""
+        # Mock successful imports
+        with patch.dict("sys.modules", {
+            "olm": MagicMock(),
+            "nio.crypto": MagicMock(),
+            "nio.store": MagicMock()
+        }):
+            from mmrelay.cli import _validate_e2ee_dependencies
+            result = _validate_e2ee_dependencies()
+
+        # Verify results
+        self.assertTrue(result)
+        mock_print.assert_called_once_with("✅ E2EE dependencies are installed")
+
+    @patch("sys.platform", "darwin")
+    @patch("builtins.print")
+    def test_validate_e2ee_dependencies_macos_missing_nio_crypto(self, mock_print):
+        """Test E2EE validation on macOS with missing nio.crypto dependency."""
+        from mmrelay.cli import _validate_e2ee_dependencies
+
+        # Mock successful olm import but failed nio.crypto import
+        import builtins
+        original_import = builtins.__import__
+        def mock_import(name, *args, **kwargs):
+            if name == "olm":
+                return MagicMock()
+            elif "nio.crypto" in name:
+                raise ImportError("No module named 'nio.crypto'")
+            return original_import(name, *args, **kwargs)
+
+        with patch("builtins.__import__", side_effect=mock_import):
+            result = _validate_e2ee_dependencies()
+
+        # Verify results
+        self.assertFalse(result)
+        mock_print.assert_any_call("❌ Error: E2EE enabled but dependencies not installed")
+        mock_print.assert_any_call("   Install E2EE support: pipx install 'mmrelay[e2e]'")
+
+    @patch("sys.platform", "linux")
+    @patch("builtins.print")
+    def test_validate_e2ee_dependencies_linux_missing_nio_store(self, mock_print):
+        """Test E2EE validation on Linux with missing nio.store dependency."""
+        from mmrelay.cli import _validate_e2ee_dependencies
+
+        # Mock successful olm and nio.crypto imports but failed nio.store import
+        import builtins
+        original_import = builtins.__import__
+        def mock_import(name, *args, **kwargs):
+            if name == "olm":
+                return MagicMock()
+            elif "nio.crypto" in name:
+                return MagicMock()
+            elif "nio.store" in name:
+                raise ImportError("No module named 'nio.store'")
+            return original_import(name, *args, **kwargs)
+
+        with patch("builtins.__import__", side_effect=mock_import):
+            result = _validate_e2ee_dependencies()
+
+        # Verify results
+        self.assertFalse(result)
+        mock_print.assert_any_call("❌ Error: E2EE enabled but dependencies not installed")
+        mock_print.assert_any_call("   Install E2EE support: pipx install 'mmrelay[e2e]'")
+
+
+class TestValidateCredentialsJson(unittest.TestCase):
+    """Test cases for _validate_credentials_json function."""
+
+    @patch("os.path.exists")
+    @patch("builtins.open", new_callable=mock_open)
+    @patch("builtins.print")
+    def test_validate_credentials_json_success_same_directory(self, mock_print, mock_file, mock_exists):
+        """Test successful validation when credentials.json is in same directory as config."""
+        # Setup mocks
+        config_path = "/home/user/.mmrelay/config.yaml"
+        mock_exists.return_value = True
+
+        # Mock valid credentials.json content
+        credentials_data = {
+            "homeserver": "https://matrix.org",
+            "access_token": "syt_test_token_123",
+            "user_id": "@bot:matrix.org",
+            "device_id": "DEVICEABC123"
+        }
+        mock_file.return_value.read.return_value = json.dumps(credentials_data)
+
+        # Import and call function
+        from mmrelay.cli import _validate_credentials_json
+        result = _validate_credentials_json(config_path)
+
+        # Verify results
+        self.assertTrue(result)
+        mock_exists.assert_called_once_with("/home/user/.mmrelay/credentials.json")
+        mock_file.assert_called_once_with("/home/user/.mmrelay/credentials.json", "r")
+        mock_print.assert_not_called()  # No error messages on success
+
+    @patch("mmrelay.config.get_base_dir")
+    @patch("os.path.exists")
+    @patch("builtins.open", new_callable=mock_open)
+    @patch("builtins.print")
+    def test_validate_credentials_json_success_standard_location(self, mock_print, mock_file, mock_exists, mock_get_base_dir):
+        """Test successful validation when credentials.json is in standard location."""
+        # Setup mocks
+        config_path = "/etc/mmrelay/config.yaml"  # Different directory
+        mock_get_base_dir.return_value = "/home/user/.mmrelay"
+
+        # First path doesn't exist, second path (standard location) does
+        def mock_exists_side_effect(path):
+            if path == "/etc/mmrelay/credentials.json":
+                return False  # First path (same dir as config) doesn't exist
+            elif path == "/home/user/.mmrelay/credentials.json":
+                return True   # Standard location exists
+            return False
+        mock_exists.side_effect = mock_exists_side_effect
+
+        # Mock valid credentials.json content
+        credentials_data = {
+            "homeserver": "https://matrix.example.com",
+            "access_token": "syt_example_token_456",
+            "user_id": "@relay:example.com",
+            "device_id": "DEVICE456"
+        }
+        mock_file.return_value.read.return_value = json.dumps(credentials_data)
+
+        # Import and call function
+        from mmrelay.cli import _validate_credentials_json
+        result = _validate_credentials_json(config_path)
+
+        # Verify results
+        self.assertTrue(result)
+        mock_get_base_dir.assert_called_once()
+        mock_print.assert_not_called()  # No error messages on success
+
+    @patch("mmrelay.config.get_base_dir")
+    @patch("os.path.exists")
+    @patch("builtins.print")
+    def test_validate_credentials_json_file_not_found(self, mock_print, mock_exists, mock_get_base_dir):
+        """Test validation when credentials.json is not found in either location."""
+        # Setup mocks
+        config_path = "/home/user/.mmrelay/config.yaml"
+        mock_get_base_dir.return_value = "/home/user/.mmrelay"
+        mock_exists.return_value = False  # File doesn't exist anywhere
+
+        # Import and call function
+        from mmrelay.cli import _validate_credentials_json
+        result = _validate_credentials_json(config_path)
+
+        # Verify results
+        self.assertFalse(result)
+        # Should check both locations
+        expected_calls = [
+            unittest.mock.call("/home/user/.mmrelay/credentials.json"),
+            unittest.mock.call("/home/user/.mmrelay/credentials.json")
+        ]
+        mock_exists.assert_has_calls(expected_calls)
+        mock_print.assert_not_called()  # Function doesn't print on file not found
+
+    @patch("os.path.exists")
+    @patch("builtins.open", new_callable=mock_open)
+    @patch("builtins.print")
+    def test_validate_credentials_json_invalid_json(self, mock_print, mock_file, mock_exists):
+        """Test validation when credentials.json contains invalid JSON."""
+        # Setup mocks
+        config_path = "/home/user/.mmrelay/config.yaml"
+        mock_exists.return_value = True
+        mock_file.return_value.read.return_value = "invalid json content"
+        mock_file.side_effect = json.JSONDecodeError("Invalid JSON", "doc", 0)
+
+        # Import and call function
+        from mmrelay.cli import _validate_credentials_json
+        result = _validate_credentials_json(config_path)
+
+        # Verify results
+        self.assertFalse(result)
+        mock_print.assert_any_call("❌ Error: Could not validate credentials.json: Invalid JSON: line 1 column 1 (char 0)")
+
+    @patch("os.path.exists")
+    @patch("builtins.open", new_callable=mock_open)
+    @patch("builtins.print")
+    def test_validate_credentials_json_missing_homeserver(self, mock_print, mock_file, mock_exists):
+        """Test validation when credentials.json is missing homeserver field."""
+        # Setup mocks
+        config_path = "/home/user/.mmrelay/config.yaml"
+        mock_exists.return_value = True
+
+        # Mock credentials with missing homeserver
+        credentials_data = {
+            "access_token": "syt_test_token_123",
+            "user_id": "@bot:matrix.org",
+            "device_id": "DEVICEABC123"
+            # Missing homeserver
+        }
+        mock_file.return_value.read.return_value = json.dumps(credentials_data)
+
+        # Import and call function
+        from mmrelay.cli import _validate_credentials_json
+        result = _validate_credentials_json(config_path)
+
+        # Verify results
+        self.assertFalse(result)
+        mock_print.assert_any_call("❌ Error: credentials.json missing required fields: homeserver")
+        mock_print.assert_any_call("   Please run 'mmrelay auth login' again to generate new credentials that include a device_id.")
+
+    @patch("os.path.exists")
+    @patch("builtins.open", new_callable=mock_open)
+    @patch("builtins.print")
+    def test_validate_credentials_json_missing_access_token(self, mock_print, mock_file, mock_exists):
+        """Test validation when credentials.json is missing access_token field."""
+        # Setup mocks
+        config_path = "/home/user/.mmrelay/config.yaml"
+        mock_exists.return_value = True
+
+        # Mock credentials with missing access_token
+        credentials_data = {
+            "homeserver": "https://matrix.org",
+            "user_id": "@bot:matrix.org",
+            "device_id": "DEVICEABC123"
+            # Missing access_token
+        }
+        mock_file.return_value.read.return_value = json.dumps(credentials_data)
+
+        # Import and call function
+        from mmrelay.cli import _validate_credentials_json
+        result = _validate_credentials_json(config_path)
+
+        # Verify results
+        self.assertFalse(result)
+        mock_print.assert_any_call("❌ Error: credentials.json missing required fields: access_token")
+        mock_print.assert_any_call("   Please run 'mmrelay auth login' again to generate new credentials that include a device_id.")
+
+    @patch("os.path.exists")
+    @patch("builtins.open", new_callable=mock_open)
+    @patch("builtins.print")
+    def test_validate_credentials_json_missing_user_id(self, mock_print, mock_file, mock_exists):
+        """Test validation when credentials.json is missing user_id field."""
+        # Setup mocks
+        config_path = "/home/user/.mmrelay/config.yaml"
+        mock_exists.return_value = True
+
+        # Mock credentials with missing user_id
+        credentials_data = {
+            "homeserver": "https://matrix.org",
+            "access_token": "syt_test_token_123",
+            "device_id": "DEVICEABC123"
+            # Missing user_id
+        }
+        mock_file.return_value.read.return_value = json.dumps(credentials_data)
+
+        # Import and call function
+        from mmrelay.cli import _validate_credentials_json
+        result = _validate_credentials_json(config_path)
+
+        # Verify results
+        self.assertFalse(result)
+        mock_print.assert_any_call("❌ Error: credentials.json missing required fields: user_id")
+        mock_print.assert_any_call("   Please run 'mmrelay auth login' again to generate new credentials that include a device_id.")
+
+    @patch("os.path.exists")
+    @patch("builtins.open", new_callable=mock_open)
+    @patch("builtins.print")
+    def test_validate_credentials_json_missing_device_id(self, mock_print, mock_file, mock_exists):
+        """Test validation when credentials.json is missing device_id field."""
+        # Setup mocks
+        config_path = "/home/user/.mmrelay/config.yaml"
+        mock_exists.return_value = True
+
+        # Mock credentials with missing device_id
+        credentials_data = {
+            "homeserver": "https://matrix.org",
+            "access_token": "syt_test_token_123",
+            "user_id": "@bot:matrix.org"
+            # Missing device_id
+        }
+        mock_file.return_value.read.return_value = json.dumps(credentials_data)
+
+        # Import and call function
+        from mmrelay.cli import _validate_credentials_json
+        result = _validate_credentials_json(config_path)
+
+        # Verify results
+        self.assertFalse(result)
+        mock_print.assert_any_call("❌ Error: credentials.json missing required fields: device_id")
+        mock_print.assert_any_call("   Please run 'mmrelay auth login' again to generate new credentials that include a device_id.")
+
+    @patch("os.path.exists")
+    @patch("builtins.open", new_callable=mock_open)
+    @patch("builtins.print")
+    def test_validate_credentials_json_empty_field_values(self, mock_print, mock_file, mock_exists):
+        """Test validation when credentials.json has empty field values."""
+        # Setup mocks
+        config_path = "/home/user/.mmrelay/config.yaml"
+        mock_exists.return_value = True
+
+        # Mock credentials with empty homeserver field
+        credentials_data = {
+            "homeserver": "",  # Empty value
+            "access_token": "syt_test_token_123",
+            "user_id": "@bot:matrix.org",
+            "device_id": "DEVICEABC123"
+        }
+        mock_file.return_value.read.return_value = json.dumps(credentials_data)
+
+        # Import and call function
+        from mmrelay.cli import _validate_credentials_json
+        result = _validate_credentials_json(config_path)
+
+        # Verify results
+        self.assertFalse(result)
+        mock_print.assert_any_call("❌ Error: credentials.json missing required fields: homeserver")
+        mock_print.assert_any_call("   Please run 'mmrelay auth login' again to generate new credentials that include a device_id.")
+
+    @patch("os.path.exists")
+    @patch("builtins.print")
+    def test_validate_credentials_json_file_read_error(self, mock_print, mock_exists):
+        """Test validation when credentials.json cannot be read due to permissions or other IO error."""
+        # Setup mocks
+        config_path = "/home/user/.mmrelay/config.yaml"
+        mock_exists.return_value = True
+
+        # Mock file read error
+        with patch("builtins.open", side_effect=IOError("Permission denied")):
+            # Import and call function
+            from mmrelay.cli import _validate_credentials_json
+            result = _validate_credentials_json(config_path)
+
+        # Verify results
+        self.assertFalse(result)
+        mock_print.assert_any_call("❌ Error: Could not validate credentials.json: Permission denied")
+
+    @patch("os.path.exists")
+    @patch("builtins.open", new_callable=mock_open)
+    @patch("builtins.print")
+    def test_validate_credentials_json_multiple_missing_fields(self, mock_print, mock_file, mock_exists):
+        """Test validation when credentials.json is missing multiple fields (should report first missing)."""
+        # Setup mocks
+        config_path = "/home/user/.mmrelay/config.yaml"
+        mock_exists.return_value = True
+
+        # Mock credentials with multiple missing fields
+        credentials_data = {
+            "homeserver": "https://matrix.org"
+            # Missing access_token, user_id, device_id
+        }
+        mock_file.return_value.read.return_value = json.dumps(credentials_data)
+
+        # Import and call function
+        from mmrelay.cli import _validate_credentials_json
+        result = _validate_credentials_json(config_path)
+
+        # Verify results
+        self.assertFalse(result)
+        # Should report all missing fields
+        mock_print.assert_any_call("❌ Error: credentials.json missing required fields: access_token, user_id, device_id")
+        mock_print.assert_any_call("   Please run 'mmrelay auth login' again to generate new credentials that include a device_id.")
+
+
 if __name__ == "__main__":
     unittest.main()
