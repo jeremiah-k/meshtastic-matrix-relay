@@ -144,6 +144,7 @@ var
   cfgContent: string;
   cfgLines: TArrayOfString;
   i: Integer;
+  SafePwd: string;
 begin
   If Not OverwriteConfig.Values[0] then
     Exit;
@@ -183,13 +184,13 @@ begin
 
   // Build bot_user_id (accept full MXID if provided)
   bot_user_id := Trim(MatrixPage.Values[1]);
-  if (Pos('@', bot_user_id) = 1) and (Pos(':', bot_user_id) > 0) then
+  if (Pos(':', bot_user_id) > 0) then
   begin
-    // use as-is (already a full MXID)
+    if (Length(bot_user_id) = 0) or (bot_user_id[1] <> '@') then
+      bot_user_id := '@' + bot_user_id;
   end
   else
   begin
-    // strip accidental leading '@'
     if (Length(bot_user_id) > 0) and (bot_user_id[1] = '@') then
       bot_user_id := Copy(bot_user_id, 2, MaxInt);
     bot_user_id := '@' + bot_user_id + ':' + ServerName;
@@ -198,7 +199,7 @@ begin
   config := 'matrix:' + #13#10 +
             '  homeserver: "' + HomeserverURL + '"' + #13#10 +
             '  bot_user_id: "' + bot_user_id + '"' + #13#10 +
-            '  password: "' + MatrixPage.Values[2] + '"' + #13#10 +
+            '  password: ''' + StringReplace(MatrixPage.Values[2], '''', '''''', [rfReplaceAll]) + '''' + #13#10 +
             'matrix_rooms:' + #13#10 +
             '  - id: "' + MatrixMeshtasticPage.Values[0] + '"' + #13#10 +
             '    meshtastic_channel: ' + MatrixMeshtasticPage.Values[1] + #13#10 +
@@ -253,7 +254,7 @@ begin
   end;
 
   // Set up Matrix authentication directly during installation
-  if (MatrixPage.Values[0] <> '') and (MatrixPage.Values[1] <> '') and (MatrixPage.Values[2] <> '') then
+  if (HomeserverURL <> '') and (MatrixPage.Values[1] <> '') and (MatrixPage.Values[2] <> '') then
   begin
     if Pos('"', MatrixPage.Values[2]) > 0 then
     begin
@@ -264,7 +265,10 @@ begin
       // Run authentication command (auto-detects non-interactive mode when all params provided)
       // bot_user_id was already constructed earlier for config generation
       // Build params without invoking a shell
-      auth_command := 'auth login --homeserver "' + HomeserverURL + '" --username "' + bot_user_id + '" --password "' + MatrixPage.Values[2] + '"';
+      // Escape embedded quotes for CLI
+      SafePwd := MatrixPage.Values[2];
+      SafePwd := StringReplace(SafePwd, '"', '""', [rfReplaceAll]);
+      auth_command := 'auth login --homeserver "' + HomeserverURL + '" --username "' + bot_user_id + '" --password "' + SafePwd + '"';
       if Exec('"' + sAppDir + '\mmrelay.exe"', auth_command, sAppDir, SW_HIDE, ewWaitUntilTerminated, auth_result) then
     begin
       if auth_result = 0 then
