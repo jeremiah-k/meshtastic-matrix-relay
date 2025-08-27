@@ -32,6 +32,7 @@ from mmrelay.cli import (
     check_config,
     generate_sample_config,
     get_version,
+    handle_auth_login,
     handle_auth_logout,
     handle_cli_commands,
     main,
@@ -87,6 +88,39 @@ class TestCLI(unittest.TestCase):
             self.assertTrue(args.generate_config)
             self.assertTrue(args.install_service)
             self.assertTrue(args.check_config)
+
+    def test_parse_arguments_auth_login_parameters(self):
+        """Test parsing of auth login subcommand parameters."""
+        with patch(
+            "sys.argv",
+            [
+                "mmrelay",
+                "auth",
+                "login",
+                "--homeserver",
+                "https://matrix.org",
+                "--username",
+                "@bot:matrix.org",
+                "--password",
+                "secret123",
+            ],
+        ):
+            args = parse_arguments()
+            self.assertEqual(args.command, "auth")
+            self.assertEqual(args.auth_command, "login")
+            self.assertEqual(args.homeserver, "https://matrix.org")
+            self.assertEqual(args.username, "@bot:matrix.org")
+            self.assertEqual(args.password, "secret123")
+
+    def test_parse_arguments_auth_login_no_parameters(self):
+        """Test parsing of auth login subcommand without parameters."""
+        with patch("sys.argv", ["mmrelay", "auth", "login"]):
+            args = parse_arguments()
+            self.assertEqual(args.command, "auth")
+            self.assertEqual(args.auth_command, "login")
+            self.assertIsNone(args.homeserver)
+            self.assertIsNone(args.username)
+            self.assertIsNone(args.password)
 
     @patch("mmrelay.cli._validate_credentials_json")
     @patch("mmrelay.config.os.makedirs")
@@ -1289,6 +1323,269 @@ class TestAuthLogout(unittest.TestCase):
             mock_print.assert_any_call("• Remove credentials.json")
             mock_print.assert_any_call("• Clear E2EE encryption store")
             mock_print.assert_any_call("• Invalidate Matrix access token")
+
+
+class TestAuthLogin(unittest.TestCase):
+    """Test cases for handle_auth_login function."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.mock_args = MagicMock()
+        self.mock_args.homeserver = None
+        self.mock_args.username = None
+        self.mock_args.password = None
+
+    @patch("mmrelay.matrix_utils.login_matrix_bot")
+    @patch("builtins.print")
+    def test_handle_auth_login_interactive_mode_success(self, mock_print, mock_login):
+        """Test interactive mode (no parameters) with successful login."""
+        # ASYNC MOCK FIX: Return value directly, not a coroutine
+        mock_login.return_value = True
+
+        # Call function with no parameters (interactive mode)
+        result = handle_auth_login(self.mock_args)
+
+        # Verify results
+        self.assertEqual(result, 0)
+        mock_login.assert_called_once_with(
+            homeserver=None,
+            username=None,
+            password=None,
+            logout_others=False
+        )
+        # Check that header was printed for interactive mode
+        mock_print.assert_any_call("Matrix Bot Authentication for E2EE")
+        mock_print.assert_any_call("===================================")
+
+    @patch("mmrelay.matrix_utils.login_matrix_bot")
+    @patch("builtins.print")
+    def test_handle_auth_login_interactive_mode_failure(self, mock_print, mock_login):
+        """Test interactive mode with failed login."""
+        # ASYNC MOCK FIX: Return value directly, not a coroutine
+        mock_login.return_value = False
+
+        # Call function
+        result = handle_auth_login(self.mock_args)
+
+        # Verify results
+        self.assertEqual(result, 1)
+        mock_login.assert_called_once_with(
+            homeserver=None,
+            username=None,
+            password=None,
+            logout_others=False
+        )
+
+    @patch("mmrelay.matrix_utils.login_matrix_bot")
+    @patch("builtins.print")
+    def test_handle_auth_login_non_interactive_mode_success(self, mock_print, mock_login):
+        """Test non-interactive mode (all parameters provided) with successful login."""
+        # ASYNC MOCK FIX: Return value directly, not a coroutine
+        mock_login.return_value = True
+
+        # Set all parameters for non-interactive mode
+        self.mock_args.homeserver = "https://matrix.org"
+        self.mock_args.username = "@bot:matrix.org"
+        self.mock_args.password = "secret123"
+
+        # Call function
+        result = handle_auth_login(self.mock_args)
+
+        # Verify results
+        self.assertEqual(result, 0)
+        mock_login.assert_called_once_with(
+            homeserver="https://matrix.org",
+            username="@bot:matrix.org",
+            password="secret123",
+            logout_others=False
+        )
+        # Should NOT print header in non-interactive mode
+        mock_print.assert_not_called()
+
+    @patch("mmrelay.matrix_utils.login_matrix_bot")
+    @patch("builtins.print")
+    def test_handle_auth_login_non_interactive_mode_failure(self, mock_print, mock_login):
+        """Test non-interactive mode with failed login."""
+        # ASYNC MOCK FIX: Return value directly, not a coroutine
+        mock_login.return_value = False
+
+        # Set all parameters
+        self.mock_args.homeserver = "https://matrix.org"
+        self.mock_args.username = "@bot:matrix.org"
+        self.mock_args.password = "secret123"
+
+        # Call function
+        result = handle_auth_login(self.mock_args)
+
+        # Verify results
+        self.assertEqual(result, 1)
+        mock_login.assert_called_once()
+
+    @patch("builtins.print")
+    def test_handle_auth_login_partial_params_homeserver_only(self, mock_print):
+        """Test error handling when only homeserver is provided."""
+        self.mock_args.homeserver = "https://matrix.org"
+        # username and password remain None
+
+        # Call function
+        result = handle_auth_login(self.mock_args)
+
+        # Verify results
+        self.assertEqual(result, 1)
+        # Check error message content
+        mock_print.assert_any_call("❌ Error: All authentication parameters are required when using command-line options.")
+        mock_print.assert_any_call("   Missing: --username, --password")
+
+    @patch("builtins.print")
+    def test_handle_auth_login_partial_params_username_only(self, mock_print):
+        """Test error handling when only username is provided."""
+        self.mock_args.username = "@bot:matrix.org"
+        # homeserver and password remain None
+
+        # Call function
+        result = handle_auth_login(self.mock_args)
+
+        # Verify results
+        self.assertEqual(result, 1)
+        # Check error message content
+        mock_print.assert_any_call("❌ Error: All authentication parameters are required when using command-line options.")
+        mock_print.assert_any_call("   Missing: --homeserver, --password")
+
+    @patch("builtins.print")
+    def test_handle_auth_login_partial_params_password_only(self, mock_print):
+        """Test error handling when only password is provided."""
+        self.mock_args.password = "secret123"
+        # homeserver and username remain None
+
+        # Call function
+        result = handle_auth_login(self.mock_args)
+
+        # Verify results
+        self.assertEqual(result, 1)
+        # Check error message content
+        mock_print.assert_any_call("❌ Error: All authentication parameters are required when using command-line options.")
+        mock_print.assert_any_call("   Missing: --homeserver, --username")
+
+    @patch("builtins.print")
+    def test_handle_auth_login_partial_params_homeserver_username(self, mock_print):
+        """Test error handling when homeserver and username provided but password missing."""
+        self.mock_args.homeserver = "https://matrix.org"
+        self.mock_args.username = "@bot:matrix.org"
+        # password remains None
+
+        # Call function
+        result = handle_auth_login(self.mock_args)
+
+        # Verify results
+        self.assertEqual(result, 1)
+        # Check error message content
+        mock_print.assert_any_call("❌ Error: All authentication parameters are required when using command-line options.")
+        mock_print.assert_any_call("   Missing: --password")
+
+    @patch("builtins.print")
+    def test_handle_auth_login_partial_params_homeserver_password(self, mock_print):
+        """Test error handling when homeserver and password provided but username missing."""
+        self.mock_args.homeserver = "https://matrix.org"
+        self.mock_args.password = "secret123"
+        # username remains None
+
+        # Call function
+        result = handle_auth_login(self.mock_args)
+
+        # Verify results
+        self.assertEqual(result, 1)
+        # Check error message content
+        mock_print.assert_any_call("❌ Error: All authentication parameters are required when using command-line options.")
+        mock_print.assert_any_call("   Missing: --username")
+
+    @patch("builtins.print")
+    def test_handle_auth_login_partial_params_username_password(self, mock_print):
+        """Test error handling when username and password provided but homeserver missing."""
+        self.mock_args.username = "@bot:matrix.org"
+        self.mock_args.password = "secret123"
+        # homeserver remains None
+
+        # Call function
+        result = handle_auth_login(self.mock_args)
+
+        # Verify results
+        self.assertEqual(result, 1)
+        # Check error message content
+        mock_print.assert_any_call("❌ Error: All authentication parameters are required when using command-line options.")
+        mock_print.assert_any_call("   Missing: --homeserver")
+
+    @patch("builtins.print")
+    def test_handle_auth_login_error_message_guidance(self, mock_print):
+        """Test that error messages include helpful guidance."""
+        self.mock_args.homeserver = "https://matrix.org"
+        # username and password remain None
+
+        # Call function
+        result = handle_auth_login(self.mock_args)
+
+        # Verify results
+        self.assertEqual(result, 1)
+        # Check that guidance messages are included
+        mock_print.assert_any_call("💡 Options:")
+        mock_print.assert_any_call("   • For secure interactive authentication: mmrelay auth login")
+        mock_print.assert_any_call("   • For automated authentication: provide all three parameters")
+        mock_print.assert_any_call("⚠️  Security Note: Command-line passwords may be visible in process lists and shell history.")
+        mock_print.assert_any_call("   Interactive mode is recommended for manual use.")
+
+    @patch("mmrelay.matrix_utils.login_matrix_bot")
+    @patch("builtins.print")
+    def test_handle_auth_login_keyboard_interrupt(self, mock_print, mock_login):
+        """Test handling of KeyboardInterrupt during login."""
+        # ASYNC MOCK FIX: Make the mock raise KeyboardInterrupt when called
+        mock_login.side_effect = KeyboardInterrupt()
+
+        # Call function
+        result = handle_auth_login(self.mock_args)
+
+        # Verify results
+        self.assertEqual(result, 1)
+        mock_print.assert_any_call("\nAuthentication cancelled by user.")
+
+    @patch("mmrelay.matrix_utils.login_matrix_bot")
+    @patch("builtins.print")
+    def test_handle_auth_login_general_exception(self, mock_print, mock_login):
+        """Test handling of general exceptions during login."""
+        # ASYNC MOCK FIX: Make the mock raise Exception when called
+        mock_login.side_effect = Exception("Test error")
+
+        # Call function
+        result = handle_auth_login(self.mock_args)
+
+        # Verify results
+        self.assertEqual(result, 1)
+        mock_print.assert_any_call("\nError during authentication: Test error")
+
+    @patch("mmrelay.matrix_utils.login_matrix_bot")
+    @patch("builtins.print")
+    def test_handle_auth_login_empty_string_parameters(self, mock_print, mock_login):
+        """Test that empty string parameters are treated as None."""
+        # ASYNC MOCK FIX: Return value directly, not a coroutine
+        mock_login.return_value = True
+
+        # Set parameters to empty strings
+        self.mock_args.homeserver = ""
+        self.mock_args.username = ""
+        self.mock_args.password = ""
+
+        # Call function (should be treated as interactive mode)
+        result = handle_auth_login(self.mock_args)
+
+        # Verify results
+        self.assertEqual(result, 0)
+        mock_login.assert_called_once_with(
+            homeserver="",
+            username="",
+            password="",
+            logout_others=False
+        )
+        # Should print header for interactive mode
+        mock_print.assert_any_call("Matrix Bot Authentication for E2EE")
+        mock_print.assert_any_call("===================================")
 
 
 if __name__ == "__main__":
