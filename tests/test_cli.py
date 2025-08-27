@@ -2688,7 +2688,7 @@ class TestValidateMatrixAuthentication(unittest.TestCase):
         self.assertFalse(result)  # Function now correctly rejects empty strings
         mock_validate_creds.assert_called_once_with(config_path)
         mock_print.assert_any_call("❌ Error: No Matrix authentication configured")
-        mock_print.assert_any_call("   E2EE not available with access_token")
+        mock_print.assert_any_call("   Setup: mmrelay auth login")
 
 
 class TestHandleCliCommands(unittest.TestCase):

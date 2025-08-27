@@ -278,8 +278,8 @@ begin
     // bot_user_id was already constructed earlier for config generation
     // Build params without invoking a shell
     // Escape embedded quotes for CLI (CreateProcess-compatible)
-    SafeHomeserver := StringChange(HomeserverURL, '"', '""');
-    SafeUser := StringChange(bot_user_id, '"', '""');
+    SafeHomeserver := StringChange(MatrixPage.Values[0], '"', '""');
+    SafeUser := StringChange(MatrixPage.Values[1], '"', '""');
     SafePwd := StringChange(MatrixPage.Values[2], '"', '""');
     auth_command := 'auth login --homeserver "' + SafeHomeserver + '" --username "' + SafeUser + '" --password "' + SafePwd + '"';
       if Exec('"' + sAppDir + '\mmrelay.exe"', auth_command, sAppDir, SW_HIDE, ewWaitUntilTerminated, auth_result) then
