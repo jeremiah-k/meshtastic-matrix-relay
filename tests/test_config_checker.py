@@ -387,7 +387,7 @@ class TestConfigChecker(unittest.TestCase):
 
         self.assertFalse(result)
         mock_print.assert_any_call(
-            "Error: Missing required fields in 'matrix' section: access_token, bot_user_id"
+            "Error: Missing authentication in 'matrix' section: provide either 'access_token' or 'password'"
         )
 
     @patch("mmrelay.cli.parse_arguments")

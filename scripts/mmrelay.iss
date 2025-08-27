@@ -243,13 +243,30 @@ begin
   begin
     // Run authentication command (auto-detects non-interactive mode when all params provided)
     // bot_user_id was already constructed earlier for config generation
-    auth_command := '"' + sAppDir + '\mmrelay.exe" auth login --homeserver "' + MatrixPage.Values[0] + '" --username "' + bot_user_id + '" --password "' + MatrixPage.Values[2] + '"';
+    auth_command := '"' + sAppDir + '\mmrelay.exe" auth login --homeserver "' + MatrixPage.Values[0] + '" --username "' + bot_user_id + '" --password "' + StringChange(MatrixPage.Values[2], '"', '""') + '"';
 
     if Exec('cmd.exe', '/c ' + auth_command, sAppDir, SW_HIDE, ewWaitUntilTerminated, auth_result) then
     begin
       if auth_result = 0 then
       begin
         MsgBox('✅ Matrix authentication successful!' + #13#10 + 'MM Relay is ready to use.', mbInformation, MB_OK);
+        // Scrub password from config.yaml after successful auth
+        var
+          cfgPath, cfgContent: string;
+        begin
+          cfgPath := sAppDir + '\config.yaml';
+          if LoadStringFromFile(cfgPath, cfgContent) then
+          begin
+            // Comment out any 'password:' line under matrix section
+            StringChangeEx(
+              cfgContent,
+              #13#10 + '  password:',
+              #13#10 + '  # password (removed after successful auth):',
+              True
+            );
+            SaveStringToFile(cfgPath, cfgContent, False);
+          end;
+        end;
       end
       else
       begin
