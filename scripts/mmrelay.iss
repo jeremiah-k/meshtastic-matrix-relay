@@ -147,6 +147,9 @@ var
   SafeHomeserver: string;
   SafeUser: string;
   SafePwd: string;
+  newLines: TArrayOfString;
+  newIndex: Integer;
+  tempPath: string;
 begin
   If Not OverwriteConfig.Values[0] then
     Exit;
@@ -212,7 +215,7 @@ begin
   // append password line only when provided
   if MatrixPage.Values[2] <> '' then
   begin
-    config := config + '  password: ' + AddQuotes(StringChange(MatrixPage.Values[2], '''', '''''')) + #13#10;
+    config := config + '  password: "' + MatrixPage.Values[2] + '"' + #13#10;
   end;
   config := config +
             'matrix_rooms:' + #13#10 +
@@ -289,8 +292,6 @@ begin
         if LoadStringsFromFile(cfgPath, cfgLines) then
         begin
           // Remove any line that contains password entirely
-          var newLines: TArrayOfString;
-          var newIndex: Integer;
           newIndex := 0;
           SetArrayLength(newLines, GetArrayLength(cfgLines));
           for i := 0 to GetArrayLength(cfgLines) - 1 do
@@ -304,7 +305,6 @@ begin
           SetArrayLength(newLines, newIndex);
           cfgLines := newLines;
           // Atomic file replacement to prevent corruption
-          var tempPath: string;
           tempPath := cfgPath + '.tmp';
           if SaveStringsToFile(tempPath, cfgLines, False) then
           begin
