@@ -208,7 +208,7 @@ begin
             '  bot_user_id: "' + bot_user_id + '"' + #13#10;
   // append password line only when provided
   if MatrixPage.Values[2] <> '' then
-    config := config + '  password: ''' + StringChange(MatrixPage.Values[2], '''', '''''') + '''' + #13#10;
+    config := config + '  password: ''' + StringChange(MatrixPage.Values[2], '''', ''''''') + '''' + #13#10;
   config := config +
             'matrix_rooms:' + #13#10 +
             '  - id: "' + MatrixMeshtasticPage.Values[0] + '"' + #13#10 +
