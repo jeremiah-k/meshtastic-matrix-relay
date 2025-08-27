@@ -243,7 +243,7 @@ begin
                 'echo MM Relay has stopped.' + #13#10 +
                 'pause';
 
-  if Not SaveStringToFile(sAppDir + '/mmrelay.bat', batch_file, false) then
+  if Not SaveStringToFile(sAppDir + '\mmrelay.bat', batch_file, false) then
   begin
     MsgBox('Could not create batch file "mmrelay.bat". Close any applications that may have it open and re-run setup', mbError, MB_OK);
   end;
@@ -258,7 +258,7 @@ begin
                       'echo Authentication setup complete.' + #13#10 +
                       'pause';
 
-  if Not SaveStringToFile(sAppDir + '/setup-auth.bat', setup_auth_batch, false) then
+  if Not SaveStringToFile(sAppDir + '\setup-auth.bat', setup_auth_batch, false) then
   begin
     MsgBox('Could not create setup batch file "setup-auth.bat". Close any applications that may have it open and re-run setup', mbError, MB_OK);
   end;
