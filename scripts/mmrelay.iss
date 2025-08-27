@@ -83,13 +83,13 @@ begin
   MatrixPage.Edits[1].Hint := 'mybotuser (without @ or :server)';
   MatrixPage.Edits[2].Hint := 'Your Matrix account password';
 
-  MeshtasticPage.Add('Connection type (network, serial, or ble):', False);
+  MeshtasticPage.Add('Connection type (tcp, serial, or ble):', False);
   MeshtasticPage.Add('Serial port (if serial):', False);
   MeshtasticPage.Add('Hostname/IP (if network):', False);
   MeshtasticPage.Add('BLE address/name (if ble):', False);
   MeshtasticPage.Add('Meshnet name:', False);
 
-  MeshtasticPage.Edits[0].Hint := 'network, serial, or ble';
+  MeshtasticPage.Edits[0].Hint := 'tcp (recommended), serial, or ble';
   MeshtasticPage.Edits[1].Hint := 'serial port (if serial)';
   MeshtasticPage.Edits[2].Hint := 'hostname/IP (if network)';
   MeshtasticPage.Edits[3].Hint := 'BLE address or name (if ble)';
@@ -163,23 +163,33 @@ begin
     log_level := 'info';
   end;
 
-  // Parse homeserver URL to extract server name (without path)
-  HomeserverURL := MatrixPage.Values[0];
+  // Normalize homeserver (default https when scheme missing)
+  HomeserverURL := Trim(MatrixPage.Values[0]);
+  if Pos('://', HomeserverURL) = 0 then
+    HomeserverURL := 'https://' + HomeserverURL;
 
-  // Remove protocol from URL to get server name with path
-  ProtocolPos := Pos('://', HomeserverURL);
+  // Extract host from URL (strip scheme and any path)
+  ServerName := HomeserverURL;
+  ProtocolPos := Pos('://', ServerName);
   if ProtocolPos > 0 then
-    ServerName := Copy(HomeserverURL, ProtocolPos + 3, Length(HomeserverURL))
-  else
-    ServerName := HomeserverURL;
-
-  // Remove path from server name
+    ServerName := Copy(ServerName, ProtocolPos + 3, MaxInt);
   PathPos := Pos('/', ServerName);
   if PathPos > 0 then
     ServerName := Copy(ServerName, 1, PathPos - 1);
 
-  // Build the full bot user ID for use in config and auth command
-  bot_user_id := '@' + MatrixPage.Values[1] + ':' + ServerName;
+  // Build bot_user_id (accept full MXID if provided)
+  bot_user_id := Trim(MatrixPage.Values[1]);
+  if (Pos('@', bot_user_id) = 1) and (Pos(':', bot_user_id) > 0) then
+  begin
+    // use as-is (already a full MXID)
+  end
+  else
+  begin
+    // strip accidental leading '@'
+    if (Length(bot_user_id) > 0) and (bot_user_id[1] = '@') then
+      bot_user_id := Copy(bot_user_id, 2, MaxInt);
+    bot_user_id := '@' + bot_user_id + ':' + ServerName;
+  end;
 
   config := 'matrix:' + #13#10 +
             '  homeserver: "' + MatrixPage.Values[0] + '"' + #13#10 +
@@ -243,29 +253,21 @@ begin
   begin
     // Run authentication command (auto-detects non-interactive mode when all params provided)
     // bot_user_id was already constructed earlier for config generation
-    auth_command := '"' + sAppDir + '\mmrelay.exe" auth login --homeserver "' + MatrixPage.Values[0] + '" --username "' + bot_user_id + '" --password "' + StringChange(MatrixPage.Values[2], '"', '""') + '"';
-
-    if Exec('cmd.exe', '/c ' + auth_command, sAppDir, SW_HIDE, ewWaitUntilTerminated, auth_result) then
+    // Build params without invoking a shell
+    auth_command := 'auth login --homeserver "' + MatrixPage.Values[0] + '" --username "' + bot_user_id + '" --password "' + MatrixPage.Values[2] + '"';
+    if Exec('"' + sAppDir + '\mmrelay.exe"', auth_command, sAppDir, SW_HIDE, ewWaitUntilTerminated, auth_result) then
     begin
       if auth_result = 0 then
       begin
         MsgBox('✅ Matrix authentication successful!' + #13#10 + 'MM Relay is ready to use.', mbInformation, MB_OK);
-        // Scrub password from config.yaml after successful auth
-        var
-          cfgPath, cfgContent: string;
+        // Scrub password from config.yaml after successful authentication
+        var cfgPath, cfgContent: string;
+        cfgPath := sAppDir + '\config.yaml';
+        if LoadStringFromFile(cfgPath, cfgContent) then
         begin
-          cfgPath := sAppDir + '\config.yaml';
-          if LoadStringFromFile(cfgPath, cfgContent) then
-          begin
-            // Comment out any 'password:' line under matrix section
-            StringChangeEx(
-              cfgContent,
-              #13#10 + '  password:',
-              #13#10 + '  # password (removed after successful auth):',
-              True
-            );
-            SaveStringToFile(cfgPath, cfgContent, False);
-          end;
+          // Replace the password line with a commented placeholder
+          StringChangeEx(cfgContent, #13#10 + '  password: ', #13#10 + '  # password (removed after successful auth): ', True);
+          SaveStringToFile(cfgPath, cfgContent, False);
         end;
       end
       else

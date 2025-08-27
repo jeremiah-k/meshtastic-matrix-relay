@@ -502,7 +502,7 @@ services:
       - ${MMRELAY_HOME}/.mmrelay:/app/data # Includes config.yaml and all data
 ```
 
-**Security note:** After first successful start, remove the `password` from your config and restrict permissions (e.g., `chmod 600 ~/.mmrelay/config.yaml`). E2EE is supported with this method when dependencies are available (Linux/macOS).
+**Security note:** After the first successful start, remove the `password` from your config and restrict permissions (e.g., `chmod 600 ~/.mmrelay/config.yaml`). E2EE is supported with this method when dependencies are available (Linux/macOS).
 
 ## Connection Type Variants
 

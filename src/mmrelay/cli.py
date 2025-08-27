@@ -1127,7 +1127,7 @@ def handle_auth_login(args):
     Returns 0 on successful authentication; returns 1 if the login fails, is cancelled by the user (KeyboardInterrupt), or an unexpected error occurs.
 
     Parameters:
-        args: Parsed command-line arguments containing optional homeserver, username, password, and non_interactive flags.
+        args: Parsed command-line arguments containing optional homeserver, username, and password.
     """
     import asyncio
 
