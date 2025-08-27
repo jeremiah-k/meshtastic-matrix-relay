@@ -100,9 +100,10 @@ matrix:
   bot_user_id: @yourbot:your-matrix-server.org
 ```
 
-This method automatically creates secure credentials.json on startup and is compatible with Matrix 2.0/MAS. However, `mmrelay auth login` is still recommended for the most secure setup.
+This method automatically creates a secure credentials.json on startup and is compatible with Matrix 2.0/MAS. However, `mmrelay auth login` is still recommended for the most secure setup.
 
-**Security note:** After first successful start, remove the `password` from your config and restrict permissions (e.g., `chmod 600 ~/.mmrelay/config.yaml`).
+**Security note:** After the first successful start, remove the `password` from your config and restrict permissions.
+On Linux/macOS: `chmod 600 ~/.mmrelay/config.yaml`. On Windows: use file Properties → Security to restrict access to your user.
 
 ### Configuration Tips
 

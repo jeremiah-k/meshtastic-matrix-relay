@@ -2010,9 +2010,7 @@ class TestValidateE2EEDependencies(unittest.TestCase):
         import builtins
         original_import = builtins.__import__
         def mock_import(name, *args, **kwargs):
-            if name == "olm":
-                return MagicMock()
-            elif "nio.crypto" in name:
+            if name == "olm" or "nio.crypto" in name:
                 return MagicMock()
             elif "nio.store" in name:
                 raise ImportError("No module named 'nio.store'")
@@ -3449,6 +3447,209 @@ class TestValidateE2eeConfig(unittest.TestCase):
         mock_print.assert_any_call("✅ E2EE configuration is valid")
         # Should not print directory creation message
         self.assertNotIn("Note: E2EE store directory will be created", str(mock_print.call_args_list))
+
+
+class TestAnalyzeE2eeSetup(unittest.TestCase):
+    """Test cases for _analyze_e2ee_setup function."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.config_path = "/home/user/.mmrelay/config.yaml"
+        self.base_config = {
+            "matrix": {
+                "homeserver": "https://matrix.org",
+                "e2ee": {"enabled": True}
+            }
+        }
+
+    @patch("sys.platform", "win32")
+    def test_analyze_e2ee_setup_windows_not_supported(self):
+        """Test E2EE analysis on Windows (not supported)."""
+        # Import and call function
+        from mmrelay.cli import _analyze_e2ee_setup
+        result = _analyze_e2ee_setup(self.base_config, self.config_path)
+
+        # Verify results
+        self.assertIsInstance(result, dict)
+        self.assertFalse(result["platform_supported"])
+        self.assertEqual(result["overall_status"], "not_supported")
+        self.assertIn("E2EE is not supported on Windows. Use Linux/macOS for E2EE support.", result["recommendations"])
+
+    @patch("sys.platform", "linux")
+    def test_analyze_e2ee_setup_linux_no_e2ee_config(self):
+        """Test E2EE analysis on Linux with no E2EE configuration."""
+        # Setup config without E2EE
+        config = {
+            "matrix": {
+                "homeserver": "https://matrix.org"
+                # No e2ee section
+            }
+        }
+
+        # Import and call function
+        from mmrelay.cli import _analyze_e2ee_setup
+        result = _analyze_e2ee_setup(config, self.config_path)
+
+        # Verify results
+        self.assertIsInstance(result, dict)
+        self.assertTrue(result["platform_supported"])
+        self.assertFalse(result["config_enabled"])
+        self.assertEqual(result["overall_status"], "disabled")
+
+    @patch("sys.platform", "linux")
+    def test_analyze_e2ee_setup_linux_e2ee_disabled(self):
+        """Test E2EE analysis on Linux with E2EE explicitly disabled."""
+        # Setup config with E2EE disabled
+        config = {
+            "matrix": {
+                "homeserver": "https://matrix.org",
+                "e2ee": {"enabled": False}
+            }
+        }
+
+        # Import and call function
+        from mmrelay.cli import _analyze_e2ee_setup
+        result = _analyze_e2ee_setup(config, self.config_path)
+
+        # Verify results
+        self.assertIsInstance(result, dict)
+        self.assertTrue(result["platform_supported"])
+        self.assertFalse(result["config_enabled"])
+        self.assertEqual(result["overall_status"], "disabled")
+
+    @patch("sys.platform", "linux")
+    @patch("os.path.exists")
+    def test_analyze_e2ee_setup_linux_dependencies_missing(self, mock_exists):
+        """Test E2EE analysis on Linux with missing dependencies."""
+        # Setup mocks
+        mock_exists.return_value = False  # No credentials file
+
+        # Mock missing E2EE dependencies
+        original_modules = sys.modules.copy()
+        try:
+            # Remove E2EE modules if they exist
+            for module in ['olm', 'nio.crypto', 'nio.store']:
+                if module in sys.modules:
+                    del sys.modules[module]
+
+            # Mock import to raise ImportError for E2EE modules
+            def mock_import(name, *args, **kwargs):
+                if name in ['olm', 'nio.crypto', 'nio.store']:
+                    raise ImportError(f"No module named '{name}'")
+                return original_import(name, *args, **kwargs)
+
+            original_import = builtins.__import__
+            builtins.__import__ = mock_import
+
+            # Import and call function
+            from mmrelay.cli import _analyze_e2ee_setup
+            result = _analyze_e2ee_setup(self.base_config, self.config_path)
+
+        finally:
+            # Restore original state
+            builtins.__import__ = original_import
+            sys.modules.update(original_modules)
+
+        # Verify results
+        self.assertIsInstance(result, dict)
+        self.assertTrue(result["platform_supported"])
+        self.assertTrue(result["config_enabled"])
+        self.assertFalse(result["dependencies_available"])
+        self.assertFalse(result["credentials_available"])
+        self.assertEqual(result["overall_status"], "incomplete")
+        self.assertIn("Install E2EE dependencies: pipx install 'mmrelay[e2e]'", result["recommendations"])
+        self.assertIn("Set up Matrix authentication: mmrelay auth login", result["recommendations"])
+
+    @patch("sys.platform", "linux")
+    @patch("os.path.exists")
+    def test_analyze_e2ee_setup_linux_ready_state(self, mock_exists):
+        """Test E2EE analysis on Linux with everything ready."""
+        # Setup mocks
+        mock_exists.return_value = True  # Credentials file exists
+
+        # Mock successful E2EE dependencies
+        with patch.dict('sys.modules', {
+            'olm': MagicMock(),
+            'nio.crypto': MagicMock(),
+            'nio.store': MagicMock()
+        }):
+            # Import and call function
+            from mmrelay.cli import _analyze_e2ee_setup
+            result = _analyze_e2ee_setup(self.base_config, self.config_path)
+
+        # Verify results
+        self.assertIsInstance(result, dict)
+        self.assertTrue(result["platform_supported"])
+        self.assertTrue(result["config_enabled"])
+        self.assertTrue(result["dependencies_available"])
+        self.assertTrue(result["credentials_available"])
+        self.assertEqual(result["overall_status"], "ready")
+        self.assertEqual(len(result["recommendations"]), 0)  # No recommendations when ready
+
+    @patch("sys.platform", "darwin")
+    @patch("os.path.exists")
+    def test_analyze_e2ee_setup_macos_legacy_encryption_config(self, mock_exists):
+        """Test E2EE analysis on macOS with legacy encryption configuration."""
+        # Setup config with legacy encryption section
+        config = {
+            "matrix": {
+                "homeserver": "https://matrix.org",
+                "encryption": {"enabled": True}  # Legacy format
+            }
+        }
+        mock_exists.return_value = True  # Credentials file exists
+
+        # Mock successful E2EE dependencies
+        with patch.dict('sys.modules', {
+            'olm': MagicMock(),
+            'nio.crypto': MagicMock(),
+            'nio.store': MagicMock()
+        }):
+            # Import and call function
+            from mmrelay.cli import _analyze_e2ee_setup
+            result = _analyze_e2ee_setup(config, self.config_path)
+
+        # Verify results
+        self.assertIsInstance(result, dict)
+        self.assertTrue(result["platform_supported"])
+        self.assertTrue(result["config_enabled"])  # Should detect legacy config
+        self.assertTrue(result["dependencies_available"])
+        self.assertTrue(result["credentials_available"])
+        self.assertEqual(result["overall_status"], "ready")
+
+    @patch("sys.platform", "linux")
+    @patch("mmrelay.config.get_base_dir")
+    @patch("os.path.exists")
+    def test_analyze_e2ee_setup_standard_credentials_path(self, mock_exists, mock_get_base_dir):
+        """Test E2EE analysis with standard credentials path."""
+        # Setup mocks
+        mock_get_base_dir.return_value = "/home/user/.mmrelay"
+
+        # Mock exists to return True for standard path but False for config dir path
+        def mock_exists_side_effect(path):
+            if path == "/home/user/.mmrelay/credentials.json":
+                return True  # Standard path exists
+            return False  # Config dir path doesn't exist
+
+        mock_exists.side_effect = mock_exists_side_effect
+
+        # Mock successful E2EE dependencies
+        with patch.dict('sys.modules', {
+            'olm': MagicMock(),
+            'nio.crypto': MagicMock(),
+            'nio.store': MagicMock()
+        }):
+            # Import and call function
+            from mmrelay.cli import _analyze_e2ee_setup
+            result = _analyze_e2ee_setup(self.base_config, self.config_path)
+
+        # Verify results
+        self.assertIsInstance(result, dict)
+        self.assertTrue(result["platform_supported"])
+        self.assertTrue(result["config_enabled"])
+        self.assertTrue(result["dependencies_available"])
+        self.assertTrue(result["credentials_available"])
+        self.assertEqual(result["overall_status"], "ready")
 
 
 if __name__ == "__main__":

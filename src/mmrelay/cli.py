@@ -335,7 +335,13 @@ def _validate_matrix_authentication(config_path, matrix_section):
           and whether E2EE support is available.
     """
     has_valid_credentials = _validate_credentials_json(config_path)
-    has_access_token = matrix_section and "access_token" in matrix_section
+    has_access_token = bool(matrix_section and "access_token" in matrix_section)
+    has_password = bool(
+        matrix_section
+        and "password" in matrix_section
+        and CONFIG_KEY_HOMESERVER in matrix_section
+        and CONFIG_KEY_BOT_USER_ID in matrix_section
+    )
 
     if has_valid_credentials:
         print("✅ Using credentials.json for Matrix authentication")
@@ -345,6 +351,10 @@ def _validate_matrix_authentication(config_path, matrix_section):
 
     elif has_access_token:
         print("✅ Using access_token for Matrix authentication")
+        print(f"   {msg_for_e2ee_support()}")
+        return True
+    elif has_password:
+        print("✅ Using password in config for initial authentication (credentials.json will be created on first run)")
         print(f"   {msg_for_e2ee_support()}")
         return True
 
@@ -768,17 +778,19 @@ def check_config(args=None):
                     if CONFIG_SECTION_MATRIX not in config:
                         print("Error: Missing 'matrix' section in config")
                         print(
-                            "   Either add matrix section with access_token and bot_user_id,"
+                            "   Either add matrix section with access_token or password and bot_user_id,"
                         )
                         print(f"   {msg_or_run_auth_login()}")
                         return False
 
                     matrix_section = config[CONFIG_SECTION_MATRIX]
-                    required_matrix_fields = [
-                        CONFIG_KEY_HOMESERVER,
-                        CONFIG_KEY_ACCESS_TOKEN,
-                        CONFIG_KEY_BOT_USER_ID,
-                    ]
+                    required_matrix_fields = [CONFIG_KEY_HOMESERVER, CONFIG_KEY_BOT_USER_ID]
+                    has_token = CONFIG_KEY_ACCESS_TOKEN in matrix_section
+                    has_password = "password" in matrix_section
+                    if not (has_token or has_password):
+                        print("Error: Missing authentication in 'matrix' section: provide either 'access_token' or 'password'")
+                        print(f"   {msg_or_run_auth_login()}")
+                        return False
 
                 missing_matrix_fields = [
                     field
@@ -1143,7 +1155,7 @@ def handle_auth_login(args):
         if password is None:
             missing_params.append("--password")
 
-        print(f"❌ Error: All authentication parameters are required when using command-line options.")
+        print("❌ Error: All authentication parameters are required when using command-line options.")
         print(f"   Missing: {', '.join(missing_params)}")
         print()
         print("💡 Options:")

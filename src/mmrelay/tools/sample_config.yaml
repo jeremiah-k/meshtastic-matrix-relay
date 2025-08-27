@@ -4,11 +4,13 @@ matrix:
   # MMRelay will automatically create secure credentials.json on startup
   password: your_matrix_password_here  # Set your Matrix account password
   # Security: After first successful start, remove this password from the file.
-  #           Restrict permissions: chmod 600 ~/.mmrelay/config.yaml
+  #           Linux/macOS: chmod 600 ~/.mmrelay/config.yaml
+  #           Windows: restrict file access to your user (e.g., via file Properties → Security)
+  #           Never commit this file with a password to version control.
   bot_user_id: "@botuser:example.matrix.org"
 
   # End-to-End Encryption (E2EE) configuration
-  # E2EE is automatically enabled when using password-based authentication (Linux/macOS only)
+  # E2EE is automatically enabled when using password-based authentication AND E2EE dependencies are installed (Linux/macOS only)
   # NOTE: E2EE is not available on Windows due to dependency limitations
   #
   # SETUP INSTRUCTIONS:

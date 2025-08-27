@@ -469,16 +469,17 @@ matrix:
   bot_user_id: @yourbot:example.org
 ```
 
+```yaml
+matrix_rooms:
+  - id: "#yourroom:example.org"
+    meshtastic_channel: 0
+```
+
 **Features:**
 
 - Automatic credentials.json creation on startup
 - Compatible with Matrix 2.0/MAS authentication
 - E2EE support when dependencies are available
-
-matrix_rooms:
-  - id: "#yourroom:example.org"
-    meshtastic_channel: 0
-```
 
 #### Step 2: Create docker-compose.yaml
 
