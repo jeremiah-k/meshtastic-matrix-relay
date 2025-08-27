@@ -1126,8 +1126,8 @@ def handle_auth_login(args):
     username = getattr(args, "username", None)
     password = getattr(args, "password", None)
 
-    # Count provided parameters
-    provided_params = [p for p in [homeserver, username, password] if p]
+    # Count provided parameters (empty strings count as provided)
+    provided_params = [p for p in [homeserver, username, password] if p is not None]
 
     # Determine mode based on parameters provided
     if len(provided_params) == 3:
@@ -1136,11 +1136,11 @@ def handle_auth_login(args):
     elif len(provided_params) > 0:
         # Some but not all parameters provided - show error
         missing_params = []
-        if not homeserver:
+        if homeserver is None:
             missing_params.append("--homeserver")
-        if not username:
+        if username is None:
             missing_params.append("--username")
-        if not password:
+        if password is None:
             missing_params.append("--password")
 
         print(f"❌ Error: All authentication parameters are required when using command-line options.")

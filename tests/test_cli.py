@@ -1564,7 +1564,7 @@ class TestAuthLogin(unittest.TestCase):
     @patch("mmrelay.matrix_utils.login_matrix_bot")
     @patch("builtins.print")
     def test_handle_auth_login_empty_string_parameters(self, mock_print, mock_login):
-        """Test that empty string parameters are treated as None."""
+        """Test that empty string parameters are treated as provided (non-interactive mode)."""
         # ASYNC MOCK FIX: Return value directly, not a coroutine
         mock_login.return_value = True
 
@@ -1573,7 +1573,7 @@ class TestAuthLogin(unittest.TestCase):
         self.mock_args.username = ""
         self.mock_args.password = ""
 
-        # Call function (should be treated as interactive mode)
+        # Call function (should be treated as non-interactive mode with empty strings)
         result = handle_auth_login(self.mock_args)
 
         # Verify results
@@ -1584,9 +1584,49 @@ class TestAuthLogin(unittest.TestCase):
             password="",
             logout_others=False
         )
-        # Should print header for interactive mode
+        # Should NOT print header (non-interactive mode)
+        mock_print.assert_not_called()
+
+    @patch("mmrelay.matrix_utils.login_matrix_bot")
+    @patch("builtins.print")
+    def test_handle_auth_login_none_vs_empty_string_distinction(self, mock_print, mock_login):
+        """Test that None parameters trigger interactive mode while empty strings trigger non-interactive mode."""
+        # ASYNC MOCK FIX: Return value directly, not a coroutine
+        mock_login.return_value = True
+
+        # Test 1: None parameters should trigger interactive mode
+        self.mock_args.homeserver = None
+        self.mock_args.username = None
+        self.mock_args.password = None
+
+        result = handle_auth_login(self.mock_args)
+
+        # Verify interactive mode
+        self.assertEqual(result, 0)
+        mock_login.assert_called_with(
+            homeserver=None, username=None, password=None, logout_others=False
+        )
         mock_print.assert_any_call("Matrix Bot Authentication for E2EE")
         mock_print.assert_any_call("===================================")
+
+        # Reset mocks for second test
+        mock_login.reset_mock()
+        mock_print.reset_mock()
+
+        # Test 2: Empty string parameters should trigger non-interactive mode
+        self.mock_args.homeserver = ""
+        self.mock_args.username = ""
+        self.mock_args.password = ""
+
+        result = handle_auth_login(self.mock_args)
+
+        # Verify non-interactive mode
+        self.assertEqual(result, 0)
+        mock_login.assert_called_with(
+            homeserver="", username="", password="", logout_others=False
+        )
+        # Should NOT print interactive header
+        mock_print.assert_not_called()
 
 
 class TestAuthStatus(unittest.TestCase):
