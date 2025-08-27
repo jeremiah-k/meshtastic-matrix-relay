@@ -467,9 +467,7 @@ matrix:
   homeserver: https://matrix.example.org
   password: your_matrix_password
   bot_user_id: @yourbot:example.org
-```
 
-```yaml
 matrix_rooms:
   - id: "#yourroom:example.org"
     meshtastic_channel: 0

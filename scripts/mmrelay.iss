@@ -255,11 +255,17 @@ begin
   // Set up Matrix authentication directly during installation
   if (MatrixPage.Values[0] <> '') and (MatrixPage.Values[1] <> '') and (MatrixPage.Values[2] <> '') then
   begin
-    // Run authentication command (auto-detects non-interactive mode when all params provided)
-    // bot_user_id was already constructed earlier for config generation
-    // Build params without invoking a shell
-    auth_command := 'auth login --homeserver "' + HomeserverURL + '" --username "' + bot_user_id + '" --password "' + MatrixPage.Values[2] + '"';
-    if Exec('"' + sAppDir + '\mmrelay.exe"', auth_command, sAppDir, SW_HIDE, ewWaitUntilTerminated, auth_result) then
+    if Pos('"', MatrixPage.Values[2]) > 0 then
+    begin
+      MsgBox('The password contains double quotes ("). Automatic authentication will be skipped. Please run "Setup Authentication" manually after installation.', mbWarning, MB_OK);
+    end
+    else
+    begin
+      // Run authentication command (auto-detects non-interactive mode when all params provided)
+      // bot_user_id was already constructed earlier for config generation
+      // Build params without invoking a shell
+      auth_command := 'auth login --homeserver "' + HomeserverURL + '" --username "' + bot_user_id + '" --password "' + MatrixPage.Values[2] + '"';
+      if Exec('"' + sAppDir + '\mmrelay.exe"', auth_command, sAppDir, SW_HIDE, ewWaitUntilTerminated, auth_result) then
     begin
       if auth_result = 0 then
       begin
@@ -287,6 +293,7 @@ begin
     else
     begin
       MsgBox('❌ Could not run authentication command.' + #13#10 + 'Please run manually: mmrelay auth login', mbError, MB_OK);
+    end;
     end;
   end;
 end;
