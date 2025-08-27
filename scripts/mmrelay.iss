@@ -221,8 +221,8 @@ begin
     // Build the full bot user ID
     bot_user_id := '@' + MatrixPage.Values[1] + ':' + ServerName;
 
-    // Run authentication command
-    auth_command := '"' + sAppDir + '\mmrelay.exe" auth login --homeserver "' + MatrixPage.Values[0] + '" --username "' + bot_user_id + '" --password "' + MatrixPage.Values[2] + '" --non-interactive';
+    // Run authentication command (auto-detects non-interactive mode when all params provided)
+    auth_command := '"' + sAppDir + '\mmrelay.exe" auth login --homeserver "' + MatrixPage.Values[0] + '" --username "' + bot_user_id + '" --password "' + MatrixPage.Values[2] + '"';
 
     if Exec('cmd.exe', '/c ' + auth_command, sAppDir, SW_HIDE, ewWaitUntilTerminated, auth_result) then
     begin

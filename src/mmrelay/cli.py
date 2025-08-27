@@ -148,20 +148,15 @@ def parse_arguments():
     )
     login_parser.add_argument(
         "--homeserver",
-        help="Matrix homeserver URL (e.g., https://matrix.org)",
+        help="Matrix homeserver URL (e.g., https://matrix.org). If provided, --username and --password are also required.",
     )
     login_parser.add_argument(
         "--username",
-        help="Matrix username (with or without @ and :server)",
+        help="Matrix username (with or without @ and :server). If provided, --homeserver and --password are also required.",
     )
     login_parser.add_argument(
         "--password",
-        help="Matrix password (will prompt securely if not provided)",
-    )
-    login_parser.add_argument(
-        "--non-interactive",
-        action="store_true",
-        help="Non-interactive mode (fail if any required info is missing)",
+        help="Matrix password. If provided, --homeserver and --username are also required. For security, consider using interactive mode instead.",
     )
 
     auth_subparsers.add_parser(
@@ -1130,10 +1125,16 @@ def handle_auth_login(args):
     homeserver = getattr(args, "homeserver", None)
     username = getattr(args, "username", None)
     password = getattr(args, "password", None)
-    non_interactive = getattr(args, "non_interactive", False)
 
-    # In non-interactive mode, check that all required parameters are provided
-    if non_interactive:
+    # Count provided parameters
+    provided_params = [p for p in [homeserver, username, password] if p]
+
+    # Determine mode based on parameters provided
+    if len(provided_params) == 3:
+        # All parameters provided - run in non-interactive mode
+        pass  # Continue to login
+    elif len(provided_params) > 0:
+        # Some but not all parameters provided - show error
         missing_params = []
         if not homeserver:
             missing_params.append("--homeserver")
@@ -1142,11 +1143,18 @@ def handle_auth_login(args):
         if not password:
             missing_params.append("--password")
 
-        if missing_params:
-            print(f"❌ Error: Non-interactive mode requires all parameters: {', '.join(missing_params)}")
-            return 1
+        print(f"❌ Error: All authentication parameters are required when using command-line options.")
+        print(f"   Missing: {', '.join(missing_params)}")
+        print()
+        print("💡 Options:")
+        print("   • For secure interactive authentication: mmrelay auth login")
+        print("   • For automated authentication: provide all three parameters")
+        print()
+        print("⚠️  Security Note: Command-line passwords may be visible in process lists and shell history.")
+        print("   Interactive mode is recommended for manual use.")
+        return 1
     else:
-        # Show header for interactive mode
+        # No parameters provided - run in interactive mode
         print("Matrix Bot Authentication for E2EE")
         print("===================================")
 
@@ -1155,7 +1163,7 @@ def handle_auth_login(args):
             homeserver=homeserver,
             username=username,
             password=password,
-            logout_others=False  # Default to not logging out others for non-interactive
+            logout_others=False
         ))
         return 0 if result else 1
     except KeyboardInterrupt:
