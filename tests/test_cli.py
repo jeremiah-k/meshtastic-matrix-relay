@@ -19,6 +19,7 @@
 # This pattern eliminates RuntimeWarnings while maintaining proper test coverage.
 # See docs/dev/TESTING_GUIDE.md for comprehensive async mocking patterns.
 
+import builtins
 import json
 import os
 import sys
@@ -3168,6 +3169,286 @@ class TestGenerateSampleConfig(unittest.TestCase):
         self.assertFalse(result)  # Should return False on failure
         mock_print.assert_any_call("Error accessing sample_config.yaml: Permission denied")
         mock_print.assert_any_call("Error: Could not find sample_config.yaml")
+
+
+class TestPrintEnvironmentSummary(unittest.TestCase):
+    """Test cases for _print_environment_summary function."""
+
+    @patch("sys.platform", "linux")
+    @patch("sys.version", "3.12.3 (main, Apr 10 2024, 05:33:47) [GCC 13.2.0] on linux")
+    @patch("builtins.print")
+    def test_print_environment_summary_linux_with_e2ee(self, mock_print):
+        """Test environment summary on Linux with E2EE dependencies available."""
+        # Mock successful E2EE imports
+        with patch.dict('sys.modules', {
+            'olm': MagicMock(),
+            'nio.crypto': MagicMock(),
+            'nio.store': MagicMock()
+        }):
+            # Import and call function
+            from mmrelay.cli import _print_environment_summary
+            _print_environment_summary()
+
+        # Verify results
+        mock_print.assert_any_call("\n🖥️  Environment Summary:")
+        mock_print.assert_any_call("   Platform: linux")
+        mock_print.assert_any_call("   Python: 3.12.3")
+        mock_print.assert_any_call("   E2EE Support: ✅ Available and installed")
+
+    @patch("sys.platform", "linux")
+    @patch("sys.version", "3.12.3 (main, Apr 10 2024, 05:33:47) [GCC 13.2.0] on linux")
+    @patch("builtins.print")
+    def test_print_environment_summary_linux_without_e2ee(self, mock_print):
+        """Test environment summary on Linux without E2EE dependencies."""
+        # Import the function first
+        from mmrelay.cli import _print_environment_summary
+
+        # Mock failed E2EE imports by removing modules from sys.modules and making import fail
+        original_modules = sys.modules.copy()
+        try:
+            # Remove E2EE modules if they exist
+            for module in ['olm', 'nio.crypto', 'nio.store']:
+                if module in sys.modules:
+                    del sys.modules[module]
+
+            # Mock import to raise ImportError for E2EE modules
+            def mock_import(name, *args, **kwargs):
+                if name in ['olm', 'nio.crypto', 'nio.store']:
+                    raise ImportError(f"No module named '{name}'")
+                return original_import(name, *args, **kwargs)
+
+            original_import = builtins.__import__
+            builtins.__import__ = mock_import
+
+            # Call function
+            _print_environment_summary()
+
+        finally:
+            # Restore original state
+            builtins.__import__ = original_import
+            sys.modules.update(original_modules)
+
+        # Verify results
+        mock_print.assert_any_call("\n🖥️  Environment Summary:")
+        mock_print.assert_any_call("   Platform: linux")
+        mock_print.assert_any_call("   Python: 3.12.3")
+        mock_print.assert_any_call("   E2EE Support: ⚠️  Available but not installed")
+        mock_print.assert_any_call("   Install: pipx install 'mmrelay[e2e]'")
+
+    @patch("sys.platform", "win32")
+    @patch("sys.version", "3.12.3 (tags/v3.12.3:f6650f9, Apr  9 2024, 14:05:25) [MSC v.1938 64 bit (AMD64)] on win32")
+    @patch("builtins.print")
+    def test_print_environment_summary_windows(self, mock_print):
+        """Test environment summary on Windows (E2EE not supported)."""
+        # Import and call function
+        from mmrelay.cli import _print_environment_summary
+        _print_environment_summary()
+
+        # Verify results
+        mock_print.assert_any_call("\n🖥️  Environment Summary:")
+        mock_print.assert_any_call("   Platform: win32")
+        mock_print.assert_any_call("   Python: 3.12.3")
+        mock_print.assert_any_call("   E2EE Support: ❌ Not available (Windows limitation)")
+        mock_print.assert_any_call("   Matrix Support: ✅ Available")
+
+    @patch("sys.platform", "darwin")
+    @patch("sys.version", "3.12.3 (main, Apr 10 2024, 05:33:47) [Clang 15.0.0 (clang-1500.3.9.4)] on darwin")
+    @patch("builtins.print")
+    def test_print_environment_summary_macos_with_e2ee(self, mock_print):
+        """Test environment summary on macOS with E2EE dependencies available."""
+        # Mock successful E2EE imports
+        with patch.dict('sys.modules', {
+            'olm': MagicMock(),
+            'nio.crypto': MagicMock(),
+            'nio.store': MagicMock()
+        }):
+            # Import and call function
+            from mmrelay.cli import _print_environment_summary
+            _print_environment_summary()
+
+        # Verify results
+        mock_print.assert_any_call("\n🖥️  Environment Summary:")
+        mock_print.assert_any_call("   Platform: darwin")
+        mock_print.assert_any_call("   Python: 3.12.3")
+        mock_print.assert_any_call("   E2EE Support: ✅ Available and installed")
+
+
+class TestValidateE2eeConfig(unittest.TestCase):
+    """Test cases for _validate_e2ee_config function."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.config_path = "/home/user/.mmrelay/config.yaml"
+        self.base_config = {"matrix": {"homeserver": "https://matrix.org"}}
+
+    @patch("mmrelay.cli._validate_matrix_authentication")
+    @patch("builtins.print")
+    def test_validate_e2ee_config_no_matrix_auth(self, mock_print, mock_validate_auth):
+        """Test E2EE config validation when Matrix authentication fails."""
+        # Setup mocks
+        mock_validate_auth.return_value = False
+        matrix_section = {"homeserver": "https://matrix.org"}
+
+        # Import and call function
+        from mmrelay.cli import _validate_e2ee_config
+        result = _validate_e2ee_config(self.base_config, matrix_section, self.config_path)
+
+        # Verify results
+        self.assertFalse(result)  # Should return False when auth fails
+        mock_validate_auth.assert_called_once_with(self.config_path, matrix_section)
+        mock_print.assert_not_called()  # Should not print anything
+
+    @patch("mmrelay.cli._validate_matrix_authentication")
+    @patch("builtins.print")
+    def test_validate_e2ee_config_no_matrix_section(self, mock_print, mock_validate_auth):
+        """Test E2EE config validation with no matrix section."""
+        # Setup mocks
+        mock_validate_auth.return_value = True
+        matrix_section = None
+
+        # Import and call function
+        from mmrelay.cli import _validate_e2ee_config
+        result = _validate_e2ee_config(self.base_config, matrix_section, self.config_path)
+
+        # Verify results
+        self.assertTrue(result)  # Should return True when no matrix section
+        mock_validate_auth.assert_called_once_with(self.config_path, matrix_section)
+        mock_print.assert_not_called()  # Should not print anything
+
+    @patch("mmrelay.cli._validate_matrix_authentication")
+    @patch("builtins.print")
+    def test_validate_e2ee_config_e2ee_disabled(self, mock_print, mock_validate_auth):
+        """Test E2EE config validation when E2EE is disabled."""
+        # Setup mocks
+        mock_validate_auth.return_value = True
+        matrix_section = {
+            "homeserver": "https://matrix.org",
+            "e2ee": {"enabled": False}
+        }
+
+        # Import and call function
+        from mmrelay.cli import _validate_e2ee_config
+        result = _validate_e2ee_config(self.base_config, matrix_section, self.config_path)
+
+        # Verify results
+        self.assertTrue(result)  # Should return True when E2EE disabled
+        mock_validate_auth.assert_called_once_with(self.config_path, matrix_section)
+        mock_print.assert_not_called()  # Should not print anything
+
+    @patch("mmrelay.cli._validate_matrix_authentication")
+    @patch("mmrelay.cli._validate_e2ee_dependencies")
+    @patch("builtins.print")
+    def test_validate_e2ee_config_e2ee_enabled_deps_missing(self, mock_print, mock_validate_deps, mock_validate_auth):
+        """Test E2EE config validation when E2EE is enabled but dependencies missing."""
+        # Setup mocks
+        mock_validate_auth.return_value = True
+        mock_validate_deps.return_value = False  # Dependencies missing
+        matrix_section = {
+            "homeserver": "https://matrix.org",
+            "e2ee": {"enabled": True}
+        }
+
+        # Import and call function
+        from mmrelay.cli import _validate_e2ee_config
+        result = _validate_e2ee_config(self.base_config, matrix_section, self.config_path)
+
+        # Verify results
+        self.assertFalse(result)  # Should return False when deps missing
+        mock_validate_auth.assert_called_once_with(self.config_path, matrix_section)
+        mock_validate_deps.assert_called_once()
+        mock_print.assert_not_called()  # Dependencies function handles printing
+
+    @patch("mmrelay.cli._validate_matrix_authentication")
+    @patch("mmrelay.cli._validate_e2ee_dependencies")
+    @patch("os.path.exists")
+    @patch("os.path.expanduser")
+    @patch("builtins.print")
+    def test_validate_e2ee_config_e2ee_enabled_with_store_path(self, mock_print, mock_expanduser, mock_exists, mock_validate_deps, mock_validate_auth):
+        """Test E2EE config validation when E2EE is enabled with custom store path."""
+        # Setup mocks
+        mock_validate_auth.return_value = True
+        mock_validate_deps.return_value = True
+        mock_expanduser.return_value = "/home/user/.mmrelay/store"
+        mock_exists.return_value = False  # Directory doesn't exist yet
+
+        matrix_section = {
+            "homeserver": "https://matrix.org",
+            "e2ee": {
+                "enabled": True,
+                "store_path": "~/.mmrelay/store"
+            }
+        }
+
+        # Import and call function
+        from mmrelay.cli import _validate_e2ee_config
+        result = _validate_e2ee_config(self.base_config, matrix_section, self.config_path)
+
+        # Verify results
+        self.assertTrue(result)  # Should return True on success
+        mock_validate_auth.assert_called_once_with(self.config_path, matrix_section)
+        mock_validate_deps.assert_called_once()
+        mock_expanduser.assert_called_once_with("~/.mmrelay/store")
+        mock_print.assert_any_call("ℹ️  Note: E2EE store directory will be created: /home/user/.mmrelay/store")
+        mock_print.assert_any_call("✅ E2EE configuration is valid")
+
+    @patch("mmrelay.cli._validate_matrix_authentication")
+    @patch("mmrelay.cli._validate_e2ee_dependencies")
+    @patch("builtins.print")
+    def test_validate_e2ee_config_legacy_encryption_config(self, mock_print, mock_validate_deps, mock_validate_auth):
+        """Test E2EE config validation with legacy 'encryption' section."""
+        # Setup mocks
+        mock_validate_auth.return_value = True
+        mock_validate_deps.return_value = True
+
+        matrix_section = {
+            "homeserver": "https://matrix.org",
+            "encryption": {"enabled": True}  # Legacy config format
+        }
+
+        # Import and call function
+        from mmrelay.cli import _validate_e2ee_config
+        result = _validate_e2ee_config(self.base_config, matrix_section, self.config_path)
+
+        # Verify results
+        self.assertTrue(result)  # Should return True on success
+        mock_validate_auth.assert_called_once_with(self.config_path, matrix_section)
+        mock_validate_deps.assert_called_once()
+        mock_print.assert_any_call("✅ E2EE configuration is valid")
+
+    @patch("mmrelay.cli._validate_matrix_authentication")
+    @patch("mmrelay.cli._validate_e2ee_dependencies")
+    @patch("os.path.exists")
+    @patch("os.path.expanduser")
+    @patch("builtins.print")
+    def test_validate_e2ee_config_legacy_store_path(self, mock_print, mock_expanduser, mock_exists, mock_validate_deps, mock_validate_auth):
+        """Test E2EE config validation with legacy 'encryption.store_path'."""
+        # Setup mocks
+        mock_validate_auth.return_value = True
+        mock_validate_deps.return_value = True
+        mock_expanduser.return_value = "/home/user/.mmrelay/legacy_store"
+        mock_exists.return_value = True  # Directory exists
+
+        matrix_section = {
+            "homeserver": "https://matrix.org",
+            "encryption": {  # Legacy config format
+                "enabled": True,
+                "store_path": "~/.mmrelay/legacy_store"
+            }
+        }
+
+        # Import and call function
+        from mmrelay.cli import _validate_e2ee_config
+        result = _validate_e2ee_config(self.base_config, matrix_section, self.config_path)
+
+        # Verify results
+        self.assertTrue(result)  # Should return True on success
+        mock_validate_auth.assert_called_once_with(self.config_path, matrix_section)
+        mock_validate_deps.assert_called_once()
+        mock_expanduser.assert_called_once_with("~/.mmrelay/legacy_store")
+        # Should not print directory creation message since it exists
+        mock_print.assert_any_call("✅ E2EE configuration is valid")
+        # Should not print directory creation message
+        self.assertNotIn("Note: E2EE store directory will be created", str(mock_print.call_args_list))
 
 
 if __name__ == "__main__":
