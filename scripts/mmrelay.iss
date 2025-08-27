@@ -178,7 +178,14 @@ begin
   if PathPos > 0 then
     ServerName := Copy(ServerName, 1, PathPos - 1);
 
-  config := 'matrix_rooms:' + #13#10 +
+  // Build the full bot user ID for use in config and auth command
+  bot_user_id := '@' + MatrixPage.Values[1] + ':' + ServerName;
+
+  config := 'matrix:' + #13#10 +
+            '  homeserver: "' + MatrixPage.Values[0] + '"' + #13#10 +
+            '  bot_user_id: "' + bot_user_id + '"' + #13#10 +
+            '  password: "' + MatrixPage.Values[2] + '"' + #13#10 +
+            'matrix_rooms:' + #13#10 +
             '  - id: "' + MatrixMeshtasticPage.Values[0] + '"' + #13#10 +
             '    meshtastic_channel: ' + MatrixMeshtasticPage.Values[1] + #13#10 +
             'meshtastic:' + #13#10 +
@@ -234,10 +241,8 @@ begin
   // Set up Matrix authentication directly during installation
   if (MatrixPage.Values[0] <> '') and (MatrixPage.Values[1] <> '') and (MatrixPage.Values[2] <> '') then
   begin
-    // Build the full bot user ID
-    bot_user_id := '@' + MatrixPage.Values[1] + ':' + ServerName;
-
     // Run authentication command (auto-detects non-interactive mode when all params provided)
+    // bot_user_id was already constructed earlier for config generation
     auth_command := '"' + sAppDir + '\mmrelay.exe" auth login --homeserver "' + MatrixPage.Values[0] + '" --username "' + bot_user_id + '" --password "' + MatrixPage.Values[2] + '"';
 
     if Exec('cmd.exe', '/c ' + auth_command, sAppDir, SW_HIDE, ewWaitUntilTerminated, auth_result) then
