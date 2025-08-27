@@ -257,7 +257,7 @@ begin
   begin
     if Pos('"', MatrixPage.Values[2]) > 0 then
     begin
-      MsgBox('The password contains double quotes ("). Automatic authentication will be skipped. Please run "Setup Authentication" manually after installation.', mbWarning, MB_OK);
+      MsgBox('The password contains double quotes ("). Automatic authentication will be skipped. Please run "Setup Authentication" manually after installation.', mbInformation, MB_OK);
     end
     else
     begin
@@ -277,7 +277,7 @@ begin
           // Remove any line that contains password
           for i := 0 to GetArrayLength(cfgLines) - 1 do
           begin
-            if Pos('  password:', cfgLines[i]) = 1 then
+            if Pos('password:', Trim(cfgLines[i])) = 1 then
             begin
               cfgLines[i] := '  # password removed after successful auth';
             end;
