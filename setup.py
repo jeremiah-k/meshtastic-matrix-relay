@@ -48,7 +48,7 @@ setup(
         "Pillow==11.3.0",
         "matrix-nio==0.25.2",
         "matplotlib==3.10.1",
-        "requests==2.32.4",
+        "requests==2.32.5",
         "markdown==3.8.2",
         "bleach==6.2.0",
         "haversine==2.9.0",
