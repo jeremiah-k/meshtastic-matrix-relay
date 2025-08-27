@@ -2555,6 +2555,36 @@ class TestAuthLogout(unittest.TestCase):
         mock_print.assert_any_call("\nError during logout: Network error")
 
 
+class TestIsValidNonEmptyString(unittest.TestCase):
+    """Test the _is_valid_non_empty_string helper function."""
+
+    def test_valid_non_empty_string(self):
+        """Test that valid non-empty strings return True."""
+        from mmrelay.cli import _is_valid_non_empty_string
+
+        self.assertTrue(_is_valid_non_empty_string("valid_string"))
+        self.assertTrue(_is_valid_non_empty_string("token123"))
+        self.assertTrue(_is_valid_non_empty_string("  spaced  "))  # strips whitespace
+
+    def test_empty_string(self):
+        """Test that empty strings return False."""
+        from mmrelay.cli import _is_valid_non_empty_string
+
+        self.assertFalse(_is_valid_non_empty_string(""))
+        self.assertFalse(_is_valid_non_empty_string("   "))  # whitespace only
+        self.assertFalse(_is_valid_non_empty_string("\t\n"))  # tabs and newlines
+
+    def test_non_string_types(self):
+        """Test that non-string types return False."""
+        from mmrelay.cli import _is_valid_non_empty_string
+
+        self.assertFalse(_is_valid_non_empty_string(None))
+        self.assertFalse(_is_valid_non_empty_string(123))
+        self.assertFalse(_is_valid_non_empty_string(True))
+        self.assertFalse(_is_valid_non_empty_string(["list"]))
+        self.assertFalse(_is_valid_non_empty_string({"dict": "value"}))
+
+
 class TestValidateMatrixAuthentication(unittest.TestCase):
     """Test cases for _validate_matrix_authentication function."""
 
