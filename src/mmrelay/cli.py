@@ -1155,15 +1155,16 @@ def handle_auth_login(args):
         if password is None:
             missing_params.append("--password")
 
-        print("❌ Error: All authentication parameters are required when using command-line options.")
-        print(f"   Missing: {', '.join(missing_params)}")
-        print()
-        print("💡 Options:")
-        print("   • For secure interactive authentication: mmrelay auth login")
-        print("   • For automated authentication: provide all three parameters")
-        print()
-        print("⚠️  Security Note: Command-line passwords may be visible in process lists and shell history.")
-        print("   Interactive mode is recommended for manual use.")
+        error_message = f"""❌ Error: All authentication parameters are required when using command-line options.
+   Missing: {', '.join(missing_params)}
+
+💡 Options:
+   • For secure interactive authentication: mmrelay auth login
+   • For automated authentication: provide all three parameters
+
+⚠️  Security Note: Command-line passwords may be visible in process lists and shell history.
+   Interactive mode is recommended for manual use."""
+        print(error_message)
         return 1
     else:
         # No parameters provided - run in interactive mode

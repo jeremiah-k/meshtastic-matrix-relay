@@ -144,7 +144,6 @@ var
   cfgContent: string;
   cfgLines: TArrayOfString;
   i: Integer;
-  SafePwd: string;
 begin
   If Not OverwriteConfig.Values[0] then
     Exit;
@@ -186,7 +185,7 @@ begin
   bot_user_id := Trim(MatrixPage.Values[1]);
   if (Pos(':', bot_user_id) > 0) then
   begin
-    if (Length(bot_user_id) = 0) or (bot_user_id[1] <> '@') then
+    if (bot_user_id[1] <> '@') then
       bot_user_id := '@' + bot_user_id;
   end
   else
@@ -265,10 +264,7 @@ begin
       // Run authentication command (auto-detects non-interactive mode when all params provided)
       // bot_user_id was already constructed earlier for config generation
       // Build params without invoking a shell
-      // Escape embedded quotes for CLI
-      SafePwd := MatrixPage.Values[2];
-      SafePwd := StringReplace(SafePwd, '"', '""', [rfReplaceAll]);
-      auth_command := 'auth login --homeserver "' + HomeserverURL + '" --username "' + bot_user_id + '" --password "' + SafePwd + '"';
+      auth_command := 'auth login --homeserver "' + HomeserverURL + '" --username "' + bot_user_id + '" --password "' + MatrixPage.Values[2] + '"';
       if Exec('"' + sAppDir + '\mmrelay.exe"', auth_command, sAppDir, SW_HIDE, ewWaitUntilTerminated, auth_result) then
     begin
       if auth_result = 0 then
