@@ -23,6 +23,7 @@ import json
 import os
 import sys
 import unittest
+import unittest.mock
 from unittest.mock import MagicMock, mock_open, patch
 
 # Add src to path for imports
@@ -1586,6 +1587,279 @@ class TestAuthLogin(unittest.TestCase):
         # Should print header for interactive mode
         mock_print.assert_any_call("Matrix Bot Authentication for E2EE")
         mock_print.assert_any_call("===================================")
+
+
+class TestAuthStatus(unittest.TestCase):
+    """Test cases for handle_auth_status function."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.mock_args = MagicMock()
+
+    @patch("mmrelay.cli_utils.get_command")
+    @patch("mmrelay.config.get_config_paths")
+    @patch("os.path.exists")
+    @patch("builtins.open", new_callable=mock_open)
+    @patch("builtins.print")
+    def test_handle_auth_status_credentials_found_success(
+        self, mock_print, mock_file, mock_exists, mock_get_paths, mock_get_command
+    ):
+        """Test successful status check when credentials.json exists and is valid."""
+        # Setup mocks
+        mock_get_paths.return_value = ["/home/user/.mmrelay/config.yaml"]
+        mock_exists.return_value = True
+        mock_get_command.return_value = "mmrelay auth login"
+
+        # Mock valid credentials.json content
+        credentials_data = {
+            "homeserver": "https://matrix.org",
+            "user_id": "@bot:matrix.org",
+            "device_id": "DEVICEABC123"
+        }
+        mock_file.return_value.read.return_value = json.dumps(credentials_data)
+
+        # Import and call function
+        from mmrelay.cli import handle_auth_status
+        result = handle_auth_status(self.mock_args)
+
+        # Verify results
+        self.assertEqual(result, 0)
+        mock_get_paths.assert_called_once_with(self.mock_args)
+        mock_exists.assert_called_once_with("/home/user/.mmrelay/credentials.json")
+        mock_file.assert_called_once_with("/home/user/.mmrelay/credentials.json", "r")
+
+        # Check printed output
+        mock_print.assert_any_call("Matrix Authentication Status")
+        mock_print.assert_any_call("============================")
+        mock_print.assert_any_call("✅ Found credentials.json at: /home/user/.mmrelay/credentials.json")
+        mock_print.assert_any_call("   Homeserver: https://matrix.org")
+        mock_print.assert_any_call("   User ID: @bot:matrix.org")
+        mock_print.assert_any_call("   Device ID: DEVICEABC123")
+
+    @patch("mmrelay.cli_utils.get_command")
+    @patch("mmrelay.config.get_config_paths")
+    @patch("os.path.exists")
+    @patch("builtins.print")
+    def test_handle_auth_status_credentials_not_found(
+        self, mock_print, mock_exists, mock_get_paths, mock_get_command
+    ):
+        """Test status check when credentials.json does not exist."""
+        # Setup mocks
+        mock_get_paths.return_value = ["/home/user/.mmrelay/config.yaml"]
+        mock_exists.return_value = False
+        mock_get_command.return_value = "mmrelay auth login"
+
+        # Import and call function
+        from mmrelay.cli import handle_auth_status
+        result = handle_auth_status(self.mock_args)
+
+        # Verify results
+        self.assertEqual(result, 1)
+        mock_get_paths.assert_called_once_with(self.mock_args)
+        mock_exists.assert_called_once_with("/home/user/.mmrelay/credentials.json")
+
+        # Check printed output
+        mock_print.assert_any_call("Matrix Authentication Status")
+        mock_print.assert_any_call("============================")
+        mock_print.assert_any_call("❌ No credentials.json found")
+        mock_print.assert_any_call("Run 'mmrelay auth login' to authenticate")
+
+    @patch("mmrelay.cli_utils.get_command")
+    @patch("mmrelay.config.get_config_paths")
+    @patch("os.path.exists")
+    @patch("builtins.open", new_callable=mock_open)
+    @patch("builtins.print")
+    def test_handle_auth_status_credentials_invalid_json(
+        self, mock_print, mock_file, mock_exists, mock_get_paths, mock_get_command
+    ):
+        """Test status check when credentials.json exists but contains invalid JSON."""
+        # Setup mocks
+        mock_get_paths.return_value = ["/home/user/.mmrelay/config.yaml"]
+        mock_exists.return_value = True
+        mock_get_command.return_value = "mmrelay auth login"
+
+        # Mock invalid JSON content
+        mock_file.return_value.read.return_value = "invalid json content"
+        mock_file.side_effect = json.JSONDecodeError("Invalid JSON", "doc", 0)
+
+        # Import and call function
+        from mmrelay.cli import handle_auth_status
+        result = handle_auth_status(self.mock_args)
+
+        # Verify results
+        self.assertEqual(result, 1)
+        mock_get_paths.assert_called_once_with(self.mock_args)
+        mock_exists.assert_called_once_with("/home/user/.mmrelay/credentials.json")
+
+        # Check error output
+        mock_print.assert_any_call("Matrix Authentication Status")
+        mock_print.assert_any_call("============================")
+        # Should print error message about reading credentials.json
+
+    @patch("mmrelay.cli_utils.get_command")
+    @patch("mmrelay.config.get_config_paths")
+    @patch("os.path.exists")
+    @patch("builtins.open", new_callable=mock_open)
+    @patch("builtins.print")
+    def test_handle_auth_status_credentials_missing_fields(
+        self, mock_print, mock_file, mock_exists, mock_get_paths, mock_get_command
+    ):
+        """Test status check when credentials.json exists but is missing some fields."""
+        # Setup mocks
+        mock_get_paths.return_value = ["/home/user/.mmrelay/config.yaml"]
+        mock_exists.return_value = True
+        mock_get_command.return_value = "mmrelay auth login"
+
+        # Mock credentials with missing fields
+        credentials_data = {
+            "homeserver": "https://matrix.org",
+            # Missing user_id and device_id
+        }
+        mock_file.return_value.read.return_value = json.dumps(credentials_data)
+
+        # Import and call function
+        from mmrelay.cli import handle_auth_status
+        result = handle_auth_status(self.mock_args)
+
+        # Verify results
+        self.assertEqual(result, 0)  # Still returns 0 if file is readable
+
+        # Check printed output shows "Unknown" for missing fields
+        mock_print.assert_any_call("✅ Found credentials.json at: /home/user/.mmrelay/credentials.json")
+        mock_print.assert_any_call("   Homeserver: https://matrix.org")
+        mock_print.assert_any_call("   User ID: Unknown")
+        mock_print.assert_any_call("   Device ID: Unknown")
+
+    @patch("mmrelay.cli_utils.get_command")
+    @patch("mmrelay.config.get_config_paths")
+    @patch("os.path.exists")
+    @patch("builtins.print")
+    def test_handle_auth_status_multiple_config_paths(
+        self, mock_print, mock_exists, mock_get_paths, mock_get_command
+    ):
+        """Test status check with multiple config paths, credentials found in second path."""
+        # Setup mocks - multiple config paths
+        mock_get_paths.return_value = [
+            "/home/user/.mmrelay/config.yaml",
+            "/etc/mmrelay/config.yaml"
+        ]
+        # First path doesn't have credentials, second path does
+        mock_exists.side_effect = lambda path: path == "/etc/mmrelay/credentials.json"
+        mock_get_command.return_value = "mmrelay auth login"
+
+        # Mock valid credentials.json content
+        credentials_data = {
+            "homeserver": "https://matrix.example.com",
+            "user_id": "@relay:example.com",
+            "device_id": "DEVICE456"
+        }
+
+        with patch("builtins.open", mock_open(read_data=json.dumps(credentials_data))):
+            # Import and call function
+            from mmrelay.cli import handle_auth_status
+            result = handle_auth_status(self.mock_args)
+
+        # Verify results
+        self.assertEqual(result, 0)
+        mock_get_paths.assert_called_once_with(self.mock_args)
+
+        # Should check both paths
+        expected_calls = [
+            unittest.mock.call("/home/user/.mmrelay/credentials.json"),
+            unittest.mock.call("/etc/mmrelay/credentials.json")
+        ]
+        mock_exists.assert_has_calls(expected_calls)
+
+        # Check printed output shows second path
+        mock_print.assert_any_call("✅ Found credentials.json at: /etc/mmrelay/credentials.json")
+        mock_print.assert_any_call("   Homeserver: https://matrix.example.com")
+        mock_print.assert_any_call("   User ID: @relay:example.com")
+        mock_print.assert_any_call("   Device ID: DEVICE456")
+
+
+class TestServiceCommand(unittest.TestCase):
+    """Test cases for handle_service_command function."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.mock_args = MagicMock()
+
+    @patch("mmrelay.setup_utils.install_service")
+    @patch("builtins.print")
+    def test_handle_service_command_install_success(self, mock_print, mock_install):
+        """Test successful service installation."""
+        # Setup mocks
+        self.mock_args.service_command = "install"
+        mock_install.return_value = True
+
+        # Import and call function
+        from mmrelay.cli import handle_service_command
+        result = handle_service_command(self.mock_args)
+
+        # Verify results
+        self.assertEqual(result, 0)
+        mock_install.assert_called_once()
+        mock_print.assert_not_called()  # No error messages on success
+
+    @patch("mmrelay.setup_utils.install_service")
+    @patch("builtins.print")
+    def test_handle_service_command_install_failure(self, mock_print, mock_install):
+        """Test failed service installation."""
+        # Setup mocks
+        self.mock_args.service_command = "install"
+        mock_install.return_value = False
+
+        # Import and call function
+        from mmrelay.cli import handle_service_command
+        result = handle_service_command(self.mock_args)
+
+        # Verify results
+        self.assertEqual(result, 1)
+        mock_install.assert_called_once()
+        mock_print.assert_not_called()  # No error messages, just return code
+
+    @patch("mmrelay.setup_utils.install_service", side_effect=ImportError("Module not found"))
+    @patch("builtins.print")
+    def test_handle_service_command_install_import_error(self, mock_print, mock_install):
+        """Test service installation when setup_utils cannot be imported."""
+        # Setup mocks
+        self.mock_args.service_command = "install"
+
+        # Import and call function
+        from mmrelay.cli import handle_service_command
+        result = handle_service_command(self.mock_args)
+
+        # Verify results
+        self.assertEqual(result, 1)
+        mock_print.assert_called_once_with("Error importing setup utilities: Module not found")
+
+    @patch("builtins.print")
+    def test_handle_service_command_unknown_command(self, mock_print):
+        """Test handling of unknown service commands."""
+        # Setup mocks
+        self.mock_args.service_command = "unknown_command"
+
+        # Import and call function
+        from mmrelay.cli import handle_service_command
+        result = handle_service_command(self.mock_args)
+
+        # Verify results
+        self.assertEqual(result, 1)
+        mock_print.assert_called_once_with("Unknown service command: unknown_command")
+
+    @patch("builtins.print")
+    def test_handle_service_command_none_command(self, mock_print):
+        """Test handling when service_command is None."""
+        # Setup mocks
+        self.mock_args.service_command = None
+
+        # Import and call function
+        from mmrelay.cli import handle_service_command
+        result = handle_service_command(self.mock_args)
+
+        # Verify results
+        self.assertEqual(result, 1)
+        mock_print.assert_called_once_with("Unknown service command: None")
 
 
 if __name__ == "__main__":
