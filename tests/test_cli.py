@@ -2317,5 +2317,430 @@ class TestValidateCredentialsJson(unittest.TestCase):
         mock_print.assert_any_call("   Please run 'mmrelay auth login' again to generate new credentials that include a device_id.")
 
 
+class TestAuthLogout(unittest.TestCase):
+    """Test cases for handle_auth_logout function."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.mock_args = MagicMock()
+
+    @patch("asyncio.run")
+    @patch("mmrelay.cli_utils.logout_matrix_bot")
+    @patch("builtins.input")
+    @patch("builtins.print")
+    def test_handle_auth_logout_success_with_confirmation(self, mock_print, mock_input, mock_logout, mock_asyncio_run):
+        """Test successful logout with user confirmation."""
+        # Setup mocks
+        self.mock_args.password = "test_password"
+        self.mock_args.yes = False
+        mock_input.return_value = "y"
+        mock_logout.return_value = True
+        mock_asyncio_run.return_value = True
+
+        # Import and call function
+        from mmrelay.cli import handle_auth_logout
+        result = handle_auth_logout(self.mock_args)
+
+        # Verify results
+        self.assertEqual(result, 0)
+        mock_asyncio_run.assert_called_once()
+        mock_input.assert_called_once_with("Are you sure you want to logout? (y/N): ")
+
+        # Check printed output
+        mock_print.assert_any_call("Matrix Bot Logout")
+        mock_print.assert_any_call("=================")
+        mock_print.assert_any_call("This will log out from Matrix and clear all local session data:")
+        mock_print.assert_any_call("• Remove credentials.json")
+        mock_print.assert_any_call("• Clear E2EE encryption store")
+        mock_print.assert_any_call("• Invalidate Matrix access token")
+        mock_print.assert_any_call("⚠️  Warning: Supplying password as argument exposes it in shell history and process list.")
+
+    @patch("mmrelay.cli_utils.logout_matrix_bot")
+    @patch("builtins.input")
+    @patch("builtins.print")
+    def test_handle_auth_logout_cancelled_by_user(self, mock_print, mock_input, mock_logout):
+        """Test logout cancelled by user confirmation."""
+        # Setup mocks
+        self.mock_args.password = "test_password"
+        self.mock_args.yes = False
+        mock_input.return_value = "n"  # User says no
+
+        # Import and call function
+        from mmrelay.cli import handle_auth_logout
+        result = handle_auth_logout(self.mock_args)
+
+        # Verify results
+        self.assertEqual(result, 0)  # Cancellation is not an error
+        mock_logout.assert_not_called()  # Should not attempt logout
+        mock_input.assert_called_once_with("Are you sure you want to logout? (y/N): ")
+        mock_print.assert_any_call("Logout cancelled.")
+
+    @patch("asyncio.run")
+    @patch("mmrelay.cli_utils.logout_matrix_bot")
+    @patch("builtins.print")
+    def test_handle_auth_logout_forced_with_yes_flag(self, mock_print, mock_logout, mock_asyncio_run):
+        """Test logout with --yes flag (no confirmation prompt)."""
+        # Setup mocks
+        self.mock_args.password = "test_password"
+        self.mock_args.yes = True
+        mock_logout.return_value = True
+        mock_asyncio_run.return_value = True
+
+        # Import and call function
+        from mmrelay.cli import handle_auth_logout
+        result = handle_auth_logout(self.mock_args)
+
+        # Verify results
+        self.assertEqual(result, 0)
+        mock_asyncio_run.assert_called_once()
+        # Should not prompt for confirmation
+        mock_print.assert_any_call("Matrix Bot Logout")
+
+    @patch("asyncio.run")
+    @patch("mmrelay.cli_utils.logout_matrix_bot")
+    @patch("getpass.getpass")
+    @patch("builtins.input")
+    @patch("builtins.print")
+    def test_handle_auth_logout_password_prompt(self, mock_print, mock_input, mock_getpass, mock_logout, mock_asyncio_run):
+        """Test logout with password prompt (no --password flag)."""
+        # Setup mocks
+        self.mock_args.password = None  # No password provided
+        self.mock_args.yes = True  # Skip confirmation
+        mock_getpass.return_value = "prompted_password"
+        mock_logout.return_value = True
+        mock_asyncio_run.return_value = True
+
+        # Import and call function
+        from mmrelay.cli import handle_auth_logout
+        result = handle_auth_logout(self.mock_args)
+
+        # Verify results
+        self.assertEqual(result, 0)
+        mock_getpass.assert_called_once_with("Enter Matrix password for verification: ")
+        mock_asyncio_run.assert_called_once()
+        # Should not show password warning (not provided as argument)
+        mock_print.assert_any_call("Matrix Bot Logout")
+
+    @patch("asyncio.run")
+    @patch("mmrelay.cli_utils.logout_matrix_bot")
+    @patch("getpass.getpass")
+    @patch("builtins.input")
+    @patch("builtins.print")
+    def test_handle_auth_logout_empty_password_prompt(self, mock_print, mock_input, mock_getpass, mock_logout, mock_asyncio_run):
+        """Test logout with empty password string (should prompt)."""
+        # Setup mocks
+        self.mock_args.password = ""  # Empty password string
+        self.mock_args.yes = True  # Skip confirmation
+        mock_getpass.return_value = "prompted_password"
+        mock_logout.return_value = True
+        mock_asyncio_run.return_value = True
+
+        # Import and call function
+        from mmrelay.cli import handle_auth_logout
+        result = handle_auth_logout(self.mock_args)
+
+        # Verify results
+        self.assertEqual(result, 0)
+        mock_getpass.assert_called_once_with("Enter Matrix password for verification: ")
+        mock_asyncio_run.assert_called_once()
+
+    @patch("asyncio.run")
+    @patch("mmrelay.cli_utils.logout_matrix_bot")
+    @patch("builtins.input")
+    @patch("builtins.print")
+    def test_handle_auth_logout_failure(self, mock_print, mock_input, mock_logout, mock_asyncio_run):
+        """Test logout failure from logout_matrix_bot."""
+        # Setup mocks
+        self.mock_args.password = "test_password"
+        self.mock_args.yes = True  # Skip confirmation
+        mock_logout.return_value = False  # Logout fails
+        mock_asyncio_run.return_value = False
+
+        # Import and call function
+        from mmrelay.cli import handle_auth_logout
+        result = handle_auth_logout(self.mock_args)
+
+        # Verify results
+        self.assertEqual(result, 1)  # Should return error code
+        mock_asyncio_run.assert_called_once()
+
+    @patch("mmrelay.cli_utils.logout_matrix_bot")
+    @patch("builtins.input")
+    @patch("builtins.print")
+    def test_handle_auth_logout_keyboard_interrupt(self, mock_print, mock_input, mock_logout):
+        """Test logout cancelled by KeyboardInterrupt."""
+        # Setup mocks
+        self.mock_args.password = "test_password"
+        self.mock_args.yes = False
+        mock_input.side_effect = KeyboardInterrupt()  # User presses Ctrl+C
+
+        # Import and call function
+        from mmrelay.cli import handle_auth_logout
+        result = handle_auth_logout(self.mock_args)
+
+        # Verify results
+        self.assertEqual(result, 1)  # Should return error code
+        mock_logout.assert_not_called()  # Should not attempt logout
+        mock_print.assert_any_call("\nLogout cancelled by user.")
+
+    @patch("asyncio.run")
+    @patch("mmrelay.cli_utils.logout_matrix_bot")
+    @patch("builtins.input")
+    @patch("builtins.print")
+    def test_handle_auth_logout_general_exception(self, mock_print, mock_input, mock_logout, mock_asyncio_run):
+        """Test logout with general exception during process."""
+        # Setup mocks
+        self.mock_args.password = "test_password"
+        self.mock_args.yes = True  # Skip confirmation
+        mock_asyncio_run.side_effect = Exception("Network error")
+
+        # Import and call function
+        from mmrelay.cli import handle_auth_logout
+        result = handle_auth_logout(self.mock_args)
+
+        # Verify results
+        self.assertEqual(result, 1)  # Should return error code
+        mock_print.assert_any_call("\nError during logout: Network error")
+
+
+class TestValidateMatrixAuthentication(unittest.TestCase):
+    """Test cases for _validate_matrix_authentication function."""
+
+    @patch("mmrelay.cli._validate_credentials_json")
+    @patch("builtins.print")
+    def test_validate_matrix_authentication_with_valid_credentials(self, mock_print, mock_validate_creds):
+        """Test authentication validation with valid credentials.json."""
+        # Setup mocks
+        config_path = "/home/user/.mmrelay/config.yaml"
+        matrix_section = {"access_token": "token123"}
+        mock_validate_creds.return_value = True
+
+        # Import and call function
+        from mmrelay.cli import _validate_matrix_authentication
+        result = _validate_matrix_authentication(config_path, matrix_section)
+
+        # Verify results
+        self.assertTrue(result)
+        mock_validate_creds.assert_called_once_with(config_path)
+        mock_print.assert_any_call("✅ Using credentials.json for Matrix authentication")
+        # Should show E2EE support on non-Windows platforms
+        if sys.platform != "win32":
+            mock_print.assert_any_call("   E2EE support available (if enabled)")
+
+    @patch("mmrelay.cli._validate_credentials_json")
+    @patch("mmrelay.cli.msg_for_e2ee_support")
+    @patch("builtins.print")
+    def test_validate_matrix_authentication_with_access_token_fallback(self, mock_print, mock_msg_e2ee, mock_validate_creds):
+        """Test authentication validation falling back to access_token."""
+        # Setup mocks
+        config_path = "/home/user/.mmrelay/config.yaml"
+        matrix_section = {"access_token": "token123"}
+        mock_validate_creds.return_value = False  # No valid credentials.json
+        mock_msg_e2ee.return_value = "E2EE not available with access_token"
+
+        # Import and call function
+        from mmrelay.cli import _validate_matrix_authentication
+        result = _validate_matrix_authentication(config_path, matrix_section)
+
+        # Verify results
+        self.assertTrue(result)
+        mock_validate_creds.assert_called_once_with(config_path)
+        mock_print.assert_any_call("✅ Using access_token for Matrix authentication")
+        mock_print.assert_any_call("   E2EE not available with access_token")
+
+    @patch("mmrelay.cli._validate_credentials_json")
+    @patch("mmrelay.cli.msg_setup_auth")
+    @patch("builtins.print")
+    def test_validate_matrix_authentication_no_auth_configured(self, mock_print, mock_msg_setup, mock_validate_creds):
+        """Test authentication validation with no authentication configured."""
+        # Setup mocks
+        config_path = "/home/user/.mmrelay/config.yaml"
+        matrix_section = {}  # No access_token
+        mock_validate_creds.return_value = False  # No valid credentials.json
+        mock_msg_setup.return_value = "Please run 'mmrelay auth login' to set up authentication"
+
+        # Import and call function
+        from mmrelay.cli import _validate_matrix_authentication
+        result = _validate_matrix_authentication(config_path, matrix_section)
+
+        # Verify results
+        self.assertFalse(result)
+        mock_validate_creds.assert_called_once_with(config_path)
+        mock_print.assert_any_call("❌ Error: No Matrix authentication configured")
+        mock_print.assert_any_call("   Please run 'mmrelay auth login' to set up authentication")
+
+    @patch("mmrelay.cli._validate_credentials_json")
+    @patch("builtins.print")
+    def test_validate_matrix_authentication_none_matrix_section(self, mock_print, mock_validate_creds):
+        """Test authentication validation with None matrix_section."""
+        # Setup mocks
+        config_path = "/home/user/.mmrelay/config.yaml"
+        matrix_section = None  # No matrix section
+        mock_validate_creds.return_value = False  # No valid credentials.json
+
+        # Import and call function
+        from mmrelay.cli import _validate_matrix_authentication
+        result = _validate_matrix_authentication(config_path, matrix_section)
+
+        # Verify results
+        self.assertFalse(result)
+        mock_validate_creds.assert_called_once_with(config_path)
+        mock_print.assert_any_call("❌ Error: No Matrix authentication configured")
+
+    @patch("mmrelay.cli._validate_credentials_json")
+    @patch("mmrelay.cli.msg_for_e2ee_support")
+    @patch("builtins.print")
+    def test_validate_matrix_authentication_empty_access_token(self, mock_print, mock_msg_e2ee, mock_validate_creds):
+        """Test authentication validation with empty access_token (still considered valid config)."""
+        # Setup mocks
+        config_path = "/home/user/.mmrelay/config.yaml"
+        matrix_section = {"access_token": ""}  # Empty access_token (but key exists)
+        mock_validate_creds.return_value = False  # No valid credentials.json
+        mock_msg_e2ee.return_value = "E2EE not available with access_token"
+
+        # Import and call function
+        from mmrelay.cli import _validate_matrix_authentication
+        result = _validate_matrix_authentication(config_path, matrix_section)
+
+        # Verify results
+        self.assertTrue(result)  # Function only checks for key presence, not value validity
+        mock_validate_creds.assert_called_once_with(config_path)
+        mock_print.assert_any_call("✅ Using access_token for Matrix authentication")
+        mock_print.assert_any_call("   E2EE not available with access_token")
+
+
+class TestHandleCliCommands(unittest.TestCase):
+    """Test cases for handle_cli_commands function."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.mock_args = MagicMock()
+        # Set all flags to False by default
+        self.mock_args.version = False
+        self.mock_args.install_service = False
+        self.mock_args.generate_config = False
+        self.mock_args.check_config = False
+
+    @patch("mmrelay.cli.print_version")
+    def test_handle_cli_commands_version_flag(self, mock_print_version):
+        """Test handling of --version flag."""
+        # Setup mocks
+        self.mock_args.version = True
+
+        # Import and call function
+        from mmrelay.cli import handle_cli_commands
+        result = handle_cli_commands(self.mock_args)
+
+        # Verify results
+        self.assertTrue(result)  # Should return True indicating command was handled
+        mock_print_version.assert_called_once()
+
+    @patch("sys.exit")
+    @patch("mmrelay.setup_utils.install_service")
+    def test_handle_cli_commands_install_service_success(self, mock_install_service, mock_sys_exit):
+        """Test handling of --install-service flag with success."""
+        # Setup mocks
+        self.mock_args.install_service = True
+        mock_install_service.return_value = True
+
+        # Import and call function
+        from mmrelay.cli import handle_cli_commands
+        handle_cli_commands(self.mock_args)
+
+        # Verify results
+        mock_install_service.assert_called_once()
+        mock_sys_exit.assert_called_once_with(0)  # Should exit with success
+
+    @patch("sys.exit")
+    @patch("mmrelay.setup_utils.install_service")
+    def test_handle_cli_commands_install_service_failure(self, mock_install_service, mock_sys_exit):
+        """Test handling of --install-service flag with failure."""
+        # Setup mocks
+        self.mock_args.install_service = True
+        mock_install_service.return_value = False
+
+        # Import and call function
+        from mmrelay.cli import handle_cli_commands
+        handle_cli_commands(self.mock_args)
+
+        # Verify results
+        mock_install_service.assert_called_once()
+        mock_sys_exit.assert_called_once_with(1)  # Should exit with error
+
+    @patch("mmrelay.cli.generate_sample_config")
+    def test_handle_cli_commands_generate_config_success(self, mock_generate_config):
+        """Test handling of --generate-config flag with success."""
+        # Setup mocks
+        self.mock_args.generate_config = True
+        mock_generate_config.return_value = True
+
+        # Import and call function
+        from mmrelay.cli import handle_cli_commands
+        result = handle_cli_commands(self.mock_args)
+
+        # Verify results
+        self.assertTrue(result)  # Should return True indicating command was handled
+        mock_generate_config.assert_called_once()
+
+    @patch("sys.exit")
+    @patch("mmrelay.cli.generate_sample_config")
+    def test_handle_cli_commands_generate_config_failure(self, mock_generate_config, mock_sys_exit):
+        """Test handling of --generate-config flag with failure."""
+        # Setup mocks
+        self.mock_args.generate_config = True
+        mock_generate_config.return_value = False
+
+        # Import and call function
+        from mmrelay.cli import handle_cli_commands
+        handle_cli_commands(self.mock_args)
+
+        # Verify results
+        mock_generate_config.assert_called_once()
+        mock_sys_exit.assert_called_once_with(1)  # Should exit with error
+
+    @patch("sys.exit")
+    @patch("mmrelay.cli.check_config")
+    def test_handle_cli_commands_check_config_success(self, mock_check_config, mock_sys_exit):
+        """Test handling of --check-config flag with success."""
+        # Setup mocks
+        self.mock_args.check_config = True
+        mock_check_config.return_value = True
+
+        # Import and call function
+        from mmrelay.cli import handle_cli_commands
+        handle_cli_commands(self.mock_args)
+
+        # Verify results
+        mock_check_config.assert_called_once()
+        mock_sys_exit.assert_called_once_with(0)  # Should exit with success
+
+    @patch("sys.exit")
+    @patch("mmrelay.cli.check_config")
+    def test_handle_cli_commands_check_config_failure(self, mock_check_config, mock_sys_exit):
+        """Test handling of --check-config flag with failure."""
+        # Setup mocks
+        self.mock_args.check_config = True
+        mock_check_config.return_value = False
+
+        # Import and call function
+        from mmrelay.cli import handle_cli_commands
+        handle_cli_commands(self.mock_args)
+
+        # Verify results
+        mock_check_config.assert_called_once()
+        mock_sys_exit.assert_called_once_with(1)  # Should exit with error
+
+    def test_handle_cli_commands_no_flags(self):
+        """Test handling when no CLI flags are set."""
+        # All flags are False by default in setUp
+
+        # Import and call function
+        from mmrelay.cli import handle_cli_commands
+        result = handle_cli_commands(self.mock_args)
+
+        # Verify results
+        self.assertFalse(result)  # Should return False indicating no command was handled
+
+
 if __name__ == "__main__":
     unittest.main()
