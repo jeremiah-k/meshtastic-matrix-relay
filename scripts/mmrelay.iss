@@ -157,7 +157,10 @@ begin
   end;
 
   connection_type := LowerCase(Trim(MeshtasticPage.Values[0]));
-  if connection_type = 'network' then connection_type := 'tcp';
+  if connection_type = 'network' then
+  begin
+    connection_type := 'tcp';
+  end;
   serial_port := MeshtasticPage.Values[1];
   host := MeshtasticPage.Values[2];
   ble_address := MeshtasticPage.Values[3];
@@ -208,7 +211,9 @@ begin
             '  bot_user_id: "' + bot_user_id + '"' + #13#10;
   // append password line only when provided
   if MatrixPage.Values[2] <> '' then
+  begin
     config := config + '  password: ' + QuotedStr(StringChange(MatrixPage.Values[2], '''', '''''')) + #13#10;
+  end;
   config := config +
             'matrix_rooms:' + #13#10 +
             '  - id: "' + MatrixMeshtasticPage.Values[0] + '"' + #13#10 +
