@@ -212,7 +212,7 @@ matrix:
 
 - Automatic `credentials.json` creation on startup
 - Compatible with Matrix 2.0/MAS authentication
-- E2EE support when dependencies are available
+- Supports E2EE when dependencies are available
 
 ### Authentication Precedence
 
@@ -401,7 +401,7 @@ MMRELAY_HOME=/path/to/your/data
 **Container won't start:**
 
 - Check logs: `docker compose logs mmrelay`
-- Verify config file syntax: `mmrelay check-config --config ~/.mmrelay/config.yaml`
+- Verify config file syntax: `mmrelay config check --config ~/.mmrelay/config.yaml`
 - Ensure all required config fields are set
 
 **Connection issues:**
@@ -479,7 +479,7 @@ matrix_rooms:
 
 - Automatic credentials.json creation on startup
 - Compatible with Matrix 2.0/MAS authentication
-- E2EE support when dependencies are available
+- Supports E2EE when dependencies are available
 
 #### Step 2: Create docker-compose.yaml
 

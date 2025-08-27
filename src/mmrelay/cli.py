@@ -335,7 +335,7 @@ def _validate_matrix_authentication(config_path, matrix_section):
           and whether E2EE support is available.
     """
     has_valid_credentials = _validate_credentials_json(config_path)
-    has_access_token = bool(matrix_section and "access_token" in matrix_section)
+    has_access_token = bool(matrix_section and CONFIG_KEY_ACCESS_TOKEN in matrix_section)
     has_password = bool(
         matrix_section
         and "password" in matrix_section
@@ -708,7 +708,7 @@ def check_config(args=None):
     - Locates the first existing config file from get_config_paths(args) (parses CLI args if args is None).
     - Verifies YAML syntax and reports syntax errors or style warnings.
     - Ensures the config is non-empty.
-    - Validates Matrix authentication: accepts credentials supplied via credentials.json or requires a matrix section with homeserver, access_token, and bot_user_id when credentials.json is absent.
+    - Validates Matrix authentication: accepts credentials supplied via credentials.json or requires a matrix section with homeserver and bot_user_id plus either access_token or password when credentials.json is absent.
     - Validates end-to-end-encryption (E2EE) configuration and dependencies.
     - Ensures matrix_rooms exists, is a non-empty list, and each room is a dict containing an id.
     - Validates the meshtastic section: requires connection_type and the connection-specific fields (serial_port for serial, host for tcp/network, ble_address for ble). Warns about deprecated connection types.

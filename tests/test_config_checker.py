@@ -30,7 +30,7 @@ class TestConfigChecker(unittest.TestCase):
         Prepare a representative, valid configuration dict used by each test.
 
         The dict is stored as self.valid_config and includes:
-        - matrix: minimal required fields for Matrix (homeserver, access_token, bot_user_id)
+        - matrix: minimal required fields for Matrix (homeserver, bot_user_id, and either access_token or password)
         - matrix_rooms: a list with one room dict containing an 'id' and 'meshtastic_channel'
         - meshtastic: a meshtastic connection with connection_type 'tcp', a host, and broadcast_enabled flag
 

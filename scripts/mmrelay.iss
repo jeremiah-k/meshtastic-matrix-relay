@@ -85,13 +85,13 @@ begin
 
   MeshtasticPage.Add('Connection type (tcp, serial, or ble):', False);
   MeshtasticPage.Add('Serial port (if serial):', False);
-  MeshtasticPage.Add('Hostname/IP (if network):', False);
+  MeshtasticPage.Add('Hostname/IP (if tcp/network):', False);
   MeshtasticPage.Add('BLE address/name (if ble):', False);
   MeshtasticPage.Add('Meshnet name:', False);
 
   MeshtasticPage.Edits[0].Hint := 'tcp (recommended), serial, or ble';
   MeshtasticPage.Edits[1].Hint := 'serial port (if serial)';
-  MeshtasticPage.Edits[2].Hint := 'hostname/IP (if network)';
+  MeshtasticPage.Edits[2].Hint := 'hostname/IP (if tcp/network)';
   MeshtasticPage.Edits[3].Hint := 'BLE address or name (if ble)';
   MeshtasticPage.Edits[4].Hint := 'Name for radio Meshnet';
 
@@ -194,7 +194,7 @@ begin
   end;
 
   config := 'matrix:' + #13#10 +
-            '  homeserver: "' + MatrixPage.Values[0] + '"' + #13#10 +
+            '  homeserver: "' + HomeserverURL + '"' + #13#10 +
             '  bot_user_id: "' + bot_user_id + '"' + #13#10 +
             '  password: "' + MatrixPage.Values[2] + '"' + #13#10 +
             'matrix_rooms:' + #13#10 +
@@ -205,7 +205,7 @@ begin
 
   if connection_type = 'serial' then
     config := config + '  serial_port: "' + serial_port + '"' + #13#10
-  else if connection_type = 'network' then
+  else if (connection_type = 'tcp') or (connection_type = 'network') then
     config := config + '  host: "' + host + '"' + #13#10
   else if connection_type = 'ble' then
     config := config + '  ble_address: "' + ble_address + '"' + #13#10;
@@ -256,7 +256,7 @@ begin
     // Run authentication command (auto-detects non-interactive mode when all params provided)
     // bot_user_id was already constructed earlier for config generation
     // Build params without invoking a shell
-    auth_command := 'auth login --homeserver "' + MatrixPage.Values[0] + '" --username "' + bot_user_id + '" --password "' + MatrixPage.Values[2] + '"';
+    auth_command := 'auth login --homeserver "' + HomeserverURL + '" --username "' + bot_user_id + '" --password "' + MatrixPage.Values[2] + '"';
     if Exec('"' + sAppDir + '\mmrelay.exe"', auth_command, sAppDir, SW_HIDE, ewWaitUntilTerminated, auth_result) then
     begin
       if auth_result = 0 then
@@ -264,11 +264,19 @@ begin
         MsgBox('✅ Matrix authentication successful!' + #13#10 + 'MM Relay is ready to use.', mbInformation, MB_OK);
         // Scrub password from config.yaml after successful authentication
         cfgPath := sAppDir + '\config.yaml';
-        if LoadStringFromFile(cfgPath, cfgContent) then
+        var cfgLines: TArrayOfString;
+        if LoadStringsFromFile(cfgPath, cfgLines) then
         begin
-          // Replace the password line with a commented placeholder
-          cfgContent := StringReplace(cfgContent, #13#10 + '  password:', #13#10 + '  # password (removed after successful auth):', [rfReplaceAll]);
-          SaveStringToFile(cfgPath, cfgContent, False);
+          // Remove any line that contains password
+          var i: Integer;
+          for i := 0 to GetArrayLength(cfgLines) - 1 do
+          begin
+            if Pos('  password:', cfgLines[i]) = 1 then
+            begin
+              cfgLines[i] := '  # password removed after successful auth';
+            end;
+          end;
+          SaveStringsToFile(cfgPath, cfgLines, False);
         end;
       end
       else
