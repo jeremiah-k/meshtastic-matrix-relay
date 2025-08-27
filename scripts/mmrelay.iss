@@ -16,8 +16,8 @@ PrivilegesRequiredOverridesAllowed=dialog commandline
 Source: "..\dist\mmrelay.exe"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs; AfterInstall: AfterInstall(ExpandConstant('{app}'));
 
 [Icons]
-Name: "{group}\MM Relay"; Filename: "{app}\mmrelay.bat"
-Name: "{group}\MM Relay Config"; Filename: "{app}\config.yaml"; IconFilename: "{sys}\notepad.exe"; WorkingDir: "{app}"; Parameters: "config.yaml";
+Name: "{group}\MM Relay"; Filename: "{app}\mmrelay.bat"; Check: FileExists(ExpandConstant('{app}\mmrelay.bat'))
+Name: "{group}\MM Relay Config"; Filename: "{app}\config.yaml"; IconFilename: "{sys}\notepad.exe"; WorkingDir: "{app}"; Parameters: "config.yaml"; Check: FileExists(ExpandConstant('{app}\config.yaml'))
 Name: "{group}\Setup Authentication"; Filename: "{app}\setup-auth.bat"; Comment: "Set up Matrix authentication for MM Relay"; Check: FileExists(ExpandConstant('{app}\setup-auth.bat'))
 
 [Run]
@@ -141,19 +141,23 @@ var
   auth_command: string;
   auth_result: Integer;
   cfgPath: string;
-  cfgContent: string;
+
   cfgLines: TArrayOfString;
   i: Integer;
+  SafeHomeserver: string;
+  SafeUser: string;
+  SafePwd: string;
 begin
   If Not OverwriteConfig.Values[0] then
     Exit;
 
-  if (FileExists(sAppDir + '/config.yaml')) then
+  if (FileExists(sAppDir + '\config.yaml')) then
   begin
-    RenameFile(sAppDir + '/config.yaml', sAppDir + '/config-old.yaml');
+    RenameFile(sAppDir + '\config.yaml', sAppDir + '\config-old.yaml');
   end;
 
-  connection_type := MeshtasticPage.Values[0];
+  connection_type := LowerCase(Trim(MeshtasticPage.Values[0]));
+  if connection_type = 'network' then connection_type := 'tcp';
   serial_port := MeshtasticPage.Values[1];
   host := MeshtasticPage.Values[2];
   ble_address := MeshtasticPage.Values[3];
@@ -180,6 +184,9 @@ begin
   PathPos := Pos('/', ServerName);
   if PathPos > 0 then
     ServerName := Copy(ServerName, 1, PathPos - 1);
+  // extra paranoia: strip trailing slashes
+  while (Length(ServerName) > 0) and (ServerName[Length(ServerName)] = '/') do
+    Delete(ServerName, Length(ServerName), 1);
 
   // Build bot_user_id (accept full MXID if provided)
   bot_user_id := Trim(MatrixPage.Values[1]);
@@ -187,18 +194,22 @@ begin
   begin
     if (bot_user_id[1] <> '@') then
       bot_user_id := '@' + bot_user_id;
+    bot_user_id := Trim(bot_user_id);
   end
   else
   begin
     if (Length(bot_user_id) > 0) and (bot_user_id[1] = '@') then
       bot_user_id := Copy(bot_user_id, 2, MaxInt);
-    bot_user_id := '@' + bot_user_id + ':' + ServerName;
+    bot_user_id := '@' + Trim(bot_user_id) + ':' + ServerName;
   end;
 
   config := 'matrix:' + #13#10 +
             '  homeserver: "' + HomeserverURL + '"' + #13#10 +
-            '  bot_user_id: "' + bot_user_id + '"' + #13#10 +
-            '  password: ''' + StringReplace(MatrixPage.Values[2], '''', '''''', [rfReplaceAll]) + '''' + #13#10 +
+            '  bot_user_id: "' + bot_user_id + '"' + #13#10;
+            // append password line only when provided
+            if MatrixPage.Values[2] <> '' then
+              config := config + '  password: ''' + StringChange(MatrixPage.Values[2], '''', '''''') + '''' + #13#10;
+            config := config +
             'matrix_rooms:' + #13#10 +
             '  - id: "' + MatrixMeshtasticPage.Values[0] + '"' + #13#10 +
             '    meshtastic_channel: ' + MatrixMeshtasticPage.Values[1] + #13#10 +
@@ -218,7 +229,7 @@ begin
             '  level: "' + log_level + '"' + #13#10 +
             'plugins:' + #13#10;
 
-  if Not SaveStringToFile(sAppDir + '/config.yaml', config, false) then
+  if Not SaveStringToFile(sAppDir + '\config.yaml', config, false) then
   begin
     MsgBox('Could not create config file "config.yaml". Close any applications that may have it open and re-run setup', mbError, MB_OK);
   end;
@@ -255,16 +266,14 @@ begin
   // Set up Matrix authentication directly during installation
   if (HomeserverURL <> '') and (MatrixPage.Values[1] <> '') and (MatrixPage.Values[2] <> '') then
   begin
-    if Pos('"', MatrixPage.Values[2]) > 0 then
-    begin
-      MsgBox('The password contains double quotes ("). Automatic authentication will be skipped. Please run "Setup Authentication" manually after installation.', mbInformation, MB_OK);
-    end
-    else
-    begin
-      // Run authentication command (auto-detects non-interactive mode when all params provided)
-      // bot_user_id was already constructed earlier for config generation
-      // Build params without invoking a shell
-      auth_command := 'auth login --homeserver "' + HomeserverURL + '" --username "' + bot_user_id + '" --password "' + MatrixPage.Values[2] + '"';
+    // Run authentication command (auto-detects non-interactive mode when all params provided)
+    // bot_user_id was already constructed earlier for config generation
+    // Build params without invoking a shell
+    // Escape embedded quotes for CLI (CreateProcess-compatible)
+    SafeHomeserver := StringChange(HomeserverURL, '"', '""');
+    SafeUser := StringChange(bot_user_id, '"', '""');
+    SafePwd := StringChange(MatrixPage.Values[2], '"', '""');
+    auth_command := 'auth login --homeserver "' + SafeHomeserver + '" --username "' + SafeUser + '" --password "' + SafePwd + '"';
       if Exec('"' + sAppDir + '\mmrelay.exe"', auth_command, sAppDir, SW_HIDE, ewWaitUntilTerminated, auth_result) then
     begin
       if auth_result = 0 then

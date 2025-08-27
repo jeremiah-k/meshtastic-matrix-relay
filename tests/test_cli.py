@@ -1435,8 +1435,16 @@ class TestAuthLogin(unittest.TestCase):
         # Verify results
         self.assertEqual(result, 1)
         # Check error message content
-        mock_print.assert_any_call("❌ Error: All authentication parameters are required when using command-line options.")
-        mock_print.assert_any_call("   Missing: --username, --password")
+        expected_message = """❌ Error: All authentication parameters are required when using command-line options.
+   Missing: --username, --password
+
+💡 Options:
+   • For secure interactive authentication: mmrelay auth login
+   • For automated authentication: provide all three parameters
+
+⚠️  Security Note: Command-line passwords may be visible in process lists and shell history.
+   Interactive mode is recommended for manual use."""
+        mock_print.assert_called_once_with(expected_message)
 
     @patch("builtins.print")
     def test_handle_auth_login_partial_params_username_only(self, mock_print):
@@ -1450,8 +1458,16 @@ class TestAuthLogin(unittest.TestCase):
         # Verify results
         self.assertEqual(result, 1)
         # Check error message content
-        mock_print.assert_any_call("❌ Error: All authentication parameters are required when using command-line options.")
-        mock_print.assert_any_call("   Missing: --homeserver, --password")
+        expected_message = """❌ Error: All authentication parameters are required when using command-line options.
+   Missing: --homeserver, --password
+
+💡 Options:
+   • For secure interactive authentication: mmrelay auth login
+   • For automated authentication: provide all three parameters
+
+⚠️  Security Note: Command-line passwords may be visible in process lists and shell history.
+   Interactive mode is recommended for manual use."""
+        mock_print.assert_called_once_with(expected_message)
 
     @patch("builtins.print")
     def test_handle_auth_login_partial_params_password_only(self, mock_print):
@@ -1465,8 +1481,16 @@ class TestAuthLogin(unittest.TestCase):
         # Verify results
         self.assertEqual(result, 1)
         # Check error message content
-        mock_print.assert_any_call("❌ Error: All authentication parameters are required when using command-line options.")
-        mock_print.assert_any_call("   Missing: --homeserver, --username")
+        expected_message = """❌ Error: All authentication parameters are required when using command-line options.
+   Missing: --homeserver, --username
+
+💡 Options:
+   • For secure interactive authentication: mmrelay auth login
+   • For automated authentication: provide all three parameters
+
+⚠️  Security Note: Command-line passwords may be visible in process lists and shell history.
+   Interactive mode is recommended for manual use."""
+        mock_print.assert_called_once_with(expected_message)
 
     @patch("builtins.print")
     def test_handle_auth_login_partial_params_homeserver_username(self, mock_print):
@@ -1481,8 +1505,16 @@ class TestAuthLogin(unittest.TestCase):
         # Verify results
         self.assertEqual(result, 1)
         # Check error message content
-        mock_print.assert_any_call("❌ Error: All authentication parameters are required when using command-line options.")
-        mock_print.assert_any_call("   Missing: --password")
+        expected_message = """❌ Error: All authentication parameters are required when using command-line options.
+   Missing: --password
+
+💡 Options:
+   • For secure interactive authentication: mmrelay auth login
+   • For automated authentication: provide all three parameters
+
+⚠️  Security Note: Command-line passwords may be visible in process lists and shell history.
+   Interactive mode is recommended for manual use."""
+        mock_print.assert_called_once_with(expected_message)
 
     @patch("builtins.print")
     def test_handle_auth_login_partial_params_homeserver_password(self, mock_print):
@@ -1497,8 +1529,16 @@ class TestAuthLogin(unittest.TestCase):
         # Verify results
         self.assertEqual(result, 1)
         # Check error message content
-        mock_print.assert_any_call("❌ Error: All authentication parameters are required when using command-line options.")
-        mock_print.assert_any_call("   Missing: --username")
+        expected_message = """❌ Error: All authentication parameters are required when using command-line options.
+   Missing: --username
+
+💡 Options:
+   • For secure interactive authentication: mmrelay auth login
+   • For automated authentication: provide all three parameters
+
+⚠️  Security Note: Command-line passwords may be visible in process lists and shell history.
+   Interactive mode is recommended for manual use."""
+        mock_print.assert_called_once_with(expected_message)
 
     @patch("builtins.print")
     def test_handle_auth_login_partial_params_username_password(self, mock_print):
@@ -1513,8 +1553,16 @@ class TestAuthLogin(unittest.TestCase):
         # Verify results
         self.assertEqual(result, 1)
         # Check error message content
-        mock_print.assert_any_call("❌ Error: All authentication parameters are required when using command-line options.")
-        mock_print.assert_any_call("   Missing: --homeserver")
+        expected_message = """❌ Error: All authentication parameters are required when using command-line options.
+   Missing: --homeserver
+
+💡 Options:
+   • For secure interactive authentication: mmrelay auth login
+   • For automated authentication: provide all three parameters
+
+⚠️  Security Note: Command-line passwords may be visible in process lists and shell history.
+   Interactive mode is recommended for manual use."""
+        mock_print.assert_called_once_with(expected_message)
 
     @patch("builtins.print")
     def test_handle_auth_login_error_message_guidance(self, mock_print):
@@ -1527,12 +1575,17 @@ class TestAuthLogin(unittest.TestCase):
 
         # Verify results
         self.assertEqual(result, 1)
-        # Check that guidance messages are included
-        mock_print.assert_any_call("💡 Options:")
-        mock_print.assert_any_call("   • For secure interactive authentication: mmrelay auth login")
-        mock_print.assert_any_call("   • For automated authentication: provide all three parameters")
-        mock_print.assert_any_call("⚠️  Security Note: Command-line passwords may be visible in process lists and shell history.")
-        mock_print.assert_any_call("   Interactive mode is recommended for manual use.")
+        # Check that guidance messages are included in the combined message
+        expected_message = """❌ Error: All authentication parameters are required when using command-line options.
+   Missing: --username, --password
+
+💡 Options:
+   • For secure interactive authentication: mmrelay auth login
+   • For automated authentication: provide all three parameters
+
+⚠️  Security Note: Command-line passwords may be visible in process lists and shell history.
+   Interactive mode is recommended for manual use."""
+        mock_print.assert_called_once_with(expected_message)
 
     @patch("mmrelay.matrix_utils.login_matrix_bot")
     @patch("builtins.print")
