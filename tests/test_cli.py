@@ -2742,5 +2742,433 @@ class TestHandleCliCommands(unittest.TestCase):
         self.assertFalse(result)  # Should return False indicating no command was handled
 
 
+class TestHandleSubcommand(unittest.TestCase):
+    """Test cases for handle_subcommand function."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.mock_args = MagicMock()
+
+    @patch("mmrelay.cli.handle_config_command")
+    @patch("builtins.print")
+    def test_handle_subcommand_config(self, mock_print, mock_handle_config):
+        """Test dispatching to config command handler."""
+        # Setup mocks
+        self.mock_args.command = "config"
+        mock_handle_config.return_value = 0
+
+        # Import and call function
+        from mmrelay.cli import handle_subcommand
+        result = handle_subcommand(self.mock_args)
+
+        # Verify results
+        self.assertEqual(result, 0)
+        mock_handle_config.assert_called_once_with(self.mock_args)
+        mock_print.assert_not_called()
+
+    @patch("mmrelay.cli.handle_auth_command")
+    @patch("builtins.print")
+    def test_handle_subcommand_auth(self, mock_print, mock_handle_auth):
+        """Test dispatching to auth command handler."""
+        # Setup mocks
+        self.mock_args.command = "auth"
+        mock_handle_auth.return_value = 0
+
+        # Import and call function
+        from mmrelay.cli import handle_subcommand
+        result = handle_subcommand(self.mock_args)
+
+        # Verify results
+        self.assertEqual(result, 0)
+        mock_handle_auth.assert_called_once_with(self.mock_args)
+        mock_print.assert_not_called()
+
+    @patch("mmrelay.cli.handle_service_command")
+    @patch("builtins.print")
+    def test_handle_subcommand_service(self, mock_print, mock_handle_service):
+        """Test dispatching to service command handler."""
+        # Setup mocks
+        self.mock_args.command = "service"
+        mock_handle_service.return_value = 0
+
+        # Import and call function
+        from mmrelay.cli import handle_subcommand
+        result = handle_subcommand(self.mock_args)
+
+        # Verify results
+        self.assertEqual(result, 0)
+        mock_handle_service.assert_called_once_with(self.mock_args)
+        mock_print.assert_not_called()
+
+    @patch("builtins.print")
+    def test_handle_subcommand_unknown_command(self, mock_print):
+        """Test handling of unknown command."""
+        # Setup mocks
+        self.mock_args.command = "unknown"
+
+        # Import and call function
+        from mmrelay.cli import handle_subcommand
+        result = handle_subcommand(self.mock_args)
+
+        # Verify results
+        self.assertEqual(result, 1)  # Should return error code
+        mock_print.assert_called_once_with("Unknown command: unknown")
+
+
+class TestHandleConfigCommand(unittest.TestCase):
+    """Test cases for handle_config_command function."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.mock_args = MagicMock()
+
+    @patch("mmrelay.cli.generate_sample_config")
+    @patch("builtins.print")
+    def test_handle_config_command_generate_success(self, mock_print, mock_generate):
+        """Test config generate command with success."""
+        # Setup mocks
+        self.mock_args.config_command = "generate"
+        mock_generate.return_value = True
+
+        # Import and call function
+        from mmrelay.cli import handle_config_command
+        result = handle_config_command(self.mock_args)
+
+        # Verify results
+        self.assertEqual(result, 0)
+        mock_generate.assert_called_once()
+        mock_print.assert_not_called()
+
+    @patch("mmrelay.cli.generate_sample_config")
+    @patch("builtins.print")
+    def test_handle_config_command_generate_failure(self, mock_print, mock_generate):
+        """Test config generate command with failure."""
+        # Setup mocks
+        self.mock_args.config_command = "generate"
+        mock_generate.return_value = False
+
+        # Import and call function
+        from mmrelay.cli import handle_config_command
+        result = handle_config_command(self.mock_args)
+
+        # Verify results
+        self.assertEqual(result, 1)  # Should return error code
+        mock_generate.assert_called_once()
+        mock_print.assert_not_called()
+
+    @patch("mmrelay.cli.check_config")
+    @patch("builtins.print")
+    def test_handle_config_command_check_success(self, mock_print, mock_check):
+        """Test config check command with success."""
+        # Setup mocks
+        self.mock_args.config_command = "check"
+        mock_check.return_value = True
+
+        # Import and call function
+        from mmrelay.cli import handle_config_command
+        result = handle_config_command(self.mock_args)
+
+        # Verify results
+        self.assertEqual(result, 0)
+        mock_check.assert_called_once_with(self.mock_args)
+        mock_print.assert_not_called()
+
+    @patch("mmrelay.cli.check_config")
+    @patch("builtins.print")
+    def test_handle_config_command_check_failure(self, mock_print, mock_check):
+        """Test config check command with failure."""
+        # Setup mocks
+        self.mock_args.config_command = "check"
+        mock_check.return_value = False
+
+        # Import and call function
+        from mmrelay.cli import handle_config_command
+        result = handle_config_command(self.mock_args)
+
+        # Verify results
+        self.assertEqual(result, 1)  # Should return error code
+        mock_check.assert_called_once_with(self.mock_args)
+        mock_print.assert_not_called()
+
+    @patch("builtins.print")
+    def test_handle_config_command_unknown_subcommand(self, mock_print):
+        """Test handling of unknown config subcommand."""
+        # Setup mocks
+        self.mock_args.config_command = "unknown"
+
+        # Import and call function
+        from mmrelay.cli import handle_config_command
+        result = handle_config_command(self.mock_args)
+
+        # Verify results
+        self.assertEqual(result, 1)  # Should return error code
+        mock_print.assert_called_once_with("Unknown config command: unknown")
+
+
+class TestHandleAuthCommand(unittest.TestCase):
+    """Test cases for handle_auth_command function."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.mock_args = MagicMock()
+
+    @patch("mmrelay.cli.handle_auth_status")
+    def test_handle_auth_command_status(self, mock_handle_status):
+        """Test dispatching to auth status handler."""
+        # Setup mocks
+        self.mock_args.auth_command = "status"
+        mock_handle_status.return_value = 0
+
+        # Import and call function
+        from mmrelay.cli import handle_auth_command
+        result = handle_auth_command(self.mock_args)
+
+        # Verify results
+        self.assertEqual(result, 0)
+        mock_handle_status.assert_called_once_with(self.mock_args)
+
+    @patch("mmrelay.cli.handle_auth_logout")
+    def test_handle_auth_command_logout(self, mock_handle_logout):
+        """Test dispatching to auth logout handler."""
+        # Setup mocks
+        self.mock_args.auth_command = "logout"
+        mock_handle_logout.return_value = 0
+
+        # Import and call function
+        from mmrelay.cli import handle_auth_command
+        result = handle_auth_command(self.mock_args)
+
+        # Verify results
+        self.assertEqual(result, 0)
+        mock_handle_logout.assert_called_once_with(self.mock_args)
+
+    @patch("mmrelay.cli.handle_auth_login")
+    def test_handle_auth_command_login_explicit(self, mock_handle_login):
+        """Test dispatching to auth login handler with explicit login command."""
+        # Setup mocks
+        self.mock_args.auth_command = "login"
+        mock_handle_login.return_value = 0
+
+        # Import and call function
+        from mmrelay.cli import handle_auth_command
+        result = handle_auth_command(self.mock_args)
+
+        # Verify results
+        self.assertEqual(result, 0)
+        mock_handle_login.assert_called_once_with(self.mock_args)
+
+    @patch("mmrelay.cli.handle_auth_login")
+    def test_handle_auth_command_unknown_defaults_to_login(self, mock_handle_login):
+        """Test that unknown auth commands default to login."""
+        # Setup mocks
+        self.mock_args.auth_command = "unknown"
+        mock_handle_login.return_value = 0
+
+        # Import and call function
+        from mmrelay.cli import handle_auth_command
+        result = handle_auth_command(self.mock_args)
+
+        # Verify results
+        self.assertEqual(result, 0)
+        mock_handle_login.assert_called_once_with(self.mock_args)
+
+    @patch("mmrelay.cli.handle_auth_login")
+    def test_handle_auth_command_no_auth_command_attribute(self, mock_handle_login):
+        """Test that missing auth_command attribute defaults to login."""
+        # Setup mocks - remove auth_command attribute
+        if hasattr(self.mock_args, 'auth_command'):
+            delattr(self.mock_args, 'auth_command')
+        mock_handle_login.return_value = 0
+
+        # Import and call function
+        from mmrelay.cli import handle_auth_command
+        result = handle_auth_command(self.mock_args)
+
+        # Verify results
+        self.assertEqual(result, 0)
+        mock_handle_login.assert_called_once_with(self.mock_args)
+
+
+class TestPrintVersion(unittest.TestCase):
+    """Test cases for print_version function."""
+
+    @patch("builtins.print")
+    def test_print_version(self, mock_print):
+        """Test that print_version outputs the correct format."""
+        # Import and call function
+        from mmrelay.cli import print_version
+        print_version()
+
+        # Verify results - should print version in expected format
+        mock_print.assert_called_once()
+        call_args = mock_print.call_args[0][0]  # Get the first argument
+        self.assertTrue(call_args.startswith("MMRelay version "))
+        self.assertIn(".", call_args)  # Should contain version number with dots
+
+
+class TestGetVersion(unittest.TestCase):
+    """Test cases for get_version function."""
+
+    def test_get_version_returns_string(self):
+        """Test that get_version returns a version string."""
+        # Import and call function
+        from mmrelay.cli import get_version
+        version = get_version()
+
+        # Verify results
+        self.assertIsInstance(version, str)
+        self.assertTrue(len(version) > 0)
+        # Should be in semantic version format (at least one dot)
+        self.assertIn(".", version)
+
+
+class TestGenerateSampleConfig(unittest.TestCase):
+    """Test cases for generate_sample_config function."""
+
+    @patch("mmrelay.cli.get_config_paths")
+    @patch("os.path.isfile")
+    @patch("builtins.print")
+    def test_generate_sample_config_existing_config_found(self, mock_print, mock_isfile, mock_get_paths):
+        """Test that function aborts when existing config is found."""
+        # Setup mocks
+        mock_get_paths.return_value = ["/home/user/.mmrelay/config.yaml", "/etc/mmrelay/config.yaml"]
+        mock_isfile.side_effect = lambda path: path == "/home/user/.mmrelay/config.yaml"  # First path exists
+
+        # Import and call function
+        from mmrelay.cli import generate_sample_config
+        result = generate_sample_config()
+
+        # Verify results
+        self.assertFalse(result)  # Should return False when config exists
+        mock_print.assert_any_call("A config file already exists at: /home/user/.mmrelay/config.yaml")
+        mock_print.assert_any_call("Use --config to specify a different location if you want to generate a new one.")
+
+    @patch("mmrelay.cli.get_config_paths")
+    @patch("mmrelay.cli.get_sample_config_path")
+    @patch("mmrelay.cli.set_secure_file_permissions")
+    @patch("shutil.copy2")
+    @patch("os.path.isfile")
+    @patch("os.path.exists")
+    @patch("builtins.print")
+    def test_generate_sample_config_success_with_file_copy(self, mock_print, mock_exists, mock_isfile, mock_copy2, mock_set_perms, mock_get_sample, mock_get_paths):
+        """Test successful config generation using file copy."""
+        # Setup mocks
+        mock_get_paths.return_value = ["/home/user/.mmrelay/config.yaml"]
+        mock_isfile.return_value = False  # No existing config
+        mock_get_sample.return_value = "/path/to/sample_config.yaml"
+        mock_exists.return_value = True  # Sample config exists
+
+        # Import and call function
+        from mmrelay.cli import generate_sample_config
+        result = generate_sample_config()
+
+        # Verify results
+        self.assertTrue(result)  # Should return True on success
+        mock_copy2.assert_called_once_with("/path/to/sample_config.yaml", "/home/user/.mmrelay/config.yaml")
+        mock_set_perms.assert_called_once_with("/home/user/.mmrelay/config.yaml")
+        mock_print.assert_any_call("Generated sample config file at: /home/user/.mmrelay/config.yaml")
+
+    @patch("mmrelay.cli.get_config_paths")
+    @patch("mmrelay.cli.get_sample_config_path")
+    @patch("mmrelay.cli.set_secure_file_permissions")
+    @patch("importlib.resources.files")
+    @patch("os.path.isfile")
+    @patch("os.path.exists")
+    @patch("builtins.open", new_callable=mock_open)
+    @patch("builtins.print")
+    def test_generate_sample_config_fallback_to_importlib(self, mock_print, mock_file_open, mock_exists, mock_isfile, mock_resources, mock_set_perms, mock_get_sample, mock_get_paths):
+        """Test config generation falling back to importlib.resources."""
+        # Setup mocks
+        mock_get_paths.return_value = ["/home/user/.mmrelay/config.yaml"]
+        mock_isfile.return_value = False  # No existing config
+        mock_get_sample.return_value = "/path/to/sample_config.yaml"
+        mock_exists.return_value = False  # Sample config file doesn't exist, fallback to importlib
+
+        # Mock importlib.resources chain
+        mock_resource_file = MagicMock()
+        mock_resource_file.read_text.return_value = "sample config content"
+        mock_resources.return_value.joinpath.return_value = mock_resource_file
+
+        # Import and call function
+        from mmrelay.cli import generate_sample_config
+        result = generate_sample_config()
+
+        # Verify results
+        self.assertTrue(result)  # Should return True on success
+        mock_resources.assert_called_once_with("mmrelay.tools")
+        mock_resources.return_value.joinpath.assert_called_once_with("sample_config.yaml")
+        mock_file_open.assert_called_once_with("/home/user/.mmrelay/config.yaml", "w")
+        mock_file_open().write.assert_called_once_with("sample config content")
+        mock_set_perms.assert_called_once_with("/home/user/.mmrelay/config.yaml")
+        mock_print.assert_any_call("Generated sample config file at: /home/user/.mmrelay/config.yaml")
+
+    @patch("mmrelay.cli.get_config_paths")
+    @patch("mmrelay.cli.get_sample_config_path")
+    @patch("shutil.copy")
+    @patch("os.path.isfile")
+    @patch("os.path.exists")
+    @patch("builtins.print")
+    def test_generate_sample_config_fallback_file_copy_success(self, mock_print, mock_exists, mock_isfile, mock_copy, mock_get_sample, mock_get_paths):
+        """Test config generation using fallback file copy."""
+        # Setup mocks
+        mock_get_paths.return_value = ["/home/user/.mmrelay/config.yaml"]
+        mock_isfile.return_value = False  # No existing config
+        mock_get_sample.return_value = "/path/to/sample_config.yaml"
+
+        # Mock exists to return False for sample config path but True for one fallback path
+        def mock_exists_side_effect(path):
+            if path == "/path/to/sample_config.yaml":
+                return False  # Sample config doesn't exist
+            elif "tools/sample_config.yaml" in path:
+                return True  # First fallback path exists
+            return False
+
+        mock_exists.side_effect = mock_exists_side_effect
+
+        # Mock importlib.resources to fail, forcing fallback
+        with patch("importlib.resources.files", side_effect=ImportError("No module")):
+            # Import and call function
+            from mmrelay.cli import generate_sample_config
+            result = generate_sample_config()
+
+        # Verify results
+        self.assertTrue(result)  # Should return True on success
+        mock_copy.assert_called_once()
+        mock_print.assert_any_call("Error accessing sample_config.yaml: No module")
+        mock_print.assert_any_call("Generated sample config file at: /home/user/.mmrelay/config.yaml")
+
+    @patch("mmrelay.cli.get_config_paths")
+    @patch("mmrelay.cli.get_sample_config_path")
+    @patch("importlib.resources.files")
+    @patch("os.path.isfile")
+    @patch("os.path.exists")
+    @patch("builtins.open", new_callable=mock_open)
+    @patch("builtins.print")
+    def test_generate_sample_config_file_write_error(self, mock_print, mock_file_open, mock_exists, mock_isfile, mock_resources, mock_get_sample, mock_get_paths):
+        """Test config generation when file write fails."""
+        # Setup mocks
+        mock_get_paths.return_value = ["/home/user/.mmrelay/config.yaml"]
+        mock_isfile.return_value = False  # No existing config
+        mock_get_sample.return_value = "/path/to/sample_config.yaml"
+        mock_exists.side_effect = lambda path: False  # All paths don't exist, including fallbacks
+
+        # Mock importlib.resources chain
+        mock_resource_file = MagicMock()
+        mock_resource_file.read_text.return_value = "sample config content"
+        mock_resources.return_value.joinpath.return_value = mock_resource_file
+
+        # Mock file write failure
+        mock_file_open.side_effect = IOError("Permission denied")
+
+        # Import and call function
+        from mmrelay.cli import generate_sample_config
+        result = generate_sample_config()
+
+        # Verify results
+        self.assertFalse(result)  # Should return False on failure
+        mock_print.assert_any_call("Error accessing sample_config.yaml: Permission denied")
+        mock_print.assert_any_call("Error: Could not find sample_config.yaml")
+
+
 if __name__ == "__main__":
     unittest.main()
