@@ -5,11 +5,15 @@ matrix:
   password: your_matrix_password_here  # Set your Matrix account password
   bot_user_id: "@botuser:example.matrix.org"
 
+  # SECURITY: After first successful start, remove the password line above
+  # and restrict file permissions: chmod 600 ~/.mmrelay/config.yaml
+
   # End-to-End Encryption (E2EE) configuration
-  # E2EE is automatically enabled when using password-based authentication
+  # E2EE is automatically enabled when using password-based authentication (Linux/macOS only)
+  # NOTE: E2EE is not available on Windows due to dependency limitations
   #
   # SETUP INSTRUCTIONS:
-  # 1. Install E2EE dependencies: pipx install 'mmrelay[e2e]'
+  # 1. Install E2EE dependencies: pipx install 'mmrelay[e2e]' (Linux/macOS only)
   # 2. Set your password above and run MMRelay
   # 3. MMRelay will automatically create credentials.json with E2EE support
   # 4. For interactive setup, use: mmrelay auth login

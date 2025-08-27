@@ -210,8 +210,8 @@ matrix:
 
 **Features:**
 
-- Automatic credentials.json creation on startup
-- Compatible with Matrix 2.0/MAS authentication
+- Automatically creates credentials.json on startup
+- Matrix 2.0/MAS compatible authentication
 - E2EE support when dependencies are available
 
 ### Authentication Precedence
@@ -219,7 +219,7 @@ matrix:
 MMRelay checks for authentication in this order:
 
 1. **`credentials.json`** (from auth system) - full features
-2. **`config.yaml` matrix section** - limited features
+2. **`config.yaml` matrix section (password-based)** - automatic credential creation; E2EE supported when dependencies are available
 
 ## Operational Environment Variables
 
@@ -480,7 +480,7 @@ matrix_rooms:
     meshtastic_channel: 0
 ```
 
-#### Step 3: Create docker-compose.yaml
+#### Step 2: Create docker-compose.yaml
 
 ```yaml
 services:
@@ -501,10 +501,7 @@ services:
       - ${MMRELAY_HOME}/.mmrelay:/app/data # Includes config.yaml and all data
 ```
 
-**Limitations:**
-
-- No E2EE support - cannot participate in encrypted Matrix rooms
-- Manual token management required
+**Security note:** After first successful start, remove the `password` from your config and restrict permissions (e.g., `chmod 600 ~/.mmrelay/config.yaml`). E2EE is supported with this method when dependencies are available (Linux/macOS).
 
 ## Connection Type Variants
 

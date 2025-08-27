@@ -102,6 +102,8 @@ matrix:
 
 This method automatically creates secure credentials.json on startup and is compatible with Matrix 2.0/MAS. However, `mmrelay auth login` is still recommended for the most secure setup.
 
+**Security note:** After first successful start, remove the `password` from your config and restrict permissions (e.g., `chmod 600 ~/.mmrelay/config.yaml`).
+
 ### Configuration Tips
 
 - Review the comments in the sample configuration file for detailed explanations

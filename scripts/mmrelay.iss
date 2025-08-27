@@ -35,15 +35,7 @@ var
   OptionsPage: TInputOptionWizardPage;
   Connection: string;
 
-procedure TokenInfoLinkClick(Sender: TObject);
-var
-  ErrorCode: Integer;
-begin
-  if not ShellExec('', 'open', TNewStaticText(Sender).Caption, '', SW_SHOWNORMAL, ewNoWait, ErrorCode) then
-  begin
-    // handle failure if necessary
-  end;
-end;
+
 
 procedure InitializeWizard;
 begin
@@ -74,16 +66,18 @@ begin
   MatrixPage.Add('Password:', True);
 
   TokenInfoLabel := TLabel.Create(WizardForm);
-  TokenInfoLabel.Caption := 'MMRelay will use modern authentication (compatible with Matrix 2.0/MAS).';
+  TokenInfoLabel.Caption := 'MMRelay will use modern authentication' + #13#10 + '(compatible with Matrix 2.0/MAS).';
   TokenInfoLabel.Parent := MatrixPage.Surface;
   TokenInfoLabel.Left := 0;
   TokenInfoLabel.Top := MatrixPage.Edits[2].Top + MatrixPage.Edits[2].Height + 8;
+  TokenInfoLabel.WordWrap := True;
+  TokenInfoLabel.Width := MatrixPage.Surface.Width;
 
   TokenInfoLink := TNewStaticText.Create(WizardForm);
-  TokenInfoLink.Caption := 'No access tokens needed - secure OIDC authentication will be used automatically.';
+  TokenInfoLink.Caption := 'No access tokens needed - secure OIDC authentication' + #13#10 + 'will be used automatically.';
   TokenInfoLink.Parent := MatrixPage.Surface;
   TokenInfoLink.Left := TokenInfoLabel.Left;
-  TokenInfoLink.Top := TokenInfoLabel.Top + TokenInfoLabel.Height;
+  TokenInfoLink.Top := TokenInfoLabel.Top + TokenInfoLabel.Height + 4;
 
   MatrixPage.Edits[0].Hint := 'https://example.matrix.org';
   MatrixPage.Edits[1].Hint := 'mybotuser (without @ or :server)';
@@ -205,7 +199,7 @@ begin
 
   if Not SaveStringToFile(sAppDir + '/config.yaml', config, false) then
   begin
-    MsgBox('Could not create config file "config.yaml". Close any applications that may have it open and re-run setup', mbInformation, MB_OK);
+    MsgBox('Could not create config file "config.yaml". Close any applications that may have it open and re-run setup', mbError, MB_OK);
   end;
 
   batch_file := '@echo off' + #13#10 +
@@ -219,7 +213,7 @@ begin
 
   if Not SaveStringToFile(sAppDir + '/mmrelay.bat', batch_file, false) then
   begin
-    MsgBox('Could not create batch file "mmrelay.bat". Close any applications that may have it open and re-run setup', mbInformation, MB_OK);
+    MsgBox('Could not create batch file "mmrelay.bat". Close any applications that may have it open and re-run setup', mbError, MB_OK);
   end;
 
   // Create a setup batch file for authentication
@@ -237,6 +231,6 @@ begin
 
   if Not SaveStringToFile(sAppDir + '/setup-auth.bat', batch_file, false) then
   begin
-    MsgBox('Could not create setup batch file "setup-auth.bat". Close any applications that may have it open and re-run setup', mbInformation, MB_OK);
+    MsgBox('Could not create setup batch file "setup-auth.bat". Close any applications that may have it open and re-run setup', mbError, MB_OK);
   end;
 end;
