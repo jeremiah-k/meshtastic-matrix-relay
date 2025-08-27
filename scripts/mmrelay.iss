@@ -212,7 +212,7 @@ begin
   // append password line only when provided
   if MatrixPage.Values[2] <> '' then
   begin
-    config := config + '  password: ' + QuotedStr(StringChange(MatrixPage.Values[2], '''', '''''')) + #13#10;
+    config := config + '  password: ' + AddQuotes(StringChange(MatrixPage.Values[2], '''', '''''')) + #13#10;
   end;
   config := config +
             'matrix_rooms:' + #13#10 +
@@ -283,7 +283,7 @@ begin
     begin
       if auth_result = 0 then
       begin
-        MsgBox('✅ Matrix authentication successful!' + #13#10 + 'MM Relay is ready to use.', mbInformation, MB_OK);
+        MsgBox('Matrix authentication successful!' + #13#10 + 'MM Relay is ready to use.', mbInformation, MB_OK);
         // Scrub password from config.yaml after successful authentication
         cfgPath := sAppDir + '\config.yaml';
         if LoadStringsFromFile(cfgPath, cfgLines) then
@@ -303,17 +303,28 @@ begin
           end;
           SetArrayLength(newLines, newIndex);
           cfgLines := newLines;
-          SaveStringsToFile(cfgPath, cfgLines, False);
+          // Atomic file replacement to prevent corruption
+          var tempPath: string;
+          tempPath := cfgPath + '.tmp';
+          if SaveStringsToFile(tempPath, cfgLines, False) then
+          begin
+            DeleteFile(cfgPath);
+            RenameFile(tempPath, cfgPath);
+          end
+          else
+          begin
+            DeleteFile(tempPath); // Clean up temp file if save failed
+          end;
         end;
       end
       else
       begin
-        MsgBox('❌ Matrix authentication failed.' + #13#10 + 'Please check your credentials and try running:' + #13#10 + 'mmrelay auth login', mbError, MB_OK);
+        MsgBox('Matrix authentication failed.' + #13#10 + 'Please check your credentials and try running:' + #13#10 + 'mmrelay auth login', mbError, MB_OK);
       end;
     end
     else
     begin
-      MsgBox('❌ Could not run authentication command.' + #13#10 + 'Please run manually: mmrelay auth login', mbError, MB_OK);
+      MsgBox('Could not run authentication command.' + #13#10 + 'Please run manually: mmrelay auth login', mbError, MB_OK);
     end;
     end;
 end;

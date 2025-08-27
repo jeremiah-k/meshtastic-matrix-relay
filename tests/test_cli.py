@@ -2643,10 +2643,10 @@ class TestValidateMatrixAuthentication(unittest.TestCase):
     @patch("mmrelay.cli.msg_for_e2ee_support")
     @patch("builtins.print")
     def test_validate_matrix_authentication_empty_access_token(self, mock_print, mock_msg_e2ee, mock_validate_creds):
-        """Test authentication validation with empty access_token (still considered valid config)."""
+        """Test authentication validation with empty access_token (now correctly rejected)."""
         # Setup mocks
         config_path = "/home/user/.mmrelay/config.yaml"
-        matrix_section = {"access_token": ""}  # Empty access_token (but key exists)
+        matrix_section = {"access_token": ""}  # Empty access_token (should be rejected)
         mock_validate_creds.return_value = False  # No valid credentials.json
         mock_msg_e2ee.return_value = "E2EE not available with access_token"
 
@@ -2655,7 +2655,7 @@ class TestValidateMatrixAuthentication(unittest.TestCase):
         result = _validate_matrix_authentication(config_path, matrix_section)
 
         # Verify results
-        self.assertTrue(result)  # Function only checks for key presence, not value validity
+        self.assertFalse(result)  # Function now correctly rejects empty strings
         mock_validate_creds.assert_called_once_with(config_path)
         mock_print.assert_any_call("✅ Using access_token for Matrix authentication")
         mock_print.assert_any_call("   E2EE not available with access_token")

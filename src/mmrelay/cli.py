@@ -310,6 +310,11 @@ def _validate_credentials_json(config_path):
         return False
 
 
+def _is_valid_non_empty_string(value) -> bool:
+    """Check if a value is a non-empty string."""
+    return isinstance(value, str) and value.strip() != ""
+
+
 def _validate_matrix_authentication(config_path, matrix_section):
     """
     Determine whether Matrix authentication is configured and usable.
@@ -336,12 +341,12 @@ def _validate_matrix_authentication(config_path, matrix_section):
     """
     has_valid_credentials = _validate_credentials_json(config_path)
     token = (matrix_section or {}).get(CONFIG_KEY_ACCESS_TOKEN)
-    has_access_token = isinstance(token, str) and token.strip() != ""
+    has_access_token = _is_valid_non_empty_string(token)
 
     pwd = (matrix_section or {}).get("password")
     has_password = (
         isinstance(matrix_section, dict)
-        and isinstance(pwd, str) and pwd.strip() != ""
+        and _is_valid_non_empty_string(pwd)
         and bool(matrix_section.get(CONFIG_KEY_HOMESERVER))
         and bool(matrix_section.get(CONFIG_KEY_BOT_USER_ID))
     )
@@ -790,8 +795,8 @@ def check_config(args=None):
                     required_matrix_fields = [CONFIG_KEY_HOMESERVER, CONFIG_KEY_BOT_USER_ID]
                     token = matrix_section.get(CONFIG_KEY_ACCESS_TOKEN)
                     pwd = matrix_section.get("password")
-                    has_token = isinstance(token, str) and token.strip() != ""
-                    has_password = isinstance(pwd, str) and pwd.strip() != ""
+                    has_token = _is_valid_non_empty_string(token)
+                    has_password = _is_valid_non_empty_string(pwd)
                     if not (has_token or has_password):
                         print("Error: Missing authentication in 'matrix' section: provide non-empty 'access_token' or 'password'")
                         print(f"   {msg_or_run_auth_login()}")
