@@ -32,7 +32,6 @@ begin
   S := Trim(Url);
   P := Pos('://', S); if P > 0 then S := Copy(S, P + 3, MaxInt);
   P := Pos('/', S);   if P > 0 then S := Copy(S, 1, P - 1);
-  while (Length(S) > 0) and (S[Length(S)] = '/') do Delete(S, Length(S), 1);
   Result := S;
 end;
 
