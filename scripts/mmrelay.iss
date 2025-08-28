@@ -215,8 +215,8 @@ begin
   end;
 
   config := 'matrix:' + #13#10 +
-            '  homeserver: ''' + StringChange(HomeserverURL, '''', '''''') + '''' + #13#10 +
-            '  bot_user_id: ''' + StringChange(bot_user_id, '''', '''''') + '''' + #13#10;
+            '  homeserver: "' + HomeserverURL + '"' + #13#10 +
+            '  bot_user_id: "' + bot_user_id + '"' + #13#10;
   // append password line only when provided
   if MatrixPage.Values[2] <> '' then
   begin
