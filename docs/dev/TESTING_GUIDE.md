@@ -123,28 +123,42 @@ python -m pytest -v --cov --junitxml=junit.xml -o junit_family=legacy
 
 ## Best Practices
 
-### 1. Descriptive Test Names
+### 1. Treat Warnings as Errors
+
+**⚠️ CRITICAL**: All test warnings must be eliminated, not ignored. Warnings indicate underlying problems that can hide real issues and cause flaky tests.
+
+- **RuntimeWarnings about unawaited coroutines**: Fix by using proper Mock patterns (see above)
+- **DeprecationWarnings**: Update code to use non-deprecated APIs
+- **Any other warnings**: Investigate and fix the root cause
+
+**Never suppress warnings** - always fix the underlying issue. Warnings in tests often indicate:
+- Incorrect mocking patterns
+- Resource leaks
+- API misuse
+- Configuration problems
+
+### 2. Descriptive Test Names
 
 - Use descriptive test method names that explain the scenario
 - Include expected behavior in the name
 
-### 2. Arrange-Act-Assert Pattern
+### 3. Arrange-Act-Assert Pattern
 
 - **Arrange**: Set up test data and mocks
 - **Act**: Execute the code under test
 - **Assert**: Verify the expected behavior
 
-### 3. Mock at the Right Level
+### 4. Mock at the Right Level
 
 - Mock external dependencies, not internal logic
 - Mock at the boundary of your system under test
 
-### 4. Test Error Conditions
+### 5. Test Error Conditions
 
 - Test both success and failure scenarios
 - Test exception handling and edge cases
 
-### 5. Avoid Test Interdependence
+### 6. Avoid Test Interdependence
 
 - Each test should be independent
 - Use `setUp()` and `tearDown()` for common initialization
