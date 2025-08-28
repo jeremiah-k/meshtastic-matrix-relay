@@ -1,9 +1,0 @@
-[bandit]
-# Skip B101 (assert_used) - asserts are commonly used in tests and are acceptable there
-skips = B101
-
-# Exclude directories
-exclude_dirs = src/mmrelay/tools
-
-# Exclude individual files
-exclude = src/mmrelay/plugins/map_plugin.py
