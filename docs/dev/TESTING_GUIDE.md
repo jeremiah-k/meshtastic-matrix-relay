@@ -131,12 +131,24 @@ python -m pytest -v --cov --junitxml=junit.xml -o junit_family=legacy
 - **DeprecationWarnings**: Update code to use non-deprecated APIs
 - **Any other warnings**: Investigate and fix the root cause
 
-**Never suppress warnings** - always fix the underlying issue. Warnings in tests often indicate:
+Do not suppress warnings; fix the underlying issue. Warnings in tests often indicate:
 
 - Incorrect mocking patterns
 - Resource leaks
 - API misuse
 - Configuration problems
+
+Recommended pytest configuration (picked up by CI):
+
+```ini
+# pytest.ini (repo root)
+[pytest]
+addopts = -W error
+filterwarnings =
+    error
+    # Allow narrowly scoped ignores for noisy third-party libs only if necessary:
+    # ignore:.*some benign 3rd-party warning.*:DeprecationWarning:third_party_pkg
+```
 
 ### 2. Descriptive Test Names
 
@@ -159,6 +171,12 @@ python -m pytest -v --cov --junitxml=junit.xml -o junit_family=legacy
 - Test both success and failure scenarios
 - Test exception handling and edge cases
 - Consider adding explicit patterns for asserting log messages on failures in async paths
+  Example:
+  ```python
+  with self.assertLogs("mmrelay", level="ERROR") as cm:
+      result = some_async_wrapper(self.mock_args)
+      self.assertIn("expected failure detail", "\n".join(cm.output))
+  ```
 
 ### 6. Avoid Test Interdependence
 

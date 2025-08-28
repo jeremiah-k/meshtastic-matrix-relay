@@ -474,6 +474,38 @@ class TestConfigChecker(unittest.TestCase):
     @patch("builtins.open", new_callable=mock_open)
     @patch("mmrelay.cli.validate_yaml_syntax")
     @patch("builtins.print")
+    def test_check_config_invalid_password_missing_bot_user_id(
+        self,
+        mock_print,
+        mock_validate_yaml,
+        mock_open,
+        mock_isfile,
+        mock_get_paths,
+        mock_parse_args,
+    ):
+        """Test check_config with password but missing bot_user_id."""
+        mock_parse_args.return_value = argparse.Namespace(config=None)
+        invalid_config = {
+            "matrix": {"homeserver": "https://matrix.org", "password": "secret123"},
+            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+            "meshtastic": {"connection_type": "tcp", "host": "localhost"},
+        }
+        mock_get_paths.return_value = ["/test/config.yaml"]
+        mock_isfile.return_value = True
+        mock_validate_yaml.return_value = (True, None, invalid_config)
+        with patch("mmrelay.cli._validate_credentials_json", return_value=False):
+            result = check_config()
+        self.assertFalse(result)
+        mock_print.assert_any_call(
+            "Error: Missing required fields in 'matrix' section: bot_user_id"
+        )
+
+    @patch("mmrelay.cli.parse_arguments")
+    @patch("mmrelay.cli.get_config_paths")
+    @patch("os.path.isfile")
+    @patch("builtins.open", new_callable=mock_open)
+    @patch("mmrelay.cli.validate_yaml_syntax")
+    @patch("builtins.print")
     def test_check_config_no_auth_methods(
         self,
         mock_print,

@@ -156,7 +156,8 @@ def parse_arguments():
     )
     login_parser.add_argument(
         "--password",
-        help="Matrix password. If provided, --homeserver and --username are also required. For security, consider using interactive mode instead.",
+        metavar="PWD",
+        help="Matrix password (can be empty). If provided, --homeserver and --username are also required. For security, prefer interactive mode.",
     )
 
     auth_subparsers.add_parser(
@@ -1314,7 +1315,7 @@ def handle_auth_logout(args):
         # Handle password input
         password = getattr(args, "password", None)
 
-        if password is None or password == "":  # nosec B105
+        if password is None or password == "":  # nosec B105 (user-entered secret; prompting securely via getpass)
             # No --password flag or --password with no value, prompt securely
             import getpass
 

@@ -162,6 +162,8 @@ begin
 
   if FileExists(sAppDir + '\config.yaml') then
   begin
+    if FileExists(sAppDir + '\config-old.yaml') then
+      DeleteFile(sAppDir + '\config-old.yaml');
     if not RenameFile(sAppDir + '\config.yaml', sAppDir + '\config-old.yaml') then
     begin
       MsgBox('Could not rename existing "config.yaml". Close any applications that may have it open and re-run setup.', mbError, MB_OK);

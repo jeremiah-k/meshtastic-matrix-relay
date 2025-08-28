@@ -6,7 +6,7 @@ This guide provides comprehensive instructions for safely modifying the `scripts
 
 ## ⚠️ Critical Warning
 
-**ALWAYS call feedback before committing changes to mmrelay.iss**. This file has caused multiple build failures due to:
+**Always ask for feedback before committing changes to mmrelay.iss**. This file has caused multiple build failures due to:
 
 - Pascal syntax differences from other languages
 - String handling peculiarities
@@ -54,7 +54,8 @@ The mmrelay.iss file contains several key sections:
 config := 'matrix:' + #13#10 +
           '  homeserver: "' + HomeserverURL + '"' + #13#10;
 
-// WRONG - Single quotes require complex escaping
+// ALSO VALID - Single quotes require escaping internal single quotes (''), but
+// are preferred for Windows paths and secrets to avoid backslash/escape issues.
 config := 'matrix:' + #13#10 +
           '  homeserver: ''' + EscapedURL + '''' + #13#10;
 ```
@@ -124,13 +125,16 @@ config := config + '  new_field: "' + MatrixPage.Values[3] + '"' + #13#10;
 
 ### Modifying YAML Output
 
-**ALWAYS use double quotes for YAML string values** to avoid escaping issues:
+**Prefer double quotes** for most YAML values. **Use single quotes** for:
+ - Windows paths containing backslashes (avoid escapes like \e),
+ - Secrets (passwords), to minimize quoting pitfalls.
+When using single quotes, escape internal single quotes by doubling them.
 
 ```pascal
-// CORRECT
+// CORRECT - Double quotes for most values
 config := config + '  field: "' + value + '"' + #13#10;
 
-// WRONG - Requires complex escaping
+// Single-quoted (escape internal ' as '') — safer for Windows paths/secrets
 config := config + '  field: ''' + EscapedValue + '''' + #13#10;
 ```
 
