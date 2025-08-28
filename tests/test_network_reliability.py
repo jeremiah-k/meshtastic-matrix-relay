@@ -27,6 +27,7 @@ class TestConnectionRetryLogic:
     """Test connection retry and backoff behavior."""
 
     @pytest.mark.asyncio
+    @pytest.mark.usefixtures("comprehensive_cleanup")
     async def test_connection_retry_backoff_timing(self):
         """
         Verify that connection retry logic applies backoff delays between failed attempts and succeeds after the expected number of retries.
@@ -258,6 +259,7 @@ class TestMessageQueueDuringDisconnection:
         finally:
             queue.stop()
 
+    @pytest.mark.usefixtures("comprehensive_cleanup")
     def test_queue_overflow_protection(self):
         """
         Verify that the message queue enforces its maximum size limit and rejects messages when full.

@@ -14,13 +14,14 @@ sys.path.insert(
 )
 
 import asyncio
+import gc
 import logging
 
 # Preserve references to built-in modules that should NOT be mocked
 import queue
 import threading
 import time
-from concurrent.futures import Future
+from concurrent.futures import Future, ThreadPoolExecutor
 from unittest.mock import MagicMock
 
 import pytest
@@ -434,3 +435,58 @@ def reset_banner_flag():
 
     mmrelay.main._banner_printed = False
     yield
+
+
+@pytest.fixture
+def comprehensive_cleanup():
+    """
+    Comprehensive resource cleanup fixture for tests that create async resources.
+
+    This fixture ensures all system resources are properly cleaned up after tests,
+    preventing resource warnings about unclosed sockets and event loops.
+    Particularly important for Python 3.10 compatibility in CI environments.
+    """
+    yield
+
+    # Force cleanup of all async tasks and event loops
+    try:
+        loop = asyncio.get_event_loop()
+        if not loop.is_closed():
+            # Cancel all pending tasks
+            pending_tasks = [task for task in asyncio.all_tasks(loop) if not task.done()]
+            for task in pending_tasks:
+                task.cancel()
+
+            # Wait for cancelled tasks to complete
+            if pending_tasks:
+                try:
+                    loop.run_until_complete(asyncio.gather(*pending_tasks, return_exceptions=True))
+                except Exception:
+                    pass  # Ignore exceptions during cleanup
+
+            # Shutdown any remaining executors
+            if hasattr(loop, '_default_executor') and loop._default_executor:
+                executor = loop._default_executor
+                loop._default_executor = None
+                executor.shutdown(wait=True)
+
+            # Close the event loop
+            loop.close()
+    except RuntimeError:
+        pass  # No event loop available
+
+    # Set event loop to None to ensure clean state
+    asyncio.set_event_loop(None)
+
+    # Force garbage collection to clean up any remaining resources
+    gc.collect()
+
+    # Clean up any remaining threads
+    main_thread = threading.main_thread()
+    for thread in threading.enumerate():
+        if thread != main_thread and thread.is_alive():
+            if hasattr(thread, 'join'):
+                thread.join(timeout=0.1)
+
+    # Force another garbage collection after thread cleanup
+    gc.collect()

@@ -18,6 +18,8 @@ import threading
 import unittest
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
@@ -254,6 +256,7 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
             else:
                 raise
 
+    @pytest.mark.usefixtures("comprehensive_cleanup")
     def test_message_mapping_with_invalid_result(self):
         """
         Verifies that the message queue handles message send results lacking expected attributes without failure.

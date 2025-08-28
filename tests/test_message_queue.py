@@ -16,6 +16,8 @@ import sys
 import time
 import unittest
 
+import pytest
+
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
@@ -193,6 +195,7 @@ class TestMessageQueue(unittest.TestCase):
 
         asyncio.run(async_test())
 
+    @pytest.mark.usefixtures("comprehensive_cleanup")
     def test_queue_size_limit(self):
         """
         Verify that the message queue enforces its maximum size limit by accepting messages up to the limit and rejecting additional messages beyond capacity.
@@ -255,6 +258,7 @@ class TestMessageQueue(unittest.TestCase):
 
         asyncio.run(async_test())
 
+    @pytest.mark.usefixtures("comprehensive_cleanup")
     def test_error_handling(self):
         """
         Verifies that the message queue handles exceptions raised during message sending without crashing and continues processing subsequent messages.
