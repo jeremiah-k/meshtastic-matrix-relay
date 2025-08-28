@@ -63,9 +63,14 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
                 loop = asyncio.get_event_loop()
                 if not loop.is_closed():
                     # Cancel all pending tasks
-                    pending = asyncio.all_tasks(loop)
-                    for task in pending:
+                    pending_tasks = [task for task in asyncio.all_tasks(loop) if not task.done()]
+                    for task in pending_tasks:
                         task.cancel()
+
+                    # Wait for cancelled tasks to complete if there are any
+                    if pending_tasks:
+                        loop.run_until_complete(asyncio.gather(*pending_tasks, return_exceptions=True))
+
                     loop.close()
             except RuntimeError:
                 pass  # No current event loop

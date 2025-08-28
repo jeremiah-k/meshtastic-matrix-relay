@@ -89,10 +89,6 @@ class TestMessageQueue(unittest.TestCase):
         Clean up after each test by stopping the message queue and restoring the original event loop executor behavior.
         """
         if self.queue.is_running():
-            # Wait a bit for any in-flight messages to complete
-            import time
-
-            time.sleep(0.1)
             self.queue.stop()
 
         # Restore original run_in_executor and clean up event loop
@@ -100,8 +96,18 @@ class TestMessageQueue(unittest.TestCase):
             current_loop = asyncio.get_event_loop()
             if hasattr(self, "original_run_in_executor"):
                 current_loop.run_in_executor = self.original_run_in_executor
-            # Close the event loop to prevent ResourceWarnings
+
+            # Properly close any pending tasks and the event loop
             if not current_loop.is_closed():
+                # Cancel any remaining tasks
+                pending_tasks = [task for task in asyncio.all_tasks(current_loop) if not task.done()]
+                for task in pending_tasks:
+                    task.cancel()
+
+                # Wait for cancelled tasks to complete if there are any
+                if pending_tasks:
+                    current_loop.run_until_complete(asyncio.gather(*pending_tasks, return_exceptions=True))
+
                 current_loop.close()
         except RuntimeError:
             # No current event loop, which is fine
