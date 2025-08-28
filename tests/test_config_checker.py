@@ -10,6 +10,7 @@ Tests the configuration validation functionality including:
 - Error handling and reporting
 """
 
+import argparse
 import os
 import sys
 import unittest
@@ -376,6 +377,163 @@ class TestConfigChecker(unittest.TestCase):
             "matrix": {"homeserver": "https://matrix.org"},
             "matrix_rooms": [{"id": "!room1:matrix.org"}],
             "meshtastic": {"connection_type": "tcp", "host": "192.168.1.100"},
+        }
+
+        mock_get_paths.return_value = ["/test/config.yaml"]
+        mock_isfile.return_value = True
+        mock_validate_yaml.return_value = (True, None, invalid_config)
+
+        with patch("mmrelay.cli._validate_credentials_json", return_value=False):
+            result = check_config()
+
+        self.assertFalse(result)
+        mock_print.assert_any_call(
+            "Error: Missing authentication in 'matrix' section: provide non-empty 'access_token' or 'password'"
+        )
+
+    @patch("mmrelay.cli.parse_arguments")
+    @patch("mmrelay.cli.get_config_paths")
+    @patch("os.path.isfile")
+    @patch("builtins.open", new_callable=mock_open)
+    @patch("mmrelay.cli.validate_yaml_syntax")
+    @patch("builtins.print")
+    def test_check_config_valid_password_auth(
+        self,
+        mock_print,
+        mock_validate_yaml,
+        mock_open,
+        mock_isfile,
+        mock_get_paths,
+        mock_parse_args,
+    ):
+        """Test check_config with valid password-based authentication."""
+        mock_parse_args.return_value = argparse.Namespace(config=None)
+
+        valid_config = {
+            "matrix": {
+                "homeserver": "https://matrix.org",
+                "bot_user_id": "@bot:matrix.org",
+                "password": "secret123"
+            },
+            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+            "meshtastic": {"connection_type": "tcp", "host": "localhost"}
+        }
+
+        mock_get_paths.return_value = ["/test/config.yaml"]
+        mock_isfile.return_value = True
+        mock_validate_yaml.return_value = (True, None, valid_config)
+
+        with patch("mmrelay.cli._validate_credentials_json", return_value=False):
+            result = check_config()
+
+        self.assertTrue(result)
+
+    @patch("mmrelay.cli.parse_arguments")
+    @patch("mmrelay.cli.get_config_paths")
+    @patch("os.path.isfile")
+    @patch("builtins.open", new_callable=mock_open)
+    @patch("mmrelay.cli.validate_yaml_syntax")
+    @patch("builtins.print")
+    def test_check_config_invalid_password_missing_homeserver(
+        self,
+        mock_print,
+        mock_validate_yaml,
+        mock_open,
+        mock_isfile,
+        mock_get_paths,
+        mock_parse_args,
+    ):
+        """Test check_config with password but missing homeserver."""
+        mock_parse_args.return_value = argparse.Namespace(config=None)
+
+        invalid_config = {
+            "matrix": {
+                "bot_user_id": "@bot:matrix.org",
+                "password": "secret123"
+                # missing homeserver
+            },
+            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+            "meshtastic": {"connection_type": "tcp", "host": "localhost"}
+        }
+
+        mock_get_paths.return_value = ["/test/config.yaml"]
+        mock_isfile.return_value = True
+        mock_validate_yaml.return_value = (True, None, invalid_config)
+
+        with patch("mmrelay.cli._validate_credentials_json", return_value=False):
+            result = check_config()
+
+        self.assertFalse(result)
+        mock_print.assert_any_call(
+            "Error: Missing required fields in 'matrix' section: homeserver"
+        )
+
+    @patch("mmrelay.cli.parse_arguments")
+    @patch("mmrelay.cli.get_config_paths")
+    @patch("os.path.isfile")
+    @patch("builtins.open", new_callable=mock_open)
+    @patch("mmrelay.cli.validate_yaml_syntax")
+    @patch("builtins.print")
+    def test_check_config_no_auth_methods(
+        self,
+        mock_print,
+        mock_validate_yaml,
+        mock_open,
+        mock_isfile,
+        mock_get_paths,
+        mock_parse_args,
+    ):
+        """Test check_config with neither access_token nor password."""
+        mock_parse_args.return_value = argparse.Namespace(config=None)
+
+        invalid_config = {
+            "matrix": {
+                "homeserver": "https://matrix.org",
+                "bot_user_id": "@bot:matrix.org"
+                # no access_token or password
+            },
+            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+            "meshtastic": {"connection_type": "tcp", "host": "localhost"}
+        }
+
+        mock_get_paths.return_value = ["/test/config.yaml"]
+        mock_isfile.return_value = True
+        mock_validate_yaml.return_value = (True, None, invalid_config)
+
+        with patch("mmrelay.cli._validate_credentials_json", return_value=False):
+            result = check_config()
+
+        self.assertFalse(result)
+        mock_print.assert_any_call(
+            "Error: Missing authentication in 'matrix' section: provide non-empty 'access_token' or 'password'"
+        )
+
+    @patch("mmrelay.cli.parse_arguments")
+    @patch("mmrelay.cli.get_config_paths")
+    @patch("os.path.isfile")
+    @patch("builtins.open", new_callable=mock_open)
+    @patch("mmrelay.cli.validate_yaml_syntax")
+    @patch("builtins.print")
+    def test_check_config_empty_password(
+        self,
+        mock_print,
+        mock_validate_yaml,
+        mock_open,
+        mock_isfile,
+        mock_get_paths,
+        mock_parse_args,
+    ):
+        """Test check_config with empty string password."""
+        mock_parse_args.return_value = argparse.Namespace(config=None)
+
+        invalid_config = {
+            "matrix": {
+                "homeserver": "https://matrix.org",
+                "bot_user_id": "@bot:matrix.org",
+                "password": ""  # empty password
+            },
+            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+            "meshtastic": {"connection_type": "tcp", "host": "localhost"}
         }
 
         mock_get_paths.return_value = ["/test/config.yaml"]

@@ -315,6 +315,30 @@ def _is_valid_non_empty_string(value) -> bool:
     return isinstance(value, str) and value.strip() != ""
 
 
+def _has_valid_password_auth(matrix_section):
+    """
+    Check if matrix section has valid password-based authentication.
+
+    Args:
+        matrix_section: The matrix section from config
+
+    Returns:
+        bool: True if all required fields for password auth are present and non-empty
+    """
+    if not isinstance(matrix_section, dict):
+        return False
+
+    pwd = matrix_section.get("password")
+    homeserver = matrix_section.get(CONFIG_KEY_HOMESERVER)
+    bot_user_id = matrix_section.get(CONFIG_KEY_BOT_USER_ID)
+
+    return (
+        _is_valid_non_empty_string(pwd)
+        and _is_valid_non_empty_string(homeserver)
+        and _is_valid_non_empty_string(bot_user_id)
+    )
+
+
 def _validate_matrix_authentication(config_path, matrix_section):
     """
     Determine whether Matrix authentication is configured and usable.
@@ -343,13 +367,7 @@ def _validate_matrix_authentication(config_path, matrix_section):
     token = (matrix_section or {}).get(CONFIG_KEY_ACCESS_TOKEN)
     has_access_token = _is_valid_non_empty_string(token)
 
-    pwd = (matrix_section or {}).get("password")
-    has_password = (
-        isinstance(matrix_section, dict)
-        and _is_valid_non_empty_string(pwd)
-        and _is_valid_non_empty_string(matrix_section.get(CONFIG_KEY_HOMESERVER))
-        and _is_valid_non_empty_string(matrix_section.get(CONFIG_KEY_BOT_USER_ID))
-    )
+    has_password = _has_valid_password_auth(matrix_section)
 
     if has_valid_credentials:
         print("✅ Using credentials.json for Matrix authentication")

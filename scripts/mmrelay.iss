@@ -298,19 +298,19 @@ begin
   end;
 
   // Show completion message with setup instructions
-  if (HomeserverURL <> '') and (MatrixPage.Values[1] <> '') then
+  if (HomeserverURL <> '') and (MatrixPage.Values[1] <> '') and (MatrixPage.Values[2] <> '') then
   begin
+    // User provided full credentials for non-interactive setup
     MsgBox('MM Relay installation complete!' + #13#10 + #13#10 +
-           'Next steps:' + #13#10 +
-           '1. Run "setup-auth.bat" to authenticate with Matrix' + #13#10 +
-           '2. Run "mmrelay.bat" to start the relay' + #13#10 + #13#10 +
-           'Both files are located in: ' + sAppDir, mbInformation, MB_OK);
+           'Next step: Run "mmrelay.bat" to start the relay.' + #13#10 +
+           'It will authenticate automatically on the first run.' + #13#10 + #13#10 +
+           'The file is located in: ' + sAppDir, mbInformation, MB_OK);
   end
   else
   begin
+    // User needs to perform interactive authentication
     MsgBox('MM Relay installation complete!' + #13#10 + #13#10 +
-           'To configure Matrix authentication, run:' + #13#10 +
-           'mmrelay auth login' + #13#10 + #13#10 +
-           'Installation directory: ' + sAppDir, mbInformation, MB_OK);
+           'Next step: Run "setup-auth.bat" to configure Matrix authentication.' + #13#10 + #13#10 +
+           'The file is located in: ' + sAppDir, mbInformation, MB_OK);
   end;
 end;
