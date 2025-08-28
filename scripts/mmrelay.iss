@@ -219,7 +219,9 @@ begin
   // append password line only when provided
   if MatrixPage.Values[2] <> '' then
   begin
-    config := config + '  password: ''' + StringReplace(MatrixPage.Values[2], '''', '''''', [rfReplaceAll]) + '''' + #13#10;
+    SafePwd := MatrixPage.Values[2];
+    StringChangeEx(SafePwd, '"', '\"', True);
+    config := config + '  password: "' + SafePwd + '"' + #13#10;
   end;
   config := config +
             'matrix_rooms:' + #13#10 +
