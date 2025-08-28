@@ -9,6 +9,7 @@ rate, respecting connection state and firmware constraints.
 import asyncio
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from queue import Empty, Queue
 from typing import Callable, Optional
@@ -58,6 +59,7 @@ class MessageQueue:
         self._lock = threading.Lock()
         self._last_send_time = 0.0
         self._message_delay = DEFAULT_MESSAGE_DELAY
+        self._executor = None  # Dedicated ThreadPoolExecutor for this MessageQueue
 
     def start(self, message_delay: float = DEFAULT_MESSAGE_DELAY):
         """
@@ -78,6 +80,10 @@ class MessageQueue:
             else:
                 self._message_delay = message_delay
             self._running = True
+
+            # Create dedicated executor for this MessageQueue
+            if self._executor is None:
+                self._executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="MessageQueue")
 
             # Start the processor in the event loop
             try:
@@ -111,51 +117,25 @@ class MessageQueue:
             if self._processor_task:
                 self._processor_task.cancel()
 
-                # Properly clean up the executor and wait for task completion
+                # Wait for the task to complete if possible
                 try:
                     loop = asyncio.get_event_loop()
                     if not loop.is_running():
-                        # If the loop is not running, we can wait for the task and clean up executor
+                        # If the loop is not running, we can wait for the task
                         try:
                             loop.run_until_complete(self._processor_task)
                         except asyncio.CancelledError:
                             pass  # Expected when cancelling
-
-                        # Shut down the default executor to clean up threads and resources
-                        # Use a more aggressive approach to ensure all threads are cleaned up
-                        if hasattr(loop, '_default_executor') and loop._default_executor:
-                            executor = loop._default_executor
-                            loop._default_executor = None
-                            executor.shutdown(wait=True)
-
-                        # Also clean up any other executors that might be hanging around
-                        import concurrent.futures
-                        import threading
-
-                        # Force cleanup of any remaining thread pool executors
-                        for thread in threading.enumerate():
-                            if thread != threading.current_thread() and thread.name.startswith('ThreadPoolExecutor'):
-                                thread.join(timeout=0.1)
-
-                    else:
-                        # If we're in an async context, we need to be more careful
-                        # Schedule cleanup but also try to wait a bit for tasks to complete
-                        import time
-                        time.sleep(0.1)  # Give tasks a moment to complete
-
-                        def cleanup_executor():
-                            if hasattr(loop, '_default_executor') and loop._default_executor:
-                                executor = loop._default_executor
-                                loop._default_executor = None
-                                executor.shutdown(wait=False)
-
-                        loop.call_soon(cleanup_executor)
-
                 except RuntimeError:
                     # No event loop available
                     pass
 
                 self._processor_task = None
+
+            # Shut down our dedicated executor
+            if self._executor:
+                self._executor.shutdown(wait=True)
+                self._executor = None
 
             logger.info("Message queue stopped")
 
@@ -331,7 +311,7 @@ class MessageQueue:
                     # Run synchronous Meshtastic I/O operations in executor to prevent blocking event loop
                     # Use lambda with default arguments to properly capture loop variables
                     result = await asyncio.get_running_loop().run_in_executor(
-                        None,
+                        self._executor,
                         lambda msg=current_message: msg.send_function(
                             *msg.args, **msg.kwargs
                         ),

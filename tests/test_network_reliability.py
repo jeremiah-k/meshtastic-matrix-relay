@@ -292,34 +292,6 @@ class TestMessageQueueDuringDisconnection:
 
         finally:
             queue.stop()
-            # Give extra time for cleanup when running with other tests
-            import time
-            time.sleep(0.2)
-
-            # Force cleanup of any remaining async resources
-            try:
-                import asyncio
-                loop = asyncio.get_event_loop()
-                if not loop.is_closed():
-                    # Cancel any remaining tasks
-                    pending_tasks = [task for task in asyncio.all_tasks(loop) if not task.done()]
-                    for task in pending_tasks:
-                        task.cancel()
-
-                    # Wait for cancelled tasks to complete
-                    if pending_tasks:
-                        try:
-                            loop.run_until_complete(asyncio.gather(*pending_tasks, return_exceptions=True))
-                        except Exception:
-                            pass  # Ignore exceptions during cleanup
-
-                    # Force shutdown of any remaining executors
-                    if hasattr(loop, '_default_executor') and loop._default_executor:
-                        executor = loop._default_executor
-                        loop._default_executor = None
-                        executor.shutdown(wait=True)
-            except RuntimeError:
-                pass  # No event loop available
 
     @pytest.mark.asyncio
     async def test_message_processing_after_reconnection(self):
