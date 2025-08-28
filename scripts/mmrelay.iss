@@ -25,6 +25,17 @@ Filename: "{app}\setup-auth.bat"; Description: "Set up Matrix authentication (re
 Filename: "{app}\mmrelay.bat"; Description: "Launch MM Relay"; Flags: nowait postinstall skipifsilent unchecked; Check: FileExists(ExpandConstant('{app}\mmrelay.bat'))
 
 [Code]
+
+function ExtractHostFromURL(const Url: string): string;
+var S: string; P: Integer;
+begin
+  S := Trim(Url);
+  P := Pos('://', S); if P > 0 then S := Copy(S, P + 3, MaxInt);
+  P := Pos('/', S);   if P > 0 then S := Copy(S, 1, P - 1);
+  while (Length(S) > 0) and (S[Length(S)] = '/') do Delete(S, Length(S), 1);
+  Result := S;
+end;
+
 var
   TokenInfoLabel: TLabel;
   TokenInfoLink: TNewStaticText;
@@ -62,7 +73,7 @@ begin
   OverwriteConfig.Values[0] := False;
 
   MatrixPage.Add('Homeserver (example: https://matrix.org):', False);
-  MatrixPage.Add('Bot username (example: mybotuser):', False);
+  MatrixPage.Add('Bot username or MXID (example: mybotuser or @mybotuser:matrix.org):', False);
   MatrixPage.Add('Password:', True);
 
   TokenInfoLabel := TLabel.Create(WizardForm);
@@ -80,18 +91,18 @@ begin
   TokenInfoLink.Top := TokenInfoLabel.Top + TokenInfoLabel.Height + 4;
 
   MatrixPage.Edits[0].Hint := 'https://example.matrix.org';
-  MatrixPage.Edits[1].Hint := 'mybotuser (without @ or :server)';
+  MatrixPage.Edits[1].Hint := 'Enter username (no @ or :server) or a full MXID';
   MatrixPage.Edits[2].Hint := 'Your Matrix account password';
 
-  MeshtasticPage.Add('Connection type (tcp, serial, or ble):', False);
+  MeshtasticPage.Add('Connection type (tcp, serial, ble):', False);
   MeshtasticPage.Add('Serial port (if serial):', False);
-  MeshtasticPage.Add('Hostname/IP (if tcp/network):', False);
+  MeshtasticPage.Add('Hostname/IP (if tcp):', False);
   MeshtasticPage.Add('BLE address/name (if ble):', False);
   MeshtasticPage.Add('Meshnet name:', False);
 
-  MeshtasticPage.Edits[0].Hint := 'tcp (recommended), serial, or ble';
+  MeshtasticPage.Edits[0].Hint := 'tcp (recommended), serial, ble';
   MeshtasticPage.Edits[1].Hint := 'serial port (if serial)';
-  MeshtasticPage.Edits[2].Hint := 'hostname/IP (if tcp/network)';
+  MeshtasticPage.Edits[2].Hint := 'hostname/IP (if tcp)';
   MeshtasticPage.Edits[3].Hint := 'BLE address or name (if ble)';
   MeshtasticPage.Edits[4].Hint := 'Name for radio Meshnet';
 
@@ -187,16 +198,7 @@ begin
     HomeserverURL := 'https://' + HomeserverURL;
 
   // Extract host from URL (strip scheme and any path)
-  ServerName := HomeserverURL;
-  ProtocolPos := Pos('://', ServerName);
-  if ProtocolPos > 0 then
-    ServerName := Copy(ServerName, ProtocolPos + 3, MaxInt);
-  PathPos := Pos('/', ServerName);
-  if PathPos > 0 then
-    ServerName := Copy(ServerName, 1, PathPos - 1);
-  // extra paranoia: strip trailing slashes
-  while (Length(ServerName) > 0) and (ServerName[Length(ServerName)] = '/') do
-    Delete(ServerName, Length(ServerName), 1);
+  ServerName := ExtractHostFromURL(HomeserverURL);
 
   // Build bot_user_id (accept full MXID if provided)
   bot_user_id := Trim(MatrixPage.Values[1]);
@@ -220,8 +222,8 @@ begin
   if MatrixPage.Values[2] <> '' then
   begin
     SafePwd := MatrixPage.Values[2];
-    StringChangeEx(SafePwd, '"', '\"', True);
-    config := config + '  password: "' + SafePwd + '"' + #13#10;
+    StringChangeEx(SafePwd, '''', '''''', True); // double single-quotes
+    config := config + '  password: ''' + SafePwd + '''' + #13#10;
   end;
   config := config +
             'matrix_rooms:' + #13#10 +
@@ -232,7 +234,7 @@ begin
 
   if connection_type = 'serial' then
     config := config + '  serial_port: "' + serial_port + '"' + #13#10
-  else if (connection_type = 'tcp') or (connection_type = 'network') then
+  else if (connection_type = 'tcp') then
     config := config + '  host: "' + host + '"' + #13#10
   else if connection_type = 'ble' then
     config := config + '  ble_address: "' + ble_address + '"' + #13#10;
@@ -277,63 +279,20 @@ begin
     MsgBox('Could not create setup batch file "setup-auth.bat". Close any applications that may have it open and re-run setup', mbError, MB_OK);
   end;
 
-  // Set up Matrix authentication directly during installation
-  if (HomeserverURL <> '') and (MatrixPage.Values[1] <> '') and (MatrixPage.Values[2] <> '') then
+  // Show completion message with setup instructions
+  if (HomeserverURL <> '') and (MatrixPage.Values[1] <> '') then
   begin
-    // Run authentication command (auto-detects non-interactive mode when all params provided)
-    // bot_user_id was already constructed earlier for config generation
-    // Build params without invoking a shell
-    // Escape embedded quotes for CLI (CreateProcess-compatible)
-    SafeHomeserver := HomeserverURL;
-    StringChangeEx(SafeHomeserver, '"', '""', True);
-    SafeUser := bot_user_id;
-    StringChangeEx(SafeUser, '"', '""', True);
-    SafePwd := MatrixPage.Values[2];
-    StringChangeEx(SafePwd, '"', '""', True);
-    auth_command := 'auth login --homeserver "' + SafeHomeserver + '" --username "' + SafeUser + '" --password "' + SafePwd + '"';
-    if Exec('"' + sAppDir + '\mmrelay.exe"', auth_command, sAppDir, SW_HIDE, ewWaitUntilTerminated, auth_result) then
-    begin
-      if auth_result = 0 then
-      begin
-        MsgBox('Matrix authentication successful!' + #13#10 + 'MM Relay is ready to use.', mbInformation, MB_OK);
-        // Scrub password from config.yaml after successful authentication
-        cfgPath := sAppDir + '\config.yaml';
-        if LoadStringsFromFile(cfgPath, cfgLines) then
-        begin
-          // Remove any line that contains password entirely
-          newIndex := 0;
-          SetArrayLength(newLines, GetArrayLength(cfgLines));
-          for i := 0 to GetArrayLength(cfgLines) - 1 do
-          begin
-            if Pos('password:', Trim(cfgLines[i])) <> 1 then
-            begin
-              newLines[newIndex] := cfgLines[i];
-              newIndex := newIndex + 1;
-            end;
-          end;
-          SetArrayLength(newLines, newIndex);
-          cfgLines := newLines;
-          // Atomic file replacement to prevent corruption
-          tempPath := cfgPath + '.tmp';
-          if SaveStringsToFile(tempPath, cfgLines, False) then
-          begin
-            DeleteFile(cfgPath);
-            RenameFile(tempPath, cfgPath);
-          end
-          else
-          begin
-            DeleteFile(tempPath); // Clean up temp file if save failed
-          end;
-        end;
-      end
-      else
-      begin
-        MsgBox('Matrix authentication failed.' + #13#10 + 'Please check your credentials and try running:' + #13#10 + 'mmrelay auth login', mbError, MB_OK);
-      end;
-    end
-    else
-    begin
-      MsgBox('Could not run authentication command.' + #13#10 + 'Please run manually: mmrelay auth login', mbError, MB_OK);
-    end;
+    MsgBox('MM Relay installation complete!' + #13#10 + #13#10 +
+           'Next steps:' + #13#10 +
+           '1. Run "setup-auth.bat" to authenticate with Matrix' + #13#10 +
+           '2. Run "mmrelay.bat" to start the relay' + #13#10 + #13#10 +
+           'Both files are located in: ' + sAppDir, mbInformation, MB_OK);
+  end
+  else
+  begin
+    MsgBox('MM Relay installation complete!' + #13#10 + #13#10 +
+           'To configure Matrix authentication, run:' + #13#10 +
+           'mmrelay auth login' + #13#10 + #13#10 +
+           'Installation directory: ' + sAppDir, mbInformation, MB_OK);
   end;
 end;
