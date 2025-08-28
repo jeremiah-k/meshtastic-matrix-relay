@@ -413,10 +413,10 @@ class TestConfigChecker(unittest.TestCase):
             "matrix": {
                 "homeserver": "https://matrix.org",
                 "bot_user_id": "@bot:matrix.org",
-                "password": "secret123"
+                "password": "secret123",
             },
             "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
-            "meshtastic": {"connection_type": "tcp", "host": "localhost"}
+            "meshtastic": {"connection_type": "tcp", "host": "localhost"},
         }
 
         mock_get_paths.return_value = ["/test/config.yaml"]
@@ -449,11 +449,11 @@ class TestConfigChecker(unittest.TestCase):
         invalid_config = {
             "matrix": {
                 "bot_user_id": "@bot:matrix.org",
-                "password": "secret123"
+                "password": "secret123",
                 # missing homeserver
             },
             "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
-            "meshtastic": {"connection_type": "tcp", "host": "localhost"}
+            "meshtastic": {"connection_type": "tcp", "host": "localhost"},
         }
 
         mock_get_paths.return_value = ["/test/config.yaml"]
@@ -489,11 +489,11 @@ class TestConfigChecker(unittest.TestCase):
         invalid_config = {
             "matrix": {
                 "homeserver": "https://matrix.org",
-                "bot_user_id": "@bot:matrix.org"
+                "bot_user_id": "@bot:matrix.org",
                 # no access_token or password
             },
             "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
-            "meshtastic": {"connection_type": "tcp", "host": "localhost"}
+            "meshtastic": {"connection_type": "tcp", "host": "localhost"},
         }
 
         mock_get_paths.return_value = ["/test/config.yaml"]
@@ -530,10 +530,10 @@ class TestConfigChecker(unittest.TestCase):
             "matrix": {
                 "homeserver": "https://matrix.org",
                 "bot_user_id": "@bot:matrix.org",
-                "password": ""  # empty password
+                "password": "",  # empty password
             },
             "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
-            "meshtastic": {"connection_type": "tcp", "host": "localhost"}
+            "meshtastic": {"connection_type": "tcp", "host": "localhost"},
         }
 
         mock_get_paths.return_value = ["/test/config.yaml"]

@@ -132,6 +132,7 @@ python -m pytest -v --cov --junitxml=junit.xml -o junit_family=legacy
 - **Any other warnings**: Investigate and fix the root cause
 
 **Never suppress warnings** - always fix the underlying issue. Warnings in tests often indicate:
+
 - Incorrect mocking patterns
 - Resource leaks
 - API misuse

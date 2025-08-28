@@ -1174,9 +1174,7 @@ class TestAuthLogout(unittest.TestCase):
     @patch("asyncio.run")
     @patch("mmrelay.cli_utils.logout_matrix_bot", new=MagicMock(return_value=True))
     @patch("builtins.print")
-    def test_handle_auth_logout_with_yes_flag(
-        self, mock_print, mock_asyncio_run
-    ):
+    def test_handle_auth_logout_with_yes_flag(self, mock_print, mock_asyncio_run):
         """Test logout with --yes flag (skip confirmation)."""
         # ASYNC MOCK FIX: Mock asyncio.run instead of the async function directly
         mock_asyncio_run.return_value = True
@@ -1277,9 +1275,7 @@ class TestAuthLogout(unittest.TestCase):
     @patch("asyncio.run")
     @patch("mmrelay.cli_utils.logout_matrix_bot", new=MagicMock(return_value=True))
     @patch("builtins.print")
-    def test_handle_auth_logout_keyboard_interrupt(
-        self, mock_print, mock_asyncio_run
-    ):
+    def test_handle_auth_logout_keyboard_interrupt(self, mock_print, mock_asyncio_run):
         """Test logout handles KeyboardInterrupt gracefully."""
         # ASYNC MOCK FIX: Mock asyncio.run to raise KeyboardInterrupt
         mock_asyncio_run.side_effect = KeyboardInterrupt()
@@ -1293,7 +1289,10 @@ class TestAuthLogout(unittest.TestCase):
         self.assertEqual(result, 1)
         mock_print.assert_any_call("\nLogout cancelled by user.")
 
-    @patch("mmrelay.cli_utils.logout_matrix_bot", new=MagicMock(side_effect=Exception("Test error")))
+    @patch(
+        "mmrelay.cli_utils.logout_matrix_bot",
+        new=MagicMock(side_effect=Exception("Test error")),
+    )
     @patch("builtins.print")
     def test_handle_auth_logout_exception_handling(self, mock_print):
         """Test logout handles general exceptions gracefully."""
@@ -2474,214 +2473,7 @@ class TestValidateCredentialsJson(unittest.TestCase):
         )
 
 
-class TestAuthLogout(unittest.TestCase):
-    """Test cases for handle_auth_logout function."""
 
-    def setUp(self):
-        """Set up test fixtures."""
-        self.mock_args = MagicMock()
-
-    @patch("asyncio.run")
-    @patch("mmrelay.cli_utils.logout_matrix_bot", new=MagicMock(return_value=True))
-    @patch("builtins.input")
-    @patch("builtins.print")
-    def test_handle_auth_logout_success_with_confirmation(
-        self, mock_print, mock_input, mock_asyncio_run
-    ):
-        """Test successful logout with user confirmation."""
-        # Setup mocks
-        self.mock_args.password = "test_password"
-        self.mock_args.yes = False
-        mock_input.return_value = "y"
-        mock_asyncio_run.return_value = True
-
-        # Import and call function
-        from mmrelay.cli import handle_auth_logout
-
-        result = handle_auth_logout(self.mock_args)
-
-        # Verify results
-        self.assertEqual(result, 0)
-        mock_asyncio_run.assert_called_once()
-        mock_input.assert_called_once_with("Are you sure you want to logout? (y/N): ")
-
-        # Check printed output
-        mock_print.assert_any_call("Matrix Bot Logout")
-        mock_print.assert_any_call("=================")
-        mock_print.assert_any_call(
-            "This will log out from Matrix and clear all local session data:"
-        )
-        mock_print.assert_any_call("• Remove credentials.json")
-        mock_print.assert_any_call("• Clear E2EE encryption store")
-        mock_print.assert_any_call("• Invalidate Matrix access token")
-        mock_print.assert_any_call(
-            "⚠️  Warning: Supplying password as argument exposes it in shell history and process list."
-        )
-
-    @patch("asyncio.run")
-    @patch("mmrelay.cli_utils.logout_matrix_bot", new=MagicMock(return_value=True))
-    @patch("builtins.input")
-    @patch("builtins.print")
-    def test_handle_auth_logout_cancelled_by_user(
-        self, mock_print, mock_input, mock_asyncio_run
-    ):
-        """Test logout cancelled by user confirmation."""
-        # Setup mocks
-        self.mock_args.password = "test_password"
-        self.mock_args.yes = False
-        mock_input.return_value = "n"  # User says no
-
-        # Import and call function
-        from mmrelay.cli import handle_auth_logout
-
-        result = handle_auth_logout(self.mock_args)
-
-        # Verify results
-        self.assertEqual(result, 0)  # Cancellation is not an error
-        mock_input.assert_called_once_with("Are you sure you want to logout? (y/N): ")
-        mock_print.assert_any_call("Logout cancelled.")
-
-    @patch("asyncio.run")
-    @patch("mmrelay.cli_utils.logout_matrix_bot", new=MagicMock(return_value=True))
-    @patch("builtins.print")
-    def test_handle_auth_logout_forced_with_yes_flag(
-        self, mock_print, mock_asyncio_run
-    ):
-        """Test logout with --yes flag (no confirmation prompt)."""
-        # Setup mocks
-        self.mock_args.password = "test_password"
-        self.mock_args.yes = True
-        mock_asyncio_run.return_value = True
-
-        # Import and call function
-        from mmrelay.cli import handle_auth_logout
-
-        result = handle_auth_logout(self.mock_args)
-
-        # Verify results
-        self.assertEqual(result, 0)
-        mock_asyncio_run.assert_called_once()
-        # Should not prompt for confirmation
-        mock_print.assert_any_call("Matrix Bot Logout")
-
-    @patch("asyncio.run")
-    @patch("mmrelay.cli_utils.logout_matrix_bot", new=MagicMock(return_value=True))
-    @patch("getpass.getpass")
-    @patch("builtins.input")
-    @patch("builtins.print")
-    def test_handle_auth_logout_password_prompt(
-        self, mock_print, mock_input, mock_getpass, mock_asyncio_run
-    ):
-        """Test logout with password prompt (no --password flag)."""
-        # Setup mocks
-        self.mock_args.password = None  # No password provided
-        self.mock_args.yes = True  # Skip confirmation
-        mock_getpass.return_value = "prompted_password"
-        mock_asyncio_run.return_value = True
-
-        # Import and call function
-        from mmrelay.cli import handle_auth_logout
-
-        result = handle_auth_logout(self.mock_args)
-
-        # Verify results
-        self.assertEqual(result, 0)
-        mock_getpass.assert_called_once_with("Enter Matrix password for verification: ")
-        mock_asyncio_run.assert_called_once()
-        # Should not show password warning (not provided as argument)
-        mock_print.assert_any_call("Matrix Bot Logout")
-
-    @patch("asyncio.run")
-    @patch("mmrelay.cli_utils.logout_matrix_bot", new=MagicMock(return_value=True))
-    @patch("getpass.getpass")
-    @patch("builtins.input")
-    @patch("builtins.print")
-    def test_handle_auth_logout_empty_password_prompt(
-        self, mock_print, mock_input, mock_getpass, mock_asyncio_run
-    ):
-        """Test logout with empty password string (should prompt)."""
-        # Setup mocks
-        self.mock_args.password = ""  # Empty password string
-        self.mock_args.yes = True  # Skip confirmation
-        mock_getpass.return_value = "prompted_password"
-        mock_asyncio_run.return_value = True
-
-        # Import and call function
-        from mmrelay.cli import handle_auth_logout
-
-        result = handle_auth_logout(self.mock_args)
-
-        # Verify results
-        self.assertEqual(result, 0)
-        mock_getpass.assert_called_once_with("Enter Matrix password for verification: ")
-        mock_asyncio_run.assert_called_once()
-
-    @patch("asyncio.run")
-    @patch("mmrelay.cli_utils.logout_matrix_bot", new=MagicMock(return_value=False))
-    @patch("builtins.input")
-    @patch("builtins.print")
-    def test_handle_auth_logout_failure(
-        self, mock_print, mock_input, mock_asyncio_run
-    ):
-        """Test logout failure from logout_matrix_bot."""
-        # Setup mocks
-        self.mock_args.password = "test_password"
-        self.mock_args.yes = True  # Skip confirmation
-        mock_asyncio_run.return_value = False
-
-        # Import and call function
-        from mmrelay.cli import handle_auth_logout
-
-        result = handle_auth_logout(self.mock_args)
-
-        # Verify results
-        self.assertEqual(result, 1)  # Should return error code
-        mock_asyncio_run.assert_called_once()
-
-    @patch("asyncio.run")
-    @patch("mmrelay.cli_utils.logout_matrix_bot", new=MagicMock(return_value=True))
-    @patch("builtins.input")
-    @patch("builtins.print")
-    def test_handle_auth_logout_keyboard_interrupt(
-        self, mock_print, mock_input, mock_asyncio_run
-    ):
-        """Test logout cancelled by KeyboardInterrupt."""
-        # Setup mocks
-        self.mock_args.password = "test_password"
-        self.mock_args.yes = False
-        mock_input.side_effect = KeyboardInterrupt()  # User presses Ctrl+C
-
-        # Import and call function
-        from mmrelay.cli import handle_auth_logout
-
-        result = handle_auth_logout(self.mock_args)
-
-        # Verify results
-        self.assertEqual(result, 1)  # Should return error code
-        mock_asyncio_run.assert_not_called()  # Should not attempt logout due to KeyboardInterrupt
-        mock_print.assert_any_call("\nLogout cancelled by user.")
-
-    @patch("asyncio.run")
-    @patch("mmrelay.cli_utils.logout_matrix_bot", new=MagicMock(return_value=True))
-    @patch("builtins.input")
-    @patch("builtins.print")
-    def test_handle_auth_logout_general_exception(
-        self, mock_print, mock_input, mock_asyncio_run
-    ):
-        """Test logout with general exception during process."""
-        # Setup mocks
-        self.mock_args.password = "test_password"
-        self.mock_args.yes = True  # Skip confirmation
-        mock_asyncio_run.side_effect = Exception("Network error")
-
-        # Import and call function
-        from mmrelay.cli import handle_auth_logout
-
-        result = handle_auth_logout(self.mock_args)
-
-        # Verify results
-        self.assertEqual(result, 1)  # Should return error code
-        mock_print.assert_any_call("\nError during logout: Network error")
 
 
 class TestIsValidNonEmptyString(unittest.TestCase):
@@ -2764,7 +2556,9 @@ class TestValidateMatrixAuthentication(unittest.TestCase):
         # Verify results
         self.assertTrue(result)
         mock_validate_creds.assert_called_once_with(config_path)
-        mock_print.assert_any_call("✅ Using access_token for Matrix authentication (deprecated — consider 'mmrelay auth login' to create credentials.json)")
+        mock_print.assert_any_call(
+            "✅ Using access_token for Matrix authentication (deprecated — consider 'mmrelay auth login' to create credentials.json)"
+        )
         mock_print.assert_any_call("   E2EE not available with access_token")
 
     @patch("mmrelay.cli._validate_credentials_json")
@@ -3290,220 +3084,11 @@ class TestGetVersion(unittest.TestCase):
         self.assertIn(".", version)
 
 
-class TestGenerateSampleConfig(unittest.TestCase):
-    """Test cases for generate_sample_config function."""
 
-    @patch("mmrelay.cli.get_config_paths")
-    @patch("os.path.isfile")
-    @patch("builtins.print")
-    def test_generate_sample_config_existing_config_found(
-        self, mock_print, mock_isfile, mock_get_paths
-    ):
-        """Test that function aborts when existing config is found."""
-        # Setup mocks
-        mock_get_paths.return_value = [
-            "/home/user/.mmrelay/config.yaml",
-            "/etc/mmrelay/config.yaml",
-        ]
-        mock_isfile.side_effect = (
-            lambda path: path == "/home/user/.mmrelay/config.yaml"
-        )  # First path exists
 
-        # Import and call function
-        from mmrelay.cli import generate_sample_config
 
-        result = generate_sample_config()
 
-        # Verify results
-        self.assertFalse(result)  # Should return False when config exists
-        mock_print.assert_any_call(
-            "A config file already exists at: /home/user/.mmrelay/config.yaml"
-        )
-        mock_print.assert_any_call(
-            "Use --config to specify a different location if you want to generate a new one."
-        )
 
-    @patch("mmrelay.cli.get_config_paths")
-    @patch("mmrelay.cli.get_sample_config_path")
-    @patch("mmrelay.cli.set_secure_file_permissions")
-    @patch("shutil.copy2")
-    @patch("os.path.isfile")
-    @patch("os.path.exists")
-    @patch("builtins.print")
-    def test_generate_sample_config_success_with_file_copy(
-        self,
-        mock_print,
-        mock_exists,
-        mock_isfile,
-        mock_copy2,
-        mock_set_perms,
-        mock_get_sample,
-        mock_get_paths,
-    ):
-        """Test successful config generation using file copy."""
-        # Setup mocks
-        mock_get_paths.return_value = ["/home/user/.mmrelay/config.yaml"]
-        mock_isfile.return_value = False  # No existing config
-        mock_get_sample.return_value = "/path/to/sample_config.yaml"
-        mock_exists.return_value = True  # Sample config exists
-
-        # Import and call function
-        from mmrelay.cli import generate_sample_config
-
-        result = generate_sample_config()
-
-        # Verify results
-        self.assertTrue(result)  # Should return True on success
-        mock_copy2.assert_called_once_with(
-            "/path/to/sample_config.yaml", "/home/user/.mmrelay/config.yaml"
-        )
-        mock_set_perms.assert_called_once_with("/home/user/.mmrelay/config.yaml")
-        mock_print.assert_any_call(
-            "Generated sample config file at: /home/user/.mmrelay/config.yaml"
-        )
-
-    @patch("mmrelay.cli.get_config_paths")
-    @patch("mmrelay.cli.get_sample_config_path")
-    @patch("mmrelay.cli.set_secure_file_permissions")
-    @patch("importlib.resources.files")
-    @patch("os.path.isfile")
-    @patch("os.path.exists")
-    @patch("builtins.open", new_callable=mock_open)
-    @patch("builtins.print")
-    def test_generate_sample_config_fallback_to_importlib(
-        self,
-        mock_print,
-        mock_file_open,
-        mock_exists,
-        mock_isfile,
-        mock_resources,
-        mock_set_perms,
-        mock_get_sample,
-        mock_get_paths,
-    ):
-        """Test config generation falling back to importlib.resources."""
-        # Setup mocks
-        mock_get_paths.return_value = ["/home/user/.mmrelay/config.yaml"]
-        mock_isfile.return_value = False  # No existing config
-        mock_get_sample.return_value = "/path/to/sample_config.yaml"
-        mock_exists.return_value = (
-            False  # Sample config file doesn't exist, fallback to importlib
-        )
-
-        # Mock importlib.resources chain
-        mock_resource_file = MagicMock()
-        mock_resource_file.read_text.return_value = "sample config content"
-        mock_resources.return_value.joinpath.return_value = mock_resource_file
-
-        # Import and call function
-        from mmrelay.cli import generate_sample_config
-
-        result = generate_sample_config()
-
-        # Verify results
-        self.assertTrue(result)  # Should return True on success
-        mock_resources.assert_called_once_with("mmrelay.tools")
-        mock_resources.return_value.joinpath.assert_called_once_with(
-            "sample_config.yaml"
-        )
-        mock_file_open.assert_called_once_with("/home/user/.mmrelay/config.yaml", "w")
-        mock_file_open().write.assert_called_once_with("sample config content")
-        mock_set_perms.assert_called_once_with("/home/user/.mmrelay/config.yaml")
-        mock_print.assert_any_call(
-            "Generated sample config file at: /home/user/.mmrelay/config.yaml"
-        )
-
-    @patch("mmrelay.cli.get_config_paths")
-    @patch("mmrelay.cli.get_sample_config_path")
-    @patch("shutil.copy")
-    @patch("os.path.isfile")
-    @patch("os.path.exists")
-    @patch("builtins.print")
-    def test_generate_sample_config_fallback_file_copy_success(
-        self,
-        mock_print,
-        mock_exists,
-        mock_isfile,
-        mock_copy,
-        mock_get_sample,
-        mock_get_paths,
-    ):
-        """Test config generation using fallback file copy."""
-        # Setup mocks
-        mock_get_paths.return_value = ["/home/user/.mmrelay/config.yaml"]
-        mock_isfile.return_value = False  # No existing config
-        mock_get_sample.return_value = "/path/to/sample_config.yaml"
-
-        # Mock exists to return False for sample config path but True for one fallback path
-        def mock_exists_side_effect(path):
-            if path == "/path/to/sample_config.yaml":
-                return False  # Sample config doesn't exist
-            elif "tools/sample_config.yaml" in path:
-                return True  # First fallback path exists
-            return False
-
-        mock_exists.side_effect = mock_exists_side_effect
-
-        # Mock importlib.resources to fail, forcing fallback
-        with patch("importlib.resources.files", side_effect=ImportError("No module")):
-            # Import and call function
-            from mmrelay.cli import generate_sample_config
-
-            result = generate_sample_config()
-
-        # Verify results
-        self.assertTrue(result)  # Should return True on success
-        mock_copy.assert_called_once()
-        mock_print.assert_any_call("Error accessing sample_config.yaml: No module")
-        mock_print.assert_any_call(
-            "Generated sample config file at: /home/user/.mmrelay/config.yaml"
-        )
-
-    @patch("mmrelay.cli.get_config_paths")
-    @patch("mmrelay.cli.get_sample_config_path")
-    @patch("importlib.resources.files")
-    @patch("os.path.isfile")
-    @patch("os.path.exists")
-    @patch("builtins.open", new_callable=mock_open)
-    @patch("builtins.print")
-    def test_generate_sample_config_file_write_error(
-        self,
-        mock_print,
-        mock_file_open,
-        mock_exists,
-        mock_isfile,
-        mock_resources,
-        mock_get_sample,
-        mock_get_paths,
-    ):
-        """Test config generation when file write fails."""
-        # Setup mocks
-        mock_get_paths.return_value = ["/home/user/.mmrelay/config.yaml"]
-        mock_isfile.return_value = False  # No existing config
-        mock_get_sample.return_value = "/path/to/sample_config.yaml"
-        mock_exists.side_effect = (
-            lambda path: False
-        )  # All paths don't exist, including fallbacks
-
-        # Mock importlib.resources chain
-        mock_resource_file = MagicMock()
-        mock_resource_file.read_text.return_value = "sample config content"
-        mock_resources.return_value.joinpath.return_value = mock_resource_file
-
-        # Mock file write failure
-        mock_file_open.side_effect = IOError("Permission denied")
-
-        # Import and call function
-        from mmrelay.cli import generate_sample_config
-
-        result = generate_sample_config()
-
-        # Verify results
-        self.assertFalse(result)  # Should return False on failure
-        mock_print.assert_any_call(
-            "Error accessing sample_config.yaml: Permission denied"
-        )
-        mock_print.assert_any_call("Error: Could not find sample_config.yaml")
 
 
 class TestPrintEnvironmentSummary(unittest.TestCase):

@@ -376,11 +376,15 @@ def _validate_matrix_authentication(config_path, matrix_section):
         return True
 
     elif has_password:
-        print("✅ Using password in config for initial authentication (credentials.json will be created on first run)")
+        print(
+            "✅ Using password in config for initial authentication (credentials.json will be created on first run)"
+        )
         print(f"   {msg_for_e2ee_support()}")
         return True
     elif has_access_token:
-        print("✅ Using access_token for Matrix authentication (deprecated — consider 'mmrelay auth login' to create credentials.json)")
+        print(
+            "✅ Using access_token for Matrix authentication (deprecated — consider 'mmrelay auth login' to create credentials.json)"
+        )
         print(f"   {msg_for_e2ee_support()}")
         return True
 
