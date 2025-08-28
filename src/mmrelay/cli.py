@@ -518,8 +518,19 @@ def _analyze_e2ee_setup(config, config_path):
             "Enable E2EE in config.yaml under matrix section: e2ee: enabled: true"
         )
 
-    # Validate credentials.json
-    analysis["credentials_available"] = _validate_credentials_json(config_path)
+    # Check credentials file existence
+    config_dir = os.path.dirname(config_path)
+    credentials_path = os.path.join(config_dir, "credentials.json")
+
+    if not os.path.exists(credentials_path):
+        # Also try the standard location
+        from mmrelay.config import get_base_dir
+
+        standard_credentials_path = os.path.join(get_base_dir(), "credentials.json")
+        if os.path.exists(standard_credentials_path):
+            credentials_path = standard_credentials_path
+
+    analysis["credentials_available"] = os.path.exists(credentials_path)
 
     if not analysis["credentials_available"]:
         analysis["recommendations"].append(
@@ -802,24 +813,24 @@ def check_config(args=None):
                         return False
 
                     matrix_section = config[CONFIG_SECTION_MATRIX]
-                if not isinstance(matrix_section, dict):
-                    print("Error: 'matrix' section must be a mapping (YAML object)")
-                    return False
+                    if not isinstance(matrix_section, dict):
+                        print("Error: 'matrix' section must be a mapping (YAML object)")
+                        return False
 
-                required_matrix_fields = [
-                    CONFIG_KEY_HOMESERVER,
-                    CONFIG_KEY_BOT_USER_ID,
-                ]
-                token = matrix_section.get(CONFIG_KEY_ACCESS_TOKEN)
-                pwd = matrix_section.get("password")
-                has_token = _is_valid_non_empty_string(token)
-                has_password = _is_valid_non_empty_string(pwd)
-                if not (has_token or has_password):
-                    print(
-                        "Error: Missing authentication in 'matrix' section: provide non-empty 'access_token' or 'password'"
-                    )
-                    print(f"   {msg_or_run_auth_login()}")
-                    return False
+                    required_matrix_fields = [
+                        CONFIG_KEY_HOMESERVER,
+                        CONFIG_KEY_BOT_USER_ID,
+                    ]
+                    token = matrix_section.get(CONFIG_KEY_ACCESS_TOKEN)
+                    pwd = matrix_section.get("password")
+                    has_token = _is_valid_non_empty_string(token)
+                    has_password = _is_valid_non_empty_string(pwd)
+                    if not (has_token or has_password):
+                        print(
+                            "Error: Missing authentication in 'matrix' section: provide non-empty 'access_token' or 'password'"
+                        )
+                        print(f"   {msg_or_run_auth_login()}")
+                        return False
 
                 missing_matrix_fields = [
                     field

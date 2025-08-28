@@ -2782,7 +2782,7 @@ class TestValidateMatrixAuthentication(unittest.TestCase):
         # Verify results
         self.assertTrue(result)
         mock_validate_creds.assert_called_once_with(config_path)
-        mock_print.assert_any_call("✅ Using access_token for Matrix authentication")
+        mock_print.assert_any_call("✅ Using access_token for Matrix authentication (deprecated — consider 'mmrelay auth login' to create credentials.json)")
         mock_print.assert_any_call("   E2EE not available with access_token")
 
     @patch("mmrelay.cli._validate_credentials_json")
