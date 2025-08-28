@@ -805,20 +805,21 @@ def check_config(args=None):
                 if not isinstance(matrix_section, dict):
                     print("Error: 'matrix' section must be a mapping (YAML object)")
                     return False
-                    required_matrix_fields = [
-                        CONFIG_KEY_HOMESERVER,
-                        CONFIG_KEY_BOT_USER_ID,
-                    ]
-                    token = matrix_section.get(CONFIG_KEY_ACCESS_TOKEN)
-                    pwd = matrix_section.get("password")
-                    has_token = _is_valid_non_empty_string(token)
-                    has_password = _is_valid_non_empty_string(pwd)
-                    if not (has_token or has_password):
-                        print(
-                            "Error: Missing authentication in 'matrix' section: provide non-empty 'access_token' or 'password'"
-                        )
-                        print(f"   {msg_or_run_auth_login()}")
-                        return False
+
+                required_matrix_fields = [
+                    CONFIG_KEY_HOMESERVER,
+                    CONFIG_KEY_BOT_USER_ID,
+                ]
+                token = matrix_section.get(CONFIG_KEY_ACCESS_TOKEN)
+                pwd = matrix_section.get("password")
+                has_token = _is_valid_non_empty_string(token)
+                has_password = _is_valid_non_empty_string(pwd)
+                if not (has_token or has_password):
+                    print(
+                        "Error: Missing authentication in 'matrix' section: provide non-empty 'access_token' or 'password'"
+                    )
+                    print(f"   {msg_or_run_auth_login()}")
+                    return False
 
                 missing_matrix_fields = [
                     field
