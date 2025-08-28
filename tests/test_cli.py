@@ -2541,6 +2541,7 @@ class TestAuthLogout(unittest.TestCase):
         self.mock_args.password = "test_password"
         self.mock_args.yes = False
         mock_input.return_value = "n"  # User says no
+        mock_logout.return_value = True  # Prevent AsyncMock creation
 
         # Import and call function
         from mmrelay.cli import handle_auth_logout
@@ -2690,6 +2691,7 @@ class TestAuthLogout(unittest.TestCase):
         # Setup mocks
         self.mock_args.password = "test_password"
         self.mock_args.yes = True  # Skip confirmation
+        mock_logout.return_value = True  # Prevent AsyncMock creation
         mock_asyncio_run.side_effect = Exception("Network error")
 
         # Import and call function
