@@ -219,7 +219,7 @@ begin
   // append password line only when provided
   if MatrixPage.Values[2] <> '' then
   begin
-    config := config + '  password: "' + MatrixPage.Values[2] + '"' + #13#10;
+    config := config + '  password: ''' + StringReplace(MatrixPage.Values[2], '''', '''''', [rfReplaceAll]) + '''' + #13#10;
   end;
   config := config +
             'matrix_rooms:' + #13#10 +
@@ -282,9 +282,9 @@ begin
     // bot_user_id was already constructed earlier for config generation
     // Build params without invoking a shell
     // Escape embedded quotes for CLI (CreateProcess-compatible)
-    SafeHomeserver := MatrixPage.Values[0];
+    SafeHomeserver := HomeserverURL;
     StringChangeEx(SafeHomeserver, '"', '""', True);
-    SafeUser := MatrixPage.Values[1];
+    SafeUser := bot_user_id;
     StringChangeEx(SafeUser, '"', '""', True);
     SafePwd := MatrixPage.Values[2];
     StringChangeEx(SafePwd, '"', '""', True);

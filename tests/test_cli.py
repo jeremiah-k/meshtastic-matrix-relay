@@ -1631,7 +1631,7 @@ class TestAuthLogin(unittest.TestCase):
     @patch("mmrelay.matrix_utils.login_matrix_bot")
     @patch("builtins.print")
     def test_handle_auth_login_empty_string_parameters(self, mock_print, mock_login):
-        """Test that empty string parameters are treated as provided (non-interactive mode)."""
+        """Test that empty string parameters are rejected with validation error."""
         # ASYNC MOCK FIX: Return value directly, not a coroutine
         mock_login.return_value = True
 
@@ -1640,19 +1640,13 @@ class TestAuthLogin(unittest.TestCase):
         self.mock_args.username = ""
         self.mock_args.password = ""
 
-        # Call function (should be treated as non-interactive mode with empty strings)
+        # Call function (should reject empty strings with validation error)
         result = handle_auth_login(self.mock_args)
 
         # Verify results
-        self.assertEqual(result, 0)
-        mock_login.assert_called_once_with(
-            homeserver="",
-            username="",
-            password="",
-            logout_others=False
-        )
-        # Should NOT print header (non-interactive mode)
-        mock_print.assert_not_called()
+        self.assertEqual(result, 1)  # Should return error code
+        mock_print.assert_any_call("❌ Error: --homeserver and --username must be non-empty for non-interactive login.")
+        mock_login.assert_not_called()  # Should not attempt login
 
     @patch("mmrelay.matrix_utils.login_matrix_bot")
     @patch("builtins.print")
@@ -1680,20 +1674,17 @@ class TestAuthLogin(unittest.TestCase):
         mock_login.reset_mock()
         mock_print.reset_mock()
 
-        # Test 2: Empty string parameters should trigger non-interactive mode
+        # Test 2: Empty string parameters should be rejected with validation error
         self.mock_args.homeserver = ""
         self.mock_args.username = ""
         self.mock_args.password = ""
 
         result = handle_auth_login(self.mock_args)
 
-        # Verify non-interactive mode
-        self.assertEqual(result, 0)
-        mock_login.assert_called_with(
-            homeserver="", username="", password="", logout_others=False
-        )
-        # Should NOT print interactive header
-        mock_print.assert_not_called()
+        # Verify validation error
+        self.assertEqual(result, 1)  # Should return error code
+        mock_print.assert_any_call("❌ Error: --homeserver and --username must be non-empty for non-interactive login.")
+        # Should not attempt login after validation error
 
 
 class TestAuthStatus(unittest.TestCase):

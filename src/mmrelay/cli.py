@@ -294,7 +294,7 @@ def _validate_credentials_json(config_path):
         missing_fields = [
             field
             for field in required_fields
-            if field not in credentials or not credentials[field]
+            if not _is_valid_non_empty_string((credentials or {}).get(field))
         ]
 
         if missing_fields:
@@ -500,7 +500,7 @@ def _analyze_e2ee_setup(config, config_path):
             "Enable E2EE in config.yaml under matrix section: e2ee: enabled: true"
         )
 
-    # Check credentials (same logic as _validate_credentials_json)
+    # Check credentials file existence
     config_dir = os.path.dirname(config_path)
     credentials_path = os.path.join(config_dir, "credentials.json")
 
@@ -1153,8 +1153,11 @@ def handle_auth_login(args):
 
     # Determine mode based on parameters provided
     if len(provided_params) == 3:
-        # All parameters provided - continue to login (empty strings are allowed)
-        pass  # Continue to login
+        # All parameters provided - validate required non-empty fields
+        if not _is_valid_non_empty_string(homeserver) or not _is_valid_non_empty_string(username):
+            print("❌ Error: --homeserver and --username must be non-empty for non-interactive login.")
+            return 1
+        # Password may be empty (flows may prompt)
     elif len(provided_params) > 0:
         # Some but not all parameters provided - show error
         missing_params = []
