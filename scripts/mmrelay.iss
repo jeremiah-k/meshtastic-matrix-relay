@@ -145,8 +145,7 @@ var
   setup_auth_batch: string;
   HomeserverURL: string;
   ServerName: string;
-  ProtocolPos: Integer;
-  PathPos: Integer;
+
   bot_user_id: string;
   auth_command: string;
   auth_result: Integer;
@@ -196,24 +195,28 @@ begin
   // Extract host from URL (strip scheme and any path)
   ServerName := ExtractHostFromURL(HomeserverURL);
 
-  // Build bot_user_id (accept full MXID if provided)
+  // Build bot_user_id (accept full MXID only when it looks like one)
   bot_user_id := Trim(MatrixPage.Values[1]);
-  if (Pos(':', bot_user_id) > 0) then
+  if (Length(bot_user_id) > 0) and (bot_user_id[1] = '@') and (Pos(':', bot_user_id) > 1) then
   begin
-    if (bot_user_id[1] <> '@') then
-      bot_user_id := '@' + bot_user_id;
-    bot_user_id := Trim(bot_user_id);
+    bot_user_id := Trim(bot_user_id); // use as-is
   end
   else
   begin
     if (Length(bot_user_id) > 0) and (bot_user_id[1] = '@') then
       bot_user_id := Copy(bot_user_id, 2, MaxInt);
-    bot_user_id := '@' + Trim(bot_user_id) + ':' + ServerName;
+    bot_user_id := Trim(bot_user_id);
+    if bot_user_id = '' then
+    begin
+      MsgBox('Invalid username. Enter a username (without "@") or a full MXID like @name:server.', mbError, MB_OK);
+      Abort;
+    end;
+    bot_user_id := '@' + bot_user_id + ':' + ServerName;
   end;
 
   config := 'matrix:' + #13#10 +
-            '  homeserver: "' + HomeserverURL + '"' + #13#10 +
-            '  bot_user_id: "' + bot_user_id + '"' + #13#10;
+            '  homeserver: ''' + StringChange(HomeserverURL, '''', '''''') + '''' + #13#10 +
+            '  bot_user_id: ''' + StringChange(bot_user_id, '''', '''''') + '''' + #13#10;
   // append password line only when provided
   if MatrixPage.Values[2] <> '' then
   begin
@@ -236,7 +239,14 @@ begin
   if connection_type = 'serial' then
     config := config + '  serial_port: "' + serial_port + '"' + #13#10
   else if (connection_type = 'tcp') then
+  begin
+    if Trim(host) = '' then
+    begin
+      MsgBox('TCP selected but no hostname/IP provided.', mbError, MB_OK);
+      Abort;
+    end;
     config := config + '  host: "' + host + '"' + #13#10
+  end
   else if connection_type = 'ble' then
     config := config + '  ble_address: "' + ble_address + '"' + #13#10;
 
@@ -250,6 +260,7 @@ begin
   if not SaveStringToFile(tempPath, config, False) then
   begin
     MsgBox('Could not create temporary config file. Close any applications that may have files open and re-run setup.', mbError, MB_OK);
+    Abort;
   end
   else
   begin

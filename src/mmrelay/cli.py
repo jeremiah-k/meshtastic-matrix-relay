@@ -375,14 +375,12 @@ def _validate_matrix_authentication(config_path, matrix_section):
             print("   E2EE support available (if enabled)")
         return True
 
-    elif has_access_token:
-        print("✅ Using access_token for Matrix authentication")
+    elif has_password:
+        print("✅ Using password in config for initial authentication (credentials.json will be created on first run)")
         print(f"   {msg_for_e2ee_support()}")
         return True
-    elif has_password:
-        print(
-            "✅ Using password in config for initial authentication (credentials.json will be created on first run)"
-        )
+    elif has_access_token:
+        print("✅ Using access_token for Matrix authentication (deprecated — consider 'mmrelay auth login' to create credentials.json)")
         print(f"   {msg_for_e2ee_support()}")
         return True
 
@@ -520,19 +518,8 @@ def _analyze_e2ee_setup(config, config_path):
             "Enable E2EE in config.yaml under matrix section: e2ee: enabled: true"
         )
 
-    # Check credentials file existence
-    config_dir = os.path.dirname(config_path)
-    credentials_path = os.path.join(config_dir, "credentials.json")
-
-    if not os.path.exists(credentials_path):
-        # Also try the standard location
-        from mmrelay.config import get_base_dir
-
-        standard_credentials_path = os.path.join(get_base_dir(), "credentials.json")
-        if os.path.exists(standard_credentials_path):
-            credentials_path = standard_credentials_path
-
-    analysis["credentials_available"] = os.path.exists(credentials_path)
+    # Validate credentials.json
+    analysis["credentials_available"] = _validate_credentials_json(config_path)
 
     if not analysis["credentials_available"]:
         analysis["recommendations"].append(
@@ -798,6 +785,9 @@ def check_config(args=None):
                         # Create empty matrix section if missing - no fields required
                         config[CONFIG_SECTION_MATRIX] = {}
                     matrix_section = config[CONFIG_SECTION_MATRIX]
+                    if not isinstance(matrix_section, dict):
+                        print("Error: 'matrix' section must be a mapping (YAML object)")
+                        return False
                     required_matrix_fields = (
                         []
                     )  # No fields required from config when using credentials.json
@@ -812,6 +802,9 @@ def check_config(args=None):
                         return False
 
                     matrix_section = config[CONFIG_SECTION_MATRIX]
+                if not isinstance(matrix_section, dict):
+                    print("Error: 'matrix' section must be a mapping (YAML object)")
+                    return False
                     required_matrix_fields = [
                         CONFIG_KEY_HOMESERVER,
                         CONFIG_KEY_BOT_USER_ID,
