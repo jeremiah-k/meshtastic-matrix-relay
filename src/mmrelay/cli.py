@@ -362,7 +362,9 @@ def _validate_matrix_authentication(config_path, matrix_section):
         print(f"   {msg_for_e2ee_support()}")
         return True
     elif has_password:
-        print("✅ Using password in config for initial authentication (credentials.json will be created on first run)")
+        print(
+            "✅ Using password in config for initial authentication (credentials.json will be created on first run)"
+        )
         print(f"   {msg_for_e2ee_support()}")
         return True
 
@@ -792,13 +794,18 @@ def check_config(args=None):
                         return False
 
                     matrix_section = config[CONFIG_SECTION_MATRIX]
-                    required_matrix_fields = [CONFIG_KEY_HOMESERVER, CONFIG_KEY_BOT_USER_ID]
+                    required_matrix_fields = [
+                        CONFIG_KEY_HOMESERVER,
+                        CONFIG_KEY_BOT_USER_ID,
+                    ]
                     token = matrix_section.get(CONFIG_KEY_ACCESS_TOKEN)
                     pwd = matrix_section.get("password")
                     has_token = _is_valid_non_empty_string(token)
                     has_password = _is_valid_non_empty_string(pwd)
                     if not (has_token or has_password):
-                        print("Error: Missing authentication in 'matrix' section: provide non-empty 'access_token' or 'password'")
+                        print(
+                            "Error: Missing authentication in 'matrix' section: provide non-empty 'access_token' or 'password'"
+                        )
                         print(f"   {msg_or_run_auth_login()}")
                         return False
 
@@ -1154,8 +1161,12 @@ def handle_auth_login(args):
     # Determine mode based on parameters provided
     if len(provided_params) == 3:
         # All parameters provided - validate required non-empty fields
-        if not _is_valid_non_empty_string(homeserver) or not _is_valid_non_empty_string(username):
-            print("❌ Error: --homeserver and --username must be non-empty for non-interactive login.")
+        if not _is_valid_non_empty_string(homeserver) or not _is_valid_non_empty_string(
+            username
+        ):
+            print(
+                "❌ Error: --homeserver and --username must be non-empty for non-interactive login."
+            )
             return 1
         # Password may be empty (flows may prompt)
     elif len(provided_params) > 0:
@@ -1185,12 +1196,14 @@ def handle_auth_login(args):
         print("===================================")
 
     try:
-        result = asyncio.run(login_matrix_bot(
-            homeserver=homeserver,
-            username=username,
-            password=password,
-            logout_others=False
-        ))
+        result = asyncio.run(
+            login_matrix_bot(
+                homeserver=homeserver,
+                username=username,
+                password=password,
+                logout_others=False,
+            )
+        )
         return 0 if result else 1
     except KeyboardInterrupt:
         print("\nAuthentication cancelled by user.")
