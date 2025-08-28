@@ -1314,7 +1314,7 @@ def handle_auth_logout(args):
         # Handle password input
         password = getattr(args, "password", None)
 
-        if password is None or password == "":
+        if password is None or password == "":  # nosec B105
             # No --password flag or --password with no value, prompt securely
             import getpass
 

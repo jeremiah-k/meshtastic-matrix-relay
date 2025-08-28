@@ -479,7 +479,7 @@ matrix_rooms:
 - Compatible with Matrix 2.0/MAS authentication
 - Supports E2EE when dependencies are available
 
-#### Step 2: Create docker-compose.yaml
+#### Step 2: Create docker-compose.yaml with E2EE
 
 ```yaml
 services:

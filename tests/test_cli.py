@@ -2473,9 +2473,6 @@ class TestValidateCredentialsJson(unittest.TestCase):
         )
 
 
-
-
-
 class TestIsValidNonEmptyString(unittest.TestCase):
     """Test the _is_valid_non_empty_string helper function."""
 
@@ -3082,13 +3079,6 @@ class TestGetVersion(unittest.TestCase):
         self.assertTrue(len(version) > 0)
         # Should be in semantic version format (at least one dot)
         self.assertIn(".", version)
-
-
-
-
-
-
-
 
 
 class TestPrintEnvironmentSummary(unittest.TestCase):

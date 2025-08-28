@@ -7,9 +7,9 @@ on:
   pull_request:
     branches: [main, develop]
     paths:
-      - ".github/workflows/package-windows.yml"
-      - "scripts/mmrelay.iss"
-      - "src/**"
+      - .github/workflows/package-windows.yml
+      - scripts/mmrelay.iss
+      - src/**
 
 concurrency:
   group: windows-installer-${{ github.workflow }}-${{ github.ref }}
