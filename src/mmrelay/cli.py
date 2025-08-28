@@ -578,34 +578,34 @@ def _print_unified_e2ee_analysis(e2ee_status):
     print("\n🔐 E2EE Configuration Analysis:")
 
     # Platform support
-    if e2ee_status["platform_supported"]:
+    if e2ee_status.get("platform_supported", True):
         print("✅ Platform: E2EE supported")
     else:
         print("❌ Platform: E2EE not supported on Windows")
 
     # Dependencies
-    if e2ee_status["dependencies_installed"]:
+    if e2ee_status.get("dependencies_installed", e2ee_status.get("dependencies_available", False)):
         print("✅ Dependencies: E2EE dependencies installed")
     else:
         print("❌ Dependencies: E2EE dependencies not fully installed")
 
     # Configuration
-    if e2ee_status["enabled"]:
+    if e2ee_status.get("enabled", e2ee_status.get("config_enabled", False)):
         print("✅ Configuration: E2EE enabled")
     else:
         print("❌ Configuration: E2EE disabled")
 
     # Authentication
-    if e2ee_status["credentials_available"]:
+    if e2ee_status.get("credentials_available", False):
         print("✅ Authentication: credentials.json found")
     else:
         print("❌ Authentication: credentials.json not found")
 
     # Overall status
-    print(f"\n📊 Overall Status: {e2ee_status['overall_status'].upper()}")
+    print(f"\n📊 Overall Status: {e2ee_status.get('overall_status', 'unknown').upper()}")
 
     # Show fix instructions if needed
-    if e2ee_status["overall_status"] != "ready":
+    if e2ee_status.get("overall_status") != "ready":
         from mmrelay.e2ee_utils import get_e2ee_fix_instructions
 
         instructions = get_e2ee_fix_instructions(e2ee_status)

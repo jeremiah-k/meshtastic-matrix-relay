@@ -158,6 +158,7 @@ python -m pytest -v --cov --junitxml=junit.xml -o junit_family=legacy
 
 - Test both success and failure scenarios
 - Test exception handling and edge cases
+- Consider adding explicit patterns for asserting log messages on failures in async paths
 
 ### 6. Avoid Test Interdependence
 

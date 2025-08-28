@@ -50,7 +50,7 @@ The mmrelay.iss file contains several key sections:
 ### String Handling
 
 ```pascal
-// CORRECT - Double quotes for YAML values (no escaping needed)
+// CORRECT - Double quotes for most YAML values (watch for embedded " and backslashes)
 config := 'matrix:' + #13#10 +
           '  homeserver: "' + HomeserverURL + '"' + #13#10;
 
@@ -157,8 +157,9 @@ end;
 
 ### 1. Local Testing
 
-- **Cannot test locally** - Inno Setup compiler not available in dev environment
-- Must rely on CI builds for validation
+- Install Inno Setup (includes ISCC.exe) on Windows.
+- From repo root: `"%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe" scripts\mmrelay.iss`
+- Use this to validate syntax/quoting before pushing to CI.
 
 ### 2. CI Testing
 

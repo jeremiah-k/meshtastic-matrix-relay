@@ -174,9 +174,9 @@ begin
   begin
     connection_type := 'tcp';
   end;
-  serial_port := MeshtasticPage.Values[1];
-  host := MeshtasticPage.Values[2];
-  ble_address := MeshtasticPage.Values[3];
+  serial_port := Trim(MeshtasticPage.Values[1]);
+  host := Trim(MeshtasticPage.Values[2]);
+  ble_address := Trim(MeshtasticPage.Values[3]);
 
   if OptionsPage.Values[0] then
   begin
@@ -214,9 +214,12 @@ begin
     bot_user_id := '@' + bot_user_id + ':' + ServerName;
   end;
 
+  // YAML-safe single-quoted values
+  SafeHomeserver := HomeserverURL; StringChangeEx(SafeHomeserver, '''', '''''', True);
+  SafeUser := bot_user_id;         StringChangeEx(SafeUser, '''', '''''', True);
   config := 'matrix:' + #13#10 +
-            '  homeserver: "' + HomeserverURL + '"' + #13#10 +
-            '  bot_user_id: "' + bot_user_id + '"' + #13#10;
+            '  homeserver: ''' + SafeHomeserver + '''' + #13#10 +
+            '  bot_user_id: ''' + SafeUser + '''' + #13#10;
   // append password line only when provided
   if MatrixPage.Values[2] <> '' then
   begin
@@ -231,7 +234,7 @@ begin
 
   config := config +
             'matrix_rooms:' + #13#10 +
-            '  - id: "' + MatrixMeshtasticPage.Values[0] + '"' + #13#10 +
+            '  - id: ''' + MatrixMeshtasticPage.Values[0] + '''' + #13#10 +
             '    meshtastic_channel: ' + meshtastic_channel + #13#10 +
             'meshtastic:' + #13#10 +
             '  connection_type: "' + connection_type + '"' + #13#10;
@@ -264,12 +267,6 @@ begin
   end
   else
   begin
-    if FileExists(sAppDir + '\config.yaml') and (not DeleteFile(sAppDir + '\config.yaml')) then
-    begin
-      MsgBox('Could not replace existing "config.yaml". Close apps using it and re-run setup.', mbError, MB_OK);
-      DeleteFile(tempPath);
-      Abort;
-    end;
     if not RenameFile(tempPath, sAppDir + '\config.yaml') then
     begin
       MsgBox('Could not finalize config write. Your configuration may be incomplete.', mbError, MB_OK);
