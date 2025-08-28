@@ -272,19 +272,10 @@ def _validate_credentials_json(config_path):
     try:
         import json
 
-        # Look for credentials.json in the same directory as the config file
-        config_dir = os.path.dirname(config_path)
-        credentials_path = os.path.join(config_dir, "credentials.json")
-
-        if not os.path.exists(credentials_path):
-            # Also try the standard location
-            from mmrelay.config import get_base_dir
-
-            standard_credentials_path = os.path.join(get_base_dir(), "credentials.json")
-            if os.path.exists(standard_credentials_path):
-                credentials_path = standard_credentials_path
-            else:
-                return False
+        # Look for credentials.json using helper function
+        credentials_path = _find_credentials_json_path(config_path)
+        if not credentials_path:
+            return False
 
         # Load and validate credentials
         with open(credentials_path, "r") as f:
@@ -524,18 +515,8 @@ def _analyze_e2ee_setup(config, config_path):
         )
 
     # Check credentials file existence
-    config_dir = os.path.dirname(config_path)
-    credentials_path = os.path.join(config_dir, "credentials.json")
-
-    if not os.path.exists(credentials_path):
-        # Also try the standard location
-        from mmrelay.config import get_base_dir
-
-        standard_credentials_path = os.path.join(get_base_dir(), "credentials.json")
-        if os.path.exists(standard_credentials_path):
-            credentials_path = standard_credentials_path
-
-    analysis["credentials_available"] = os.path.exists(credentials_path)
+    credentials_path = _find_credentials_json_path(config_path)
+    analysis["credentials_available"] = bool(credentials_path)
 
     if not analysis["credentials_available"]:
         analysis["recommendations"].append(
@@ -557,6 +538,17 @@ def _analyze_e2ee_setup(config, config_path):
         analysis["overall_status"] = "incomplete"
 
     return analysis
+
+
+def _find_credentials_json_path(config_path: str) -> str | None:
+    """Return the resolved credentials.json path or None if not found."""
+    config_dir = os.path.dirname(config_path)
+    candidate = os.path.join(config_dir, "credentials.json")
+    if os.path.exists(candidate):
+        return candidate
+    from mmrelay.config import get_base_dir
+    standard = os.path.join(get_base_dir(), "credentials.json")
+    return standard if os.path.exists(standard) else None
 
 
 def _print_unified_e2ee_analysis(e2ee_status):

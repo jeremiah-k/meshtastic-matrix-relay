@@ -427,6 +427,7 @@ class TestConfigChecker(unittest.TestCase):
             result = check_config()
 
         self.assertTrue(result)
+        mock_print.assert_any_call("\n✅ Configuration file is valid!")
 
     @patch("mmrelay.cli.parse_arguments")
     @patch("mmrelay.cli.get_config_paths")
