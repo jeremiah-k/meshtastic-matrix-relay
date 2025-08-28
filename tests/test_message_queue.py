@@ -63,9 +63,10 @@ class TestMessageQueue(unittest.TestCase):
         # Mock the _should_send_message method to always return True for tests
         self.queue._should_send_message = lambda: True
 
-        # Use a real event loop but patch run_in_executor to run synchronously
+        # Use a dedicated event loop and patch run_in_executor to run synchronously
         real_loop = asyncio.new_event_loop()
         asyncio.set_event_loop(real_loop)
+        self.loop = real_loop
 
         # Store original run_in_executor for restoration
         self.original_run_in_executor = real_loop.run_in_executor
@@ -93,18 +94,16 @@ class TestMessageQueue(unittest.TestCase):
         if self.queue.is_running():
             self.queue.stop()
 
-        # Restore original run_in_executor and clean up event loop
-        try:
-            current_loop = asyncio.get_event_loop()
-            if hasattr(self, "original_run_in_executor"):
-                current_loop.run_in_executor = self.original_run_in_executor
-            # Close the event loop to prevent ResourceWarnings
-            if not current_loop.is_closed():
-                current_loop.close()
-        except RuntimeError:
-            # No current event loop, which is fine
-            pass
-        asyncio.set_event_loop(None)
+        # Restore original run_in_executor and clean up the dedicated event loop created in setUp
+        loop = getattr(self, "loop", None)
+        if loop is not None:
+            try:
+                if hasattr(self, "original_run_in_executor"):
+                    loop.run_in_executor = self.original_run_in_executor
+                if not loop.is_closed():
+                    loop.close()
+            finally:
+                asyncio.set_event_loop(None)
 
     @property
     def sent_messages(self):
