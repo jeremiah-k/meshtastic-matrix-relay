@@ -219,7 +219,7 @@ begin
   // append password line only when provided
   if MatrixPage.Values[2] <> '' then
   begin
-    config := config + '  password: ''' + StringChange(MatrixPage.Values[2], '''', '''''') + '''' + #13#10;
+    config := config + '  password: "' + MatrixPage.Values[2] + '"' + #13#10;
   end;
   config := config +
             'matrix_rooms:' + #13#10 +
@@ -286,7 +286,7 @@ begin
     SafeUser := StringChange(MatrixPage.Values[1], '"', '""');
     SafePwd := StringChange(MatrixPage.Values[2], '"', '""');
     auth_command := 'auth login --homeserver "' + SafeHomeserver + '" --username "' + SafeUser + '" --password "' + SafePwd + '"';
-      if Exec('"' + sAppDir + '\mmrelay.exe"', auth_command, sAppDir, SW_HIDE, ewWaitUntilTerminated, auth_result) then
+    if Exec('"' + sAppDir + '\mmrelay.exe"', auth_command, sAppDir, SW_HIDE, ewWaitUntilTerminated, auth_result) then
     begin
       if auth_result = 0 then
       begin
@@ -330,5 +330,5 @@ begin
     begin
       MsgBox('Could not run authentication command.' + #13#10 + 'Please run manually: mmrelay auth login', mbError, MB_OK);
     end;
-    end;
+  end;
 end;

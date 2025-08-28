@@ -1153,11 +1153,7 @@ def handle_auth_login(args):
 
     # Determine mode based on parameters provided
     if len(provided_params) == 3:
-        # All parameters provided, validate them for non-interactive mode
-        if not _is_valid_non_empty_string(homeserver) or not _is_valid_non_empty_string(username):
-            print("❌ Error: --homeserver and --username must be non-empty for non-interactive login.")
-            return 1
-        # Password can be empty, so we don't check it here.
+        # All parameters provided - continue to login (empty strings are allowed)
         pass  # Continue to login
     elif len(provided_params) > 0:
         # Some but not all parameters provided - show error
