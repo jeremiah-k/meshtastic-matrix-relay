@@ -110,22 +110,51 @@ class MessageQueue:
 
             if self._processor_task:
                 self._processor_task.cancel()
-                # Wait for the task to complete to ensure proper cleanup
+
+                # Properly clean up the executor and wait for task completion
                 try:
                     loop = asyncio.get_event_loop()
-                    if loop.is_running():
-                        # If we're in an async context, we can't wait synchronously
-                        # The task will be cleaned up by the event loop
-                        pass
-                    else:
-                        # If the loop is not running, we can wait for the task
+                    if not loop.is_running():
+                        # If the loop is not running, we can wait for the task and clean up executor
                         try:
                             loop.run_until_complete(self._processor_task)
                         except asyncio.CancelledError:
                             pass  # Expected when cancelling
+
+                        # Shut down the default executor to clean up threads and resources
+                        # Use a more aggressive approach to ensure all threads are cleaned up
+                        if hasattr(loop, '_default_executor') and loop._default_executor:
+                            executor = loop._default_executor
+                            loop._default_executor = None
+                            executor.shutdown(wait=True)
+
+                        # Also clean up any other executors that might be hanging around
+                        import concurrent.futures
+                        import threading
+
+                        # Force cleanup of any remaining thread pool executors
+                        for thread in threading.enumerate():
+                            if thread != threading.current_thread() and thread.name.startswith('ThreadPoolExecutor'):
+                                thread.join(timeout=0.1)
+
+                    else:
+                        # If we're in an async context, we need to be more careful
+                        # Schedule cleanup but also try to wait a bit for tasks to complete
+                        import time
+                        time.sleep(0.1)  # Give tasks a moment to complete
+
+                        def cleanup_executor():
+                            if hasattr(loop, '_default_executor') and loop._default_executor:
+                                executor = loop._default_executor
+                                loop._default_executor = None
+                                executor.shutdown(wait=False)
+
+                        loop.call_soon(cleanup_executor)
+
                 except RuntimeError:
                     # No event loop available
                     pass
+
                 self._processor_task = None
 
             logger.info("Message queue stopped")
