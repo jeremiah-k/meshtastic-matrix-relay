@@ -257,20 +257,6 @@ class TestMessageQueueDuringDisconnection:
 
         finally:
             queue.stop()
-            # Clean up any remaining event loops to prevent ResourceWarnings
-            try:
-                loop = asyncio.get_event_loop()
-                if not loop.is_closed():
-                    # Cancel all pending tasks
-                    pending_tasks = [task for task in asyncio.all_tasks(loop) if not task.done()]
-                    for task in pending_tasks:
-                        task.cancel()
-
-                    # Wait for cancelled tasks to complete if there are any
-                    if pending_tasks:
-                        loop.run_until_complete(asyncio.gather(*pending_tasks, return_exceptions=True))
-            except RuntimeError:
-                pass  # No current event loop
 
     def test_queue_overflow_protection(self):
         """
@@ -306,33 +292,6 @@ class TestMessageQueueDuringDisconnection:
 
         finally:
             queue.stop()
-            # Give the queue time to process any remaining messages
-            import time
-            time.sleep(0.2)
-
-            # Clean up any remaining event loops to prevent ResourceWarnings
-            try:
-                loop = asyncio.get_event_loop()
-                if not loop.is_closed():
-                    # Cancel all pending tasks
-                    pending_tasks = [task for task in asyncio.all_tasks(loop) if not task.done()]
-                    for task in pending_tasks:
-                        task.cancel()
-
-                    # Wait for cancelled tasks to complete if there are any
-                    if pending_tasks:
-                        try:
-                            loop.run_until_complete(asyncio.gather(*pending_tasks, return_exceptions=True))
-                        except Exception:
-                            pass  # Ignore exceptions during cleanup
-
-                    # Close the loop to prevent resource warnings
-                    loop.close()
-            except RuntimeError:
-                pass  # No current event loop
-
-            # Set event loop to None to ensure clean state
-            asyncio.set_event_loop(None)
 
     @pytest.mark.asyncio
     async def test_message_processing_after_reconnection(self):
@@ -371,20 +330,6 @@ class TestMessageQueueDuringDisconnection:
 
         finally:
             queue.stop()
-            # Clean up any remaining event loops to prevent ResourceWarnings
-            try:
-                loop = asyncio.get_event_loop()
-                if not loop.is_closed():
-                    # Cancel all pending tasks
-                    pending_tasks = [task for task in asyncio.all_tasks(loop) if not task.done()]
-                    for task in pending_tasks:
-                        task.cancel()
-
-                    # Wait for cancelled tasks to complete if there are any
-                    if pending_tasks:
-                        loop.run_until_complete(asyncio.gather(*pending_tasks, return_exceptions=True))
-            except RuntimeError:
-                pass  # No current event loop
 
 
 class TestNetworkErrorRecovery:

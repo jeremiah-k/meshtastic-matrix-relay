@@ -110,6 +110,22 @@ class MessageQueue:
 
             if self._processor_task:
                 self._processor_task.cancel()
+                # Wait for the task to complete to ensure proper cleanup
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        # If we're in an async context, we can't wait synchronously
+                        # The task will be cleaned up by the event loop
+                        pass
+                    else:
+                        # If the loop is not running, we can wait for the task
+                        try:
+                            loop.run_until_complete(self._processor_task)
+                        except asyncio.CancelledError:
+                            pass  # Expected when cancelling
+                except RuntimeError:
+                    # No event loop available
+                    pass
                 self._processor_task = None
 
             logger.info("Message queue stopped")
