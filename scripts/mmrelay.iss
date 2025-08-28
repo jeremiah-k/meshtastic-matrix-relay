@@ -17,7 +17,7 @@ Source: "..\dist\mmrelay.exe"; DestDir: "{app}"; Flags: recursesubdirs createall
 
 [Icons]
 Name: "{group}\MM Relay"; Filename: "{app}\mmrelay.bat"; Check: FileExists(ExpandConstant('{app}\mmrelay.bat'))
-Name: "{group}\MM Relay Config"; Filename: "{app}\config.yaml"; IconFilename: "{sys}\notepad.exe"; WorkingDir: "{app}"; Parameters: "config.yaml"; Check: FileExists(ExpandConstant('{app}\config.yaml'))
+Name: "{group}\MM Relay Config"; Filename: "{sys}\notepad.exe"; Parameters: """{app}\config.yaml"""; WorkingDir: "{app}"; Check: FileExists(ExpandConstant('{app}\config.yaml'))
 Name: "{group}\Setup Authentication"; Filename: "{app}\setup-auth.bat"; Comment: "Set up Matrix authentication for MM Relay"; Check: FileExists(ExpandConstant('{app}\setup-auth.bat'))
 
 [Run]
@@ -153,14 +153,11 @@ var
   auth_result: Integer;
   cfgPath: string;
 
-  cfgLines: TArrayOfString;
-  i: Integer;
   SafeHomeserver: string;
   SafeUser: string;
   SafePwd: string;
-  newLines: TArrayOfString;
-  newIndex: Integer;
   tempPath: string;
+  meshtastic_channel: string;
 begin
   If Not OverwriteConfig.Values[0] then
     Exit;
@@ -225,10 +222,15 @@ begin
     StringChangeEx(SafePwd, '''', '''''', True); // double single-quotes
     config := config + '  password: ''' + SafePwd + '''' + #13#10;
   end;
+  // Default/validate Meshtastic channel
+  meshtastic_channel := Trim(MatrixMeshtasticPage.Values[1]);
+  if meshtastic_channel = '' then
+    meshtastic_channel := '0'; // default to primary channel
+
   config := config +
             'matrix_rooms:' + #13#10 +
             '  - id: "' + MatrixMeshtasticPage.Values[0] + '"' + #13#10 +
-            '    meshtastic_channel: ' + MatrixMeshtasticPage.Values[1] + #13#10 +
+            '    meshtastic_channel: ' + meshtastic_channel + #13#10 +
             'meshtastic:' + #13#10 +
             '  connection_type: "' + connection_type + '"' + #13#10;
 
@@ -245,9 +247,25 @@ begin
             '  level: "' + log_level + '"' + #13#10 +
             'plugins:' + #13#10;
 
-  if Not SaveStringToFile(sAppDir + '\config.yaml', config, false) then
+  tempPath := sAppDir + '\config.new.yaml';
+  if not SaveStringToFile(tempPath, config, False) then
   begin
-    MsgBox('Could not create config file "config.yaml". Close any applications that may have it open and re-run setup', mbError, MB_OK);
+    MsgBox('Could not create temporary config file. Close any applications that may have files open and re-run setup.', mbError, MB_OK);
+  end
+  else
+  begin
+    if FileExists(sAppDir + '\config.yaml') and (not DeleteFile(sAppDir + '\config.yaml')) then
+    begin
+      MsgBox('Could not replace existing "config.yaml". Close apps using it and re-run setup.', mbError, MB_OK);
+      DeleteFile(tempPath);
+      Abort;
+    end;
+    if not RenameFile(tempPath, sAppDir + '\config.yaml') then
+    begin
+      MsgBox('Could not finalize config write. Your configuration may be incomplete.', mbError, MB_OK);
+      DeleteFile(tempPath);
+      Abort;
+    end;
   end;
 
   batch_file := '@echo off' + #13#10 +
@@ -269,7 +287,7 @@ begin
                       'echo Setting up Matrix authentication for MM Relay...' + #13#10 +
                       'echo.' + #13#10 +
                       'cd /d "' + sAppDir + '"' + #13#10 +
-                      '"' + sAppDir + '\mmrelay.exe" auth login' + #13#10 +
+                      '"' + sAppDir + '\mmrelay.exe" --config "' + sAppDir + '\config.yaml" auth login' + #13#10 +
                       'echo.' + #13#10 +
                       'echo Authentication setup complete.' + #13#10 +
                       'pause';
