@@ -91,6 +91,13 @@ jobs:
               maturin==1.7.4 \
               shiv==1.0.6
 
+          # Reduce accidental dynamic linking to image codecs that may not exist on target
+          # Remove libtiff/libjpeg if present so Pillow wheels built here do not link to them
+          RUN apt-get update && \
+              (apt-get remove -y --purge 'libtiff*' 'libjpeg*' || true) && \
+              apt-get autoremove -y && \
+              rm -rf /var/lib/apt/lists/*
+
           # Pre-build rpds-py with enhanced error handling and validation
           RUN echo "=== Pre-building rpds-py for faster future builds (cp310) ===" && \
               echo "Environment: Native ARMv7 compilation within emulated container" && \
@@ -102,6 +109,27 @@ jobs:
               python -c "from rpds import HashTrieMap; print('rpds-py validation successful')" && \
               echo "✅ rpds-py pre-build completed successfully" || \
               (echo "❌ rpds-py pre-build failed - builds will compile during runtime" && exit 0)
+
+          # Prebuild heavy ARMv7 wheels to speed up PYZ builds
+          # Build Pillow without TIFF to avoid runtime dependency on libtiff (libtiff.so.6 vs .5 mismatches across distros)
+          RUN echo "=== Prebuilding heavy wheels for ARMv7 cp310 ===" && \
+              mkdir -p /opt/wheels && \
+              echo "Building Pillow (TIFF disabled)" && \
+              PILLOW_FEATURES="--disable-tiff" pip wheel -v -w /opt/wheels Pillow==11.3.0 && \
+              echo "Building remaining wheels" && \
+              cat > /tmp/wheels-req.txt << 'WHEELS' && \
+matplotlib==3.10.1
+numpy==2.2.6
+kiwisolver==1.4.9
+contourpy==1.3.2
+pycryptodome==3.23.0
+dbus-fast==2.44.3
+psutil==7.0.0
+pyyaml==6.0.2
+WHEELS
+              pip wheel -v -w /opt/wheels -r /tmp/wheels-req.txt && \
+              ls -lah /opt/wheels && \
+              echo "✅ Heavy wheels prebuilt"
 
           # Verify the build environment
           RUN echo "=== Build Environment Verification ===" && \

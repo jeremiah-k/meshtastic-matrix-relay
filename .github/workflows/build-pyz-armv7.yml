@@ -63,7 +63,8 @@ jobs:
               }
             fi
 
-            echo "=== Installing remaining requirements ==="
+            echo "=== Installing remaining requirements (prefer prebuilt wheels) ==="
+            export PIP_FIND_LINKS=/opt/wheels
             pip install -r requirements.txt
             mkdir -p dist
 
