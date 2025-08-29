@@ -7,6 +7,7 @@ rate, respecting connection state and firmware constraints.
 """
 
 import asyncio
+import contextlib
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -118,17 +119,11 @@ class MessageQueue:
                 self._processor_task.cancel()
 
                 # Wait for the task to complete if possible
-                try:
+                with contextlib.suppress(RuntimeError):
                     loop = asyncio.get_event_loop()
                     if not loop.is_running():
-                        # If the loop is not running, we can wait for the task
-                        try:
+                        with contextlib.suppress(asyncio.CancelledError):
                             loop.run_until_complete(self._processor_task)
-                        except asyncio.CancelledError:
-                            pass  # Expected when cancelling
-                except RuntimeError:
-                    # No event loop available
-                    pass
 
                 self._processor_task = None
 
@@ -231,6 +226,19 @@ class MessageQueue:
                 time.time() - self._last_send_time if self._last_send_time > 0 else None
             ),
         }
+
+    async def drain(self, timeout: Optional[float] = None) -> bool:
+        """
+        Wait until the internal queue is empty or a timeout elapses.
+
+        Returns True if drained; False on timeout.
+        """
+        deadline = (time.time() + timeout) if timeout else None
+        while self._running and not self._queue.empty():
+            if deadline and time.time() > deadline:
+                return False
+            await asyncio.sleep(0.1)
+        return True
 
     def ensure_processor_started(self):
         """

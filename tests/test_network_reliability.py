@@ -44,7 +44,7 @@ class TestConnectionRetryLogic:
                 MagicMock(),  # Success on third attempt
             ]
 
-            start_time = time.time()
+            start_time = time.monotonic()
 
             # This would be your actual retry logic - adjust import as needed
             try:
@@ -61,7 +61,7 @@ class TestConnectionRetryLogic:
                         if attempt < 2:  # Don't sleep on last attempt
                             await asyncio.sleep(DEFAULT_BACKOFF_TIME)
 
-            end_time = time.time()
+            end_time = time.monotonic()
 
             # Should have attempted connection 3 times
             assert mock_connect.call_count == 3

@@ -14,6 +14,7 @@ sys.path.insert(
 )
 
 import asyncio
+import contextlib
 import gc
 import logging
 
@@ -21,7 +22,7 @@ import logging
 import queue
 import threading
 import time
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import Future
 from unittest.mock import MagicMock
 
 import pytest
@@ -450,7 +451,10 @@ def comprehensive_cleanup():
 
     # Force cleanup of all async tasks and event loops
     try:
-        loop = asyncio.get_event_loop()
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = asyncio.get_event_loop()
         if not loop.is_closed():
             # Cancel all pending tasks
             pending_tasks = [task for task in asyncio.all_tasks(loop) if not task.done()]
@@ -459,10 +463,10 @@ def comprehensive_cleanup():
 
             # Wait for cancelled tasks to complete
             if pending_tasks:
-                try:
-                    loop.run_until_complete(asyncio.gather(*pending_tasks, return_exceptions=True))
-                except Exception:
-                    pass  # Ignore exceptions during cleanup
+                with contextlib.suppress(Exception):
+                    loop.run_until_complete(
+                        asyncio.gather(*pending_tasks, return_exceptions=True)
+                    )
 
             # Shutdown any remaining executors
             if hasattr(loop, '_default_executor') and loop._default_executor:
@@ -481,12 +485,16 @@ def comprehensive_cleanup():
     # Force garbage collection to clean up any remaining resources
     gc.collect()
 
-    # Clean up any remaining threads
+    # Clean up any remaining threads (avoid daemon threads to prevent hangs)
     main_thread = threading.main_thread()
     for thread in threading.enumerate():
-        if thread != main_thread and thread.is_alive():
-            if hasattr(thread, 'join'):
-                thread.join(timeout=0.1)
+        if (
+            thread is not main_thread
+            and thread.is_alive()
+            and not getattr(thread, 'daemon', False)
+            and hasattr(thread, 'join')
+        ):
+            thread.join(timeout=0.1)
 
     # Force another garbage collection after thread cleanup
     gc.collect()

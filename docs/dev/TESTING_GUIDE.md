@@ -173,6 +173,7 @@ filterwarnings =
 - Consider adding explicit patterns for asserting log messages on failures in async paths
   Example:
   ```python
+  # Ensure logger name matches the component under test (e.g., "MessageQueue")
   with self.assertLogs("mmrelay", level="ERROR") as cm:
       result = some_async_wrapper(self.mock_args)
       self.assertIn("expected failure detail", "\n".join(cm.output))

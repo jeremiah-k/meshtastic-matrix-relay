@@ -208,12 +208,7 @@ matrix:
   bot_user_id: @yourbot:example.org
 ```
 
-**Features:**
-
-- Automatic `credentials.json` creation on startup
-- Compatible with Matrix 2.0/MAS authentication
-- Supports E2EE when dependencies are available
-- Operational hardening: mount config read-only and restrict file perms
+Note: This method automatically creates `credentials.json` on startup and is compatible with Matrix 2.0/MAS. See the earlier Features list for capabilities; apply the same operational hardening (read-only config bind mount, restrictive file perms).
 
 Compose tip:
 ```yaml

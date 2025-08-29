@@ -364,7 +364,8 @@ begin
   config := config + 'matrix:' + #13#10 +
             '  e2ee:' + #13#10 +
             '    enabled: true' + #13#10 +
-            '    store_path: "' + InstallDir + '\e2ee_store"' + #13#10;
+            // Use single quotes to preserve backslashes in Windows paths
+            '    store_path: ''' + InstallDir + '\e2ee_store''' + #13#10;
 end;
 ```
 

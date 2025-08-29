@@ -63,7 +63,7 @@ class TestMessageQueue(unittest.TestCase):
         # Mock the _should_send_message method to always return True for tests
         self.queue._should_send_message = lambda: True
 
-        # Use a dedicated event loop and patch run_in_executor to run synchronously
+        # Use a dedicated event loop and patch run_in_executor to return an awaitable Future
         real_loop = asyncio.new_event_loop()
         asyncio.set_event_loop(real_loop)
         self.loop = real_loop
@@ -73,7 +73,7 @@ class TestMessageQueue(unittest.TestCase):
 
         def sync_run_in_executor(executor, func, *args, **kwargs):
             """
-            Execute a function synchronously, ignoring the provided executor.
+            Execute synchronously but preserve awaitable contract by returning a Future.
 
             Parameters:
                 func (callable): The function to execute.
@@ -81,9 +81,15 @@ class TestMessageQueue(unittest.TestCase):
                 **kwargs: Keyword arguments for the function.
 
             Returns:
-                The result returned by the executed function.
+                asyncio.Future: Completed with the function's result or exception.
             """
-            return func(*args, **kwargs)
+            fut = real_loop.create_future()
+            try:
+                res = func(*args, **kwargs)
+                fut.set_result(res)
+            except Exception as e:
+                fut.set_exception(e)
+            return fut
 
         real_loop.run_in_executor = sync_run_in_executor
 
@@ -103,7 +109,10 @@ class TestMessageQueue(unittest.TestCase):
                 if not loop.is_closed():
                     loop.close()
             finally:
-                asyncio.set_event_loop(None)
+                try:
+                    asyncio.set_event_loop(None)
+                except Exception:
+                    pass
 
     @property
     def sent_messages(self):
@@ -160,8 +169,8 @@ class TestMessageQueue(unittest.TestCase):
             for i, expected_msg in enumerate(messages):
                 self.assertEqual(self.sent_messages[i]["text"], expected_msg)
 
-        # Run the async test
-        asyncio.run(async_test())
+        # Run the async test on the dedicated loop so the patched executor is used
+        self.loop.run_until_complete(async_test())
 
     def test_rate_limiting(self):
         """
@@ -192,7 +201,7 @@ class TestMessageQueue(unittest.TestCase):
             await asyncio.sleep(1.5)
             self.assertEqual(len(self.sent_messages), 2)
 
-        asyncio.run(async_test())
+        self.loop.run_until_complete(async_test())
 
     @pytest.mark.usefixtures("comprehensive_cleanup")
     def test_queue_size_limit(self):
@@ -255,7 +264,7 @@ class TestMessageQueue(unittest.TestCase):
             # Restore original method
             self.queue._should_send_message = original_should_send
 
-        asyncio.run(async_test())
+        self.loop.run_until_complete(async_test())
 
     @pytest.mark.usefixtures("comprehensive_cleanup")
     def test_error_handling(self):
@@ -283,7 +292,7 @@ class TestMessageQueue(unittest.TestCase):
             # Queue should continue working after error
             self.assertTrue(self.queue.is_running())
 
-        asyncio.run(async_test())
+        self.loop.run_until_complete(async_test())
 
 
 class TestGlobalFunctions(unittest.TestCase):
