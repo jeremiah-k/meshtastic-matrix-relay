@@ -66,6 +66,7 @@ jobs:
           ENV CACHE_BUST=${CACHE_BUST}
 
           # Install system dependencies for native ARMv7 compilation
+          # Note: avoid libatlas-base-dev (not available on some Debian variants) and python3-dev (headers come with official Python image)
           RUN apt-get update && apt-get install -y --no-install-recommends \
               gcc \
               libffi-dev \
@@ -75,9 +76,7 @@ jobs:
               curl \
               pkg-config \
               build-essential \
-              libatlas-base-dev \
               libolm-dev \
-              python3-dev \
               && rm -rf /var/lib/apt/lists/*
 
           # Install Rust for native ARMv7 compilation (within emulated environment)
