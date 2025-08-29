@@ -91,16 +91,19 @@ This interactive command will:
 - **Linux/macOS**: Full E2EE support with automatic encryption
 - **Windows**: Regular Matrix communication (E2EE not available due to library limitations)
 
-**Legacy Method (Not Recommended)**: Manual access token configuration:
+**Alternative Method**: Password-based automatic authentication:
 
 ```yaml
 matrix:
   homeserver: https://your-matrix-server.org
-  access_token: your_access_token
+  password: your_matrix_password
   bot_user_id: @yourbot:your-matrix-server.org
 ```
 
-⚠️ **Important**: Manual access tokens may expire on homeservers using Matrix Authentication Service (MAS), including matrix.org. Use `mmrelay auth login` for reliable authentication.
+This method automatically creates a secure credentials.json on startup and is compatible with Matrix 2.0/MAS. However, `mmrelay auth login` is still recommended for the most secure setup.
+
+**Security note:** After the first successful start, remove the `password` from your config and restrict permissions.
+On Linux/macOS: `chmod 600 ~/.mmrelay/config.yaml`. On Windows: use file Properties → Security to restrict access to your user.
 
 ### Configuration Tips
 

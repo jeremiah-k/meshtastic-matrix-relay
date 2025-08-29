@@ -7,10 +7,13 @@ rate, respecting connection state and firmware constraints.
 """
 
 import asyncio
+import contextlib
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from queue import Empty, Queue
+from functools import partial
+from queue import Empty, Full, Queue
 from typing import Callable, Optional
 
 from mmrelay.constants.database import DEFAULT_MSGS_TO_KEEP
@@ -50,20 +53,40 @@ class MessageQueue:
 
     def __init__(self):
         """
-        Initialize the MessageQueue with an empty queue, state variables, and a thread lock for safe operation.
+        Create a new MessageQueue, initializing its internal queue, timing and state variables, and a thread lock.
+
+        Attributes:
+            _queue (Queue): Bounded FIFO holding queued messages (maxsize=MAX_QUEUE_SIZE).
+            _processor_task (Optional[asyncio.Task]): Async task that processes the queue, created when started.
+            _running (bool): Whether the processor is active.
+            _lock (threading.Lock): Protects start/stop and other state transitions.
+            _last_send_time (float): Wall-clock timestamp of the last successful send.
+            _last_send_mono (float): Monotonic timestamp of the last successful send (used for rate limiting).
+            _message_delay (float): Minimum delay between sends; starts at DEFAULT_MESSAGE_DELAY and may be adjusted.
+            _executor (Optional[concurrent.futures.ThreadPoolExecutor]): Dedicated single-worker executor for blocking send operations (created on start).
+            _in_flight (bool): True while a message send is actively running in the executor.
+            _has_current (bool): True when there is a current message being processed (even if not yet dispatched to the executor).
         """
-        self._queue = Queue()
+        self._queue = Queue(maxsize=MAX_QUEUE_SIZE)
         self._processor_task = None
         self._running = False
         self._lock = threading.Lock()
         self._last_send_time = 0.0
+        self._last_send_mono = 0.0
         self._message_delay = DEFAULT_MESSAGE_DELAY
+        self._executor = None  # Dedicated ThreadPoolExecutor for this MessageQueue
+        self._in_flight = False
+        self._has_current = False
+        self._dropped_messages = 0
 
     def start(self, message_delay: float = DEFAULT_MESSAGE_DELAY):
         """
-        Start the message queue processor with a specified minimum delay between messages.
+        Activate the message queue processor with a minimum inter-message delay.
 
-        If the provided delay is below the firmware-enforced minimum, the minimum is used instead. The processor task is started immediately if the asyncio event loop is running; otherwise, startup is deferred until the event loop becomes available.
+        Enables processing, sets the configured message delay (raised to MINIMUM_MESSAGE_DELAY if a smaller value is provided), creates a dedicated ThreadPoolExecutor for send operations if one does not exist, and starts the asyncio processor task immediately when a running event loop is available; if no running loop is available startup is deferred until a loop is present.
+
+        Parameters:
+            message_delay (float): Requested minimum delay between sends, in seconds. Values below MINIMUM_MESSAGE_DELAY are replaced with MINIMUM_MESSAGE_DELAY.
         """
         with self._lock:
             if self._running:
@@ -79,10 +102,19 @@ class MessageQueue:
                 self._message_delay = message_delay
             self._running = True
 
+            # Create dedicated executor for this MessageQueue
+            if self._executor is None:
+                self._executor = ThreadPoolExecutor(
+                    max_workers=1, thread_name_prefix=f"MessageQueue-{id(self)}"
+                )
+
             # Start the processor in the event loop
             try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
+                try:
+                    loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    loop = None
+                if loop and loop.is_running():
                     self._processor_task = loop.create_task(self._process_queue())
                     logger.info(
                         f"Message queue started with {self._message_delay}s message delay"
@@ -100,7 +132,14 @@ class MessageQueue:
 
     def stop(self):
         """
-        Stops the message queue processor and cancels the processing task if active.
+        Stop the message queue processor and clean up internal resources.
+
+        Cancels the background processor task (if running) and attempts to wait for it to finish on the task's owning event loop without blocking the caller's event loop. Shuts down the dedicated ThreadPoolExecutor used for blocking I/O; when called from an asyncio event loop the executor shutdown is performed on a background thread to avoid blocking. Clears internal state flags and resources so the queue can be restarted later.
+
+        Notes:
+        - This method is thread-safe.
+        - It may block briefly (the implementation waits up to ~1 second when awaiting task completion) but will avoid blocking the current asyncio event loop when possible.
+        - No exceptions are propagated for normal cancellation/shutdown paths; internal exceptions during shutdown are suppressed.
         """
         with self._lock:
             if not self._running:
@@ -110,7 +149,63 @@ class MessageQueue:
 
             if self._processor_task:
                 self._processor_task.cancel()
+
+                # Wait for the task to complete on its owning loop
+                task_loop = self._processor_task.get_loop()
+                current_loop = None
+                with contextlib.suppress(RuntimeError):
+                    current_loop = asyncio.get_running_loop()
+                if task_loop.is_closed():
+                    # Owning loop is closed; nothing we can do to await it
+                    pass
+                elif current_loop is task_loop:
+                    # Avoid blocking the event loop thread; cancellation will finish naturally
+                    pass
+                elif task_loop.is_running():
+                    from asyncio import run_coroutine_threadsafe, shield
+
+                    with contextlib.suppress(Exception):
+                        fut = run_coroutine_threadsafe(
+                            shield(self._processor_task), task_loop
+                        )
+                        # Wait for completion; ignore exceptions raised due to cancellation
+                        fut.result(timeout=1.0)
+                else:
+                    with contextlib.suppress(
+                        asyncio.CancelledError, RuntimeError, Exception
+                    ):
+                        task_loop.run_until_complete(self._processor_task)
+
                 self._processor_task = None
+
+            # Shut down our dedicated executor without blocking the event loop
+            if self._executor:
+                on_loop_thread = False
+                with contextlib.suppress(RuntimeError):
+                    loop_chk = asyncio.get_running_loop()
+                    on_loop_thread = loop_chk.is_running()
+
+                def _shutdown(exec_ref):
+                    """
+                    Shut down an executor, waiting for running tasks to finish; falls back for executors that don't support `cancel_futures`.
+
+                    Attempts to call executor.shutdown(wait=True, cancel_futures=True) and, if that raises a TypeError (older Python versions or executors without the `cancel_futures` parameter), retries with executor.shutdown(wait=True). This call blocks until shutdown completes.
+                    """
+                    try:
+                        exec_ref.shutdown(wait=True, cancel_futures=True)
+                    except TypeError:
+                        exec_ref.shutdown(wait=True)
+
+                if on_loop_thread:
+                    threading.Thread(
+                        target=_shutdown,
+                        args=(self._executor,),
+                        name="MessageQueueExecutorShutdown",
+                        daemon=True,
+                    ).start()
+                else:
+                    _shutdown(self._executor)
+                self._executor = None
 
             logger.info("Message queue stopped")
 
@@ -119,18 +214,20 @@ class MessageQueue:
         send_function: Callable,
         *args,
         description: str = "",
-        mapping_info: dict = None,
+        mapping_info: Optional[dict] = None,
         **kwargs,
     ) -> bool:
         """
-        Adds a message to the queue for rate-limited, ordered sending.
+        Enqueue a message for ordered, rate-limited sending.
+
+        Ensures the queue processor is started (if an event loop is available) and attempts to add a QueuedMessage (containing the provided send function and its arguments) to the bounded in-memory queue. If the queue is not running or has reached capacity the message is not added and the method returns False. Optionally attach mapping_info metadata (used later to correlate sent messages with external IDs).
 
         Parameters:
-            send_function (Callable): The function to call to send the message.
-            *args: Positional arguments for the send function.
-            description (str, optional): Human-readable description for logging purposes.
-            mapping_info (dict, optional): Optional metadata for message mapping (e.g., replies or reactions).
-            **kwargs: Keyword arguments for the send function.
+            send_function (Callable): Callable to execute when the message is sent.
+            *args: Positional arguments to pass to send_function.
+            description (str, optional): Human-readable description used for logging.
+            mapping_info (dict | None, optional): Optional metadata to record after a successful send.
+            **kwargs: Keyword arguments to pass to send_function.
 
         Returns:
             bool: True if the message was successfully enqueued; False if the queue is not running or is full.
@@ -142,16 +239,9 @@ class MessageQueue:
         with self._lock:
             if not self._running:
                 # Refuse to send to prevent blocking the event loop
-                logger.error(f"Queue not running, cannot send message: {description}")
                 logger.error(
-                    "Application is in invalid state - message queue should be started before sending messages"
-                )
-                return False
-
-            # Check queue size to prevent memory issues
-            if self._queue.qsize() >= MAX_QUEUE_SIZE:
-                logger.warning(
-                    f"Message queue full ({self._queue.qsize()}/{MAX_QUEUE_SIZE}), dropping message: {description}"
+                    "Queue not running; cannot send message: %s. Start the message queue before sending.",
+                    description,
                 )
                 return False
 
@@ -163,8 +253,15 @@ class MessageQueue:
                 description=description,
                 mapping_info=mapping_info,
             )
-
-            self._queue.put(message)
+            # Enforce capacity via bounded queue
+            try:
+                self._queue.put_nowait(message)
+            except Full:
+                logger.warning(
+                    f"Message queue full ({self._queue.qsize()}/{MAX_QUEUE_SIZE}), dropping message: {description}"
+                )
+                self._dropped_messages += 1
+                return False
             # Only log queue status when there are multiple messages
             queue_size = self._queue.qsize()
             if queue_size >= 2:
@@ -190,10 +287,21 @@ class MessageQueue:
 
     def get_status(self) -> dict:
         """
-        Return a dictionary with the current status of the message queue, including running state, queue size, message delay, processor activity, last send time, and time since last send.
+        Return current status of the message queue.
+
+        Provides a snapshot useful for monitoring and debugging.
 
         Returns:
-            dict: Status information about the message queue for debugging and monitoring.
+            dict: Mapping with the following keys:
+                - running (bool): Whether the queue processor is active.
+                - queue_size (int): Number of messages currently queued.
+                - message_delay (float): Configured minimum delay (seconds) between sends.
+                - processor_task_active (bool): True if the internal processor task exists and is not finished.
+                - last_send_time (float or None): Wall-clock time (seconds since the epoch) of the last successful send, or None if no send has occurred.
+                - time_since_last_send (float or None): Seconds elapsed since last_send_time, or None if no send has occurred.
+                - in_flight (bool): True when a message is currently being sent.
+                - dropped_messages (int): Number of messages dropped due to queue being full.
+                - default_msgs_to_keep (int): Default retention setting for message mappings.
         """
         return {
             "running": self._running,
@@ -203,9 +311,29 @@ class MessageQueue:
             and not self._processor_task.done(),
             "last_send_time": self._last_send_time,
             "time_since_last_send": (
-                time.time() - self._last_send_time if self._last_send_time > 0 else None
+                time.monotonic() - self._last_send_mono
+                if self._last_send_mono > 0
+                else None
             ),
+            "in_flight": self._in_flight,
+            "dropped_messages": getattr(self, "_dropped_messages", 0),
+            "default_msgs_to_keep": DEFAULT_MSGS_TO_KEEP,
         }
+
+    async def drain(self, timeout: Optional[float] = None) -> bool:
+        """
+        Asynchronously wait until the queue has fully drained (no queued messages and no in-flight or current message) or until an optional timeout elapses.
+
+        If `timeout` is provided, it is interpreted in seconds. Returns True when the queue is empty and there are no messages being processed; returns False if the queue was stopped before draining or the timeout was reached.
+        """
+        deadline = (time.monotonic() + timeout) if timeout is not None else None
+        while (not self._queue.empty()) or self._in_flight or self._has_current:
+            if not self._running:
+                return False
+            if deadline is not None and time.monotonic() > deadline:
+                return False
+            await asyncio.sleep(0.1)
+        return True
 
     def ensure_processor_started(self):
         """
@@ -216,15 +344,14 @@ class MessageQueue:
         with self._lock:
             if self._running and self._processor_task is None:
                 try:
-                    loop = asyncio.get_event_loop()
-                    if loop.is_running():
-                        self._processor_task = loop.create_task(self._process_queue())
-                        logger.info(
-                            f"Message queue processor started with {self._message_delay}s message delay"
-                        )
+                    loop = asyncio.get_running_loop()
                 except RuntimeError:
-                    # Still no event loop available
-                    pass
+                    loop = None
+                if loop and loop.is_running():
+                    self._processor_task = loop.create_task(self._process_queue())
+                    logger.info(
+                        f"Message queue processor started with {self._message_delay}s message delay"
+                    )
 
     async def _process_queue(self):
         """
@@ -253,6 +380,7 @@ class MessageQueue:
                     # Get next message (non-blocking)
                     try:
                         current_message = self._queue.get_nowait()
+                        self._has_current = True
                     except Empty:
                         # No messages, wait a bit and continue
                         await asyncio.sleep(0.1)
@@ -268,8 +396,8 @@ class MessageQueue:
                     continue
 
                 # Check if we need to wait for message delay (only if we've sent before)
-                if self._last_send_time > 0:
-                    time_since_last = time.time() - self._last_send_time
+                if self._last_send_mono > 0:
+                    time_since_last = time.monotonic() - self._last_send_mono
                     if time_since_last < self._message_delay:
                         wait_time = self._message_delay - time_since_last
                         logger.debug(
@@ -280,20 +408,27 @@ class MessageQueue:
 
                 # Send the message
                 try:
+                    self._in_flight = True
                     logger.debug(
                         f"Sending queued message: {current_message.description}"
                     )
                     # Run synchronous Meshtastic I/O operations in executor to prevent blocking event loop
-                    # Use lambda with default arguments to properly capture loop variables
-                    result = await asyncio.get_running_loop().run_in_executor(
-                        None,
-                        lambda msg=current_message: msg.send_function(
-                            *msg.args, **msg.kwargs
+                    loop = asyncio.get_running_loop()
+                    exec_ref = self._executor
+                    if exec_ref is None:
+                        raise RuntimeError("MessageQueue executor is not initialized")
+                    result = await loop.run_in_executor(
+                        exec_ref,
+                        partial(
+                            current_message.send_function,
+                            *current_message.args,
+                            **current_message.kwargs,
                         ),
                     )
 
                     # Update last send time
                     self._last_send_time = time.time()
+                    self._last_send_mono = time.monotonic()
 
                     if result is None:
                         logger.warning(
@@ -318,6 +453,8 @@ class MessageQueue:
                 # Mark task as done and clear current message
                 self._queue.task_done()
                 current_message = None
+                self._in_flight = False
+                self._has_current = False
 
             except asyncio.CancelledError:
                 logger.debug("Message queue processor cancelled")
@@ -325,6 +462,10 @@ class MessageQueue:
                     logger.warning(
                         f"Message in flight was dropped during shutdown: {current_message.description}"
                     )
+                    with contextlib.suppress(Exception):
+                        self._queue.task_done()
+                self._in_flight = False
+                self._has_current = False
                 break
             except Exception as e:
                 logger.error(f"Error in message queue processor: {e}")
@@ -332,10 +473,12 @@ class MessageQueue:
 
     def _should_send_message(self) -> bool:
         """
-        Determine whether it is currently safe to send a message based on Meshtastic client connection and reconnection state.
+        Return True if it's currently safe to send a message over Meshtastic.
 
-        Returns:
-            bool: True if the client is connected and not reconnecting; False otherwise.
+        Checks that the Meshtastic client exists, is connected (supports callable or boolean
+        `is_connected`), and that a global reconnection flag is not set. Returns False otherwise.
+        If importing meshtastic utilities raises ImportError, logs a critical error, starts a
+        background thread to stop this MessageQueue, and returns False.
         """
         # Import here to avoid circular imports
         try:
@@ -367,18 +510,26 @@ class MessageQueue:
             logger.critical(
                 f"Cannot import meshtastic_utils - serious application error: {e}. Stopping message queue."
             )
-            self.stop()
+            # Stop asynchronously to avoid blocking the event loop thread.
+            threading.Thread(
+                target=self.stop, name="MessageQueueStopper", daemon=True
+            ).start()
             return False
 
     def _handle_message_mapping(self, result, mapping_info):
         """
-        Update the message mapping database with information about a sent message and prune old mappings if configured.
+        Store a sent message's mapping (mesh ID → Matrix event) and prune old mappings according to retention settings.
+
+        If `mapping_info` contains the required keys (`matrix_event_id`, `room_id`, `text`), this will call the DB helpers to persist a mapping for `result.id` and then prune older mappings using `mapping_info["msgs_to_keep"]` if present (falls back to DEFAULT_MSGS_TO_KEEP).
 
         Parameters:
-            result: The result object from the send function, expected to have an `id` attribute.
-            mapping_info (dict): Contains mapping details such as `matrix_event_id`, `room_id`, `text`, and optionally `meshnet` and `msgs_to_keep`.
-
-        If required mapping fields are present, stores the mapping and prunes old entries based on the specified or default retention count.
+            result: The send function's result object; must expose an `id` attribute (the mesh message id).
+            mapping_info: Dict supplying mapping fields:
+                - matrix_event_id (str): Matrix event id to associate with the mesh message.
+                - room_id (str): Matrix room id for the event.
+                - text (str): The message text to store in the mapping.
+                - meshnet (optional): Mesh network identifier passed to the store function.
+                - msgs_to_keep (optional, int): Number of mappings to retain; if > 0, prune older entries.
         """
         try:
             # Import here to avoid circular imports
@@ -442,7 +593,7 @@ def queue_message(
     send_function: Callable,
     *args,
     description: str = "",
-    mapping_info: dict = None,
+    mapping_info: Optional[dict] = None,
     **kwargs,
 ) -> bool:
     """

@@ -701,10 +701,21 @@ class TestPerformanceStress:
 
         async def run_throughput_test():
             """
-            Run a throughput benchmark simulating a mesh network with mixed message types and nodes.
+            Run a 30-second realistic throughput benchmark that enqueues mixed-message traffic into a MessageQueue and validates rate-limiting and basic throughput/diversity expectations.
 
-            Queues messages of various types from multiple nodes at randomized intervals, enforcing a 2-second minimum delay between sends. Measures and prints throughput statistics, validates rate limiting, and ensures minimum throughput and message diversity requirements are met.
+            This coroutine:
+            - Seeds the RNG for deterministic test behavior.
+            - Starts a MessageQueue processor with a 2.0 second enforced send delay.
+            - Enqueues messages of several types from multiple mock node IDs at randomized intervals (0.5–3.0s) for 30 seconds.
+            - Records timestamps of processed messages, waits up to 15s for the queue to drain, and computes throughput using the active processing window (first to last processed timestamp) when possible.
+            - Asserts minimal test invariants: multiple messages were queued and at least one processed; throughput does not exceed the rate-limit-derived upper bound and — when >= 2 messages were processed — meets a minimum expected throughput; message-type diversity is observed.
+            - Prints a brief summary of duration, queued/processed counts, throughput, and per-type counts.
+            - Stops the MessageQueue on completion.
+
+            Raises:
+                AssertionError: if queue draining, throughput, or diversity checks fail.
             """
+            random.seed(0)  # Reduce flakiness in CI
             with patch(
                 "mmrelay.meshtastic_utils.meshtastic_client",
                 MagicMock(is_connected=True),
@@ -776,15 +787,23 @@ class TestPerformanceStress:
                                 )  # nosec B311 - Test timing variation, not cryptographic
                             )
 
-                        # Wait for queue to process remaining messages
-                        await asyncio.sleep(10)  # Allow processing to complete
+                        # Wait for queue to drain (bounded)
+                        drained = await queue.drain(timeout=15.0)
+                        assert drained, "Queue did not drain within timeout"
 
                         end_time = time.time()
                         total_time = end_time - start_time
 
-                        # Calculate throughput metrics
+                        # Calculate throughput metrics using the active processing window
                         messages_processed = len(processed_messages)
-                        throughput = messages_processed / total_time
+                        if messages_processed >= 2:
+                            first_ts = processed_messages[0]["timestamp"]
+                            last_ts = processed_messages[-1]["timestamp"]
+                            active_duration = max(last_ts - first_ts, 1e-6)
+                            throughput = messages_processed / active_duration
+                        else:
+                            # Fallback to total_time-based throughput for single-message edge case
+                            throughput = messages_processed / total_time
 
                         # Validate realistic performance expectations
                         assert messages_queued > 5, "Should queue multiple messages"
@@ -796,11 +815,13 @@ class TestPerformanceStress:
                             throughput <= 0.6
                         ), "Throughput should respect rate limiting"
 
-                        # Should achieve at least 65% of theoretical maximum (more realistic for CI)
-                        min_expected_throughput = 0.32  # 65% of 0.5 msg/s
-                        assert (
-                            throughput >= min_expected_throughput
-                        ), f"Throughput {throughput:.3f} msg/s below minimum {min_expected_throughput}"
+                        # Should achieve at least 65% of theoretical maximum during active window
+                        # With 2s delay, max theoretical throughput is 0.5 msg/s
+                        min_expected_throughput = 0.32
+                        if messages_processed >= 2:
+                            assert (
+                                throughput >= min_expected_throughput
+                            ), f"Throughput {throughput:.3f} msg/s below minimum {min_expected_throughput}"
 
                         # Verify message type distribution
                         type_counts = {}

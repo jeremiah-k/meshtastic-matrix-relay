@@ -27,6 +27,7 @@ class TestConnectionRetryLogic:
     """Test connection retry and backoff behavior."""
 
     @pytest.mark.asyncio
+    @pytest.mark.usefixtures("comprehensive_cleanup")
     async def test_connection_retry_backoff_timing(self):
         """
         Verify that connection retry logic applies backoff delays between failed attempts and succeeds after the expected number of retries.
@@ -43,7 +44,7 @@ class TestConnectionRetryLogic:
                 MagicMock(),  # Success on third attempt
             ]
 
-            start_time = time.time()
+            start_time = time.monotonic()
 
             # This would be your actual retry logic - adjust import as needed
             try:
@@ -60,7 +61,7 @@ class TestConnectionRetryLogic:
                         if attempt < 2:  # Don't sleep on last attempt
                             await asyncio.sleep(DEFAULT_BACKOFF_TIME)
 
-            end_time = time.time()
+            end_time = time.monotonic()
 
             # Should have attempted connection 3 times
             assert mock_connect.call_count == 3
@@ -228,9 +229,9 @@ class TestMessageQueueDuringDisconnection:
 
     def test_message_queuing_when_disconnected(self):
         """
-        Verifies that messages are enqueued in the message queue when the network connection is unavailable.
+        Verify messages are enqueued while the network is unavailable.
 
-        Ensures that messages are not lost during disconnection and that the queue size reflects all enqueued messages.
+        Starts a MessageQueue, simulates a disconnected state by setting the meshtastic client to None, enqueues multiple messages using a mock send function, and asserts each enqueue succeeds and the queue size reflects the enqueued messages.
         """
         from mmrelay.message_queue import MessageQueue
 
@@ -258,11 +259,12 @@ class TestMessageQueueDuringDisconnection:
         finally:
             queue.stop()
 
+    @pytest.mark.usefixtures("comprehensive_cleanup")
     def test_queue_overflow_protection(self):
         """
-        Verify that the message queue enforces its maximum size limit and rejects messages when full.
+        Verify the MessageQueue enforces MAX_QUEUE_SIZE by accepting messages up to the limit and rejecting any excess.
 
-        Ensures that attempting to enqueue more messages than the allowed maximum does not increase the queue size beyond the limit, and that excess messages are not accepted.
+        This test fills the queue beyond MAX_QUEUE_SIZE and asserts that the internal queue size never exceeds the configured maximum and that the number of successful enqueue operations is no greater than MAX_QUEUE_SIZE.
         """
         from mmrelay.message_queue import MessageQueue
 

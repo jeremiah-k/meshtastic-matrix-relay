@@ -1,22 +1,23 @@
 matrix:
   homeserver: https://example.matrix.org
-  access_token: reaalllllyloooooongsecretttttcodeeeeeeforrrrbot # See: https://t2bot.io/docs/access_tokens/
+  # Modern authentication using password (recommended)
+  # MMRelay will automatically create secure credentials.json on startup
+  password: your_matrix_password_here  # Set your Matrix account password
+  # Security: After first successful start, remove this password from the file.
+  #           Linux/macOS: chmod 600 ~/.mmrelay/config.yaml
+  #           Windows: restrict file access to your user (e.g., via file Properties → Security)
+  #           Never commit this file with a password to version control.
   bot_user_id: "@botuser:example.matrix.org"
 
-  # Alternative: Automatic credentials creation (Docker-friendly)
-  # If you provide password instead of access_token, MMRelay will automatically
-  # create credentials.json on startup. Useful for Docker deployments.
-  #password: your_matrix_password_here  # Uncomment and set your Matrix password
-
   # End-to-End Encryption (E2EE) configuration
-  # NOTE: E2EE requires credentials.json instead of access_token for new sessions
+  # E2EE is automatically enabled when using password-based authentication AND E2EE dependencies are installed (Linux/macOS only)
+  # NOTE: E2EE is not available on Windows due to dependency limitations
   #
   # SETUP INSTRUCTIONS:
-  # 1. Install E2EE dependencies: pipx install 'mmrelay[e2e]'
-  # 2. Enable E2EE in config: uncomment and set enabled: true below
-  # 3. Create credentials: mmrelay auth login
-  # 4. The auth login command will create credentials.json with your Matrix login
-  # 5. Restart mmrelay - it will use credentials.json and enable E2EE automatically
+  # 1. Install E2EE dependencies: pipx install 'mmrelay[e2e]' (Linux/macOS only)
+  # 2. Set your password above and run MMRelay
+  # 3. MMRelay will automatically create credentials.json with E2EE support
+  # 4. For interactive setup, use: mmrelay auth login
   #
   #e2ee:
   #  # Optional: When credentials.json is present, MMRelay auto-enables E2EE.

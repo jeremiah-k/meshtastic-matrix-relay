@@ -17,11 +17,10 @@ COPY requirements.txt requirements-e2e.txt setup.py ./
 COPY README.md ./
 COPY src/ ./src/
 
-# Install dependencies and application package with E2EE support
-# Split into separate commands to improve reliability and caching
-RUN pip install --no-cache-dir --timeout=300 --retries=3 -r requirements.txt
-RUN pip install --no-cache-dir --timeout=300 --retries=3 -r requirements-e2e.txt
-RUN pip install --no-cache-dir --no-deps .
+# Install dependencies and application package with E2EE support (consolidated)
+RUN python -m pip install --no-cache-dir --timeout=300 --retries=3 -r requirements.txt \
+    && python -m pip install --no-cache-dir --timeout=300 --retries=3 -r requirements-e2e.txt \
+    && python -m pip install --no-cache-dir --no-deps .
 
 # Runtime stage
 FROM python:3.11-slim-bookworm

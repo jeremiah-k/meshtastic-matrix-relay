@@ -4,6 +4,16 @@ on:
   workflow_dispatch:
   release:
     types: [published]
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - .github/workflows/package-windows.yml
+      - scripts/mmrelay.iss
+      - src/**
+
+concurrency:
+  group: windows-installer-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: write

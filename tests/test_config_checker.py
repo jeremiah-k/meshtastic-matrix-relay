@@ -10,6 +10,7 @@ Tests the configuration validation functionality including:
 - Error handling and reporting
 """
 
+import argparse
 import os
 import sys
 import unittest
@@ -30,7 +31,7 @@ class TestConfigChecker(unittest.TestCase):
         Prepare a representative, valid configuration dict used by each test.
 
         The dict is stored as self.valid_config and includes:
-        - matrix: minimal required fields for Matrix (homeserver, access_token, bot_user_id)
+        - matrix: minimal required fields for Matrix (homeserver, bot_user_id, and either access_token or password)
         - matrix_rooms: a list with one room dict containing an 'id' and 'meshtastic_channel'
         - meshtastic: a meshtastic connection with connection_type 'tcp', a host, and broadcast_enabled flag
 
@@ -387,8 +388,218 @@ class TestConfigChecker(unittest.TestCase):
 
         self.assertFalse(result)
         mock_print.assert_any_call(
-            "Error: Missing required fields in 'matrix' section: access_token, bot_user_id"
+            "Error: Missing authentication in 'matrix' section: provide 'access_token' or 'password'"
         )
+
+    @patch("mmrelay.cli.parse_arguments")
+    @patch("mmrelay.cli.get_config_paths")
+    @patch("os.path.isfile")
+    @patch("builtins.open", new_callable=mock_open)
+    @patch("mmrelay.cli.validate_yaml_syntax")
+    @patch("mmrelay.cli._print_unified_e2ee_analysis")
+    @patch("mmrelay.e2ee_utils.get_e2ee_status")
+    @patch("builtins.print")
+    def test_check_config_valid_password_auth(
+        self,
+        mock_print,
+        mock_get_e2ee_status,
+        mock_print_unified_e2ee,
+        mock_validate_yaml,
+        mock_open,
+        mock_isfile,
+        mock_get_paths,
+        mock_parse_args,
+    ):
+        """Test check_config with valid password-based authentication."""
+        mock_parse_args.return_value = argparse.Namespace(config=None)
+
+        valid_config = {
+            "matrix": {
+                "homeserver": "https://matrix.org",
+                "bot_user_id": "@bot:matrix.org",
+                "password": "secret123",
+            },
+            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+            "meshtastic": {"connection_type": "tcp", "host": "localhost"},
+        }
+
+        mock_get_paths.return_value = ["/test/config.yaml"]
+        mock_isfile.return_value = True
+        mock_validate_yaml.return_value = (True, None, valid_config)
+
+        mock_get_e2ee_status.return_value = {
+            "overall_status": "ready",
+            "enabled": True,
+            "available": True,
+            "configured": True,
+            "issues": [],
+        }
+        with patch("mmrelay.cli._validate_credentials_json", return_value=False):
+            result = check_config()
+
+        self.assertTrue(result)
+        mock_print.assert_any_call("\n✅ Configuration file is valid!")
+
+    @patch("mmrelay.cli.parse_arguments")
+    @patch("mmrelay.cli.get_config_paths")
+    @patch("os.path.isfile")
+    @patch("builtins.open", new_callable=mock_open)
+    @patch("mmrelay.cli.validate_yaml_syntax")
+    @patch("builtins.print")
+    def test_check_config_invalid_password_missing_homeserver(
+        self,
+        mock_print,
+        mock_validate_yaml,
+        mock_open,
+        mock_isfile,
+        mock_get_paths,
+        mock_parse_args,
+    ):
+        """Test check_config with password but missing homeserver."""
+        mock_parse_args.return_value = argparse.Namespace(config=None)
+
+        invalid_config = {
+            "matrix": {
+                "bot_user_id": "@bot:matrix.org",
+                "password": "secret123",
+                # missing homeserver
+            },
+            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+            "meshtastic": {"connection_type": "tcp", "host": "localhost"},
+        }
+
+        mock_get_paths.return_value = ["/test/config.yaml"]
+        mock_isfile.return_value = True
+        mock_validate_yaml.return_value = (True, None, invalid_config)
+
+        with patch("mmrelay.cli._validate_credentials_json", return_value=False):
+            result = check_config()
+
+        self.assertFalse(result)
+        mock_print.assert_any_call(
+            "Error: Missing required fields in 'matrix' section: homeserver"
+        )
+
+    @patch("mmrelay.cli.parse_arguments")
+    @patch("mmrelay.cli.get_config_paths")
+    @patch("os.path.isfile")
+    @patch("builtins.open", new_callable=mock_open)
+    @patch("mmrelay.cli.validate_yaml_syntax")
+    @patch("builtins.print")
+    def test_check_config_invalid_password_missing_bot_user_id(
+        self,
+        mock_print,
+        mock_validate_yaml,
+        mock_open,
+        mock_isfile,
+        mock_get_paths,
+        mock_parse_args,
+    ):
+        """Test check_config with password but missing bot_user_id."""
+        mock_parse_args.return_value = argparse.Namespace(config=None)
+        invalid_config = {
+            "matrix": {"homeserver": "https://matrix.org", "password": "secret123"},
+            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+            "meshtastic": {"connection_type": "tcp", "host": "localhost"},
+        }
+        mock_get_paths.return_value = ["/test/config.yaml"]
+        mock_isfile.return_value = True
+        mock_validate_yaml.return_value = (True, None, invalid_config)
+        with patch("mmrelay.cli._validate_credentials_json", return_value=False):
+            result = check_config()
+        self.assertFalse(result)
+        mock_print.assert_any_call(
+            "Error: Missing required fields in 'matrix' section: bot_user_id"
+        )
+
+    @patch("mmrelay.cli.parse_arguments")
+    @patch("mmrelay.cli.get_config_paths")
+    @patch("os.path.isfile")
+    @patch("builtins.open", new_callable=mock_open)
+    @patch("mmrelay.cli.validate_yaml_syntax")
+    @patch("builtins.print")
+    def test_check_config_no_auth_methods(
+        self,
+        mock_print,
+        mock_validate_yaml,
+        mock_open,
+        mock_isfile,
+        mock_get_paths,
+        mock_parse_args,
+    ):
+        """Test check_config with neither access_token nor password."""
+        mock_parse_args.return_value = argparse.Namespace(config=None)
+
+        invalid_config = {
+            "matrix": {
+                "homeserver": "https://matrix.org",
+                "bot_user_id": "@bot:matrix.org",
+                # no access_token or password
+            },
+            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+            "meshtastic": {"connection_type": "tcp", "host": "localhost"},
+        }
+
+        mock_get_paths.return_value = ["/test/config.yaml"]
+        mock_isfile.return_value = True
+        mock_validate_yaml.return_value = (True, None, invalid_config)
+
+        with patch("mmrelay.cli._validate_credentials_json", return_value=False):
+            result = check_config()
+
+        self.assertFalse(result)
+        mock_print.assert_any_call(
+            "Error: Missing authentication in 'matrix' section: provide 'access_token' or 'password'"
+        )
+
+    @patch("mmrelay.cli.parse_arguments")
+    @patch("mmrelay.cli.get_config_paths")
+    @patch("os.path.isfile")
+    @patch("builtins.open", new_callable=mock_open)
+    @patch("mmrelay.cli.validate_yaml_syntax")
+    @patch("mmrelay.cli._print_unified_e2ee_analysis")
+    @patch("mmrelay.e2ee_utils.get_e2ee_status")
+    @patch("builtins.print")
+    def test_check_config_empty_password(
+        self,
+        mock_print,
+        mock_get_e2ee_status,
+        mock_print_unified_e2ee,
+        mock_validate_yaml,
+        mock_open,
+        mock_isfile,
+        mock_get_paths,
+        mock_parse_args,
+    ):
+        """Test check_config with empty string password."""
+        mock_parse_args.return_value = argparse.Namespace(config=None)
+
+        invalid_config = {
+            "matrix": {
+                "homeserver": "https://matrix.org",
+                "bot_user_id": "@bot:matrix.org",
+                "password": "",  # empty password
+            },
+            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+            "meshtastic": {"connection_type": "tcp", "host": "localhost"},
+        }
+
+        mock_get_paths.return_value = ["/test/config.yaml"]
+        mock_isfile.return_value = True
+        mock_validate_yaml.return_value = (True, None, invalid_config)
+
+        mock_get_e2ee_status.return_value = {
+            "overall_status": "ready",
+            "enabled": True,
+            "available": True,
+            "configured": True,
+            "issues": [],
+        }
+        with patch("mmrelay.cli._validate_credentials_json", return_value=False):
+            result = check_config()
+
+        self.assertTrue(result)
+        mock_print.assert_any_call("\n✅ Configuration file is valid!")
 
     @patch("mmrelay.cli.parse_arguments")
     @patch("mmrelay.cli.get_config_paths")

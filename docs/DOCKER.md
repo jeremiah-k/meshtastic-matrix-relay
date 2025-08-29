@@ -72,7 +72,7 @@ This method is ideal for:
 - Users who haven't cloned the repository
 - Environments without Python installed locally
 
-**Security Note**: The password is only used once during initial setup to create `credentials.json`. For enhanced security, you should remove the `password` field from your `config.yaml` after the first successful startup.
+**Security Note**: The password is only used once during initial setup to create `credentials.json`. For enhanced security, remove the `password` field from your `config.yaml` after the first successful startup. On SSO/OIDC-only homeservers (password logins disabled), this method will fail — run `mmrelay auth login` on your host to create `~/.mmrelay/credentials.json`, then mount `~/.mmrelay:/app/data` in Docker.
 Additionally, restrict file permissions so only your user can read it:
 
 ```bash
@@ -123,7 +123,8 @@ For users who prefer web-based Docker management:
          - PYTHONUNBUFFERED=1
          - MPLCONFIGDIR=/tmp/matplotlib
        volumes:
-         - /home/yourusername/.mmrelay:/app/data # Includes config.yaml, credentials.json, and all data
+         - /home/yourusername/.mmrelay/config.yaml:/app/config.yaml:ro
+         - /home/yourusername/.mmrelay:/app/data # credentials.json, E2EE store, logs, DB
        ports:
          - "4403:4403"
    ```
@@ -146,8 +147,10 @@ If you prefer not to use Make commands:
 
 ```bash
 # After cloning the repository:
-make config  # Creates ~/.mmrelay/config.yaml, .env, and docker-compose.yaml
+mkdir -p ~/.mmrelay/data ~/.mmrelay/logs
+cp src/mmrelay/tools/sample_config.yaml ~/.mmrelay/config.yaml
 nano ~/.mmrelay/config.yaml  # Edit your settings
+cp src/mmrelay/tools/sample-docker-compose-prebuilt.yaml docker-compose.yaml
 
 # Build and start:
 docker compose build
@@ -196,29 +199,34 @@ mmrelay auth login
 - **Convenience**: No manual token capture from browser sessions required
 - **Secure Storage**: Credentials stored with restricted file permissions (600 on Unix systems)
 
-### Manual Access Token in config.yaml
+### Password-based Authentication in config.yaml
 
-Alternative authentication method using manually captured access tokens.
+Alternative authentication method using a password for automatic credential creation.
 
 ```yaml
 # In your config.yaml file
 matrix:
   homeserver: https://matrix.example.org
-  access_token: your_access_token_here  # Captured from browser session
+  password: your_matrix_password  # Your Matrix account password
   bot_user_id: @yourbot:example.org
 ```
 
-**Limitations:**
+Note: This method automatically creates `credentials.json` on startup and is compatible with Matrix 2.0/MAS. See the earlier Features list for capabilities; apply the same operational hardening (read-only config bind mount, restrictive file perms).
 
-- No E2EE support - cannot participate in encrypted Matrix rooms
-- Manual token management - requires capturing access tokens from browser sessions
+Compose tip:
+
+```yaml
+volumes:
+  - ${MMRELAY_HOME}/.mmrelay/config.yaml:/app/config.yaml:ro
+  - ${MMRELAY_HOME}/.mmrelay:/app/data
+```
 
 ### Authentication Precedence
 
 MMRelay checks for authentication in this order:
 
 1. **`credentials.json`** (from auth system) - full features
-2. **`config.yaml` matrix section** - limited features
+2. **`config.yaml` matrix section (password-based)** - automatic credential creation; E2EE supported when dependencies are available
 
 ## Operational Environment Variables
 
@@ -400,7 +408,10 @@ MMRELAY_HOME=/path/to/your/data
 **Container won't start:**
 
 - Check logs: `docker compose logs mmrelay`
-- Verify config file syntax: `mmrelay check-config --config ~/.mmrelay/config.yaml`
+- Verify config syntax (host):
+  `mmrelay config check --config ~/.mmrelay/config.yaml`
+- Verify config syntax (container):
+  `docker compose exec mmrelay mmrelay config check --config /app/config.yaml`
 - Ensure all required config fields are set
 
 **Connection issues:**
@@ -444,7 +455,8 @@ services:
       - MMRELAY_LOGGING_LEVEL=INFO
       - MMRELAY_DATABASE_PATH=/app/data/meshtastic.sqlite
     volumes:
-      - ${MMRELAY_HOME}/.mmrelay:/app/data # Includes credentials.json, E2EE store, config.yaml, and all data
+      - ${MMRELAY_HOME}/.mmrelay/config.yaml:/app/config.yaml:ro
+      - ${MMRELAY_HOME}/.mmrelay:/app/data # credentials.json, E2EE store, logs, DB
 ```
 
 **This approach provides:**
@@ -454,23 +466,17 @@ services:
 - File-based credential storage
 - Flexible operational configuration
 
-### Method 2: Manual Access Token + Environment Variables (No E2EE)
+### Method 2: Password-based Authentication + Environment Variables
 
-Alternative approach using manually captured access tokens. **⚠️ This method cannot participate in encrypted Matrix rooms.**
+Alternative approach using password-based authentication for automatic credential creation.
 
-#### Step 1: Capture access token manually
-
-1. Log into Matrix in your browser
-2. Go to Settings → Help & About → Advanced → Access Token
-3. Copy the access token
-
-#### Step 2: Add to config.yaml
+#### Step 1: Add password to config.yaml
 
 ```yaml
 # In your ~/.mmrelay/config.yaml
 matrix:
   homeserver: https://matrix.example.org
-  access_token: your_captured_access_token_here
+  password: your_matrix_password
   bot_user_id: @yourbot:example.org
 
 matrix_rooms:
@@ -478,7 +484,13 @@ matrix_rooms:
     meshtastic_channel: 0
 ```
 
-#### Step 3: Create docker-compose.yaml
+### Features
+
+- Automatically creates `credentials.json` on first start
+- Compatible with Matrix 2.0/MAS authentication
+- E2EE supported when dependencies are available
+
+#### Step 2: Create docker-compose.yaml with E2EE
 
 ```yaml
 services:
@@ -496,13 +508,16 @@ services:
       - MMRELAY_LOGGING_LEVEL=INFO
       - MMRELAY_DATABASE_PATH=/app/data/meshtastic.sqlite
     volumes:
-      - ${MMRELAY_HOME}/.mmrelay:/app/data # Includes config.yaml and all data
+      - ${MMRELAY_HOME}/.mmrelay/config.yaml:/app/config.yaml:ro
+      - ${MMRELAY_HOME}/.mmrelay:/app/data # credentials.json, E2EE store, logs, DB
 ```
 
-**Limitations:**
+**Security note:** After the first successful start:
 
-- No E2EE support - cannot participate in encrypted Matrix rooms
-- Manual token management required
+1. Remove the `password` from config.yaml,
+2. Ensure strict permissions (e.g., `chmod 600 ~/.mmrelay/config.yaml`),
+3. Optionally remount config as read-only in compose (`:ro`).
+   E2EE is supported with this method when dependencies are available (Linux/macOS).
 
 ## Connection Type Variants
 
