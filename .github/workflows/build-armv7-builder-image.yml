@@ -1,4 +1,5 @@
 name: Build ARMv7 Builder Image
+run-name: Build ARMv7 Builder Image
 
 on:
   workflow_dispatch:
@@ -123,6 +124,7 @@ jobs:
                 kiwisolver==1.4.9 \
                 contourpy==1.3.2 \
                 pycryptodome==3.23.0 \
+                python-olm \
                 dbus-fast==2.44.3 \
                 psutil==7.0.0 \
                 pyyaml==6.0.2 \
