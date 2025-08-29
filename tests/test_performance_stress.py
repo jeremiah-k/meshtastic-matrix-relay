@@ -701,9 +701,19 @@ class TestPerformanceStress:
 
         async def run_throughput_test():
             """
-            Run a throughput benchmark simulating a mesh network with mixed message types and nodes.
-
-            Queues messages of various types from multiple nodes at randomized intervals, enforcing a 2-second minimum delay between sends. Measures and prints throughput statistics, validates rate limiting, and ensures minimum throughput and message diversity requirements are met.
+            Run a 30-second realistic throughput benchmark that enqueues mixed-message traffic into a MessageQueue and validates rate-limiting and basic throughput/diversity expectations.
+            
+            This coroutine:
+            - Seeds the RNG for deterministic test behavior.
+            - Starts a MessageQueue processor with a 2.0 second enforced send delay.
+            - Enqueues messages of several types from multiple mock node IDs at randomized intervals (0.5–3.0s) for 30 seconds.
+            - Records timestamps of processed messages, waits up to 15s for the queue to drain, and computes throughput using the active processing window (first to last processed timestamp) when possible.
+            - Asserts minimal test invariants: multiple messages were queued and at least one processed; throughput does not exceed the rate-limit-derived upper bound and — when >= 2 messages were processed — meets a minimum expected throughput; message-type diversity is observed.
+            - Prints a brief summary of duration, queued/processed counts, throughput, and per-type counts.
+            - Stops the MessageQueue on completion.
+            
+            Raises:
+                AssertionError: if queue draining, throughput, or diversity checks fail.
             """
             random.seed(0)  # Reduce flakiness in CI
             with patch(
