@@ -7,6 +7,7 @@ import importlib.resources
 import os
 import shutil
 import sys
+from collections.abc import Mapping
 
 # Import version from package
 from mmrelay import __version__
@@ -279,7 +280,7 @@ def _validate_credentials_json(config_path):
             return False
 
         # Load and validate credentials
-        with open(credentials_path, "r") as f:
+        with open(credentials_path, "r", encoding="utf-8") as f:
             credentials = json.load(f)
 
         # Check for required fields
@@ -333,7 +334,7 @@ def _has_valid_password_auth(matrix_section):
     Returns:
         bool: True when password-based authentication is correctly configured as described above; otherwise False.
     """
-    if not isinstance(matrix_section, dict):
+    if not isinstance(matrix_section, Mapping):
         return False
 
     pwd = matrix_section.get("password")
@@ -779,7 +780,7 @@ def check_config(args=None):
     - Validates the meshtastic section: requires connection_type and the connection-specific fields (serial_port for serial, host for tcp/network, ble_address for ble). Warns about deprecated connection types.
     - Validates optional meshtastic fields and types (broadcast_enabled, detection_sensor, message_delay >= 2.0, meshnet_name) and reports missing optional settings as guidance.
     - Warns if a deprecated db section is present.
-    - Prints a short environment summary on success.
+    - Prints a unified E2EE analysis summary on success.
 
     Side effects:
     - Prints errors, warnings, and status messages to stdout.
@@ -1301,8 +1302,6 @@ def handle_auth_status(args):
         Writes human-readable status messages to stdout.
     """
     import json
-    import os
-
     from mmrelay.config import get_base_dir, get_config_paths
 
     print("Matrix Authentication Status")
@@ -1328,7 +1327,7 @@ def handle_auth_status(args):
     for credentials_path in candidate_paths:
         if os.path.exists(credentials_path):
             try:
-                with open(credentials_path, "r") as f:
+                with open(credentials_path, "r", encoding="utf-8") as f:
                     credentials = json.load(f)
 
                 required = ("homeserver", "access_token", "user_id", "device_id")

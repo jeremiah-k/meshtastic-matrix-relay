@@ -77,6 +77,7 @@ class MessageQueue:
         self._executor = None  # Dedicated ThreadPoolExecutor for this MessageQueue
         self._in_flight = False
         self._has_current = False
+        self._dropped_messages = 0
 
     def start(self, message_delay: float = DEFAULT_MESSAGE_DELAY):
         """
@@ -259,6 +260,7 @@ class MessageQueue:
                 logger.warning(
                     f"Message queue full ({self._queue.qsize()}/{MAX_QUEUE_SIZE}), dropping message: {description}"
                 )
+                self._dropped_messages += 1
                 return False
             # Only log queue status when there are multiple messages
             queue_size = self._queue.qsize()
@@ -298,6 +300,8 @@ class MessageQueue:
                 - last_send_time (float or None): Wall-clock time (seconds since the epoch) of the last successful send, or None if no send has occurred.
                 - time_since_last_send (float or None): Seconds elapsed since last_send_time, or None if no send has occurred.
                 - in_flight (bool): True when a message is currently being sent.
+                - dropped_messages (int): Number of messages dropped due to queue being full.
+                - default_msgs_to_keep (int): Default retention setting for message mappings.
         """
         return {
             "running": self._running,
@@ -312,6 +316,8 @@ class MessageQueue:
                 else None
             ),
             "in_flight": self._in_flight,
+            "dropped_messages": getattr(self, "_dropped_messages", 0),
+            "default_msgs_to_keep": DEFAULT_MSGS_TO_KEEP,
         }
 
     async def drain(self, timeout: Optional[float] = None) -> bool:
@@ -408,8 +414,11 @@ class MessageQueue:
                     )
                     # Run synchronous Meshtastic I/O operations in executor to prevent blocking event loop
                     loop = asyncio.get_running_loop()
+                    exec_ref = self._executor
+                    if exec_ref is None:
+                        raise RuntimeError("MessageQueue executor is not initialized")
                     result = await loop.run_in_executor(
-                        self._executor,
+                        exec_ref,
                         partial(
                             current_message.send_function,
                             *current_message.args,
