@@ -12,6 +12,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from functools import partial
 from queue import Empty, Full, Queue
 from typing import Callable, Optional
 
@@ -237,9 +238,9 @@ class MessageQueue:
         with self._lock:
             if not self._running:
                 # Refuse to send to prevent blocking the event loop
-                logger.error(f"Queue not running, cannot send message: {description}")
                 logger.error(
-                    "Application is in invalid state - message queue should be started before sending messages"
+                    "Queue not running; cannot send message: %s. Start the message queue before sending.",
+                    description,
                 )
                 return False
 
@@ -306,7 +307,7 @@ class MessageQueue:
             and not self._processor_task.done(),
             "last_send_time": self._last_send_time,
             "time_since_last_send": (
-                time.time() - self._last_send_time if self._last_send_time > 0 else None
+                time.monotonic() - self._last_send_mono if self._last_send_mono > 0 else None
             ),
             "in_flight": self._in_flight,
         }
@@ -404,8 +405,6 @@ class MessageQueue:
                         f"Sending queued message: {current_message.description}"
                     )
                     # Run synchronous Meshtastic I/O operations in executor to prevent blocking event loop
-                    from functools import partial
-
                     loop = asyncio.get_running_loop()
                     result = await loop.run_in_executor(
                         self._executor,

@@ -205,7 +205,7 @@ def parse_arguments():
     # If there are unknown arguments and we're not in a test invocation, warn about them
     # Heuristic: suppress warning when pytest appears in argv (unit tests may pass extra args)
     if unknown and not any("pytest" in arg or "py.test" in arg for arg in sys.argv):
-        print(f"Warning: Unknown arguments ignored: {unknown}")
+        print(f"Warning: Unknown arguments ignored: {unknown}", file=sys.stderr)
 
     return args
 
@@ -450,7 +450,7 @@ def _validate_e2ee_config(config, matrix_section, config_path):
         )
         if store_path:
             expanded_path = os.path.expanduser(store_path)
-            if not os.path.exists(os.path.dirname(expanded_path)):
+            if not os.path.exists(expanded_path):
                 print(f"ℹ️  Note: E2EE store directory will be created: {expanded_path}")
 
         print("✅ E2EE configuration is valid")
@@ -558,20 +558,25 @@ def _analyze_e2ee_setup(config, config_path):
     return analysis
 
 
-def _find_credentials_json_path(config_path: str) -> str | None:
+def _find_credentials_json_path(config_path: str | None) -> str | None:
     """
     Return the filesystem path to a credentials.json file if one can be found, otherwise None.
-    
+
     Search order:
     1. A credentials.json file located in the same directory as the provided config_path.
     2. A credentials.json file in the application's base directory (get_base_dir()).
-    
+
     Parameters:
-        config_path (str): Path to the configuration file used to derive the adjacent credentials.json location.
-    
+        config_path (str | None): Path to the configuration file used to derive the adjacent credentials.json location.
+
     Returns:
         str | None: Absolute path to the discovered credentials.json, or None if no file is found.
     """
+    if not config_path:
+        from mmrelay.config import get_base_dir
+        standard = os.path.join(get_base_dir(), "credentials.json")
+        return standard if os.path.exists(standard) else None
+
     config_dir = os.path.dirname(config_path)
     candidate = os.path.join(config_dir, "credentials.json")
     if os.path.exists(candidate):
@@ -1323,10 +1328,15 @@ def handle_auth_status(args):
                 with open(credentials_path, "r") as f:
                     credentials = json.load(f)
 
+                required = ("homeserver", "access_token", "user_id", "device_id")
+                if not all(isinstance(credentials.get(k), str) and credentials.get(k).strip() for k in required):
+                    print(f"❌ Error: credentials.json at {credentials_path} is missing required fields")
+                    print(f"Run '{get_command('auth_login')}' to authenticate")
+                    return 1
                 print(f"✅ Found credentials.json at: {credentials_path}")
-                print(f"   Homeserver: {credentials.get('homeserver', 'Unknown')}")
-                print(f"   User ID: {credentials.get('user_id', 'Unknown')}")
-                print(f"   Device ID: {credentials.get('device_id', 'Unknown')}")
+                print(f"   Homeserver: {credentials.get('homeserver')}")
+                print(f"   User ID: {credentials.get('user_id')}")
+                print(f"   Device ID: {credentials.get('device_id')}")
                 return 0
             except Exception as e:
                 print(f"❌ Error reading credentials.json: {e}")
