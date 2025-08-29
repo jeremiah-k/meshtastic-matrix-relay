@@ -56,6 +56,7 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
 
         # Reset global state only; rely on comprehensive_cleanup for async cleanup
         import mmrelay.meshtastic_utils
+
         mmrelay.meshtastic_utils.meshtastic_client = None
         mmrelay.meshtastic_utils.reconnecting = False
         mmrelay.meshtastic_utils.config = None
