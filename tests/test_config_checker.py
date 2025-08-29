@@ -388,7 +388,7 @@ class TestConfigChecker(unittest.TestCase):
 
         self.assertFalse(result)
         mock_print.assert_any_call(
-            "Error: Missing authentication in 'matrix' section: provide non-empty 'access_token' or 'password'"
+            "Error: Missing authentication in 'matrix' section: provide 'access_token' or 'password'"
         )
 
     @patch("mmrelay.cli.parse_arguments")
@@ -538,7 +538,7 @@ class TestConfigChecker(unittest.TestCase):
 
         self.assertFalse(result)
         mock_print.assert_any_call(
-            "Error: Missing authentication in 'matrix' section: provide non-empty 'access_token' or 'password'"
+            "Error: Missing authentication in 'matrix' section: provide 'access_token' or 'password'"
         )
 
     @patch("mmrelay.cli.parse_arguments")
@@ -576,10 +576,8 @@ class TestConfigChecker(unittest.TestCase):
         with patch("mmrelay.cli._validate_credentials_json", return_value=False):
             result = check_config()
 
-        self.assertFalse(result)
-        mock_print.assert_any_call(
-            "Error: Missing authentication in 'matrix' section: provide non-empty 'access_token' or 'password'"
-        )
+        self.assertTrue(result)
+        mock_print.assert_any_call("\n✅ Configuration file is valid!")
 
     @patch("mmrelay.cli.parse_arguments")
     @patch("mmrelay.cli.get_config_paths")

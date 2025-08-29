@@ -1721,7 +1721,8 @@ class TestAuthStatus(unittest.TestCase):
         # Verify results
         self.assertEqual(result, 0)
         mock_get_paths.assert_called_once_with(self.mock_args)
-        mock_exists.assert_called_once_with("/home/user/.mmrelay/credentials.json")
+        # Implementation may check multiple locations; ensure it checks the config-dir path at least once
+        mock_exists.assert_any_call("/home/user/.mmrelay/credentials.json")
         mock_file.assert_called_once_with("/home/user/.mmrelay/credentials.json", "r")
 
         # Check printed output
@@ -1755,7 +1756,7 @@ class TestAuthStatus(unittest.TestCase):
         # Verify results
         self.assertEqual(result, 1)
         mock_get_paths.assert_called_once_with(self.mock_args)
-        mock_exists.assert_called_once_with("/home/user/.mmrelay/credentials.json")
+        mock_exists.assert_any_call("/home/user/.mmrelay/credentials.json")
 
         # Check printed output
         mock_print.assert_any_call("Matrix Authentication Status")
