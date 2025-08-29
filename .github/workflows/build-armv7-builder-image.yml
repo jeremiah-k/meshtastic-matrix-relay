@@ -89,13 +89,14 @@ jobs:
           RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
           ENV PATH="/root/.cargo/bin:${PATH}"
 
-          # Install Python build tools with pinned versions
+          # Install Python build tools with pinned versions (include auditwheel for bundling)
           RUN pip install --no-cache-dir --upgrade \
               pip==25.1.1 \
               setuptools==80.9.0 \
               wheel==0.45.1 \
               maturin==1.7.4 \
-              shiv==1.0.6
+              shiv==1.0.6 \
+              auditwheel==5.5.0
 
           # Reduce accidental dynamic linking to image codecs that may not exist on target
           # Remove libtiff if present so Pillow wheels built here do not link to it (keep JPEG)
@@ -129,12 +130,15 @@ jobs:
                 kiwisolver==1.4.9 \
                 contourpy==1.3.2 \
                 pycryptodome==3.23.0 \
-                python-olm \
                 dbus-fast==2.44.3 \
                 psutil==7.0.0 \
                 pyyaml==6.0.2 \
               > /tmp/wheels-req.txt && \
               pip wheel -v -w /opt/wheels -r /tmp/wheels-req.txt && \
+              echo "Building python-olm wheel and attempting to vendor libolm (auditwheel)" && \
+              mkdir -p /tmp/wheels-tmp && \
+              pip wheel -v -w /tmp/wheels-tmp python-olm && \
+              (auditwheel repair /tmp/wheels-tmp/python_olm-*.whl -w /opt/wheels || cp /tmp/wheels-tmp/python_olm-*.whl /opt/wheels) && \
               ls -lah /opt/wheels && \
               echo "✅ Heavy wheels prebuilt"
 
