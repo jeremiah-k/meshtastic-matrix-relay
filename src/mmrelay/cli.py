@@ -202,8 +202,9 @@ def parse_arguments():
 
     # Use parse_known_args to handle unknown arguments gracefully (e.g., pytest args)
     args, unknown = parser.parse_known_args()
-    # If there are unknown arguments and we're not in a test environment, warn about them
-    if unknown and "PYTEST_CURRENT_TEST" not in os.environ:
+    # If there are unknown arguments and we're not in a test invocation, warn about them
+    # Heuristic: suppress warning when pytest appears in argv (unit tests may pass extra args)
+    if unknown and not any("pytest" in arg or "py.test" in arg for arg in sys.argv):
         print(f"Warning: Unknown arguments ignored: {unknown}")
 
     return args
@@ -1261,17 +1262,20 @@ def handle_auth_status(args):
 
     config_paths = get_config_paths(args)
 
-    # Developer note: Build a de-duplicated set of candidate locations to
-    # avoid redundant os.exists/open cycles and to cover both config-adjacent
-    # and standard base-dir credentials.json paths in one pass.
-    # This keeps the logic simple and predictable across platforms.
-    # Build unique candidate paths
-    candidate_paths = {
-        os.path.join(os.path.dirname(p), "credentials.json") for p in config_paths
-    }
-    candidate_paths.add(os.path.join(get_base_dir(), "credentials.json"))
+    # Developer note: Build a de-duplicated sequence of candidate locations,
+    # preserving preference order: each config-adjacent credentials.json first,
+    # then the standard base-dir fallback.
+    seen = set()
+    candidate_paths = []
+    for p in (os.path.join(os.path.dirname(cp), "credentials.json") for cp in config_paths):
+        if p not in seen:
+            candidate_paths.append(p)
+            seen.add(p)
+    base_candidate = os.path.join(get_base_dir(), "credentials.json")
+    if base_candidate not in seen:
+        candidate_paths.append(base_candidate)
 
-    for credentials_path in sorted(candidate_paths):
+    for credentials_path in candidate_paths:
         if os.path.exists(credentials_path):
             try:
                 with open(credentials_path, "r") as f:
