@@ -55,8 +55,8 @@ jobs:
       - name: Create ARMv7 Builder Dockerfile
         run: |
           cat > Dockerfile.armv7-builder << 'EOF'
-          # ARMv7 Builder Image for MMRelay PYZ builds
-          FROM arm32v7/python:3.11
+          # ARMv7 Builder Image for MMRelay PYZ builds (Python 3.10 to match target devices)
+          FROM arm32v7/python:3.10
 
           # Set platform for cross-compilation
           ENV DEBIAN_FRONTEND=noninteractive
@@ -78,7 +78,6 @@ jobs:
               libatlas-base-dev \
               libolm-dev \
               python3-dev \
-              python3.11-dev \
               && rm -rf /var/lib/apt/lists/*
 
           # Install Rust for native ARMv7 compilation (within emulated environment)
@@ -94,7 +93,7 @@ jobs:
               shiv==1.0.6
 
           # Pre-build rpds-py with enhanced error handling and validation
-          RUN echo "=== Pre-building rpds-py for faster future builds ===" && \
+          RUN echo "=== Pre-building rpds-py for faster future builds (cp310) ===" && \
               echo "Environment: Native ARMv7 compilation within emulated container" && \
               echo "Rust version: $(rustc --version)" && \
               echo "Python version: $(python --version)" && \

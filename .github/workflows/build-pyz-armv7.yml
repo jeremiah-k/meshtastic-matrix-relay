@@ -77,10 +77,12 @@ jobs:
                 print('Continuing with fallback versions...')
             "
 
-            echo "=== Building PYZ file ==="
+            echo "=== Building PYZ file (py310 ABI) ==="
+            # Use a py310 shebang so the script executes with Python 3.10 on target devices
             python -m shiv --compressed \
               --compile-pyc \
               --reproducible \
+              -p "/usr/bin/env python3.10" \
               --entry-point mmrelay.cli:main \
               --output-file dist/mmrelay-${{ env.FILE_VERSION }}-armv7.pyz \
               .

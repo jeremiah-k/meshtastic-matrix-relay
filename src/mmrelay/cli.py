@@ -1122,7 +1122,17 @@ def main():
 
             return run_main(args)
         except ImportError as e:
-            print(f"Error importing main module: {e}")
+            # Provide a clearer hint when a binary dependency like rpds-py fails to import
+            msg = str(e)
+            print(f"Error importing main module: {msg}")
+            if "rpds" in msg:
+                print(
+                    "Hint: This package bundles binary wheels (rpds-py/jsonschema path). "
+                    "Ensure the Python minor version on this device matches the one used to build the PYZ."
+                )
+                print(
+                    "If you see 'No module named rpds.rpds', rebuild the PYZ with the same Python X.Y as the target (e.g., 3.10)."
+                )
             return 1
 
     except Exception as e:
