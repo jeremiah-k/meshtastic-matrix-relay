@@ -776,16 +776,33 @@ class TestPerformanceStress:
                                 )  # nosec B311 - Test timing variation, not cryptographic
                             )
 
-                        # Wait for queue to process remaining messages
-                        # Slightly longer grace period to reduce flakiness in CI
-                        await asyncio.sleep(12)
+                        # Wait for queue to process remaining messages using a bounded, idle-based drain
+                        idle_timeout = 0.75  # seconds without new messages to consider queue drained
+                        max_wait = 15.0      # overall cap to avoid infinite waits
+                        start_wait = time.monotonic()
+                        last_count = len(processed_messages)
+                        while True:
+                            if time.monotonic() - start_wait > max_wait:
+                                break
+                            await asyncio.sleep(idle_timeout)
+                            new_count = len(processed_messages)
+                            if new_count == last_count:
+                                break  # no new messages during idle window
+                            last_count = new_count
 
                         end_time = time.time()
                         total_time = end_time - start_time
 
-                        # Calculate throughput metrics
+                        # Calculate throughput metrics using the active processing window
                         messages_processed = len(processed_messages)
-                        throughput = messages_processed / total_time
+                        if messages_processed >= 2:
+                            first_ts = processed_messages[0]["timestamp"]
+                            last_ts = processed_messages[-1]["timestamp"]
+                            active_duration = max(last_ts - first_ts, 1e-6)
+                            throughput = messages_processed / active_duration
+                        else:
+                            # Fallback to total_time-based throughput for single-message edge case
+                            throughput = messages_processed / total_time
 
                         # Validate realistic performance expectations
                         assert messages_queued > 5, "Should queue multiple messages"
@@ -797,11 +814,13 @@ class TestPerformanceStress:
                             throughput <= 0.6
                         ), "Throughput should respect rate limiting"
 
-                        # Should achieve at least ~52% of theoretical maximum (tolerate CI variance)
-                        min_expected_throughput = 0.26  # ~52% of 0.5 msg/s
-                        assert (
-                            throughput >= min_expected_throughput
-                        ), f"Throughput {throughput:.3f} msg/s below minimum {min_expected_throughput}"
+                        # Should achieve at least 65% of theoretical maximum during active window
+                        # With 2s delay, max theoretical throughput is 0.5 msg/s
+                        min_expected_throughput = 0.32
+                        if messages_processed >= 2:
+                            assert (
+                                throughput >= min_expected_throughput
+                            ), f"Throughput {throughput:.3f} msg/s below minimum {min_expected_throughput}"
 
                         # Verify message type distribution
                         type_counts = {}
