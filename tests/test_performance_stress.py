@@ -705,6 +705,7 @@ class TestPerformanceStress:
 
             Queues messages of various types from multiple nodes at randomized intervals, enforcing a 2-second minimum delay between sends. Measures and prints throughput statistics, validates rate limiting, and ensures minimum throughput and message diversity requirements are met.
             """
+            random.seed(0)  # Reduce flakiness in CI
             with patch(
                 "mmrelay.meshtastic_utils.meshtastic_client",
                 MagicMock(is_connected=True),
@@ -777,7 +778,8 @@ class TestPerformanceStress:
                             )
 
                         # Wait for queue to drain (bounded)
-                        await queue.drain(timeout=15.0)
+                        drained = await queue.drain(timeout=15.0)
+                        assert drained, "Queue did not drain within timeout"
 
                         end_time = time.time()
                         total_time = end_time - start_time

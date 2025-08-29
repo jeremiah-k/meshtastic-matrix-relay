@@ -289,12 +289,19 @@ end;
 
 ### String Escaping Rules
 
-#### For YAML Double-Quoted Values (Recommended)
+#### For YAML Double-Quoted Values (Escaping Required)
+
+Double-quoted YAML interprets escape sequences. You must escape embedded `"` and backslashes `\` to avoid generating invalid YAML.
 
 ```pascal
-// No escaping needed - safest approach
-config := config + '  field: "' + rawValue + '"' + #13#10;
+// Escape embedded double quotes and backslashes
+SafeValue := rawValue;
+StringChangeEx(SafeValue, '"', '\\"', True);  // " inside YAML
+StringChangeEx(SafeValue, '\\', '\\\\', True);  // \ inside YAML
+config := config + '  field: "' + SafeValue + '"' + #13#10;
 ```
+
+Tip: For Windows paths and raw strings, prefer single-quoted YAML (see next section) to avoid extensive escaping.
 
 #### For YAML Single-Quoted Values (Complex)
 
@@ -417,7 +424,7 @@ result := temp;
 
 **Prevention**:
 
-- Always use double quotes for string values
+- Prefer double quotes; use single quotes for Windows paths and secrets (escape internal ' by doubling)
 - Test with various input combinations
 - Validate YAML structure manually
 

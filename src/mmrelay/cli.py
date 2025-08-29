@@ -823,10 +823,11 @@ def check_config(args=None):
                     token = matrix_section.get(CONFIG_KEY_ACCESS_TOKEN)
                     pwd = matrix_section.get("password")
                     has_token = _is_valid_non_empty_string(token)
-                    has_password = _is_valid_non_empty_string(pwd)
+                    # Allow explicitly empty password strings; require presence, not non-emptiness
+                    has_password = (pwd is not None)
                     if not (has_token or has_password):
                         print(
-                            "Error: Missing authentication in 'matrix' section: provide non-empty 'access_token' or 'password'"
+                            "Error: Missing authentication in 'matrix' section: provide 'access_token' or 'password'"
                         )
                         print(f"   {msg_or_run_auth_login()}")
                         return False
@@ -1273,6 +1274,22 @@ def handle_auth_status(args):
             except Exception as e:
                 print(f"❌ Error reading credentials.json: {e}")
                 return 1
+
+    # Fallback: search standard base directory using helper
+    try:
+        if config_paths:
+            fallback = _find_credentials_json_path(config_paths[0])
+            if fallback and os.path.exists(fallback):
+                with open(fallback, "r") as f:
+                    credentials = json.load(f)
+                print(f"✅ Found credentials.json at: {fallback}")
+                print(f"   Homeserver: {credentials.get('homeserver', 'Unknown')}")
+                print(f"   User ID: {credentials.get('user_id', 'Unknown')}")
+                print(f"   Device ID: {credentials.get('device_id', 'Unknown')}")
+                return 0
+    except Exception as e:
+        print(f"❌ Error reading credentials.json: {e}")
+        return 1
 
     print("❌ No credentials.json found")
     print(f"Run '{get_command('auth_login')}' to authenticate")

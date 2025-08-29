@@ -72,7 +72,8 @@ This method is ideal for:
 - Users who haven't cloned the repository
 - Environments without Python installed locally
 
-**Security Note**: The password is only used once during initial setup to create `credentials.json`. For enhanced security, remove the `password` field from your `config.yaml` after the first successful startup. On SSO/OIDC-only homeservers (password logins disabled), this method will fail—use `mmrelay auth login` instead.
+**Security Note**: The password is only used once during initial setup to create `credentials.json`. For enhanced security, remove the `password` field from your `config.yaml` after the first successful startup. On SSO/OIDC-only homeservers (password logins disabled), this method will fail — use:
+`mmrelay auth login`
 Additionally, restrict file permissions so only your user can read it:
 
 ```bash
@@ -478,7 +479,7 @@ matrix_rooms:
     meshtastic_channel: 0
 ```
 
-**Features**
+### Features
 
 - Automatically creates `credentials.json` on first start
 - Compatible with Matrix 2.0/MAS authentication

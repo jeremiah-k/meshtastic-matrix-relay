@@ -245,11 +245,11 @@ class MessageQueue:
         Returns True if the queue drained; False if the queue did not drain due to
         timeout or the queue being stopped while non-empty.
         """
-        deadline = (time.monotonic() + timeout) if timeout else None
+        deadline = (time.monotonic() + timeout) if timeout is not None else None
         while (not self._queue.empty()) or self._in_flight or self._has_current:
             if not self._running:
                 return False
-            if deadline and time.monotonic() > deadline:
+            if deadline is not None and time.monotonic() > deadline:
                 return False
             await asyncio.sleep(0.1)
         return True
@@ -377,6 +377,10 @@ class MessageQueue:
                     logger.warning(
                         f"Message in flight was dropped during shutdown: {current_message.description}"
                     )
+                    with contextlib.suppress(Exception):
+                        self._queue.task_done()
+                self._in_flight = False
+                self._has_current = False
                 break
             except Exception as e:
                 logger.error(f"Error in message queue processor: {e}")
@@ -494,7 +498,7 @@ def queue_message(
     send_function: Callable,
     *args,
     description: str = "",
-    mapping_info: dict = None,
+    mapping_info: Optional[dict] = None,
     **kwargs,
 ) -> bool:
     """
