@@ -117,16 +117,16 @@ jobs:
               echo "Building Pillow (TIFF disabled)" && \
               PILLOW_FEATURES="--disable-tiff" pip wheel -v -w /opt/wheels Pillow==11.3.0 && \
               echo "Building remaining wheels" && \
-              cat > /tmp/wheels-req.txt << 'WHEELS' && \
-matplotlib==3.10.1
-numpy==2.2.6
-kiwisolver==1.4.9
-contourpy==1.3.2
-pycryptodome==3.23.0
-dbus-fast==2.44.3
-psutil==7.0.0
-pyyaml==6.0.2
-WHEELS
+              printf "%s\n" \
+                matplotlib==3.10.1 \
+                numpy==2.2.6 \
+                kiwisolver==1.4.9 \
+                contourpy==1.3.2 \
+                pycryptodome==3.23.0 \
+                dbus-fast==2.44.3 \
+                psutil==7.0.0 \
+                pyyaml==6.0.2 \
+              > /tmp/wheels-req.txt && \
               pip wheel -v -w /opt/wheels -r /tmp/wheels-req.txt && \
               ls -lah /opt/wheels && \
               echo "✅ Heavy wheels prebuilt"
