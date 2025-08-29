@@ -263,8 +263,9 @@ begin
   meshtastic_channel := Trim(MatrixMeshtasticPage.Values[1]);
   if meshtastic_channel = '' then
     meshtastic_channel := '0'; // default to primary channel
-  // Ensure integer 0–7
-  if (not TryStrToInt(meshtastic_channel, chanInt)) or (chanInt < 0) or (chanInt > 7) then
+  // Ensure integer 0–7 (use StrToIntDef to avoid exceptions)
+  chanInt := StrToIntDef(meshtastic_channel, -1);
+  if (chanInt < 0) or (chanInt > 7) or (IntToStr(chanInt) <> meshtastic_channel) then
   begin
     MsgBox('Invalid Meshtastic channel. Enter a number 0–7.', mbError, MB_OK);
     Abort;

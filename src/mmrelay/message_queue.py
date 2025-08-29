@@ -123,14 +123,17 @@ class MessageQueue:
 
                 # Wait for the task to complete on its owning loop
                 task_loop = self._processor_task.get_loop()
-                if task_loop.is_running():
+                if task_loop.is_closed():
+                    # Owning loop is closed; nothing we can do to await it
+                    pass
+                elif task_loop.is_running():
                     from asyncio import run_coroutine_threadsafe, shield
                     with contextlib.suppress(Exception):
                         fut = run_coroutine_threadsafe(shield(self._processor_task), task_loop)
                         # Wait for completion; ignore exceptions raised due to cancellation
                         fut.result(timeout=1.0)
                 else:
-                    with contextlib.suppress(asyncio.CancelledError):
+                    with contextlib.suppress(asyncio.CancelledError, RuntimeError):
                         task_loop.run_until_complete(self._processor_task)
 
                 self._processor_task = None
