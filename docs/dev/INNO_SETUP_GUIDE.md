@@ -212,7 +212,6 @@ result := temp;
 
 ## Best Practices
 
-1. **Always call feedback before committing**
 2. **Make minimal changes** - don't rewrite working code
 3. **Use double quotes** for YAML string values
 4. **Test string handling carefully** - Pascal is different from other languages

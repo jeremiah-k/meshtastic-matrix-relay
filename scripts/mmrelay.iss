@@ -216,9 +216,11 @@ begin
     bot_user_id := '@' + bot_user_id + ':' + ServerName;
   end;
 
-  // YAML-safe single-quoted values
-  SafeHomeserver := HomeserverURL; StringChangeEx(SafeHomeserver, '''', '''''', True);
-  SafeUser := bot_user_id;         StringChangeEx(SafeUser, '''', '''''', True);
+  // YAML-safe single-quoted values (escape single quotes by doubling)
+  SafeHomeserver := HomeserverURL;
+  StringChangeEx(SafeHomeserver, '''', '''''', True);
+  SafeUser := bot_user_id;
+  StringChangeEx(SafeUser, '''', '''''', True);
   config := 'matrix:' + #13#10 +
             '  homeserver: ''' + SafeHomeserver + '''' + #13#10 +
             '  bot_user_id: ''' + SafeUser + '''' + #13#10;
