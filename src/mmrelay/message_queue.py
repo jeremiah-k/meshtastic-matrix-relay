@@ -52,7 +52,19 @@ class MessageQueue:
 
     def __init__(self):
         """
-        Initialize the MessageQueue with an empty queue, state variables, and a thread lock for safe operation.
+        Create a new MessageQueue, initializing its internal queue, timing and state variables, and a thread lock.
+        
+        Attributes:
+            _queue (Queue): Bounded FIFO holding queued messages (maxsize=MAX_QUEUE_SIZE).
+            _processor_task (Optional[asyncio.Task]): Async task that processes the queue, created when started.
+            _running (bool): Whether the processor is active.
+            _lock (threading.Lock): Protects start/stop and other state transitions.
+            _last_send_time (float): Wall-clock timestamp of the last successful send.
+            _last_send_mono (float): Monotonic timestamp of the last successful send (used for rate limiting).
+            _message_delay (float): Minimum delay between sends; starts at DEFAULT_MESSAGE_DELAY and may be adjusted.
+            _executor (Optional[concurrent.futures.ThreadPoolExecutor]): Dedicated single-worker executor for blocking send operations (created on start).
+            _in_flight (bool): True while a message send is actively running in the executor.
+            _has_current (bool): True when there is a current message being processed (even if not yet dispatched to the executor).
         """
         self._queue = Queue(maxsize=MAX_QUEUE_SIZE)
         self._processor_task = None
@@ -67,9 +79,12 @@ class MessageQueue:
 
     def start(self, message_delay: float = DEFAULT_MESSAGE_DELAY):
         """
-        Start the message queue processor with a specified minimum delay between messages.
-
-        If the provided delay is below the firmware-enforced minimum, the minimum is used instead. The processor task is started immediately if the asyncio event loop is running; otherwise, startup is deferred until the event loop becomes available.
+        Activate the message queue processor with a minimum inter-message delay.
+        
+        Enables processing, sets the configured message delay (raised to MINIMUM_MESSAGE_DELAY if a smaller value is provided), creates a dedicated ThreadPoolExecutor for send operations if one does not exist, and starts the asyncio processor task immediately when a running event loop is available; if no running loop is available startup is deferred until a loop is present.
+        
+        Parameters:
+            message_delay (float): Requested minimum delay between sends, in seconds. Values below MINIMUM_MESSAGE_DELAY are replaced with MINIMUM_MESSAGE_DELAY.
         """
         with self._lock:
             if self._running:
@@ -115,7 +130,14 @@ class MessageQueue:
 
     def stop(self):
         """
-        Stops the message queue processor and cancels the processing task if active.
+        Stop the message queue processor and clean up internal resources.
+        
+        Cancels the background processor task (if running) and attempts to wait for it to finish on the task's owning event loop without blocking the caller's event loop. Shuts down the dedicated ThreadPoolExecutor used for blocking I/O; when called from an asyncio event loop the executor shutdown is performed on a background thread to avoid blocking. Clears internal state flags and resources so the queue can be restarted later.
+        
+        Notes:
+        - This method is thread-safe.
+        - It may block briefly (the implementation waits up to ~1 second when awaiting task completion) but will avoid blocking the current asyncio event loop when possible.
+        - No exceptions are propagated for normal cancellation/shutdown paths; internal exceptions during shutdown are suppressed.
         """
         with self._lock:
             if not self._running:
@@ -162,6 +184,11 @@ class MessageQueue:
                     on_loop_thread = loop_chk.is_running()
 
                 def _shutdown(exec_ref):
+                    """
+                    Shut down an executor, waiting for running tasks to finish; falls back for executors that don't support `cancel_futures`.
+                    
+                    Attempts to call executor.shutdown(wait=True, cancel_futures=True) and, if that raises a TypeError (older Python versions or executors without the `cancel_futures` parameter), retries with executor.shutdown(wait=True). This call blocks until shutdown completes.
+                    """
                     try:
                         exec_ref.shutdown(wait=True, cancel_futures=True)
                     except TypeError:
@@ -189,15 +216,17 @@ class MessageQueue:
         **kwargs,
     ) -> bool:
         """
-        Adds a message to the queue for rate-limited, ordered sending.
-
+        Enqueue a message for ordered, rate-limited sending.
+        
+        Ensures the queue processor is started (if an event loop is available) and attempts to add a QueuedMessage (containing the provided send function and its arguments) to the bounded in-memory queue. If the queue is not running or has reached capacity the message is not added and the method returns False. Optionally attach mapping_info metadata (used later to correlate sent messages with external IDs).
+        
         Parameters:
-            send_function (Callable): The function to call to send the message.
-            *args: Positional arguments for the send function.
-            description (str, optional): Human-readable description for logging purposes.
-            mapping_info (dict, optional): Optional metadata for message mapping (e.g., replies or reactions).
-            **kwargs: Keyword arguments for the send function.
-
+            send_function (Callable): Callable to execute when the message is sent.
+            *args: Positional arguments to pass to send_function.
+            description (str, optional): Human-readable description used for logging.
+            mapping_info (dict | None, optional): Optional metadata to record after a successful send.
+            **kwargs: Keyword arguments to pass to send_function.
+        
         Returns:
             bool: True if the message was successfully enqueued; False if the queue is not running or is full.
         """
@@ -255,10 +284,19 @@ class MessageQueue:
 
     def get_status(self) -> dict:
         """
-        Return a dictionary with the current status of the message queue, including running state, queue size, message delay, processor activity, last send time, and time since last send.
-
+        Return current status of the message queue.
+        
+        Provides a snapshot useful for monitoring and debugging.
+        
         Returns:
-            dict: Status information about the message queue for debugging and monitoring.
+            dict: Mapping with the following keys:
+                - running (bool): Whether the queue processor is active.
+                - queue_size (int): Number of messages currently queued.
+                - message_delay (float): Configured minimum delay (seconds) between sends.
+                - processor_task_active (bool): True if the internal processor task exists and is not finished.
+                - last_send_time (float or None): Wall-clock time (seconds since the epoch) of the last successful send, or None if no send has occurred.
+                - time_since_last_send (float or None): Seconds elapsed since last_send_time, or None if no send has occurred.
+                - in_flight (bool): True when a message is currently being sent.
         """
         return {
             "running": self._running,
@@ -275,10 +313,9 @@ class MessageQueue:
 
     async def drain(self, timeout: Optional[float] = None) -> bool:
         """
-        Wait until the queue is empty or until the optional timeout elapses.
-
-        Returns True if the queue drained; False if the queue did not drain due to
-        timeout or the queue being stopped while non-empty.
+        Asynchronously wait until the queue has fully drained (no queued messages and no in-flight or current message) or until an optional timeout elapses.
+        
+        If `timeout` is provided, it is interpreted in seconds. Returns True when the queue is empty and there are no messages being processed; returns False if the queue was stopped before draining or the timeout was reached.
         """
         deadline = (time.monotonic() + timeout) if timeout is not None else None
         while (not self._queue.empty()) or self._in_flight or self._has_current:
@@ -426,10 +463,12 @@ class MessageQueue:
 
     def _should_send_message(self) -> bool:
         """
-        Determine whether it is currently safe to send a message based on Meshtastic client connection and reconnection state.
-
-        Returns:
-            bool: True if the client is connected and not reconnecting; False otherwise.
+        Return True if it's currently safe to send a message over Meshtastic.
+        
+        Checks that the Meshtastic client exists, is connected (supports callable or boolean
+        `is_connected`), and that a global reconnection flag is not set. Returns False otherwise.
+        If importing meshtastic utilities raises ImportError, logs a critical error, starts a
+        background thread to stop this MessageQueue, and returns False.
         """
         # Import here to avoid circular imports
         try:
@@ -469,13 +508,18 @@ class MessageQueue:
 
     def _handle_message_mapping(self, result, mapping_info):
         """
-        Update the message mapping database with information about a sent message and prune old mappings if configured.
-
+        Store a sent message's mapping (mesh ID → Matrix event) and prune old mappings according to retention settings.
+        
+        If `mapping_info` contains the required keys (`matrix_event_id`, `room_id`, `text`), this will call the DB helpers to persist a mapping for `result.id` and then prune older mappings using `mapping_info["msgs_to_keep"]` if present (falls back to DEFAULT_MSGS_TO_KEEP).
+        
         Parameters:
-            result: The result object from the send function, expected to have an `id` attribute.
-            mapping_info (dict): Contains mapping details such as `matrix_event_id`, `room_id`, `text`, and optionally `meshnet` and `msgs_to_keep`.
-
-        If required mapping fields are present, stores the mapping and prunes old entries based on the specified or default retention count.
+            result: The send function's result object; must expose an `id` attribute (the mesh message id).
+            mapping_info: Dict supplying mapping fields:
+                - matrix_event_id (str): Matrix event id to associate with the mesh message.
+                - room_id (str): Matrix room id for the event.
+                - text (str): The message text to store in the mapping.
+                - meshnet (optional): Mesh network identifier passed to the store function.
+                - msgs_to_keep (optional, int): Number of mappings to retain; if > 0, prune older entries.
         """
         try:
             # Import here to avoid circular imports

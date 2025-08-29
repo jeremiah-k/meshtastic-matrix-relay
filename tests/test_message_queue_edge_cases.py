@@ -51,7 +51,12 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
 
     def tearDown(self):
         """
-        Clean up the test environment after each test by stopping the message queue, closing any active asyncio event loops, and resetting global state variables in mmrelay.meshtastic_utils.
+        Tear down test fixtures: stop the MessageQueue if running, close any active asyncio event loop to avoid ResourceWarnings, and reset mmrelay.meshtastic_utils global state to default values.
+        
+        This ensures each test runs with a clean global and event-loop state by:
+        - stopping the queue if it is running,
+        - attempting to close and clear the current asyncio event loop,
+        - and resetting meshtastic-related globals (client, config, reconnect state, subscriptions, and related tasks) to their default/None values.
         """
         if self.queue.is_running():
             self.queue.stop()
@@ -212,9 +217,9 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
     @patch("mmrelay.message_queue.logger")
     def test_processor_import_error_handling(self, mock_logger):
         """
-        Verifies that the message processor handles ImportError exceptions during message processing without crashing.
-
-        This test starts the message queue, mocks the internal message sending check to raise an ImportError, enqueues a message, and asserts that the queue continues to operate or shuts down gracefully without unhandled exceptions.
+        Verify the message queue handles ImportError raised during message processing without raising unhandled exceptions.
+        
+        Starts the queue, causes MessageQueue._should_send_message to raise ImportError while a message is enqueued, and asserts the queue remains in a stable boolean running state after processing.
         """
 
         async def async_test():
