@@ -155,6 +155,102 @@ begin
     Result := Not OverwriteConfig.Values[0];
 end;
 
+// Validate inputs as user navigates the wizard.
+// Keeps AfterInstall validations as a safety net.
+function NextButtonClick(CurPageID: Integer): Boolean;
+var
+  connection_type: string;
+  serial_port: string;
+  host: string;
+  ble_address: string;
+  chan: string;
+  chanInt: Integer;
+begin
+  Result := True;
+
+  // Only validate when generating configuration
+  if not OverwriteConfig.Values[0] then
+    Exit;
+
+  // Validate Matrix page
+  if CurPageID = MatrixPage.ID then
+  begin
+    if Trim(MatrixPage.Values[0]) = '' then
+    begin
+      MsgBox('Please enter your Matrix homeserver (e.g., https://matrix.org).', mbError, MB_OK);
+      Result := False;
+      Exit;
+    end;
+    if Trim(MatrixPage.Values[1]) = '' then
+    begin
+      MsgBox('Please enter the bot username or full MXID.', mbError, MB_OK);
+      Result := False;
+      Exit;
+    end;
+  end;
+
+  // Validate Meshtastic connection page
+  if CurPageID = MeshtasticPage.ID then
+  begin
+    connection_type := LowerCase(Trim(MeshtasticPage.Values[0]));
+    if connection_type = 'network' then
+      connection_type := 'tcp';
+
+    if (connection_type <> 'tcp') and (connection_type <> 'serial') and (connection_type <> 'ble') then
+    begin
+      MsgBox('Connection type must be tcp, serial, or ble.', mbError, MB_OK);
+      Result := False;
+      Exit;
+    end;
+
+    serial_port := Trim(MeshtasticPage.Values[1]);
+    host := Trim(MeshtasticPage.Values[2]);
+    ble_address := Trim(MeshtasticPage.Values[3]);
+
+    if (connection_type = 'serial') and (serial_port = '') then
+    begin
+      MsgBox('Serial selected but no serial port provided.', mbError, MB_OK);
+      Result := False;
+      Exit;
+    end;
+    if (connection_type = 'tcp') and (host = '') then
+    begin
+      MsgBox('TCP selected but no hostname/IP provided.', mbError, MB_OK);
+      Result := False;
+      Exit;
+    end;
+    if (connection_type = 'ble') and (ble_address = '') then
+    begin
+      MsgBox('BLE selected but no BLE address/name provided.', mbError, MB_OK);
+      Result := False;
+      Exit;
+    end;
+  end;
+
+  // Validate Matrix <> Meshtastic page
+  if CurPageID = MatrixMeshtasticPage.ID then
+  begin
+    if Trim(MatrixMeshtasticPage.Values[0]) = '' then
+    begin
+      MsgBox('Please enter a Matrix room ID or alias.', mbError, MB_OK);
+      Result := False;
+      Exit;
+    end;
+
+    chan := Trim(MatrixMeshtasticPage.Values[1]);
+    if chan <> '' then
+    begin
+      chanInt := StrToIntDef(chan, -1);
+      if (chanInt < 0) or (chanInt > 7) or (IntToStr(chanInt) <> chan) then
+      begin
+        MsgBox('Invalid Meshtastic channel. Enter a number 0–7.', mbError, MB_OK);
+        Result := False;
+        Exit;
+      end;
+    end;
+  end;
+end;
+
 procedure AfterInstall(sAppDir: string);
 var
   config: string;
