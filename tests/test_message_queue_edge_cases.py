@@ -26,6 +26,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from mmrelay.message_queue import MessageQueue, get_message_queue, queue_message
 
 
+@pytest.mark.usefixtures("comprehensive_cleanup")
 class TestMessageQueueEdgeCases(unittest.TestCase):
     """Test cases for Message Queue edge cases and error handling."""
 
@@ -50,38 +51,11 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
         self.queue = MessageQueue()
 
     def tearDown(self):
-        """
-        Tear down test fixtures: stop the MessageQueue if running, close any active asyncio event loop to avoid ResourceWarnings, and reset mmrelay.meshtastic_utils global state to default values.
-
-        This ensures each test runs with a clean global and event-loop state by:
-        - stopping the queue if it is running,
-        - attempting to close and clear the current asyncio event loop,
-        - and resetting meshtastic-related globals (client, config, reconnect state, subscriptions, and related tasks) to their default/None values.
-        """
         if self.queue.is_running():
             self.queue.stop()
 
-        # Clean up any remaining event loops to prevent ResourceWarnings
-        try:
-            import asyncio
-
-            # Try to get and close the current event loop
-            try:
-                loop = asyncio.get_event_loop()
-                if not loop.is_closed():
-                    loop.close()
-            except RuntimeError:
-                pass  # No current event loop
-
-            # Set event loop to None to ensure clean state
-            asyncio.set_event_loop(None)
-        except Exception:
-            pass  # nosec B110 - Cleanup operation, exceptions expected and safely ignored
-
-        # Reset global state
+        # Reset global state only; rely on comprehensive_cleanup for async cleanup
         import mmrelay.meshtastic_utils
-        import mmrelay.message_queue
-
         mmrelay.meshtastic_utils.meshtastic_client = None
         mmrelay.meshtastic_utils.reconnecting = False
         mmrelay.meshtastic_utils.config = None
@@ -261,7 +235,9 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
             else:
                 raise
 
-    @pytest.mark.usefixtures("comprehensive_cleanup")
+        # Verify we logged the failure path
+        assert mock_logger.exception.called or mock_logger.error.called
+
     def test_message_mapping_with_invalid_result(self):
         """
         Verifies that the message queue handles message send results lacking expected attributes without failure.
