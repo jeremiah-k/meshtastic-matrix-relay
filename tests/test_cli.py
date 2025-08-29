@@ -1853,6 +1853,7 @@ class TestAuthStatus(unittest.TestCase):
         # Mock valid credentials.json content
         credentials_data = {
             "homeserver": "https://matrix.example.com",
+            "access_token": "syt_dGVzdA_test_token_here",
             "user_id": "@relay:example.com",
             "device_id": "DEVICE456",
         }
