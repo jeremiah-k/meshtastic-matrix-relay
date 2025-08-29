@@ -702,7 +702,7 @@ class TestPerformanceStress:
         async def run_throughput_test():
             """
             Run a 30-second realistic throughput benchmark that enqueues mixed-message traffic into a MessageQueue and validates rate-limiting and basic throughput/diversity expectations.
-            
+
             This coroutine:
             - Seeds the RNG for deterministic test behavior.
             - Starts a MessageQueue processor with a 2.0 second enforced send delay.
@@ -711,7 +711,7 @@ class TestPerformanceStress:
             - Asserts minimal test invariants: multiple messages were queued and at least one processed; throughput does not exceed the rate-limit-derived upper bound and — when >= 2 messages were processed — meets a minimum expected throughput; message-type diversity is observed.
             - Prints a brief summary of duration, queued/processed counts, throughput, and per-type counts.
             - Stops the MessageQueue on completion.
-            
+
             Raises:
                 AssertionError: if queue draining, throughput, or diversity checks fail.
             """

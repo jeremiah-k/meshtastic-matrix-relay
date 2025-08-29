@@ -56,7 +56,7 @@ class TestMessageQueue(unittest.TestCase):
     def setUp(self):
         """
         Set up test fixtures: initialize a MessageQueue, clear mock send records, force sending allowed, and create a dedicated asyncio event loop whose run_in_executor is patched to execute functions synchronously while returning an awaitable Future.
-        
+
         Detailed behavior:
         - Creates a new MessageQueue assigned to self.queue.
         - Clears mock_send_function.calls.
@@ -82,14 +82,14 @@ class TestMessageQueue(unittest.TestCase):
         def sync_run_in_executor(executor, func, *args, **kwargs):
             """
             Run a callable synchronously but return an awaitable Future that is already completed with its result or exception.
-            
+
             This preserves the awaitable contract expected by code that uses run_in_executor while executing the provided function synchronously on the current thread.
-            
+
             Parameters:
                 func (callable): Function to execute.
                 *args: Positional arguments passed to `func`.
                 **kwargs: Keyword arguments passed to `func`.
-            
+
             Returns:
                 asyncio.Future: A Future created on the test event loop and completed with `func`'s return value or raised exception.
             """
@@ -106,7 +106,7 @@ class TestMessageQueue(unittest.TestCase):
     def tearDown(self):
         """
         Tear down test fixtures: stop the MessageQueue if running, restore the event loop's original run_in_executor, close the dedicated per-test loop, and clear the global event loop reference.
-        
+
         This ensures the per-test asyncio loop created in setUp is properly shut down and any monkey-patched
         run_in_executor is restored. Suppresses errors when clearing the global event loop reference.
         """
@@ -131,7 +131,7 @@ class TestMessageQueue(unittest.TestCase):
     def sent_messages(self):
         """
         Return the list of records for calls made to the test mock send function.
-        
+
         Each list item is a dict-like record appended by the mock: it contains at least the sent text/payload, any kwargs, and a timestamp.
         """
         return mock_send_function.calls
@@ -189,7 +189,7 @@ class TestMessageQueue(unittest.TestCase):
         async def async_test():
             """
             Verify the MessageQueue enforces rate limiting: when two messages are enqueued, the first is sent soon after processing starts and the second is delayed until the configured message_delay has elapsed.
-            
+
             The test starts the queue with message_delay=2.1, enqueues two messages, then:
             - after ~1.0s asserts one message was sent,
             - after another ~1.0s asserts the second is still not sent,
@@ -284,13 +284,14 @@ class TestMessageQueue(unittest.TestCase):
     def test_error_handling(self):
         """
         Verify that the MessageQueue survives exceptions raised by send functions and continues processing.
-        
-        Starts the queue, enqueues a message whose send function raises an exception, waits for processing, and asserts the queue remains running (i.e., the exception does not stop the processor)."""
+
+        Starts the queue, enqueues a message whose send function raises an exception, waits for processing, and asserts the queue remains running (i.e., the exception does not stop the processor).
+        """
 
         async def async_test():
             """
             Verify that the message queue remains running when a send function raises an exception.
-            
+
             This asynchronous test enqueues a send function that raises, starts the queue processor, waits briefly for processing, and asserts that the queue's running state is preserved (i.e., the processor did not crash).
             """
 

@@ -230,7 +230,7 @@ class TestMessageQueueDuringDisconnection:
     def test_message_queuing_when_disconnected(self):
         """
         Verify messages are enqueued while the network is unavailable.
-        
+
         Starts a MessageQueue, simulates a disconnected state by setting the meshtastic client to None, enqueues multiple messages using a mock send function, and asserts each enqueue succeeds and the queue size reflects the enqueued messages.
         """
         from mmrelay.message_queue import MessageQueue
@@ -263,7 +263,7 @@ class TestMessageQueueDuringDisconnection:
     def test_queue_overflow_protection(self):
         """
         Verify the MessageQueue enforces MAX_QUEUE_SIZE by accepting messages up to the limit and rejecting any excess.
-        
+
         This test fills the queue beyond MAX_QUEUE_SIZE and asserts that the internal queue size never exceeds the configured maximum and that the number of successful enqueue operations is no greater than MAX_QUEUE_SIZE.
         """
         from mmrelay.message_queue import MessageQueue

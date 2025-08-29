@@ -261,12 +261,12 @@ def _validate_e2ee_dependencies():
 def _validate_credentials_json(config_path):
     """
     Validate that a credentials.json file exists (adjacent to config_path or in the base directory) and contains the required Matrix session fields.
-    
+
     Checks for a credentials.json via _find_credentials_json_path(config_path). If found, the file is parsed as JSON and must include non-empty string values for the keys "homeserver", "access_token", "user_id", and "device_id". On validation failure the function prints a brief error and guidance to run the auth login flow.
-    
+
     Parameters:
         config_path (str): Path to the configuration file used to determine the primary search directory for credentials.json.
-    
+
     Returns:
         bool: True if a credentials.json was found and contains all required non-empty fields; False otherwise.
     """
@@ -306,10 +306,10 @@ def _validate_credentials_json(config_path):
 def _is_valid_non_empty_string(value) -> bool:
     """
     Return True if value is a string containing non-whitespace characters.
-    
+
     Checks that the input is an instance of `str` and that stripping whitespace
     does not produce an empty string.
-    
+
     Returns:
         bool: True when value is a non-empty, non-whitespace-only string; otherwise False.
     """
@@ -319,17 +319,17 @@ def _is_valid_non_empty_string(value) -> bool:
 def _has_valid_password_auth(matrix_section):
     """
     Return True if the given Matrix config section contains valid password-based authentication settings.
-    
+
     The function expects matrix_section to be a dict-like mapping from configuration keys to values.
     It validates that:
     - `homeserver` and `bot_user_id` are present and are non-empty strings (after trimming),
     - `password` is present and is a string (it may be an empty string, which is accepted).
-    
+
     If matrix_section is not a dict, the function returns False.
-    
+
     Parameters:
         matrix_section: dict-like Matrix configuration section (may be the parsed "matrix" config).
-    
+
     Returns:
         bool: True when password-based authentication is correctly configured as described above; otherwise False.
     """
@@ -574,6 +574,7 @@ def _find_credentials_json_path(config_path: str | None) -> str | None:
     """
     if not config_path:
         from mmrelay.config import get_base_dir
+
         standard = os.path.join(get_base_dir(), "credentials.json")
         return standard if os.path.exists(standard) else None
 
@@ -590,12 +591,12 @@ def _find_credentials_json_path(config_path: str | None) -> str | None:
 def _print_unified_e2ee_analysis(e2ee_status):
     """
     Print a concise, user-facing analysis of E2EE readiness.
-    
+
     Given a status dictionary produced by the E2EE analysis routines, prints platform support,
     dependency availability, whether E2EE is enabled in configuration, whether credentials.json
     is available, and the overall status. If the overall status is not "ready", prints actionable
     fix instructions.
-    
+
     Parameters:
         e2ee_status (dict): Status dictionary with (at least) the following keys:
             - platform_supported (bool): whether the current OS/platform supports E2EE.
@@ -1201,16 +1202,16 @@ def handle_auth_command(args):
 def handle_auth_login(args):
     """
     Run the Matrix bot login flow and return a CLI-style exit code.
-    
+
     Performs Matrix bot authentication either interactively (prompts the user) or non-interactively
     when all three parameters (--homeserver, --username, --password) are provided on the command line.
     For non-interactive mode, --homeserver and --username must be non-empty strings; --password may be
     an empty string (some flows will prompt). Supplying some but not all of the three parameters
     is treated as an error and the function exits with a non-zero status.
-    
+
     Returns:
         int: 0 on successful authentication, 1 on failure, cancellation (KeyboardInterrupt), or unexpected errors.
-    
+
     Parameters:
         args: Parsed CLI namespace; may contain attributes `homeserver`, `username`, and `password`.
     """
@@ -1284,18 +1285,18 @@ def handle_auth_login(args):
 def handle_auth_status(args):
     """
     Print the Matrix authentication status by locating and reading a credentials.json file.
-    
+
     Searches for credentials.json next to each discovered config file (in preference order),
     then falls back to the application's base directory. If a readable credentials.json is
     found, prints its path and the homeserver, user_id, and device_id values.
-    
+
     Parameters:
         args: argparse.Namespace
             Parsed CLI arguments (used to locate config file paths).
-    
+
     Returns:
         int: Exit code — 0 if a valid credentials.json was found and read, 1 otherwise.
-    
+
     Side effects:
         Writes human-readable status messages to stdout.
     """
@@ -1314,7 +1315,9 @@ def handle_auth_status(args):
     # then the standard base-dir fallback.
     seen = set()
     candidate_paths = []
-    for p in (os.path.join(os.path.dirname(cp), "credentials.json") for cp in config_paths):
+    for p in (
+        os.path.join(os.path.dirname(cp), "credentials.json") for cp in config_paths
+    ):
         if p not in seen:
             candidate_paths.append(p)
             seen.add(p)
@@ -1329,8 +1332,13 @@ def handle_auth_status(args):
                     credentials = json.load(f)
 
                 required = ("homeserver", "access_token", "user_id", "device_id")
-                if not all(isinstance(credentials.get(k), str) and credentials.get(k).strip() for k in required):
-                    print(f"❌ Error: credentials.json at {credentials_path} is missing required fields")
+                if not all(
+                    isinstance(credentials.get(k), str) and credentials.get(k).strip()
+                    for k in required
+                ):
+                    print(
+                        f"❌ Error: credentials.json at {credentials_path} is missing required fields"
+                    )
                     print(f"Run '{get_command('auth_login')}' to authenticate")
                     return 1
                 print(f"✅ Found credentials.json at: {credentials_path}")
@@ -1350,17 +1358,17 @@ def handle_auth_status(args):
 def handle_auth_logout(args):
     """
     Log out the Matrix bot and remove local session artifacts.
-    
+
     Prompts for a verification password (unless a non-empty password is provided via args.password),
     optionally asks for interactive confirmation (skipped if args.yes is True), and attempts to clear
     local session data (credentials, E2EE store) and invalidate the bot's access token.
-    
+
     Parameters:
         args (argparse.Namespace): CLI arguments with the following relevant attributes:
             password (str | None): If a non-empty string is provided, it will be used as the
                 verification password. If None or an empty string, the function prompts securely.
             yes (bool): If True, skip the confirmation prompt.
-    
+
     Returns:
         int: 0 on successful logout, 1 on failure or if the operation is cancelled (including
              KeyboardInterrupt).
@@ -1384,7 +1392,9 @@ def handle_auth_logout(args):
         password = getattr(args, "password", None)
 
         if (
-            password is None or password == ""  # nosec B105 (user-entered secret; prompting securely via getpass)
+            password is None
+            or password
+            == ""  # nosec B105 (user-entered secret; prompting securely via getpass)
         ):
             # No --password flag or --password with no value, prompt securely
             import getpass
