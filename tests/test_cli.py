@@ -1708,6 +1708,7 @@ class TestAuthStatus(unittest.TestCase):
         # Mock valid credentials.json content
         credentials_data = {
             "homeserver": "https://matrix.org",
+            "access_token": "syt_dGVzdA_test_token_here",
             "user_id": "@bot:matrix.org",
             "device_id": "DEVICEABC123",
         }
@@ -1823,16 +1824,14 @@ class TestAuthStatus(unittest.TestCase):
 
         result = handle_auth_status(self.mock_args)
 
-        # Verify results
-        self.assertEqual(result, 0)  # Still returns 0 if file is readable
+        # Verify results - should now return 1 due to missing required fields
+        self.assertEqual(result, 1)
 
-        # Check printed output shows "Unknown" for missing fields
+        # Check printed output shows error for missing fields
         mock_print.assert_any_call(
-            "✅ Found credentials.json at: /home/user/.mmrelay/credentials.json"
+            "❌ Error: credentials.json at /home/user/.mmrelay/credentials.json is missing required fields"
         )
-        mock_print.assert_any_call("   Homeserver: https://matrix.org")
-        mock_print.assert_any_call("   User ID: Unknown")
-        mock_print.assert_any_call("   Device ID: Unknown")
+        mock_print.assert_any_call("Run 'mmrelay auth login' to authenticate")
 
     @patch("mmrelay.cli_utils.get_command")
     @patch("mmrelay.config.get_config_paths")
