@@ -457,7 +457,9 @@ def comprehensive_cleanup():
             loop = asyncio.get_event_loop()
         if not loop.is_closed():
             # Cancel all pending tasks
-            pending_tasks = [task for task in asyncio.all_tasks(loop) if not task.done()]
+            pending_tasks = [
+                task for task in asyncio.all_tasks(loop) if not task.done()
+            ]
             for task in pending_tasks:
                 task.cancel()
 
@@ -469,7 +471,7 @@ def comprehensive_cleanup():
                     )
 
             # Shutdown any remaining executors
-            if hasattr(loop, '_default_executor') and loop._default_executor:
+            if hasattr(loop, "_default_executor") and loop._default_executor:
                 executor = loop._default_executor
                 loop._default_executor = None
                 executor.shutdown(wait=True)
@@ -491,8 +493,8 @@ def comprehensive_cleanup():
         if (
             thread is not main_thread
             and thread.is_alive()
-            and not getattr(thread, 'daemon', False)
-            and hasattr(thread, 'join')
+            and not getattr(thread, "daemon", False)
+            and hasattr(thread, "join")
         ):
             thread.join(timeout=0.1)
 

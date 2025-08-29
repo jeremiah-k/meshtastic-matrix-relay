@@ -110,6 +110,7 @@ class TestMessageQueue(unittest.TestCase):
                     loop.close()
             finally:
                 import contextlib
+
                 with contextlib.suppress(Exception):
                     asyncio.set_event_loop(None)
 

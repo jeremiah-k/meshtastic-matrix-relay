@@ -129,9 +129,10 @@ config := config + '  new_field: "' + MatrixPage.Values[3] + '"' + #13#10;
 ### Modifying YAML Output
 
 **Prefer double quotes** for most YAML values. **Use single quotes** for:
+
 - Windows paths containing backslashes (avoid escapes like \e),
 - Secrets (passwords), to minimize quoting pitfalls.
-When using single quotes, escape internal single quotes by doubling them.
+  When using single quotes, escape internal single quotes by doubling them.
 
 ```pascal
 // CORRECT - Double quotes for most values

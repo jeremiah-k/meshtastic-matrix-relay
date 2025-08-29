@@ -211,6 +211,7 @@ matrix:
 Note: This method automatically creates `credentials.json` on startup and is compatible with Matrix 2.0/MAS. See the earlier Features list for capabilities; apply the same operational hardening (read-only config bind mount, restrictive file perms).
 
 Compose tip:
+
 ```yaml
 volumes:
   - ${MMRELAY_HOME}/.mmrelay/config.yaml:/app/config.yaml:ro
@@ -509,10 +510,11 @@ services:
 ```
 
 **Security note:** After the first successful start:
-1) Remove the `password` from config.yaml,
-2) Ensure strict permissions (e.g., `chmod 600 ~/.mmrelay/config.yaml`),
-3) Optionally remount config as read-only in compose (`:ro`).
-E2EE is supported with this method when dependencies are available (Linux/macOS).
+
+1. Remove the `password` from config.yaml,
+2. Ensure strict permissions (e.g., `chmod 600 ~/.mmrelay/config.yaml`),
+3. Optionally remount config as read-only in compose (`:ro`).
+   E2EE is supported with this method when dependencies are available (Linux/macOS).
 
 ## Connection Type Variants
 

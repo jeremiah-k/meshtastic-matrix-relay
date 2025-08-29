@@ -12,7 +12,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from queue import Empty, Queue, Full
+from queue import Empty, Full, Queue
 from typing import Callable, Optional
 
 from mmrelay.constants.database import DEFAULT_MSGS_TO_KEEP
@@ -139,12 +139,17 @@ class MessageQueue:
                     pass
                 elif task_loop.is_running():
                     from asyncio import run_coroutine_threadsafe, shield
+
                     with contextlib.suppress(Exception):
-                        fut = run_coroutine_threadsafe(shield(self._processor_task), task_loop)
+                        fut = run_coroutine_threadsafe(
+                            shield(self._processor_task), task_loop
+                        )
                         # Wait for completion; ignore exceptions raised due to cancellation
                         fut.result(timeout=1.0)
                 else:
-                    with contextlib.suppress(asyncio.CancelledError, RuntimeError, Exception):
+                    with contextlib.suppress(
+                        asyncio.CancelledError, RuntimeError, Exception
+                    ):
                         task_loop.run_until_complete(self._processor_task)
 
                 self._processor_task = None
@@ -345,6 +350,7 @@ class MessageQueue:
                     )
                     # Run synchronous Meshtastic I/O operations in executor to prevent blocking event loop
                     from functools import partial
+
                     loop = asyncio.get_running_loop()
                     result = await loop.run_in_executor(
                         self._executor,
@@ -438,7 +444,9 @@ class MessageQueue:
                 f"Cannot import meshtastic_utils - serious application error: {e}. Stopping message queue."
             )
             # Stop asynchronously to avoid blocking the event loop thread.
-            threading.Thread(target=self.stop, name="MessageQueueStopper", daemon=True).start()
+            threading.Thread(
+                target=self.stop, name="MessageQueueStopper", daemon=True
+            ).start()
             return False
 
     def _handle_message_mapping(self, result, mapping_info):

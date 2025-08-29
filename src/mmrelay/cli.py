@@ -549,6 +549,7 @@ def _find_credentials_json_path(config_path: str) -> str | None:
     if os.path.exists(candidate):
         return candidate
     from mmrelay.config import get_base_dir
+
     standard = os.path.join(get_base_dir(), "credentials.json")
     return standard if os.path.exists(standard) else None
 
@@ -579,7 +580,9 @@ def _print_unified_e2ee_analysis(e2ee_status):
         print("❌ Platform: E2EE not supported on Windows")
 
     # Dependencies
-    if e2ee_status.get("dependencies_installed", e2ee_status.get("dependencies_available", False)):
+    if e2ee_status.get(
+        "dependencies_installed", e2ee_status.get("dependencies_available", False)
+    ):
         print("✅ Dependencies: E2EE dependencies installed")
     else:
         print("❌ Dependencies: E2EE dependencies not fully installed")
@@ -597,7 +600,9 @@ def _print_unified_e2ee_analysis(e2ee_status):
         print("❌ Authentication: credentials.json not found")
 
     # Overall status
-    print(f"\n📊 Overall Status: {e2ee_status.get('overall_status', 'unknown').upper()}")
+    print(
+        f"\n📊 Overall Status: {e2ee_status.get('overall_status', 'unknown').upper()}"
+    )
 
     # Show fix instructions if needed
     if e2ee_status.get("overall_status") != "ready":
@@ -824,7 +829,7 @@ def check_config(args=None):
                     pwd = matrix_section.get("password")
                     has_token = _is_valid_non_empty_string(token)
                     # Allow explicitly empty password strings; require presence, not non-emptiness
-                    has_password = (pwd is not None)
+                    has_password = pwd is not None
                     if not (has_token or has_password):
                         print(
                             "Error: Missing authentication in 'matrix' section: provide 'access_token' or 'password'"
@@ -1316,7 +1321,9 @@ def handle_auth_logout(args):
         # Handle password input
         password = getattr(args, "password", None)
 
-        if password is None or password == "":  # nosec B105 (user-entered secret; prompting securely via getpass)
+        if (
+            password is None or password == ""
+        ):  # nosec B105 (user-entered secret; prompting securely via getpass)
             # No --password flag or --password with no value, prompt securely
             import getpass
 
