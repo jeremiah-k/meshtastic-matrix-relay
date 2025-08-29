@@ -68,7 +68,7 @@ jobs:
 
           # Install system dependencies for native ARMv7 compilation
           # Note: avoid libatlas-base-dev (not available on some Debian variants) and python3-dev (headers come with official Python image)
-          # Include PNG/zlib/freetype to let Pillow build with PNG and TTF text support while disabling TIFF/JPEG
+          # Include PNG/zlib/freetype and JPEG to let Pillow build with PNG/JPEG and TTF text support while disabling TIFF
           RUN apt-get update && apt-get install -y --no-install-recommends \
               gcc \
               libffi-dev \
@@ -81,6 +81,7 @@ jobs:
               libpng-dev \
               zlib1g-dev \
               libfreetype6-dev \
+              libjpeg-dev \
               libolm-dev \
               && rm -rf /var/lib/apt/lists/*
 
@@ -97,9 +98,9 @@ jobs:
               shiv==1.0.6
 
           # Reduce accidental dynamic linking to image codecs that may not exist on target
-          # Remove libtiff/libjpeg if present so Pillow wheels built here do not link to them
+          # Remove libtiff if present so Pillow wheels built here do not link to it (keep JPEG)
           RUN apt-get update && \
-              (apt-get remove -y --purge 'libtiff*' 'libjpeg*' || true) && \
+              (apt-get remove -y --purge 'libtiff*' || true) && \
               apt-get autoremove -y && \
               rm -rf /var/lib/apt/lists/*
 
@@ -120,7 +121,7 @@ jobs:
           RUN echo "=== Prebuilding heavy wheels for ARMv7 cp310 ===" && \
               mkdir -p /opt/wheels && \
               echo "Building Pillow (TIFF disabled)" && \
-              PILLOW_FEATURES="--disable-tiff --disable-jpeg" pip wheel -v -w /opt/wheels Pillow==11.3.0 && \
+              PILLOW_FEATURES="--disable-tiff" pip wheel -v -w /opt/wheels Pillow==11.3.0 && \
               echo "Building remaining wheels" && \
               printf "%s\n" \
                 matplotlib==3.10.1 \
