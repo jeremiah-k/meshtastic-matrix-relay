@@ -123,8 +123,8 @@ For users who prefer web-based Docker management:
          - PYTHONUNBUFFERED=1
          - MPLCONFIGDIR=/tmp/matplotlib
        volumes:
-      - /home/yourusername/.mmrelay/config.yaml:/app/config.yaml:ro
-      - /home/yourusername/.mmrelay:/app/data # credentials.json, E2EE store, logs, DB
+         - /home/yourusername/.mmrelay/config.yaml:/app/config.yaml:ro
+         - /home/yourusername/.mmrelay:/app/data # credentials.json, E2EE store, logs, DB
        ports:
          - "4403:4403"
    ```
