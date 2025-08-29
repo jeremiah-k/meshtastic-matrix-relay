@@ -1302,6 +1302,7 @@ def handle_auth_status(args):
         Writes human-readable status messages to stdout.
     """
     import json
+
     from mmrelay.config import get_base_dir, get_config_paths
 
     print("Matrix Authentication Status")

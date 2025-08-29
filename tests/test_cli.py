@@ -1724,7 +1724,9 @@ class TestAuthStatus(unittest.TestCase):
         mock_get_paths.assert_called_once_with(self.mock_args)
         # Implementation may check multiple locations; ensure it checks the config-dir path at least once
         mock_exists.assert_any_call("/home/user/.mmrelay/credentials.json")
-        mock_file.assert_called_once_with("/home/user/.mmrelay/credentials.json", "r", encoding="utf-8")
+        mock_file.assert_called_once_with(
+            "/home/user/.mmrelay/credentials.json", "r", encoding="utf-8"
+        )
 
         # Check printed output
         mock_print.assert_any_call("Matrix Authentication Status")
@@ -2154,7 +2156,9 @@ class TestValidateCredentialsJson(unittest.TestCase):
         # Verify results
         self.assertTrue(result)
         mock_exists.assert_called_once_with("/home/user/.mmrelay/credentials.json")
-        mock_file.assert_called_once_with("/home/user/.mmrelay/credentials.json", "r", encoding="utf-8")
+        mock_file.assert_called_once_with(
+            "/home/user/.mmrelay/credentials.json", "r", encoding="utf-8"
+        )
         mock_print.assert_not_called()  # No error messages on success
 
     @patch("mmrelay.config.get_base_dir")
