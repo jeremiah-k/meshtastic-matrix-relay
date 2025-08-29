@@ -126,8 +126,8 @@ config := config + '  new_field: "' + MatrixPage.Values[3] + '"' + #13#10;
 ### Modifying YAML Output
 
 **Prefer double quotes** for most YAML values. **Use single quotes** for:
- - Windows paths containing backslashes (avoid escapes like \e),
- - Secrets (passwords), to minimize quoting pitfalls.
+- Windows paths containing backslashes (avoid escapes like \e),
+- Secrets (passwords), to minimize quoting pitfalls.
 When using single quotes, escape internal single quotes by doubling them.
 
 ```pascal
@@ -202,7 +202,7 @@ result := temp;
 ### YAML Syntax Errors
 
 **Cause**: Incorrect quoting or escaping
-**Solution**: Use double quotes consistently
+**Solution**: Prefer double quotes; use single quotes for Windows paths and secrets (escape internal single quotes by doubling)
 
 ## Documentation References
 
@@ -212,13 +212,13 @@ result := temp;
 
 ## Best Practices
 
-2. **Make minimal changes** - don't rewrite working code
-3. **Use double quotes** for YAML string values
-4. **Test string handling carefully** - Pascal is different from other languages
-5. **Understand procedure vs function** differences
-6. **Check CI builds immediately** after pushing changes
-7. **Reference official documentation** for unfamiliar functions
-8. **Keep changes focused** - one logical change per commit
+1. **Make minimal changes** — don't rewrite working code
+2. **Quoting** — prefer double quotes; use single quotes for Windows paths/secrets
+3. **Test string handling carefully** — Pascal differs from many languages
+4. **Understand procedure vs function** differences
+5. **Check CI builds immediately** after pushing changes
+6. **Reference official documentation** for unfamiliar functions
+7. **Keep changes focused** — one logical change per commit
 
 ## Emergency Recovery
 
@@ -258,10 +258,10 @@ begin
   bot_user_id := Trim(MatrixPage.Values[1]);
   // Complex logic to handle @user:server vs user formats
 
-  // 3. Build Matrix section with double-quoted values
+  // 3. Build Matrix section with single-quoted values (escape internal ' as '')
   config := 'matrix:' + #13#10 +
-            '  homeserver: "' + HomeserverURL + '"' + #13#10 +
-            '  bot_user_id: "' + bot_user_id + '"' + #13#10;
+            '  homeserver: ''' + HomeserverURL + '''' + #13#10 +
+            '  bot_user_id: ''' + bot_user_id + '''' + #13#10;
 
   // 4. Add password if provided (uses single quotes with escaping)
   if MatrixPage.Values[2] <> '' then

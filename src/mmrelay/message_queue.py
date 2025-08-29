@@ -12,7 +12,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from queue import Empty, Queue
+from queue import Empty, Queue, Full
 from typing import Callable, Optional
 
 from mmrelay.constants.database import DEFAULT_MSGS_TO_KEEP
@@ -54,13 +54,16 @@ class MessageQueue:
         """
         Initialize the MessageQueue with an empty queue, state variables, and a thread lock for safe operation.
         """
-        self._queue = Queue()
+        self._queue = Queue(maxsize=MAX_QUEUE_SIZE)
         self._processor_task = None
         self._running = False
         self._lock = threading.Lock()
         self._last_send_time = 0.0
+        self._last_send_mono = 0.0
         self._message_delay = DEFAULT_MESSAGE_DELAY
         self._executor = None  # Dedicated ThreadPoolExecutor for this MessageQueue
+        self._in_flight = False
+        self._has_current = False
 
     def start(self, message_delay: float = DEFAULT_MESSAGE_DELAY):
         """
@@ -84,7 +87,7 @@ class MessageQueue:
 
             # Create dedicated executor for this MessageQueue
             if self._executor is None:
-                self._executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="MessageQueue")
+                self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="MessageQueue")
 
             # Start the processor in the event loop
             try:
@@ -118,12 +121,17 @@ class MessageQueue:
             if self._processor_task:
                 self._processor_task.cancel()
 
-                # Wait for the task to complete if possible
-                with contextlib.suppress(RuntimeError):
-                    loop = asyncio.get_event_loop()
-                    if not loop.is_running():
-                        with contextlib.suppress(asyncio.CancelledError):
-                            loop.run_until_complete(self._processor_task)
+                # Wait for the task to complete on its owning loop
+                task_loop = self._processor_task.get_loop()
+                if task_loop.is_running():
+                    from asyncio import run_coroutine_threadsafe, shield
+                    with contextlib.suppress(Exception):
+                        fut = run_coroutine_threadsafe(shield(self._processor_task), task_loop)
+                        # Wait for completion; ignore exceptions raised due to cancellation
+                        fut.result(timeout=1.0)
+                else:
+                    with contextlib.suppress(asyncio.CancelledError):
+                        task_loop.run_until_complete(self._processor_task)
 
                 self._processor_task = None
 
@@ -139,7 +147,7 @@ class MessageQueue:
         send_function: Callable,
         *args,
         description: str = "",
-        mapping_info: dict = None,
+        mapping_info: Optional[dict] = None,
         **kwargs,
     ) -> bool:
         """
@@ -168,13 +176,6 @@ class MessageQueue:
                 )
                 return False
 
-            # Check queue size to prevent memory issues
-            if self._queue.qsize() >= MAX_QUEUE_SIZE:
-                logger.warning(
-                    f"Message queue full ({self._queue.qsize()}/{MAX_QUEUE_SIZE}), dropping message: {description}"
-                )
-                return False
-
             message = QueuedMessage(
                 timestamp=time.time(),
                 send_function=send_function,
@@ -183,8 +184,14 @@ class MessageQueue:
                 description=description,
                 mapping_info=mapping_info,
             )
-
-            self._queue.put(message)
+            # Enforce capacity via bounded queue
+            try:
+                self._queue.put_nowait(message)
+            except Full:
+                logger.warning(
+                    f"Message queue full ({self._queue.qsize()}/{MAX_QUEUE_SIZE}), dropping message: {description}"
+                )
+                return False
             # Only log queue status when there are multiple messages
             queue_size = self._queue.qsize()
             if queue_size >= 2:
@@ -225,17 +232,21 @@ class MessageQueue:
             "time_since_last_send": (
                 time.time() - self._last_send_time if self._last_send_time > 0 else None
             ),
+            "in_flight": self._in_flight,
         }
 
     async def drain(self, timeout: Optional[float] = None) -> bool:
         """
-        Wait until the internal queue is empty or a timeout elapses.
+        Wait until the queue is empty or until the optional timeout elapses.
 
-        Returns True if drained; False on timeout.
+        Returns True if the queue drained; False if the queue did not drain due to
+        timeout or the queue being stopped while non-empty.
         """
-        deadline = (time.time() + timeout) if timeout else None
-        while self._running and not self._queue.empty():
-            if deadline and time.time() > deadline:
+        deadline = (time.monotonic() + timeout) if timeout else None
+        while (not self._queue.empty()) or self._in_flight or self._has_current:
+            if not self._running:
+                return False
+            if deadline and time.monotonic() > deadline:
                 return False
             await asyncio.sleep(0.1)
         return True
@@ -286,6 +297,7 @@ class MessageQueue:
                     # Get next message (non-blocking)
                     try:
                         current_message = self._queue.get_nowait()
+                        self._has_current = True
                     except Empty:
                         # No messages, wait a bit and continue
                         await asyncio.sleep(0.1)
@@ -301,8 +313,8 @@ class MessageQueue:
                     continue
 
                 # Check if we need to wait for message delay (only if we've sent before)
-                if self._last_send_time > 0:
-                    time_since_last = time.time() - self._last_send_time
+                if self._last_send_mono > 0:
+                    time_since_last = time.monotonic() - self._last_send_mono
                     if time_since_last < self._message_delay:
                         wait_time = self._message_delay - time_since_last
                         logger.debug(
@@ -313,6 +325,7 @@ class MessageQueue:
 
                 # Send the message
                 try:
+                    self._in_flight = True
                     logger.debug(
                         f"Sending queued message: {current_message.description}"
                     )
@@ -327,6 +340,7 @@ class MessageQueue:
 
                     # Update last send time
                     self._last_send_time = time.time()
+                    self._last_send_mono = time.monotonic()
 
                     if result is None:
                         logger.warning(
@@ -351,6 +365,8 @@ class MessageQueue:
                 # Mark task as done and clear current message
                 self._queue.task_done()
                 current_message = None
+                self._in_flight = False
+                self._has_current = False
 
             except asyncio.CancelledError:
                 logger.debug("Message queue processor cancelled")

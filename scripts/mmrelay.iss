@@ -27,11 +27,33 @@ Filename: "{app}\mmrelay.bat"; Description: "Launch MM Relay"; Flags: nowait pos
 [Code]
 
 function ExtractHostFromURL(const Url: string): string;
-var S: string; P: Integer;
+var S: string; P, i, colonCount, lastColonPos, rb: Integer;
 begin
   S := Trim(Url);
   P := Pos('://', S); if P > 0 then S := Copy(S, P + 3, MaxInt);
   P := Pos('/', S);   if P > 0 then S := Copy(S, 1, P - 1);
+  // Handle [IPv6]:port by stripping brackets
+  if (Length(S) > 0) and (S[1] = '[') then
+  begin
+    rb := Pos(']', S);
+    if rb > 1 then
+      S := Copy(S, 2, rb - 2);
+  end
+  else
+  begin
+    // Only strip :port when there is exactly one ':' and no brackets (avoid unbracketed IPv6)
+    colonCount := 0; lastColonPos := 0;
+    for i := 1 to Length(S) do
+    begin
+      if S[i] = ':' then
+      begin
+        colonCount := colonCount + 1;
+        lastColonPos := i;
+      end;
+    end;
+    if colonCount = 1 then
+      S := Copy(S, 1, lastColonPos - 1);
+  end;
   Result := S;
 end;
 
@@ -154,8 +176,14 @@ var
   SafeHomeserver: string;
   SafeUser: string;
   SafePwd: string;
+  SafeRoomId: string;
+  SafeSerial: string;
+  SafeHost: string;
+  SafeBle: string;
+  SafeMesh: string;
   tempPath: string;
   meshtastic_channel: string;
+  chanInt: Integer;
 begin
   If Not OverwriteConfig.Values[0] then
     Exit;
@@ -235,16 +263,33 @@ begin
   meshtastic_channel := Trim(MatrixMeshtasticPage.Values[1]);
   if meshtastic_channel = '' then
     meshtastic_channel := '0'; // default to primary channel
+  // Ensure integer 0–7
+  if (not TryStrToInt(meshtastic_channel, chanInt)) or (chanInt < 0) or (chanInt > 7) then
+  begin
+    MsgBox('Invalid Meshtastic channel. Enter a number 0–7.', mbError, MB_OK);
+    Abort;
+  end;
+  meshtastic_channel := IntToStr(chanInt);
 
+  SafeRoomId := MatrixMeshtasticPage.Values[0];
+  StringChangeEx(SafeRoomId, '''', '''''', True);
   config := config +
             'matrix_rooms:' + #13#10 +
-            '  - id: ''' + MatrixMeshtasticPage.Values[0] + '''' + #13#10 +
+            '  - id: ''' + SafeRoomId + '''' + #13#10 +
             '    meshtastic_channel: ' + meshtastic_channel + #13#10 +
             'meshtastic:' + #13#10 +
             '  connection_type: "' + connection_type + '"' + #13#10;
 
   if connection_type = 'serial' then
-    config := config + '  serial_port: "' + serial_port + '"' + #13#10
+  begin
+    if Trim(serial_port) = '' then
+    begin
+      MsgBox('Serial selected but no serial port provided.', mbError, MB_OK);
+      Abort;
+    end;
+    SafeSerial := serial_port; StringChangeEx(SafeSerial, '"', '\"', True);
+    config := config + '  serial_port: "' + SafeSerial + '"' + #13#10
+  end
   else if (connection_type = 'tcp') then
   begin
     if Trim(host) = '' then
@@ -252,12 +297,22 @@ begin
       MsgBox('TCP selected but no hostname/IP provided.', mbError, MB_OK);
       Abort;
     end;
-    config := config + '  host: "' + host + '"' + #13#10
+    SafeHost := host; StringChangeEx(SafeHost, '"', '\"', True);
+    config := config + '  host: "' + SafeHost + '"' + #13#10
   end
   else if connection_type = 'ble' then
-    config := config + '  ble_address: "' + ble_address + '"' + #13#10;
+  begin
+    if Trim(ble_address) = '' then
+    begin
+      MsgBox('BLE selected but no BLE address/name provided.', mbError, MB_OK);
+      Abort;
+    end;
+    SafeBle := ble_address; StringChangeEx(SafeBle, '"', '\"', True);
+    config := config + '  ble_address: "' + SafeBle + '"' + #13#10;
+  end;
 
-  config := config + '  meshnet_name: "' + MeshtasticPage.Values[4] + '"' + #13#10 +
+  SafeMesh := MeshtasticPage.Values[4]; StringChangeEx(SafeMesh, '"', '\"', True);
+  config := config + '  meshnet_name: "' + SafeMesh + '"' + #13#10 +
             '  broadcast_enabled: ' + BoolToStr(OptionsPage.Values[1]) + #13#10 +
             'logging:' + #13#10 +
             '  level: "' + log_level + '"' + #13#10 +

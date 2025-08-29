@@ -109,10 +109,9 @@ class TestMessageQueue(unittest.TestCase):
                 if not loop.is_closed():
                     loop.close()
             finally:
-                try:
+                import contextlib
+                with contextlib.suppress(Exception):
                     asyncio.set_event_loop(None)
-                except Exception:
-                    pass
 
     @property
     def sent_messages(self):
@@ -152,17 +151,11 @@ class TestMessageQueue(unittest.TestCase):
                 self.assertTrue(success)
 
             # Wait for processing to complete with a timeout
-            end_time = (
-                time.time() + 15.0
-            )  # 15 second timeout (3 messages * 2s + buffer)
-            while self.queue.get_queue_size() > 0 or len(self.sent_messages) < len(
-                messages
-            ):
-                if time.time() > end_time:
-                    self.fail(
-                        f"Queue processing timed out. Sent {len(self.sent_messages)}/{len(messages)} messages, queue size: {self.queue.get_queue_size()}"
-                    )
-                await asyncio.sleep(0.1)
+            drained = await self.queue.drain(timeout=15.0)
+            if not drained:
+                self.fail(
+                    f"Queue processing timed out. Sent {len(self.sent_messages)}/{len(messages)} messages, queue size: {self.queue.get_queue_size()}"
+                )
 
             # Check that messages were sent in order
             self.assertEqual(len(self.sent_messages), len(messages))

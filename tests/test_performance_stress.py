@@ -776,19 +776,8 @@ class TestPerformanceStress:
                                 )  # nosec B311 - Test timing variation, not cryptographic
                             )
 
-                        # Wait for queue to process remaining messages using a bounded, idle-based drain
-                        idle_timeout = 0.75  # seconds without new messages to consider queue drained
-                        max_wait = 15.0      # overall cap to avoid infinite waits
-                        start_wait = time.monotonic()
-                        last_count = len(processed_messages)
-                        while True:
-                            if time.monotonic() - start_wait > max_wait:
-                                break
-                            await asyncio.sleep(idle_timeout)
-                            new_count = len(processed_messages)
-                            if new_count == last_count:
-                                break  # no new messages during idle window
-                            last_count = new_count
+                        # Wait for queue to drain (bounded)
+                        await queue.drain(timeout=15.0)
 
                         end_time = time.time()
                         total_time = end_time - start_time

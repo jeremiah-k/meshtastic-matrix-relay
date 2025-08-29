@@ -324,8 +324,10 @@ def _has_valid_password_auth(matrix_section):
     homeserver = matrix_section.get(CONFIG_KEY_HOMESERVER)
     bot_user_id = matrix_section.get(CONFIG_KEY_BOT_USER_ID)
 
+    # Allow empty password strings (some environments legitimately use empty passwords).
+    # Homeserver and bot_user_id must still be valid non-empty strings.
     return (
-        _is_valid_non_empty_string(pwd)
+        isinstance(pwd, str)
         and _is_valid_non_empty_string(homeserver)
         and _is_valid_non_empty_string(bot_user_id)
     )

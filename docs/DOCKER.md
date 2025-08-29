@@ -72,7 +72,7 @@ This method is ideal for:
 - Users who haven't cloned the repository
 - Environments without Python installed locally
 
-**Security Note**: The password is only used once during initial setup to create `credentials.json`. For enhanced security, you should remove the `password` field from your `config.yaml` after the first successful startup.
+**Security Note**: The password is only used once during initial setup to create `credentials.json`. For enhanced security, remove the `password` field from your `config.yaml` after the first successful startup. On SSO/OIDC-only homeservers (password logins disabled), this method will fail—use `mmrelay auth login` instead.
 Additionally, restrict file permissions so only your user can read it:
 
 ```bash
@@ -404,7 +404,8 @@ MMRELAY_HOME=/path/to/your/data
 **Container won't start:**
 
 - Check logs: `docker compose logs mmrelay`
-- Verify config file syntax: `mmrelay config check --config ~/.mmrelay/config.yaml`
+- Verify config syntax (host): `mmrelay config check --config ~/.mmrelay/config.yaml`
+- Verify config syntax (container): `docker compose exec mmrelay mmrelay config check --config /app/config.yaml`
 - Ensure all required config fields are set
 
 **Connection issues:**
@@ -448,7 +449,8 @@ services:
       - MMRELAY_LOGGING_LEVEL=INFO
       - MMRELAY_DATABASE_PATH=/app/data/meshtastic.sqlite
     volumes:
-      - ${MMRELAY_HOME}/.mmrelay:/app/data # Includes credentials.json, E2EE store, config.yaml, and all data
+      - ${MMRELAY_HOME}/.mmrelay/config.yaml:/app/config.yaml:ro
+      - ${MMRELAY_HOME}/.mmrelay:/app/data # credentials.json, E2EE store, logs, DB
 ```
 
 **This approach provides:**
@@ -476,11 +478,11 @@ matrix_rooms:
     meshtastic_channel: 0
 ```
 
-**Features:**
+**Features**
 
-- Automatic credentials.json creation on startup
+- Automatically creates `credentials.json` on first start
 - Compatible with Matrix 2.0/MAS authentication
-- Supports E2EE when dependencies are available
+- E2EE supported when dependencies are available
 
 #### Step 2: Create docker-compose.yaml with E2EE
 
@@ -500,7 +502,8 @@ services:
       - MMRELAY_LOGGING_LEVEL=INFO
       - MMRELAY_DATABASE_PATH=/app/data/meshtastic.sqlite
     volumes:
-      - ${MMRELAY_HOME}/.mmrelay:/app/data # Includes config.yaml and all data
+      - ${MMRELAY_HOME}/.mmrelay/config.yaml:/app/config.yaml:ro
+      - ${MMRELAY_HOME}/.mmrelay:/app/data # credentials.json, E2EE store, logs, DB
 ```
 
 **Security note:** After the first successful start:
