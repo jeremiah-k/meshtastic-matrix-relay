@@ -87,12 +87,17 @@ class MessageQueue:
 
             # Create dedicated executor for this MessageQueue
             if self._executor is None:
-                self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="MessageQueue")
+                self._executor = ThreadPoolExecutor(
+                    max_workers=1, thread_name_prefix=f"MessageQueue-{id(self)}"
+                )
 
             # Start the processor in the event loop
             try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
+                try:
+                    loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    loop = None
+                if loop and loop.is_running():
                     self._processor_task = loop.create_task(self._process_queue())
                     logger.info(
                         f"Message queue started with {self._message_delay}s message delay"
@@ -123,8 +128,14 @@ class MessageQueue:
 
                 # Wait for the task to complete on its owning loop
                 task_loop = self._processor_task.get_loop()
+                current_loop = None
+                with contextlib.suppress(RuntimeError):
+                    current_loop = asyncio.get_running_loop()
                 if task_loop.is_closed():
                     # Owning loop is closed; nothing we can do to await it
+                    pass
+                elif current_loop is task_loop:
+                    # Avoid blocking the event loop thread; cancellation will finish naturally
                     pass
                 elif task_loop.is_running():
                     from asyncio import run_coroutine_threadsafe, shield
@@ -133,7 +144,7 @@ class MessageQueue:
                         # Wait for completion; ignore exceptions raised due to cancellation
                         fut.result(timeout=1.0)
                 else:
-                    with contextlib.suppress(asyncio.CancelledError, RuntimeError):
+                    with contextlib.suppress(asyncio.CancelledError, RuntimeError, Exception):
                         task_loop.run_until_complete(self._processor_task)
 
                 self._processor_task = None
@@ -333,11 +344,14 @@ class MessageQueue:
                         f"Sending queued message: {current_message.description}"
                     )
                     # Run synchronous Meshtastic I/O operations in executor to prevent blocking event loop
-                    # Use lambda with default arguments to properly capture loop variables
-                    result = await asyncio.get_running_loop().run_in_executor(
+                    from functools import partial
+                    loop = asyncio.get_running_loop()
+                    result = await loop.run_in_executor(
                         self._executor,
-                        lambda msg=current_message: msg.send_function(
-                            *msg.args, **msg.kwargs
+                        partial(
+                            current_message.send_function,
+                            *current_message.args,
+                            **current_message.kwargs,
                         ),
                     )
 
@@ -423,7 +437,8 @@ class MessageQueue:
             logger.critical(
                 f"Cannot import meshtastic_utils - serious application error: {e}. Stopping message queue."
             )
-            self.stop()
+            # Stop asynchronously to avoid blocking the event loop thread.
+            threading.Thread(target=self.stop, name="MessageQueueStopper", daemon=True).start()
             return False
 
     def _handle_message_mapping(self, result, mapping_info):

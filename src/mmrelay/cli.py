@@ -203,7 +203,7 @@ def parse_arguments():
     # Use parse_known_args to handle unknown arguments gracefully (e.g., pytest args)
     args, unknown = parser.parse_known_args()
     # If there are unknown arguments and we're not in a test environment, warn about them
-    if unknown and not any("pytest" in arg or "test" in arg for arg in sys.argv):
+    if unknown and "PYTEST_CURRENT_TEST" not in os.environ:
         print(f"Warning: Unknown arguments ignored: {unknown}")
 
     return args
@@ -1240,27 +1240,33 @@ def handle_auth_status(args):
     """
     Show Matrix authentication status by locating and reading a credentials.json file.
 
-    Searches candidate config directories derived from the provided parsed-arguments namespace for a credentials.json file. If found and readable, prints the file path and the homeserver, user_id, and device_id values. If the file is unreadable or not found, prints guidance to run the authentication flow.
+    Builds a de-duplicated list of candidate credentials.json paths (next to
+    discovered config files and the standard base directory) and reports the
+    first valid match.
 
-    Parameters:
-        args (argparse.Namespace): Parsed CLI arguments used to determine the list of config paths to search.
-
-    Returns:
-        int: Exit code — 0 if a readable credentials.json was found, 1 otherwise.
+    Returns 0 when found and readable; 1 otherwise.
     """
     import json
     import os
 
-    from mmrelay.config import get_config_paths
+    from mmrelay.config import get_base_dir, get_config_paths
 
     print("Matrix Authentication Status")
     print("============================")
 
-    # Check for credentials.json
     config_paths = get_config_paths(args)
-    for config_path in config_paths:
-        config_dir = os.path.dirname(config_path)
-        credentials_path = os.path.join(config_dir, "credentials.json")
+
+    # Developer note: Build a de-duplicated set of candidate locations to
+    # avoid redundant os.exists/open cycles and to cover both config-adjacent
+    # and standard base-dir credentials.json paths in one pass.
+    # This keeps the logic simple and predictable across platforms.
+    # Build unique candidate paths
+    candidate_paths = {
+        os.path.join(os.path.dirname(p), "credentials.json") for p in config_paths
+    }
+    candidate_paths.add(os.path.join(get_base_dir(), "credentials.json"))
+
+    for credentials_path in sorted(candidate_paths):
         if os.path.exists(credentials_path):
             try:
                 with open(credentials_path, "r") as f:
@@ -1274,22 +1280,6 @@ def handle_auth_status(args):
             except Exception as e:
                 print(f"❌ Error reading credentials.json: {e}")
                 return 1
-
-    # Fallback: search standard base directory using helper
-    try:
-        if config_paths:
-            fallback = _find_credentials_json_path(config_paths[0])
-            if fallback and os.path.exists(fallback):
-                with open(fallback, "r") as f:
-                    credentials = json.load(f)
-                print(f"✅ Found credentials.json at: {fallback}")
-                print(f"   Homeserver: {credentials.get('homeserver', 'Unknown')}")
-                print(f"   User ID: {credentials.get('user_id', 'Unknown')}")
-                print(f"   Device ID: {credentials.get('device_id', 'Unknown')}")
-                return 0
-    except Exception as e:
-        print(f"❌ Error reading credentials.json: {e}")
-        return 1
 
     print("❌ No credentials.json found")
     print(f"Run '{get_command('auth_login')}' to authenticate")

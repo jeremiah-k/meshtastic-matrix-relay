@@ -72,8 +72,7 @@ This method is ideal for:
 - Users who haven't cloned the repository
 - Environments without Python installed locally
 
-**Security Note**: The password is only used once during initial setup to create `credentials.json`. For enhanced security, remove the `password` field from your `config.yaml` after the first successful startup. On SSO/OIDC-only homeservers (password logins disabled), this method will fail — use:
-`mmrelay auth login`
+**Security Note**: The password is only used once during initial setup to create `credentials.json`. For enhanced security, remove the `password` field from your `config.yaml` after the first successful startup. On SSO/OIDC-only homeservers (password logins disabled), this method will fail — run `mmrelay auth login` on your host to create `~/.mmrelay/credentials.json`, then mount `~/.mmrelay:/app/data` in Docker.
 Additionally, restrict file permissions so only your user can read it:
 
 ```bash
@@ -405,8 +404,10 @@ MMRELAY_HOME=/path/to/your/data
 **Container won't start:**
 
 - Check logs: `docker compose logs mmrelay`
-- Verify config syntax (host): `mmrelay config check --config ~/.mmrelay/config.yaml`
-- Verify config syntax (container): `docker compose exec mmrelay mmrelay config check --config /app/config.yaml`
+- Verify config syntax (host):
+  `mmrelay config check --config ~/.mmrelay/config.yaml`
+- Verify config syntax (container):
+  `docker compose exec mmrelay mmrelay config check --config /app/config.yaml`
 - Ensure all required config fields are set
 
 **Connection issues:**

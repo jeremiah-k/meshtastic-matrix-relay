@@ -50,9 +50,12 @@ The mmrelay.iss file contains several key sections:
 ### String Handling
 
 ```pascal
-// CORRECT - Double quotes for most YAML values (watch for embedded " and backslashes)
+// CORRECT - Double quotes for most YAML values (escape " and \ if present)
+SafeHome := HomeserverURL;
+StringChangeEx(SafeHome, '"', '\\"', True);
+StringChangeEx(SafeHome, '\\', '\\\\', True);
 config := 'matrix:' + #13#10 +
-          '  homeserver: "' + HomeserverURL + '"' + #13#10;
+          '  homeserver: "' + SafeHome + '"' + #13#10;
 
 // ALSO VALID - Single quotes require escaping internal single quotes (''), but
 // are preferred for Windows paths and secrets to avoid backslash/escape issues.
@@ -77,8 +80,8 @@ config := '  password: ''' + StringChange(pwd, '''', '''''') + '''' + #13#10;
 
 ### Line Endings
 
-- Use `#13#10` for Windows line endings (CRLF)
-- Required for proper YAML formatting
+- Use `#13#10` for Windows line endings (CRLF).
+- YAML accepts LF or CRLF; CRLF keeps files Windows‑friendly.
 
 ### String Concatenation
 

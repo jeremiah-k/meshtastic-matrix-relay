@@ -288,8 +288,9 @@ begin
       MsgBox('Serial selected but no serial port provided.', mbError, MB_OK);
       Abort;
     end;
-    SafeSerial := serial_port; StringChangeEx(SafeSerial, '"', '\"', True);
-    config := config + '  serial_port: "' + SafeSerial + '"' + #13#10
+    // Use single quotes to avoid backslash-escape pitfalls; escape internal single quotes
+    SafeSerial := serial_port; StringChangeEx(SafeSerial, '''', '''''', True);
+    config := config + '  serial_port: ''' + SafeSerial + '''' + #13#10
   end
   else if (connection_type = 'tcp') then
   begin
@@ -298,8 +299,9 @@ begin
       MsgBox('TCP selected but no hostname/IP provided.', mbError, MB_OK);
       Abort;
     end;
-    SafeHost := host; StringChangeEx(SafeHost, '"', '\"', True);
-    config := config + '  host: "' + SafeHost + '"' + #13#10
+    // Use single quotes for host; escape internal single quotes
+    SafeHost := host; StringChangeEx(SafeHost, '''', '''''', True);
+    config := config + '  host: ''' + SafeHost + '''' + #13#10
   end
   else if connection_type = 'ble' then
   begin
@@ -308,12 +310,14 @@ begin
       MsgBox('BLE selected but no BLE address/name provided.', mbError, MB_OK);
       Abort;
     end;
-    SafeBle := ble_address; StringChangeEx(SafeBle, '"', '\"', True);
-    config := config + '  ble_address: "' + SafeBle + '"' + #13#10;
+    // Use single quotes for BLE address; escape internal single quotes
+    SafeBle := ble_address; StringChangeEx(SafeBle, '''', '''''', True);
+    config := config + '  ble_address: ''' + SafeBle + '''' + #13#10;
   end;
 
-  SafeMesh := MeshtasticPage.Values[4]; StringChangeEx(SafeMesh, '"', '\"', True);
-  config := config + '  meshnet_name: "' + SafeMesh + '"' + #13#10 +
+  // Use single quotes for meshnet name; escape internal single quotes
+  SafeMesh := MeshtasticPage.Values[4]; StringChangeEx(SafeMesh, '''', '''''', True);
+  config := config + '  meshnet_name: ''' + SafeMesh + '''' + #13#10 +
             '  broadcast_enabled: ' + BoolToStr(OptionsPage.Values[1]) + #13#10 +
             'logging:' + #13#10 +
             '  level: "' + log_level + '"' + #13#10 +
