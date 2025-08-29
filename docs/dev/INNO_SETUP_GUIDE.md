@@ -135,8 +135,11 @@ config := config + '  new_field: "' + MatrixPage.Values[3] + '"' + #13#10;
   When using single quotes, escape internal single quotes by doubling them.
 
 ```pascal
-// CORRECT - Double quotes for most values
-config := config + '  field: "' + value + '"' + #13#10;
+// Double-quoted YAML: escape backslashes then quotes
+SafeValue := value;
+StringChangeEx(SafeValue, '\\', '\\\\', True);  // \ -> \\\
+StringChangeEx(SafeValue, '"', '\\"', True);      // "
+config := config + '  field: "' + SafeValue + '"' + #13#10;
 
 // Single-quoted (escape internal ' as '') — safer for Windows paths/secrets
 config := config + '  field: ''' + EscapedValue + '''' + #13#10;

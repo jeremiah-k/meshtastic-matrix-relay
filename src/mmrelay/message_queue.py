@@ -154,9 +154,28 @@ class MessageQueue:
 
                 self._processor_task = None
 
-            # Shut down our dedicated executor
+            # Shut down our dedicated executor without blocking the event loop
             if self._executor:
-                self._executor.shutdown(wait=True)
+                on_loop_thread = False
+                with contextlib.suppress(RuntimeError):
+                    loop_chk = asyncio.get_running_loop()
+                    on_loop_thread = loop_chk.is_running()
+
+                def _shutdown(exec_ref):
+                    try:
+                        exec_ref.shutdown(wait=True, cancel_futures=True)
+                    except TypeError:
+                        exec_ref.shutdown(wait=True)
+
+                if on_loop_thread:
+                    threading.Thread(
+                        target=_shutdown,
+                        args=(self._executor,),
+                        name="MessageQueueExecutorShutdown",
+                        daemon=True,
+                    ).start()
+                else:
+                    _shutdown(self._executor)
                 self._executor = None
 
             logger.info("Message queue stopped")
@@ -279,15 +298,14 @@ class MessageQueue:
         with self._lock:
             if self._running and self._processor_task is None:
                 try:
-                    loop = asyncio.get_event_loop()
-                    if loop.is_running():
-                        self._processor_task = loop.create_task(self._process_queue())
-                        logger.info(
-                            f"Message queue processor started with {self._message_delay}s message delay"
-                        )
+                    loop = asyncio.get_running_loop()
                 except RuntimeError:
-                    # Still no event loop available
-                    pass
+                    loop = None
+                if loop and loop.is_running():
+                    self._processor_task = loop.create_task(self._process_queue())
+                    logger.info(
+                        f"Message queue processor started with {self._message_delay}s message delay"
+                    )
 
     async def _process_queue(self):
         """

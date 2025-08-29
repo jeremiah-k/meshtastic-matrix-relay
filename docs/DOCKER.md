@@ -123,7 +123,8 @@ For users who prefer web-based Docker management:
          - PYTHONUNBUFFERED=1
          - MPLCONFIGDIR=/tmp/matplotlib
        volumes:
-         - /home/yourusername/.mmrelay:/app/data # Includes config.yaml, credentials.json, and all data
+      - /home/yourusername/.mmrelay/config.yaml:/app/config.yaml:ro
+      - /home/yourusername/.mmrelay:/app/data # credentials.json, E2EE store, logs, DB
        ports:
          - "4403:4403"
    ```
@@ -146,8 +147,10 @@ If you prefer not to use Make commands:
 
 ```bash
 # After cloning the repository:
-make config  # Creates ~/.mmrelay/config.yaml, .env, and docker-compose.yaml
+mkdir -p ~/.mmrelay/data ~/.mmrelay/logs
+cp src/mmrelay/tools/sample_config.yaml ~/.mmrelay/config.yaml
 nano ~/.mmrelay/config.yaml  # Edit your settings
+cp src/mmrelay/tools/sample-docker-compose-prebuilt.yaml docker-compose.yaml
 
 # Build and start:
 docker compose build

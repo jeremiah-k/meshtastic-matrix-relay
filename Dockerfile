@@ -18,9 +18,9 @@ COPY README.md ./
 COPY src/ ./src/
 
 # Install dependencies and application package with E2EE support (consolidated)
-RUN pip install --no-cache-dir --timeout=300 --retries=3 -r requirements.txt \
-    && pip install --no-cache-dir --timeout=300 --retries=3 -r requirements-e2e.txt \
-    && pip install --no-cache-dir --no-deps .
+RUN python -m pip install --no-cache-dir --timeout=300 --retries=3 -r requirements.txt \
+    && python -m pip install --no-cache-dir --timeout=300 --retries=3 -r requirements-e2e.txt \
+    && python -m pip install --no-cache-dir --no-deps .
 
 # Runtime stage
 FROM python:3.11-slim-bookworm

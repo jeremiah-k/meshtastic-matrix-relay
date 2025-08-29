@@ -829,8 +829,9 @@ def check_config(args=None):
                     token = matrix_section.get(CONFIG_KEY_ACCESS_TOKEN)
                     pwd = matrix_section.get("password")
                     has_token = _is_valid_non_empty_string(token)
-                    # Allow explicitly empty password strings; require presence, not non-emptiness
-                    has_password = pwd is not None
+                    # Allow explicitly empty password strings; require the value to be a string
+                    # (reject unquoted numeric types)
+                    has_password = isinstance(pwd, str)
                     if not (has_token or has_password):
                         print(
                             "Error: Missing authentication in 'matrix' section: provide 'access_token' or 'password'"
