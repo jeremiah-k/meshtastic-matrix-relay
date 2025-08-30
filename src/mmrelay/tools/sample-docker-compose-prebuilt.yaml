@@ -3,6 +3,7 @@ services:
     image: ghcr.io/jeremiah-k/mmrelay:latest
     container_name: meshtastic-matrix-relay
     restart: unless-stopped
+    user: "${UID:-1000}:${GID:-1000}"
     volumes:
       # Mount your config directory - create ~/.mmrelay/config.yaml first
       # See docs/DOCKER.md for setup instructions

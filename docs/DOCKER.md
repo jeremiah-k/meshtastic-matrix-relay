@@ -408,6 +408,20 @@ docker compose logs -f
 - All configuration in one file (`config.yaml`)
 - Simple, minimal setup
 
+### Step 5: Verify E2EE Status (Optional)
+
+If you have enabled E2EE, you can verify its status by checking the logs:
+
+```bash
+docker compose logs mmrelay | grep -i e2ee
+```
+
+Look for messages like:
+
+- "End-to-End Encryption (E2EE) is enabled"
+- "Using credentials from ~/.mmrelay/credentials.json"
+- "Found X encrypted rooms out of Y total rooms"
+
 ## Connection Type Examples
 
 Configure your Meshtastic connection in `~/.mmrelay/config.yaml`:
