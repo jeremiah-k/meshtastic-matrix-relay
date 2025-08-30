@@ -142,7 +142,7 @@ MMRelay uses a single configuration file: `~/.mmrelay/config.yaml`. All settings
 **Benefits:**
 - All settings in one place
 - Easy to track changes and version control
-- Simple to backup and restore
+- Simple to back up and restore
 - No complex environment variable management
 
 **Setup:**
@@ -366,13 +366,13 @@ MMRELAY_HOME=/path/to/your/data
 
 Here's a complete example showing the recommended setup:
 
-#### Step 1: Set up authentication
+### Step 1: Set up authentication
 
 ```bash
 mmrelay auth login
 ```
 
-#### Step 2: Create and configure config.yaml
+### Step 2: Create and configure config.yaml
 
 ```bash
 mkdir -p ~/.mmrelay/data ~/.mmrelay/logs
@@ -380,7 +380,7 @@ curl -o ~/.mmrelay/config.yaml https://raw.githubusercontent.com/jeremiah-k/mesh
 nano ~/.mmrelay/config.yaml  # Configure your settings
 ```
 
-#### Step 3: Create docker-compose.yaml
+### Step 3: Create docker-compose.yaml
 
 ```yaml
 services:
@@ -389,10 +389,11 @@ services:
     container_name: meshtastic-matrix-relay
     restart: unless-stopped
     volumes:
+      - ${MMRELAY_HOME}/.mmrelay/config.yaml:/app/config.yaml:ro
       - ${MMRELAY_HOME}/.mmrelay:/app/data
 ```
 
-#### Step 4: Start the container
+### Step 4: Start the container
 
 ```bash
 export MMRELAY_HOME=$HOME
@@ -407,7 +408,7 @@ docker compose logs -f
 - All configuration in one file (`config.yaml`)
 - Simple, minimal setup
 
-## Connection Types
+## Connection Type Examples
 
 Configure your Meshtastic connection in `~/.mmrelay/config.yaml`:
 
@@ -442,10 +443,12 @@ meshtastic:
   ble_address: "AA:BB:CC:DD:EE:FF"  # Your device's MAC address
 ```
 
-For BLE connections, add privileged mode and host networking to docker-compose.yaml:
+For BLE connections, add to docker-compose.yaml:
 ```yaml
-privileged: true
-network_mode: host
+network_mode: host   # Required for BLE/D-Bus
+privileged: true     # Required for BLE access
+volumes:
+  - /var/run/dbus:/var/run/dbus:ro
 ```
 
 
