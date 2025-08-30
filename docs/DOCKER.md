@@ -97,8 +97,8 @@ For users who prefer web-based Docker management:
          - PYTHONUNBUFFERED=1
          - MPLCONFIGDIR=/tmp/matplotlib
        volumes:
-         - /home/yourusername/.mmrelay/config.yaml:/app/config.yaml:ro
-         - /home/yourusername/.mmrelay:/app/data # credentials.json, E2EE store, logs, DB
+         - /home/yourusername/.mmrelay/config.yaml:/app/config.yaml:ro,Z
+         - /home/yourusername/.mmrelay:/app/data:Z # credentials.json, E2EE store, logs, DB
    ```
    Replace `/home/yourusername` with your actual home directory.
 
@@ -292,8 +292,10 @@ meshtastic:
 For serial connections, add device mapping to docker-compose.yaml:
 
 ```yaml
-devices:
-  - /dev/ttyUSB0:/dev/ttyUSB0
+services:
+  mmrelay:
+    devices:
+      - /dev/ttyUSB0:/dev/ttyUSB0
 ```
 
 **BLE Connection:**
@@ -307,10 +309,12 @@ meshtastic:
 For BLE connections, add to docker-compose.yaml:
 
 ```yaml
-network_mode: host # Required for BLE/D-Bus
-privileged: true # Required for BLE access
-volumes:
-  - /var/run/dbus:/var/run/dbus:ro
+services:
+  mmrelay:
+    network_mode: host   # Required for BLE/D-Bus
+    privileged: true     # Required for BLE access
+    volumes:
+      - /var/run/dbus:/var/run/dbus:ro
 ```
 
 ## Data Persistence

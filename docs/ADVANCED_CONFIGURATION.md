@@ -201,7 +201,7 @@ These environment variables can override config.yaml settings:
 
 - **`MMRELAY_MESHTASTIC_BROADCAST_ENABLED`**: Enable Matrix→Meshtastic messages (`true`/`false`)
 - **`MMRELAY_MESHTASTIC_MESHNET_NAME`**: Display name for the mesh network
-- **`MMRELAY_MESHTASTIC_MESSAGE_DELAY`**: Delay between messages in seconds (minimum: 2.0)
+- **`MMRELAY_MESHTASTIC_MESSAGE_DELAY`**: Delay between messages in seconds (minimum: 2.0; values below are clamped at startup)
 
 #### System Configuration
 
