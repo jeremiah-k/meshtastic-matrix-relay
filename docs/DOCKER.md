@@ -38,8 +38,10 @@ curl -Lo ~/.mmrelay/config.yaml https://raw.githubusercontent.com/jeremiah-k/mes
 nano ~/.mmrelay/config.yaml
 
 # 3. Set up environment and get docker-compose file
-# The following command safely adds MMRELAY_HOME to your .env file if it's not already there
+# The following commands set up your environment to prevent permission issues
 grep -q '^MMRELAY_HOME=' .env 2>/dev/null || echo 'MMRELAY_HOME=$HOME' >> .env
+grep -q '^UID=' .env 2>/dev/null || echo "UID=$(id -u)" >> .env
+grep -q '^GID=' .env 2>/dev/null || echo "GID=$(id -g)" >> .env
 curl -o docker-compose.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/src/mmrelay/tools/sample-docker-compose-prebuilt.yaml
 docker compose up -d
 
@@ -427,8 +429,10 @@ services:
 ### Step 4: Start the container
 
 ```bash
-# The following command safely adds MMRELAY_HOME to your .env file if it's not already there
+# The following commands set up your environment to prevent permission issues
 grep -q '^MMRELAY_HOME=' .env 2>/dev/null || echo 'MMRELAY_HOME=$HOME' >> .env
+grep -q '^UID=' .env 2>/dev/null || echo "UID=$(id -u)" >> .env
+grep -q '^GID=' .env 2>/dev/null || echo "GID=$(id -g)" >> .env
 docker compose up -d
 docker compose logs -f
 ```

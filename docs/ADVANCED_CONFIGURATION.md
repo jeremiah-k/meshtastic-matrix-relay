@@ -205,7 +205,7 @@ These environment variables can override config.yaml settings:
 
 #### System Configuration
 
-- **`MMRELAY_LOGGING_LEVEL`**: Log level (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`)
+- **`MMRELAY_LOGGING_LEVEL`**: Log level (`debug`, `info`, `warning`, `error`, `critical`)
 - **`MMRELAY_LOG_FILE`**: Path to log file (enables file logging when set)
 - **`MMRELAY_DATABASE_PATH`**: Path to SQLite database file
 
