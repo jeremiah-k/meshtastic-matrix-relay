@@ -4,6 +4,8 @@ services:
     container_name: meshtastic-matrix-relay
     restart: unless-stopped
     user: "${UID:-1000}:${GID:-1000}"
+    environment:
+      - TZ=UTC  # Set timezone (PYTHONUNBUFFERED and MPLCONFIGDIR are set in Dockerfile)
     volumes:
       # Mount your config directory - create ~/.mmrelay/config.yaml first
       # See docs/DOCKER.md for setup instructions
