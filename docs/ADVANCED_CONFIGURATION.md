@@ -206,7 +206,7 @@ These environment variables can override config.yaml settings:
 #### System Configuration
 
 - **`MMRELAY_LOGGING_LEVEL`**: Log level (`debug`, `info`, `warning`, `error`, `critical`)
-- **`MMRELAY_LOG_FILE`**: Path to log file (enables file logging when set)
+- **`MMRELAY_LOG_FILE`**: Path to log file (enables file logging when set; for Docker use a path under `/app/data/logs/...` to persist)
 - **`MMRELAY_DATABASE_PATH`**: Path to SQLite database file
 
 ### Why Config.yaml is Usually Better
@@ -241,7 +241,7 @@ Use environment variables **only** when:
 
 **For Portainer users:** Set them in Portainer's environment variables section.
 
-**Important:** Environment variables override corresponding config.yaml settings when present. Use them sparingly, document which settings you're overriding, and avoid placing secrets in env where they can appear in process lists and `docker inspect`.
+**Important:** Environment variables override corresponding config.yaml settings when present. Use them sparingly, document which settings you're overriding, and avoid placing secrets in env where they can appear in process lists and `docker inspect`. For sensitive values in orchestrators, prefer secrets (e.g., Docker/Kubernetes secrets).
 
 ### Environment Variable to Config.yaml Mapping
 

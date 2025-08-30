@@ -3,6 +3,7 @@ services:
     build: .
     container_name: meshtastic-matrix-relay
     restart: unless-stopped
+    stop_grace_period: 30s
     user: "${UID:-1000}:${GID:-1000}"
     environment:
       - TZ=UTC  # Set timezone (PYTHONUNBUFFERED and MPLCONFIGDIR are set in Dockerfile)
