@@ -14,11 +14,12 @@ MMRelay supports Docker deployment with two image options and multiple deploymen
 - [Configuration](#configuration)
 - [Matrix Authentication](#matrix-authentication)
 - [Make Commands Reference](#make-commands-reference)
-- [Connection Types](#connection-types)
+- [Connection Type Examples](#connection-type-examples)
 - [Data Persistence](#data-persistence)
 - [Troubleshooting](#troubleshooting)
 - [Complete Docker Example](#complete-docker-example)
 - [Updates](#updates)
+- [Advanced Configuration](#advanced-configuration)
 
 ## Prerequisites
 
@@ -38,7 +39,7 @@ nano ~/.mmrelay/config.yaml
 
 # 3. Set up environment and get docker-compose file
 export MMRELAY_HOME=$HOME
-echo 'MMRELAY_HOME=$HOME' > .env
+grep -q '^MMRELAY_HOME=' .env 2>/dev/null || echo 'MMRELAY_HOME=$HOME' >> .env
 curl -o docker-compose.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/src/mmrelay/tools/sample-docker-compose-prebuilt.yaml
 docker compose up -d
 
@@ -100,8 +101,6 @@ For users who prefer web-based Docker management:
        volumes:
          - /home/yourusername/.mmrelay/config.yaml:/app/config.yaml:ro
          - /home/yourusername/.mmrelay:/app/data # credentials.json, E2EE store, logs, DB
-       ports:
-         - "4403:4403"
    ```
    Replace `/home/yourusername` with your actual home directory.
 
@@ -275,10 +274,8 @@ docker compose exec mmrelay bash
 
 **TCP (recommended):**
 
-- Uses port mapping for cross-platform compatibility
-- Set `meshtastic.host` in ~/.mmrelay/config.yaml
-- Meshtastic typically uses port 4403 for TCP connections
-- Container exposes port 4403 to host
+- Set `meshtastic.host` (and optional `port`, default 4403) in `~/.mmrelay/config.yaml`
+- No Docker port mapping is required; MMRelay connects outbound to the device
 
 **Serial:**
 
@@ -299,7 +296,7 @@ Uses the same directories as standalone installation:
 - **Data Directory**: `~/.mmrelay/` (mounted to `/app/data`). This directory on your host will contain subdirectories for the database (`data/`), logs (`logs/`), and plugins.
 
 **Volume Mounting Explanation:**
-The Docker compose files mount `~/.mmrelay/` to `/app/data` which contains all persistent data (database, logs, plugins). The config file is also mounted separately to `/app/config.yaml` for clarity, even though it's technically accessible via the data mount. This dual mounting ensures the container can find the config file at the expected location.
+The Docker compose files mount `~/.mmrelay/` to `/app/data` and bind `config.yaml` to `/app/config.yaml` (read-only). On SELinux systems, add `:Z` to volume options to label mounts correctly, e.g., `/app/config.yaml:ro,Z` and `/app/data:Z`.
 
 This means your Docker and standalone installations share the same data!
 
