@@ -123,6 +123,9 @@ jobs:
               mkdir -p /opt/wheels && \
               echo "Building Pillow (TIFF disabled)" && \
               PILLOW_FEATURES="--disable-tiff" pip wheel -v -w /opt/wheels Pillow==11.3.0 && \
+              echo "Repairing Pillow wheel to vendor libjpeg/libpng/libfreetype if needed" && \
+              SHIP_WHEEL=$(ls /opt/wheels/Pillow-*.whl | head -n1) && \
+              (auditwheel repair "$SHIP_WHEEL" -w /opt/wheels && rm -f "$SHIP_WHEEL") || true && \
               echo "Building remaining wheels" && \
               printf "%s\n" \
                 matplotlib==3.10.1 \
