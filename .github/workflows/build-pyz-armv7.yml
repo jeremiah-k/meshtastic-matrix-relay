@@ -64,11 +64,34 @@ jobs:
               }
             fi
 
-            echo "=== Installing remaining requirements (prefer prebuilt wheels) ==="
-            export PIP_FIND_LINKS=/opt/wheels
+            echo "=== Installing core requirements from local wheelhouse first (no index) ==="
+            export WHEELHOUSE=/opt/wheels
+            # Force-install our repaired Pillow and heavy wheels from the wheelhouse
+            pip install --no-index --find-links "$WHEELHOUSE" \
+              Pillow==11.3.0 numpy==2.2.6 matplotlib==3.10.1 \
+              kiwisolver==1.4.9 contourpy==1.3.2 dbus-fast==2.44.3 \
+              psutil==7.0.0 pyyaml==6.0.2
+
+            echo "=== Installing remaining requirements (with index, prefer local) ==="
+            export PIP_FIND_LINKS="$WHEELHOUSE"
             pip install -r requirements.txt
+
             echo "=== Installing E2EE requirements (python-olm, nio[e2e]) ==="
             pip install -r requirements-e2e.txt
+
+            echo "=== Verifying Pillow install source and codec support ==="
+            python - << 'PY'
+            import pkgutil, PIL, subprocess, sys
+            import PIL.features as F
+            import importlib
+            print('Pillow version:', PIL.__version__)
+            try:
+                w = importlib.import_module('PIL._imaging')
+                print('PIL._imaging:', w.__file__)
+            except Exception as e:
+                print('Failed importing PIL._imaging:', e)
+            print('JPEG support:', F.check_feature('jpg'))
+            PY
             mkdir -p dist
 
             echo "=== Verifying rpds-py installation ==="
