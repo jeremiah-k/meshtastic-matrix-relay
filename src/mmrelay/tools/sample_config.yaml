@@ -59,7 +59,7 @@ meshtastic:
 
   # Message prefix customization (Matrix → Meshtastic direction)
   #prefix_enabled: true # Enable username prefixes on messages sent to mesh (e.g., "Alice[M]: message")
-  #prefix_format: "{display5}[M]: " # Default format. See EXTRA_CONFIGURATION.md for all variables.
+  #prefix_format: "{display5}[M]: " # Default format. See ADVANCED_CONFIGURATION.md for all variables.
 
 logging:
   level: info
