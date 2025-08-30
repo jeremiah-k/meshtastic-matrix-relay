@@ -389,7 +389,7 @@ services:
     container_name: meshtastic-matrix-relay
     restart: unless-stopped
     volumes:
-      - ~/.mmrelay:/app/data
+      - ${MMRELAY_HOME}/.mmrelay:/app/data
 ```
 
 #### Step 4: Start the container
@@ -442,9 +442,10 @@ meshtastic:
   ble_address: "AA:BB:CC:DD:EE:FF"  # Your device's MAC address
 ```
 
-For BLE connections, add privileged mode to docker-compose.yaml:
+For BLE connections, add privileged mode and host networking to docker-compose.yaml:
 ```yaml
-privileged: true  # Required for BLE access
+privileged: true
+network_mode: host
 ```
 
 
