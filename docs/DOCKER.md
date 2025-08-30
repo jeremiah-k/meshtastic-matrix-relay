@@ -214,8 +214,12 @@ matrix:
 
 ```yaml
 volumes:
-  - ${MMRELAY_HOME}/.mmrelay/config.yaml:/app/config.yaml:ro
-  - ${MMRELAY_HOME}/.mmrelay:/app/data
+  # For SELinux systems, add :Z
+  - ${MMRELAY_HOME:-$HOME}/.mmrelay/config.yaml:/app/config.yaml:ro,Z
+  - ${MMRELAY_HOME:-$HOME}/.mmrelay:/app/data:Z
+  # Non-SELinux:
+  # - ${MMRELAY_HOME:-$HOME}/.mmrelay/config.yaml:/app/config.yaml:ro
+  # - ${MMRELAY_HOME:-$HOME}/.mmrelay:/app/data
 ```
 
 ### Authentication Precedence
@@ -280,7 +284,9 @@ Configure your Meshtastic connection in `~/.mmrelay/config.yaml`:
 meshtastic:
   connection_type: tcp
   host: 192.168.1.100 # Your Meshtastic device IP
-  port: 4403 # Default Meshtastic TCP port
+  port: 4403          # Default Meshtastic TCP port
+# Note: MMRelay initiates an outbound TCP connection to the device;
+# you do not need a `ports:` mapping in docker-compose.
 ```
 
 **Serial Connection:**

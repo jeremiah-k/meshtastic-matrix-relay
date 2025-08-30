@@ -256,7 +256,7 @@ Use environment variables **only** when:
 | `MMRELAY_MESHTASTIC_MESHNET_NAME`      | `meshtastic.meshnet_name`      | string  | Display name for mesh                            |
 | `MMRELAY_MESHTASTIC_MESSAGE_DELAY`     | `meshtastic.message_delay`     | float   | Delay between messages in seconds (minimum: 2.0) |
 | `MMRELAY_LOGGING_LEVEL`                | `logging.level`                | string  | Log level (`debug`, `info`, `warning`, `error`, `critical`) |
-| `MMRELAY_LOG_FILE`                     | `logging.file`                 | string  | Log file path                                    |
+| `MMRELAY_LOG_FILE`                     | `logging.filename`             | string  | Log file path                                    |
 | `MMRELAY_DATABASE_PATH`                | `database.path`                | string  | SQLite database path                             |
 
 ## Tips for Advanced Configuration
