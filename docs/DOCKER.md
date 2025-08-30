@@ -484,4 +484,4 @@ make rebuild    # Stop, rebuild with fresh code, and restart
 
 ## Advanced Configuration
 
-For additional configuration options like message formatting and debug logging, see [Advanced Configuration](ADVANCED_CONFIGURATION.md).
+For additional configuration options like message formatting, debug logging, and environment variable overrides, see [Advanced Configuration](ADVANCED_CONFIGURATION.md).

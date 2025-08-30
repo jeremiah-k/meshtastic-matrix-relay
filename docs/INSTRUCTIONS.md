@@ -111,7 +111,7 @@ On Linux/macOS: `chmod 600 ~/.mmrelay/config.yaml`. On Windows: use file Propert
 - **Always use `mmrelay auth login` for Matrix authentication** (standard method, required for E2EE)
 - Configure your Meshtastic connection details in the config file
 - For advanced setups, check the plugin configuration options
-- For advanced features like message prefix customization and debug logging, see the [Advanced Configuration Guide](ADVANCED_CONFIGURATION.md)
+- For advanced features like message prefix customization, debug logging, and environment variable overrides, see the [Advanced Configuration Guide](ADVANCED_CONFIGURATION.md)
 - For E2EE setup and troubleshooting, see the [E2EE Guide](E2EE.md)
 
 ## Running MMRelay

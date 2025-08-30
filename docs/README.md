@@ -10,7 +10,7 @@ Welcome to the MMRelay documentation! This directory contains comprehensive guid
 
 ## Advanced Configuration
 
-- **[Advanced Configuration](ADVANCED_CONFIGURATION.md)** - Advanced features like message prefixes, debug logging, and plugins
+- **[Advanced Configuration](ADVANCED_CONFIGURATION.md)** - Advanced features like message prefixes, debug logging, environment variables, and plugins
 
 ## File Locations
 
