@@ -1,5 +1,5 @@
-name: Build PYZ (armv7)
-run-name: Build PYZ (armv7)
+name: Build PYZ (femtofox-armv7)
+run-name: Build PYZ (femtofox-armv7)
 
 on:
   workflow_dispatch:
@@ -11,7 +11,7 @@ permissions:
   actions: read
 
 jobs:
-  build-armv7-pyz:
+  build-femtofox-armv7-pyz:
     runs-on: ubuntu-latest
 
     steps:
@@ -39,10 +39,10 @@ jobs:
             echo "FILE_VERSION=$VERSION-dev-$GIT_SHA" >> $GITHUB_ENV
           fi
 
-      - name: Build inside ARMv7 Docker (using pre-built builder)
+      - name: Build inside Femtofox Docker (using pre-built builder)
         uses: addnab/docker-run-action@v3
         with:
-          image: ghcr.io/jeremiah-k/mmrelay-builder-armv7:latest
+          image: ghcr.io/jeremiah-k/mmrelay-femtofox-builder:latest
           options: --platform linux/arm/v7 -v ${{ github.workspace }}:/github/workspace -w /github/workspace
           run: |
             echo "=== Using pre-built ARMv7 environment ==="
@@ -81,19 +81,19 @@ jobs:
                 print('Continuing with fallback versions...')
             "
 
-            echo "=== Building PYZ file (py310 ABI) ==="
+            echo "=== Building PYZ file (femtofox-armv7, py310 ABI) ==="
             # Use a py310 shebang so the script executes with Python 3.10 on target devices
             python -m shiv --compressed \
               --compile-pyc \
               --reproducible \
               -p "/usr/bin/env python3.10" \
               --entry-point mmrelay.cli:main \
-              --output-file dist/mmrelay-${{ env.FILE_VERSION }}-armv7.pyz \
+              --output-file dist/mmrelay-${{ env.FILE_VERSION }}-femtofox-armv7.pyz \
               .
 
             echo "=== Testing PYZ file ==="
-            chmod +x dist/mmrelay-${{ env.FILE_VERSION }}-armv7.pyz
-            if ! dist/mmrelay-${{ env.FILE_VERSION }}-armv7.pyz --version; then
+            chmod +x dist/mmrelay-${{ env.FILE_VERSION }}-femtofox-armv7.pyz
+            if ! dist/mmrelay-${{ env.FILE_VERSION }}-femtofox-armv7.pyz --version; then
               echo "❌ PYZ test failed - the built file cannot execute properly"
               exit 1
             fi
@@ -102,7 +102,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: mmrelay-${{ env.FILE_VERSION }}-armv7
+          name: mmrelay-${{ env.FILE_VERSION }}-femtofox-armv7
           path: dist/*.pyz
 
       - name: Upload PYZ to GitHub Release

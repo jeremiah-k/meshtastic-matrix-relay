@@ -1,5 +1,5 @@
-name: Build ARMv7 Builder Image
-run-name: Build ARMv7 Builder Image
+name: Build Femtofox Builder Image
+run-name: Build Femtofox Builder Image
 
 on:
   workflow_dispatch:
@@ -15,7 +15,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: jeremiah-k/mmrelay-builder-armv7
+  IMAGE_NAME: jeremiah-k/mmrelay-femtofox-builder
 
 permissions:
   contents: read
@@ -96,7 +96,7 @@ jobs:
               wheel==0.45.1 \
               maturin==1.7.4 \
               shiv==1.0.6 \
-              auditwheel==5.5.0
+              auditwheel==6.4.2
 
           # Reduce accidental dynamic linking to image codecs that may not exist on target
           # Remove libtiff if present so Pillow wheels built here do not link to it (keep JPEG)
@@ -155,8 +155,8 @@ jobs:
           WORKDIR /workspace
 
           # Add container metadata
-          LABEL org.opencontainers.image.title="MMRelay ARMv7 Builder" \
-                org.opencontainers.image.description="Pre-configured build environment for MMRelay ARMv7 PYZ builds with Rust cross-compilation support" \
+          LABEL org.opencontainers.image.title="MMRelay Femtofox Builder" \
+                org.opencontainers.image.description="Pre-configured build environment for MMRelay Femtofox (ARMv7, Ubuntu 22.04) PYZ builds with Rust/E2EE support" \
                 org.opencontainers.image.source="https://github.com/jeremiah-k/meshtastic-matrix-relay" \
                 org.opencontainers.image.licenses="GPL-3.0-or-later"
 
@@ -164,7 +164,7 @@ jobs:
           CMD ["/bin/bash"]
           EOF
 
-      - name: Build and push ARMv7 builder image
+      - name: Build and push Femtofox builder image
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -180,7 +180,7 @@ jobs:
 
       - name: Output build information
         run: |
-          echo "✅ ARMv7 builder image built successfully!"
+          echo "✅ Femtofox builder image built successfully!"
           echo "🐳 Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
           echo "📦 Tags: ${{ steps.meta.outputs.tags }}"
           echo ""
