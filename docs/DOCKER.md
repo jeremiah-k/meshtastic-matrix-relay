@@ -388,6 +388,7 @@ services:
     image: ghcr.io/jeremiah-k/mmrelay:latest
     container_name: meshtastic-matrix-relay
     restart: unless-stopped
+    user: "${UID:-1000}:${GID:-1000}"
     volumes:
       - ${MMRELAY_HOME}/.mmrelay/config.yaml:/app/config.yaml:ro
       - ${MMRELAY_HOME}/.mmrelay:/app/data
