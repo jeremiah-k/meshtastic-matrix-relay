@@ -16,4 +16,4 @@ services:
       # For non-SELinux systems, you can use:
       # - ${MMRELAY_HOME:-$HOME}/.mmrelay/config.yaml:/app/config.yaml:ro
       # - ${MMRELAY_HOME:-$HOME}/.mmrelay:/app/data
-      # Tip: ensure MMRELAY_HOME is exported or present in .env
+      # Tip: For correct permissions and paths, ensure UID, GID, and MMRELAY_HOME are set in a .env file or exported
