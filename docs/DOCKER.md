@@ -6,7 +6,6 @@ MMRelay supports Docker deployment with two image options and multiple deploymen
 
 - [Prerequisites](#prerequisites)
 - [Quick Start (Recommended)](#quick-start-recommended)
-- [Non-Interactive Authentication](#non-interactive-authentication)
 - [Deployment Methods](#deployment-methods)
   - [Prebuilt Images with Make](#prebuilt-images-with-make)
   - [Portainer/GUI Tools](#portainergui-tools)
@@ -49,36 +48,7 @@ docker compose logs -f
 
 **That's it!** Your MMRelay is now running with the official prebuilt image.
 
-## Non-Interactive Authentication
 
-For Docker deployments where interactive authentication isn't possible, MMRelay supports automatic credentials creation from your config file:
-
-1. **Edit your config.yaml** and add your Matrix password:
-
-   ```yaml
-   matrix:
-     homeserver: https://your-matrix-server.org
-     bot_user_id: "@your-bot:your-matrix-server.org"
-     password: your_matrix_password_here # Add this line
-   ```
-
-2. **Remove or comment out** the `access_token` line if present
-
-3. **Start the container** - MMRelay will automatically:
-   - Log in to Matrix using your password
-   - Create `credentials.json` with secure session tokens
-   - Enable E2EE support if configured
-   - Continue normal operation
-
-This method is ideal for:
-
-- Docker deployments without interactive terminals
-- Automated deployments and CI/CD pipelines
-- Users who haven't cloned the repository
-- Environments without Python installed locally
-
-**Security Note**: The password is only used once during initial setup to create `credentials.json`. For enhanced security, remove the `password` field from your `config.yaml` after the first successful startup. On SSO/OIDC-only homeservers (password logins disabled), this method will fail — run `mmrelay auth login` on your host to create `~/.mmrelay/credentials.json`, then mount `~/.mmrelay:/app/data` in Docker.
-Additionally, restrict file permissions so only your user can read it:
 
 ```bash
 chmod 600 ~/.mmrelay/config.yaml
@@ -224,9 +194,9 @@ mmrelay auth login
 - **Convenience**: No manual token capture from browser sessions required
 - **Secure Storage**: Credentials stored with restricted file permissions (600 on Unix systems)
 
-### Password-based Authentication in config.yaml
+### Password-based Authentication (Non-Interactive)
 
-Alternative authentication method using a password for automatic credential creation.
+Alternative authentication method for Docker deployments where interactive authentication isn't possible. This method uses a password in config.yaml for automatic credential creation.
 
 ```yaml
 # In your config.yaml file
@@ -236,9 +206,26 @@ matrix:
   bot_user_id: @yourbot:example.org
 ```
 
-Note: This method automatically creates `credentials.json` on startup and is compatible with Matrix 2.0/MAS. See the earlier Features list for capabilities; apply the same operational hardening (read-only config bind mount, restrictive file perms).
+**How it works:**
 
-Compose tip:
+1. **Add password to config.yaml** as shown above
+2. **Remove or comment out** any `access_token` line if present
+3. **Start the container** - MMRelay will automatically:
+   - Log in to Matrix using your password
+   - Create `credentials.json` with secure session tokens
+   - Enable E2EE support if configured
+   - Continue normal operation
+
+**This method is ideal for:**
+
+- Docker deployments without interactive terminals
+- Automated deployments and CI/CD pipelines
+- Users who haven't cloned the repository
+- Environments without Python installed locally
+
+**Security Note:** The password is only used once during initial setup to create `credentials.json`. For enhanced security, remove the `password` field from your `config.yaml` after the first successful startup. On SSO/OIDC-only homeservers (password logins disabled), this method will fail — use the auth system method instead.
+
+**Docker Compose tip:**
 
 ```yaml
 volumes:
@@ -545,13 +532,21 @@ plugins:
 services:
   mmrelay:
     image: ghcr.io/jeremiah-k/mmrelay:latest
+    container_name: meshtastic-matrix-relay
+    restart: unless-stopped
+    user: "${UID:-1000}:${GID:-1000}"
     environment:
+      - TZ=UTC
+      - PYTHONUNBUFFERED=1
+      - MPLCONFIGDIR=/tmp/matplotlib
       # Override specific config.yaml settings as needed
       - MMRELAY_MESHTASTIC_HOST=192.168.1.100
       - MMRELAY_MESHTASTIC_PORT=4403
       - MMRELAY_LOGGING_LEVEL=INFO
     volumes:
       - ${MMRELAY_HOME}/.mmrelay:/app/data
+    ports:
+      - "4403:4403"  # For TCP connections
 ```
 
 **Note:** Environment variables override corresponding config.yaml settings when present. This provides flexibility while keeping most configuration in the file.
