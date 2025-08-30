@@ -14,7 +14,7 @@ MMRelay supports Docker deployment with two image options and multiple deploymen
 - [Configuration](#configuration)
 - [Matrix Authentication](#matrix-authentication)
 - [Make Commands Reference](#make-commands-reference)
-- [Connection Type Examples](#connection-type-examples)
+- [Connection Types](#connection-types)
 - [Data Persistence](#data-persistence)
 - [Troubleshooting](#troubleshooting)
 - [Complete Docker Example](#complete-docker-example)
@@ -270,21 +270,48 @@ docker compose exec mmrelay bash
 
 ## Connection Types
 
-**TCP (recommended):**
+Configure your Meshtastic connection in `~/.mmrelay/config.yaml`:
 
-- Set `meshtastic.host` (and optional `port`, default 4403) in `~/.mmrelay/config.yaml`
-- No Docker port mapping is required; MMRelay connects outbound to the device
+**TCP Connection (recommended):**
 
-**Serial:**
+```yaml
+meshtastic:
+  connection_type: tcp
+  host: 192.168.1.100 # Your Meshtastic device IP
+  port: 4403 # Default Meshtastic TCP port
+```
 
-- Uncomment device mapping in docker-compose.yaml
-- Set `meshtastic.serial_port` in ~/.mmrelay/config.yaml
+**Serial Connection:**
 
-**BLE:**
+```yaml
+meshtastic:
+  connection_type: serial
+  serial_port: /dev/ttyUSB0 # Your serial device path
+```
 
-- Uncomment the BLE section in docker-compose.yaml (includes privileged mode, host networking, and D-Bus access)
-- Set `meshtastic.ble_address` in ~/.mmrelay/config.yaml
-- Note: BLE requires host networking mode which may affect port isolation
+For serial connections, add device mapping to docker-compose.yaml:
+
+```yaml
+devices:
+  - /dev/ttyUSB0:/dev/ttyUSB0
+```
+
+**BLE Connection:**
+
+```yaml
+meshtastic:
+  connection_type: ble
+  ble_address: "AA:BB:CC:DD:EE:FF" # Your device's MAC address
+```
+
+For BLE connections, add to docker-compose.yaml:
+
+```yaml
+network_mode: host # Required for BLE/D-Bus
+privileged: true # Required for BLE access
+volumes:
+  - /var/run/dbus:/var/run/dbus:ro
+```
 
 ## Data Persistence
 
@@ -422,51 +449,6 @@ Look for messages like:
 - "End-to-End Encryption (E2EE) is enabled"
 - "Using credentials from ~/.mmrelay/credentials.json"
 - "Found X encrypted rooms out of Y total rooms"
-
-## Connection Type Examples
-
-Configure your Meshtastic connection in `~/.mmrelay/config.yaml`:
-
-**TCP Connection (recommended):**
-
-```yaml
-meshtastic:
-  connection_type: tcp
-  host: 192.168.1.100 # Your Meshtastic device IP
-  port: 4403 # Default Meshtastic TCP port
-```
-
-**Serial Connection:**
-
-```yaml
-meshtastic:
-  connection_type: serial
-  serial_port: /dev/ttyUSB0 # Your serial device path
-```
-
-For serial connections, add device mapping to docker-compose.yaml:
-
-```yaml
-devices:
-  - /dev/ttyUSB0:/dev/ttyUSB0
-```
-
-**BLE Connection:**
-
-```yaml
-meshtastic:
-  connection_type: ble
-  ble_address: "AA:BB:CC:DD:EE:FF" # Your device's MAC address
-```
-
-For BLE connections, add to docker-compose.yaml:
-
-```yaml
-network_mode: host # Required for BLE/D-Bus
-privileged: true # Required for BLE access
-volumes:
-  - /var/run/dbus:/var/run/dbus:ro
-```
 
 ## Updates
 
