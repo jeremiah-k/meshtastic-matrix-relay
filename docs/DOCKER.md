@@ -395,7 +395,7 @@ services:
 
 ```bash
 export MMRELAY_HOME=$HOME
-echo 'MMRELAY_HOME=$HOME' > .env
+grep -q '^MMRELAY_HOME=' .env 2>/dev/null || echo 'MMRELAY_HOME=$HOME' >> .env
 docker compose up -d
 docker compose logs -f
 ```
