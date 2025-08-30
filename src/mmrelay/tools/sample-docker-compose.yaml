@@ -7,7 +7,10 @@ services:
     volumes:
       # Mount your config directory - create ~/.mmrelay/config.yaml first
       # Run 'make config' to set up the files
-      # Mount config.yaml read-only at the canonical in-container path
+      # For SELinux systems (RHEL/CentOS/Fedora), add :Z flag to prevent permission denied errors
       - ${MMRELAY_HOME:-$HOME}/.mmrelay/config.yaml:/app/config.yaml:ro,Z
       - ${MMRELAY_HOME:-$HOME}/.mmrelay:/app/data:Z
+      # For non-SELinux systems, you can use:
+      # - ${MMRELAY_HOME:-$HOME}/.mmrelay/config.yaml:/app/config.yaml:ro
+      # - ${MMRELAY_HOME:-$HOME}/.mmrelay:/app/data
       # Tip: ensure MMRELAY_HOME is exported or present in .env

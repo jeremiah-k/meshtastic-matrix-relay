@@ -38,7 +38,7 @@ curl -Lo ~/.mmrelay/config.yaml https://raw.githubusercontent.com/jeremiah-k/mes
 nano ~/.mmrelay/config.yaml
 
 # 3. Set up environment and get docker-compose file
-export MMRELAY_HOME=$HOME
+# The following command safely adds MMRELAY_HOME to your .env file if it's not already there
 grep -q '^MMRELAY_HOME=' .env 2>/dev/null || echo 'MMRELAY_HOME=$HOME' >> .env
 curl -o docker-compose.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/src/mmrelay/tools/sample-docker-compose-prebuilt.yaml
 docker compose up -d
@@ -423,7 +423,7 @@ services:
 ### Step 4: Start the container
 
 ```bash
-export MMRELAY_HOME=$HOME
+# The following command safely adds MMRELAY_HOME to your .env file if it's not already there
 grep -q '^MMRELAY_HOME=' .env 2>/dev/null || echo 'MMRELAY_HOME=$HOME' >> .env
 docker compose up -d
 docker compose logs -f
