@@ -321,7 +321,7 @@ Uses the same directories as standalone installation:
 - **Data Directory**: `~/.mmrelay/` (mounted to `/app/data`). This directory on your host will contain subdirectories for the database (`data/`), logs (`logs/`), and plugins.
 
 **Volume Mounting Explanation:**
-The Docker compose files mount `~/.mmrelay/` to `/app/data` and bind `config.yaml` to `/app/config.yaml` (read-only). On SELinux systems, add `:Z` to volume options to label mounts correctly, e.g., `/app/config.yaml:ro,Z` and `/app/data:Z`.
+The Docker compose files mount `~/.mmrelay/` to `/app/data` for persistent data and separately bind-mount `config.yaml` to `/app/config.yaml` (read-only). This dual-mounting pattern ensures the container can find the config file at its expected canonical path, while keeping all other data in a single directory. On SELinux systems, add `:Z` to volume options to label mounts correctly, e.g., `/app/config.yaml:ro,Z` and `/app/data:Z`.
 
 This means your Docker and standalone installations share the same data!
 
