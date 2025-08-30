@@ -1,4 +1,4 @@
-# Extra Configuration Options
+# Advanced Configuration Options
 
 This document covers advanced configuration options for MMRelay that go beyond the basic setup covered in the main [Installation Guide](INSTRUCTIONS.md).
 
