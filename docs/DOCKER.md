@@ -49,8 +49,6 @@ docker compose logs -f
 
 **That's it!** Your MMRelay is now running with the official prebuilt image.
 
-
-
 ```bash
 chmod 600 ~/.mmrelay/config.yaml
 ```
@@ -139,12 +137,14 @@ docker compose logs -f
 MMRelay uses a single configuration file: `~/.mmrelay/config.yaml`. All settings are configured in this file, which is mounted into the Docker container.
 
 **Benefits:**
+
 - All settings in one place
 - Easy to track changes and version control
 - Simple to back up and restore
 - No complex environment variable management
 
 **Setup:**
+
 1. Download the sample config: `curl -Lo ~/.mmrelay/config.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/src/mmrelay/tools/sample_config.yaml`
 2. Edit the file: `nano ~/.mmrelay/config.yaml`
 3. Configure your Matrix rooms, Meshtastic connection, and other settings
@@ -222,8 +222,6 @@ MMRelay checks for authentication in this order:
 
 1. **`credentials.json`** (from auth system) - full features
 2. **`config.yaml` matrix section (password-based)** - automatic credential creation; E2EE supported when dependencies are available
-
-
 
 ## Make Commands Reference
 
@@ -401,6 +399,7 @@ docker compose logs -f
 ```
 
 **This provides:**
+
 - E2EE support for encrypted Matrix rooms
 - Persistent device identity (no "new device" notifications)
 - All configuration in one file (`config.yaml`)
@@ -429,8 +428,8 @@ Configure your Meshtastic connection in `~/.mmrelay/config.yaml`:
 ```yaml
 meshtastic:
   connection_type: tcp
-  host: 192.168.1.100  # Your Meshtastic device IP
-  port: 4403           # Default Meshtastic TCP port
+  host: 192.168.1.100 # Your Meshtastic device IP
+  port: 4403 # Default Meshtastic TCP port
 ```
 
 **Serial Connection:**
@@ -438,10 +437,11 @@ meshtastic:
 ```yaml
 meshtastic:
   connection_type: serial
-  serial_port: /dev/ttyUSB0  # Your serial device path
+  serial_port: /dev/ttyUSB0 # Your serial device path
 ```
 
 For serial connections, add device mapping to docker-compose.yaml:
+
 ```yaml
 devices:
   - /dev/ttyUSB0:/dev/ttyUSB0
@@ -452,18 +452,17 @@ devices:
 ```yaml
 meshtastic:
   connection_type: ble
-  ble_address: "AA:BB:CC:DD:EE:FF"  # Your device's MAC address
+  ble_address: "AA:BB:CC:DD:EE:FF" # Your device's MAC address
 ```
 
 For BLE connections, add to docker-compose.yaml:
+
 ```yaml
-network_mode: host   # Required for BLE/D-Bus
-privileged: true     # Required for BLE access
+network_mode: host # Required for BLE/D-Bus
+privileged: true # Required for BLE access
 volumes:
   - /var/run/dbus:/var/run/dbus:ro
 ```
-
-
 
 ## Updates
 
