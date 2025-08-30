@@ -3,78 +3,17 @@ services:
     image: ghcr.io/jeremiah-k/mmrelay:latest
     container_name: meshtastic-matrix-relay
     restart: unless-stopped
+    stop_grace_period: 30s
     user: "${UID:-1000}:${GID:-1000}"
-
     environment:
-      - TZ=UTC
-      - PYTHONUNBUFFERED=1
-      - MPLCONFIGDIR=/tmp/matplotlib
-
-      # Matrix Authentication: Use 'mmrelay auth login' on host system to create credentials.json
-      # The credentials file will be automatically loaded from the volume mount below
-
-      # Meshtastic Connection Settings - Uncomment and configure as needed
-      # TCP Connection (most common)
-      # - MMRELAY_MESHTASTIC_CONNECTION_TYPE=tcp
-      # - MMRELAY_MESHTASTIC_HOST=192.168.1.100
-      # - MMRELAY_MESHTASTIC_PORT=4403  # Default port
-
-      # Serial Connection (uncomment for serial)
-      # - MMRELAY_MESHTASTIC_CONNECTION_TYPE=serial
-      # - MMRELAY_MESHTASTIC_SERIAL_PORT=/dev/ttyUSB0
-
-      # BLE Connection (uncomment for Bluetooth)
-      # - MMRELAY_MESHTASTIC_CONNECTION_TYPE=ble
-      # - MMRELAY_MESHTASTIC_BLE_ADDRESS=AA:BB:CC:DD:EE:FF
-
-      # Meshtastic Operational Settings
-      # - MMRELAY_MESHTASTIC_BROADCAST_ENABLED=true
-      # - MMRELAY_MESHTASTIC_MESHNET_NAME=My Mesh Network
-      # - MMRELAY_MESHTASTIC_MESSAGE_DELAY=2.2  # Minimum 2.0 seconds
-
-      # System Configuration
-      # - MMRELAY_LOGGING_LEVEL=INFO  # DEBUG, INFO, WARNING, ERROR, CRITICAL
-      # - MMRELAY_LOG_FILE=/app/data/logs/mmrelay.log  # Enables file logging
-      # - MMRELAY_DATABASE_PATH=/app/data/meshtastic.sqlite
-
-      # Note: Environment variables for Meshtastic, logging, and database settings take precedence over config.yaml
-
+      - TZ=UTC  # Set timezone (PYTHONUNBUFFERED and MPLCONFIGDIR are set in Dockerfile)
     volumes:
-      # Map entire ~/.mmrelay directory to /app/data to maintain proper structure
-      # This includes config.yaml, plugins/, data/, logs/, credentials.json, and any other subdirectories
-      # The --data-dir parameter in CMD points to /app/data
-      # Create config.yaml first - see docs/DOCKER.md for setup instructions
-      - ${MMRELAY_HOME}/.mmrelay:/app/data
-
-    # For TCP connections (most common) - Meshtastic typically uses port 4403
-    ports:
-      - 4403:4403
-
-    # For serial connections, uncomment the device you need:
-    # devices:
-    #   - /dev/ttyUSB0:/dev/ttyUSB0
-    #   - /dev/ttyACM0:/dev/ttyACM0
-
-    # For BLE connections, uncomment these:
-    # privileged: true
-    # network_mode: host
-    # Additional volumes for BLE (add to existing volumes section above):
-    #   - /var/run/dbus:/var/run/dbus:ro
-    #   - /sys/bus/usb:/sys/bus/usb:ro
-    #   - /sys/class/bluetooth:/sys/class/bluetooth:ro
-    #   - /sys/devices:/sys/devices:ro
-
-  # Optional: Watchtower for automatic updates
-  # Uncomment this service to enable daily checks for new images
-  # watchtower:
-  #   image: containrrr/watchtower:latest
-  #   container_name: watchtower-mmrelay
-  #   restart: unless-stopped
-  #   volumes:
-  #     - /var/run/docker.sock:/var/run/docker.sock
-  #   environment:
-  #     - WATCHTOWER_CLEANUP=true
-  #     - WATCHTOWER_INCLUDE_STOPPED=true
-  #     - WATCHTOWER_SCHEDULE=0 0 2 * * *  # Daily at 2 AM
-  #     - WATCHTOWER_TIMEOUT=30s
-  #   command: meshtastic-matrix-relay
+      # Mount your config directory - create ~/.mmrelay/config.yaml first
+      # See docs/DOCKER.md for setup instructions
+      # For SELinux systems (RHEL/CentOS/Fedora), add :Z flag to prevent permission denied errors
+      - ${MMRELAY_HOME:-$HOME}/.mmrelay/config.yaml:/app/config.yaml:ro,Z
+      - ${MMRELAY_HOME:-$HOME}/.mmrelay:/app/data:Z
+      # For non-SELinux systems, you can use:
+      # - ${MMRELAY_HOME:-$HOME}/.mmrelay/config.yaml:/app/config.yaml:ro
+      # - ${MMRELAY_HOME:-$HOME}/.mmrelay:/app/data
+      # Tip: For correct permissions and paths, ensure UID, GID, and MMRELAY_HOME are set in a .env file or exported
