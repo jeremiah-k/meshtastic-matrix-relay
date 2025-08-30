@@ -223,7 +223,7 @@ These environment variables can override config.yaml settings:
 
 - **Scattered configuration** - Settings spread across multiple places
 - **Harder to troubleshoot** - Must check both config file and environment
-- **Security concerns** - Values visible in process lists and container inspection
+- **Security concerns** - Values visible in process lists and `docker inspect`
 - **No validation** - Typos in variable names fail silently
 
 ### When Environment Variables Make Sense
