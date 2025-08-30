@@ -385,8 +385,12 @@ services:
     restart: unless-stopped
     user: "${UID:-1000}:${GID:-1000}"
     volumes:
-      - ${MMRELAY_HOME}/.mmrelay/config.yaml:/app/config.yaml:ro
-      - ${MMRELAY_HOME}/.mmrelay:/app/data
+      # For SELinux systems (RHEL/CentOS/Fedora), add :Z flag to prevent permission denied errors
+      - ${MMRELAY_HOME:-$HOME}/.mmrelay/config.yaml:/app/config.yaml:ro,Z
+      - ${MMRELAY_HOME:-$HOME}/.mmrelay:/app/data:Z
+      # For non-SELinux systems, you can use:
+      # - ${MMRELAY_HOME:-$HOME}/.mmrelay/config.yaml:/app/config.yaml:ro
+      # - ${MMRELAY_HOME:-$HOME}/.mmrelay:/app/data
 ```
 
 ### Step 4: Start the container
