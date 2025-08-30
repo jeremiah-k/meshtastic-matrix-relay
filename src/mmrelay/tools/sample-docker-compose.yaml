@@ -3,55 +3,7 @@ services:
     build: .
     container_name: meshtastic-matrix-relay
     restart: unless-stopped
-    user: "${UID:-1000}:${GID:-1000}"
-
-    environment:
-      - TZ=UTC
-      - PYTHONUNBUFFERED=1
-      - MPLCONFIGDIR=/tmp/matplotlib
-
-      # RECOMMENDED: Configure all settings in config.yaml (mounted below)
-      # This keeps all configuration in one place and makes it easy to track changes
-
-      # Matrix Authentication: Use 'mmrelay auth login' on host system to create credentials.json
-      # The credentials file will be automatically loaded from the volume mount below
-
-      # ADVANCED: Environment variable overrides (optional)
-      # These can override config.yaml settings for specific deployment scenarios
-      # Most users should configure these settings in config.yaml instead
-
-      # Meshtastic Connection Settings (configure in config.yaml instead)
-      # - MMRELAY_MESHTASTIC_CONNECTION_TYPE=tcp
-      # - MMRELAY_MESHTASTIC_HOST=192.168.1.100
-      # - MMRELAY_MESHTASTIC_PORT=4403
-
-      # System Configuration (configure in config.yaml instead)
-      # - MMRELAY_LOGGING_LEVEL=INFO
-      # - MMRELAY_DATABASE_PATH=/app/data/meshtastic.sqlite
-
-      # Note: Environment variables override config.yaml settings when present
-      # For most users, we recommend using config.yaml for all configuration
-
     volumes:
-      # Map entire ~/.mmrelay directory to /app/data to maintain proper structure
-      # This includes config.yaml (REQUIRED), plugins/, data/, logs/, credentials.json, and other subdirectories
-      # IMPORTANT: Create and configure ~/.mmrelay/config.yaml first with: make config
+      # Mount your config directory - create ~/.mmrelay/config.yaml first
+      # Run 'make config' to set up the files
       - ${MMRELAY_HOME}/.mmrelay:/app/data
-
-    # For TCP connections (most common) - Meshtastic typically uses port 4403
-    ports:
-      - 4403:4403
-
-    # For serial connections, uncomment the device you need:
-    # devices:
-    #   - /dev/ttyUSB0:/dev/ttyUSB0
-    #   - /dev/ttyACM0:/dev/ttyACM0
-
-    # For BLE connections, uncomment these:
-    # privileged: true
-    # network_mode: host
-    # Additional volumes for BLE (add to existing volumes section above):
-    #   - /var/run/dbus:/var/run/dbus:ro
-    #   - /sys/bus/usb:/sys/bus/usb:ro
-    #   - /sys/class/bluetooth:/sys/class/bluetooth:ro
-    #   - /sys/devices:/sys/devices:ro

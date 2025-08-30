@@ -11,15 +11,13 @@ MMRelay supports Docker deployment with two image options and multiple deploymen
   - [Portainer/GUI Tools](#portainergui-tools)
   - [Build from Source with Make](#build-from-source-with-make)
   - [Build from Source without Make](#build-from-source-without-make)
-- [Configuration Methods](#configuration-methods)
+- [Configuration](#configuration)
 - [Matrix Authentication](#matrix-authentication)
-- [Advanced: Environment Variable Reference](#advanced-environment-variable-reference)
 - [Make Commands Reference](#make-commands-reference)
 - [Connection Types](#connection-types)
 - [Data Persistence](#data-persistence)
 - [Troubleshooting](#troubleshooting)
-- [Complete Docker Examples](#complete-docker-examples)
-- [Connection Type Variants](#connection-type-variants)
+- [Complete Docker Example](#complete-docker-example)
 - [Updates](#updates)
 
 ## Prerequisites
@@ -38,7 +36,9 @@ curl -Lo ~/.mmrelay/config.yaml https://raw.githubusercontent.com/jeremiah-k/mes
 # 2. Edit your config
 nano ~/.mmrelay/config.yaml
 
-# 3. Get docker-compose file and start
+# 3. Set up environment and get docker-compose file
+export MMRELAY_HOME=$HOME
+echo 'MMRELAY_HOME=$HOME' > .env
 curl -o docker-compose.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/src/mmrelay/tools/sample-docker-compose-prebuilt.yaml
 docker compose up -d
 
@@ -135,36 +135,20 @@ docker compose logs -f
 
 **Note:** The `make config` command is still the easiest way to set up the files correctly. Building from source without any Make commands would require manually creating all configuration files and is not recommended.
 
-## Configuration Methods
+## Configuration
 
-MMRelay supports two configuration approaches for Docker deployments:
+MMRelay uses a single configuration file: `~/.mmrelay/config.yaml`. All settings are configured in this file, which is mounted into the Docker container.
 
-### Recommended: config.yaml (Primary Method)
+**Benefits:**
+- All settings in one place
+- Easy to track changes and version control
+- Simple to backup and restore
+- No complex environment variable management
 
-**This is the recommended approach for most users.** All settings are configured in `~/.mmrelay/config.yaml`, which is mounted into the container. This approach provides:
-
-- **Centralized configuration** - All settings in one file
-- **Easy change tracking** - Version control friendly
-- **Better security** - No secrets visible in `docker inspect`
-- **Simpler management** - Edit one file instead of multiple environment variables
-
-### Advanced: Environment Variables (Override Method)
-
-Environment variables can override specific config.yaml settings for advanced deployment scenarios like:
-
-- CI/CD pipelines with dynamic values
-- Container orchestration (Kubernetes, Docker Swarm)
-- Multi-environment deployments (dev/staging/prod)
-- External secrets management systems
-
-### Container Configuration Variables
-
-These environment variables control Docker container behavior (not MMRelay settings):
-
-- **`MMRELAY_HOME`**: Base directory for MMRelay data (default: `$HOME`)
-- **`UID`**: User ID for container permissions (default: `1000`)
-- **`GID`**: Group ID for container permissions (default: `1000`)
-- **`EDITOR`**: Preferred text editor for config editing (default: `nano`)
+**Setup:**
+1. Download the sample config: `curl -Lo ~/.mmrelay/config.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/src/mmrelay/tools/sample_config.yaml`
+2. Edit the file: `nano ~/.mmrelay/config.yaml`
+3. Configure your Matrix rooms, Meshtastic connection, and other settings
 
 ## Matrix Authentication
 
@@ -240,57 +224,7 @@ MMRelay checks for authentication in this order:
 1. **`credentials.json`** (from auth system) - full features
 2. **`config.yaml` matrix section (password-based)** - automatic credential creation; E2EE supported when dependencies are available
 
-## Advanced: Environment Variable Reference
 
-**For most users, configure these settings in config.yaml instead.** Environment variables are provided for advanced deployment scenarios where you need to override specific settings.
-
-**Important:** Environment variables override corresponding config.yaml settings when present. Use them only when you need dynamic configuration or environment-specific overrides.
-
-### Available Environment Variables
-
-These environment variables can override config.yaml settings:
-
-#### Meshtastic Connection Settings
-
-- **`MMRELAY_MESHTASTIC_CONNECTION_TYPE`**: Connection method (`tcp`, `serial`, or `ble`)
-- **`MMRELAY_MESHTASTIC_HOST`**: TCP host address (for `tcp` connections)
-- **`MMRELAY_MESHTASTIC_PORT`**: TCP port number (for `tcp` connections, default: 4403)
-- **`MMRELAY_MESHTASTIC_SERIAL_PORT`**: Serial device path (for `serial` connections, e.g., `/dev/ttyUSB0`)
-- **`MMRELAY_MESHTASTIC_BLE_ADDRESS`**: Bluetooth MAC address (for `ble` connections)
-
-#### Operational Settings
-
-- **`MMRELAY_MESHTASTIC_BROADCAST_ENABLED`**: Enable Matrix→Meshtastic messages (`true`/`false`)
-- **`MMRELAY_MESHTASTIC_MESHNET_NAME`**: Display name for the mesh network
-- **`MMRELAY_MESHTASTIC_MESSAGE_DELAY`**: Delay between messages in seconds (minimum: 2.0)
-
-#### System Configuration
-
-- **`MMRELAY_LOGGING_LEVEL`**: Log level (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`)
-- **`MMRELAY_LOG_FILE`**: Path to log file (enables file logging when set)
-- **`MMRELAY_DATABASE_PATH`**: Path to SQLite database file
-
-### When to Use Environment Variables
-
-Environment variables are useful for:
-
-- **CI/CD pipelines** with dynamic configuration values
-- **Container orchestration** (Kubernetes, Docker Swarm) with secrets injection
-- **Multi-environment deployments** (dev/staging/prod) using the same image
-- **External configuration management** systems
-- **Quick testing** of specific setting changes without editing config files
-
-**For typical home/personal deployments, config.yaml is much easier to manage.**
-
-### Setting Environment Variables
-
-**For docker-compose users:** Add to your `.env` file or docker-compose environment section.
-
-**For Portainer users:** You can:
-
-1. Set them in Portainer's environment variables section
-2. Use absolute paths instead of variables in the docker-compose
-3. Ensure the paths exist on your host system
 
 ## Make Commands Reference
 
@@ -428,13 +362,11 @@ MMRELAY_HOME=/path/to/your/data
 - For Serial: Check device permissions and path
 - For BLE: Ensure privileged mode and host networking are enabled
 
-## Complete Docker Examples
+## Complete Docker Example
 
-### Method 1: config.yaml Configuration (Recommended)
+Here's a complete example showing the recommended setup:
 
-**This is the recommended approach for most users.** Configure all settings in `config.yaml` and use Docker for deployment only.
-
-#### Step 1: Set up authentication on your host system
+#### Step 1: Set up authentication
 
 ```bash
 mmrelay auth login
@@ -456,112 +388,48 @@ services:
     image: ghcr.io/jeremiah-k/mmrelay:latest
     container_name: meshtastic-matrix-relay
     restart: unless-stopped
-    user: "${UID:-1000}:${GID:-1000}"
-    environment:
-      - TZ=UTC
-      - PYTHONUNBUFFERED=1
-      - MPLCONFIGDIR=/tmp/matplotlib
     volumes:
-      - ${MMRELAY_HOME}/.mmrelay:/app/data # config.yaml, credentials.json, E2EE store, logs, DB
-    ports:
-      - "4403:4403" # For TCP connections
+      - ~/.mmrelay:/app/data
 ```
 
-**Benefits of this approach:**
-
-- All configuration in one file (`config.yaml`)
-- Easy to track changes and version control
-- No secrets visible in `docker inspect`
-- Simpler to manage and troubleshoot
-
-**This approach provides:**
-
-- E2EE support for encrypted Matrix rooms
-- Persistent device identity (no "new device" notifications)
-- File-based credential storage
-- Flexible operational configuration
-
-### Method 2: Environment Variable Overrides (Advanced)
-
-**Use this method only for advanced deployment scenarios** such as:
-
-- CI/CD pipelines with dynamic configuration
-- Container orchestration (Kubernetes, Docker Swarm)
-- Multi-environment deployments (dev/staging/prod)
-- External secrets management systems
-
-**For most users, Method 1 (config.yaml) is recommended.**
-
-#### When to use environment variables
-
-- You need to override specific settings per environment
-- Configuration is managed by external systems
-- You're deploying across multiple environments with the same image
-- Secrets are injected by orchestration platforms
-
-#### Step 1: Set up authentication
+#### Step 4: Start the container
 
 ```bash
-mmrelay auth login  # Creates credentials.json
+export MMRELAY_HOME=$HOME
+echo 'MMRELAY_HOME=$HOME' > .env
+docker compose up -d
+docker compose logs -f
 ```
 
-#### Step 2: Create base config.yaml
+**This provides:**
+- E2EE support for encrypted Matrix rooms
+- Persistent device identity (no "new device" notifications)
+- All configuration in one file (`config.yaml`)
+- Simple, minimal setup
+
+## Connection Types
+
+Configure your Meshtastic connection in `~/.mmrelay/config.yaml`:
+
+**TCP Connection (recommended):**
 
 ```yaml
-# Base configuration in ~/.mmrelay/config.yaml
-# Environment variables will override specific settings
-matrix_rooms:
-  - id: "#yourroom:example.org"
-    meshtastic_channel: 0
-
 meshtastic:
-  connection_type: tcp # Can be overridden by MMRELAY_MESHTASTIC_CONNECTION_TYPE
-  host: meshtastic.local # Can be overridden by MMRELAY_MESHTASTIC_HOST
-  broadcast_enabled: true
-  meshnet_name: Default Mesh
-
-# Optional: Plugin configuration
-plugins:
-  ping:
-    active: true
+  connection_type: tcp
+  host: 192.168.1.100  # Your Meshtastic device IP
+  port: 4403           # Default Meshtastic TCP port
 ```
-
-#### Step 3: Create docker-compose.yaml with environment overrides
-
-```yaml
-services:
-  mmrelay:
-    image: ghcr.io/jeremiah-k/mmrelay:latest
-    container_name: meshtastic-matrix-relay
-    restart: unless-stopped
-    user: "${UID:-1000}:${GID:-1000}"
-    environment:
-      - TZ=UTC
-      - PYTHONUNBUFFERED=1
-      - MPLCONFIGDIR=/tmp/matplotlib
-      # Override specific config.yaml settings as needed
-      - MMRELAY_MESHTASTIC_HOST=192.168.1.100
-      - MMRELAY_MESHTASTIC_PORT=4403
-      - MMRELAY_LOGGING_LEVEL=INFO
-    volumes:
-      - ${MMRELAY_HOME}/.mmrelay:/app/data
-    ports:
-      - "4403:4403"  # For TCP connections
-```
-
-**Note:** Environment variables override corresponding config.yaml settings when present. This provides flexibility while keeping most configuration in the file.
-
-## Connection Type Variants
-
-The examples above show TCP connections. Here are variants for other connection types:
 
 **Serial Connection:**
 
 ```yaml
-environment:
-  - MMRELAY_MESHTASTIC_CONNECTION_TYPE=serial
-  - MMRELAY_MESHTASTIC_SERIAL_PORT=/dev/ttyUSB0
-  # ... other settings
+meshtastic:
+  connection_type: serial
+  serial_port: /dev/ttyUSB0  # Your serial device path
+```
+
+For serial connections, add device mapping to docker-compose.yaml:
+```yaml
 devices:
   - /dev/ttyUSB0:/dev/ttyUSB0
 ```
@@ -569,57 +437,17 @@ devices:
 **BLE Connection:**
 
 ```yaml
-environment:
-  - MMRELAY_MESHTASTIC_CONNECTION_TYPE=ble
-  - MMRELAY_MESHTASTIC_BLE_ADDRESS=AA:BB:CC:DD:EE:FF
-  # ... other settings
-privileged: true # Required for BLE access
+meshtastic:
+  connection_type: ble
+  ble_address: "AA:BB:CC:DD:EE:FF"  # Your device's MAC address
 ```
 
-### Minimal config.yaml
-
-When using environment variables for most settings, your config.yaml only needs:
-
+For BLE connections, add privileged mode to docker-compose.yaml:
 ```yaml
-# Optional: Enable E2EE if you are using the 'auth login' method.
-# This is not needed for non-encrypted rooms.
-# matrix:
-#   e2ee:
-#     enabled: true
-
-matrix_rooms:
-  - id: "#yourroom:example.org"
-    meshtastic_channel: 0
-
-# Optional: Plugin configuration (if using plugins)
-plugins:
-  ping:
-    active: true
-  weather:
-    active: true
-    units: imperial
+privileged: true  # Required for BLE access
 ```
 
-**Note**: For E2EE to function properly, you must also:
 
-1. Use the `mmrelay auth login` method for authentication (not manual tokens)
-2. Mount the `~/.mmrelay` directory to `/app/data` to persist credentials and the E2EE store, as shown in the examples
-
-The E2EE store directory (`/app/data/store`) is automatically created and persisted via the volume mount.
-
-### Verification
-
-Check logs for E2EE status:
-
-```bash
-docker compose logs mmrelay | grep -i e2ee
-```
-
-Look for messages like:
-
-- "End-to-End Encryption (E2EE) is enabled"
-- "Using credentials from ~/.mmrelay/credentials.json"
-- "Found X encrypted rooms out of Y total rooms"
 
 ## Updates
 
