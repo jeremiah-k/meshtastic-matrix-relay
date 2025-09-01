@@ -1,0 +1,50 @@
+# Android Builder Dockerfile
+# This Dockerfile creates a complete environment for building the Android app.
+
+# Use a recent Ubuntu LTS version as the base
+FROM ubuntu:22.04
+
+# Set non-interactive frontend for package installation to avoid prompts
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install essential packages, including Java (for Gradle) and Python (for Chaquopy)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    openjdk-17-jdk \
+    python3.11 \
+    python3-pip \
+    wget \
+    unzip \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set up Android SDK
+ENV ANDROID_SDK_ROOT=/opt/android-sdk
+ENV CMDLINE_TOOLS_URL="https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip"
+ENV ANDROID_HOME=${ANDROID_SDK_ROOT}
+ENV PATH=$PATH:${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tools
+
+# Download and install Android command-line tools
+RUN mkdir -p ${ANDROID_HOME}/cmdline-tools && \
+    wget -q -O /tmp/cmdline-tools.zip ${CMDLINE_TOOLS_URL} && \
+    unzip -q /tmp/cmdline-tools.zip -d /tmp/ && \
+    # The zip extracts to 'cmdline-tools'. We need to move its contents to 'latest'.
+    mv /tmp/cmdline-tools/* ${ANDROID_HOME}/cmdline-tools/latest/ && \
+    rm -rf /tmp/cmdline-tools.zip /tmp/cmdline-tools
+
+# Accept licenses and install SDK packages, platform-tools, build-tools, and NDK
+RUN yes | sdkmanager --licenses --sdk_root=${ANDROID_SDK_ROOT} > /dev/null && \
+    sdkmanager --sdk_root=${ANDROID_SDK_ROOT} "platforms;android-34" "build-tools;34.0.0" "ndk;25.2.9519653" "platform-tools"
+
+# Install Gradle
+ENV GRADLE_VERSION=8.4
+RUN wget -q -O /tmp/gradle.zip https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip && \
+    unzip -q /tmp/gradle.zip -d /opt && \
+    rm /tmp/gradle.zip
+ENV PATH=$PATH:/opt/gradle-${GRADLE_VERSION}/bin
+
+# Set the working directory for the build
+WORKDIR /app
+
+# Define the default command (optional)
+CMD ["/bin/bash"]
