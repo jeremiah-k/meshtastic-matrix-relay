@@ -1,0 +1,18 @@
+[Unit]
+Description=A Meshtastic <=> Matrix Relay
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# The mmrelay binary can be installed via pipx or pip
+ExecStart=%h/.local/bin/mmrelay --config %h/.mmrelay/config.yaml --logfile %h/.mmrelay/logs/mmrelay.log
+WorkingDirectory=%h/.mmrelay
+Restart=on-failure
+RestartSec=10
+Environment=PYTHONUNBUFFERED=1
+# Ensure both pipx and pip environments are properly loaded
+Environment=PATH=%h/.local/bin:%h/.local/pipx/venvs/mmrelay/bin:/usr/local/bin:/usr/bin:/bin
+
+[Install]
+WantedBy=default.target

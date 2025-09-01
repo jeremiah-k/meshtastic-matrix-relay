@@ -24,3 +24,6 @@ coverage.xml
 junit.xml
 .pytest_cache/
 MagicMock/
+
+# Android SDK
+android_sdk/
