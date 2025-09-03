@@ -17,6 +17,16 @@ android {
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // Copy Python files from main source directory
+    task copyPythonFiles(type: Copy) {
+        from '../../../src/mmrelay'
+        into 'src/main/python/mmrelay'
+        exclude '**/test_*.py'
+        exclude '**/__pycache__'
+    }
+
+    preBuild.dependsOn copyPythonFiles
+
     // This is the corrected location for the chaquopy block
     chaquopy {
         version = "3.11"

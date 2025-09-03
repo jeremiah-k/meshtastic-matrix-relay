@@ -4,28 +4,60 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:padding="16dp"
     tools:context=".MainActivity">
 
     <TextView
-        android:id="@+id/text_view_result"
-        android:layout_width="wrap_content"
+        android:id="@+id/status_text"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:text="Press the button to call Python"
-        app:layout_constraintBottom_toTopOf="@+id/button_call_python"
+        android:text="MMRelay Service: STOPPED"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:layout_marginBottom="32dp"
+        app:layout_constraintBottom_toTopOf="@+id/start_button"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent"
-        app.layout_constraintVertical_chainStyle="packed"/>
+        app:layout_constraintTop_toTopOf="parent" />
 
     <Button
-        android:id="@+id/button_call_python"
-        android:layout_width="wrap_content"
+        android:id="@+id/start_button"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
-        android:text="Call Python"
+        android:layout_marginBottom="16dp"
+        android:text="Start MMRelay"
+        android:textSize="16sp"
+        android:backgroundTint="@android:color/holo_green_dark"
+        app:layout_constraintBottom_toTopOf="@+id/stop_button"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/status_text" />
+
+    <Button
+        android:id="@+id/stop_button"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="32dp"
+        android:text="Stop MMRelay"
+        android:textSize="16sp"
+        android:backgroundTint="@android:color/holo_red_dark"
+        android:enabled="false"
+        app:layout_constraintBottom_toTopOf="@+id/config_button"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/start_button" />
+
+    <Button
+        android:id="@+id/config_button"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="Configuration"
+        android:textSize="16sp"
+        android:backgroundTint="@android:color/holo_blue_dark"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/text_view_result" />
+        app:layout_constraintTop_toBottomOf="@id/stop_button" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

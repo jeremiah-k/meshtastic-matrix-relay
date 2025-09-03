@@ -1,0 +1,168 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      push_image:
+        description: Push builder image to registry
+        required: false
+        default: true
+        type: boolean
+  push:
+    branches: [ feature/android-scaffolding ]
+    paths:
+      - 'android/**'
+      - '.github/workflows/build-android-apk.yml'
+  pull_request:
+    branches: [ feature/android-scaffolding ]
+    paths:
+      - 'android/**'
+      - '.github/workflows/build-android-apk.yml'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: jeremiah-k/mmrelay-android-builder
+
+jobs:
+  build-android-apk:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        if: github.event.inputs.push_image != 'false'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest
+            type=raw,value={{date 'YYYY-MM-DD'}}
+            type=sha,prefix={{date 'YYYY-MM-DD'}}-
+
+      - name: Create Android Builder Dockerfile
+        run: |
+          cat > Dockerfile.android-builder << 'EOF'
+          # Android Builder Image for MMRelay APK builds
+          FROM ubuntu:22.04
+
+          # Set environment variables
+          ENV DEBIAN_FRONTEND=noninteractive
+          ENV ANDROID_HOME=/opt/android-sdk
+          ENV PATH="${PATH}:${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tools"
+
+          # Cache bust to force rebuild when needed
+          ARG CACHE_BUST
+          ENV CACHE_BUST=${CACHE_BUST}
+
+          # Install system dependencies
+          RUN apt-get update && apt-get install -y --no-install-recommends \
+              openjdk-17-jdk \
+              wget \
+              unzip \
+              git \
+              curl \
+              python3 \
+              python3-pip \
+              build-essential \
+              libssl-dev \
+              libffi-dev \
+              && rm -rf /var/lib/apt/lists/*
+
+          # Download and install Android SDK Command Line Tools
+          RUN mkdir -p ${ANDROID_HOME}/cmdline-tools && \
+              wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O /tmp/cmdline-tools.zip && \
+              unzip -q /tmp/cmdline-tools.zip -d /tmp && \
+              mv /tmp/cmdline-tools ${ANDROID_HOME}/cmdline-tools/latest && \
+              rm /tmp/cmdline-tools.zip
+
+          # Install Android SDK components
+          RUN yes | sdkmanager --licenses && \
+              sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" "ndk;26.1.10909125"
+
+          # Install Python build tools and Chaquopy
+          RUN pip3 install --no-cache-dir --upgrade \
+              pip==25.1.1 \
+              setuptools==80.9.0 \
+              wheel==0.45.1
+
+          # Verify installations
+          RUN echo "=== Build Environment Verification ===" && \
+              java -version && \
+              python3 --version && \
+              pip3 --version && \
+              sdkmanager --version && \
+              echo "=== Android Builder Ready ==="
+
+          # Set working directory
+          WORKDIR /workspace
+
+          # Add container metadata
+          LABEL org.opencontainers.image.title="MMRelay Android Builder" \
+                org.opencontainers.image.description="Pre-configured build environment for MMRelay Android APK builds" \
+                org.opencontainers.image.source="https://github.com/jeremiah-k/meshtastic-matrix-relay" \
+                org.opencontainers.image.licenses="GPL-3.0-or-later"
+
+          # Default command
+          CMD ["/bin/bash"]
+          EOF
+
+      - name: Build and push Android builder image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.android-builder
+          push: ${{ github.event.inputs.push_image != 'false' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            CACHE_BUST=${{ github.run_number }}-${{ github.run_attempt }}
+
+      - name: Build Android APK
+        run: |
+          echo "=== Building Android APK ==="
+
+          # Use the builder image to build the APK
+          docker run --rm \
+            -v $(pwd):/workspace \
+            -w /workspace \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
+            bash -c "
+              echo 'Building APK with Chaquopy...'
+              cd android
+              ./gradlew assembleDebug --no-daemon --info
+            "
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mmrelay-android-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
+
+      - name: Output build information
+        run: |
+          echo "✅ Android APK build completed successfully!"
+          echo "📱 APK available at: android/app/build/outputs/apk/debug/app-debug.apk"
+          echo "📦 Artifact: mmrelay-android-apk"
+          echo ""
+          echo "To install on device:"
+          echo "  adb install android/app/build/outputs/apk/debug/app-debug.apk"
