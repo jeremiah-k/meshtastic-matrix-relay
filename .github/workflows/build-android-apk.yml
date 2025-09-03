@@ -148,7 +148,7 @@ jobs:
             bash -c "
               echo 'Building APK with Chaquopy...'
               cd android
-              ./gradlew assembleDebug --info
+              ./gradlew assembleDebug
             "
 
       - name: Upload APK artifact
