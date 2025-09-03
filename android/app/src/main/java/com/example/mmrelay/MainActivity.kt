@@ -76,7 +76,7 @@ class MainActivity : AppCompatActivity() {
                 Log.w(TAG, "Failed to initialize Python config")
             }
 
-        } catch (e: Exception) {
+        } catch (e: RuntimeException) {
             Log.e(TAG, "Failed to initialize Python", e)
             Toast.makeText(this, "Failed to initialize Python: ${e.message}", Toast.LENGTH_LONG).show()
         }
@@ -111,7 +111,7 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "Starting MMRelay service...", Toast.LENGTH_SHORT).show()
             updateStatus()
 
-        } catch (e: Exception) {
+        } catch (e: RuntimeException) {
             Log.e(TAG, "Failed to start service", e)
             Toast.makeText(this, "Failed to start service: ${e.message}", Toast.LENGTH_LONG).show()
         }
@@ -127,7 +127,7 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "Stopping MMRelay service...", Toast.LENGTH_SHORT).show()
             updateStatus()
 
-        } catch (e: Exception) {
+        } catch (e: RuntimeException) {
             Log.e(TAG, "Failed to stop service", e)
             Toast.makeText(this, "Failed to stop service: ${e.message}", Toast.LENGTH_LONG).show()
         }

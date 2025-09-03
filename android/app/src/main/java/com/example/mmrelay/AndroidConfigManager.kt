@@ -2,7 +2,6 @@ package com.example.mmrelay
 
 import android.content.Context
 import android.content.SharedPreferences
-import android.os.Environment
 import android.util.Log
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
@@ -60,7 +59,7 @@ class AndroidConfigManager(private val context: Context) {
 
             Log.i(TAG, "Python configuration initialized with Android paths")
             true
-        } catch (e: Exception) {
+        } catch (e: RuntimeException) {
             Log.e(TAG, "Failed to initialize Python config", e)
             false
         }
@@ -120,7 +119,7 @@ class AndroidConfigManager(private val context: Context) {
             configFile.writeText(defaultConfig)
             Log.i(TAG, "Default configuration created at ${configFile.absolutePath}")
             true
-        } catch (e: Exception) {
+        } catch (e: RuntimeException) {
             Log.e(TAG, "Failed to create default config", e)
             false
         }
@@ -133,7 +132,7 @@ class AndroidConfigManager(private val context: Context) {
             externalDir?.apply {
                 if (!exists()) mkdirs()
             }
-        } catch (e: Exception) {
+        } catch (e: RuntimeException) {
             Log.w(TAG, "External storage not available", e)
             null
         }

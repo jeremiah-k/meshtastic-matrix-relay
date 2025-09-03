@@ -1,14 +1,23 @@
 package com.example.mmrelay
 
-import android.app.*
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.app.Service
 import android.content.Intent
-import android.content.pm.ServiceInfo
-import android.os.*
+import android.os.Build
+import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicBoolean
 
 class RelayService : Service() {
@@ -68,7 +77,7 @@ class RelayService : Service() {
             try {
                 // Initialize Python and configuration
                 if (!configManager.initializePythonConfig()) {
-                    throw Exception("Failed to initialize Python configuration")
+                    throw IllegalStateException("Failed to initialize Python configuration")
                 }
 
                 // Create default config if it doesn't exist
@@ -82,7 +91,7 @@ class RelayService : Service() {
                 // Update notification
                 updateNotification("MMRelay is running", "Connected and relaying messages")
 
-            } catch (e: Exception) {
+            } catch (e: IllegalStateException) {
                 Log.e(TAG, "Failed to start relay", e)
                 updateNotification("MMRelay Error", "Failed to start: ${e.message}")
                 stopSelf()
@@ -106,13 +115,13 @@ class RelayService : Service() {
                     try {
                         // This will block until MMRelay stops
                         mainModule.callAttr("main")
-                    } catch (e: Exception) {
+                    } catch (e: RuntimeException) {
                         Log.e(TAG, "MMRelay main function failed", e)
                         throw e
                     }
                 }
 
-            } catch (e: Exception) {
+            } catch (e: RuntimeException) {
                 Log.e(TAG, "Failed to start relay process", e)
                 isRunning.set(false)
                 updateNotification("MMRelay Stopped", "Error: ${e.message}")

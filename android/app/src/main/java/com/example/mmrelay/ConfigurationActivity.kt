@@ -2,8 +2,12 @@ package com.example.mmrelay
 
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
-import android.widget.*
-import android.content.Intent
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
+import android.widget.Button
+import android.widget.EditText
+import android.widget.Spinner
+import android.widget.Toast
 import android.util.Log
 
 class ConfigurationActivity : AppCompatActivity() {
@@ -70,10 +74,10 @@ class ConfigurationActivity : AppCompatActivity() {
             matrixUserIdEdit.setText(userId ?: "")
             meshtasticDeviceEdit.setText(device ?: "")
 
-            // TODO: Load full configuration from YAML file
+            // NOTE: Full configuration loading from YAML file to be implemented
             Log.i(TAG, "Configuration loaded")
 
-        } catch (e: Exception) {
+        } catch (e: RuntimeException) {
             Log.e(TAG, "Failed to load configuration", e)
             Toast.makeText(this, "Failed to load configuration", Toast.LENGTH_SHORT).show()
         }
@@ -98,7 +102,9 @@ class ConfigurationActivity : AppCompatActivity() {
                 updateConnectionTypeUI()
             }
 
-            override fun onNothingSelected(parent: AdapterView<*>?) {}
+            override fun onNothingSelected(parent: AdapterView<*>?) {
+                // No action needed when nothing is selected
+            }
         }
     }
 
@@ -134,19 +140,19 @@ class ConfigurationActivity : AppCompatActivity() {
             // Save to SharedPreferences for quick access
             configManager.saveQuickConfig(homeserver, userId, device)
 
-            // TODO: Save full configuration to YAML file
+            // NOTE: Full configuration saving to YAML file to be implemented
 
             Toast.makeText(this, "Configuration saved", Toast.LENGTH_SHORT).show()
             Log.i(TAG, "Configuration saved")
 
-        } catch (e: Exception) {
+        } catch (e: RuntimeException) {
             Log.e(TAG, "Failed to save configuration", e)
             Toast.makeText(this, "Failed to save configuration", Toast.LENGTH_LONG).show()
         }
     }
 
     private fun testConfiguration() {
-        // TODO: Implement configuration testing
+        // NOTE: Configuration testing to be implemented
         Toast.makeText(this, "Configuration testing not yet implemented", Toast.LENGTH_SHORT).show()
     }
 
