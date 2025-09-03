@@ -16,6 +16,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicBoolean
@@ -71,7 +72,7 @@ class RelayService : Service() {
         Log.i(TAG, "Starting MMRelay service")
 
         // Start foreground service with notification
-        startForeground(NOTIFICATION_ID, createNotification("Starting MMRelay..."))
+        startForeground(NOTIFICATION_ID, createNotification("MMRelay Service", "Starting MMRelay..."))
 
         serviceScope.launch {
             try {
