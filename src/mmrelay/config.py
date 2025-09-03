@@ -6,7 +6,6 @@ import sys
 
 import platformdirs
 import yaml
-from yaml.loader import SafeLoader
 
 # Import application constants
 from mmrelay.cli_utils import msg_suggest_check_config, msg_suggest_generate_config

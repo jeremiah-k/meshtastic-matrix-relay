@@ -179,7 +179,9 @@ def store_plugin_data(plugin_name, meshtastic_id, data):
             )
             conn.commit()
     except sqlite3.Error:
-        logger.exception("DB error storing plugin data for %s, %s", plugin_name, meshtastic_id)
+        logger.exception(
+            "DB error storing plugin data for %s, %s", plugin_name, meshtastic_id
+        )
 
 
 def delete_plugin_data(plugin_name, meshtastic_id):
@@ -199,7 +201,9 @@ def delete_plugin_data(plugin_name, meshtastic_id):
             )
             conn.commit()
     except sqlite3.Error:
-        logger.exception("DB error deleting plugin data for %s, %s", plugin_name, meshtastic_id)
+        logger.exception(
+            "DB error deleting plugin data for %s, %s", plugin_name, meshtastic_id
+        )
 
 
 # Get the data for a given plugin and Meshtastic ID
@@ -229,7 +233,11 @@ def get_plugin_data_for_node(plugin_name, meshtastic_id):
             )
             return []
     except (MemoryError, sqlite3.Error):
-        logger.exception("DB error retrieving plugin data for %s, node %s", plugin_name, meshtastic_id)
+        logger.exception(
+            "DB error retrieving plugin data for %s, node %s",
+            plugin_name,
+            meshtastic_id,
+        )
         return []
 
 
@@ -421,11 +429,16 @@ def get_message_map_by_meshtastic_id(meshtastic_id):
                     # result = (matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet)
                     return result[0], result[1], result[2], result[3]
                 except (IndexError, TypeError):
-                    logger.exception("Malformed data in message_map for meshtastic_id %s", meshtastic_id)
+                    logger.exception(
+                        "Malformed data in message_map for meshtastic_id %s",
+                        meshtastic_id,
+                    )
                     return None
             return None
     except sqlite3.Error:
-        logger.exception("DB error retrieving message map for meshtastic_id %s", meshtastic_id)
+        logger.exception(
+            "DB error retrieving message map for meshtastic_id %s", meshtastic_id
+        )
         return None
 
 
@@ -452,11 +465,16 @@ def get_message_map_by_matrix_event_id(matrix_event_id):
                     # result = (meshtastic_id, matrix_room_id, meshtastic_text, meshtastic_meshnet)
                     return result[0], result[1], result[2], result[3]
                 except (IndexError, TypeError):
-                    logger.exception("Malformed data in message_map for matrix_event_id %s", matrix_event_id)
+                    logger.exception(
+                        "Malformed data in message_map for matrix_event_id %s",
+                        matrix_event_id,
+                    )
                     return None
             return None
     except (UnicodeDecodeError, sqlite3.Error):
-        logger.exception("DB error retrieving message map for matrix_event_id %s", matrix_event_id)
+        logger.exception(
+            "DB error retrieving message map for matrix_event_id %s", matrix_event_id
+        )
         return None
 
 

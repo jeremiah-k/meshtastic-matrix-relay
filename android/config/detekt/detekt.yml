@@ -5,27 +5,37 @@ build:
 config:
   validation: true
   warningsAsErrors: false
-  excludes: ''
+  excludes: ""
 
 processors:
   active: true
   exclude:
-    - 'DetektProgressListener'
+    - "DetektProgressListener"
 
 console-reports:
   active: true
   exclude:
-     - 'ProjectStatisticsReport'
-     - 'ComplexityReport'
-     - 'NotificationReport'
-     - 'FindingsReport'
-     - 'FileBasedFindingsReport'
+    - "ProjectStatisticsReport"
+    - "ComplexityReport"
+    - "NotificationReport"
+    - "FindingsReport"
+    - "FileBasedFindingsReport"
 
 complexity:
   active: true
   TooManyFunctions:
     active: true
-    excludes: ['**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**', '**/androidUnitTest/**', '**/androidInstrumentedTest/**', '**/jsTest/**', '**/iosTest/**']
+    excludes:
+      [
+        "**/test/**",
+        "**/androidTest/**",
+        "**/commonTest/**",
+        "**/jvmTest/**",
+        "**/androidUnitTest/**",
+        "**/androidInstrumentedTest/**",
+        "**/jsTest/**",
+        "**/iosTest/**",
+      ]
     thresholdInFiles: 15
     thresholdInClasses: 15
     thresholdInInterfaces: 11
@@ -42,44 +52,65 @@ exceptions:
   active: true
   TooGenericExceptionCaught:
     active: true
-    excludes: ['**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**', '**/androidUnitTest/**', '**/androidInstrumentedTest/**', '**/jsTest/**', '**/iosTest/**']
+    excludes:
+      [
+        "**/test/**",
+        "**/androidTest/**",
+        "**/commonTest/**",
+        "**/jvmTest/**",
+        "**/androidUnitTest/**",
+        "**/androidInstrumentedTest/**",
+        "**/jsTest/**",
+        "**/iosTest/**",
+      ]
     exceptionNames:
-       - 'ArrayIndexOutOfBoundsException'
-       - 'Error'
-       - 'Exception'
-       - 'IllegalMonitorStateException'
-       - 'IndexOutOfBoundsException'
-       - 'NullPointerException'
-       - 'Throwable'
-    allowedExceptionNameRegex: '_|(ignore|expected).*'
+      - "ArrayIndexOutOfBoundsException"
+      - "Error"
+      - "Exception"
+      - "IllegalMonitorStateException"
+      - "IndexOutOfBoundsException"
+      - "NullPointerException"
+      - "Throwable"
+    allowedExceptionNameRegex: "_|(ignore|expected).*"
   TooGenericExceptionThrown:
     active: true
     exceptionNames:
-      - 'Error'
-      - 'Exception'
-      - 'RuntimeException'
-      - 'Throwable'
+      - "Error"
+      - "Exception"
+      - "RuntimeException"
+      - "Throwable"
 
 style:
   active: true
   ForbiddenComment:
     active: true
     comments:
-      - reason: 'Forbidden FIXME todo marker in comment, please fix the problem.'
-        value: 'FIXME:'
-      - reason: 'Forbidden STOPSHIP todo marker in comment, please address the problem before shipping the code.'
-        value: 'STOPSHIP:'
-      - reason: 'Forbidden TODO todo marker in comment, please do the changes.'
-        value: 'TODO:'
-    allowedPatterns: ''
+      - reason: "Forbidden FIXME todo marker in comment, please fix the problem."
+        value: "FIXME:"
+      - reason: "Forbidden STOPSHIP todo marker in comment, please address the problem before shipping the code."
+        value: "STOPSHIP:"
+      - reason: "Forbidden TODO todo marker in comment, please do the changes."
+        value: "TODO:"
+    allowedPatterns: ""
   MagicNumber:
     active: true
-    excludes: ['**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**', '**/androidUnitTest/**', '**/androidInstrumentedTest/**', '**/jsTest/**', '**/iosTest/**', '**/*.kts']
+    excludes:
+      [
+        "**/test/**",
+        "**/androidTest/**",
+        "**/commonTest/**",
+        "**/jvmTest/**",
+        "**/androidUnitTest/**",
+        "**/androidInstrumentedTest/**",
+        "**/jsTest/**",
+        "**/iosTest/**",
+        "**/*.kts",
+      ]
     ignoreNumbers:
-      - '-1'
-      - '0'
-      - '1'
-      - '2'
+      - "-1"
+      - "0"
+      - "1"
+      - "2"
     ignoreHashCodeFunction: true
     ignorePropertyDeclaration: true
     ignoreLocalVariableDeclaration: false
@@ -104,7 +135,7 @@ style:
   WildcardImport:
     active: true
     excludeImports:
-      - 'java.util.*'
+      - "java.util.*"
   UnusedImports:
     active: true
 
@@ -112,8 +143,18 @@ naming:
   active: true
   ClassNaming:
     active: true
-    classPattern: '[A-Z][a-zA-Z0-9]*'
+    classPattern: "[A-Z][a-zA-Z0-9]*"
   FunctionNaming:
     active: true
-    excludes: ['**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**', '**/androidUnitTest/**', '**/androidInstrumentedTest/**', '**/jsTest/**', '**/iosTest/**']
-    functionPattern: '[a-zA-Z][a-zA-Z0-9]*'
+    excludes:
+      [
+        "**/test/**",
+        "**/androidTest/**",
+        "**/commonTest/**",
+        "**/jvmTest/**",
+        "**/androidUnitTest/**",
+        "**/androidInstrumentedTest/**",
+        "**/jsTest/**",
+        "**/iosTest/**",
+      ]
+    functionPattern: "[a-zA-Z][a-zA-Z0-9]*"
