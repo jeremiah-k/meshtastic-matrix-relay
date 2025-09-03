@@ -27,3 +27,5 @@ MagicMock/
 
 # Android SDK
 android_sdk/
+
+.kilocode
