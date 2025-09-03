@@ -1,8 +1,9 @@
 """
 Android-specific configuration utilities for MMRelay
 """
-import os
+
 import logging
+import os
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -21,7 +22,9 @@ def set_android_paths(config_dir: str, log_dir: str, data_dir: str):
     _android_log_dir = log_dir
     _android_data_dir = data_dir
 
-    logger.info(f"Android paths set - Config: {config_dir}, Log: {log_dir}, Data: {data_dir}")
+    logger.info(
+        f"Android paths set - Config: {config_dir}, Log: {log_dir}, Data: {data_dir}"
+    )
 
     # Ensure directories exist
     for path in [config_dir, log_dir, data_dir]:
@@ -85,11 +88,11 @@ def setup_android_logging():
     # Create Android-compatible logging
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         handlers=[
             logging.FileHandler(log_file),
-            logging.StreamHandler()  # Also log to console for Android logcat
-        ]
+            logging.StreamHandler(),  # Also log to console for Android logcat
+        ],
     )
 
     logger.info("Android logging setup complete")

@@ -158,8 +158,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun isServiceRunning(): Boolean {
-        // Simple check - in a real app you'd check with the service
-        return false // TODO: Implement proper service status checking
+        // Check if service is bound and running
+        return isBound && relayService != null
     }
 
     override fun onResume() {

@@ -284,7 +284,7 @@ Configure your Meshtastic connection in `~/.mmrelay/config.yaml`:
 meshtastic:
   connection_type: tcp
   host: 192.168.1.100 # Your Meshtastic device IP
-  port: 4403          # Default Meshtastic TCP port
+  port: 4403 # Default Meshtastic TCP port
 # Note: MMRelay initiates an outbound TCP connection to the device;
 # you do not need a `ports:` mapping in docker-compose.
 ```
@@ -319,8 +319,8 @@ For BLE connections, add to docker-compose.yaml:
 ```yaml
 services:
   mmrelay:
-    network_mode: host   # Required for BLE/D-Bus
-    privileged: true     # Required for BLE access
+    network_mode: host # Required for BLE/D-Bus
+    privileged: true # Required for BLE access
     volumes:
       - /var/run/dbus:/var/run/dbus:ro
 ```

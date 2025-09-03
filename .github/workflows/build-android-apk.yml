@@ -9,15 +9,15 @@ on:
         default: true
         type: boolean
   push:
-    branches: [ feature/android-scaffolding ]
+    branches: [feature/android-scaffolding]
     paths:
-      - 'android/**'
-      - '.github/workflows/build-android-apk.yml'
+      - "android/**"
+      - ".github/workflows/build-android-apk.yml"
   pull_request:
-    branches: [ feature/android-scaffolding ]
+    branches: [feature/android-scaffolding]
     paths:
-      - 'android/**'
-      - '.github/workflows/build-android-apk.yml'
+      - "android/**"
+      - ".github/workflows/build-android-apk.yml"
 
 env:
   REGISTRY: ghcr.io
