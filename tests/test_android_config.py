@@ -63,22 +63,27 @@ class TestAndroidConfig(unittest.TestCase):
 
     def test_set_android_paths_stores_values(self):
         """Test that set_android_paths stores the path values correctly"""
-        config_dir = "/android/config"
-        log_dir = "/android/logs"
-        data_dir = "/android/data"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_dir = os.path.join(temp_dir, "config")
+            log_dir = os.path.join(temp_dir, "logs")
+            data_dir = os.path.join(temp_dir, "data")
 
-        set_android_paths(config_dir, log_dir, data_dir)
+            set_android_paths(config_dir, log_dir, data_dir)
 
-        self.assertEqual(get_android_config_dir(), config_dir)
-        self.assertEqual(get_android_log_dir(), log_dir)
-        self.assertEqual(get_android_data_dir(), data_dir)
+            self.assertEqual(get_android_config_dir(), config_dir)
+            self.assertEqual(get_android_log_dir(), log_dir)
+            self.assertEqual(get_android_data_dir(), data_dir)
 
     def test_is_android_environment_true_when_paths_set(self):
         """Test that is_android_environment returns True when paths are set"""
         self.assertFalse(is_android_environment())
 
-        set_android_paths("/config", "/logs", "/data")
-        self.assertTrue(is_android_environment())
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_dir = os.path.join(temp_dir, "config")
+            log_dir = os.path.join(temp_dir, "logs")
+            data_dir = os.path.join(temp_dir, "data")
+            set_android_paths(config_dir, log_dir, data_dir)
+            self.assertTrue(is_android_environment())
 
     def test_is_android_environment_false_when_no_paths(self):
         """Test that is_android_environment returns False when no paths are set"""
@@ -86,19 +91,25 @@ class TestAndroidConfig(unittest.TestCase):
 
     def test_get_config_file_path_android_environment(self):
         """Test get_config_file_path in Android environment"""
-        config_dir = "/android/config"
-        set_android_paths(config_dir, "/logs", "/data")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_dir = os.path.join(temp_dir, "config")
+            log_dir = os.path.join(temp_dir, "logs")
+            data_dir = os.path.join(temp_dir, "data")
+            set_android_paths(config_dir, log_dir, data_dir)
 
-        expected_path = os.path.join(config_dir, "config.yaml")
-        self.assertEqual(get_config_file_path(), expected_path)
+            expected_path = os.path.join(config_dir, "config.yaml")
+            self.assertEqual(get_config_file_path(), expected_path)
 
     def test_get_config_file_path_custom_filename(self):
         """Test get_config_file_path with custom filename"""
-        config_dir = "/android/config"
-        set_android_paths(config_dir, "/logs", "/data")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_dir = os.path.join(temp_dir, "config")
+            log_dir = os.path.join(temp_dir, "logs")
+            data_dir = os.path.join(temp_dir, "data")
+            set_android_paths(config_dir, log_dir, data_dir)
 
-        expected_path = os.path.join(config_dir, "custom.yaml")
-        self.assertEqual(get_config_file_path("custom.yaml"), expected_path)
+            expected_path = os.path.join(config_dir, "custom.yaml")
+            self.assertEqual(get_config_file_path("custom.yaml"), expected_path)
 
     def test_get_config_file_path_non_android_environment(self):
         """Test get_config_file_path in non-Android environment"""
@@ -108,19 +119,25 @@ class TestAndroidConfig(unittest.TestCase):
 
     def test_get_log_file_path_android_environment(self):
         """Test get_log_file_path in Android environment"""
-        log_dir = "/android/logs"
-        set_android_paths("/config", log_dir, "/data")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_dir = os.path.join(temp_dir, "config")
+            log_dir = os.path.join(temp_dir, "logs")
+            data_dir = os.path.join(temp_dir, "data")
+            set_android_paths(config_dir, log_dir, data_dir)
 
-        expected_path = os.path.join(log_dir, "mmrelay.log")
-        self.assertEqual(get_log_file_path(), expected_path)
+            expected_path = os.path.join(log_dir, "mmrelay.log")
+            self.assertEqual(get_log_file_path(), expected_path)
 
     def test_get_log_file_path_custom_filename(self):
         """Test get_log_file_path with custom filename"""
-        log_dir = "/android/logs"
-        set_android_paths("/config", log_dir, "/data")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_dir = os.path.join(temp_dir, "config")
+            log_dir = os.path.join(temp_dir, "logs")
+            data_dir = os.path.join(temp_dir, "data")
+            set_android_paths(config_dir, log_dir, data_dir)
 
-        expected_path = os.path.join(log_dir, "custom.log")
-        self.assertEqual(get_log_file_path("custom.log"), expected_path)
+            expected_path = os.path.join(log_dir, "custom.log")
+            self.assertEqual(get_log_file_path("custom.log"), expected_path)
 
     def test_get_log_file_path_non_android_environment(self):
         """Test get_log_file_path in non-Android environment"""
@@ -130,12 +147,15 @@ class TestAndroidConfig(unittest.TestCase):
 
     def test_get_data_file_path_android_environment(self):
         """Test get_data_file_path in Android environment"""
-        data_dir = "/android/data"
-        set_android_paths("/config", "/logs", data_dir)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_dir = os.path.join(temp_dir, "config")
+            log_dir = os.path.join(temp_dir, "logs")
+            data_dir = os.path.join(temp_dir, "data")
+            set_android_paths(config_dir, log_dir, data_dir)
 
-        filename = "test.db"
-        expected_path = os.path.join(data_dir, filename)
-        self.assertEqual(get_data_file_path(filename), expected_path)
+            filename = "test.db"
+            expected_path = os.path.join(data_dir, filename)
+            self.assertEqual(get_data_file_path(filename), expected_path)
 
     def test_get_data_file_path_non_android_environment(self):
         """Test get_data_file_path in non-Android environment"""
@@ -150,20 +170,23 @@ class TestAndroidConfig(unittest.TestCase):
         self, mock_stream_handler, mock_file_handler, mock_basic_config
     ):
         """Test setup_android_logging in Android environment"""
-        log_dir = "/android/logs"
-        set_android_paths("/config", log_dir, "/data")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_dir = os.path.join(temp_dir, "config")
+            log_dir = os.path.join(temp_dir, "logs")
+            data_dir = os.path.join(temp_dir, "data")
+            set_android_paths(config_dir, log_dir, data_dir)
 
-        setup_android_logging()
+            setup_android_logging()
 
-        # Verify logging.basicConfig was called
-        mock_basic_config.assert_called_once()
+            # Verify logging.basicConfig was called
+            mock_basic_config.assert_called_once()
 
-        # Check that FileHandler was created with correct path
-        expected_log_path = os.path.join(log_dir, "mmrelay.log")
-        mock_file_handler.assert_called_once_with(expected_log_path)
+            # Check that FileHandler was created with correct path
+            expected_log_path = os.path.join(log_dir, "mmrelay.log")
+            mock_file_handler.assert_called_once_with(expected_log_path)
 
-        # Check that StreamHandler was created
-        mock_stream_handler.assert_called_once()
+            # Check that StreamHandler was created
+            mock_stream_handler.assert_called_once()
 
     @patch("mmrelay.android.android_config.logging.basicConfig")
     def test_setup_android_logging_non_android_environment(self, mock_basic_config):
@@ -199,17 +222,18 @@ class TestAndroidConfig(unittest.TestCase):
         """Test that set_android_paths handles makedirs errors gracefully"""
         mock_makedirs.side_effect = OSError("Permission denied")
 
-        config_dir = "/restricted/config"
-        log_dir = "/restricted/logs"
-        data_dir = "/restricted/data"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_dir = os.path.join(temp_dir, "config")
+            log_dir = os.path.join(temp_dir, "logs")
+            data_dir = os.path.join(temp_dir, "data")
 
-        # Should not raise exception even if makedirs fails
-        set_android_paths(config_dir, log_dir, data_dir)
+            # Should not raise exception even if makedirs fails
+            set_android_paths(config_dir, log_dir, data_dir)
 
-        # Verify paths were still set
-        self.assertEqual(get_android_config_dir(), config_dir)
-        self.assertEqual(get_android_log_dir(), log_dir)
-        self.assertEqual(get_android_data_dir(), data_dir)
+            # Verify paths were still set
+            self.assertEqual(get_android_config_dir(), config_dir)
+            self.assertEqual(get_android_log_dir(), log_dir)
+            self.assertEqual(get_android_data_dir(), data_dir)
 
     def test_getters_return_none_when_not_set(self):
         """Test that getters return None when paths are not set"""
