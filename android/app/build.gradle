@@ -1,8 +1,10 @@
 plugins {
     id 'com.android.application'
     id 'org.jetbrains.kotlin.android'
-    id 'com.chaquo.python'
 }
+
+// Apply Chaquopy plugin using old syntax
+apply plugin: 'com.chaquo.python'
 
 android {
     namespace 'com.example.mmrelay'
@@ -15,6 +17,11 @@ android {
         versionCode 1
         versionName "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+
+        // Add NDK ABI filters required by Chaquopy
+        ndk {
+            abiFilters "armeabi-v7a", "arm64-v8a"
+        }
     }
 
     // Copy Python files from main source directory
@@ -42,28 +49,28 @@ android {
     }
 }
 
-// Chaquopy configuration at project level
-chaquopy {
-    version = "3.11"
-    abiFilters.addAll("armeabi-v7a", "arm64-v8a")
-    pip {
-        install "meshtastic>=2.6.4"
-        install "Pillow==11.3.0"
-        install "matrix-nio[e2e]==0.25.2"
-        install "python-olm"
-        install "matplotlib==3.10.1"
-        install "requests==2.32.5"
-        install "markdown==3.8.2"
-        install "bleach==6.2.0"
-        install "haversine==2.9.0"
-        install "schedule==1.2.2"
-        install "platformdirs==4.3.8"
-        install "py-staticmaps>=0.4.0"
-        install "psutil>=5.8.0"
-        install "rich==14.1.0"
-        install "setuptools==80.9.0"
-    }
-}
+// Temporarily remove chaquopy block to test basic Android build
+// chaquopy {
+//     version = "3.11"
+//     abiFilters.addAll("armeabi-v7a", "arm64-v8a")
+//     pip {
+//         install "meshtastic>=2.6.4"
+//         install "Pillow==11.3.0"
+//         install "matrix-nio[e2e]==0.25.2"
+//         install "python-olm"
+//         install "matplotlib==3.10.1"
+//         install "requests==2.32.5"
+//         install "markdown==3.8.2"
+//         install "bleach==6.2.0"
+//         install "haversine==2.9.0"
+//         install "schedule==1.2.2"
+//         install "platformdirs==4.3.8"
+//         install "py-staticmaps>=0.4.0"
+//         install "psutil>=5.8.0"
+//         install "rich==14.1.0"
+//         install "setuptools==80.9.0"
+//     }
+// }
 
 dependencies {
     implementation 'androidx.core:core-ktx:1.12.0'
