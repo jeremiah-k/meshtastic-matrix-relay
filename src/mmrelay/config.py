@@ -419,14 +419,15 @@ def save_credentials(credentials):
 # Set up a basic logger for config
 logger = logging.getLogger("Config")
 logger.setLevel(logging.INFO)
-handler = logging.StreamHandler()
-handler.setFormatter(
-    logging.Formatter(
-        fmt="%(asctime)s %(levelname)s:%(name)s:%(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S %z",
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    handler.setFormatter(
+        logging.Formatter(
+            fmt="%(asctime)s %(levelname)s:%(name)s:%(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S %z",
+        )
     )
-)
-logger.addHandler(handler)
+    logger.addHandler(handler)
 
 # Initialize empty config
 relay_config = {}
@@ -644,7 +645,7 @@ def load_config(config_file=None, args=None):
         # Store the config path but don't log it yet - will be logged by main.py
         try:
             with open(config_file, "r") as f:
-                relay_config = yaml.load(f, Loader=SafeLoader)
+                relay_config = yaml.safe_load(f)
             config_path = config_file
             # Treat empty/null YAML files as an empty config dictionary
             if relay_config is None:
@@ -652,8 +653,8 @@ def load_config(config_file=None, args=None):
             # Apply environment variable overrides
             relay_config = apply_env_config_overrides(relay_config)
             return relay_config
-        except (yaml.YAMLError, PermissionError, OSError) as e:
-            logger.error(f"Error loading config file {config_file}: {e}")
+        except (yaml.YAMLError, PermissionError, OSError):
+            logger.exception(f"Error loading config file {config_file}")
             return {}
 
     # Otherwise, search for a config file
@@ -666,15 +667,15 @@ def load_config(config_file=None, args=None):
             # Store the config path but don't log it yet - will be logged by main.py
             try:
                 with open(config_path, "r") as f:
-                    relay_config = yaml.load(f, Loader=SafeLoader)
+                    relay_config = yaml.safe_load(f)
                 # Treat empty/null YAML files as an empty config dictionary
                 if relay_config is None:
                     relay_config = {}
                 # Apply environment variable overrides
                 relay_config = apply_env_config_overrides(relay_config)
                 return relay_config
-            except (yaml.YAMLError, PermissionError, OSError) as e:
-                logger.error(f"Error loading config file {path}: {e}")
+            except (yaml.YAMLError, PermissionError, OSError):
+                logger.exception(f"Error loading config file {path}")
                 continue  # Try the next config path
 
     # No config file found - try to use environment variables only

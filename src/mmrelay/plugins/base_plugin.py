@@ -522,8 +522,11 @@ class BasePlugin(ABC):
         """
         from mmrelay.matrix_utils import bot_command
 
-        # Pass the entire event to bot_command
-        return bot_command(self.plugin_name, event)
+        # Check all declared commands/aliases
+        for cmd in self.get_matrix_commands():
+            if bot_command(cmd, event):
+                return True
+        return False
 
     @abstractmethod
     async def handle_meshtastic_message(

@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import sqlite3
@@ -45,7 +46,9 @@ def get_db_path():
             "database": config.get("database", {}),
             "db": config.get("db", {}),  # Legacy format
         }
-        current_config_hash = hash(str(sorted(db_config.items())))
+        current_config_hash = hashlib.sha256(
+            json.dumps(db_config, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
 
     # Check if cache is valid (path exists and config hasn't changed)
     if _cached_db_path is not None and current_config_hash == _cached_config_hash:
@@ -138,6 +141,11 @@ def initialize_database():
                 "CREATE TABLE IF NOT EXISTS message_map (meshtastic_id INTEGER, matrix_event_id TEXT PRIMARY KEY, matrix_room_id TEXT, meshtastic_text TEXT, meshtastic_meshnet TEXT)"
             )
 
+            # Add index for frequent meshtastic_id lookups
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_message_map_meshtastic_id ON message_map(meshtastic_id)"
+            )
+
             # Attempt to add meshtastic_meshnet column if it's missing (for upgrades)
             # This is a no-op if the column already exists.
             # If user runs fresh, it will already be there from CREATE TABLE IF NOT EXISTS.
@@ -148,8 +156,8 @@ def initialize_database():
             except sqlite3.OperationalError:
                 # Column already exists, or table just created with it
                 pass
-    except sqlite3.Error as e:
-        logger.error(f"Database initialization failed: {e}")
+    except sqlite3.Error:
+        logger.exception("Database initialization failed")
         raise
 
 
@@ -170,10 +178,8 @@ def store_plugin_data(plugin_name, meshtastic_id, data):
                 (plugin_name, meshtastic_id, json.dumps(data), json.dumps(data)),
             )
             conn.commit()
-    except sqlite3.Error as e:
-        logger.error(
-            f"Database error storing plugin data for {plugin_name}, {meshtastic_id}: {e}"
-        )
+    except sqlite3.Error:
+        logger.exception("DB error storing plugin data for %s, %s", plugin_name, meshtastic_id)
 
 
 def delete_plugin_data(plugin_name, meshtastic_id):
@@ -192,10 +198,8 @@ def delete_plugin_data(plugin_name, meshtastic_id):
                 (plugin_name, meshtastic_id),
             )
             conn.commit()
-    except sqlite3.Error as e:
-        logger.error(
-            f"Database error deleting plugin data for {plugin_name}, {meshtastic_id}: {e}"
-        )
+    except sqlite3.Error:
+        logger.exception("DB error deleting plugin data for %s, %s", plugin_name, meshtastic_id)
 
 
 # Get the data for a given plugin and Meshtastic ID
@@ -224,10 +228,8 @@ def get_plugin_data_for_node(plugin_name, meshtastic_id):
                 f"Failed to decode JSON data for plugin {plugin_name}, node {meshtastic_id}: {e}"
             )
             return []
-    except (MemoryError, sqlite3.Error) as e:
-        logger.error(
-            f"Database error retrieving plugin data for {plugin_name}, node {meshtastic_id}: {e}"
-        )
+    except (MemoryError, sqlite3.Error):
+        logger.exception("DB error retrieving plugin data for %s, node %s", plugin_name, meshtastic_id)
         return []
 
 
@@ -261,8 +263,8 @@ def get_longname(meshtastic_id):
             )
             result = cursor.fetchone()
         return result[0] if result else None
-    except sqlite3.Error as e:
-        logger.error(f"Database error retrieving longname for {meshtastic_id}: {e}")
+    except sqlite3.Error:
+        logger.exception("DB error retrieving longname for %s", meshtastic_id)
         return None
 
 
@@ -280,8 +282,8 @@ def save_longname(meshtastic_id, longname):
                 (meshtastic_id, longname),
             )
             conn.commit()
-    except sqlite3.Error as e:
-        logger.error(f"Database error saving longname for {meshtastic_id}: {e}")
+    except sqlite3.Error:
+        logger.exception("DB error saving longname for %s", meshtastic_id)
 
 
 def update_longnames(nodes):
@@ -319,8 +321,8 @@ def get_shortname(meshtastic_id):
             )
             result = cursor.fetchone()
         return result[0] if result else None
-    except sqlite3.Error as e:
-        logger.error(f"Database error retrieving shortname for {meshtastic_id}: {e}")
+    except sqlite3.Error:
+        logger.exception("DB error retrieving shortname for %s", meshtastic_id)
         return None
 
 
@@ -338,8 +340,8 @@ def save_shortname(meshtastic_id, shortname):
                 (meshtastic_id, shortname),
             )
             conn.commit()
-    except sqlite3.Error as e:
-        logger.error(f"Database error saving shortname for {meshtastic_id}: {e}")
+    except sqlite3.Error:
+        logger.exception("DB error saving shortname for %s", meshtastic_id)
 
 
 def update_shortnames(nodes):
@@ -392,8 +394,8 @@ def store_message_map(
                 ),
             )
             conn.commit()
-    except sqlite3.Error as e:
-        logger.error(f"Database error storing message map for {matrix_event_id}: {e}")
+    except sqlite3.Error:
+        logger.exception("DB error storing message map for %s", matrix_event_id)
 
 
 def get_message_map_by_meshtastic_id(meshtastic_id):
@@ -418,16 +420,12 @@ def get_message_map_by_meshtastic_id(meshtastic_id):
                 try:
                     # result = (matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet)
                     return result[0], result[1], result[2], result[3]
-                except (IndexError, TypeError) as e:
-                    logger.error(
-                        f"Malformed data in message_map for meshtastic_id {meshtastic_id}: {e}"
-                    )
+                except (IndexError, TypeError):
+                    logger.exception("Malformed data in message_map for meshtastic_id %s", meshtastic_id)
                     return None
             return None
-    except sqlite3.Error as e:
-        logger.error(
-            f"Database error retrieving message map for meshtastic_id {meshtastic_id}: {e}"
-        )
+    except sqlite3.Error:
+        logger.exception("DB error retrieving message map for meshtastic_id %s", meshtastic_id)
         return None
 
 
@@ -453,16 +451,12 @@ def get_message_map_by_matrix_event_id(matrix_event_id):
                 try:
                     # result = (meshtastic_id, matrix_room_id, meshtastic_text, meshtastic_meshnet)
                     return result[0], result[1], result[2], result[3]
-                except (IndexError, TypeError) as e:
-                    logger.error(
-                        f"Malformed data in message_map for matrix_event_id {matrix_event_id}: {e}"
-                    )
+                except (IndexError, TypeError):
+                    logger.exception("Malformed data in message_map for matrix_event_id %s", matrix_event_id)
                     return None
             return None
-    except (UnicodeDecodeError, sqlite3.Error) as e:
-        logger.error(
-            f"Database error retrieving message map for matrix_event_id {matrix_event_id}: {e}"
-        )
+    except (UnicodeDecodeError, sqlite3.Error):
+        logger.exception("DB error retrieving message map for matrix_event_id %s", matrix_event_id)
         return None
 
 

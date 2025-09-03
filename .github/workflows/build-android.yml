@@ -2,7 +2,9 @@ name: Build Android APK
 
 on:
   push:
-    branches: ["main"]
+    branches: ["main", "develop"]
+  pull_request:
+    branches: ["develop"]
   workflow_dispatch:
 
 jobs:
@@ -30,9 +32,8 @@ jobs:
         uses: android-actions/setup-android@v2
 
       - name: Build Android App
-        run: |
-          cd android
-          ./gradlew build
+        working-directory: android
+        run: ./gradlew build
         env:
           # The setup-android action sets ANDROID_HOME, but we can be explicit
           # if needed. This is good practice.

@@ -19,12 +19,12 @@ class Plugin(BasePlugin):
     priority = 1
 
     async def handle_meshtastic_message(
-        self, packet, formatted_message, longname, meshnet_name
+        self, packet, _formatted_message, _longname, _meshnet_name
     ):
         packet = self.strip_raw(packet)
 
         self.logger.debug(f"Packet received: {packet}")
         return False
 
-    async def handle_room_message(self, room, event, full_message):
+    async def handle_room_message(self, _room, _event, _full_message):
         return False
