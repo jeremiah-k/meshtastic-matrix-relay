@@ -28,4 +28,14 @@ MagicMock/
 # Android SDK
 android_sdk/
 
+# Android/Gradle build files
+android/.gradle/
+android/app/build/
+android/build/
+*.apk
+*.aab
+local.properties
+
+# Gradle wrapper
+android/gradle/wrapper/gradle-wrapper.jar
 .kilocode
