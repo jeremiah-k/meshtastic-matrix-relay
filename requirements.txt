@@ -15,7 +15,7 @@ setuptools==80.9.0
 
 # Testing and coverage
 coverage==7.10.6
-pytest==8.4.1
+pytest==8.4.2
 pytest-cov==6.3.0
 pytest-asyncio==1.1.0
 pytest-env==1.1.5
