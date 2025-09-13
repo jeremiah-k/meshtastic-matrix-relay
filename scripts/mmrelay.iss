@@ -22,7 +22,7 @@ Name: "{group}\Setup Authentication"; Filename: "{app}\setup-auth.bat"; Comment:
 
 [Run]
 Filename: "{app}\setup-auth.bat"; Description: "Set up Matrix authentication (recommended first step)"; Flags: nowait postinstall skipifsilent; Check: FileExists(ExpandConstant('{app}\setup-auth.bat'))
-Filename: "{app}\mmrelay.bat"; Description: "Launch MM Relay"; Flags: nowait postinstall skipifsilent unchecked; Check: FileExists(ExpandConstant('{app}\mmrelay.bat'))
+Filename: "{app}\mmrelay.bat"; Description: "Launch MMRelay"; Flags: nowait postinstall skipifsilent unchecked; Check: FileExists(ExpandConstant('{app}\mmrelay.bat'))
 
 [Code]
 
@@ -436,6 +436,8 @@ begin
   end;
 
   batch_file := '@echo off' + #13#10 +
+                'chcp 65001 >nul' + #13#10 +
+                'set PYTHONUTF8=1' + #13#10 +
                 'cd /d "' + sAppDir + '"' + #13#10 +
                 'echo Starting MMRelay...' + #13#10 +
                 'echo.' + #13#10 +
@@ -451,7 +453,7 @@ begin
 
   // Create setup-auth.bat for manual authentication
   setup_auth_batch := '@echo off' + #13#10 +
-                      'echo Setting up Matrix authentication for MM Relay...' + #13#10 +
+                      'echo Setting up Matrix authentication for MMRelay...' + #13#10 +
                       'echo.' + #13#10 +
                       'cd /d "' + sAppDir + '"' + #13#10 +
                       '"' + sAppDir + '\mmrelay.exe" --config "' + sAppDir + '\config.yaml" auth login' + #13#10 +

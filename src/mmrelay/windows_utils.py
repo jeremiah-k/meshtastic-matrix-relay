@@ -14,7 +14,7 @@ from mmrelay.constants.app import WINDOWS_PLATFORM
 
 def is_windows() -> bool:
     """Check if running on Windows."""
-    return sys.platform == WINDOWS_PLATFORM
+    return os.name == "nt" or sys.platform == WINDOWS_PLATFORM
 
 
 def setup_windows_console() -> None:
@@ -64,9 +64,12 @@ def get_windows_error_message(error: Exception) -> str:
     if not is_windows():
         return str(error)
 
-    error_str = str(error).lower()
+    import errno as _errno
 
-    if "access is denied" in error_str or "permission denied" in error_str:
+    # Use exception types and errno codes for more robust error detection
+    if isinstance(error, PermissionError) or (
+        isinstance(error, OSError) and error.errno in {_errno.EACCES, _errno.EPERM}
+    ):
         return (
             f"Permission denied: {error}\n"
             "This may be caused by:\n"
@@ -75,7 +78,9 @@ def get_windows_error_message(error: Exception) -> str:
             "• File being used by another process\n"
             "Try running as administrator or check antivirus settings."
         )
-    elif "file not found" in error_str or "no such file" in error_str:
+    elif isinstance(error, FileNotFoundError) or (
+        isinstance(error, OSError) and error.errno in {_errno.ENOENT}
+    ):
         return (
             f"File not found: {error}\n"
             "This may be caused by:\n"
@@ -84,7 +89,17 @@ def get_windows_error_message(error: Exception) -> str:
             "• Network drive disconnection\n"
             "Verify the file path and check antivirus quarantine."
         )
-    elif "network" in error_str or "connection" in error_str:
+    elif isinstance(error, ConnectionError) or (
+        isinstance(error, OSError)
+        and error.errno
+        in {
+            _errno.EHOSTUNREACH,
+            _errno.ENETDOWN,
+            _errno.ENETUNREACH,
+            _errno.ECONNREFUSED,
+            _errno.ETIMEDOUT,
+        }
+    ):
         return (
             f"Network error: {error}\n"
             "This may be caused by:\n"
@@ -169,7 +184,7 @@ def test_config_generation_windows(args=None) -> dict:
                     "status": "error",
                     "details": f"Not found at: {sample_path}",
                 }
-        except Exception as e:
+        except (ImportError, OSError, FileNotFoundError, Exception) as e:
             results["sample_config_path"] = {"status": "error", "details": str(e)}
 
         # Test 2: importlib.resources fallback
@@ -185,7 +200,7 @@ def test_config_generation_windows(args=None) -> dict:
                 "status": "ok",
                 "details": f"Content length: {len(content)} chars",
             }
-        except Exception as e:
+        except (ImportError, OSError, FileNotFoundError) as e:
             results["importlib_resources"] = {"status": "error", "details": str(e)}
 
         # Test 3: Config paths
@@ -194,7 +209,7 @@ def test_config_generation_windows(args=None) -> dict:
 
             paths = get_config_paths(args)
             results["config_paths"] = {"status": "ok", "details": f"Paths: {paths}"}
-        except Exception as e:
+        except (ImportError, OSError) as e:
             results["config_paths"] = {"status": "error", "details": str(e)}
 
         # Test 4: Directory creation
@@ -212,7 +227,7 @@ def test_config_generation_windows(args=None) -> dict:
                 "status": "ok",
                 "details": f"Created: {created_dirs}",
             }
-        except Exception as e:
+        except OSError as e:
             results["directory_creation"] = {"status": "error", "details": str(e)}
 
         # Determine overall status
@@ -228,7 +243,7 @@ def test_config_generation_windows(args=None) -> dict:
         else:
             results["overall_status"] = "error"
 
-    except Exception as e:
+    except OSError as e:
         results["overall_status"] = "error"
         results["error"] = str(e)
 

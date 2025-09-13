@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Alternative entry point for MMRelay that doesn't rely on setuptools console scripts.
 

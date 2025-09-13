@@ -17,6 +17,9 @@ from pathlib import Path
 from mmrelay.constants.database import PROGRESS_COMPLETE, PROGRESS_TOTAL_STEPS
 from mmrelay.tools import get_service_template_path
 
+# Resolve systemctl path dynamically with fallback
+SYSTEMCTL = shutil.which("systemctl") or "/usr/bin/systemctl"
+
 
 def get_executable_path():
     """Get the full path to the mmrelay executable.
@@ -170,7 +173,7 @@ def get_template_service_content():
                 service_template = f.read()
             return service_template
         except Exception as e:
-            print(f"Error reading service template file: {e}")
+            print(f"Error reading service template file: {e}", file=sys.stderr)
 
     # If the helper function failed, try using importlib.resources directly
     try:
@@ -181,7 +184,10 @@ def get_template_service_content():
         )
         return service_template
     except (FileNotFoundError, ImportError, OSError) as e:
-        print(f"Error accessing mmrelay.service via importlib.resources: {e}")
+        print(
+            f"Error accessing mmrelay.service via importlib.resources: {e}",
+            file=sys.stderr,
+        )
 
         # Fall back to the file path method
         template_path = get_template_service_path()
@@ -192,10 +198,10 @@ def get_template_service_content():
                     service_template = f.read()
                 return service_template
             except Exception as e:
-                print(f"Error reading service template file: {e}")
+                print(f"Error reading service template file: {e}", file=sys.stderr)
 
     # If we couldn't find or read the template file, use a default template
-    print("Using default service template")
+    print("Using default service template", file=sys.stderr)
     return """[Unit]
 Description=MMRelay - Meshtastic <=> Matrix Relay
 After=network-online.target
@@ -225,7 +231,7 @@ def is_service_enabled():
     """
     try:
         result = subprocess.run(
-            ["/usr/bin/systemctl", "--user", "is-enabled", "mmrelay.service"],
+            [SYSTEMCTL, "--user", "is-enabled", "mmrelay.service"],
             check=False,  # Don't raise an exception if the service is not enabled
             capture_output=True,
             text=True,
@@ -243,7 +249,7 @@ def is_service_active():
     """
     try:
         result = subprocess.run(
-            ["/usr/bin/systemctl", "--user", "is-active", "mmrelay.service"],
+            [SYSTEMCTL, "--user", "is-active", "mmrelay.service"],
             check=False,  # Don't raise an exception if the service is not active
             capture_output=True,
             text=True,
@@ -303,8 +309,8 @@ def create_service_file():
 def reload_daemon():
     """Reload the systemd user daemon."""
     try:
-        # Using absolute path for security
-        subprocess.run(["/usr/bin/systemctl", "--user", "daemon-reload"], check=True)
+        # Using resolved systemctl path
+        subprocess.run([SYSTEMCTL, "--user", "daemon-reload"], check=True)
         print("Systemd user daemon reloaded")
         return True
     except subprocess.CalledProcessError as e:
@@ -522,7 +528,7 @@ def install_service():
         if enable_service:
             try:
                 subprocess.run(
-                    ["/usr/bin/systemctl", "--user", "enable", "mmrelay.service"],
+                    [SYSTEMCTL, "--user", "enable", "mmrelay.service"],
                     check=True,
                 )
                 print("Service enabled successfully")
@@ -546,7 +552,7 @@ def install_service():
         if restart_service:
             try:
                 subprocess.run(
-                    ["/usr/bin/systemctl", "--user", "restart", "mmrelay.service"],
+                    [SYSTEMCTL, "--user", "restart", "mmrelay.service"],
                     check=True,
                 )
                 print("Service restarted successfully")
@@ -597,9 +603,7 @@ def start_service():
         bool: True if successful, False otherwise.
     """
     try:
-        subprocess.run(
-            ["/usr/bin/systemctl", "--user", "start", "mmrelay.service"], check=True
-        )
+        subprocess.run([SYSTEMCTL, "--user", "start", "mmrelay.service"], check=True)
         return True
     except subprocess.CalledProcessError as e:
         print(f"Error starting service: {e}")
@@ -617,7 +621,7 @@ def show_service_status():
     """
     try:
         result = subprocess.run(
-            ["/usr/bin/systemctl", "--user", "status", "mmrelay.service"],
+            [SYSTEMCTL, "--user", "status", "mmrelay.service"],
             check=True,
             capture_output=True,
             text=True,

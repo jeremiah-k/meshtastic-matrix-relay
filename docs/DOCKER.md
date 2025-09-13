@@ -319,11 +319,13 @@ For BLE connections, add to docker-compose.yaml:
 ```yaml
 services:
   mmrelay:
-    network_mode: host # Required for BLE/D-Bus
+    network_mode: host # Required for BLE/D-Bus (Linux only - not supported on Docker Desktop for macOS/Windows)
     privileged: true # Required for BLE access
     volumes:
       - /var/run/dbus:/var/run/dbus:ro
 ```
+
+**Note:** `network_mode: host` is only supported on Linux. Docker Desktop on macOS and Windows does not support host networking. For Windows users, consider using WSL2 or a native installation instead.
 
 ## Data Persistence
 

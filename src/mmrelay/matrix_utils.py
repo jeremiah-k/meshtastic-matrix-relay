@@ -242,7 +242,7 @@ def _get_msgs_to_keep_config():
     return msg_map_config.get("msgs_to_keep", DEFAULT_MSGS_TO_KEEP)
 
 
-def _get_detailed_sync_error_message(sync_response):
+def _get_detailed_sync_error_message(sync_response) -> str:
     """
     Extract detailed error information from a Matrix sync response.
 
@@ -253,6 +253,20 @@ def _get_detailed_sync_error_message(sync_response):
         str: A detailed error message with specific information about the failure
     """
     try:
+        # Handle nio ErrorResponse explicitly when available
+        try:
+            from nio import ErrorResponse as NioErrorResponse
+
+            if isinstance(sync_response, NioErrorResponse):
+                msg = getattr(sync_response, "message", None)
+                code = getattr(sync_response, "status_code", None)
+                if msg:
+                    return msg
+                if code:
+                    return f"HTTP error {code}"
+        except ImportError:
+            pass  # nio not available, continue with generic handling
+
         # Try to extract specific error information
         if hasattr(sync_response, "message") and sync_response.message:
             return sync_response.message
@@ -285,7 +299,10 @@ def _get_detailed_sync_error_message(sync_response):
         else:
             return "Network connectivity issue or server unreachable"
 
-    except Exception:
+    except Exception as e:
+        logger.debug(
+            "Failed to extract sync error details from %r: %s", sync_response, e
+        )
         # If we can't extract error details, provide a generic but helpful message
         return (
             "Unable to determine specific error - likely a network connectivity issue"

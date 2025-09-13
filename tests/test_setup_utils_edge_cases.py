@@ -16,7 +16,6 @@ import os
 import subprocess  # nosec B404 - Used for controlled test environment operations
 import sys
 import unittest
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 # Add src to path for imports
@@ -29,7 +28,6 @@ from mmrelay.setup_utils import (
     enable_lingering,
     get_executable_path,
     get_template_service_content,
-    get_user_service_path,
     install_service,
     reload_daemon,
 )
@@ -38,16 +36,21 @@ from mmrelay.setup_utils import (
 class TestSetupUtilsEdgeCases(unittest.TestCase):
     """Test cases for Setup utilities edge cases and error handling."""
 
-    def test_get_user_service_path_permission_error(self):
+    def test_create_service_file_permission_error(self):
         """
-        Test that get_user_service_path returns a Path object without raising an exception when directory creation fails due to a PermissionError.
+        Test that create_service_file returns False when directory creation fails due to a PermissionError.
         """
         with patch(
-            "pathlib.Path.mkdir", side_effect=PermissionError("Permission denied")
+            "mmrelay.setup_utils.get_executable_path", return_value="/usr/bin/mmrelay"
         ):
-            # Should not raise exception, just return the path
-            result = get_user_service_path()
-            self.assertIsInstance(result, Path)
+            with patch(
+                "pathlib.Path.write_text",
+                side_effect=PermissionError("Permission denied"),
+            ):
+                with patch("builtins.print") as mock_print:
+                    result = create_service_file()
+                    self.assertFalse(result)
+                    mock_print.assert_called()
 
     def test_get_executable_path_not_found(self):
         """
@@ -206,7 +209,7 @@ class TestSetupUtilsEdgeCases(unittest.TestCase):
             mock_run.return_value.returncode = 0
             mock_run.return_value.stdout = "invalid output format"
 
-            with patch("getpass.getuser", return_value="testuser"):
+            with patch.dict(os.environ, {"USER": "testuser"}):
                 result = check_lingering_enabled()
                 self.assertFalse(result)
 

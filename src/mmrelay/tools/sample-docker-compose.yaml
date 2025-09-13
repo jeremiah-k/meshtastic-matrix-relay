@@ -1,7 +1,7 @@
 services:
   mmrelay:
     build: .
-    container_name: meshtastic-matrix-relay
+    container_name: mmrelay # Updated for consistent branding
     restart: unless-stopped
     stop_grace_period: 30s
     user: "${UID:-1000}:${GID:-1000}"

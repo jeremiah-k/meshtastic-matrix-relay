@@ -260,7 +260,7 @@ def _validate_e2ee_dependencies():
         return True
     except ImportError:
         print("❌ Error: E2EE dependencies not installed")
-        print("   E2EE features require additional dependencies")
+        print("   End-to-end encryption features require additional dependencies")
         print("   Install E2EE support: pipx install 'mmrelay[e2e]'")
         return False
 
