@@ -5,8 +5,8 @@
 
 AppName=Matrix <> Meshtastic Relay
 AppVersion={#AppVersion}
-DefaultDirName={userpf}\MM Relay
-DefaultGroupName=MM Relay
+DefaultDirName={userpf}\MMRelay
+DefaultGroupName=MMRelay
 UninstallFilesDir={app}
 OutputDir=.
 OutputBaseFilename=MMRelay_setup_{#AppVersion}
@@ -16,9 +16,9 @@ PrivilegesRequiredOverridesAllowed=dialog commandline
 Source: "..\dist\mmrelay.exe"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs; AfterInstall: AfterInstall(ExpandConstant('{app}'));
 
 [Icons]
-Name: "{group}\MM Relay"; Filename: "{app}\mmrelay.bat"; Check: FileExists(ExpandConstant('{app}\mmrelay.bat'))
-Name: "{group}\MM Relay Config"; Filename: "{sys}\notepad.exe"; Parameters: """{app}\config.yaml"""; WorkingDir: "{app}"; Check: FileExists(ExpandConstant('{app}\config.yaml'))
-Name: "{group}\Setup Authentication"; Filename: "{app}\setup-auth.bat"; Comment: "Set up Matrix authentication for MM Relay"; Check: FileExists(ExpandConstant('{app}\setup-auth.bat'))
+Name: "{group}\MMRelay"; Filename: "{app}\mmrelay.bat"; Check: FileExists(ExpandConstant('{app}\mmrelay.bat'))
+Name: "{group}\MMRelay Config"; Filename: "{sys}\notepad.exe"; Parameters: """{app}\config.yaml"""; WorkingDir: "{app}"; Check: FileExists(ExpandConstant('{app}\config.yaml'))
+Name: "{group}\Setup Authentication"; Filename: "{app}\setup-auth.bat"; Comment: "Set up Matrix authentication for MMRelay"; Check: FileExists(ExpandConstant('{app}\setup-auth.bat'))
 
 [Run]
 Filename: "{app}\setup-auth.bat"; Description: "Set up Matrix authentication (recommended first step)"; Flags: nowait postinstall skipifsilent; Check: FileExists(ExpandConstant('{app}\setup-auth.bat'))
@@ -437,11 +437,11 @@ begin
 
   batch_file := '@echo off' + #13#10 +
                 'cd /d "' + sAppDir + '"' + #13#10 +
-                'echo Starting MM Relay...' + #13#10 +
+                'echo Starting MMRelay...' + #13#10 +
                 'echo.' + #13#10 +
                 '"' + sAppDir + '\mmrelay.exe" --config "' + sAppDir + '\config.yaml"' + #13#10 +
                 'echo.' + #13#10 +
-                'echo MM Relay has stopped.' + #13#10 +
+                'echo MMRelay has stopped.' + #13#10 +
                 'pause';
 
   if Not SaveStringToFile(sAppDir + '\mmrelay.bat', batch_file, false) then
@@ -468,7 +468,7 @@ begin
   if (HomeserverURL <> '') and (MatrixPage.Values[1] <> '') and (MatrixPage.Values[2] <> '') then
   begin
     // User provided full credentials for non-interactive setup
-    MsgBox('MM Relay installation complete!' + #13#10 + #13#10 +
+    MsgBox('MMRelay installation complete!' + #13#10 + #13#10 +
            'Next step: Run "mmrelay.bat" to start the relay.' + #13#10 +
            'It will authenticate automatically on the first run.' + #13#10 + #13#10 +
            'The file is located in: ' + sAppDir, mbInformation, MB_OK);
@@ -476,7 +476,7 @@ begin
   else
   begin
     // User needs to perform interactive authentication
-    MsgBox('MM Relay installation complete!' + #13#10 + #13#10 +
+    MsgBox('MMRelay installation complete!' + #13#10 + #13#10 +
            'Next step: Run "setup-auth.bat" to configure Matrix authentication.' + #13#10 + #13#10 +
            'The file is located in: ' + sAppDir, mbInformation, MB_OK);
   end;

@@ -197,7 +197,7 @@ def get_template_service_content():
     # If we couldn't find or read the template file, use a default template
     print("Using default service template")
     return """[Unit]
-Description=A Meshtastic <=> Matrix Relay
+Description=MMRelay - Meshtastic <=> Matrix Relay
 After=network-online.target
 Wants=network-online.target
 

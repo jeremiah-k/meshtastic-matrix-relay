@@ -201,6 +201,22 @@ def parse_arguments():
         description="Install or update the systemd user service for MMRelay",
     )
 
+    # WINDOWS group (only show on Windows)
+    if sys.platform == WINDOWS_PLATFORM:
+        windows_parser = subparsers.add_parser(
+            "windows",
+            help="Windows-specific help and troubleshooting",
+            description="Windows installation guidance and troubleshooting",
+        )
+        windows_subparsers = windows_parser.add_subparsers(
+            dest="windows_command", help="Windows commands"
+        )
+        windows_subparsers.add_parser(
+            "help",
+            help="Show Windows installation and troubleshooting guide",
+            description="Display comprehensive Windows-specific guidance",
+        )
+
     # Use parse_known_args to handle unknown arguments gracefully (e.g., pytest args)
     args, unknown = parser.parse_known_args()
     # If there are unknown arguments and we're not in a test invocation, warn about them
@@ -254,7 +270,8 @@ def _validate_e2ee_dependencies():
         print("✅ E2EE dependencies are installed")
         return True
     except ImportError:
-        print("❌ Error: E2EE enabled but dependencies not installed")
+        print("❌ Error: E2EE dependencies not installed")
+        print("   E2EE features require additional dependencies")
         print("   Install E2EE support: pipx install 'mmrelay[e2e]'")
         return False
 
@@ -1083,6 +1100,15 @@ def main():
         int: Exit code (0 on success, non-zero on failure).
     """
     try:
+        # Set up Windows console for better compatibility
+        try:
+            from mmrelay.windows_utils import setup_windows_console
+
+            setup_windows_console()
+        except ImportError:
+            # windows_utils not available, continue without it
+            pass
+
         args = parse_arguments()
 
         # Handle subcommands first (modern interface)
@@ -1126,7 +1152,17 @@ def main():
             return 1
 
     except Exception as e:
-        print(f"Unexpected error: {e}")
+        # Provide Windows-specific error guidance if available
+        try:
+            from mmrelay.windows_utils import get_windows_error_message, is_windows
+
+            if is_windows():
+                error_msg = get_windows_error_message(e)
+                print(f"Error: {error_msg}")
+            else:
+                print(f"Unexpected error: {e}")
+        except ImportError:
+            print(f"Unexpected error: {e}")
         return 1
 
 
@@ -1146,6 +1182,8 @@ def handle_subcommand(args):
         return handle_auth_command(args)
     elif args.command == "service":
         return handle_service_command(args)
+    elif args.command == "windows":
+        return handle_windows_command(args)
     else:
         print(f"Unknown command: {args.command}")
         return 1
@@ -1262,8 +1300,28 @@ def handle_auth_login(args):
         return 1
     else:
         # No parameters provided - run in interactive mode
-        print("Matrix Bot Authentication for E2EE")
-        print("===================================")
+        # Check if E2EE is actually configured before mentioning it
+        try:
+            from mmrelay.config import load_config
+
+            config, config_path = load_config(args)
+            matrix_section = config.get("matrix", {}) if config else {}
+            e2ee_config = matrix_section.get("e2ee", {})
+            encryption_config = matrix_section.get("encryption", {})
+            e2ee_enabled = e2ee_config.get("enabled", False) or encryption_config.get(
+                "enabled", False
+            )
+
+            if e2ee_enabled:
+                print("Matrix Bot Authentication for E2EE")
+                print("===================================")
+            else:
+                print("Matrix Bot Authentication")
+                print("=========================")
+        except Exception:
+            # Fallback if config loading fails
+            print("Matrix Bot Authentication")
+            print("=========================")
 
     try:
         result = asyncio.run(
@@ -1444,6 +1502,37 @@ def handle_service_command(args):
             return 1
     else:
         print(f"Unknown service command: {args.service_command}")
+        return 1
+
+
+def handle_windows_command(args):
+    """
+    Handle Windows-specific CLI subcommands.
+
+    Provides Windows-specific help and troubleshooting guidance.
+    Returns 0 on success, 1 on failure or for unknown subcommands.
+    """
+    if args.windows_command == "help" or not hasattr(args, "windows_command"):
+        try:
+            from mmrelay.windows_utils import (
+                check_windows_requirements,
+                get_windows_install_guidance,
+            )
+
+            # Show any compatibility warnings first
+            warnings = check_windows_requirements()
+            if warnings:
+                print(warnings)
+                print()
+
+            # Show the installation guidance
+            print(get_windows_install_guidance())
+            return 0
+        except ImportError as e:
+            print(f"Error importing Windows utilities: {e}")
+            return 1
+    else:
+        print(f"Unknown windows command: {args.windows_command}")
         return 1
 
 

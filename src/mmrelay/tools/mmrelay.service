@@ -1,5 +1,5 @@
 [Unit]
-Description=A Meshtastic <=> Matrix Relay
+Description=MMRelay - Meshtastic <=> Matrix Relay
 After=network-online.target
 Wants=network-online.target
 
