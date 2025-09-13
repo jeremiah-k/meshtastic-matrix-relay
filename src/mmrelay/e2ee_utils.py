@@ -205,15 +205,15 @@ def get_room_encryption_warnings(
         overall = e2ee_status["overall_status"]
         if overall == "unavailable":
             warnings.append(
-                f"! {len(encrypted_rooms)} encrypted room(s) detected but E2EE is not supported on Windows"
+                f"⚠️ {len(encrypted_rooms)} encrypted room(s) detected but E2EE is not supported on Windows"
             )
         elif overall == "disabled":
             warnings.append(
-                f"! {len(encrypted_rooms)} encrypted room(s) detected but E2EE is disabled"
+                f"⚠️ {len(encrypted_rooms)} encrypted room(s) detected but E2EE is disabled"
             )
         else:
             warnings.append(
-                f"! {len(encrypted_rooms)} encrypted room(s) detected but E2EE setup is incomplete"
+                f"⚠️ {len(encrypted_rooms)} encrypted room(s) detected but E2EE setup is incomplete"
             )
 
         # Tail message depends on readiness
@@ -255,26 +255,26 @@ def format_room_list(rooms: Dict[str, Any], e2ee_status: Dict[str, Any]) -> List
         if e2ee_status["overall_status"] == "ready":
             # Show detailed status when E2EE is fully ready
             if encrypted:
-                room_lines.append(f"   [LOCK] {room_name} - Encrypted")
+                room_lines.append(f"   🔒 {room_name} - Encrypted")
             else:
-                room_lines.append(f"   OK {room_name}")
+                room_lines.append(f"   ✅ {room_name}")
         else:
             # Show warnings for encrypted rooms when E2EE is not ready
             if encrypted:
                 if e2ee_status["overall_status"] == "unavailable":
                     room_lines.append(
-                        f"   ! {room_name} - Encrypted (E2EE not supported on Windows - messages will be blocked)"
+                        f"   ⚠️ {room_name} - Encrypted (E2EE not supported on Windows - messages will be blocked)"
                     )
                 elif e2ee_status["overall_status"] == "disabled":
                     room_lines.append(
-                        f"   ! {room_name} - Encrypted (E2EE disabled - messages will be blocked)"
+                        f"   ⚠️ {room_name} - Encrypted (E2EE disabled - messages will be blocked)"
                     )
                 else:
                     room_lines.append(
-                        f"   ! {room_name} - Encrypted (E2EE incomplete - messages may be blocked)"
+                        f"   ⚠️ {room_name} - Encrypted (E2EE incomplete - messages may be blocked)"
                     )
             else:
-                room_lines.append(f"   OK {room_name}")
+                room_lines.append(f"   ✅ {room_name}")
 
     return room_lines
 
@@ -359,12 +359,12 @@ def get_e2ee_fix_instructions(e2ee_status: Dict[str, Any]) -> List[str]:
             related commands or configuration snippets are returned as additional indented strings.
     """
     if e2ee_status["overall_status"] == "ready":
-        return ["OK E2EE is fully configured and ready"]
+        return ["✅ E2EE is fully configured and ready"]
 
     instructions = []
 
     if not e2ee_status["platform_supported"]:
-        instructions.append("X E2EE is not supported on Windows")
+        instructions.append("❌ E2EE is not supported on Windows")
         instructions.append("   Use Linux or macOS for E2EE support")
         return instructions
 
