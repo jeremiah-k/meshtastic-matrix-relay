@@ -1359,8 +1359,8 @@ class TestAuthLogin(unittest.TestCase):
             homeserver=None, username=None, password=None, logout_others=False
         )
         # Check that header was printed for interactive mode
-        mock_print.assert_any_call("Matrix Bot Authentication for E2EE")
-        mock_print.assert_any_call("===================================")
+        mock_print.assert_any_call("Matrix Bot Authentication")
+        mock_print.assert_any_call("=========================")
 
     @patch("mmrelay.matrix_utils.login_matrix_bot")
     @patch("builtins.print")
@@ -1662,8 +1662,8 @@ class TestAuthLogin(unittest.TestCase):
         mock_login.assert_called_with(
             homeserver=None, username=None, password=None, logout_others=False
         )
-        mock_print.assert_any_call("Matrix Bot Authentication for E2EE")
-        mock_print.assert_any_call("===================================")
+        mock_print.assert_any_call("Matrix Bot Authentication")
+        mock_print.assert_any_call("=========================")
 
         # Reset mocks for second test
         mock_login.reset_mock()
@@ -2041,7 +2041,7 @@ class TestValidateE2EEDependencies(unittest.TestCase):
         # Verify results
         self.assertFalse(result)
         mock_print.assert_any_call(
-            "❌ Error: E2EE enabled but dependencies not installed"
+            "❌ Error: E2EE dependencies not installed"
         )
         mock_print.assert_any_call(
             "   Install E2EE support: pipx install 'mmrelay[e2e]'"
@@ -2088,7 +2088,7 @@ class TestValidateE2EEDependencies(unittest.TestCase):
         # Verify results
         self.assertFalse(result)
         mock_print.assert_any_call(
-            "❌ Error: E2EE enabled but dependencies not installed"
+            "❌ Error: E2EE dependencies not installed"
         )
         mock_print.assert_any_call(
             "   Install E2EE support: pipx install 'mmrelay[e2e]'"
@@ -2118,7 +2118,7 @@ class TestValidateE2EEDependencies(unittest.TestCase):
         # Verify results
         self.assertFalse(result)
         mock_print.assert_any_call(
-            "❌ Error: E2EE enabled but dependencies not installed"
+            "❌ Error: E2EE dependencies not installed"
         )
         mock_print.assert_any_call(
             "   Install E2EE support: pipx install 'mmrelay[e2e]'"

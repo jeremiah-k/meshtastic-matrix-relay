@@ -92,7 +92,7 @@ class TestSetupUtilsEdgeCases(unittest.TestCase):
             result = get_template_service_content()
             # Should return default template
             self.assertIn("[Unit]", result)
-            self.assertIn("Description=A Meshtastic", result)
+            self.assertIn("Description=MMRelay - Meshtastic", result)
 
     def test_get_template_service_content_read_error(self):
         """

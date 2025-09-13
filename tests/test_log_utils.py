@@ -282,10 +282,10 @@ class TestLogUtils(unittest.TestCase):
         mmrelay.log_utils.config = config
 
         # Clear any existing handlers for the main logger
-        main_logger = logging.getLogger("M<>M Relay")
+        main_logger = logging.getLogger("MMRelay")
         main_logger.handlers.clear()
 
-        get_logger("M<>M Relay")
+        get_logger("MMRelay")
 
         # Should store log file path globally
         self.assertEqual(mmrelay.log_utils.log_file_path, self.test_log_file)

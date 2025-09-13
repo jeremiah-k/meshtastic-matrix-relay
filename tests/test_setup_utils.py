@@ -211,7 +211,7 @@ class TestSetupUtils(unittest.TestCase):
 
         # Should return default template
         self.assertIn("[Unit]", content)
-        self.assertIn("Description=A Meshtastic <=> Matrix Relay", content)
+        self.assertIn("Description=MMRelay - Meshtastic <=> Matrix Relay", content)
 
     @patch("subprocess.run")
     def test_is_service_active_true(self, mock_run):
