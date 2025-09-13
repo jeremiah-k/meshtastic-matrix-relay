@@ -2040,9 +2040,7 @@ class TestValidateE2EEDependencies(unittest.TestCase):
 
         # Verify results
         self.assertFalse(result)
-        mock_print.assert_any_call(
-            "❌ Error: E2EE dependencies not installed"
-        )
+        mock_print.assert_any_call("❌ Error: E2EE dependencies not installed")
         mock_print.assert_any_call(
             "   Install E2EE support: pipx install 'mmrelay[e2e]'"
         )
@@ -2087,9 +2085,7 @@ class TestValidateE2EEDependencies(unittest.TestCase):
 
         # Verify results
         self.assertFalse(result)
-        mock_print.assert_any_call(
-            "❌ Error: E2EE dependencies not installed"
-        )
+        mock_print.assert_any_call("❌ Error: E2EE dependencies not installed")
         mock_print.assert_any_call(
             "   Install E2EE support: pipx install 'mmrelay[e2e]'"
         )
@@ -2117,9 +2113,7 @@ class TestValidateE2EEDependencies(unittest.TestCase):
 
         # Verify results
         self.assertFalse(result)
-        mock_print.assert_any_call(
-            "❌ Error: E2EE dependencies not installed"
-        )
+        mock_print.assert_any_call("❌ Error: E2EE dependencies not installed")
         mock_print.assert_any_call(
             "   Install E2EE support: pipx install 'mmrelay[e2e]'"
         )
