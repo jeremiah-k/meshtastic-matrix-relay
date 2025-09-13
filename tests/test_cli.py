@@ -13,8 +13,8 @@
 # For functions called via asyncio.run(), the asyncio.run() handles the awaiting,
 # so we just need the mock to return the expected value directly.
 #
-# ✅ CORRECT: mock_logout.return_value = True
-# ❌ INCORRECT: mock_logout = AsyncMock(return_value=True)
+# OK CORRECT: mock_logout.return_value = True
+# X INCORRECT: mock_logout = AsyncMock(return_value=True)
 #
 # This pattern eliminates RuntimeWarnings while maintaining proper test coverage.
 # See docs/dev/TESTING_GUIDE.md for comprehensive async mocking patterns.
@@ -1076,7 +1076,7 @@ class TestE2EEPrintFunctions(unittest.TestCase):
             # Check that success messages are printed
             calls = [call.args[0] for call in mock_print.call_args_list]
             self.assertTrue(
-                any("✅ E2EE is fully configured and ready" in call for call in calls)
+                any("OK E2EE is fully configured and ready" in call for call in calls)
             )
 
     def test_print_e2ee_analysis_disabled(self):
@@ -1098,7 +1098,7 @@ class TestE2EEPrintFunctions(unittest.TestCase):
             # Check that disabled messages are printed
             calls = [call.args[0] for call in mock_print.call_args_list]
             self.assertTrue(
-                any("⚠️  E2EE is disabled in configuration" in call for call in calls)
+                any("!  E2EE is disabled in configuration" in call for call in calls)
             )
 
     @patch("sys.platform", "linux")
@@ -1251,7 +1251,7 @@ class TestAuthLogout(unittest.TestCase):
         self.assertEqual(result, 0)
         # Check that security warning was printed
         mock_print.assert_any_call(
-            "⚠️  Warning: Supplying password as argument exposes it in shell history and process list."
+            "!  Warning: Supplying password as argument exposes it in shell history and process list."
         )
         mock_print.assert_any_call(
             "   For better security, use --password without a value to prompt securely."
@@ -1439,14 +1439,14 @@ class TestAuthLogin(unittest.TestCase):
         # Verify results
         self.assertEqual(result, 1)
         # Check error message content
-        expected_message = """❌ Error: All authentication parameters are required when using command-line options.
+        expected_message = """X Error: All authentication parameters are required when using command-line options.
    Missing: --username, --password
 
-💡 Options:
+TIP: Options:
    • For secure interactive authentication: mmrelay auth login
    • For automated authentication: provide all three parameters
 
-⚠️  Security Note: Command-line passwords may be visible in process lists and shell history.
+!  Security Note: Command-line passwords may be visible in process lists and shell history.
    Interactive mode is recommended for manual use."""
         mock_print.assert_called_once_with(expected_message)
 
@@ -1462,14 +1462,14 @@ class TestAuthLogin(unittest.TestCase):
         # Verify results
         self.assertEqual(result, 1)
         # Check error message content
-        expected_message = """❌ Error: All authentication parameters are required when using command-line options.
+        expected_message = """X Error: All authentication parameters are required when using command-line options.
    Missing: --homeserver, --password
 
-💡 Options:
+TIP: Options:
    • For secure interactive authentication: mmrelay auth login
    • For automated authentication: provide all three parameters
 
-⚠️  Security Note: Command-line passwords may be visible in process lists and shell history.
+!  Security Note: Command-line passwords may be visible in process lists and shell history.
    Interactive mode is recommended for manual use."""
         mock_print.assert_called_once_with(expected_message)
 
@@ -1485,14 +1485,14 @@ class TestAuthLogin(unittest.TestCase):
         # Verify results
         self.assertEqual(result, 1)
         # Check error message content
-        expected_message = """❌ Error: All authentication parameters are required when using command-line options.
+        expected_message = """X Error: All authentication parameters are required when using command-line options.
    Missing: --homeserver, --username
 
-💡 Options:
+TIP: Options:
    • For secure interactive authentication: mmrelay auth login
    • For automated authentication: provide all three parameters
 
-⚠️  Security Note: Command-line passwords may be visible in process lists and shell history.
+!  Security Note: Command-line passwords may be visible in process lists and shell history.
    Interactive mode is recommended for manual use."""
         mock_print.assert_called_once_with(expected_message)
 
@@ -1509,14 +1509,14 @@ class TestAuthLogin(unittest.TestCase):
         # Verify results
         self.assertEqual(result, 1)
         # Check error message content
-        expected_message = """❌ Error: All authentication parameters are required when using command-line options.
+        expected_message = """X Error: All authentication parameters are required when using command-line options.
    Missing: --password
 
-💡 Options:
+TIP: Options:
    • For secure interactive authentication: mmrelay auth login
    • For automated authentication: provide all three parameters
 
-⚠️  Security Note: Command-line passwords may be visible in process lists and shell history.
+!  Security Note: Command-line passwords may be visible in process lists and shell history.
    Interactive mode is recommended for manual use."""
         mock_print.assert_called_once_with(expected_message)
 
@@ -1533,14 +1533,14 @@ class TestAuthLogin(unittest.TestCase):
         # Verify results
         self.assertEqual(result, 1)
         # Check error message content
-        expected_message = """❌ Error: All authentication parameters are required when using command-line options.
+        expected_message = """X Error: All authentication parameters are required when using command-line options.
    Missing: --username
 
-💡 Options:
+TIP: Options:
    • For secure interactive authentication: mmrelay auth login
    • For automated authentication: provide all three parameters
 
-⚠️  Security Note: Command-line passwords may be visible in process lists and shell history.
+!  Security Note: Command-line passwords may be visible in process lists and shell history.
    Interactive mode is recommended for manual use."""
         mock_print.assert_called_once_with(expected_message)
 
@@ -1557,14 +1557,14 @@ class TestAuthLogin(unittest.TestCase):
         # Verify results
         self.assertEqual(result, 1)
         # Check error message content
-        expected_message = """❌ Error: All authentication parameters are required when using command-line options.
+        expected_message = """X Error: All authentication parameters are required when using command-line options.
    Missing: --homeserver
 
-💡 Options:
+TIP: Options:
    • For secure interactive authentication: mmrelay auth login
    • For automated authentication: provide all three parameters
 
-⚠️  Security Note: Command-line passwords may be visible in process lists and shell history.
+!  Security Note: Command-line passwords may be visible in process lists and shell history.
    Interactive mode is recommended for manual use."""
         mock_print.assert_called_once_with(expected_message)
 
@@ -1580,14 +1580,14 @@ class TestAuthLogin(unittest.TestCase):
         # Verify results
         self.assertEqual(result, 1)
         # Check that guidance messages are included in the combined message
-        expected_message = """❌ Error: All authentication parameters are required when using command-line options.
+        expected_message = """X Error: All authentication parameters are required when using command-line options.
    Missing: --username, --password
 
-💡 Options:
+TIP: Options:
    • For secure interactive authentication: mmrelay auth login
    • For automated authentication: provide all three parameters
 
-⚠️  Security Note: Command-line passwords may be visible in process lists and shell history.
+!  Security Note: Command-line passwords may be visible in process lists and shell history.
    Interactive mode is recommended for manual use."""
         mock_print.assert_called_once_with(expected_message)
 
@@ -1637,7 +1637,7 @@ class TestAuthLogin(unittest.TestCase):
         # Verify results
         self.assertEqual(result, 1)  # Should return error code
         mock_print.assert_any_call(
-            "❌ Error: --homeserver and --username must be non-empty for non-interactive login."
+            "X Error: --homeserver and --username must be non-empty for non-interactive login."
         )
         mock_login.assert_not_called()  # Should not attempt login
 
@@ -1679,7 +1679,7 @@ class TestAuthLogin(unittest.TestCase):
         # Verify validation error
         self.assertEqual(result, 1)  # Should return error code
         mock_print.assert_any_call(
-            "❌ Error: --homeserver and --username must be non-empty for non-interactive login."
+            "X Error: --homeserver and --username must be non-empty for non-interactive login."
         )
         # Should not attempt login after validation error
 
@@ -1732,7 +1732,7 @@ class TestAuthStatus(unittest.TestCase):
         mock_print.assert_any_call("Matrix Authentication Status")
         mock_print.assert_any_call("============================")
         mock_print.assert_any_call(
-            "✅ Found credentials.json at: /home/user/.mmrelay/credentials.json"
+            "OK Found credentials.json at: /home/user/.mmrelay/credentials.json"
         )
         mock_print.assert_any_call("   Homeserver: https://matrix.org")
         mock_print.assert_any_call("   User ID: @bot:matrix.org")
@@ -1764,7 +1764,7 @@ class TestAuthStatus(unittest.TestCase):
         # Check printed output
         mock_print.assert_any_call("Matrix Authentication Status")
         mock_print.assert_any_call("============================")
-        mock_print.assert_any_call("❌ No credentials.json found")
+        mock_print.assert_any_call("X No credentials.json found")
         mock_print.assert_any_call("Run 'mmrelay auth login' to authenticate")
 
     @patch("mmrelay.cli_utils.get_command")
@@ -1831,7 +1831,7 @@ class TestAuthStatus(unittest.TestCase):
 
         # Check printed output shows error for missing fields
         mock_print.assert_any_call(
-            "❌ Error: credentials.json at /home/user/.mmrelay/credentials.json is missing required fields"
+            "X Error: credentials.json at /home/user/.mmrelay/credentials.json is missing required fields"
         )
         mock_print.assert_any_call("Run 'mmrelay auth login' to authenticate")
 
@@ -1879,7 +1879,7 @@ class TestAuthStatus(unittest.TestCase):
 
         # Check printed output shows second path
         mock_print.assert_any_call(
-            "✅ Found credentials.json at: /etc/mmrelay/credentials.json"
+            "OK Found credentials.json at: /etc/mmrelay/credentials.json"
         )
         mock_print.assert_any_call("   Homeserver: https://matrix.example.com")
         mock_print.assert_any_call("   User ID: @relay:example.com")
@@ -1996,7 +1996,7 @@ class TestValidateE2EEDependencies(unittest.TestCase):
 
         # Verify results
         self.assertFalse(result)
-        mock_print.assert_any_call("❌ Error: E2EE is not supported on Windows")
+        mock_print.assert_any_call("X Error: E2EE is not supported on Windows")
         mock_print.assert_any_call(
             "   Reason: python-olm library requires native C libraries"
         )
@@ -2017,7 +2017,7 @@ class TestValidateE2EEDependencies(unittest.TestCase):
 
         # Verify results
         self.assertTrue(result)
-        mock_print.assert_called_once_with("✅ E2EE dependencies are installed")
+        mock_print.assert_called_once_with("OK E2EE dependencies are installed")
 
     @patch("sys.platform", "linux")
     @patch("builtins.print")
@@ -2040,7 +2040,7 @@ class TestValidateE2EEDependencies(unittest.TestCase):
 
         # Verify results
         self.assertFalse(result)
-        mock_print.assert_any_call("❌ Error: E2EE dependencies not installed")
+        mock_print.assert_any_call("X Error: E2EE dependencies not installed")
         mock_print.assert_any_call(
             "   Install E2EE support: pipx install 'mmrelay[e2e]'"
         )
@@ -2060,7 +2060,7 @@ class TestValidateE2EEDependencies(unittest.TestCase):
 
         # Verify results
         self.assertTrue(result)
-        mock_print.assert_called_once_with("✅ E2EE dependencies are installed")
+        mock_print.assert_called_once_with("OK E2EE dependencies are installed")
 
     @patch("sys.platform", "darwin")
     @patch("builtins.print")
@@ -2085,7 +2085,7 @@ class TestValidateE2EEDependencies(unittest.TestCase):
 
         # Verify results
         self.assertFalse(result)
-        mock_print.assert_any_call("❌ Error: E2EE dependencies not installed")
+        mock_print.assert_any_call("X Error: E2EE dependencies not installed")
         mock_print.assert_any_call(
             "   Install E2EE support: pipx install 'mmrelay[e2e]'"
         )
@@ -2113,7 +2113,7 @@ class TestValidateE2EEDependencies(unittest.TestCase):
 
         # Verify results
         self.assertFalse(result)
-        mock_print.assert_any_call("❌ Error: E2EE dependencies not installed")
+        mock_print.assert_any_call("X Error: E2EE dependencies not installed")
         mock_print.assert_any_call(
             "   Install E2EE support: pipx install 'mmrelay[e2e]'"
         )
@@ -2244,7 +2244,7 @@ class TestValidateCredentialsJson(unittest.TestCase):
         # Verify results
         self.assertFalse(result)
         mock_print.assert_any_call(
-            "❌ Error: Could not validate credentials.json: Invalid JSON: line 1 column 1 (char 0)"
+            "X Error: Could not validate credentials.json: Invalid JSON: line 1 column 1 (char 0)"
         )
 
     @patch("os.path.exists")
@@ -2275,7 +2275,7 @@ class TestValidateCredentialsJson(unittest.TestCase):
         # Verify results
         self.assertFalse(result)
         mock_print.assert_any_call(
-            "❌ Error: credentials.json missing required fields: homeserver"
+            "X Error: credentials.json missing required fields: homeserver"
         )
         mock_print.assert_any_call(
             "   Please run 'mmrelay auth login' again to generate new credentials that include a device_id."
@@ -2309,7 +2309,7 @@ class TestValidateCredentialsJson(unittest.TestCase):
         # Verify results
         self.assertFalse(result)
         mock_print.assert_any_call(
-            "❌ Error: credentials.json missing required fields: access_token"
+            "X Error: credentials.json missing required fields: access_token"
         )
         mock_print.assert_any_call(
             "   Please run 'mmrelay auth login' again to generate new credentials that include a device_id."
@@ -2343,7 +2343,7 @@ class TestValidateCredentialsJson(unittest.TestCase):
         # Verify results
         self.assertFalse(result)
         mock_print.assert_any_call(
-            "❌ Error: credentials.json missing required fields: user_id"
+            "X Error: credentials.json missing required fields: user_id"
         )
         mock_print.assert_any_call(
             "   Please run 'mmrelay auth login' again to generate new credentials that include a device_id."
@@ -2377,7 +2377,7 @@ class TestValidateCredentialsJson(unittest.TestCase):
         # Verify results
         self.assertFalse(result)
         mock_print.assert_any_call(
-            "❌ Error: credentials.json missing required fields: device_id"
+            "X Error: credentials.json missing required fields: device_id"
         )
         mock_print.assert_any_call(
             "   Please run 'mmrelay auth login' again to generate new credentials that include a device_id."
@@ -2411,7 +2411,7 @@ class TestValidateCredentialsJson(unittest.TestCase):
         # Verify results
         self.assertFalse(result)
         mock_print.assert_any_call(
-            "❌ Error: credentials.json missing required fields: homeserver"
+            "X Error: credentials.json missing required fields: homeserver"
         )
         mock_print.assert_any_call(
             "   Please run 'mmrelay auth login' again to generate new credentials that include a device_id."
@@ -2435,7 +2435,7 @@ class TestValidateCredentialsJson(unittest.TestCase):
         # Verify results
         self.assertFalse(result)
         mock_print.assert_any_call(
-            "❌ Error: Could not validate credentials.json: Permission denied"
+            "X Error: Could not validate credentials.json: Permission denied"
         )
 
     @patch("os.path.exists")
@@ -2465,7 +2465,7 @@ class TestValidateCredentialsJson(unittest.TestCase):
         self.assertFalse(result)
         # Should report all missing fields
         mock_print.assert_any_call(
-            "❌ Error: credentials.json missing required fields: access_token, user_id, device_id"
+            "X Error: credentials.json missing required fields: access_token, user_id, device_id"
         )
         mock_print.assert_any_call(
             "   Please run 'mmrelay auth login' again to generate new credentials that include a device_id."
@@ -2525,7 +2525,7 @@ class TestValidateMatrixAuthentication(unittest.TestCase):
         self.assertTrue(result)
         mock_validate_creds.assert_called_once_with(config_path)
         mock_print.assert_any_call(
-            "✅ Using credentials.json for Matrix authentication"
+            "OK Using credentials.json for Matrix authentication"
         )
         # Should show E2EE support on non-Windows platforms
         if sys.platform != "win32":
@@ -2553,7 +2553,7 @@ class TestValidateMatrixAuthentication(unittest.TestCase):
         self.assertTrue(result)
         mock_validate_creds.assert_called_once_with(config_path)
         mock_print.assert_any_call(
-            "✅ Using access_token for Matrix authentication (deprecated — consider 'mmrelay auth login' to create credentials.json)"
+            "OK Using access_token for Matrix authentication (deprecated — consider 'mmrelay auth login' to create credentials.json)"
         )
         mock_print.assert_any_call("   E2EE not available with access_token")
 
@@ -2580,7 +2580,7 @@ class TestValidateMatrixAuthentication(unittest.TestCase):
         # Verify results
         self.assertFalse(result)
         mock_validate_creds.assert_called_once_with(config_path)
-        mock_print.assert_any_call("❌ Error: No Matrix authentication configured")
+        mock_print.assert_any_call("X Error: No Matrix authentication configured")
         mock_print.assert_any_call(
             "   Please run 'mmrelay auth login' to set up authentication"
         )
@@ -2604,7 +2604,7 @@ class TestValidateMatrixAuthentication(unittest.TestCase):
         # Verify results
         self.assertFalse(result)
         mock_validate_creds.assert_called_once_with(config_path)
-        mock_print.assert_any_call("❌ Error: No Matrix authentication configured")
+        mock_print.assert_any_call("X Error: No Matrix authentication configured")
 
     @patch("mmrelay.cli._validate_credentials_json")
     @patch("mmrelay.cli.msg_for_e2ee_support")
@@ -2627,7 +2627,7 @@ class TestValidateMatrixAuthentication(unittest.TestCase):
         # Verify results
         self.assertFalse(result)  # Function now correctly rejects empty strings
         mock_validate_creds.assert_called_once_with(config_path)
-        mock_print.assert_any_call("❌ Error: No Matrix authentication configured")
+        mock_print.assert_any_call("X Error: No Matrix authentication configured")
         mock_print.assert_any_call("   Setup: mmrelay auth login")
 
 
@@ -3099,10 +3099,10 @@ class TestPrintEnvironmentSummary(unittest.TestCase):
             _print_environment_summary()
 
         # Verify results
-        mock_print.assert_any_call("\n🖥️  Environment Summary:")
+        mock_print.assert_any_call("\n[ENV]  Environment Summary:")
         mock_print.assert_any_call("   Platform: linux")
         mock_print.assert_any_call("   Python: 3.12.3")
-        mock_print.assert_any_call("   E2EE Support: ✅ Available and installed")
+        mock_print.assert_any_call("   E2EE Support: OK Available and installed")
 
     @patch("sys.platform", "linux")
     @patch("sys.version", "3.12.3 (main, Apr 10 2024, 05:33:47) [GCC 13.2.0] on linux")
@@ -3138,10 +3138,10 @@ class TestPrintEnvironmentSummary(unittest.TestCase):
             sys.modules.update(original_modules)
 
         # Verify results
-        mock_print.assert_any_call("\n🖥️  Environment Summary:")
+        mock_print.assert_any_call("\n[ENV]  Environment Summary:")
         mock_print.assert_any_call("   Platform: linux")
         mock_print.assert_any_call("   Python: 3.12.3")
-        mock_print.assert_any_call("   E2EE Support: ⚠️  Available but not installed")
+        mock_print.assert_any_call("   E2EE Support: !  Available but not installed")
         mock_print.assert_any_call("   Install: pipx install 'mmrelay[e2e]'")
 
     @patch("sys.platform", "win32")
@@ -3158,13 +3158,13 @@ class TestPrintEnvironmentSummary(unittest.TestCase):
         _print_environment_summary()
 
         # Verify results
-        mock_print.assert_any_call("\n🖥️  Environment Summary:")
+        mock_print.assert_any_call("\n[ENV]  Environment Summary:")
         mock_print.assert_any_call("   Platform: win32")
         mock_print.assert_any_call("   Python: 3.12.3")
         mock_print.assert_any_call(
-            "   E2EE Support: ❌ Not available (Windows limitation)"
+            "   E2EE Support: X Not available (Windows limitation)"
         )
-        mock_print.assert_any_call("   Matrix Support: ✅ Available")
+        mock_print.assert_any_call("   Matrix Support: OK Available")
 
     @patch("sys.platform", "darwin")
     @patch(
@@ -3185,10 +3185,10 @@ class TestPrintEnvironmentSummary(unittest.TestCase):
             _print_environment_summary()
 
         # Verify results
-        mock_print.assert_any_call("\n🖥️  Environment Summary:")
+        mock_print.assert_any_call("\n[ENV]  Environment Summary:")
         mock_print.assert_any_call("   Platform: darwin")
         mock_print.assert_any_call("   Python: 3.12.3")
-        mock_print.assert_any_call("   E2EE Support: ✅ Available and installed")
+        mock_print.assert_any_call("   E2EE Support: OK Available and installed")
 
 
 class TestValidateE2eeConfig(unittest.TestCase):
@@ -3327,9 +3327,9 @@ class TestValidateE2eeConfig(unittest.TestCase):
         mock_validate_deps.assert_called_once()
         mock_expanduser.assert_called_once_with("~/.mmrelay/store")
         mock_print.assert_any_call(
-            "ℹ️  Note: E2EE store directory will be created: /home/user/.mmrelay/store"
+            "[INFO]  Note: E2EE store directory will be created: /home/user/.mmrelay/store"
         )
-        mock_print.assert_any_call("✅ E2EE configuration is valid")
+        mock_print.assert_any_call("OK E2EE configuration is valid")
 
     @patch("mmrelay.cli._validate_matrix_authentication")
     @patch("mmrelay.cli._validate_e2ee_dependencies")
@@ -3358,7 +3358,7 @@ class TestValidateE2eeConfig(unittest.TestCase):
         self.assertTrue(result)  # Should return True on success
         mock_validate_auth.assert_called_once_with(self.config_path, matrix_section)
         mock_validate_deps.assert_called_once()
-        mock_print.assert_any_call("✅ E2EE configuration is valid")
+        mock_print.assert_any_call("OK E2EE configuration is valid")
 
     @patch("mmrelay.cli._validate_matrix_authentication")
     @patch("mmrelay.cli._validate_e2ee_dependencies")
@@ -3401,7 +3401,7 @@ class TestValidateE2eeConfig(unittest.TestCase):
         mock_validate_deps.assert_called_once()
         mock_expanduser.assert_called_once_with("~/.mmrelay/legacy_store")
         # Should not print directory creation message since it exists
-        mock_print.assert_any_call("✅ E2EE configuration is valid")
+        mock_print.assert_any_call("OK E2EE configuration is valid")
         # Should not print directory creation message
         self.assertNotIn(
             "Note: E2EE store directory will be created", str(mock_print.call_args_list)
