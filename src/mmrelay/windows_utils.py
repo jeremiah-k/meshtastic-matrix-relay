@@ -38,8 +38,14 @@ def setup_windows_console() -> None:
         import ctypes
 
         kernel32 = ctypes.windll.kernel32
-        kernel32.SetConsoleMode(kernel32.GetStdHandle(-11), 7)
-    except Exception:
+        ENABLE_VTP = 0x0004  # ENABLE_VIRTUAL_TERMINAL_PROCESSING
+        for handle in (-11, -12):  # STD_OUTPUT_HANDLE, STD_ERROR_HANDLE
+            h = kernel32.GetStdHandle(handle)
+            if h:
+                mode = ctypes.c_uint()
+                if kernel32.GetConsoleMode(h, ctypes.byref(mode)):
+                    kernel32.SetConsoleMode(h, mode.value | ENABLE_VTP)
+    except (OSError, AttributeError):
         # If console setup fails, continue without it
         # This is expected on non-Windows systems or older Windows versions
         return
@@ -129,7 +135,7 @@ def check_windows_requirements() -> Optional[str]:
     return None
 
 
-def test_config_generation_windows() -> dict:
+def test_config_generation_windows(args=None) -> dict:
     """
     Test config generation functionality on Windows and return diagnostic info.
 
@@ -186,7 +192,7 @@ def test_config_generation_windows() -> dict:
         try:
             from mmrelay.config import get_config_paths
 
-            paths = get_config_paths()
+            paths = get_config_paths(args)
             results["config_paths"] = {"status": "ok", "details": f"Paths: {paths}"}
         except Exception as e:
             results["config_paths"] = {"status": "error", "details": str(e)}
@@ -195,7 +201,7 @@ def test_config_generation_windows() -> dict:
         try:
             from mmrelay.config import get_config_paths
 
-            paths = get_config_paths()
+            paths = get_config_paths(args)
             created_dirs = []
             for path in paths:
                 dir_path = os.path.dirname(path)

@@ -13,13 +13,15 @@ from unittest.mock import MagicMock, patch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.windows_utils import (
+    check_windows_requirements,
+    get_windows_error_message,
+    get_windows_install_guidance,
     is_windows,
     setup_windows_console,
-    get_windows_error_message,
-    check_windows_requirements,
-    get_windows_install_guidance,
 )
-from mmrelay.windows_utils import test_config_generation_windows as windows_test_config_generation
+from mmrelay.windows_utils import (
+    test_config_generation_windows as windows_test_config_generation,
+)
 
 
 class TestIsWindows(unittest.TestCase):
@@ -125,9 +127,9 @@ class TestGetWindowsErrorMessage(unittest.TestCase):
     def test_get_windows_error_message_generic_error(self):
         """Test Windows error message for generic Exception."""
         error = Exception("Some generic error")
-        
+
         result = get_windows_error_message(error)
-        
+
         self.assertEqual(result, "Some generic error")
 
 
@@ -151,7 +153,10 @@ class TestCheckWindowsRequirements(unittest.TestCase):
 
     @patch("sys.platform", "win32")
     @patch("sys.version_info", (3, 12, 0))
-    @patch("os.getcwd", return_value="C:\\very\\long\\path\\that\\is\\over\\two\\hundred\\characters\\long\\and\\should\\trigger\\a\\warning\\about\\windows\\path\\length\\limitations\\which\\can\\cause\\various\\issues\\with\\file\\operations\\and\\package\\installations")
+    @patch(
+        "os.getcwd",
+        return_value="C:\\very\\long\\path\\that\\is\\over\\two\\hundred\\characters\\long\\and\\should\\trigger\\a\\warning\\about\\windows\\path\\length\\limitations\\which\\can\\cause\\various\\issues\\with\\file\\operations\\and\\package\\installations",
+    )
     def test_check_windows_requirements_long_path(self, mock_getcwd):
         """Test check_windows_requirements warns about long paths."""
         result = check_windows_requirements()
@@ -161,12 +166,15 @@ class TestCheckWindowsRequirements(unittest.TestCase):
 
     @patch("sys.platform", "win32")
     @patch("sys.version_info", (3, 12, 0))
+    @patch("sys.prefix", "/usr")  # Mock to make it look like not in venv
+    @patch("sys.base_prefix", "/usr")  # Mock to make it look like not in venv
     @patch("importlib.util.find_spec", return_value=MagicMock())
     def test_check_windows_requirements_all_good(self, mock_find_spec):
-        """Test check_windows_requirements returns None when all is good."""
+        """Test check_windows_requirements returns virtual environment warning."""
         result = check_windows_requirements()
-        
-        self.assertIsNone(result)
+
+        self.assertIsNotNone(result)
+        self.assertIn("Consider using a virtual environment", result)
 
 
 class TestTestConfigGenerationWindows(unittest.TestCase):
@@ -175,7 +183,7 @@ class TestTestConfigGenerationWindows(unittest.TestCase):
     @patch("sys.platform", "linux")
     def test_test_config_generation_windows_non_windows(self):
         """Test test_config_generation_windows returns error on non-Windows."""
-        result = windows_test_config_generation()
+        result = windows_test_config_generation(None)
 
         self.assertIn("error", result)
         self.assertEqual(result["error"], "This function is only for Windows systems")
@@ -183,7 +191,9 @@ class TestTestConfigGenerationWindows(unittest.TestCase):
     @patch("sys.platform", "win32")
     @patch("mmrelay.tools.get_sample_config_path")
     @patch("os.path.exists")
-    def test_test_config_generation_windows_success(self, mock_exists, mock_get_sample_config_path):
+    def test_test_config_generation_windows_success(
+        self, mock_exists, mock_get_sample_config_path
+    ):
         """Test test_config_generation_windows success case."""
         # Setup mocks
         mock_get_sample_config_path.return_value = "/path/to/sample_config.yaml"
@@ -198,7 +208,7 @@ class TestTestConfigGenerationWindows(unittest.TestCase):
                 mock_get_config_paths.return_value = ["/path/to/config.yaml"]
 
                 with patch("os.makedirs"):
-                    result = windows_test_config_generation()
+                    result = windows_test_config_generation(None)
 
         # Verify
         self.assertEqual(result["overall_status"], "ok")
@@ -207,9 +217,11 @@ class TestTestConfigGenerationWindows(unittest.TestCase):
 
     @patch("sys.platform", "win32")
     @patch("mmrelay.tools.get_sample_config_path", side_effect=Exception("Test error"))
-    def test_test_config_generation_windows_handles_exceptions(self, mock_get_sample_config_path):
+    def test_test_config_generation_windows_handles_exceptions(
+        self, mock_get_sample_config_path
+    ):
         """Test test_config_generation_windows handles exceptions."""
-        result = windows_test_config_generation()
+        result = windows_test_config_generation(None)
 
         self.assertEqual(result["overall_status"], "partial")
         self.assertEqual(result["sample_config_path"]["status"], "error")
@@ -221,14 +233,14 @@ class TestGetWindowsInstallGuidance(unittest.TestCase):
     def test_get_windows_install_guidance_returns_string(self):
         """Test get_windows_install_guidance returns a string."""
         result = get_windows_install_guidance()
-        
+
         self.assertIsInstance(result, str)
         self.assertGreater(len(result), 0)
 
     def test_get_windows_install_guidance_contains_key_info(self):
         """Test get_windows_install_guidance contains key information."""
         result = get_windows_install_guidance()
-        
+
         # Check for key sections
         self.assertIn("pipx install mmrelay", result)
         self.assertIn("pip install --user mmrelay", result)

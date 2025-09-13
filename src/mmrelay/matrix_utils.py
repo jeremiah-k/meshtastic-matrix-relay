@@ -601,8 +601,7 @@ async def connect_matrix(passed_config=None):
 
     Raises:
         ValueError: If the top-level "matrix_rooms" configuration is missing.
-        ConnectionError: If the initial sync reports a sync error.
-        asyncio.TimeoutError: If the initial sync times out.
+        ConnectionError: If the initial sync reports a sync error or times out.
     """
     global matrix_client, bot_user_name, matrix_homeserver, matrix_rooms, matrix_access_token, bot_user_id, config
 
@@ -1005,7 +1004,7 @@ async def connect_matrix(passed_config=None):
             if e2ee_enabled and encrypted_count == 0 and len(matrix_client.rooms) > 0:
                 logger.debug("No encrypted rooms detected - all rooms are plaintext")
     except asyncio.TimeoutError:
-        logger.error(
+        logger.exception(
             f"Initial sync timed out after {MATRIX_SYNC_OPERATION_TIMEOUT} seconds"
         )
         logger.error(
@@ -1225,9 +1224,7 @@ async def login_matrix_bot(
                 logger.error("Network connectivity issue detected.")
                 logger.error("Troubleshooting steps:")
                 logger.error("1. Check your internet connection")
-                logger.error(
-                    f"2. Verify the homeserver URL is correct: {matrix_homeserver}"
-                )
+                logger.error(f"2. Verify the homeserver URL is correct: {homeserver}")
                 logger.error("3. Check if the Matrix server is online")
             elif "SSLError" in error_type or "CertificateError" in error_type:
                 logger.error("SSL/TLS certificate issue detected.")
@@ -1236,13 +1233,12 @@ async def login_matrix_bot(
                 )
             elif "DNSError" in error_type or "NameResolutionError" in error_type:
                 logger.error("DNS resolution failed.")
-                logger.error(f"Cannot resolve hostname: {matrix_homeserver}")
+                logger.error(f"Cannot resolve hostname: {homeserver}")
                 logger.error("Check your DNS settings and internet connection.")
             else:
                 logger.error("Unexpected error during login.")
 
-            if hasattr(e, "message"):
-                logger.error(f"Additional details: {e.message}")
+            # Additional details already included in the message above.
             await client.close()
             return False
 

@@ -1577,7 +1577,7 @@ def handle_config_diagnose(args):
 
                 # Run Windows-specific tests
                 print("\n   Windows config generation test:")
-                results = test_config_generation_windows()
+                results = test_config_generation_windows(args)
 
                 for component, result in results.items():
                     if component == "overall_status":

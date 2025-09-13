@@ -8,12 +8,12 @@ added for Windows compatibility improvements.
 import os
 import sys
 import unittest
-from unittest.mock import MagicMock, mock_open, patch
+from unittest.mock import MagicMock, patch
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from mmrelay.cli import handle_config_diagnose, _get_minimal_config_template
+from mmrelay.cli import _get_minimal_config_template, handle_config_diagnose
 
 
 class TestHandleConfigDiagnose(unittest.TestCase):
@@ -34,9 +34,18 @@ class TestHandleConfigDiagnose(unittest.TestCase):
         self.assertEqual(result, 0)
 
         # Check that key diagnostic messages were printed
-        printed_messages = [call.args[0] for call in mock_print.call_args_list if call.args]
-        self.assertTrue(any("MMRelay Configuration System Diagnostics" in str(msg) for msg in printed_messages))
-        self.assertTrue(any("Diagnostics complete!" in str(msg) for msg in printed_messages))
+        printed_messages = [
+            call.args[0] for call in mock_print.call_args_list if call.args
+        ]
+        self.assertTrue(
+            any(
+                "MMRelay Configuration System Diagnostics" in str(msg)
+                for msg in printed_messages
+            )
+        )
+        self.assertTrue(
+            any("Diagnostics complete!" in str(msg) for msg in printed_messages)
+        )
 
     @patch("builtins.print")
     def test_handle_config_diagnose_windows_with_warnings(self, mock_print):
@@ -49,7 +58,9 @@ class TestHandleConfigDiagnose(unittest.TestCase):
         self.assertEqual(result, 0)
 
         # Check that key diagnostic messages were printed
-        printed_messages = [call.args[0] for call in mock_print.call_args_list if call.args]
+        printed_messages = [
+            call.args[0] for call in mock_print.call_args_list if call.args
+        ]
         self.assertTrue(any("Platform: win32" in str(msg) for msg in printed_messages))
         self.assertTrue(any("Windows: Yes" in str(msg) for msg in printed_messages))
 
@@ -81,15 +92,16 @@ class TestGetMinimalConfigTemplate(unittest.TestCase):
         # Verify
         self.assertIsInstance(template, str)
         self.assertGreater(len(template), 0)
-        
+
         # Check that it contains expected sections
         self.assertIn("matrix:", template)
         self.assertIn("meshtastic:", template)
         self.assertIn("matrix_rooms:", template)
         self.assertIn("logging:", template)
-        
+
         # Verify it's valid YAML
         import yaml
+
         try:
             config_data = yaml.safe_load(template)
             self.assertIsInstance(config_data, dict)

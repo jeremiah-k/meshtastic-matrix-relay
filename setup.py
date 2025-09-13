@@ -68,6 +68,6 @@ setup(
     packages=find_packages(where="src"),
     package_dir={"": "src"},
     include_package_data=True,
-    package_data={"mmrelay.tools": ["sample_config.yaml"]},
+    package_data={"mmrelay.tools": ["sample_config.yaml", "mmrelay.service"]},
     entry_points={"console_scripts": ["mmrelay = mmrelay.cli:main"]},
 )

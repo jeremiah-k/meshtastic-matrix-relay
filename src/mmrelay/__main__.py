@@ -20,6 +20,11 @@ if __name__ == "__main__":
         print(f"Error importing MMRelay CLI: {e}", file=sys.stderr)
         print("Please ensure MMRelay is properly installed.", file=sys.stderr)
         sys.exit(1)
+    except KeyboardInterrupt:
+        print("Interrupted.", file=sys.stderr)
+        sys.exit(130)
+    except SystemExit:
+        raise
     except Exception as e:
         print(f"Unexpected error: {e}", file=sys.stderr)
         sys.exit(1)
