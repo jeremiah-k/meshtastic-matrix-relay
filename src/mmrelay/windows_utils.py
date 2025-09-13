@@ -243,11 +243,11 @@ Windows Installation & Troubleshooting Guide:
    pipx install mmrelay
    (pipx provides better isolation and fewer conflicts)
 
-🔧 If pipx is not available:
+[FIX] If pipx is not available:
    pip install --user mmrelay
    (installs to user directory, avoiding system conflicts)
 
-⚠️  Common Windows Issues:
+!  Common Windows Issues:
 
 1. "ModuleNotFoundError: No module named 'pkg_resources'"
    Solution: pip install --upgrade setuptools
@@ -276,5 +276,5 @@ Windows Installation & Troubleshooting Guide:
    • Temporarily disable antivirus for testing
    • Use Windows PowerShell instead of Command Prompt
    • Consider using Windows Subsystem for Linux (WSL)
-   • Test config generation: 'python -c "from mmrelay.windows_utils import test_config_generation_windows; print(test_config_generation_windows())"'
+   • Test config generation: 'python -m mmrelay config diagnose'
 """
