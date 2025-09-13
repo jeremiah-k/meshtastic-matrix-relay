@@ -34,7 +34,7 @@ async def test_basic_encryption_parameters():
     assert encrypted_room.encrypted, "Encrypted room should be detected"
     assert not unencrypted_room.encrypted, "Unencrypted room should be detected"
 
-    print("OK Room encryption detection works")
+    print("✅ Room encryption detection works")
 
     # Test mock client creation
     mock_client = framework.create_mock_client()
@@ -43,7 +43,7 @@ async def test_basic_encryption_parameters():
     ), "Mock client should have device ID"
     assert len(mock_client.rooms) == 2, "Mock client should have test rooms"
 
-    print("OK Mock client creation works")
+    print("✅ Mock client creation works")
     return True
 
 
@@ -67,7 +67,7 @@ async def test_room_send_parameters():
         mock_client, expected_ignore_unverified=True
     )
 
-    print("OK room_send parameter verification works")
+    print("✅ room_send parameter verification works")
     print(f"   Called with: {kwargs}")
     return True
 
@@ -87,7 +87,7 @@ async def test_room_send_parameters():
 #     assert len(state["encrypted_rooms"]) == 1, "Should detect encrypted rooms"
 #     assert len(state["unencrypted_rooms"]) == 1, "Should detect unencrypted rooms"
 
-#     print("OK Client state inspection works")
+#     print("✅ Client state inspection works")
 #     print(f"   State: {state}")
 
 #     # Test prerequisite verification
@@ -96,7 +96,7 @@ async def test_room_send_parameters():
 #     assert checks["has_device_id"] == True, "Should detect device ID"
 #     assert checks["has_user_id"] == True, "Should detect user ID"
 
-#     print("OK Prerequisite verification works")
+#     print("✅ Prerequisite verification works")
 #     print(f"   Checks: {checks}")
 #     return True
 
@@ -129,24 +129,24 @@ async def run_all_tests():
     results = []
     for test_name, test_func in tests:
         try:
-            print(f"\n[INFO] {test_name}")
+            print(f"\n📋 {test_name}")
             print("-" * 30)
             await test_func()
             results.append((test_name, "PASS", None))
-            print(f"OK {test_name}: PASSED")
+            print(f"✅ {test_name}: PASSED")
         except Exception as e:
             results.append((test_name, "FAIL", str(e)))
-            print(f"X {test_name}: FAILED - {e}")
+            print(f"❌ {test_name}: FAILED - {e}")
 
     print("\n" + "=" * 50)
-    print("[STATUS] TEST SUMMARY")
+    print("📊 TEST SUMMARY")
     print("=" * 50)
 
     passed = sum(1 for _, status, _ in results if status == "PASS")
     failed = sum(1 for _, status, _ in results if status == "FAIL")
 
     for test_name, status, error in results:
-        status_icon = "OK" if status == "PASS" else "X"
+        status_icon = "✅" if status == "PASS" else "❌"
         print(f"{status_icon} {test_name}: {status}")
         if error:
             print(f"   Error: {error}")
@@ -157,13 +157,13 @@ async def run_all_tests():
         print("🎉 All tests passed!")
         return True
     else:
-        print("!  Some tests failed!")
+        print("⚠️  Some tests failed!")
         return False
 
 
 def create_real_client_diagnostic():
     """Create a diagnostic function for real Matrix client"""
-    print("\n[FIX] REAL CLIENT DIAGNOSTIC HELPER")
+    print("\n🔧 REAL CLIENT DIAGNOSTIC HELPER")
     print("=" * 50)
     print("To diagnose a real Matrix client, use this code:")
     print()
@@ -204,7 +204,7 @@ if __name__ == "__main__":
     # Run tests
     success = asyncio.run(run_all_tests())
 
-    print("\n[FIX] NEXT STEPS:")
+    print("\n🔧 NEXT STEPS:")
     print("1. Run full pytest suite: python -m pytest tests/test_e2ee_encryption.py -v")
     print("2. Use diagnostic helper on real client (see --diag)")
     print("3. Check MMRelay logs for room encryption status")

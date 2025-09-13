@@ -225,7 +225,7 @@ class TestRoomListFormatting(unittest.TestCase):
         room_lines = format_room_list(rooms, e2ee_status)
 
         self.assertIn("   🔒 Encrypted Room - Encrypted", room_lines)
-        self.assertIn("   OK Plaintext Room", room_lines)
+        self.assertIn("   ✅ Plaintext Room", room_lines)
 
     def test_room_list_e2ee_disabled(self):
         """Test room list formatting when E2EE is disabled"""
@@ -243,10 +243,10 @@ class TestRoomListFormatting(unittest.TestCase):
         room_lines = format_room_list(rooms, e2ee_status)
 
         self.assertIn(
-            "   ! Encrypted Room - Encrypted (E2EE disabled - messages will be blocked)",
+            "   ⚠️ Encrypted Room - Encrypted (E2EE disabled - messages will be blocked)",
             room_lines,
         )
-        self.assertIn("   OK Plaintext Room", room_lines)
+        self.assertIn("   ✅ Plaintext Room", room_lines)
 
     def test_room_list_e2ee_unavailable(self):
         """Test room list formatting when E2EE is unavailable (Windows)"""
@@ -261,7 +261,7 @@ class TestRoomListFormatting(unittest.TestCase):
         room_lines = format_room_list(rooms, e2ee_status)
 
         self.assertIn(
-            "   ! Encrypted Room - Encrypted (E2EE not supported on Windows - messages will be blocked)",
+            "   ⚠️ Encrypted Room - Encrypted (E2EE not supported on Windows - messages will be blocked)",
             room_lines,
         )
 

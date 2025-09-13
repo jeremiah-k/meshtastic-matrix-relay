@@ -118,7 +118,7 @@ class TestConfigChecker(unittest.TestCase):
             result = check_config()
 
         self.assertTrue(result)
-        mock_print.assert_any_call("\nOK Configuration file is valid!")
+        mock_print.assert_any_call("\n✅ Configuration file is valid!")
         mock_validate_credentials.assert_called_once()
         mock_get_e2ee_status.assert_called_once()
 
@@ -179,7 +179,7 @@ class TestConfigChecker(unittest.TestCase):
 
         self.assertTrue(result)
         mock_print.assert_any_call("Found configuration file at: /test/config.yaml")
-        mock_print.assert_any_call("\nOK Configuration file is valid!")
+        mock_print.assert_any_call("\n✅ Configuration file is valid!")
 
     @patch("mmrelay.cli.parse_arguments")
     @patch("mmrelay.cli.get_config_paths")
@@ -218,7 +218,7 @@ class TestConfigChecker(unittest.TestCase):
             result = check_config()
 
         self.assertTrue(result)
-        mock_print.assert_any_call("\nOK Configuration file is valid!")
+        mock_print.assert_any_call("\n✅ Configuration file is valid!")
 
     @patch("mmrelay.cli.parse_arguments")
     @patch("mmrelay.cli.get_config_paths")
@@ -268,7 +268,7 @@ class TestConfigChecker(unittest.TestCase):
             result = check_config()
 
         self.assertTrue(result)
-        mock_print.assert_any_call("\nOK Configuration file is valid!")
+        mock_print.assert_any_call("\n✅ Configuration file is valid!")
 
     @patch("mmrelay.cli.parse_arguments")
     @patch("mmrelay.cli.get_config_paths")
@@ -438,7 +438,7 @@ class TestConfigChecker(unittest.TestCase):
             result = check_config()
 
         self.assertTrue(result)
-        mock_print.assert_any_call("\nOK Configuration file is valid!")
+        mock_print.assert_any_call("\n✅ Configuration file is valid!")
 
     @patch("mmrelay.cli.parse_arguments")
     @patch("mmrelay.cli.get_config_paths")
@@ -599,7 +599,7 @@ class TestConfigChecker(unittest.TestCase):
             result = check_config()
 
         self.assertTrue(result)
-        mock_print.assert_any_call("\nOK Configuration file is valid!")
+        mock_print.assert_any_call("\n✅ Configuration file is valid!")
 
     @patch("mmrelay.cli.parse_arguments")
     @patch("mmrelay.cli.get_config_paths")

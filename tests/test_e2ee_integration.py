@@ -22,7 +22,7 @@ try:
 
     IMPORTS_AVAILABLE = True
 except ImportError as e:
-    print(f"X Import error: {e}")
+    print(f"❌ Import error: {e}")
     print("Make sure you're running from the project root directory")
     IMPORTS_AVAILABLE = False
 
@@ -41,7 +41,7 @@ class E2EEIntegrationTester:
 
     async def setup_test_environment(self):
         """Set up test environment with real config"""
-        print("[FIX] Setting up test environment...")
+        print("🔧 Setting up test environment...")
 
         try:
             # Load real config
@@ -49,11 +49,11 @@ class E2EEIntegrationTester:
             if not self.config:
                 raise Exception("Could not load config")
 
-            print("OK Config loaded successfully")
+            print("✅ Config loaded successfully")
             return True
 
         except Exception as e:
-            print(f"X Setup failed: {e}")
+            print(f"❌ Setup failed: {e}")
             return False
 
     async def check_matrix_connection(self):
@@ -67,7 +67,7 @@ class E2EEIntegrationTester:
             if not self.client:
                 raise Exception("Failed to connect to Matrix")
 
-            print("OK Matrix connection successful")
+            print("✅ Matrix connection successful")
 
             # Check E2EE setup
             has_device_id = bool(getattr(self.client, "device_id", None))
@@ -93,7 +93,7 @@ class E2EEIntegrationTester:
             return True
 
         except Exception as e:
-            print(f"X Connection failed: {e}")
+            print(f"❌ Connection failed: {e}")
             self.test_results["connection"] = {"success": False, "error": str(e)}
             return False
 
@@ -117,7 +117,7 @@ class E2EEIntegrationTester:
         print("\n🔍 Testing room encryption detection...")
 
         if not self.client:
-            print("X No client available")
+            print("❌ No client available")
             return False
 
         try:
@@ -125,7 +125,7 @@ class E2EEIntegrationTester:
             rooms = getattr(self.client, "rooms", {})
 
             if not rooms:
-                print("!  No rooms found - may need sync first")
+                print("⚠️  No rooms found - may need sync first")
                 # Try a quick sync to populate rooms
                 try:
                     await asyncio.wait_for(
@@ -178,7 +178,7 @@ class E2EEIntegrationTester:
             return True
 
         except Exception as e:
-            print(f"X Room detection failed: {e}")
+            print(f"❌ Room detection failed: {e}")
             self.test_results["room_detection"] = {"success": False, "error": str(e)}
             return False
 
@@ -187,7 +187,7 @@ class E2EEIntegrationTester:
         print("\n🔍 Testing message sending parameters...")
 
         if not self.client:
-            print("X No client available")
+            print("❌ No client available")
             return False
 
         try:
@@ -209,7 +209,7 @@ class E2EEIntegrationTester:
                 test_room_encrypted = getattr(rooms[test_room_id], "encrypted", False)
 
             if not test_room_id:
-                print("!  No rooms available for testing")
+                print("⚠️  No rooms available for testing")
                 return False
 
             print(f"   Test room: {test_room_id}")
@@ -242,7 +242,7 @@ class E2EEIntegrationTester:
             return True
 
         except Exception as e:
-            print(f"X Message parameter test failed: {e}")
+            print(f"❌ Message parameter test failed: {e}")
             self.test_results["message_parameters"] = {
                 "success": False,
                 "error": str(e),
@@ -280,30 +280,30 @@ class E2EEIntegrationTester:
         failed = 0
 
         for test_name, test_func in tests:
-            print(f"\n[INFO] {test_name}")
+            print(f"\n📋 {test_name}")
             print("-" * 30)
 
             try:
                 if await test_func():
                     passed += 1
-                    print(f"OK {test_name}: PASSED")
+                    print(f"✅ {test_name}: PASSED")
                 else:
                     failed += 1
-                    print(f"X {test_name}: FAILED")
+                    print(f"❌ {test_name}: FAILED")
             except Exception as e:
                 failed += 1
-                print(f"X {test_name}: ERROR - {e}")
+                print(f"❌ {test_name}: ERROR - {e}")
 
         # Summary
         print("\n" + "=" * 50)
-        print("[STATUS] INTEGRATION TEST SUMMARY")
+        print("📊 INTEGRATION TEST SUMMARY")
         print("=" * 50)
         print(f"Total: {passed + failed} tests")
         print(f"Passed: {passed}")
         print(f"Failed: {failed}")
 
         # Detailed results
-        print("\n[INFO] DETAILED RESULTS:")
+        print("\n📋 DETAILED RESULTS:")
         print(json.dumps(self.test_results, indent=2, default=str))
 
         # Cleanup
@@ -318,24 +318,24 @@ class E2EEIntegrationTester:
 
     def generate_recommendations(self):
         """Generate recommendations based on test results"""
-        print("\nTIP: RECOMMENDATIONS:")
+        print("\n💡 RECOMMENDATIONS:")
         print("=" * 30)
 
         if "connection" in self.test_results:
             conn = self.test_results["connection"]
             if not conn.get("has_device_id"):
-                print("X Missing device_id - E2EE will not work")
+                print("❌ Missing device_id - E2EE will not work")
             if not conn.get("encryption_enabled"):
-                print("X Encryption not enabled in client config")
+                print("❌ Encryption not enabled in client config")
 
         if "room_detection" in self.test_results:
             room = self.test_results["room_detection"]
             if room.get("encrypted_rooms", 0) == 0:
-                print("!  No encrypted rooms detected - may need full sync")
+                print("⚠️  No encrypted rooms detected - may need full sync")
             if room.get("total_rooms", 0) == 0:
-                print("!  No rooms found - client may not be properly synced")
+                print("⚠️  No rooms found - client may not be properly synced")
 
-        print("\n[FIX] DEBUGGING STEPS:")
+        print("\n🔧 DEBUGGING STEPS:")
         print("1. Check MMRelay logs for room encryption status")
         print("2. Verify credentials.json has correct device_id")
         print("3. Ensure full sync is performed after E2EE setup")
@@ -370,5 +370,5 @@ if __name__ == "__main__":
     if IMPORTS_AVAILABLE:
         asyncio.run(main())
     else:
-        print("X Required imports not available, skipping integration test")
+        print("❌ Required imports not available, skipping integration test")
         sys.exit(1)
