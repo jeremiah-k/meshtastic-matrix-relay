@@ -224,7 +224,7 @@ class TestRoomListFormatting(unittest.TestCase):
 
         room_lines = format_room_list(rooms, e2ee_status)
 
-        self.assertIn("   🔒 Encrypted Room - Encrypted", room_lines)
+        self.assertIn("   [LOCK] Encrypted Room - Encrypted", room_lines)
         self.assertIn("   OK Plaintext Room", room_lines)
 
     def test_room_list_e2ee_disabled(self):

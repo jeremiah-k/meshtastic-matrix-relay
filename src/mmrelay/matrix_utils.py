@@ -173,25 +173,25 @@ def _display_room_channel_mappings(
             # Format with encryption status
             if e2ee_status["overall_status"] == "ready":
                 if encrypted:
-                    logger.info(f"    🔒 {room_name}")
+                    logger.info(f"    [LOCK] {room_name}")
                 else:
-                    logger.info(f"    ✅ {room_name}")
+                    logger.info(f"    OK {room_name}")
             else:
                 if encrypted:
                     if e2ee_status["overall_status"] == "unavailable":
                         logger.info(
-                            f"    ⚠️ {room_name} (E2EE not supported - messages blocked)"
+                            f"    ! {room_name} (E2EE not supported - messages blocked)"
                         )
                     elif e2ee_status["overall_status"] == "disabled":
                         logger.info(
-                            f"    ⚠️ {room_name} (E2EE disabled - messages blocked)"
+                            f"    ! {room_name} (E2EE disabled - messages blocked)"
                         )
                     else:
                         logger.info(
-                            f"    ⚠️ {room_name} (E2EE incomplete - messages may be blocked)"
+                            f"    ! {room_name} (E2EE incomplete - messages may be blocked)"
                         )
                 else:
-                    logger.info(f"    ✅ {room_name}")
+                    logger.info(f"    OK {room_name}")
 
 
 def _can_auto_create_credentials(matrix_config: dict) -> bool:
