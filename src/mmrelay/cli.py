@@ -132,11 +132,6 @@ def parse_arguments():
         help="Validate configuration file",
         description="Check configuration file syntax and completeness",
     )
-    config_subparsers.add_parser(
-        "diagnose",
-        help="Diagnose configuration system issues",
-        description="Test config generation capabilities and troubleshoot platform-specific issues",
-    )
 
     # AUTH group
     auth_parser = subparsers.add_parser(
@@ -206,6 +201,27 @@ def parse_arguments():
         description="Install or update the systemd user service for MMRelay",
     )
 
+    # WINDOWS group (only show on Windows)
+    if sys.platform == WINDOWS_PLATFORM:
+        windows_parser = subparsers.add_parser(
+            "windows",
+            help="Windows-specific help and troubleshooting",
+            description="Windows installation guidance and troubleshooting",
+        )
+        windows_subparsers = windows_parser.add_subparsers(
+            dest="windows_command", help="Windows commands"
+        )
+        windows_subparsers.add_parser(
+            "help",
+            help="Show Windows installation and troubleshooting guide",
+            description="Display comprehensive Windows-specific guidance",
+        )
+        windows_subparsers.add_parser(
+            "test-config",
+            help="Test config generation functionality on Windows",
+            description="Diagnose config generation issues on Windows systems",
+        )
+
     # Use parse_known_args to handle unknown arguments gracefully (e.g., pytest args)
     args, unknown = parser.parse_known_args()
     # If there are unknown arguments and we're not in a test invocation, warn about them
@@ -245,7 +261,7 @@ def _validate_e2ee_dependencies():
               False if running on an unsupported platform (Windows) or if any dependency is missing.
     """
     if sys.platform == WINDOWS_PLATFORM:
-        print("X Error: E2EE is not supported on Windows")
+        print("❌ Error: E2EE is not supported on Windows")
         print("   Reason: python-olm library requires native C libraries")
         print("   Solution: Use Linux or macOS for E2EE support")
         return False
@@ -256,10 +272,10 @@ def _validate_e2ee_dependencies():
         from nio.crypto import OlmDevice  # noqa: F401
         from nio.store import SqliteStore  # noqa: F401
 
-        print("OK E2EE dependencies are installed")
+        print("✅ E2EE dependencies are installed")
         return True
     except ImportError:
-        print("X Error: E2EE dependencies not installed")
+        print("❌ Error: E2EE dependencies not installed")
         print("   E2EE features require additional dependencies")
         print("   Install E2EE support: pipx install 'mmrelay[e2e]'")
         return False
@@ -299,14 +315,14 @@ def _validate_credentials_json(config_path):
 
         if missing_fields:
             print(
-                f"X Error: credentials.json missing required fields: {', '.join(missing_fields)}"
+                f"❌ Error: credentials.json missing required fields: {', '.join(missing_fields)}"
             )
             print(f"   {msg_run_auth_login()}")
             return False
 
         return True
     except Exception as e:
-        print(f"X Error: Could not validate credentials.json: {e}")
+        print(f"❌ Error: Could not validate credentials.json: {e}")
         return False
 
 
@@ -387,26 +403,26 @@ def _validate_matrix_authentication(config_path, matrix_section):
     has_password = _has_valid_password_auth(matrix_section)
 
     if has_valid_credentials:
-        print("OK Using credentials.json for Matrix authentication")
+        print("✅ Using credentials.json for Matrix authentication")
         if sys.platform != WINDOWS_PLATFORM:
             print("   E2EE support available (if enabled)")
         return True
 
     elif has_password:
         print(
-            "OK Using password in config for initial authentication (credentials.json will be created on first run)"
+            "✅ Using password in config for initial authentication (credentials.json will be created on first run)"
         )
         print(f"   {msg_for_e2ee_support()}")
         return True
     elif has_access_token:
         print(
-            "OK Using access_token for Matrix authentication (deprecated — consider 'mmrelay auth login' to create credentials.json)"
+            "✅ Using access_token for Matrix authentication (deprecated — consider 'mmrelay auth login' to create credentials.json)"
         )
         print(f"   {msg_for_e2ee_support()}")
         return True
 
     else:
-        print("X Error: No Matrix authentication configured")
+        print("❌ Error: No Matrix authentication configured")
         print(f"   {msg_setup_auth()}")
         return False
 
@@ -458,11 +474,9 @@ def _validate_e2ee_config(config, matrix_section, config_path):
         if store_path:
             expanded_path = os.path.expanduser(store_path)
             if not os.path.exists(expanded_path):
-                print(
-                    f"[INFO]  Note: E2EE store directory will be created: {expanded_path}"
-                )
+                print(f"ℹ️  Note: E2EE store directory will be created: {expanded_path}")
 
-        print("OK E2EE configuration is valid")
+        print("✅ E2EE configuration is valid")
 
     return True
 
@@ -615,37 +629,37 @@ def _print_unified_e2ee_analysis(e2ee_status):
             - credentials_available (bool): whether a usable credentials.json is present.
             - overall_status (str): high-level status ("ready", "disabled", "incomplete", etc.).
     """
-    print("\n[E2EE] E2EE Configuration Analysis:")
+    print("\n🔐 E2EE Configuration Analysis:")
 
     # Platform support
     if e2ee_status.get("platform_supported", True):
-        print("OK Platform: E2EE supported")
+        print("✅ Platform: E2EE supported")
     else:
-        print("X Platform: E2EE not supported on Windows")
+        print("❌ Platform: E2EE not supported on Windows")
 
     # Dependencies
     if e2ee_status.get(
         "dependencies_installed", e2ee_status.get("dependencies_available", False)
     ):
-        print("OK Dependencies: E2EE dependencies installed")
+        print("✅ Dependencies: E2EE dependencies installed")
     else:
-        print("X Dependencies: E2EE dependencies not fully installed")
+        print("❌ Dependencies: E2EE dependencies not fully installed")
 
     # Configuration
     if e2ee_status.get("enabled", e2ee_status.get("config_enabled", False)):
-        print("OK Configuration: E2EE enabled")
+        print("✅ Configuration: E2EE enabled")
     else:
-        print("X Configuration: E2EE disabled")
+        print("❌ Configuration: E2EE disabled")
 
     # Authentication
     if e2ee_status.get("credentials_available", False):
-        print("OK Authentication: credentials.json found")
+        print("✅ Authentication: credentials.json found")
     else:
-        print("X Authentication: credentials.json not found")
+        print("❌ Authentication: credentials.json not found")
 
     # Overall status
     print(
-        f"\n[STATUS] Overall Status: {e2ee_status.get('overall_status', 'unknown').upper()}"
+        f"\n📊 Overall Status: {e2ee_status.get('overall_status', 'unknown').upper()}"
     )
 
     # Show fix instructions if needed
@@ -653,7 +667,7 @@ def _print_unified_e2ee_analysis(e2ee_status):
         from mmrelay.e2ee_utils import get_e2ee_fix_instructions
 
         instructions = get_e2ee_fix_instructions(e2ee_status)
-        print("\n[FIX] To fix E2EE issues:")
+        print("\n🔧 To fix E2EE issues:")
         for instruction in instructions:
             print(f"   {instruction}")
 
@@ -677,69 +691,69 @@ def _print_e2ee_analysis(analysis):
     Notes:
         - This function only prints a human-readable report and does not modify state.
     """
-    print("\n[E2EE] E2EE Configuration Analysis:")
+    print("\n🔐 E2EE Configuration Analysis:")
 
     # Current settings
-    print("\n[INFO] Current Settings:")
+    print("\n📋 Current Settings:")
 
     # Dependencies
     if analysis["dependencies_available"]:
-        print("   OK Dependencies: Installed (python-olm available)")
+        print("   ✅ Dependencies: Installed (python-olm available)")
     else:
-        print("   X Dependencies: Missing (python-olm not installed)")
+        print("   ❌ Dependencies: Missing (python-olm not installed)")
 
     # Credentials
     if analysis["credentials_available"]:
-        print("   OK Authentication: Ready (credentials.json found)")
+        print("   ✅ Authentication: Ready (credentials.json found)")
     else:
-        print("   X Authentication: Missing (no credentials.json)")
+        print("   ❌ Authentication: Missing (no credentials.json)")
 
     # Platform
     if not analysis["platform_supported"]:
-        print("   X Platform: Windows (E2EE not supported)")
+        print("   ❌ Platform: Windows (E2EE not supported)")
     else:
-        print("   OK Platform: Supported")
+        print("   ✅ Platform: Supported")
 
     # Config setting
     if analysis["config_enabled"]:
-        print("   OK Configuration: ENABLED (e2ee.enabled: true)")
+        print("   ✅ Configuration: ENABLED (e2ee.enabled: true)")
     else:
-        print("   X Configuration: DISABLED (e2ee.enabled: false)")
+        print("   ❌ Configuration: DISABLED (e2ee.enabled: false)")
 
     # Predicted behavior
-    print("\n[WARNING] PREDICTED BEHAVIOR:")
+    print("\n🚨 PREDICTED BEHAVIOR:")
     if analysis["overall_status"] == "ready":
-        print("   OK E2EE is fully configured and ready")
-        print("   OK Encrypted rooms will receive encrypted messages")
-        print("   OK Unencrypted rooms will receive normal messages")
+        print("   ✅ E2EE is fully configured and ready")
+        print("   ✅ Encrypted rooms will receive encrypted messages")
+        print("   ✅ Unencrypted rooms will receive normal messages")
     elif analysis["overall_status"] == "disabled":
-        print("   !  E2EE is disabled in configuration")
-        print("   X Messages to encrypted rooms will be BLOCKED")
-        print("   OK Messages to unencrypted rooms will work normally")
+        print("   ⚠️  E2EE is disabled in configuration")
+        print("   ❌ Messages to encrypted rooms will be BLOCKED")
+        print("   ✅ Messages to unencrypted rooms will work normally")
     elif analysis["overall_status"] == "not_supported":
-        print("   X E2EE not supported on Windows")
-        print("   X Messages to encrypted rooms will be BLOCKED")
+        print("   ❌ E2EE not supported on Windows")
+        print("   ❌ Messages to encrypted rooms will be BLOCKED")
     else:
-        print("   !  E2EE setup incomplete - some issues need to be resolved")
-        print("   X Messages to encrypted rooms may be BLOCKED")
+        print("   ⚠️  E2EE setup incomplete - some issues need to be resolved")
+        print("   ❌ Messages to encrypted rooms may be BLOCKED")
 
     print(
-        "\nTIP: Note: Room encryption status will be checked when mmrelay connects to Matrix"
+        "\n💡 Note: Room encryption status will be checked when mmrelay connects to Matrix"
     )
 
     # Recommendations
     if analysis["recommendations"]:
-        print("\n[FIX] TO FIX:")
+        print("\n🔧 TO FIX:")
         for i, rec in enumerate(analysis["recommendations"], 1):
             print(f"   {i}. {rec}")
 
         if analysis["overall_status"] == "ready":
             print(
-                "\nOK E2EE setup is complete! Run 'mmrelay' to start with E2EE support."
+                "\n✅ E2EE setup is complete! Run 'mmrelay' to start with E2EE support."
             )
         else:
             print(
-                "\n!  After fixing issues above, run 'mmrelay config check' again to verify."
+                "\n⚠️  After fixing issues above, run 'mmrelay config check' again to verify."
             )
 
 
@@ -754,23 +768,23 @@ def _print_environment_summary():
 
     This function writes human-facing lines to standard output and returns None.
     """
-    print("\n[ENV]  Environment Summary:")
+    print("\n🖥️  Environment Summary:")
     print(f"   Platform: {sys.platform}")
     print(f"   Python: {sys.version.split()[0]}")
 
     # E2EE capability check
     if sys.platform == WINDOWS_PLATFORM:
-        print("   E2EE Support: X Not available (Windows limitation)")
-        print("   Matrix Support: OK Available")
+        print("   E2EE Support: ❌ Not available (Windows limitation)")
+        print("   Matrix Support: ✅ Available")
     else:
         try:
             import olm  # noqa: F401
             from nio.crypto import OlmDevice  # noqa: F401
             from nio.store import SqliteStore  # noqa: F401
 
-            print("   E2EE Support: OK Available and installed")
+            print("   E2EE Support: ✅ Available and installed")
         except ImportError:
-            print("   E2EE Support: !  Available but not installed")
+            print("   E2EE Support: ⚠️  Available but not installed")
             print("   Install: pipx install 'mmrelay[e2e]'")
 
 
@@ -914,10 +928,10 @@ def check_config(args=None):
 
                     # Check if there are critical E2EE issues
                     if not e2ee_status.get("platform_supported", True):
-                        print("\n!  Warning: E2EE is not supported on Windows")
+                        print("\n⚠️  Warning: E2EE is not supported on Windows")
                         print("   Messages to encrypted rooms will be blocked")
                 except Exception as e:
-                    print(f"\n!  Could not perform E2EE analysis: {e}")
+                    print(f"\n⚠️  Could not perform E2EE analysis: {e}")
                     print("   Falling back to basic E2EE validation...")
                     if not _validate_e2ee_config(config, matrix_section, config_path):
                         return False
@@ -1063,7 +1077,7 @@ def check_config(args=None):
                         "This option still works but may be removed in future versions.\n"
                     )
 
-                print("\nOK Configuration file is valid!")
+                print("\n✅ Configuration file is valid!")
                 return True
             except Exception as e:
                 print(f"Error checking configuration: {e}")
@@ -1173,7 +1187,8 @@ def handle_subcommand(args):
         return handle_auth_command(args)
     elif args.command == "service":
         return handle_service_command(args)
-
+    elif args.command == "windows":
+        return handle_windows_command(args)
     else:
         print(f"Unknown command: {args.command}")
         return 1
@@ -1196,8 +1211,6 @@ def handle_config_command(args):
         return 0 if generate_sample_config() else 1
     elif args.config_command == "check":
         return 0 if check_config(args) else 1
-    elif args.config_command == "diagnose":
-        return handle_config_diagnose(args)
     else:
         print(f"Unknown config command: {args.config_command}")
         return 1
@@ -1265,7 +1278,7 @@ def handle_auth_login(args):
             username
         ):
             print(
-                "X Error: --homeserver and --username must be non-empty for non-interactive login."
+                "❌ Error: --homeserver and --username must be non-empty for non-interactive login."
             )
             return 1
         # Password may be empty (flows may prompt)
@@ -1279,14 +1292,14 @@ def handle_auth_login(args):
         if password is None:
             missing_params.append("--password")
 
-        error_message = f"""X Error: All authentication parameters are required when using command-line options.
+        error_message = f"""❌ Error: All authentication parameters are required when using command-line options.
    Missing: {', '.join(missing_params)}
 
-TIP: Options:
+💡 Options:
    • For secure interactive authentication: mmrelay auth login
    • For automated authentication: provide all three parameters
 
-!  Security Note: Command-line passwords may be visible in process lists and shell history.
+⚠️  Security Note: Command-line passwords may be visible in process lists and shell history.
    Interactive mode is recommended for manual use."""
         print(error_message)
         return 1
@@ -1387,20 +1400,20 @@ def handle_auth_status(args):
                     for k in required
                 ):
                     print(
-                        f"X Error: credentials.json at {credentials_path} is missing required fields"
+                        f"❌ Error: credentials.json at {credentials_path} is missing required fields"
                     )
                     print(f"Run '{get_command('auth_login')}' to authenticate")
                     return 1
-                print(f"OK Found credentials.json at: {credentials_path}")
+                print(f"✅ Found credentials.json at: {credentials_path}")
                 print(f"   Homeserver: {credentials.get('homeserver')}")
                 print(f"   User ID: {credentials.get('user_id')}")
                 print(f"   Device ID: {credentials.get('device_id')}")
                 return 0
             except Exception as e:
-                print(f"X Error reading credentials.json: {e}")
+                print(f"❌ Error reading credentials.json: {e}")
                 return 1
 
-    print("X No credentials.json found")
+    print("❌ No credentials.json found")
     print(f"Run '{get_command('auth_login')}' to authenticate")
     return 1
 
@@ -1453,7 +1466,7 @@ def handle_auth_logout(args):
         else:
             # --password VALUE provided, warn about security
             print(
-                "!  Warning: Supplying password as argument exposes it in shell history and process list."
+                "⚠️  Warning: Supplying password as argument exposes it in shell history and process list."
             )
             print(
                 "   For better security, use --password without a value to prompt securely."
@@ -1497,148 +1510,74 @@ def handle_service_command(args):
         return 1
 
 
-def handle_config_diagnose(args):
+def handle_windows_command(args):
     """
-    Handle config diagnose command to test configuration system capabilities.
+    Handle Windows-specific CLI subcommands.
 
-    Tests config generation functionality and provides platform-specific
-    troubleshooting guidance when issues are detected.
-
-    Returns 0 on success, 1 on failure.
+    Provides Windows-specific help and troubleshooting guidance.
+    Returns 0 on success, 1 on failure or for unknown subcommands.
     """
-    print("MMRelay Configuration System Diagnostics")
-    print("=" * 40)
-    print()
-
-    try:
-        # Test 1: Basic config path resolution
-        print("1. Testing configuration paths...")
-        from mmrelay.config import get_config_paths
-
-        paths = get_config_paths(args)
-        print(f"   Config search paths: {len(paths)} locations")
-        for i, path in enumerate(paths, 1):
-            dir_path = os.path.dirname(path)
-            dir_exists = os.path.exists(dir_path)
-            dir_writable = os.access(dir_path, os.W_OK) if dir_exists else False
-            status = "OK" if dir_exists and dir_writable else "!" if dir_exists else "X"
-            print(f"   {i}. {path} {status}")
-        print()
-
-        # Test 2: Sample config accessibility
-        print("2. Testing sample config accessibility...")
-        from mmrelay.tools import get_sample_config_path
-
-        sample_path = get_sample_config_path()
-        sample_exists = os.path.exists(sample_path)
-        print(f"   Sample config path: {sample_path}")
-        print(f"   Sample config exists: {'OK' if sample_exists else 'X'}")
-
-        # Test importlib.resources fallback
+    if args.windows_command == "help" or not hasattr(args, "windows_command"):
         try:
-            import importlib.resources
-
-            content = (
-                importlib.resources.files("mmrelay.tools")
-                .joinpath("sample_config.yaml")
-                .read_text()
+            from mmrelay.windows_utils import (
+                check_windows_requirements,
+                get_windows_install_guidance,
             )
-            print(f"   importlib.resources fallback: OK ({len(content)} chars)")
-        except Exception as e:
-            print(f"   importlib.resources fallback: X ({e})")
-        print()
 
-        # Test 3: Platform-specific diagnostics
-        print("3. Platform-specific diagnostics...")
-        import sys
+            # Show any compatibility warnings first
+            warnings = check_windows_requirements()
+            if warnings:
+                print(warnings)
+                print()
 
-        from mmrelay.constants.app import WINDOWS_PLATFORM
-
-        is_windows = sys.platform == WINDOWS_PLATFORM
-        print(f"   Platform: {sys.platform}")
-        print(f"   Windows: {'Yes' if is_windows else 'No'}")
-
-        if is_windows:
-            try:
-                from mmrelay.windows_utils import (
-                    check_windows_requirements,
-                    test_config_generation_windows,
-                )
-
-                # Check Windows requirements
-                warnings = check_windows_requirements()
-                if warnings:
-                    print("   Windows warnings: !")
-                    for line in warnings.split("\n"):
-                        if line.strip():
-                            print(f"     {line}")
-                else:
-                    print("   Windows compatibility: OK")
-
-                # Run Windows-specific tests
-                print("\n   Windows config generation test:")
-                results = test_config_generation_windows()
-
-                for component, result in results.items():
-                    if component == "overall_status":
-                        continue
-                    if isinstance(result, dict):
-                        status_icon = (
-                            "OK"
-                            if result["status"] == "ok"
-                            else "X" if result["status"] == "error" else "!"
-                        )
-                        print(f"     {component}: {status_icon}")
-
-                overall = results.get("overall_status", "unknown")
-                print(
-                    f"   Overall Windows status: {'OK' if overall == 'ok' else '!' if overall == 'partial' else 'X'}"
-                )
-
-            except ImportError:
-                print("   Windows utilities: X (not available)")
-        else:
-            print("   Platform-specific tests: OK (Unix-like system)")
-
-        print()
-
-        # Test 4: Minimal config template
-        print("4. Testing minimal config template fallback...")
+            # Show the installation guidance
+            print(get_windows_install_guidance())
+            return 0
+        except ImportError as e:
+            print(f"Error importing Windows utilities: {e}")
+            return 1
+    elif args.windows_command == "test-config":
         try:
-            template = _get_minimal_config_template()
-            import yaml
+            from mmrelay.windows_utils import is_windows, test_config_generation_windows
 
-            yaml.safe_load(template)
-            print(f"   Minimal template: OK ({len(template)} chars, valid YAML)")
-        except Exception as e:
-            print(f"   Minimal template: X ({e})")
+            if not is_windows():
+                print("This command is only available on Windows systems.")
+                return 1
 
-        print()
-        print("=" * 40)
-        print("Diagnostics complete!")
+            print("Testing config generation functionality on Windows...")
+            print("=" * 50)
 
-        # Provide guidance based on results
-        if is_windows and not sample_exists:
-            print("\nTIP: Windows Troubleshooting Tips:")
-            print("   • Try: pip install --upgrade --force-reinstall mmrelay")
-            print("   • Use: python -m mmrelay config generate")
-            print("   • Check antivirus software for quarantined files")
+            results = test_config_generation_windows()
 
-        return 0
+            for component, result in results.items():
+                if component == "overall_status":
+                    continue
+                if isinstance(result, dict):
+                    status_icon = (
+                        "✅"
+                        if result["status"] == "ok"
+                        else "❌" if result["status"] == "error" else "⚠️"
+                    )
+                    print(f"{status_icon} {component}: {result['status']}")
+                    if result["details"]:
+                        print(f"   {result['details']}")
 
-    except Exception as e:
-        print(f"X Diagnostics failed: {e}")
+            print()
+            overall = results.get("overall_status", "unknown")
+            if overall == "ok":
+                print("✅ Config generation should work correctly")
+            elif overall == "partial":
+                print("⚠️ Config generation may work with fallbacks")
+            else:
+                print("❌ Config generation may fail")
+                print("Try the troubleshooting steps in 'mmrelay windows help'")
 
-        # Provide platform-specific guidance
-        try:
-            from mmrelay.windows_utils import get_windows_error_message, is_windows
-
-            if is_windows():
-                error_msg = get_windows_error_message(e)
-                print(f"\nWindows-specific guidance: {error_msg}")
-        except ImportError:
-            pass
-
+            return 0 if overall in ["ok", "partial"] else 1
+        except ImportError as e:
+            print(f"Error importing Windows utilities: {e}")
+            return 1
+    else:
+        print(f"Unknown windows command: {args.windows_command}")
         return 1
 
 
@@ -1899,7 +1838,7 @@ def generate_sample_config():
 
             print(f"Created minimal config template at: {target_path}")
             print(
-                "\n!  This is a minimal template. Please refer to documentation for full configuration options."
+                "\n⚠️  This is a minimal template. Please refer to documentation for full configuration options."
             )
             print("Visit: https://github.com/jeremiah-k/meshtastic-matrix-relay/wiki")
             return True
@@ -1919,7 +1858,9 @@ def generate_sample_config():
                     "3. Use alternative entry point: python -m mmrelay config generate"
                 )
                 print("4. Check antivirus software - it may have quarantined files")
-                print("5. Run diagnostics: python -m mmrelay config diagnose")
+                print(
+                    '5. Run Windows config test: python -c "from mmrelay.windows_utils import test_config_generation_windows; print(test_config_generation_windows())"'
+                )
                 print("6. Manually create config file using documentation")
         except ImportError:
             pass
