@@ -206,8 +206,6 @@ def parse_arguments():
         description="Install or update the systemd user service for MMRelay",
     )
 
-
-
     # Use parse_known_args to handle unknown arguments gracefully (e.g., pytest args)
     args, unknown = parser.parse_known_args()
     # If there are unknown arguments and we're not in a test invocation, warn about them
@@ -1514,19 +1512,23 @@ def handle_config_diagnose(args):
         # Test 1: Basic config path resolution
         print("1. Testing configuration paths...")
         from mmrelay.config import get_config_paths
+
         paths = get_config_paths(args)
         print(f"   Config search paths: {len(paths)} locations")
         for i, path in enumerate(paths, 1):
             dir_path = os.path.dirname(path)
             dir_exists = os.path.exists(dir_path)
             dir_writable = os.access(dir_path, os.W_OK) if dir_exists else False
-            status = "✅" if dir_exists and dir_writable else "⚠️" if dir_exists else "❌"
+            status = (
+                "✅" if dir_exists and dir_writable else "⚠️" if dir_exists else "❌"
+            )
             print(f"   {i}. {path} {status}")
         print()
 
         # Test 2: Sample config accessibility
         print("2. Testing sample config accessibility...")
         from mmrelay.tools import get_sample_config_path
+
         sample_path = get_sample_config_path()
         sample_exists = os.path.exists(sample_path)
         print(f"   Sample config path: {sample_path}")
@@ -1535,6 +1537,7 @@ def handle_config_diagnose(args):
         # Test importlib.resources fallback
         try:
             import importlib.resources
+
             content = (
                 importlib.resources.files("mmrelay.tools")
                 .joinpath("sample_config.yaml")
@@ -1548,6 +1551,7 @@ def handle_config_diagnose(args):
         # Test 3: Platform-specific diagnostics
         print("3. Platform-specific diagnostics...")
         import sys
+
         from mmrelay.constants.app import WINDOWS_PLATFORM
 
         is_windows = sys.platform == WINDOWS_PLATFORM
@@ -1556,17 +1560,20 @@ def handle_config_diagnose(args):
 
         if is_windows:
             try:
-                from mmrelay.windows_utils import test_config_generation_windows, check_windows_requirements
+                from mmrelay.windows_utils import (
+                    check_windows_requirements,
+                    test_config_generation_windows,
+                )
 
                 # Check Windows requirements
                 warnings = check_windows_requirements()
                 if warnings:
-                    print(f"   Windows warnings: ⚠️")
-                    for line in warnings.split('\n'):
+                    print("   Windows warnings: ⚠️")
+                    for line in warnings.split("\n"):
                         if line.strip():
                             print(f"     {line}")
                 else:
-                    print(f"   Windows compatibility: ✅")
+                    print("   Windows compatibility: ✅")
 
                 # Run Windows-specific tests
                 print("\n   Windows config generation test:")
@@ -1576,11 +1583,17 @@ def handle_config_diagnose(args):
                     if component == "overall_status":
                         continue
                     if isinstance(result, dict):
-                        status_icon = "✅" if result["status"] == "ok" else "❌" if result["status"] == "error" else "⚠️"
+                        status_icon = (
+                            "✅"
+                            if result["status"] == "ok"
+                            else "❌" if result["status"] == "error" else "⚠️"
+                        )
                         print(f"     {component}: {status_icon}")
 
                 overall = results.get("overall_status", "unknown")
-                print(f"   Overall Windows status: {'✅' if overall == 'ok' else '⚠️' if overall == 'partial' else '❌'}")
+                print(
+                    f"   Overall Windows status: {'✅' if overall == 'ok' else '⚠️' if overall == 'partial' else '❌'}"
+                )
 
             except ImportError:
                 print("   Windows utilities: ❌ (not available)")
@@ -1594,6 +1607,7 @@ def handle_config_diagnose(args):
         try:
             template = _get_minimal_config_template()
             import yaml
+
             yaml.safe_load(template)
             print(f"   Minimal template: ✅ ({len(template)} chars, valid YAML)")
         except Exception as e:
@@ -1617,7 +1631,8 @@ def handle_config_diagnose(args):
 
         # Provide platform-specific guidance
         try:
-            from mmrelay.windows_utils import is_windows, get_windows_error_message
+            from mmrelay.windows_utils import get_windows_error_message, is_windows
+
             if is_windows():
                 error_msg = get_windows_error_message(e)
                 print(f"\nWindows-specific guidance: {error_msg}")
