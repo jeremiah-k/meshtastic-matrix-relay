@@ -245,19 +245,19 @@ Use environment variables **only** when:
 
 ### Environment Variable to Config.yaml Mapping
 
-| Environment Variable                   | Config.yaml Path               | Type    | Description                                      |
-| -------------------------------------- | ------------------------------ | ------- | ------------------------------------------------ |
-| `MMRELAY_MESHTASTIC_CONNECTION_TYPE`   | `meshtastic.connection_type`   | string  | Connection method (`tcp`, `serial`, `ble`)       |
-| `MMRELAY_MESHTASTIC_HOST`              | `meshtastic.host`              | string  | TCP host address                                 |
-| `MMRELAY_MESHTASTIC_PORT`              | `meshtastic.port`              | integer | TCP port (default: 4403)                         |
-| `MMRELAY_MESHTASTIC_SERIAL_PORT`       | `meshtastic.serial_port`       | string  | Serial device path                               |
-| `MMRELAY_MESHTASTIC_BLE_ADDRESS`       | `meshtastic.ble_address`       | string  | Bluetooth MAC address                            |
-| `MMRELAY_MESHTASTIC_BROADCAST_ENABLED` | `meshtastic.broadcast_enabled` | boolean | Enable Matrix→Meshtastic                         |
-| `MMRELAY_MESHTASTIC_MESHNET_NAME`      | `meshtastic.meshnet_name`      | string  | Display name for mesh                            |
-| `MMRELAY_MESHTASTIC_MESSAGE_DELAY`     | `meshtastic.message_delay`     | float   | Delay between messages in seconds (minimum: 2.0) |
+| Environment Variable                   | Config.yaml Path               | Type    | Description                                                 |
+| -------------------------------------- | ------------------------------ | ------- | ----------------------------------------------------------- |
+| `MMRELAY_MESHTASTIC_CONNECTION_TYPE`   | `meshtastic.connection_type`   | string  | Connection method (`tcp`, `serial`, `ble`)                  |
+| `MMRELAY_MESHTASTIC_HOST`              | `meshtastic.host`              | string  | TCP host address                                            |
+| `MMRELAY_MESHTASTIC_PORT`              | `meshtastic.port`              | integer | TCP port (default: 4403)                                    |
+| `MMRELAY_MESHTASTIC_SERIAL_PORT`       | `meshtastic.serial_port`       | string  | Serial device path                                          |
+| `MMRELAY_MESHTASTIC_BLE_ADDRESS`       | `meshtastic.ble_address`       | string  | Bluetooth MAC address                                       |
+| `MMRELAY_MESHTASTIC_BROADCAST_ENABLED` | `meshtastic.broadcast_enabled` | boolean | Enable Matrix→Meshtastic                                    |
+| `MMRELAY_MESHTASTIC_MESHNET_NAME`      | `meshtastic.meshnet_name`      | string  | Display name for mesh                                       |
+| `MMRELAY_MESHTASTIC_MESSAGE_DELAY`     | `meshtastic.message_delay`     | float   | Delay between messages in seconds (minimum: 2.0)            |
 | `MMRELAY_LOGGING_LEVEL`                | `logging.level`                | string  | Log level (`debug`, `info`, `warning`, `error`, `critical`) |
-| `MMRELAY_LOG_FILE`                     | `logging.filename`             | string  | Log file path                                    |
-| `MMRELAY_DATABASE_PATH`                | `database.path`                | string  | SQLite database path                             |
+| `MMRELAY_LOG_FILE`                     | `logging.filename`             | string  | Log file path                                               |
+| `MMRELAY_DATABASE_PATH`                | `database.path`                | string  | SQLite database path                                        |
 
 ## Tips for Advanced Configuration
 

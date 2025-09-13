@@ -6,7 +6,7 @@ services:
     stop_grace_period: 30s
     user: "${UID:-1000}:${GID:-1000}"
     environment:
-      - TZ=UTC  # Set timezone (PYTHONUNBUFFERED and MPLCONFIGDIR are set in Dockerfile)
+      - TZ=UTC # Set timezone (PYTHONUNBUFFERED and MPLCONFIGDIR are set in Dockerfile)
     volumes:
       # Mount your config directory - create ~/.mmrelay/config.yaml first
       # See docs/DOCKER.md for setup instructions

@@ -242,6 +242,73 @@ def _get_msgs_to_keep_config():
     return msg_map_config.get("msgs_to_keep", DEFAULT_MSGS_TO_KEEP)
 
 
+def _get_detailed_sync_error_message(sync_response) -> str:
+    """
+    Extract detailed error information from a Matrix sync response.
+
+    Args:
+        sync_response: The sync response object that contains error information
+
+    Returns:
+        str: A detailed error message with specific information about the failure
+    """
+    try:
+        # Handle nio ErrorResponse explicitly when available
+        try:
+            from nio import ErrorResponse as NioErrorResponse
+
+            if isinstance(sync_response, NioErrorResponse):
+                msg = getattr(sync_response, "message", None)
+                code = getattr(sync_response, "status_code", None)
+                if msg:
+                    return msg
+                if code:
+                    return f"HTTP error {code}"
+        except ImportError:
+            pass  # nio not available, continue with generic handling
+
+        # Try to extract specific error information
+        if hasattr(sync_response, "message") and sync_response.message:
+            return sync_response.message
+        elif hasattr(sync_response, "status_code") and sync_response.status_code:
+            status_code = sync_response.status_code
+            if status_code == 401:
+                return "Authentication failed - invalid or expired credentials"
+            elif status_code == 403:
+                return "Access forbidden - check user permissions"
+            elif status_code == 404:
+                return "Server not found - check homeserver URL"
+            elif status_code == 429:
+                return "Rate limited - too many requests"
+            elif status_code >= 500:
+                return f"Server error (HTTP {status_code}) - the Matrix server is experiencing issues"
+            else:
+                return f"HTTP error {status_code}"
+        elif hasattr(sync_response, "transport_response"):
+            # Check for transport-level errors
+            transport = sync_response.transport_response
+            if hasattr(transport, "status_code"):
+                return f"Transport error: HTTP {transport.status_code}"
+
+        # Fallback to string representation
+        error_str = str(sync_response)
+        if "unknown error" in error_str.lower():
+            return "Network connectivity issue or server unreachable"
+        elif error_str and error_str != "None":
+            return error_str
+        else:
+            return "Network connectivity issue or server unreachable"
+
+    except Exception as e:
+        logger.debug(
+            "Failed to extract sync error details from %r: %s", sync_response, e
+        )
+        # If we can't extract error details, provide a generic but helpful message
+        return (
+            "Unable to determine specific error - likely a network connectivity issue"
+        )
+
+
 def _create_mapping_info(
     matrix_event_id, room_id, text, meshnet=None, msgs_to_keep=None
 ):
@@ -551,8 +618,7 @@ async def connect_matrix(passed_config=None):
 
     Raises:
         ValueError: If the top-level "matrix_rooms" configuration is missing.
-        ConnectionError: If the initial sync reports a sync error.
-        asyncio.TimeoutError: If the initial sync times out.
+        ConnectionError: If the initial sync reports a sync error or times out.
     """
     global matrix_client, bot_user_name, matrix_homeserver, matrix_rooms, matrix_access_token, bot_user_id, config
 
@@ -717,6 +783,14 @@ async def connect_matrix(passed_config=None):
         matrix_cfg = config.get("matrix", {}) or {}
         encryption_enabled = matrix_cfg.get("encryption", {}).get("enabled", False)
         e2ee_enabled = matrix_cfg.get("e2ee", {}).get("enabled", False)
+
+        # Debug logging for E2EE detection
+        logger.debug(
+            f"E2EE detection: matrix config section present: {'matrix' in config}"
+        )
+        logger.debug(f"E2EE detection: encryption.enabled = {encryption_enabled}")
+        logger.debug(f"E2EE detection: e2ee.enabled = {e2ee_enabled}")
+
         if encryption_enabled or e2ee_enabled:
             # Check if running on Windows
             if sys.platform == WINDOWS_PLATFORM:
@@ -889,8 +963,26 @@ async def connect_matrix(passed_config=None):
             hasattr(sync_response, "__class__")
             and "Error" in sync_response.__class__.__name__
         ):
-            logger.error(f"Initial sync failed: {sync_response}")
-            raise ConnectionError(f"Matrix sync failed: {sync_response}")
+            # Provide more detailed error information
+            error_type = sync_response.__class__.__name__
+            error_details = _get_detailed_sync_error_message(sync_response)
+            logger.error(f"Initial sync failed: {error_type}")
+            logger.error(f"Error details: {error_details}")
+
+            # Provide user-friendly troubleshooting guidance
+            if "SyncError" in error_type:
+                logger.error(
+                    "This usually indicates a network connectivity issue or server problem."
+                )
+                logger.error("Troubleshooting steps:")
+                logger.error("1. Check your internet connection")
+                logger.error(
+                    f"2. Verify the homeserver URL is correct: {matrix_homeserver}"
+                )
+                logger.error("3. Ensure the Matrix server is online and accessible")
+                logger.error("4. Check if your credentials are still valid")
+
+            raise ConnectionError(f"Matrix sync failed: {error_type} - {error_details}")
         else:
             logger.info(
                 f"Initial sync completed. Found {len(matrix_client.rooms)} rooms."
@@ -929,10 +1021,24 @@ async def connect_matrix(passed_config=None):
             if e2ee_enabled and encrypted_count == 0 and len(matrix_client.rooms) > 0:
                 logger.debug("No encrypted rooms detected - all rooms are plaintext")
     except asyncio.TimeoutError:
-        logger.error(
+        logger.exception(
             f"Initial sync timed out after {MATRIX_SYNC_OPERATION_TIMEOUT} seconds"
         )
-        raise
+        logger.error(
+            "This indicates a network connectivity issue or slow Matrix server."
+        )
+        logger.error("Troubleshooting steps:")
+        logger.error("1. Check your internet connection")
+        logger.error(f"2. Verify the homeserver is accessible: {matrix_homeserver}")
+        logger.error(
+            "3. Try again in a few minutes - the server may be temporarily overloaded"
+        )
+        logger.error(
+            "4. Consider using a different Matrix homeserver if the problem persists"
+        )
+        raise ConnectionError(
+            f"Matrix sync timed out after {MATRIX_SYNC_OPERATION_TIMEOUT} seconds - check network connectivity and server status"
+        ) from None
 
     # Add a delay to allow for key sharing to complete
     # This addresses a race condition where the client attempts to send encrypted messages
@@ -1127,10 +1233,29 @@ async def login_matrix_bot(
             return False
         except Exception as e:
             # Handle other exceptions during login (e.g., network errors)
-            logger.error(f"Login exception: {e}")
-            logger.error(f"Exception type: {type(e)}")
-            if hasattr(e, "message"):
-                logger.error(f"Exception message: {e.message}")
+            error_type = type(e).__name__
+            logger.error(f"Login failed with {error_type}: {e}")
+
+            # Provide specific guidance based on error type
+            if "ConnectionError" in error_type or "ConnectTimeout" in error_type:
+                logger.error("Network connectivity issue detected.")
+                logger.error("Troubleshooting steps:")
+                logger.error("1. Check your internet connection")
+                logger.error(f"2. Verify the homeserver URL is correct: {homeserver}")
+                logger.error("3. Check if the Matrix server is online")
+            elif "SSLError" in error_type or "CertificateError" in error_type:
+                logger.error("SSL/TLS certificate issue detected.")
+                logger.error(
+                    "This may indicate a problem with the server's SSL certificate."
+                )
+            elif "DNSError" in error_type or "NameResolutionError" in error_type:
+                logger.error("DNS resolution failed.")
+                logger.error(f"Cannot resolve hostname: {homeserver}")
+                logger.error("Check your DNS settings and internet connection.")
+            else:
+                logger.error("Unexpected error during login.")
+
+            # Additional details already included in the message above.
             await client.close()
             return False
 
@@ -1159,12 +1284,44 @@ async def login_matrix_bot(
             await client.close()
             return True
         else:
-            # Better error logging
-            logger.error(f"Login failed: {response}")
+            # Provide detailed error information and troubleshooting guidance
+            response_type = type(response).__name__
+            logger.error(f"Login failed: {response_type}")
+
+            # Extract and log specific error details
+            error_message = "Unknown error"
+            status_code = None
+
             if hasattr(response, "message"):
-                logger.error(f"Error message: {response.message}")
+                error_message = response.message
+                logger.error(f"Error message: {error_message}")
             if hasattr(response, "status_code"):
-                logger.error(f"Status code: {response.status_code}")
+                status_code = response.status_code
+                logger.error(f"HTTP status code: {status_code}")
+
+            # Provide specific troubleshooting guidance
+            if status_code == 401 or "M_FORBIDDEN" in str(error_message):
+                logger.error("Authentication failed - invalid username or password.")
+                logger.error("Troubleshooting steps:")
+                logger.error("1. Verify your username and password are correct")
+                logger.error("2. Check if your account is locked or suspended")
+                logger.error("3. Try logging in through a web browser first")
+                logger.error("4. Use 'mmrelay auth login' to set up new credentials")
+            elif status_code == 404:
+                logger.error("User not found or homeserver not found.")
+                logger.error(
+                    f"Check that the homeserver URL is correct: {matrix_homeserver}"
+                )
+            elif status_code == 429:
+                logger.error("Rate limited - too many login attempts.")
+                logger.error("Wait a few minutes before trying again.")
+            elif status_code and status_code >= 500:
+                logger.error("Matrix server error - the server is experiencing issues.")
+                logger.error("Try again later or contact your server administrator.")
+            else:
+                logger.error("Login failed for unknown reason.")
+                logger.error("Try using 'mmrelay auth login' for interactive setup.")
+
             await client.close()
             return False
 
