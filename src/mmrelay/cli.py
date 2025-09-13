@@ -132,6 +132,11 @@ def parse_arguments():
         help="Validate configuration file",
         description="Check configuration file syntax and completeness",
     )
+    config_subparsers.add_parser(
+        "diagnose",
+        help="Diagnose configuration system issues",
+        description="Test config generation capabilities and troubleshoot platform-specific issues",
+    )
 
     # AUTH group
     auth_parser = subparsers.add_parser(
@@ -201,26 +206,7 @@ def parse_arguments():
         description="Install or update the systemd user service for MMRelay",
     )
 
-    # WINDOWS group (only show on Windows)
-    if sys.platform == WINDOWS_PLATFORM:
-        windows_parser = subparsers.add_parser(
-            "windows",
-            help="Windows-specific help and troubleshooting",
-            description="Windows installation guidance and troubleshooting",
-        )
-        windows_subparsers = windows_parser.add_subparsers(
-            dest="windows_command", help="Windows commands"
-        )
-        windows_subparsers.add_parser(
-            "help",
-            help="Show Windows installation and troubleshooting guide",
-            description="Display comprehensive Windows-specific guidance",
-        )
-        windows_subparsers.add_parser(
-            "test-config",
-            help="Test config generation functionality on Windows",
-            description="Diagnose config generation issues on Windows systems",
-        )
+
 
     # Use parse_known_args to handle unknown arguments gracefully (e.g., pytest args)
     args, unknown = parser.parse_known_args()
@@ -1187,8 +1173,7 @@ def handle_subcommand(args):
         return handle_auth_command(args)
     elif args.command == "service":
         return handle_service_command(args)
-    elif args.command == "windows":
-        return handle_windows_command(args)
+
     else:
         print(f"Unknown command: {args.command}")
         return 1
@@ -1211,6 +1196,8 @@ def handle_config_command(args):
         return 0 if generate_sample_config() else 1
     elif args.config_command == "check":
         return 0 if check_config(args) else 1
+    elif args.config_command == "diagnose":
+        return handle_config_diagnose(args)
     else:
         print(f"Unknown config command: {args.config_command}")
         return 1
@@ -1510,74 +1497,133 @@ def handle_service_command(args):
         return 1
 
 
-def handle_windows_command(args):
+def handle_config_diagnose(args):
     """
-    Handle Windows-specific CLI subcommands.
+    Handle config diagnose command to test configuration system capabilities.
 
-    Provides Windows-specific help and troubleshooting guidance.
-    Returns 0 on success, 1 on failure or for unknown subcommands.
+    Tests config generation functionality and provides platform-specific
+    troubleshooting guidance when issues are detected.
+
+    Returns 0 on success, 1 on failure.
     """
-    if args.windows_command == "help" or not hasattr(args, "windows_command"):
+    print("MMRelay Configuration System Diagnostics")
+    print("=" * 40)
+    print()
+
+    try:
+        # Test 1: Basic config path resolution
+        print("1. Testing configuration paths...")
+        from mmrelay.config import get_config_paths
+        paths = get_config_paths(args)
+        print(f"   Config search paths: {len(paths)} locations")
+        for i, path in enumerate(paths, 1):
+            dir_path = os.path.dirname(path)
+            dir_exists = os.path.exists(dir_path)
+            dir_writable = os.access(dir_path, os.W_OK) if dir_exists else False
+            status = "✅" if dir_exists and dir_writable else "⚠️" if dir_exists else "❌"
+            print(f"   {i}. {path} {status}")
+        print()
+
+        # Test 2: Sample config accessibility
+        print("2. Testing sample config accessibility...")
+        from mmrelay.tools import get_sample_config_path
+        sample_path = get_sample_config_path()
+        sample_exists = os.path.exists(sample_path)
+        print(f"   Sample config path: {sample_path}")
+        print(f"   Sample config exists: {'✅' if sample_exists else '❌'}")
+
+        # Test importlib.resources fallback
         try:
-            from mmrelay.windows_utils import (
-                check_windows_requirements,
-                get_windows_install_guidance,
+            import importlib.resources
+            content = (
+                importlib.resources.files("mmrelay.tools")
+                .joinpath("sample_config.yaml")
+                .read_text()
             )
+            print(f"   importlib.resources fallback: ✅ ({len(content)} chars)")
+        except Exception as e:
+            print(f"   importlib.resources fallback: ❌ ({e})")
+        print()
 
-            # Show any compatibility warnings first
-            warnings = check_windows_requirements()
-            if warnings:
-                print(warnings)
-                print()
+        # Test 3: Platform-specific diagnostics
+        print("3. Platform-specific diagnostics...")
+        import sys
+        from mmrelay.constants.app import WINDOWS_PLATFORM
 
-            # Show the installation guidance
-            print(get_windows_install_guidance())
-            return 0
-        except ImportError as e:
-            print(f"Error importing Windows utilities: {e}")
-            return 1
-    elif args.windows_command == "test-config":
+        is_windows = sys.platform == WINDOWS_PLATFORM
+        print(f"   Platform: {sys.platform}")
+        print(f"   Windows: {'Yes' if is_windows else 'No'}")
+
+        if is_windows:
+            try:
+                from mmrelay.windows_utils import test_config_generation_windows, check_windows_requirements
+
+                # Check Windows requirements
+                warnings = check_windows_requirements()
+                if warnings:
+                    print(f"   Windows warnings: ⚠️")
+                    for line in warnings.split('\n'):
+                        if line.strip():
+                            print(f"     {line}")
+                else:
+                    print(f"   Windows compatibility: ✅")
+
+                # Run Windows-specific tests
+                print("\n   Windows config generation test:")
+                results = test_config_generation_windows()
+
+                for component, result in results.items():
+                    if component == "overall_status":
+                        continue
+                    if isinstance(result, dict):
+                        status_icon = "✅" if result["status"] == "ok" else "❌" if result["status"] == "error" else "⚠️"
+                        print(f"     {component}: {status_icon}")
+
+                overall = results.get("overall_status", "unknown")
+                print(f"   Overall Windows status: {'✅' if overall == 'ok' else '⚠️' if overall == 'partial' else '❌'}")
+
+            except ImportError:
+                print("   Windows utilities: ❌ (not available)")
+        else:
+            print("   Platform-specific tests: ✅ (Unix-like system)")
+
+        print()
+
+        # Test 4: Minimal config template
+        print("4. Testing minimal config template fallback...")
         try:
-            from mmrelay.windows_utils import is_windows, test_config_generation_windows
+            template = _get_minimal_config_template()
+            import yaml
+            yaml.safe_load(template)
+            print(f"   Minimal template: ✅ ({len(template)} chars, valid YAML)")
+        except Exception as e:
+            print(f"   Minimal template: ❌ ({e})")
 
-            if not is_windows():
-                print("This command is only available on Windows systems.")
-                return 1
+        print()
+        print("=" * 40)
+        print("Diagnostics complete!")
 
-            print("Testing config generation functionality on Windows...")
-            print("=" * 50)
+        # Provide guidance based on results
+        if is_windows and not sample_exists:
+            print("\n💡 Windows Troubleshooting Tips:")
+            print("   • Try: pip install --upgrade --force-reinstall mmrelay")
+            print("   • Use: python -m mmrelay config generate")
+            print("   • Check antivirus software for quarantined files")
 
-            results = test_config_generation_windows()
+        return 0
 
-            for component, result in results.items():
-                if component == "overall_status":
-                    continue
-                if isinstance(result, dict):
-                    status_icon = (
-                        "✅"
-                        if result["status"] == "ok"
-                        else "❌" if result["status"] == "error" else "⚠️"
-                    )
-                    print(f"{status_icon} {component}: {result['status']}")
-                    if result["details"]:
-                        print(f"   {result['details']}")
+    except Exception as e:
+        print(f"❌ Diagnostics failed: {e}")
 
-            print()
-            overall = results.get("overall_status", "unknown")
-            if overall == "ok":
-                print("✅ Config generation should work correctly")
-            elif overall == "partial":
-                print("⚠️ Config generation may work with fallbacks")
-            else:
-                print("❌ Config generation may fail")
-                print("Try the troubleshooting steps in 'mmrelay windows help'")
+        # Provide platform-specific guidance
+        try:
+            from mmrelay.windows_utils import is_windows, get_windows_error_message
+            if is_windows():
+                error_msg = get_windows_error_message(e)
+                print(f"\nWindows-specific guidance: {error_msg}")
+        except ImportError:
+            pass
 
-            return 0 if overall in ["ok", "partial"] else 1
-        except ImportError as e:
-            print(f"Error importing Windows utilities: {e}")
-            return 1
-    else:
-        print(f"Unknown windows command: {args.windows_command}")
         return 1
 
 
@@ -1858,9 +1904,7 @@ def generate_sample_config():
                     "3. Use alternative entry point: python -m mmrelay config generate"
                 )
                 print("4. Check antivirus software - it may have quarantined files")
-                print(
-                    '5. Run Windows config test: python -c "from mmrelay.windows_utils import test_config_generation_windows; print(test_config_generation_windows())"'
-                )
+                print("5. Run diagnostics: python -m mmrelay config diagnose")
                 print("6. Manually create config file using documentation")
         except ImportError:
             pass

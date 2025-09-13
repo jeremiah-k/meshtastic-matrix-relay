@@ -276,5 +276,5 @@ Windows Installation & Troubleshooting Guide:
    • Temporarily disable antivirus for testing
    • Use Windows PowerShell instead of Command Prompt
    • Consider using Windows Subsystem for Linux (WSL)
-   • Test config generation: 'python -c "from mmrelay.windows_utils import test_config_generation_windows; print(test_config_generation_windows())"'
+   • Test config generation: 'python -m mmrelay config diagnose'
 """
