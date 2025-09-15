@@ -216,7 +216,7 @@ class TestTestConfigGenerationWindows(unittest.TestCase):
         self.assertEqual(result["importlib_resources"]["status"], "ok")
 
     @patch("sys.platform", "win32")
-    @patch("mmrelay.tools.get_sample_config_path", side_effect=Exception("Test error"))
+    @patch("mmrelay.tools.get_sample_config_path", side_effect=OSError("Test error"))
     def test_test_config_generation_windows_handles_exceptions(
         self, mock_get_sample_config_path
     ):

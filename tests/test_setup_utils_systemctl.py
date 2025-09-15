@@ -218,9 +218,7 @@ class TestInstallServiceSystemctlUsage(unittest.TestCase):
 
     @patch("mmrelay.setup_utils.SYSTEMCTL", "/test/systemctl")
     @patch("subprocess.run")
-    @patch(
-        "builtins.input", side_effect=["y", "y", "y"]
-    )  # Enable service, restart service, and any other prompts
+    @patch("builtins.input", side_effect=["y", "y"])  # Enable service, start service
     @patch("builtins.print")
     def test_install_service_uses_custom_systemctl_path(
         self, mock_print, mock_input, mock_run
@@ -237,20 +235,26 @@ class TestInstallServiceSystemctlUsage(unittest.TestCase):
         # Mock other dependencies
         with patch("mmrelay.setup_utils.create_service_file", return_value=True), patch(
             "mmrelay.setup_utils.reload_daemon", return_value=True
+        ), patch("mmrelay.setup_utils.read_service_file", return_value=None), patch(
+            "mmrelay.setup_utils.is_service_enabled", return_value=False
+        ), patch(
+            "mmrelay.setup_utils.check_loginctl_available", return_value=False
+        ), patch(
+            "mmrelay.setup_utils.is_service_active", return_value=False
         ):
 
             install_service()
 
-            # Should use custom systemctl path for enable and restart
+            # Should use custom systemctl path for enable and start
             enable_call = ["/test/systemctl", "--user", "enable", "mmrelay.service"]
-            restart_call = ["/test/systemctl", "--user", "restart", "mmrelay.service"]
+            start_call = ["/test/systemctl", "--user", "start", "mmrelay.service"]
 
             # Check that the custom systemctl path was used
             mock_run.assert_any_call(enable_call, check=True)
-            mock_run.assert_any_call(restart_call, check=True)
+            mock_run.assert_any_call(start_call, check=True)
 
     @patch("mmrelay.setup_utils.SYSTEMCTL", "/test/systemctl")
-    @patch("builtins.input", side_effect=["y", "y"])  # Enable and restart service
+    @patch("builtins.input", side_effect=["y", "y"])  # Enable service, start service
     @patch("builtins.print")
     def test_install_service_handles_systemctl_error(self, mock_print, mock_input):
         """Test that install_service handles systemctl errors gracefully."""
@@ -259,12 +263,14 @@ class TestInstallServiceSystemctlUsage(unittest.TestCase):
         # Mock other dependencies
         with patch("mmrelay.setup_utils.create_service_file", return_value=True), patch(
             "mmrelay.setup_utils.reload_daemon", return_value=True
-        ), patch("mmrelay.setup_utils.is_service_enabled", return_value=False), patch(
+        ), patch("mmrelay.setup_utils.read_service_file", return_value=None), patch(
+            "mmrelay.setup_utils.is_service_enabled", return_value=False
+        ), patch(
             "mmrelay.setup_utils.check_loginctl_available", return_value=False
         ), patch(
             "mmrelay.setup_utils.is_service_active", return_value=False
         ), patch(
-            "mmrelay.setup_utils.start_service", return_value=False
+            "subprocess.run", return_value=MagicMock(returncode=1)
         ):
 
             result = install_service()

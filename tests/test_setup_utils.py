@@ -412,16 +412,43 @@ class TestSetupUtils(unittest.TestCase):
         self.assertTrue(result)
         mock_path.write_text.assert_called_once()
 
-    @patch("mmrelay.setup_utils.get_executable_path")
-    def test_create_service_file_no_executable(self, mock_get_executable):
+    @patch("shutil.which")
+    @patch("mmrelay.setup_utils.get_template_service_content")
+    @patch("mmrelay.setup_utils.get_user_service_path")
+    @patch("builtins.print")
+    def test_create_service_file_no_executable(
+        self, mock_print, mock_get_path, mock_get_content, mock_which
+    ):
         """
-        Test that creating a service file returns False when the executable path cannot be determined.
+        Test that creating a service file succeeds using python -m mmrelay fallback when mmrelay binary is not found.
         """
-        mock_get_executable.return_value = None
+        # Mock mmrelay not found in PATH
+        mock_which.return_value = None
+
+        # Mock template content with placeholder
+        mock_get_content.return_value = """[Unit]
+Description=Test Service
+[Service]
+ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-relay/main.py --config %h/.mmrelay/config/config.yaml
+"""
+
+        # Mock service path
+        mock_path = MagicMock()
+        mock_get_path.return_value = mock_path
 
         result = create_service_file()
 
-        self.assertFalse(result)
+        # Should succeed with fallback
+        self.assertTrue(result)
+
+        # Should print fallback message
+        mock_print.assert_any_call(
+            "mmrelay binary not found in PATH, using python -m mmrelay fallback"
+        )
+
+        # Should write service content with python -m mmrelay
+        written_content = mock_path.write_text.call_args[0][0]
+        self.assertIn("python -m mmrelay", written_content)
 
     @patch("mmrelay.setup_utils.read_service_file")
     @patch("mmrelay.setup_utils.get_executable_path")
