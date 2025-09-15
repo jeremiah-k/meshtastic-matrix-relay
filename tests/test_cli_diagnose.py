@@ -123,5 +123,161 @@ class TestGetMinimalConfigTemplate(unittest.TestCase):
         self.assertIn("# For network connection", template)
 
 
+class TestWindowsErrorHandling(unittest.TestCase):
+    """Test cases for Windows-specific error handling in CLI."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.mock_args = MagicMock()
+
+    @patch("sys.platform", "win32")
+    @patch("mmrelay.windows_utils.is_windows", return_value=True)
+    @patch("mmrelay.windows_utils.get_windows_error_message")
+    @patch("builtins.print")
+    def test_windows_error_handling_in_main(self, mock_print, mock_get_error, mock_is_windows):
+        """Test Windows-specific error handling in main function."""
+        from mmrelay.cli import main
+
+        # Mock get_windows_error_message to return a detailed message
+        mock_get_error.return_value = "Detailed Windows error message with troubleshooting"
+
+        # Mock parse_arguments to raise an exception
+        with patch("mmrelay.cli.parse_arguments", side_effect=RuntimeError("Test error")):
+            result = main()
+
+        # Should return error code
+        self.assertEqual(result, 1)
+
+        # Should call Windows error message handler
+        mock_get_error.assert_called_once()
+        mock_print.assert_called_with("Error: Detailed Windows error message with troubleshooting")
+
+    @patch("sys.platform", "linux")
+    @patch("builtins.print")
+    def test_non_windows_error_handling_in_main(self, mock_print):
+        """Test non-Windows error handling in main function."""
+        from mmrelay.cli import main
+
+        # Mock parse_arguments to raise an exception
+        with patch("mmrelay.cli.parse_arguments", side_effect=RuntimeError("Test error")):
+            result = main()
+
+        # Should return error code
+        self.assertEqual(result, 1)
+
+        # Should use standard error message
+        mock_print.assert_called_with("Unexpected error: Test error")
+
+    @patch("sys.platform", "win32")
+    @patch("mmrelay.windows_utils.is_windows", return_value=True)
+    @patch("mmrelay.windows_utils.get_windows_error_message")
+    @patch("builtins.print")
+    def test_windows_error_in_generate_config(self, mock_print, mock_get_error, mock_is_windows):
+        """Test Windows-specific error handling in generate_sample_config."""
+        from mmrelay.cli import generate_sample_config
+
+        mock_get_error.return_value = "Windows file permission error with guidance"
+
+        # Mock file operations to fail
+        with patch("mmrelay.cli.get_config_paths", return_value=["/test/config.yaml"]), \
+             patch("os.path.exists", return_value=False), \
+             patch("mmrelay.cli.get_sample_config_path", side_effect=OSError("Permission denied")):
+
+            result = generate_sample_config()
+
+        # Should fail
+        self.assertFalse(result)
+
+        # Should provide Windows-specific guidance
+        mock_get_error.assert_called()
+
+
+class TestMinimalConfigTemplate(unittest.TestCase):
+    """Test cases for minimal config template functionality."""
+
+    def test_minimal_config_template_structure(self):
+        """Test that minimal config template has proper structure."""
+        from mmrelay.cli import _get_minimal_config_template
+
+        template = _get_minimal_config_template()
+
+        # Should be valid YAML
+        import yaml
+        config = yaml.safe_load(template)
+
+        # Should have required sections
+        self.assertIn("matrix", config)
+        self.assertIn("meshtastic", config)
+        self.assertIn("matrix_rooms", config)
+
+        # Should have helpful comments
+        self.assertIn("# MMRelay Configuration File", template)
+        self.assertIn("# This is a minimal template", template)
+
+    def test_minimal_config_template_contains_examples(self):
+        """Test that minimal config template contains example values."""
+        from mmrelay.cli import _get_minimal_config_template
+
+        template = _get_minimal_config_template()
+
+        # Should contain example values
+        self.assertIn("matrix.example.org", template)
+        self.assertIn("!room:matrix.example.org", template)
+        self.assertIn("connection_type:", template)
+
+        # Should contain guidance comments
+        self.assertIn("# Use 'mmrelay auth login'", template)
+        self.assertIn("# Windows:", template)
+
+
+class TestConfigDiagnoseIntegration(unittest.TestCase):
+    """Integration tests for config diagnose functionality."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.mock_args = MagicMock()
+
+    @patch("builtins.print")
+    def test_config_diagnose_basic_functionality(self, mock_print):
+        """Test basic config diagnose functionality."""
+        from mmrelay.cli import handle_config_diagnose
+
+        result = handle_config_diagnose(self.mock_args)
+
+        # Should complete successfully
+        self.assertEqual(result, 0)
+
+        # Should print diagnostic header
+        printed_messages = [call.args[0] for call in mock_print.call_args_list if call.args]
+        self.assertTrue(any("MMRelay Configuration System Diagnostics" in str(msg) for msg in printed_messages))
+
+    @patch("sys.platform", "win32")
+    @patch("mmrelay.windows_utils.is_windows", return_value=True)
+    @patch("mmrelay.windows_utils.test_config_generation_windows")
+    @patch("builtins.print")
+    def test_config_diagnose_windows_integration(self, mock_print, mock_windows_test, mock_is_windows):
+        """Test config diagnose with Windows-specific tests."""
+        from mmrelay.cli import handle_config_diagnose
+
+        # Mock Windows test results
+        mock_windows_test.return_value = {
+            "overall_status": "ok",
+            "sample_config_path": {"status": "ok"},
+            "importlib_resources": {"status": "ok"},
+        }
+
+        result = handle_config_diagnose(self.mock_args)
+
+        # Should complete successfully
+        self.assertEqual(result, 0)
+
+        # Should call Windows-specific tests
+        mock_windows_test.assert_called_once()
+
+        # Should print Windows-specific results
+        printed_messages = [call.args[0] for call in mock_print.call_args_list if call.args]
+        self.assertTrue(any("Windows: Yes" in str(msg) for msg in printed_messages))
+
+
 if __name__ == "__main__":
     unittest.main()
