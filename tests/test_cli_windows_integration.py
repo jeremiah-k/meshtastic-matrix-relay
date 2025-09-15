@@ -169,11 +169,12 @@ class TestCLIAuthLoginEnhancements(unittest.TestCase):
         self.mock_args.password = None
 
     @patch("mmrelay.config.load_config")
+    @patch("mmrelay.matrix_utils.login_matrix_bot")
     @patch("builtins.print")
-    def test_auth_login_e2ee_enabled_banner(self, mock_print, mock_load_config):
+    def test_auth_login_e2ee_enabled_banner(self, mock_print, mock_login, mock_load_config):
         """Test that auth login shows E2EE banner when E2EE is enabled."""
         from mmrelay.cli import handle_auth_login
-        
+
         # Mock config with E2EE enabled
         mock_config = {
             "matrix": {
@@ -181,10 +182,11 @@ class TestCLIAuthLoginEnhancements(unittest.TestCase):
             }
         }
         mock_load_config.return_value = (mock_config, "/test/config.yaml")
-        
-        # Mock the actual login process to avoid full execution
-        with patch("asyncio.run", return_value=None):
-            result = handle_auth_login(self.mock_args)
+
+        # Mock the login function following the testing guide pattern
+        mock_login.return_value = True
+
+        result = handle_auth_login(self.mock_args)
         
         # Should print E2EE banner
         printed_messages = [call.args[0] for call in mock_print.call_args_list if call.args]
@@ -192,11 +194,12 @@ class TestCLIAuthLoginEnhancements(unittest.TestCase):
         self.assertTrue(e2ee_banner)
 
     @patch("mmrelay.config.load_config")
+    @patch("mmrelay.matrix_utils.login_matrix_bot")
     @patch("builtins.print")
-    def test_auth_login_no_e2ee_banner_when_disabled(self, mock_print, mock_load_config):
+    def test_auth_login_no_e2ee_banner_when_disabled(self, mock_print, mock_login, mock_load_config):
         """Test that auth login doesn't show E2EE banner when E2EE is disabled."""
         from mmrelay.cli import handle_auth_login
-        
+
         # Mock config with E2EE disabled
         mock_config = {
             "matrix": {
@@ -204,10 +207,11 @@ class TestCLIAuthLoginEnhancements(unittest.TestCase):
             }
         }
         mock_load_config.return_value = (mock_config, "/test/config.yaml")
-        
-        # Mock the actual login process to avoid full execution
-        with patch("asyncio.run", return_value=None):
-            result = handle_auth_login(self.mock_args)
+
+        # Mock the login function following the testing guide pattern
+        mock_login.return_value = True
+
+        result = handle_auth_login(self.mock_args)
         
         # Should print standard banner
         printed_messages = [call.args[0] for call in mock_print.call_args_list if call.args]
@@ -225,11 +229,10 @@ class TestCLIAuthLoginEnhancements(unittest.TestCase):
         mock_load_config.side_effect = Exception("Config load failed")
 
         # Mock the login function to return a regular value (not a coroutine)
+        # Following the testing guide pattern for async functions called via asyncio.run()
         mock_login.return_value = True
 
-        # Mock asyncio.run to avoid the actual async execution
-        with patch("asyncio.run", return_value=True):
-            result = handle_auth_login(self.mock_args)
+        result = handle_auth_login(self.mock_args)
 
         # Should still show standard banner (fallback behavior)
         printed_messages = [call.args[0] for call in mock_print.call_args_list if call.args]
