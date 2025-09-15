@@ -1359,7 +1359,7 @@ class TestAuthLogin(unittest.TestCase):
             homeserver=None, username=None, password=None, logout_others=False
         )
         # Check that header was printed for interactive mode
-        mock_print.assert_any_call("Matrix Bot Authentication")
+        mock_print.assert_any_call("\nMatrix Bot Authentication")
         mock_print.assert_any_call("=========================")
 
     @patch("mmrelay.matrix_utils.login_matrix_bot")
@@ -1662,7 +1662,7 @@ class TestAuthLogin(unittest.TestCase):
         mock_login.assert_called_with(
             homeserver=None, username=None, password=None, logout_others=False
         )
-        mock_print.assert_any_call("Matrix Bot Authentication")
+        mock_print.assert_any_call("\nMatrix Bot Authentication")
         mock_print.assert_any_call("=========================")
 
         # Reset mocks for second test
