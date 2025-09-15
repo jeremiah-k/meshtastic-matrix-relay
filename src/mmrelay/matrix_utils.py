@@ -294,7 +294,7 @@ def _get_detailed_sync_error_message(sync_response) -> str:
         error_str = str(sync_response)
         if "unknown error" in error_str.lower():
             return "Network connectivity issue or server unreachable"
-        elif error_str and error_str != "None":
+        elif error_str and error_str != "None" and "<" not in error_str:
             return error_str
         else:
             return "Network connectivity issue or server unreachable"

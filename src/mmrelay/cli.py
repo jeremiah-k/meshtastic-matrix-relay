@@ -1308,9 +1308,12 @@ def handle_auth_login(args):
             else:
                 print("Matrix Bot Authentication")
                 print("=========================")
-        except Exception:
+        except Exception as e:
             # Fallback if config loading fails
-            print("Matrix Bot Authentication")
+            import sys
+
+            print(f"Warning: Could not check E2EE status from config: {e}", file=sys.stderr)
+            print("\nMatrix Bot Authentication")
             print("=========================")
 
     try:
