@@ -31,10 +31,12 @@ class TestMainEntryPoint(unittest.TestCase):
     def test_main_entry_point_success(self, mock_exit, mock_main):
         """Test successful execution of main entry point."""
         mock_main.return_value = 0
-        
-        # Execute the main module code directly
-        exec(open("src/mmrelay/__main__.py").read())
-        
+
+        # Execute the main module code with __name__ == "__main__"
+        with open("src/mmrelay/__main__.py") as f:
+            code = f.read()
+        exec(code, {"__name__": "__main__"})
+
         mock_main.assert_called_once()
         mock_exit.assert_called_once_with(0)
 
@@ -43,9 +45,11 @@ class TestMainEntryPoint(unittest.TestCase):
     @patch("sys.exit")
     def test_main_entry_point_import_error(self, mock_exit, mock_print, mock_main):
         """Test handling of ImportError when importing CLI."""
-        # Execute the main module code directly
-        exec(open("src/mmrelay/__main__.py").read())
-        
+        # Execute the main module code with __name__ == "__main__"
+        with open("src/mmrelay/__main__.py") as f:
+            code = f.read()
+        exec(code, {"__name__": "__main__"})
+
         mock_print.assert_any_call("Error importing MMRelay CLI: Module not found", file=sys.stderr)
         mock_print.assert_any_call("Please ensure MMRelay is properly installed.", file=sys.stderr)
         mock_exit.assert_called_once_with(1)
@@ -55,9 +59,11 @@ class TestMainEntryPoint(unittest.TestCase):
     @patch("sys.exit")
     def test_main_entry_point_keyboard_interrupt(self, mock_exit, mock_print, mock_main):
         """Test handling of KeyboardInterrupt."""
-        # Execute the main module code directly
-        exec(open("src/mmrelay/__main__.py").read())
-        
+        # Execute the main module code with __name__ == "__main__"
+        with open("src/mmrelay/__main__.py") as f:
+            code = f.read()
+        exec(code, {"__name__": "__main__"})
+
         mock_print.assert_called_once_with("Interrupted.", file=sys.stderr)
         mock_exit.assert_called_once_with(130)
 
@@ -66,8 +72,10 @@ class TestMainEntryPoint(unittest.TestCase):
     def test_main_entry_point_system_exit_passthrough(self, mock_exit, mock_main):
         """Test that SystemExit is passed through unchanged."""
         with self.assertRaises(SystemExit) as cm:
-            exec(open("src/mmrelay/__main__.py").read())
-        
+            with open("src/mmrelay/__main__.py") as f:
+                code = f.read()
+            exec(code, {"__name__": "__main__"})
+
         self.assertEqual(cm.exception.code, 42)
 
     @patch("mmrelay.cli.main", side_effect=RuntimeError("Unexpected error"))
@@ -75,9 +83,11 @@ class TestMainEntryPoint(unittest.TestCase):
     @patch("sys.exit")
     def test_main_entry_point_unexpected_exception(self, mock_exit, mock_print, mock_main):
         """Test handling of unexpected exceptions."""
-        # Execute the main module code directly
-        exec(open("src/mmrelay/__main__.py").read())
-        
+        # Execute the main module code with __name__ == "__main__"
+        with open("src/mmrelay/__main__.py") as f:
+            code = f.read()
+        exec(code, {"__name__": "__main__"})
+
         mock_print.assert_called_once_with("Unexpected error: Unexpected error", file=sys.stderr)
         mock_exit.assert_called_once_with(1)
 
@@ -111,10 +121,12 @@ class TestMainEntryPoint(unittest.TestCase):
         """Test main entry point execution with command line arguments."""
         mock_main.return_value = 5
         sys.argv = ["python", "-m", "mmrelay", "--help"]
-        
-        # Execute the main module code directly
-        exec(open("src/mmrelay/__main__.py").read())
-        
+
+        # Execute the main module code with __name__ == "__main__"
+        with open("src/mmrelay/__main__.py") as f:
+            code = f.read()
+        exec(code, {"__name__": "__main__"})
+
         mock_main.assert_called_once()
         mock_exit.assert_called_once_with(5)
 

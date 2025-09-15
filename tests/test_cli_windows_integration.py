@@ -32,7 +32,7 @@ class TestCLIWindowsConsoleSetup(unittest.TestCase):
         mock_parse_args.return_value = mock_args
         
         # Mock run_main to avoid full execution
-        with patch("mmrelay.cli.run_main", return_value=0):
+        with patch("mmrelay.main.run_main", return_value=0):
             result = main()
         
         # Should call Windows console setup
@@ -51,7 +51,7 @@ class TestCLIWindowsConsoleSetup(unittest.TestCase):
         mock_parse_args.return_value = mock_args
         
         # Mock run_main to avoid full execution
-        with patch("mmrelay.cli.run_main", return_value=0):
+        with patch("mmrelay.main.run_main", return_value=0):
             result = main()
         
         # Should not attempt to import windows_utils
@@ -71,7 +71,7 @@ class TestCLIWindowsConsoleSetup(unittest.TestCase):
         
         # Mock windows_utils import to fail
         with patch("builtins.__import__", side_effect=ImportError("windows_utils not found")):
-            with patch("mmrelay.cli.run_main", return_value=0):
+            with patch("mmrelay.main.run_main", return_value=0):
                 result = main()
         
         # Should continue without error
@@ -91,8 +91,8 @@ class TestCLIWindowsErrorHandling(unittest.TestCase):
         
         # Mock file operations to fail with OSError
         with patch("mmrelay.cli.get_config_paths", return_value=["/test/config.yaml"]), \
-             patch("os.path.exists", return_value=False), \
-             patch("mmrelay.cli.get_sample_config_path", side_effect=OSError("Access denied")):
+             patch("os.path.isfile", return_value=False), \
+             patch("mmrelay.tools.get_sample_config_path", side_effect=OSError("Access denied")):
             
             result = generate_sample_config()
         
@@ -109,8 +109,8 @@ class TestCLIWindowsErrorHandling(unittest.TestCase):
         """Test that generate_sample_config provides Windows troubleshooting guidance."""
         # Mock all config generation methods to fail
         with patch("mmrelay.cli.get_config_paths", return_value=["/test/config.yaml"]), \
-             patch("os.path.exists", return_value=False), \
-             patch("mmrelay.cli.get_sample_config_path", side_effect=FileNotFoundError()), \
+             patch("os.path.isfile", return_value=False), \
+             patch("mmrelay.tools.get_sample_config_path", side_effect=FileNotFoundError()), \
              patch("importlib.resources.files", side_effect=ImportError()), \
              patch("mmrelay.cli._get_minimal_config_template", side_effect=OSError()):
             
@@ -130,8 +130,8 @@ class TestCLIWindowsErrorHandling(unittest.TestCase):
         """Test that generate_sample_config doesn't provide Windows guidance on Linux."""
         # Mock all config generation methods to fail
         with patch("mmrelay.cli.get_config_paths", return_value=["/test/config.yaml"]), \
-             patch("os.path.exists", return_value=False), \
-             patch("mmrelay.cli.get_sample_config_path", side_effect=FileNotFoundError()), \
+             patch("os.path.isfile", return_value=False), \
+             patch("mmrelay.tools.get_sample_config_path", side_effect=FileNotFoundError()), \
              patch("importlib.resources.files", side_effect=ImportError()), \
              patch("mmrelay.cli._get_minimal_config_template", side_effect=OSError()):
             
@@ -171,7 +171,7 @@ class TestCLIAuthLoginEnhancements(unittest.TestCase):
         mock_load_config.return_value = (mock_config, "/test/config.yaml")
         
         # Mock the actual login process to avoid full execution
-        with patch("mmrelay.cli.asyncio.run", return_value=None):
+        with patch("asyncio.run", return_value=None):
             result = handle_auth_login(self.mock_args)
         
         # Should print E2EE banner
@@ -194,7 +194,7 @@ class TestCLIAuthLoginEnhancements(unittest.TestCase):
         mock_load_config.return_value = (mock_config, "/test/config.yaml")
         
         # Mock the actual login process to avoid full execution
-        with patch("mmrelay.cli.asyncio.run", return_value=None):
+        with patch("asyncio.run", return_value=None):
             result = handle_auth_login(self.mock_args)
         
         # Should print standard banner
@@ -212,7 +212,7 @@ class TestCLIAuthLoginEnhancements(unittest.TestCase):
         mock_load_config.side_effect = Exception("Config load failed")
         
         # Mock the actual login process to avoid full execution
-        with patch("mmrelay.cli.asyncio.run", return_value=None):
+        with patch("asyncio.run", return_value=None):
             result = handle_auth_login(self.mock_args)
         
         # Should still show standard banner (fallback behavior)
