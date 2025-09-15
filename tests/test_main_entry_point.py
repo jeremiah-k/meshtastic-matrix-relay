@@ -9,7 +9,7 @@ scripts fail.
 import os
 import sys
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -50,14 +50,20 @@ class TestMainEntryPoint(unittest.TestCase):
             code = f.read()
         exec(code, {"__name__": "__main__"})
 
-        mock_print.assert_any_call("Error importing MMRelay CLI: Module not found", file=sys.stderr)
-        mock_print.assert_any_call("Please ensure MMRelay is properly installed.", file=sys.stderr)
+        mock_print.assert_any_call(
+            "Error importing MMRelay CLI: Module not found", file=sys.stderr
+        )
+        mock_print.assert_any_call(
+            "Please ensure MMRelay is properly installed.", file=sys.stderr
+        )
         mock_exit.assert_called_once_with(1)
 
     @patch("mmrelay.cli.main", side_effect=KeyboardInterrupt())
     @patch("builtins.print")
     @patch("sys.exit")
-    def test_main_entry_point_keyboard_interrupt(self, mock_exit, mock_print, mock_main):
+    def test_main_entry_point_keyboard_interrupt(
+        self, mock_exit, mock_print, mock_main
+    ):
         """Test handling of KeyboardInterrupt."""
         # Execute the main module code with __name__ == "__main__"
         with open("src/mmrelay/__main__.py") as f:
@@ -81,14 +87,18 @@ class TestMainEntryPoint(unittest.TestCase):
     @patch("mmrelay.cli.main", side_effect=RuntimeError("Unexpected error"))
     @patch("builtins.print")
     @patch("sys.exit")
-    def test_main_entry_point_unexpected_exception(self, mock_exit, mock_print, mock_main):
+    def test_main_entry_point_unexpected_exception(
+        self, mock_exit, mock_print, mock_main
+    ):
         """Test handling of unexpected exceptions."""
         # Execute the main module code with __name__ == "__main__"
         with open("src/mmrelay/__main__.py") as f:
             code = f.read()
         exec(code, {"__name__": "__main__"})
 
-        mock_print.assert_called_once_with("Unexpected error: Unexpected error", file=sys.stderr)
+        mock_print.assert_called_once_with(
+            "Unexpected error: Unexpected error", file=sys.stderr
+        )
         mock_exit.assert_called_once_with(1)
 
     def test_main_entry_point_module_structure(self):
@@ -96,7 +106,7 @@ class TestMainEntryPoint(unittest.TestCase):
         # Read the module content
         with open("src/mmrelay/__main__.py", "r") as f:
             content = f.read()
-        
+
         # Check for expected components
         self.assertIn('if __name__ == "__main__":', content)
         self.assertIn("from mmrelay.cli import main", content)
@@ -109,7 +119,7 @@ class TestMainEntryPoint(unittest.TestCase):
         """Test that the __main__.py module has proper documentation."""
         # Import the module to check its docstring
         import mmrelay.__main__
-        
+
         self.assertIsNotNone(mmrelay.__main__.__doc__)
         self.assertIn("Alternative entry point", mmrelay.__main__.__doc__)
         self.assertIn("Windows", mmrelay.__main__.__doc__)
@@ -135,9 +145,10 @@ class TestMainEntryPoint(unittest.TestCase):
         # This test verifies that the import structure is correct
         try:
             import sys
+
             # The module should be able to import sys
-            self.assertTrue(hasattr(sys, 'exit'))
-            self.assertTrue(hasattr(sys, 'stderr'))
+            self.assertTrue(hasattr(sys, "exit"))
+            self.assertTrue(hasattr(sys, "stderr"))
         except ImportError as e:
             self.fail(f"Failed to import required modules: {e}")
 
@@ -150,7 +161,7 @@ class TestMainEntryPointIntegration(unittest.TestCase):
         # This is more of a structural test to ensure the module is set up correctly
         import subprocess
         import sys
-        
+
         # Try to run the module with --help to see if it executes without import errors
         try:
             result = subprocess.run(
@@ -158,7 +169,7 @@ class TestMainEntryPointIntegration(unittest.TestCase):
                 capture_output=True,
                 text=True,
                 timeout=10,
-                cwd=os.path.join(os.path.dirname(__file__), "..")
+                cwd=os.path.join(os.path.dirname(__file__), ".."),
             )
             # We expect this to either succeed or fail with a specific error
             # The important thing is that it doesn't fail with ImportError
@@ -175,10 +186,10 @@ class TestMainEntryPointIntegration(unittest.TestCase):
         # Read the module content to verify error message formatting
         with open("src/mmrelay/__main__.py", "r") as f:
             content = f.read()
-        
+
         # Check that error messages are written to stderr
         self.assertIn("file=sys.stderr", content)
-        
+
         # Check that error messages are descriptive
         self.assertIn("Error importing MMRelay CLI", content)
         self.assertIn("Please ensure MMRelay is properly installed", content)

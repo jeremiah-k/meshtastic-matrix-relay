@@ -242,7 +242,9 @@ class TestSetupUtilsEdgeCases(unittest.TestCase):
         """
         with patch("mmrelay.setup_utils.get_executable_path", return_value=None):
             with patch("builtins.print") as mock_print:
-                with patch("builtins.input", return_value="n"):  # Mock input to avoid stdin issues
+                with patch(
+                    "builtins.input", return_value="n"
+                ):  # Mock input to avoid stdin issues
                     result = install_service()
                     self.assertFalse(result)
                     mock_print.assert_called()
@@ -256,7 +258,9 @@ class TestSetupUtilsEdgeCases(unittest.TestCase):
         ):
             with patch("mmrelay.setup_utils.create_service_file", return_value=False):
                 with patch("builtins.print"):
-                    with patch("builtins.input", return_value="y"):  # Mock input to avoid stdin issues
+                    with patch(
+                        "builtins.input", return_value="y"
+                    ):  # Mock input to avoid stdin issues
                         result = install_service()
                         self.assertFalse(result)
 

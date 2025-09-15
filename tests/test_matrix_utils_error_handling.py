@@ -25,11 +25,11 @@ class TestDetailedSyncErrorMessage(unittest.TestCase):
         mock_response = MagicMock()
         mock_response.message = "Authentication failed"
         mock_response.status_code = 401
-        
+
         # Mock isinstance to return True for NioErrorResponse
         with patch("mmrelay.matrix_utils.isinstance", return_value=True):
             result = _get_detailed_sync_error_message(mock_response)
-        
+
         self.assertEqual(result, "Authentication failed")
 
     def test_nio_error_response_with_status_code_only(self):
@@ -38,22 +38,24 @@ class TestDetailedSyncErrorMessage(unittest.TestCase):
         mock_response = MagicMock()
         mock_response.message = None
         mock_response.status_code = 404
-        
+
         # Mock isinstance to return True for NioErrorResponse
         with patch("mmrelay.matrix_utils.isinstance", return_value=True):
             result = _get_detailed_sync_error_message(mock_response)
-        
+
         self.assertEqual(result, "HTTP error 404")
 
     def test_nio_import_error_fallback(self):
         """Test fallback when nio is not available."""
         mock_response = MagicMock()
         mock_response.message = "Server error"
-        
+
         # Mock nio import to fail
-        with patch("builtins.__import__", side_effect=ImportError("No module named 'nio'")):
+        with patch(
+            "builtins.__import__", side_effect=ImportError("No module named 'nio'")
+        ):
             result = _get_detailed_sync_error_message(mock_response)
-        
+
         self.assertEqual(result, "Server error")
 
     def test_response_with_message_attribute(self):
@@ -77,7 +79,9 @@ class TestDetailedSyncErrorMessage(unittest.TestCase):
         with patch("mmrelay.matrix_utils.isinstance", return_value=False):
             result = _get_detailed_sync_error_message(mock_response)
 
-        self.assertEqual(result, "Authentication failed - invalid or expired credentials")
+        self.assertEqual(
+            result, "Authentication failed - invalid or expired credentials"
+        )
 
     def test_response_with_status_code_403(self):
         """Test handling of 403 status code."""
@@ -125,7 +129,9 @@ class TestDetailedSyncErrorMessage(unittest.TestCase):
         with patch("mmrelay.matrix_utils.isinstance", return_value=False):
             result = _get_detailed_sync_error_message(mock_response)
 
-        self.assertEqual(result, "Server error (HTTP 502) - the Matrix server is experiencing issues")
+        self.assertEqual(
+            result, "Server error (HTTP 502) - the Matrix server is experiencing issues"
+        )
 
     def test_response_with_other_status_code(self):
         """Test handling of other status codes."""
@@ -173,12 +179,15 @@ class TestDetailedSyncErrorMessage(unittest.TestCase):
         """Test handling of exceptions during error message extraction."""
         mock_response = MagicMock()
         # Make accessing message raise an exception
-        mock_response.message = property(lambda self: 1/0)
-        
+        mock_response.message = property(lambda self: 1 / 0)
+
         with patch("mmrelay.matrix_utils.logger") as mock_logger:
             result = _get_detailed_sync_error_message(mock_response)
-        
-        self.assertEqual(result, "Unable to determine specific error - likely a network connectivity issue")
+
+        self.assertEqual(
+            result,
+            "Unable to determine specific error - likely a network connectivity issue",
+        )
         mock_logger.debug.assert_called()
 
 
@@ -188,7 +197,9 @@ class TestMatrixLoginErrorHandling(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures."""
         # Mock the global variables
-        self.patcher_homeserver = patch("mmrelay.matrix_utils.matrix_homeserver", "https://matrix.org")
+        self.patcher_homeserver = patch(
+            "mmrelay.matrix_utils.matrix_homeserver", "https://matrix.org"
+        )
         self.mock_homeserver = self.patcher_homeserver.start()
 
     def tearDown(self):
@@ -198,8 +209,9 @@ class TestMatrixLoginErrorHandling(unittest.TestCase):
     @patch("mmrelay.matrix_utils.logger")
     def test_login_error_401_troubleshooting(self, mock_logger):
         """Test that 401 errors provide specific troubleshooting guidance."""
-        from mmrelay.matrix_utils import login_matrix_bot
         from unittest.mock import AsyncMock
+
+        from mmrelay.matrix_utils import login_matrix_bot
 
         # Mock response with 401 error - ensure it doesn't have access_token
         mock_response = MagicMock()
@@ -213,26 +225,35 @@ class TestMatrixLoginErrorHandling(unittest.TestCase):
         mock_client.login.return_value = mock_response
         mock_client.close = AsyncMock()
 
-        with patch("mmrelay.matrix_utils.AsyncClient", return_value=mock_client), \
-             patch("mmrelay.cli_utils._create_ssl_context", return_value=None), \
-             patch("mmrelay.matrix_utils.save_credentials"), \
-             patch("mmrelay.matrix_utils.load_credentials", return_value=None):
+        with patch("mmrelay.matrix_utils.AsyncClient", return_value=mock_client), patch(
+            "mmrelay.cli_utils._create_ssl_context", return_value=None
+        ), patch("mmrelay.matrix_utils.save_credentials"), patch(
+            "mmrelay.matrix_utils.load_credentials", return_value=None
+        ):
             import asyncio
-            result = asyncio.run(login_matrix_bot("https://matrix.org", "@user:matrix.org", "pass"))
+
+            result = asyncio.run(
+                login_matrix_bot("https://matrix.org", "@user:matrix.org", "pass")
+            )
 
         # Should return False
         self.assertFalse(result)
 
         # Should log specific troubleshooting guidance
-        mock_logger.error.assert_any_call("Authentication failed - invalid username or password.")
+        mock_logger.error.assert_any_call(
+            "Authentication failed - invalid username or password."
+        )
         mock_logger.error.assert_any_call("Troubleshooting steps:")
-        mock_logger.error.assert_any_call("1. Verify your username and password are correct")
+        mock_logger.error.assert_any_call(
+            "1. Verify your username and password are correct"
+        )
 
     @patch("mmrelay.matrix_utils.logger")
     def test_login_error_404_troubleshooting(self, mock_logger):
         """Test that 404 errors provide homeserver URL guidance."""
-        from mmrelay.matrix_utils import login_matrix_bot
         from unittest.mock import AsyncMock
+
+        from mmrelay.matrix_utils import login_matrix_bot
 
         # Mock response with 404 error - ensure it doesn't have access_token
         mock_response = MagicMock()
@@ -246,25 +267,32 @@ class TestMatrixLoginErrorHandling(unittest.TestCase):
         mock_client.login.return_value = mock_response
         mock_client.close = AsyncMock()
 
-        with patch("mmrelay.matrix_utils.AsyncClient", return_value=mock_client), \
-             patch("mmrelay.cli_utils._create_ssl_context", return_value=None), \
-             patch("mmrelay.matrix_utils.save_credentials"), \
-             patch("mmrelay.matrix_utils.load_credentials", return_value=None):
+        with patch("mmrelay.matrix_utils.AsyncClient", return_value=mock_client), patch(
+            "mmrelay.cli_utils._create_ssl_context", return_value=None
+        ), patch("mmrelay.matrix_utils.save_credentials"), patch(
+            "mmrelay.matrix_utils.load_credentials", return_value=None
+        ):
             import asyncio
-            result = asyncio.run(login_matrix_bot("https://matrix.org", "@user:matrix.org", "pass"))
+
+            result = asyncio.run(
+                login_matrix_bot("https://matrix.org", "@user:matrix.org", "pass")
+            )
 
         # Should return False
         self.assertFalse(result)
 
         # Should log homeserver URL guidance
         mock_logger.error.assert_any_call("User not found or homeserver not found.")
-        mock_logger.error.assert_any_call("Check that the homeserver URL is correct: https://matrix.org")
+        mock_logger.error.assert_any_call(
+            "Check that the homeserver URL is correct: https://matrix.org"
+        )
 
     @patch("mmrelay.matrix_utils.logger")
     def test_login_error_429_troubleshooting(self, mock_logger):
         """Test that 429 errors provide rate limiting guidance."""
-        from mmrelay.matrix_utils import login_matrix_bot
         from unittest.mock import AsyncMock
+
+        from mmrelay.matrix_utils import login_matrix_bot
 
         # Mock response with 429 error - ensure it doesn't have access_token
         mock_response = MagicMock()
@@ -278,12 +306,16 @@ class TestMatrixLoginErrorHandling(unittest.TestCase):
         mock_client.login.return_value = mock_response
         mock_client.close = AsyncMock()
 
-        with patch("mmrelay.matrix_utils.AsyncClient", return_value=mock_client), \
-             patch("mmrelay.cli_utils._create_ssl_context", return_value=None), \
-             patch("mmrelay.matrix_utils.save_credentials"), \
-             patch("mmrelay.matrix_utils.load_credentials", return_value=None):
+        with patch("mmrelay.matrix_utils.AsyncClient", return_value=mock_client), patch(
+            "mmrelay.cli_utils._create_ssl_context", return_value=None
+        ), patch("mmrelay.matrix_utils.save_credentials"), patch(
+            "mmrelay.matrix_utils.load_credentials", return_value=None
+        ):
             import asyncio
-            result = asyncio.run(login_matrix_bot("https://matrix.org", "@user:matrix.org", "pass"))
+
+            result = asyncio.run(
+                login_matrix_bot("https://matrix.org", "@user:matrix.org", "pass")
+            )
 
         # Should return False
         self.assertFalse(result)
@@ -295,8 +327,9 @@ class TestMatrixLoginErrorHandling(unittest.TestCase):
     @patch("mmrelay.matrix_utils.logger")
     def test_login_error_server_error_troubleshooting(self, mock_logger):
         """Test that server errors provide appropriate guidance."""
-        from mmrelay.matrix_utils import login_matrix_bot
         from unittest.mock import AsyncMock
+
+        from mmrelay.matrix_utils import login_matrix_bot
 
         # Mock response with server error - ensure it doesn't have access_token
         mock_response = MagicMock()
@@ -310,19 +343,27 @@ class TestMatrixLoginErrorHandling(unittest.TestCase):
         mock_client.login.return_value = mock_response
         mock_client.close = AsyncMock()
 
-        with patch("mmrelay.matrix_utils.AsyncClient", return_value=mock_client), \
-             patch("mmrelay.cli_utils._create_ssl_context", return_value=None), \
-             patch("mmrelay.matrix_utils.save_credentials"), \
-             patch("mmrelay.matrix_utils.load_credentials", return_value=None):
+        with patch("mmrelay.matrix_utils.AsyncClient", return_value=mock_client), patch(
+            "mmrelay.cli_utils._create_ssl_context", return_value=None
+        ), patch("mmrelay.matrix_utils.save_credentials"), patch(
+            "mmrelay.matrix_utils.load_credentials", return_value=None
+        ):
             import asyncio
-            result = asyncio.run(login_matrix_bot("https://matrix.org", "@user:matrix.org", "pass"))
+
+            result = asyncio.run(
+                login_matrix_bot("https://matrix.org", "@user:matrix.org", "pass")
+            )
 
         # Should return False
         self.assertFalse(result)
 
         # Should log server error guidance
-        mock_logger.error.assert_any_call("Matrix server error - the server is experiencing issues.")
-        mock_logger.error.assert_any_call("Try again later or contact your server administrator.")
+        mock_logger.error.assert_any_call(
+            "Matrix server error - the server is experiencing issues."
+        )
+        mock_logger.error.assert_any_call(
+            "Try again later or contact your server administrator."
+        )
 
 
 if __name__ == "__main__":
