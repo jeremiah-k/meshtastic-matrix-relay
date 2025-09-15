@@ -144,8 +144,13 @@ Description=Test Service
 ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-relay/main.py --config %h/.mmrelay/config/config.yaml
 """
         with patch("shutil.which", return_value=None):  # mmrelay not in PATH
-            with patch("mmrelay.setup_utils.get_template_service_content", return_value=template_with_placeholder):
-                with patch("mmrelay.setup_utils.get_user_service_path") as mock_get_path:
+            with patch(
+                "mmrelay.setup_utils.get_template_service_content",
+                return_value=template_with_placeholder,
+            ):
+                with patch(
+                    "mmrelay.setup_utils.get_user_service_path"
+                ) as mock_get_path:
                     mock_path = MagicMock()
                     mock_get_path.return_value = mock_path
 
@@ -154,7 +159,9 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
                         self.assertTrue(result)  # Should succeed with fallback
 
                         # Check that fallback message was printed
-                        mock_print.assert_any_call("mmrelay binary not found in PATH, using python -m mmrelay fallback")
+                        mock_print.assert_any_call(
+                            "mmrelay binary not found in PATH, using python -m mmrelay fallback"
+                        )
 
                         # Check that the service content includes python -m mmrelay
                         written_content = mock_path.write_text.call_args[0][0]
@@ -257,13 +264,22 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         Test that install_service succeeds using python -m mmrelay fallback when mmrelay binary is not found.
         """
         with patch("shutil.which", return_value=None):  # mmrelay not in PATH
-            with patch("mmrelay.setup_utils.get_template_service_content", return_value="[Unit]\nTest"):
-                with patch("mmrelay.setup_utils.read_service_file", return_value=None):  # No existing service
+            with patch(
+                "mmrelay.setup_utils.get_template_service_content",
+                return_value="[Unit]\nTest",
+            ):
+                with patch(
+                    "mmrelay.setup_utils.read_service_file", return_value=None
+                ):  # No existing service
                     with patch("builtins.print") as mock_print:
-                        with patch("builtins.input", return_value="n"):  # Mock input to avoid stdin issues
+                        with patch(
+                            "builtins.input", return_value="n"
+                        ):  # Mock input to avoid stdin issues
                             result = install_service()
                             self.assertTrue(result)  # Should succeed with fallback
-                            mock_print.assert_any_call("mmrelay binary not found in PATH, using python -m mmrelay fallback")
+                            mock_print.assert_any_call(
+                                "mmrelay binary not found in PATH, using python -m mmrelay fallback"
+                            )
 
     def test_install_service_create_file_failure(self):
         """
