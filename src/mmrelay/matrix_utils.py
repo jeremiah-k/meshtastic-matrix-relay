@@ -647,7 +647,7 @@ async def connect_matrix(passed_config=None):
         credentials_path = os.path.join(config_dir, "credentials.json")
 
         if os.path.exists(credentials_path):
-            with open(credentials_path, "r") as f:
+            with open(credentials_path, "r", encoding="utf-8") as f:
                 credentials = json.load(f)
     except Exception as e:
         logger.warning(f"Error loading credentials: {e}")

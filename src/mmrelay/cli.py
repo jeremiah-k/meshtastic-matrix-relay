@@ -811,7 +811,7 @@ def check_config(args=None):
             config_path = path
             print(f"Found configuration file at: {config_path}")
             try:
-                with open(config_path, "r") as f:
+                with open(config_path, "r", encoding="utf-8") as f:
                     config_content = f.read()
 
                 # Validate YAML syntax first
@@ -1823,7 +1823,7 @@ def generate_sample_config():
         )
 
         # Write the sample config to the target path
-        with open(target_path, "w") as f:
+        with open(target_path, "w", encoding="utf-8") as f:
             f.write(sample_config_content)
 
         # Set secure permissions on Unix systems (600 - owner read/write)
@@ -1897,7 +1897,7 @@ def generate_sample_config():
         print("\nAttempting to create minimal config template...")
         try:
             minimal_config = _get_minimal_config_template()
-            with open(target_path, "w") as f:
+            with open(target_path, "w", encoding="utf-8") as f:
                 f.write(minimal_config)
 
             # Set secure permissions on Unix systems

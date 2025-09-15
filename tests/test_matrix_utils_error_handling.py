@@ -178,8 +178,8 @@ class TestDetailedSyncErrorMessage(unittest.TestCase):
     def test_exception_during_processing(self):
         """Test handling of exceptions during error message extraction."""
         mock_response = MagicMock()
-        # Make accessing message raise an exception
-        mock_response.message = property(lambda self: 1 / 0)
+        # Make accessing message raise an exception by using side_effect
+        type(mock_response).message = property(lambda self: 1 / 0)
 
         with patch("mmrelay.matrix_utils.logger") as mock_logger:
             result = _get_detailed_sync_error_message(mock_response)

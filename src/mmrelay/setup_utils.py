@@ -92,7 +92,7 @@ def read_service_file():
     """Read the content of the service file if it exists."""
     service_path = get_user_service_path()
     if service_path.exists():
-        return service_path.read_text()
+        return service_path.read_text(encoding="utf-8")
     return None
 
 
@@ -169,7 +169,7 @@ def get_template_service_content():
     if template_path and os.path.exists(template_path):
         # Read the template from file
         try:
-            with open(template_path, "r") as f:
+            with open(template_path, "r", encoding="utf-8") as f:
                 service_template = f.read()
             return service_template
         except Exception as e:
@@ -194,7 +194,7 @@ def get_template_service_content():
         if template_path:
             # Read the template from file
             try:
-                with open(template_path, "r") as f:
+                with open(template_path, "r", encoding="utf-8") as f:
                     service_template = f.read()
                 return service_template
             except Exception as e:
@@ -261,10 +261,14 @@ def is_service_active():
 
 def create_service_file():
     """Create the systemd user service file."""
-    executable_path = get_executable_path()
-    if not executable_path:
-        print("Error: Could not find mmrelay executable in PATH")
-        return False
+    mmrelay_path = shutil.which("mmrelay")
+    if mmrelay_path:
+        executable_path = mmrelay_path
+        print(f"Found mmrelay executable at: {mmrelay_path}")
+    else:
+        # Fallback to python -m mmrelay when binary is not available
+        executable_path = f"{sys.executable} -m mmrelay"
+        print("mmrelay binary not found in PATH, using python -m mmrelay fallback")
 
     # Create service directory if it doesn't exist
     service_dir = get_user_service_path().parent
@@ -298,7 +302,7 @@ def create_service_file():
 
     # Write service file
     try:
-        get_user_service_path().write_text(service_content)
+        get_user_service_path().write_text(service_content, encoding="utf-8")
         print(f"Service file created at {get_user_service_path()}")
         return True
     except (IOError, OSError) as e:
@@ -337,10 +341,13 @@ def service_needs_update():
     if not template_path:
         return False, "Could not find template service file"
 
-    # Get the executable path
-    executable_path = get_executable_path()
-    if not executable_path:
-        return False, "Could not find mmrelay executable"
+    # Get the executable path using the same logic as create_service_file
+    mmrelay_path = shutil.which("mmrelay")
+    if mmrelay_path:
+        executable_path = mmrelay_path
+    else:
+        # Fallback to python -m mmrelay when binary is not available
+        executable_path = f"{sys.executable} -m mmrelay"
 
     # Check if the ExecStart line in the existing service file contains the correct executable
     if executable_path not in existing_service:

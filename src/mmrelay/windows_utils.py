@@ -184,7 +184,7 @@ def test_config_generation_windows(args=None) -> dict:
                     "status": "error",
                     "details": f"Not found at: {sample_path}",
                 }
-        except (ImportError, OSError, FileNotFoundError, Exception) as e:
+        except (ImportError, OSError, FileNotFoundError, AttributeError, TypeError) as e:
             results["sample_config_path"] = {"status": "error", "details": str(e)}
 
         # Test 2: importlib.resources fallback

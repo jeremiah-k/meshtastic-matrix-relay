@@ -665,7 +665,7 @@ def load_config(config_file=None, args=None):
             config_path = path
             # Store the config path but don't log it yet - will be logged by main.py
             try:
-                with open(config_path, "r") as f:
+                with open(config_path, "r", encoding="utf-8") as f:
                     relay_config = yaml.load(f, Loader=SafeLoader)
                 # Treat empty/null YAML files as an empty config dictionary
                 if relay_config is None:
