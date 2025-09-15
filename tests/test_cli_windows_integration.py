@@ -20,6 +20,7 @@ class TestCLIWindowsConsoleSetup(unittest.TestCase):
     """Test cases for Windows console setup in CLI main function."""
 
     @patch("sys.platform", "win32")
+    @patch("os.name", "nt")  # Also mock os.name to make is_windows() return True
     @patch("mmrelay.windows_utils.setup_windows_console")
     @patch("mmrelay.cli.parse_arguments")
     def test_main_calls_windows_console_setup(self, mock_parse_args, mock_setup_console):
@@ -29,12 +30,15 @@ class TestCLIWindowsConsoleSetup(unittest.TestCase):
         mock_args.command = None
         mock_args.generate_config = False
         mock_args.check_config = False
+        mock_args.install_service = False  # Ensure service installation is not triggered
+        mock_args.auth = None
+        mock_args.version = False
         mock_parse_args.return_value = mock_args
-        
+
         # Mock run_main to avoid full execution
         with patch("mmrelay.main.run_main", return_value=0):
             result = main()
-        
+
         # Should call Windows console setup
         mock_setup_console.assert_called_once()
         self.assertEqual(result, 0)
@@ -48,12 +52,15 @@ class TestCLIWindowsConsoleSetup(unittest.TestCase):
         mock_args.command = None
         mock_args.generate_config = False
         mock_args.check_config = False
+        mock_args.install_service = False  # Ensure service installation is not triggered
+        mock_args.auth = None
+        mock_args.version = False
         mock_parse_args.return_value = mock_args
-        
+
         # Mock run_main to avoid full execution
         with patch("mmrelay.main.run_main", return_value=0):
             result = main()
-        
+
         # Should not attempt to import windows_utils
         # (This is implicit - if it tried to import, it would succeed but not call setup)
         self.assertEqual(result, 0)
@@ -67,13 +74,16 @@ class TestCLIWindowsConsoleSetup(unittest.TestCase):
         mock_args.command = None
         mock_args.generate_config = False
         mock_args.check_config = False
+        mock_args.install_service = False  # Ensure service installation is not triggered
+        mock_args.auth = None
+        mock_args.version = False
         mock_parse_args.return_value = mock_args
-        
-        # Mock windows_utils import to fail
-        with patch("builtins.__import__", side_effect=ImportError("windows_utils not found")):
+
+        # Mock windows_utils import to fail specifically in the main function
+        with patch.dict('sys.modules', {'mmrelay.windows_utils': None}):
             with patch("mmrelay.main.run_main", return_value=0):
                 result = main()
-        
+
         # Should continue without error
         self.assertEqual(result, 0)
 
@@ -110,15 +120,16 @@ class TestCLIWindowsErrorHandling(unittest.TestCase):
         # Mock all config generation methods to fail
         with patch("mmrelay.cli.get_config_paths", return_value=["/test/config.yaml"]), \
              patch("os.path.isfile", return_value=False), \
-             patch("mmrelay.tools.get_sample_config_path", side_effect=FileNotFoundError()), \
+             patch("mmrelay.cli.get_sample_config_path", return_value="/nonexistent/sample_config.yaml"), \
+             patch("os.path.exists", return_value=False), \
              patch("importlib.resources.files", side_effect=ImportError()), \
              patch("mmrelay.cli._get_minimal_config_template", side_effect=OSError()):
-            
+
             result = generate_sample_config()
-        
+
         # Should fail
         self.assertFalse(result)
-        
+
         # Should print Windows troubleshooting guidance
         printed_messages = [call.args[0] for call in mock_print.call_args_list if call.args]
         guidance_printed = any("Windows Troubleshooting:" in str(msg) for msg in printed_messages)
@@ -131,15 +142,16 @@ class TestCLIWindowsErrorHandling(unittest.TestCase):
         # Mock all config generation methods to fail
         with patch("mmrelay.cli.get_config_paths", return_value=["/test/config.yaml"]), \
              patch("os.path.isfile", return_value=False), \
-             patch("mmrelay.tools.get_sample_config_path", side_effect=FileNotFoundError()), \
+             patch("mmrelay.cli.get_sample_config_path", return_value="/nonexistent/sample_config.yaml"), \
+             patch("os.path.exists", return_value=False), \
              patch("importlib.resources.files", side_effect=ImportError()), \
              patch("mmrelay.cli._get_minimal_config_template", side_effect=OSError()):
-            
+
             result = generate_sample_config()
-        
+
         # Should fail
         self.assertFalse(result)
-        
+
         # Should NOT print Windows troubleshooting guidance
         printed_messages = [call.args[0] for call in mock_print.call_args_list if call.args]
         guidance_printed = any("Windows Troubleshooting:" in str(msg) for msg in printed_messages)
@@ -203,18 +215,22 @@ class TestCLIAuthLoginEnhancements(unittest.TestCase):
         self.assertTrue(standard_banner)
 
     @patch("mmrelay.config.load_config")
+    @patch("mmrelay.matrix_utils.login_matrix_bot")
     @patch("builtins.print")
-    def test_auth_login_handles_config_load_error(self, mock_print, mock_load_config):
+    def test_auth_login_handles_config_load_error(self, mock_print, mock_login, mock_load_config):
         """Test that auth login handles config loading errors gracefully."""
         from mmrelay.cli import handle_auth_login
-        
+
         # Mock config loading to fail
         mock_load_config.side_effect = Exception("Config load failed")
-        
-        # Mock the actual login process to avoid full execution
-        with patch("asyncio.run", return_value=None):
+
+        # Mock the login function to return a regular value (not a coroutine)
+        mock_login.return_value = True
+
+        # Mock asyncio.run to avoid the actual async execution
+        with patch("asyncio.run", return_value=True):
             result = handle_auth_login(self.mock_args)
-        
+
         # Should still show standard banner (fallback behavior)
         printed_messages = [call.args[0] for call in mock_print.call_args_list if call.args]
         banner_shown = any("Matrix Bot Authentication" in str(msg) for msg in printed_messages)

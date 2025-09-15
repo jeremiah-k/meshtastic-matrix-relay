@@ -222,7 +222,7 @@ class TestMinimalConfigTemplate(unittest.TestCase):
 
         # Should contain example values
         self.assertIn("matrix.example.org", template)
-        self.assertIn("!room:matrix.example.org", template)
+        self.assertIn("#your-room:matrix.example.org", template)
         self.assertIn("connection_type:", template)
 
         # Should contain guidance comments
