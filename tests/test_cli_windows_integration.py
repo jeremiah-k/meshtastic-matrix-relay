@@ -202,19 +202,17 @@ class TestCLIAuthLoginEnhancements(unittest.TestCase):
         self.mock_args.username = None
         self.mock_args.password = None
 
-    @patch("mmrelay.config.config_path", "/test/config.yaml")
-    @patch("mmrelay.config.load_config")
+    @patch("mmrelay.config.check_e2ee_enabled_silently")
     @patch("mmrelay.matrix_utils.login_matrix_bot")
     @patch("builtins.print")
     def test_auth_login_e2ee_enabled_banner(
-        self, mock_print, mock_login, mock_load_config
+        self, mock_print, mock_login, mock_check_e2ee
     ):
         """Test that auth login shows E2EE banner when E2EE is enabled."""
         from mmrelay.cli import handle_auth_login
 
-        # Mock config with E2EE enabled
-        mock_config = {"matrix": {"e2ee": {"enabled": True}}}
-        mock_load_config.return_value = mock_config
+        # Mock E2EE enabled
+        mock_check_e2ee.return_value = True
 
         # Mock the login function following the testing guide pattern
         mock_login.return_value = True
@@ -230,19 +228,17 @@ class TestCLIAuthLoginEnhancements(unittest.TestCase):
         )
         self.assertTrue(e2ee_banner)
 
-    @patch("mmrelay.config.config_path", "/test/config.yaml")
-    @patch("mmrelay.config.load_config")
+    @patch("mmrelay.config.check_e2ee_enabled_silently")
     @patch("mmrelay.matrix_utils.login_matrix_bot")
     @patch("builtins.print")
     def test_auth_login_no_e2ee_banner_when_disabled(
-        self, mock_print, mock_login, mock_load_config
+        self, mock_print, mock_login, mock_check_e2ee
     ):
         """Test that auth login doesn't show E2EE banner when E2EE is disabled."""
         from mmrelay.cli import handle_auth_login
 
-        # Mock config with E2EE disabled
-        mock_config = {"matrix": {"e2ee": {"enabled": False}}}
-        mock_load_config.return_value = mock_config
+        # Mock E2EE disabled
+        mock_check_e2ee.return_value = False
 
         # Mock the login function following the testing guide pattern
         mock_login.return_value = True

@@ -1301,11 +1301,11 @@ def handle_auth_login(args):
                 print("Matrix Bot Authentication for E2EE")
                 print("===================================")
             else:
-                print("Matrix Bot Authentication")
+                print("\nMatrix Bot Authentication")
                 print("=========================")
         except Exception:
             # Fallback if silent checking fails
-            print("Matrix Bot Authentication")
+            print("\nMatrix Bot Authentication")
             print("=========================")
 
     try:

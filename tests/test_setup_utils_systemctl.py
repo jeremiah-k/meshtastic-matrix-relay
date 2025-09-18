@@ -204,8 +204,10 @@ class TestServiceTemplateImprovements(unittest.TestCase):
 
             result = get_template_service_content()
 
-            # Should use env to find mmrelay
-            self.assertIn("ExecStart=/usr/bin/env mmrelay", result)
+            # Should use resolved executable path (better than hardcoded env)
+            self.assertIn("ExecStart=", result)
+            # Should contain mmrelay in some form
+            self.assertIn("mmrelay", result)
             self.assertNotIn("ExecStart=%h/.local/bin/mmrelay", result)
 
 

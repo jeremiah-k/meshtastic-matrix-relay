@@ -303,7 +303,7 @@ def create_service_file():
         )
         .replace(
             "%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-relay/main.py",
-            executable_path,
+            get_executable_path(),
         )
         .replace(
             "--config %h/.mmrelay/config/config.yaml",
