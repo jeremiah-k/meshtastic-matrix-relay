@@ -253,19 +253,14 @@ def _get_detailed_sync_error_message(sync_response) -> str:
         str: A detailed error message with specific information about the failure
     """
     try:
-        # Handle nio ErrorResponse explicitly when available
-        try:
-            from nio import ErrorResponse as NioErrorResponse
-
-            if isinstance(sync_response, NioErrorResponse):
-                msg = getattr(sync_response, "message", None)
-                code = getattr(sync_response, "status_code", None)
-                if msg:
-                    return msg
-                if code:
-                    return f"HTTP error {code}"
-        except ImportError:
-            pass  # nio not available, continue with generic handling
+        # Handle nio ErrorResponse explicitly when available (module-level alias)
+        if isinstance(sync_response, NioErrorResponse):
+            msg = getattr(sync_response, "message", None)
+            code = getattr(sync_response, "status_code", None)
+            if msg:
+                return msg
+            if code:
+                return f"HTTP error {code}"
 
         # Try to extract specific error information
         if hasattr(sync_response, "message") and sync_response.message:
@@ -1234,7 +1229,7 @@ async def login_matrix_bot(
         except Exception as e:
             # Handle other exceptions during login (e.g., network errors)
             error_type = type(e).__name__
-            logger.error(f"Login failed with {error_type}: {e}")
+            logger.exception(f"Login failed with {error_type}: {e}")
 
             # Provide specific guidance based on error type
             if "ConnectionError" in error_type or "ConnectTimeout" in error_type:
@@ -1310,7 +1305,7 @@ async def login_matrix_bot(
             elif status_code == 404:
                 logger.error("User not found or homeserver not found.")
                 logger.error(
-                    f"Check that the homeserver URL is correct: {matrix_homeserver}"
+                    f"Check that the homeserver URL is correct: {homeserver}"
                 )
             elif status_code == 429:
                 logger.error("Rate limited - too many login attempts.")

@@ -383,7 +383,7 @@ def load_credentials():
         credentials_path = os.path.join(config_dir, "credentials.json")
 
         if os.path.exists(credentials_path):
-            with open(credentials_path, "r") as f:
+            with open(credentials_path, "r", encoding="utf-8") as f:
                 credentials = json.load(f)
             logger.debug(f"Loaded credentials from {credentials_path}")
             return credentials
@@ -405,7 +405,7 @@ def save_credentials(credentials):
         config_dir = get_base_dir()
         credentials_path = os.path.join(config_dir, "credentials.json")
 
-        with open(credentials_path, "w") as f:
+        with open(credentials_path, "w", encoding="utf-8") as f:
             json.dump(credentials, f, indent=2)
 
         # Set secure permissions on Unix systems (600 - owner read/write only)
@@ -426,7 +426,8 @@ handler.setFormatter(
         datefmt="%Y-%m-%d %H:%M:%S %z",
     )
 )
-logger.addHandler(handler)
+if not logger.handlers:
+    logger.addHandler(handler)
 
 # Initialize empty config
 relay_config = {}
@@ -643,7 +644,7 @@ def load_config(config_file=None, args=None):
     if config_file and os.path.isfile(config_file):
         # Store the config path but don't log it yet - will be logged by main.py
         try:
-            with open(config_file, "r") as f:
+            with open(config_file, "r", encoding="utf-8") as f:
                 relay_config = yaml.load(f, Loader=SafeLoader)
             config_path = config_file
             # Treat empty/null YAML files as an empty config dictionary

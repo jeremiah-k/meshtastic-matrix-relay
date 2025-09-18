@@ -7,6 +7,7 @@ added to matrix_utils.py for better user experience.
 
 import os
 import sys
+import types
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -16,33 +17,46 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from mmrelay.matrix_utils import _get_detailed_sync_error_message
 
 
+class FakeNioErrorResponse:
+    """Fake nio.ErrorResponse for testing."""
+    def __init__(self, message=None, status_code=None):
+        self.message = message
+        self.status_code = status_code
+
+
+class FakeNioErrorResponseWithException:
+    """Fake nio.ErrorResponse that raises exception when accessing message."""
+    def __init__(self, status_code=None):
+        self.status_code = status_code
+
+    @property
+    def message(self):
+        raise ZeroDivisionError("Test exception")
+
+
 class TestDetailedSyncErrorMessage(unittest.TestCase):
     """Test cases for _get_detailed_sync_error_message function."""
 
     def test_nio_error_response_with_message(self):
         """Test handling of nio ErrorResponse with message."""
-        # Mock nio ErrorResponse
-        mock_response = MagicMock()
-        mock_response.message = "Authentication failed"
-        mock_response.status_code = 401
+        # Create a fake nio ErrorResponse
+        mock_response = FakeNioErrorResponse(
+            message="Authentication failed",
+            status_code=401
+        )
 
-        # Mock isinstance to return True for NioErrorResponse
-        with patch("mmrelay.matrix_utils.isinstance", return_value=True):
-            result = _get_detailed_sync_error_message(mock_response)
-
+        result = _get_detailed_sync_error_message(mock_response)
         self.assertEqual(result, "Authentication failed")
 
     def test_nio_error_response_with_status_code_only(self):
         """Test handling of nio ErrorResponse with status code but no message."""
-        # Mock nio ErrorResponse
-        mock_response = MagicMock()
-        mock_response.message = None
-        mock_response.status_code = 404
+        # Create a fake nio ErrorResponse with no message
+        mock_response = FakeNioErrorResponse(
+            message=None,
+            status_code=404
+        )
 
-        # Mock isinstance to return True for NioErrorResponse
-        with patch("mmrelay.matrix_utils.isinstance", return_value=True):
-            result = _get_detailed_sync_error_message(mock_response)
-
+        result = _get_detailed_sync_error_message(mock_response)
         self.assertEqual(result, "HTTP error 404")
 
     def test_nio_import_error_fallback(self):
@@ -177,9 +191,8 @@ class TestDetailedSyncErrorMessage(unittest.TestCase):
 
     def test_exception_during_processing(self):
         """Test handling of exceptions during error message extraction."""
-        mock_response = MagicMock()
-        # Make accessing message raise an exception by using side_effect
-        type(mock_response).message = property(lambda self: 1 / 0)
+        # Use the fake class that raises an exception when accessing message
+        mock_response = FakeNioErrorResponseWithException(status_code=500)
 
         with patch("mmrelay.matrix_utils.logger") as mock_logger:
             result = _get_detailed_sync_error_message(mock_response)

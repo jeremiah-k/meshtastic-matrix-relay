@@ -1501,6 +1501,123 @@ def handle_service_command(args):
         return 1
 
 
+def _diagnose_config_paths(args):
+    """Test basic config path resolution."""
+    print("1. Testing configuration paths...")
+    from mmrelay.config import get_config_paths
+
+    paths = get_config_paths(args)
+    print(f"   Config search paths: {len(paths)} locations")
+    for i, path in enumerate(paths, 1):
+        dir_path = os.path.dirname(path)
+        dir_exists = os.path.exists(dir_path)
+        dir_writable = os.access(dir_path, os.W_OK) if dir_exists else False
+        status = (
+            "✅" if dir_exists and dir_writable else "⚠️" if dir_exists else "❌"
+        )
+        print(f"   {i}. {path} {status}")
+    print()
+
+
+def _diagnose_sample_config_accessibility():
+    """Test sample config accessibility."""
+    print("2. Testing sample config accessibility...")
+    from mmrelay.tools import get_sample_config_path
+
+    sample_path = get_sample_config_path()
+    sample_exists = os.path.exists(sample_path)
+    print(f"   Sample config path: {sample_path}")
+    print(f"   Sample config exists: {'✅' if sample_exists else '❌'}")
+
+    # Test importlib.resources fallback
+    try:
+        import importlib.resources
+
+        content = (
+            importlib.resources.files("mmrelay.tools")
+            .joinpath("sample_config.yaml")
+            .read_text()
+        )
+        print(f"   importlib.resources fallback: ✅ ({len(content)} chars)")
+    except Exception as e:
+        print(f"   importlib.resources fallback: ❌ ({e})")
+    print()
+
+    return sample_exists
+
+
+def _diagnose_platform_specific(args):
+    """Test platform-specific diagnostics."""
+    print("3. Platform-specific diagnostics...")
+    import sys
+
+    from mmrelay.constants.app import WINDOWS_PLATFORM
+
+    on_windows = sys.platform == WINDOWS_PLATFORM
+    print(f"   Platform: {sys.platform}")
+    print(f"   Windows: {'Yes' if on_windows else 'No'}")
+
+    if on_windows:
+        try:
+            from mmrelay.windows_utils import (
+                check_windows_requirements,
+                test_config_generation_windows,
+            )
+
+            # Check Windows requirements
+            warnings = check_windows_requirements()
+            if warnings:
+                print("   Windows warnings: ⚠️")
+                for line in warnings.split("\n"):
+                    if line.strip():
+                        print(f"     {line}")
+            else:
+                print("   Windows compatibility: ✅")
+
+            # Run Windows-specific tests
+            print("\n   Windows config generation test:")
+            results = test_config_generation_windows(args)
+
+            for component, result in results.items():
+                if component == "overall_status":
+                    continue
+                if isinstance(result, dict):
+                    status_icon = (
+                        "✅"
+                        if result["status"] == "ok"
+                        else "❌" if result["status"] == "error" else "⚠️"
+                    )
+                    print(f"     {component}: {status_icon}")
+
+            overall = results.get("overall_status", "unknown")
+            print(
+                f"   Overall Windows status: {'✅' if overall == 'ok' else '⚠️' if overall == 'partial' else '❌'}"
+            )
+
+        except ImportError:
+            print("   Windows utilities: ❌ (not available)")
+    else:
+        print("   Platform-specific tests: ✅ (Unix-like system)")
+
+    print()
+    return on_windows
+
+
+def _diagnose_minimal_config_template():
+    """Test minimal config template fallback."""
+    print("4. Testing minimal config template fallback...")
+    try:
+        template = _get_minimal_config_template()
+        import yaml
+
+        yaml.safe_load(template)
+        print(f"   Minimal template: ✅ ({len(template)} chars, valid YAML)")
+    except Exception as e:
+        print(f"   Minimal template: ❌ ({e})")
+
+    print()
+
+
 def handle_config_diagnose(args):
     """
     Handle config diagnose command to test configuration system capabilities.
@@ -1516,115 +1633,22 @@ def handle_config_diagnose(args):
 
     try:
         # Test 1: Basic config path resolution
-        print("1. Testing configuration paths...")
-        from mmrelay.config import get_config_paths
-
-        paths = get_config_paths(args)
-        print(f"   Config search paths: {len(paths)} locations")
-        for i, path in enumerate(paths, 1):
-            dir_path = os.path.dirname(path)
-            dir_exists = os.path.exists(dir_path)
-            dir_writable = os.access(dir_path, os.W_OK) if dir_exists else False
-            status = (
-                "✅" if dir_exists and dir_writable else "⚠️" if dir_exists else "❌"
-            )
-            print(f"   {i}. {path} {status}")
-        print()
+        _diagnose_config_paths(args)
 
         # Test 2: Sample config accessibility
-        print("2. Testing sample config accessibility...")
-        from mmrelay.tools import get_sample_config_path
-
-        sample_path = get_sample_config_path()
-        sample_exists = os.path.exists(sample_path)
-        print(f"   Sample config path: {sample_path}")
-        print(f"   Sample config exists: {'✅' if sample_exists else '❌'}")
-
-        # Test importlib.resources fallback
-        try:
-            import importlib.resources
-
-            content = (
-                importlib.resources.files("mmrelay.tools")
-                .joinpath("sample_config.yaml")
-                .read_text()
-            )
-            print(f"   importlib.resources fallback: ✅ ({len(content)} chars)")
-        except Exception as e:
-            print(f"   importlib.resources fallback: ❌ ({e})")
-        print()
+        sample_exists = _diagnose_sample_config_accessibility()
 
         # Test 3: Platform-specific diagnostics
-        print("3. Platform-specific diagnostics...")
-        import sys
-
-        from mmrelay.constants.app import WINDOWS_PLATFORM
-
-        is_windows = sys.platform == WINDOWS_PLATFORM
-        print(f"   Platform: {sys.platform}")
-        print(f"   Windows: {'Yes' if is_windows else 'No'}")
-
-        if is_windows:
-            try:
-                from mmrelay.windows_utils import (
-                    check_windows_requirements,
-                    test_config_generation_windows,
-                )
-
-                # Check Windows requirements
-                warnings = check_windows_requirements()
-                if warnings:
-                    print("   Windows warnings: ⚠️")
-                    for line in warnings.split("\n"):
-                        if line.strip():
-                            print(f"     {line}")
-                else:
-                    print("   Windows compatibility: ✅")
-
-                # Run Windows-specific tests
-                print("\n   Windows config generation test:")
-                results = test_config_generation_windows(args)
-
-                for component, result in results.items():
-                    if component == "overall_status":
-                        continue
-                    if isinstance(result, dict):
-                        status_icon = (
-                            "✅"
-                            if result["status"] == "ok"
-                            else "❌" if result["status"] == "error" else "⚠️"
-                        )
-                        print(f"     {component}: {status_icon}")
-
-                overall = results.get("overall_status", "unknown")
-                print(
-                    f"   Overall Windows status: {'✅' if overall == 'ok' else '⚠️' if overall == 'partial' else '❌'}"
-                )
-
-            except ImportError:
-                print("   Windows utilities: ❌ (not available)")
-        else:
-            print("   Platform-specific tests: ✅ (Unix-like system)")
-
-        print()
+        on_windows = _diagnose_platform_specific(args)
 
         # Test 4: Minimal config template
-        print("4. Testing minimal config template fallback...")
-        try:
-            template = _get_minimal_config_template()
-            import yaml
+        _diagnose_minimal_config_template()
 
-            yaml.safe_load(template)
-            print(f"   Minimal template: ✅ ({len(template)} chars, valid YAML)")
-        except Exception as e:
-            print(f"   Minimal template: ❌ ({e})")
-
-        print()
         print("=" * 40)
         print("Diagnostics complete!")
 
         # Provide guidance based on results
-        if is_windows and not sample_exists:
+        if on_windows and not sample_exists:
             print("\n💡 Windows Troubleshooting Tips:")
             print("   • Try: pip install --upgrade --force-reinstall mmrelay")
             print("   • Use: python -m mmrelay config generate")

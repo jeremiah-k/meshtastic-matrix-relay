@@ -341,19 +341,20 @@ def service_needs_update():
     if not template_path:
         return False, "Could not find template service file"
 
-    # Get the executable path using the same logic as create_service_file
+    # Get the acceptable executable paths
     mmrelay_path = shutil.which("mmrelay")
+    acceptable_execs = []
     if mmrelay_path:
-        executable_path = mmrelay_path
+        acceptable_execs = [mmrelay_path, "/usr/bin/env mmrelay"]
     else:
-        # Fallback to python -m mmrelay when binary is not available
-        executable_path = f"{sys.executable} -m mmrelay"
+        acceptable_execs = [f"{sys.executable} -m mmrelay"]
 
-    # Check if the ExecStart line in the existing service file contains the correct executable
-    if executable_path not in existing_service:
+    # Check if the ExecStart line in the existing service file contains an acceptable executable form
+    if not any(exec_str in existing_service for exec_str in acceptable_execs):
         return (
             True,
-            f"Service file does not use the current executable: {executable_path}",
+            "Service file does not use an acceptable executable "
+            f"({ ' or '.join(acceptable_execs) }).",
         )
 
     # Check if the PATH environment includes pipx paths
@@ -377,13 +378,11 @@ def check_loginctl_available():
     Returns:
         bool: True if loginctl is available, False otherwise.
     """
+    path = shutil.which("loginctl")
+    if not path:
+        return False
     try:
-        result = subprocess.run(
-            ["which", "loginctl"],
-            check=False,
-            capture_output=True,
-            text=True,
-        )
+        result = subprocess.run([path, "--version"], check=False, capture_output=True, text=True)
         return result.returncode == 0
     except Exception:
         return False
