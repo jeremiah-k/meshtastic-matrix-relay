@@ -1293,9 +1293,11 @@ def handle_auth_login(args):
         # Check if E2EE is actually configured before mentioning it
         try:
             from mmrelay.config import load_config
+            import mmrelay.config as config_mod
 
-            config, config_path = load_config(args)
-            matrix_section = config.get("matrix", {}) if config else {}
+            config = load_config(args=args) or {}
+            config_path = getattr(config_mod, "config_path", None)
+            matrix_section = config.get("matrix", {})
             e2ee_config = matrix_section.get("e2ee", {})
             encryption_config = matrix_section.get("encryption", {})
             e2ee_enabled = e2ee_config.get("enabled", False) or encryption_config.get(
@@ -1603,6 +1605,50 @@ def _diagnose_platform_specific(args):
     return on_windows
 
 
+def _get_minimal_config_template():
+    """
+    Return a minimal configuration template as a fallback when sample_config.yaml cannot be found.
+
+    This provides a basic working configuration that users can customize.
+    """
+    return """# MMRelay Configuration File
+# This is a minimal template created when the full sample config was unavailable
+# For complete configuration options, visit:
+# https://github.com/jeremiah-k/meshtastic-matrix-relay/wiki
+
+matrix:
+  homeserver: https://matrix.example.org
+  # Use 'mmrelay auth login' to set up authentication
+  # access_token: your_access_token_here
+  # bot_user_id: '@your_bot:matrix.example.org'
+
+meshtastic:
+  connection_type: serial
+  serial_port: /dev/ttyUSB0  # Windows: COM3, macOS: /dev/cu.usbserial-*
+  # host: meshtastic.local  # For network connection
+  # ble_address: "your_device_address"  # For BLE connection
+
+matrix_rooms:
+  - id: '#your-room:matrix.example.org'
+    meshtastic_channel: 0
+
+logging:
+  level: info
+
+# Uncomment and configure as needed:
+# database:
+#   msg_map:
+#     msgs_to_keep: 100
+
+# plugins:
+#   ping:
+#     active: true
+#   weather:
+#     active: true
+#     units: metric
+"""
+
+
 def _diagnose_minimal_config_template():
     """Test minimal config template fallback."""
     print("4. Testing minimal config template fallback...")
@@ -1725,50 +1771,6 @@ def handle_cli_commands(args):
 
     # No commands were handled
     return False
-
-
-def _get_minimal_config_template():
-    """
-    Return a minimal configuration template as a fallback when sample_config.yaml cannot be found.
-
-    This provides a basic working configuration that users can customize.
-    """
-    return """# MMRelay Configuration File
-# This is a minimal template created when the full sample config was unavailable
-# For complete configuration options, visit:
-# https://github.com/jeremiah-k/meshtastic-matrix-relay/wiki
-
-matrix:
-  homeserver: https://matrix.example.org
-  # Use 'mmrelay auth login' to set up authentication
-  # access_token: your_access_token_here
-  # bot_user_id: '@your_bot:matrix.example.org'
-
-meshtastic:
-  connection_type: serial
-  serial_port: /dev/ttyUSB0  # Windows: COM3, macOS: /dev/cu.usbserial-*
-  # host: meshtastic.local  # For network connection
-  # ble_address: "your_device_address"  # For BLE connection
-
-matrix_rooms:
-  - id: '#your-room:matrix.example.org'
-    meshtastic_channel: 0
-
-logging:
-  level: info
-
-# Uncomment and configure as needed:
-# database:
-#   msg_map:
-#     msgs_to_keep: 100
-
-# plugins:
-#   ping:
-#     active: true
-#   weather:
-#     active: true
-#     units: metric
-"""
 
 
 def generate_sample_config():

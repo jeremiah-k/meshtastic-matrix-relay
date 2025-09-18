@@ -1229,7 +1229,7 @@ async def login_matrix_bot(
         except Exception as e:
             # Handle other exceptions during login (e.g., network errors)
             error_type = type(e).__name__
-            logger.exception(f"Login failed with {error_type}: {e}")
+            logger.exception(f"Login failed with {error_type}")
 
             # Provide specific guidance based on error type
             if "ConnectionError" in error_type or "ConnectTimeout" in error_type:
@@ -1540,17 +1540,17 @@ async def matrix_relay(
                         r"([\\`*_{}[\]()#+.!-])", r"\\\1", original_sender_display
                     )
                     quoted_text = (
-                        f"> <@{bot_user_id}> [{safe_sender_display}]: {safe_original}"
+                        f"> <{bot_user_id}> [{safe_sender_display}]: {safe_original}"
                     )
                     content["body"] = f"{quoted_text}\n\n{plain_body}"
 
                     # Always use HTML formatting for replies since we need the mx-reply structure
                     content["format"] = "org.matrix.custom.html"
                     reply_link = f"https://matrix.to/#/{room_id}/{reply_to_event_id}"
-                    bot_link = f"https://matrix.to/#/@{bot_user_id}"
+                    bot_link = f"https://matrix.to/#/{bot_user_id}"
                     blockquote_content = (
                         f'<a href="{reply_link}">In reply to</a> '
-                        f'<a href="{bot_link}">@{bot_user_id}</a><br>'
+                        f'<a href="{bot_link}">{html.escape(bot_user_id)}</a><br>'
                         f"[{html.escape(original_sender_display)}]: {safe_original}"
                     )
                     content["formatted_body"] = (

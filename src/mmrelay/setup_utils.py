@@ -9,6 +9,7 @@ import importlib.resources
 
 # Import version from package
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -36,6 +37,17 @@ def get_executable_path():
             "Warning: Could not find mmrelay executable in PATH. Using current Python interpreter."
         )
         return sys.executable
+
+
+def get_resolved_exec_start():
+    """Get the resolved ExecStart line for the service template."""
+    mmrelay_path = shutil.which("mmrelay")
+    if mmrelay_path:
+        # Use the resolved path directly
+        return f"ExecStart={mmrelay_path} --config %h/.mmrelay/config.yaml --logfile %h/.mmrelay/logs/mmrelay.log"
+    else:
+        # Fallback to python -m mmrelay when binary is not available
+        return f"ExecStart={sys.executable} -m mmrelay --config %h/.mmrelay/config.yaml --logfile %h/.mmrelay/logs/mmrelay.log"
 
 
 def get_user_service_path():
@@ -202,7 +214,8 @@ def get_template_service_content():
 
     # If we couldn't find or read the template file, use a default template
     print("Using default service template", file=sys.stderr)
-    return """[Unit]
+    resolved_exec_start = get_resolved_exec_start()
+    return f"""[Unit]
 Description=MMRelay - Meshtastic <=> Matrix Relay
 After=network-online.target
 Wants=network-online.target
@@ -210,7 +223,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 # The mmrelay binary can be installed via pipx or pip
-ExecStart=/usr/bin/env mmrelay --config %h/.mmrelay/config.yaml --logfile %h/.mmrelay/logs/mmrelay.log
+{resolved_exec_start}
 WorkingDirectory=%h/.mmrelay
 Restart=on-failure
 RestartSec=10
@@ -285,14 +298,21 @@ def create_service_file():
         return False
 
     # Replace placeholders with actual values
+    resolved_exec_start = get_resolved_exec_start()
+
+    # Use regex to replace any ExecStart line with the resolved one
+    service_content = re.sub(
+        r'^ExecStart=.*$',
+        resolved_exec_start,
+        service_template,
+        flags=re.MULTILINE
+    )
+
+    # Apply other replacements
     service_content = (
-        service_template.replace(
+        service_content.replace(
             "WorkingDirectory=%h/meshtastic-matrix-relay",
             "# WorkingDirectory is not needed for installed package",
-        )
-        .replace(
-            "%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-relay/main.py",
-            executable_path,
         )
         .replace(
             "--config %h/.mmrelay/config/config.yaml",

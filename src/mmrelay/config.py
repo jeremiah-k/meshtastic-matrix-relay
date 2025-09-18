@@ -428,6 +428,7 @@ handler.setFormatter(
 )
 if not logger.handlers:
     logger.addHandler(handler)
+    logger.propagate = False
 
 # Initialize empty config
 relay_config = {}
