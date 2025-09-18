@@ -202,6 +202,7 @@ class TestCLIAuthLoginEnhancements(unittest.TestCase):
         self.mock_args.username = None
         self.mock_args.password = None
 
+    @patch("mmrelay.config.config_path", "/test/config.yaml")
     @patch("mmrelay.config.load_config")
     @patch("mmrelay.matrix_utils.login_matrix_bot")
     @patch("builtins.print")
@@ -213,7 +214,7 @@ class TestCLIAuthLoginEnhancements(unittest.TestCase):
 
         # Mock config with E2EE enabled
         mock_config = {"matrix": {"e2ee": {"enabled": True}}}
-        mock_load_config.return_value = (mock_config, "/test/config.yaml")
+        mock_load_config.return_value = mock_config
 
         # Mock the login function following the testing guide pattern
         mock_login.return_value = True
@@ -229,6 +230,7 @@ class TestCLIAuthLoginEnhancements(unittest.TestCase):
         )
         self.assertTrue(e2ee_banner)
 
+    @patch("mmrelay.config.config_path", "/test/config.yaml")
     @patch("mmrelay.config.load_config")
     @patch("mmrelay.matrix_utils.login_matrix_bot")
     @patch("builtins.print")
@@ -240,7 +242,7 @@ class TestCLIAuthLoginEnhancements(unittest.TestCase):
 
         # Mock config with E2EE disabled
         mock_config = {"matrix": {"e2ee": {"enabled": False}}}
-        mock_load_config.return_value = (mock_config, "/test/config.yaml")
+        mock_load_config.return_value = mock_config
 
         # Mock the login function following the testing guide pattern
         mock_login.return_value = True

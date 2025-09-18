@@ -298,27 +298,31 @@ def create_service_file():
         return False
 
     # Replace placeholders with actual values
-    resolved_exec_start = get_resolved_exec_start()
-
-    # Use regex to replace any ExecStart line with the resolved one
-    service_content = re.sub(
-        r'^ExecStart=.*$',
-        resolved_exec_start,
-        service_template,
-        flags=re.MULTILINE
-    )
-
-    # Apply other replacements
     service_content = (
-        service_content.replace(
+        service_template.replace(
             "WorkingDirectory=%h/meshtastic-matrix-relay",
             "# WorkingDirectory is not needed for installed package",
+        )
+        .replace(
+            "%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-relay/main.py",
+            executable_path,
         )
         .replace(
             "--config %h/.mmrelay/config/config.yaml",
             "--config %h/.mmrelay/config.yaml",
         )
     )
+
+    # Only replace ExecStart line if it contains problematic patterns like /usr/bin/env mmrelay
+    # when mmrelay is not available
+    if "/usr/bin/env mmrelay" in service_content and not shutil.which("mmrelay"):
+        resolved_exec_start = get_resolved_exec_start()
+        service_content = re.sub(
+            r'^ExecStart=/usr/bin/env mmrelay.*$',
+            resolved_exec_start,
+            service_content,
+            flags=re.MULTILINE
+        )
 
     # Write service file
     try:

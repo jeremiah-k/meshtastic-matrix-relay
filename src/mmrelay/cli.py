@@ -1296,7 +1296,7 @@ def handle_auth_login(args):
             import mmrelay.config as config_mod
 
             config = load_config(args=args) or {}
-            config_path = getattr(config_mod, "config_path", None)
+            config_path = config_mod.config_path
             matrix_section = config.get("matrix", {})
             e2ee_config = matrix_section.get("e2ee", {})
             encryption_config = matrix_section.get("encryption", {})
