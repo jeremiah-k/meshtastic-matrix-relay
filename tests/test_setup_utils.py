@@ -483,7 +483,7 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         needs_update, reason = service_needs_update()
 
         self.assertTrue(needs_update)
-        self.assertIn("does not use the current executable", reason)
+        self.assertIn("does not use an acceptable executable", reason)
 
     @patch("subprocess.run")
     def test_show_service_status_success(self, mock_run):
