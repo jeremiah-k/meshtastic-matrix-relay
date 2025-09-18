@@ -248,9 +248,8 @@ pipx install 'mmrelay[e2e]'
 
   ```bash
   # Remove old credentials and store
-  rm ~/.mmrelay/credentials.json
-  rm -rf ~/.mmrelay/store/
-
+  mmrelay auth logout
+  
   # Create new credentials
   mmrelay auth login
   ```
@@ -274,19 +273,12 @@ INFO Matrix: Initial sync completed. Found X rooms.
 
 In your Matrix client (Element, etc.):
 
-- **Encrypted messages**: Show with a lock icon or green shield.
+- **Encrypted messages**: Show with a red shield and a "Encrypted by a device not verified by its owner" ([best we can](https://github.com/matrix-nio/matrix-nio/issues/526) do with `matrix-nio` at the moment)
 - **Unencrypted messages**: Show with a red shield and "Not encrypted" warning.
 
 If messages from MMRelay show as unencrypted in encrypted rooms, check your MMRelay version and configuration.
 
 ## Security Considerations
-
-### Device Verification
-
-MMRelay uses `ignore_unverified_devices=True` for automated bot operation:
-
-- Interactive device verification is not practical for automated bots
-- This setting allows reliable operation while maintaining encryption
 
 ### Key Storage
 
