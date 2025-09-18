@@ -276,11 +276,9 @@ def create_service_file():
     """Create the systemd user service file."""
     mmrelay_path = shutil.which("mmrelay")
     if mmrelay_path:
-        executable_path = mmrelay_path
         print(f"Found mmrelay executable at: {mmrelay_path}")
     else:
         # Fallback to python -m mmrelay when binary is not available
-        executable_path = f"{sys.executable} -m mmrelay"
         print("mmrelay binary not found in PATH, using python -m mmrelay fallback")
 
     # Create service directory if it doesn't exist

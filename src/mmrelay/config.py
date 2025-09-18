@@ -333,6 +333,64 @@ def load_database_config_from_env():
     return config
 
 
+def is_e2ee_enabled(config):
+    """
+    Check if End-to-End Encryption (E2EE) is enabled in the configuration.
+
+    Checks both 'encryption' and 'e2ee' keys in the matrix section for backward compatibility.
+
+    Parameters:
+        config (dict): Configuration dictionary to check.
+
+    Returns:
+        bool: True if E2EE is enabled, False otherwise.
+    """
+    if not config:
+        return False
+
+    matrix_cfg = config.get("matrix", {}) or {}
+    encryption_enabled = matrix_cfg.get("encryption", {}).get("enabled", False)
+    e2ee_enabled = matrix_cfg.get("e2ee", {}).get("enabled", False)
+
+    return encryption_enabled or e2ee_enabled
+
+
+def check_e2ee_enabled_silently(args=None):
+    """
+    Silently check if E2EE is enabled without producing warnings or errors.
+
+    This function searches for config files and parses them silently, ignoring
+    any errors if files don't exist or are invalid. This is useful for checking
+    E2EE status during initial setup when config files may not exist yet.
+
+    Parameters:
+        args: Parsed command-line arguments used to influence the search order.
+
+    Returns:
+        bool: True if E2EE is enabled, False otherwise or if no config found.
+    """
+    try:
+        # Get config paths without logging
+        config_paths = get_config_paths(args)
+
+        # Try each config path silently
+        for path in config_paths:
+            if os.path.isfile(path):
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        config = yaml.load(f, Loader=SafeLoader)
+                    if config:
+                        return is_e2ee_enabled(config)
+                except (yaml.YAMLError, PermissionError, OSError):
+                    continue  # Silently try the next path
+
+        # No valid config found
+        return False
+    except Exception:
+        # Silently handle any unexpected errors
+        return False
+
+
 def apply_env_config_overrides(config):
     """
     Apply environment-variable-derived overrides to a configuration dictionary.

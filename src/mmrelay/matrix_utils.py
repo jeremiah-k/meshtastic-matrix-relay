@@ -774,19 +774,18 @@ async def connect_matrix(passed_config=None):
         e2ee_device_id = None
 
     try:
-        # Check both 'encryption' and 'e2ee' keys for backward compatibility
-        matrix_cfg = config.get("matrix", {}) or {}
-        encryption_enabled = matrix_cfg.get("encryption", {}).get("enabled", False)
-        e2ee_enabled = matrix_cfg.get("e2ee", {}).get("enabled", False)
+        from mmrelay.config import is_e2ee_enabled
+
+        # Check if E2EE is enabled using the helper function
+        e2ee_enabled = is_e2ee_enabled(config)
 
         # Debug logging for E2EE detection
         logger.debug(
             f"E2EE detection: matrix config section present: {'matrix' in config}"
         )
-        logger.debug(f"E2EE detection: encryption.enabled = {encryption_enabled}")
-        logger.debug(f"E2EE detection: e2ee.enabled = {e2ee_enabled}")
+        logger.debug(f"E2EE detection: e2ee enabled = {e2ee_enabled}")
 
-        if encryption_enabled or e2ee_enabled:
+        if e2ee_enabled:
             # Check if running on Windows
             if sys.platform == WINDOWS_PLATFORM:
                 logger.error(

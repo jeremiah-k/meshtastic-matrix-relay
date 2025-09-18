@@ -1291,18 +1291,11 @@ def handle_auth_login(args):
     else:
         # No parameters provided - run in interactive mode
         # Check if E2EE is actually configured before mentioning it
+        # Use silent checking to avoid warnings during initial setup
         try:
-            from mmrelay.config import load_config
-            import mmrelay.config as config_mod
+            from mmrelay.config import check_e2ee_enabled_silently
 
-            config = load_config(args=args) or {}
-            config_path = config_mod.config_path
-            matrix_section = config.get("matrix", {})
-            e2ee_config = matrix_section.get("e2ee", {})
-            encryption_config = matrix_section.get("encryption", {})
-            e2ee_enabled = e2ee_config.get("enabled", False) or encryption_config.get(
-                "enabled", False
-            )
+            e2ee_enabled = check_e2ee_enabled_silently(args)
 
             if e2ee_enabled:
                 print("Matrix Bot Authentication for E2EE")
@@ -1310,15 +1303,9 @@ def handle_auth_login(args):
             else:
                 print("Matrix Bot Authentication")
                 print("=========================")
-        except Exception as e:
-            # Fallback if config loading fails
-            import sys
-
-            print(
-                f"Warning: Could not check E2EE status from config: {e}",
-                file=sys.stderr,
-            )
-            print("\nMatrix Bot Authentication")
+        except Exception:
+            # Fallback if silent checking fails
+            print("Matrix Bot Authentication")
             print("=========================")
 
     try:
