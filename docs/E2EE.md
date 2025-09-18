@@ -273,7 +273,7 @@ INFO Matrix: Initial sync completed. Found X rooms.
 
 In your Matrix client (Element, etc.):
 
-- **Encrypted messages**: Show with a red shield and a "Encrypted by a device not verified by its owner" ([best we can](https://github.com/matrix-nio/matrix-nio/issues/526) do with `matrix-nio` at the moment)
+- **Encrypted messages**: Show with a red shield and a "Encrypted by a device not verified by its owner" (it's the best we've been able to do at the moment, due to upstream verification issues in `matrix-nio`)
 - **Unencrypted messages**: Show with a red shield and "Not encrypted" warning.
 
 If messages from MMRelay show as unencrypted in encrypted rooms, check your MMRelay version and configuration.
