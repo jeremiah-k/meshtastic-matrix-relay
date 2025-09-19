@@ -316,10 +316,10 @@ def create_service_file():
     if "/usr/bin/env mmrelay" in service_content and not shutil.which("mmrelay"):
         resolved_exec_start = get_resolved_exec_start()
         service_content = re.sub(
-            r'^ExecStart=/usr/bin/env mmrelay.*$',
+            r"^ExecStart=/usr/bin/env mmrelay.*$",
             resolved_exec_start,
             service_content,
-            flags=re.MULTILINE
+            flags=re.MULTILINE,
         )
 
     # Write service file
@@ -404,7 +404,9 @@ def check_loginctl_available():
     if not path:
         return False
     try:
-        result = subprocess.run([path, "--version"], check=False, capture_output=True, text=True)
+        result = subprocess.run(
+            [path, "--version"], check=False, capture_output=True, text=True
+        )
         return result.returncode == 0
     except Exception:
         return False

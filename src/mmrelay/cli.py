@@ -1501,9 +1501,7 @@ def _diagnose_config_paths(args):
         dir_path = os.path.dirname(path)
         dir_exists = os.path.exists(dir_path)
         dir_writable = os.access(dir_path, os.W_OK) if dir_exists else False
-        status = (
-            "✅" if dir_exists and dir_writable else "⚠️" if dir_exists else "❌"
-        )
+        status = "✅" if dir_exists and dir_writable else "⚠️" if dir_exists else "❌"
         print(f"   {i}. {path} {status}")
     print()
 

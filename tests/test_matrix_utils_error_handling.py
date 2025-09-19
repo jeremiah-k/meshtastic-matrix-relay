@@ -7,7 +7,6 @@ added to matrix_utils.py for better user experience.
 
 import os
 import sys
-import types
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -19,6 +18,7 @@ from mmrelay.matrix_utils import _get_detailed_sync_error_message
 
 class FakeNioErrorResponse:
     """Fake nio.ErrorResponse for testing."""
+
     def __init__(self, message=None, status_code=None):
         self.message = message
         self.status_code = status_code
@@ -26,6 +26,7 @@ class FakeNioErrorResponse:
 
 class FakeNioErrorResponseWithException:
     """Fake nio.ErrorResponse that raises exception when accessing message."""
+
     def __init__(self, status_code=None):
         self.status_code = status_code
 
@@ -41,8 +42,7 @@ class TestDetailedSyncErrorMessage(unittest.TestCase):
         """Test handling of nio ErrorResponse with message."""
         # Create a fake nio ErrorResponse
         mock_response = FakeNioErrorResponse(
-            message="Authentication failed",
-            status_code=401
+            message="Authentication failed", status_code=401
         )
 
         result = _get_detailed_sync_error_message(mock_response)
@@ -51,10 +51,7 @@ class TestDetailedSyncErrorMessage(unittest.TestCase):
     def test_nio_error_response_with_status_code_only(self):
         """Test handling of nio ErrorResponse with status code but no message."""
         # Create a fake nio ErrorResponse with no message
-        mock_response = FakeNioErrorResponse(
-            message=None,
-            status_code=404
-        )
+        mock_response = FakeNioErrorResponse(message=None, status_code=404)
 
         result = _get_detailed_sync_error_message(mock_response)
         # Since our fake class doesn't pass isinstance check, it falls through to generic handling

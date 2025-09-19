@@ -1303,9 +1303,7 @@ async def login_matrix_bot(
                 logger.error("4. Use 'mmrelay auth login' to set up new credentials")
             elif status_code == 404:
                 logger.error("User not found or homeserver not found.")
-                logger.error(
-                    f"Check that the homeserver URL is correct: {homeserver}"
-                )
+                logger.error(f"Check that the homeserver URL is correct: {homeserver}")
             elif status_code == 429:
                 logger.error("Rate limited - too many login attempts.")
                 logger.error("Wait a few minutes before trying again.")

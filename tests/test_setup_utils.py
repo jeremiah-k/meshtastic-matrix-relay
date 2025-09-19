@@ -17,7 +17,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, mock_open, patch, call
+from unittest.mock import MagicMock, call, mock_open, patch
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -151,7 +151,9 @@ class TestSetupUtils(unittest.TestCase):
     @patch("mmrelay.setup_utils.service_needs_update")
     @patch("mmrelay.setup_utils.print_service_commands")
     @patch("builtins.input")
-    def test_install_service_update_cancelled_by_user(self, mock_input, mock_print_commands, mock_needs_update, mock_read_service):
+    def test_install_service_update_cancelled_by_user(
+        self, mock_input, mock_print_commands, mock_needs_update, mock_read_service
+    ):
         """Test install_service when user cancels update."""
         mock_read_service.return_value = "existing service content"
         mock_needs_update.return_value = (True, "Executable path changed")
@@ -161,13 +163,17 @@ class TestSetupUtils(unittest.TestCase):
 
         self.assertTrue(result)
         mock_print_commands.assert_called_once()
-        mock_input.assert_called_once_with("Do you want to update the service file? (y/n): ")
+        mock_input.assert_called_once_with(
+            "Do you want to update the service file? (y/n): "
+        )
 
     @patch("mmrelay.setup_utils.read_service_file")
     @patch("mmrelay.setup_utils.service_needs_update")
     @patch("mmrelay.setup_utils.print_service_commands")
     @patch("builtins.input")
-    def test_install_service_update_cancelled_by_eof(self, mock_input, mock_print_commands, mock_needs_update, mock_read_service):
+    def test_install_service_update_cancelled_by_eof(
+        self, mock_input, mock_print_commands, mock_needs_update, mock_read_service
+    ):
         """Test install_service when user input is cancelled with EOF."""
         mock_read_service.return_value = "existing service content"
         mock_needs_update.return_value = (True, "Executable path changed")
@@ -182,20 +188,20 @@ class TestSetupUtils(unittest.TestCase):
     @patch("os.path.exists")
     @patch("builtins.open", side_effect=IOError("File read error"))
     @patch("sys.stderr")
-    def test_get_template_service_content_file_read_error(self, mock_stderr, mock_open, mock_exists, mock_get_path):
+    def test_get_template_service_content_file_read_error(
+        self, mock_stderr, mock_open, mock_exists, mock_get_path
+    ):
         """Test get_template_service_content handles file read errors gracefully."""
         mock_get_path.return_value = "/path/to/template"
         mock_exists.return_value = True
 
         # This should fall back to importlib.resources or default template
-        result = get_template_service_content()
+        get_template_service_content()
 
         # Should have attempted to read the file and caught the error
         mock_open.assert_called()
         # Should have printed error message
         mock_stderr.write.assert_called()
-
-
 
     @patch("mmrelay.setup_utils.Path.home")
     def test_get_user_service_path(self, mock_home):
