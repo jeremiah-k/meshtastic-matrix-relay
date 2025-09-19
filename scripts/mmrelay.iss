@@ -66,7 +66,7 @@ var
   MatrixMeshtasticPage: TInputQueryWizardPage;
   MeshtasticPage: TInputQueryWizardPage;
   OptionsPage: TInputOptionWizardPage;
-  Connection: string;
+
 
 
 
@@ -267,9 +267,7 @@ var
   ServerName: string;
 
   bot_user_id: string;
-  auth_command: string;
-  auth_result: Integer;
-  cfgPath: string;
+
 
   SafeHomeserver: string;
   SafeUser: string;
@@ -322,6 +320,13 @@ begin
 
   // Extract host from URL (strip scheme and any path)
   ServerName := ExtractHostFromURL(HomeserverURL);
+
+  // If IPv6 literal, ensure brackets for MXID server name
+  if (Length(ServerName) > 0) and (Pos(':', ServerName) > 0) then
+  begin
+    if not ((ServerName[1] = '[') and (ServerName[Length(ServerName)] = ']')) then
+      ServerName := '[' + ServerName + ']';
+  end;
 
   // Build bot_user_id (accept full MXID only when it looks like one)
   bot_user_id := Trim(MatrixPage.Values[1]);
@@ -441,7 +446,7 @@ begin
                 'cd /d "' + sAppDir + '"' + #13#10 +
                 'echo Starting MM Relay...' + #13#10 +
                 'echo.' + #13#10 +
-                '"' + sAppDir + '\mmrelay.exe" --config "' + sAppDir + '\config.yaml"' + #13#10 +
+                '"' + sAppDir + '\mmrelay.exe" --data-dir "' + sAppDir + '" --config "' + sAppDir + '\config.yaml"' + #13#10 +
                 'echo.' + #13#10 +
                 'echo MM Relay has stopped.' + #13#10 +
                 'pause';

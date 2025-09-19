@@ -127,8 +127,12 @@ def get_data_dir():
         # Use ~/.mmrelay/data/ for Linux and Mac
         data_dir = os.path.join(get_base_dir(), "data")
     else:
-        # Use platformdirs default for Windows
-        data_dir = platformdirs.user_data_dir(APP_NAME, APP_AUTHOR)
+        # Honor --data-dir on Windows too
+        if custom_data_dir:
+            data_dir = os.path.join(custom_data_dir, "data")
+        else:
+            # Use platformdirs default for Windows
+            data_dir = platformdirs.user_data_dir(APP_NAME, APP_AUTHOR)
 
     os.makedirs(data_dir, exist_ok=True)
     return data_dir
@@ -169,8 +173,12 @@ def get_log_dir():
         # Use ~/.mmrelay/logs/ for Linux and Mac
         log_dir = os.path.join(get_base_dir(), "logs")
     else:
-        # Use platformdirs default for Windows
-        log_dir = platformdirs.user_log_dir(APP_NAME, APP_AUTHOR)
+        # Honor --data-dir on Windows too
+        if custom_data_dir:
+            log_dir = os.path.join(custom_data_dir, "logs")
+        else:
+            # Use platformdirs default for Windows
+            log_dir = platformdirs.user_log_dir(APP_NAME, APP_AUTHOR)
 
     os.makedirs(log_dir, exist_ok=True)
     return log_dir

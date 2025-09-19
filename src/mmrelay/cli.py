@@ -1153,6 +1153,10 @@ def main():
             print(f"Error importing main module: {e}")
             return 1
 
+    except (OSError, PermissionError, KeyboardInterrupt) as e:
+        # Handle common system-level errors
+        print(f"System error: {e.__class__.__name__}: {e}", file=sys.stderr)
+        return 1
     except Exception as e:
         # Provide Windows-specific error guidance if available
         try:

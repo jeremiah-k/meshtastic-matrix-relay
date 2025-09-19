@@ -337,12 +337,7 @@ def create_service_file():
     Returns:
         bool: True on successful creation/update of the service file; False if the template cannot be obtained or writing the file fails.
     """
-    mmrelay_path = shutil.which("mmrelay")
-    if mmrelay_path:
-        print(f"Found mmrelay executable at: {mmrelay_path}")
-    else:
-        # Fallback to python -m mmrelay when binary is not available
-        print("mmrelay binary not found in PATH, using python -m mmrelay fallback")
+    # Executable resolution/logging handled by get_executable_path()
 
     # Create service directory if it doesn't exist
     service_dir = get_user_service_path().parent
