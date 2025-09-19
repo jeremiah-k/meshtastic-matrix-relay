@@ -302,17 +302,6 @@ def run_main(args):
     # Print the banner at startup
     print_banner()
 
-    # Handle the --data-dir option
-    if args and args.data_dir:
-        import os
-
-        import mmrelay.config
-
-        # Set the global custom_data_dir variable
-        mmrelay.config.custom_data_dir = os.path.abspath(args.data_dir)
-        # Create the directory if it doesn't exist
-        os.makedirs(mmrelay.config.custom_data_dir, exist_ok=True)
-
     # Load configuration
     from mmrelay.config import load_config
 

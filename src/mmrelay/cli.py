@@ -1097,6 +1097,15 @@ def main():
 
         args = parse_arguments()
 
+        # Handle the --data-dir option
+        if args and args.data_dir:
+            import mmrelay.config
+
+            # Set the global custom_data_dir variable
+            mmrelay.config.custom_data_dir = os.path.abspath(args.data_dir)
+            # Create the directory if it doesn't exist
+            os.makedirs(mmrelay.config.custom_data_dir, exist_ok=True)
+
         # Handle subcommands first (modern interface)
         if hasattr(args, "command") and args.command:
             return handle_subcommand(args)

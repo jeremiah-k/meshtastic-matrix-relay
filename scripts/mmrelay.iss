@@ -19,12 +19,15 @@ Source: "..\dist\mmrelay.exe"; DestDir: "{app}"; Flags: recursesubdirs createall
 Name: "{group}\MMRelay"; Filename: "{app}\mmrelay.bat"; Check: FileExists(ExpandConstant('{app}\mmrelay.bat'))
 Name: "{group}\MMRelay Config"; Filename: "{sys}\notepad.exe"; Parameters: """{app}\config.yaml"""; WorkingDir: "{app}"; Check: FileExists(ExpandConstant('{app}\config.yaml'))
 Name: "{group}\Setup Authentication"; Filename: "{app}\setup-auth.bat"; Comment: "Set up Matrix authentication for MMRelay"; Check: FileExists(ExpandConstant('{app}\setup-auth.bat'))
+Name: "{group}\Logout"; Filename: "{app}\logout.bat"; Comment: "Logout and clear credentials"; Check: FileExists(ExpandConstant('{app}\logout.bat'))
 
 [Run]
-Filename: "{app}\setup-auth.bat"; Description: "Set up Matrix authentication (recommended first step)"; Flags: nowait postinstall skipifsilent; Check: FileExists(ExpandConstant('{app}\setup-auth.bat'))
+Filename: "{app}\setup-auth.bat"; Description: "Set up Matrix authentication (recommended first step)"; Flags: nowait postinstall skipifsilent; Check: AuthenticateOption.Checked and FileExists(ExpandConstant('{app}\setup-auth.bat'))
 Filename: "{app}\mmrelay.bat"; Description: "Launch MMRelay"; Flags: nowait postinstall skipifsilent unchecked; Check: FileExists(ExpandConstant('{app}\mmrelay.bat'))
 
 [Code]
+var
+  AuthenticateOption: TCheckBox;
 
 function ExtractHostFromURL(const Url: string): string;
 var S: string; P, i, colonCount, lastColonPos, rb: Integer;
@@ -92,6 +95,21 @@ begin
 
   OverwriteConfig.Add('Generate configuration (overwrite any current config files)');
   OverwriteConfig.Values[0] := False;
+
+  // Add the "Authenticate bot user" checkbox
+  AuthenticateOption := TCheckBox.Create(WizardForm);
+  AuthenticateOption.Parent := OverwriteConfig.Surface;
+  AuthenticateOption.Caption := 'Authenticate bot user (recommended for new installs)';
+  AuthenticateOption.Checked := OverwriteConfig.Values[0];
+  AuthenticateOption.Top := OverwriteConfig.Prompt.Top + OverwriteConfig.Prompt.Height + 12;
+  AuthenticateOption.Left := OverwriteConfig.Prompt.Left;
+
+  // When "Generate configuration" is clicked, update the "Authenticate" checkbox state
+  OverwriteConfig.CheckListBox.OnClickCheck := procedure(Sender: TObject);
+  begin
+    AuthenticateOption.Checked := OverwriteConfig.Values[0];
+    AuthenticateOption.Enabled := OverwriteConfig.Values[0];
+  end;
 
   MatrixPage.Add('Homeserver (example: https://matrix.org):', False);
   MatrixPage.Add('Bot username or MXID (example: mybotuser or @mybotuser:matrix.org):', False);
@@ -261,6 +279,7 @@ var
   log_level: string;
   batch_file: string;
   setup_auth_batch: string;
+  logout_batch: string;
   HomeserverURL: string;
   ServerName: string;
 
@@ -464,6 +483,21 @@ begin
   if Not SaveStringToFile(sAppDir + '\setup-auth.bat', setup_auth_batch, false) then
   begin
     MsgBox('Could not create setup batch file "setup-auth.bat". Close any applications that may have it open and re-run setup', mbError, MB_OK);
+  end;
+
+  // Create logout.bat for manual logout
+  logout_batch := '@echo off' + #13#10 +
+                  'echo Logging out and clearing all session data...' + #13#10 +
+                  'echo.' + #13#10 +
+                  'cd /d "' + sAppDir + '"' + #13#10 +
+                  '"' + sAppDir + '\mmrelay.exe" auth logout' + #13#10 +
+                  'echo.' + #13#10 +
+                  'echo Logout complete.' + #13#10 +
+                  'pause';
+
+  if Not SaveStringToFile(sAppDir + '\logout.bat', logout_batch, false) then
+  begin
+    MsgBox('Could not create logout batch file "logout.bat". Close any applications that may have it open and re-run setup', mbError, MB_OK);
   end;
 
   // Show completion message with setup instructions
