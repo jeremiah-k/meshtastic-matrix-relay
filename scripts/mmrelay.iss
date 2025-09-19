@@ -106,8 +106,8 @@ begin
   AuthenticateOption.Parent := OverwriteConfig.Surface;
   AuthenticateOption.Caption := 'Authenticate bot user (recommended for new installs)';
   AuthenticateOption.Checked := OverwriteConfig.Values[0];
-  AuthenticateOption.Top := OverwriteConfig.Prompt.Top + OverwriteConfig.Prompt.Height + 12;
-  AuthenticateOption.Left := OverwriteConfig.Prompt.Left;
+  AuthenticateOption.Top := OverwriteConfig.CheckListBox.Top + OverwriteConfig.CheckListBox.Height + 12;
+  AuthenticateOption.Left := OverwriteConfig.CheckListBox.Left;
 
   // When "Generate configuration" is clicked, update the "Authenticate" checkbox state
   OverwriteConfig.CheckListBox.OnClickCheck := procedure(Sender: TObject);
