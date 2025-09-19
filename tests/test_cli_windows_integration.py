@@ -24,7 +24,7 @@ class TestCLIWindowsConsoleSetup(unittest.TestCase):
     @patch("mmrelay.windows_utils.setup_windows_console")
     @patch("mmrelay.cli.parse_arguments")
     def test_main_calls_windows_console_setup(
-        self, mock_parse_args, mock_setup_console
+        self, mock_parse_args, _mock_setup_console
     ):
         """
         Verify that main() invokes Windows console setup when running on Windows.
@@ -50,7 +50,7 @@ class TestCLIWindowsConsoleSetup(unittest.TestCase):
             result = main()
 
         # Should call Windows console setup
-        mock_setup_console.assert_called_once()
+        _mock_setup_console.assert_called_once()
         self.assertEqual(result, 0)
 
     @patch("sys.platform", "linux")

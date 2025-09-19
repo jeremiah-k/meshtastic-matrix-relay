@@ -3,7 +3,7 @@
 //WizardImageFile=wizard.bmp
 //WizardSmallImageFile=smallwiz.bmp
 
-AppName=Matrix <> Meshtastic Relay
+AppName=MMRelay
 AppVersion={#AppVersion}
 DefaultDirName={userpf}\MMRelay
 DefaultGroupName=MMRelay
@@ -458,6 +458,8 @@ begin
 
   // Create setup-auth.bat for manual authentication
   setup_auth_batch := '@echo off' + #13#10 +
+                      'chcp 65001 >nul' + #13#10 +
+                      'set PYTHONUTF8=1' + #13#10 +
                       'echo Setting up Matrix authentication for MMRelay...' + #13#10 +
                       'echo.' + #13#10 +
                       'cd /d "' + sAppDir + '"' + #13#10 +
@@ -473,6 +475,8 @@ begin
 
   // Create logout.bat for manual logout
   logout_batch := '@echo off' + #13#10 +
+                  'chcp 65001 >nul' + #13#10 +
+                  'set PYTHONUTF8=1' + #13#10 +
                   'echo Logging out and clearing all session data...' + #13#10 +
                   'echo.' + #13#10 +
                   'cd /d "' + sAppDir + '"' + #13#10 +

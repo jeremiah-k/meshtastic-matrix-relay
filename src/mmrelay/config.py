@@ -841,8 +841,8 @@ def validate_yaml_syntax(config_content, config_path):
 
         # Check for non-standard boolean values (style warning)
         bool_pattern = r":\s*(yes|no|on|off|Yes|No|YES|NO)\s*$"
-        if re.search(bool_pattern, line):
-            match = re.search(bool_pattern, line)
+        match = re.search(bool_pattern, line)
+        if match:
             non_standard_bool = match.group(1)
             syntax_issues.append(
                 f"Line {line_num}: Style warning - Consider using 'true' or 'false' instead of '{non_standard_bool}' for clarity - {line.strip()}"

@@ -22,6 +22,20 @@ from mmrelay.tools import get_service_template_path
 SYSTEMCTL = shutil.which("systemctl") or "/usr/bin/systemctl"
 
 
+def _quote_if_needed(path: str) -> str:
+    """Quote executable paths that contain spaces for systemd compatibility."""
+    return f'"{path}"' if " " in path else path
+
+
+def get_resolved_exec_cmd() -> str:
+    """Return the resolved mmrelay executable command (path or 'python -m mmrelay')."""
+    mmrelay_path = shutil.which("mmrelay")
+    if mmrelay_path:
+        return _quote_if_needed(mmrelay_path)
+    py = _quote_if_needed(sys.executable)
+    return f"{py} -m mmrelay"
+
+
 def get_executable_path():
     """
     Return the resolved command to invoke the mmrelay executable with user feedback.
@@ -33,30 +47,15 @@ def get_executable_path():
         str: Either the filesystem path to the `mmrelay` executable or a Python module
         invocation string using the current interpreter.
     """
-    mmrelay_path = shutil.which("mmrelay")
-    if mmrelay_path:
-        print(f"Found mmrelay executable at: {mmrelay_path}")
-        return mmrelay_path
-    else:
+    resolved_cmd = get_resolved_exec_cmd()
+    if " -m mmrelay" in resolved_cmd:
         print(
             "Warning: Could not find mmrelay executable in PATH. Using current Python interpreter.",
             file=sys.stderr,
         )
-        return get_resolved_exec_cmd()
-
-
-def _quote_if_needed(path: str) -> str:
-    """Quote executable paths that contain spaces for systemd compatibility."""
-    return f'"{path}"' if " " in path else path
-
-
-def get_resolved_exec_cmd() -> str:
-    """Return the resolved mmrelay executable command (path or 'python -m mmrelay')."""
-    mmrelay_path = shutil.which("mmrelay")
-    if mmrelay_path:
-        return mmrelay_path
-    py = _quote_if_needed(sys.executable)
-    return f"{py} -m mmrelay"
+    else:
+        print(f"Found mmrelay executable at: {resolved_cmd}")
+    return resolved_cmd
 
 
 def get_resolved_exec_start(
@@ -245,7 +244,7 @@ def get_template_service_content():
             .read_text()
         )
         return service_template
-    except (FileNotFoundError, ImportError, OSError) as e:
+    except (FileNotFoundError, ImportError, OSError, UnicodeDecodeError) as e:
         print(
             f"Error accessing mmrelay.service via importlib.resources: {e}",
             file=sys.stderr,
@@ -377,7 +376,7 @@ def create_service_file():
 
     # Normalize ExecStart: replace any mmrelay launcher with resolved command, preserving args
     service_content = re.sub(
-        r"(?m)^(ExecStart=)(?:/usr/bin/env\s+mmrelay|.*?\bmmrelay)(\s+.*)$",
+        r"(?m)^(ExecStart=)(?:/usr/bin/env\s+mmrelay|[\S/]*mmrelay|.+python\s+-m\s+mmrelay)(\s.*)?$",
         rf"\1{get_resolved_exec_cmd()}\2",
         service_content,
     )

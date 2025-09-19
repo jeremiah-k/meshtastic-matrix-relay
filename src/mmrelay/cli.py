@@ -1059,8 +1059,8 @@ def check_config(args=None):
 
                 print("\n✅ Configuration file is valid!")
                 return True
-            except Exception as e:
-                print(f"Error checking configuration: {e}", file=sys.stderr)
+            except (OSError, ValueError, UnicodeDecodeError) as e:
+                print(f"Error checking configuration: {e.__class__.__name__}: {e}", file=sys.stderr)
                 return False
 
     print("Error: No configuration file found in any of the following locations:")
@@ -1563,7 +1563,7 @@ def _diagnose_sample_config_accessibility():
             .read_text()
         )
         print(f"   importlib.resources fallback: ✅ ({len(content)} chars)")
-    except Exception as e:
+    except (FileNotFoundError, ImportError, OSError) as e:
         print(f"   importlib.resources fallback: ❌ ({e})")
     print()
 
@@ -1702,7 +1702,7 @@ def _diagnose_minimal_config_template():
 
         yaml.safe_load(template)
         print(f"   Minimal template: ✅ ({len(template)} chars, valid YAML)")
-    except Exception as e:
+    except yaml.YAMLError as e:
         print(f"   Minimal template: ❌ ({e})")
 
     print()

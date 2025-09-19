@@ -44,7 +44,7 @@ class TestMainEntryPoint(unittest.TestCase):
         # Execute the main module code with __name__ == "__main__"
         with open("src/mmrelay/__main__.py") as f:
             code = f.read()
-        exec(code, {"__name__": "__main__"})
+        exec(code, {"__name__": "__main__"})  # nosec B102
 
         mock_main.assert_called_once()
         mock_exit.assert_called_once_with(0)
@@ -57,7 +57,7 @@ class TestMainEntryPoint(unittest.TestCase):
         # Execute the main module code with __name__ == "__main__"
         with open("src/mmrelay/__main__.py") as f:
             code = f.read()
-        exec(code, {"__name__": "__main__"})
+        exec(code, {"__name__": "__main__"})  # nosec B102
 
         mock_print.assert_any_call(
             "Error importing MMRelay CLI: Module not found", file=sys.stderr
@@ -77,7 +77,7 @@ class TestMainEntryPoint(unittest.TestCase):
         # Execute the main module code with __name__ == "__main__"
         with open("src/mmrelay/__main__.py") as f:
             code = f.read()
-        exec(code, {"__name__": "__main__"})
+        exec(code, {"__name__": "__main__"})  # nosec B102
 
         mock_print.assert_called_once_with("Interrupted.", file=sys.stderr)
         mock_exit.assert_called_once_with(130)
@@ -89,7 +89,7 @@ class TestMainEntryPoint(unittest.TestCase):
         with self.assertRaises(SystemExit) as cm:
             with open("src/mmrelay/__main__.py") as f:
                 code = f.read()
-            exec(code, {"__name__": "__main__"})
+            exec(code, {"__name__": "__main__"})  # nosec B102
 
         self.assertEqual(cm.exception.code, 42)
 
@@ -107,7 +107,7 @@ class TestMainEntryPoint(unittest.TestCase):
         # Execute the main module code with __name__ == "__main__"
         with open("src/mmrelay/__main__.py") as f:
             code = f.read()
-        exec(code, {"__name__": "__main__"})
+        exec(code, {"__name__": "__main__"})  # nosec B102
 
         mock_print.assert_called_once_with(
             "Unexpected error: Unexpected error", file=sys.stderr
@@ -148,7 +148,7 @@ class TestMainEntryPoint(unittest.TestCase):
         # Execute the main module code with __name__ == "__main__"
         with open("src/mmrelay/__main__.py") as f:
             code = f.read()
-        exec(code, {"__name__": "__main__"})
+        exec(code, {"__name__": "__main__"})  # nosec B102
 
         mock_main.assert_called_once()
         mock_exit.assert_called_once_with(5)
