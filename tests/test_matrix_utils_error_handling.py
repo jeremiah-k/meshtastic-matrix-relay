@@ -267,12 +267,13 @@ class TestMatrixLoginErrorHandling(unittest.TestCase):
 
         from mmrelay.matrix_utils import login_matrix_bot
 
-        # Mock response with 401 error - ensure it doesn't have access_token
+        # Mock response with 401 error - ensure it doesn't have access_token or device_id
         mock_response = MagicMock()
         mock_response.message = "M_FORBIDDEN"
         mock_response.status_code = 401
-        # Remove access_token to ensure it's treated as an error
+        # Remove access_token and device_id to ensure it's treated as an error
         del mock_response.access_token
+        del mock_response.device_id
 
         # Mock client and login response - use AsyncMock for async methods
         mock_client = AsyncMock()
@@ -313,8 +314,9 @@ class TestMatrixLoginErrorHandling(unittest.TestCase):
         mock_response = MagicMock()
         mock_response.message = "Not found"
         mock_response.status_code = 404
-        # Remove access_token to ensure it's treated as an error
+        # Remove access_token and device_id to ensure it's treated as an error
         del mock_response.access_token
+        del mock_response.device_id
 
         # Mock client and login response - use AsyncMock for async methods
         mock_client = AsyncMock()
@@ -352,8 +354,9 @@ class TestMatrixLoginErrorHandling(unittest.TestCase):
         mock_response = MagicMock()
         mock_response.message = "Too many requests"
         mock_response.status_code = 429
-        # Remove access_token to ensure it's treated as an error
+        # Remove access_token and device_id to ensure it's treated as an error
         del mock_response.access_token
+        del mock_response.device_id
 
         # Mock client and login response - use AsyncMock for async methods
         mock_client = AsyncMock()
@@ -389,8 +392,9 @@ class TestMatrixLoginErrorHandling(unittest.TestCase):
         mock_response = MagicMock()
         mock_response.message = "Internal server error"
         mock_response.status_code = 500
-        # Remove access_token to ensure it's treated as an error
+        # Remove access_token and device_id to ensure it's treated as an error
         del mock_response.access_token
+        del mock_response.device_id
 
         # Mock client and login response - use AsyncMock for async methods
         mock_client = AsyncMock()

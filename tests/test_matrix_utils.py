@@ -1654,7 +1654,7 @@ async def test_login_matrix_bot_success(
 
     # Configure the main client
     mock_main_client.login.return_value = MagicMock(
-        access_token="test_token", device_id="test_device"
+        access_token="test_token", device_id="test_device", user_id="@testuser:matrix.org"
     )
 
     # Call the function
@@ -1685,7 +1685,7 @@ async def test_login_matrix_bot_with_parameters(mock_input):
         # Mock AsyncClient instance
         mock_client = AsyncMock()
         mock_client.login.return_value = MagicMock(
-            access_token="test_token", device_id="test_device"
+            access_token="test_token", device_id="test_device", user_id="@testuser:matrix.org"
         )
         mock_client.whoami.return_value = MagicMock(user_id="@testuser:matrix.org")
         mock_client.close = AsyncMock()
