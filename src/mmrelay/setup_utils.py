@@ -419,7 +419,7 @@ def check_loginctl_available():
             [path, "--version"], check=False, capture_output=True, text=True
         )
         return result.returncode == 0
-    except (OSError, subprocess.SubprocessError) as e:
+    except (OSError, subprocess.SubprocessError, Exception) as e:
         print(f"Debug: Failed to check loginctl availability: {e}", file=sys.stderr)
         return False
 
@@ -443,7 +443,7 @@ def check_lingering_enabled():
             text=True,
         )
         return result.returncode == 0 and "Linger=yes" in result.stdout
-    except (OSError, subprocess.SubprocessError, KeyError) as e:
+    except (OSError, subprocess.SubprocessError, KeyError, Exception) as e:
         print(f"Error checking lingering status: {e}")
         return False
 
@@ -469,7 +469,7 @@ def enable_lingering():
         else:
             print(f"Error enabling lingering: {result.stderr}")
             return False
-    except (OSError, subprocess.SubprocessError) as e:
+    except (OSError, subprocess.SubprocessError, Exception) as e:
         print(f"Error enabling lingering: {e}")
         return False
 

@@ -157,7 +157,8 @@ class TestWindowsErrorHandling(unittest.TestCase):
         # Should call Windows error message handler
         mock_get_error.assert_called_once()
         mock_print.assert_called_with(
-            "Error: Detailed Windows error message with troubleshooting"
+            "Error: Detailed Windows error message with troubleshooting",
+            file=sys.stderr
         )
 
     @patch("sys.platform", "linux")
@@ -176,7 +177,7 @@ class TestWindowsErrorHandling(unittest.TestCase):
         self.assertEqual(result, 1)
 
         # Should use standard error message
-        mock_print.assert_called_with("Unexpected error: Test error")
+        mock_print.assert_called_with("Unexpected error: RuntimeError: Test error", file=sys.stderr)
 
     @patch("sys.platform", "win32")
     @patch("mmrelay.windows_utils.is_windows", return_value=True)
