@@ -43,7 +43,7 @@ def setup_windows_console() -> None:
         ENABLE_VTP = 0x0004  # ENABLE_VIRTUAL_TERMINAL_PROCESSING
         for handle in (-11, -12):  # STD_OUTPUT_HANDLE, STD_ERROR_HANDLE
             h = kernel32.GetStdHandle(handle)
-            if h:
+            if h is not None and h != -1:
                 mode = ctypes.c_uint()
                 if kernel32.GetConsoleMode(h, ctypes.byref(mode)):
                     kernel32.SetConsoleMode(h, mode.value | ENABLE_VTP)
