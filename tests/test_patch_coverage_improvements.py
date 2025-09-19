@@ -143,6 +143,49 @@ class TestPatchCoverageImprovements(unittest.TestCase):
             result = check_e2ee_enabled_silently(mock_args)
             self.assertFalse(result)
 
+    def test_config_edge_cases_for_coverage(self):
+        """Test additional config.py edge cases for coverage."""
+        from mmrelay.config import is_e2ee_enabled
+
+        # Test with missing matrix section
+        no_matrix_config = {
+            "other_section": {"key": "value"}
+        }
+        self.assertFalse(is_e2ee_enabled(no_matrix_config))
+
+        # Test with encryption enabled but e2ee disabled (both should be true for OR logic)
+        mixed_config = {
+            "matrix": {
+                "encryption": {"enabled": True},
+                "e2ee": {"enabled": False}
+            }
+        }
+        # Should be True because encryption is enabled (OR logic)
+        self.assertTrue(is_e2ee_enabled(mixed_config))
+
+        # Test with matrix section being None
+        none_matrix_config = {
+            "matrix": None
+        }
+        self.assertFalse(is_e2ee_enabled(none_matrix_config))
+
+    def test_config_silent_check_exception_paths(self):
+        """Test exception handling paths in check_e2ee_enabled_silently."""
+        from mmrelay.config import check_e2ee_enabled_silently
+
+        # Test with args that have config but file doesn't exist
+        mock_args = MagicMock()
+        mock_args.config = "/nonexistent/config.yaml"
+
+        result = check_e2ee_enabled_silently(mock_args)
+        self.assertFalse(result)
+
+        # Test with args that cause load_config to raise exception
+        mock_args.config = None
+        with patch("mmrelay.config.load_config", side_effect=Exception("Test error")):
+            result = check_e2ee_enabled_silently(mock_args)
+            self.assertFalse(result)
+
 
 if __name__ == "__main__":
     unittest.main()

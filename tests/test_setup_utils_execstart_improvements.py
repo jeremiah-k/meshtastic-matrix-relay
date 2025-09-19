@@ -1,7 +1,7 @@
 """Tests for ExecStart handling improvements in setup_utils.py."""
 
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, mock_open
 
 from mmrelay.setup_utils import get_resolved_exec_cmd, get_resolved_exec_start, _quote_if_needed
 
@@ -64,11 +64,25 @@ class TestExecStartImprovements(unittest.TestCase):
     def test_get_resolved_exec_start_custom_args(self, mock_get_cmd):
         """Test get_resolved_exec_start with custom arguments."""
         mock_get_cmd.return_value = "/usr/local/bin/mmrelay"
-        
+
         result = get_resolved_exec_start(" --custom-arg")
-        
+
         expected = "ExecStart=/usr/local/bin/mmrelay --custom-arg"
         self.assertEqual(result, expected)
+
+    def test_quote_if_needed_consistency(self):
+        """Test that _quote_if_needed is used consistently."""
+        # This test ensures the fix for spaces in sys.executable is working
+        path_with_spaces = "/path with spaces/python"
+        result = _quote_if_needed(path_with_spaces)
+        self.assertEqual(result, '"/path with spaces/python"')
+
+        # Test that the fix is applied in service logic
+        from mmrelay.setup_utils import get_resolved_exec_cmd
+        with patch("shutil.which", return_value=None):
+            with patch("sys.executable", path_with_spaces):
+                result = get_resolved_exec_cmd()
+                self.assertEqual(result, '"/path with spaces/python" -m mmrelay')
 
 
 if __name__ == "__main__":
