@@ -255,15 +255,6 @@ def _get_detailed_sync_error_message(sync_response) -> str:
         str: A short, user-focused error description suitable for logs and user-facing troubleshooting hints.
     """
     try:
-        # Handle nio ErrorResponse explicitly when available (module-level alias)
-        if isinstance(sync_response, NioErrorResponse):
-            msg = getattr(sync_response, "message", None)
-            code = getattr(sync_response, "status_code", None)
-            if msg:
-                return msg
-            if code:
-                return f"HTTP error {code}"
-
         # Try to extract specific error information
         if hasattr(sync_response, "message") and sync_response.message:
             return sync_response.message
@@ -1543,17 +1534,17 @@ async def matrix_relay(
                         r"([\\`*_{}[\]()#+.!-])", r"\\\1", original_sender_display
                     )
                     quoted_text = (
-                        f"> <{bot_user_id}> [{safe_sender_display}]: {safe_original}"
+                        f"> <@{bot_user_id}> [{safe_sender_display}]: {safe_original}"
                     )
                     content["body"] = f"{quoted_text}\n\n{plain_body}"
 
                     # Always use HTML formatting for replies since we need the mx-reply structure
                     content["format"] = "org.matrix.custom.html"
                     reply_link = f"https://matrix.to/#/{room_id}/{reply_to_event_id}"
-                    bot_link = f"https://matrix.to/#/{bot_user_id}"
+                    bot_link = f"https://matrix.to/#/@{bot_user_id}"
                     blockquote_content = (
                         f'<a href="{reply_link}">In reply to</a> '
-                        f'<a href="{bot_link}">{html.escape(bot_user_id)}</a><br>'
+                        f'<a href="{bot_link}">@{bot_user_id}</a><br>'
                         f"[{html.escape(original_sender_display)}]: {safe_original}"
                     )
                     content["formatted_body"] = (

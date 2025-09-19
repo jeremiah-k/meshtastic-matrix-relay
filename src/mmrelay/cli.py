@@ -7,6 +7,7 @@ import importlib.resources
 import os
 import shutil
 import sys
+import yaml
 from collections.abc import Mapping
 
 # Import version from package
@@ -1700,8 +1701,6 @@ def _diagnose_minimal_config_template():
     print("4. Testing minimal config template fallback...")
     try:
         template = _get_minimal_config_template()
-        import yaml
-
         yaml.safe_load(template)
         print(f"   Minimal template: ✅ ({len(template)} chars, valid YAML)")
     except yaml.YAMLError as e:
