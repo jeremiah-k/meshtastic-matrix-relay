@@ -1,7 +1,7 @@
 """Tests specifically targeting patch coverage improvements."""
 
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, mock_open
 
 from mmrelay.setup_utils import (
     check_lingering_enabled,
@@ -96,11 +96,17 @@ class TestPatchCoverageImprovements(unittest.TestCase):
         """Test the new is_e2ee_enabled function in config.py."""
         from mmrelay.config import is_e2ee_enabled
 
-        # Test with None config
+        # Test with None config (line 349)
         self.assertFalse(is_e2ee_enabled(None))
 
-        # Test with empty config
+        # Test with empty config (line 349)
         self.assertFalse(is_e2ee_enabled({}))
+
+        # Test with False config (line 349)
+        self.assertFalse(is_e2ee_enabled(False))
+
+        # Test with empty string config (line 349)
+        self.assertFalse(is_e2ee_enabled(""))
 
         # Test with encryption enabled (legacy)
         config_encryption = {
@@ -180,11 +186,27 @@ class TestPatchCoverageImprovements(unittest.TestCase):
         result = check_e2ee_enabled_silently(mock_args)
         self.assertFalse(result)
 
-        # Test with args that cause load_config to raise exception
+        # Test YAML error handling (line 383-384)
         mock_args.config = None
-        with patch("mmrelay.config.load_config", side_effect=Exception("Test error")):
-            result = check_e2ee_enabled_silently(mock_args)
-            self.assertFalse(result)
+        with patch("mmrelay.config.get_config_paths", return_value=["/test/config.yaml"]):
+            with patch("os.path.isfile", return_value=True):
+                with patch("builtins.open", mock_open(read_data="invalid: yaml: content: [")):
+                    result = check_e2ee_enabled_silently(mock_args)
+                    self.assertFalse(result)
+
+    def test_config_silent_check_falsy_config(self):
+        """Test the falsy config check (line 381) in check_e2ee_enabled_silently."""
+        from mmrelay.config import check_e2ee_enabled_silently
+
+        # Test with config file that loads as None/empty (line 381)
+        mock_args = MagicMock()
+        mock_args.config = None
+        with patch("mmrelay.config.get_config_paths", return_value=["/test/config.yaml"]):
+            with patch("os.path.isfile", return_value=True):
+                with patch("builtins.open", mock_open(read_data="")):
+                    with patch("yaml.load", return_value=None):  # Falsy config
+                        result = check_e2ee_enabled_silently(mock_args)
+                        self.assertFalse(result)
 
 
 if __name__ == "__main__":
