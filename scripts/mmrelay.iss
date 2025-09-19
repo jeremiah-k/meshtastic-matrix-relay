@@ -456,7 +456,7 @@ begin
                       'echo Setting up Matrix authentication for MM Relay...' + #13#10 +
                       'echo.' + #13#10 +
                       'cd /d "' + sAppDir + '"' + #13#10 +
-                      '"' + sAppDir + '\mmrelay.exe" --config "' + sAppDir + '\config.yaml" auth login' + #13#10 +
+                      '"' + sAppDir + '\mmrelay.exe" --data-dir "' + sAppDir + '" auth login' + #13#10 +
                       'echo.' + #13#10 +
                       'echo Authentication setup complete.' + #13#10 +
                       'pause';
@@ -471,7 +471,7 @@ begin
                   'echo Logging out and clearing all session data...' + #13#10 +
                   'echo.' + #13#10 +
                   'cd /d "' + sAppDir + '"' + #13#10 +
-                  '"' + sAppDir + '\mmrelay.exe" auth logout' + #13#10 +
+                  '"' + sAppDir + '\mmrelay.exe" --data-dir "' + sAppDir + '" auth logout' + #13#10 +
                   'echo.' + #13#10 +
                   'echo Logout complete.' + #13#10 +
                   'pause';
