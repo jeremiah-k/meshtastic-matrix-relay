@@ -1304,8 +1304,9 @@ def handle_auth_login(args):
             else:
                 print("\nMatrix Bot Authentication")
                 print("=========================")
-        except Exception:
+        except Exception as e:
             # Fallback if silent checking fails
+            logger.debug(f"Failed to silently check E2EE status: {e}")
             print("\nMatrix Bot Authentication")
             print("=========================")
 

@@ -170,8 +170,8 @@ def get_template_service_path():
             return path
 
     # If we get here, we couldn't find the template
-    # Debug output to help diagnose issues
-    print("Debug: Could not find mmrelay.service in any of these locations:")
+    # Warning output to help diagnose issues
+    print("Warning: Could not find mmrelay.service in any of these locations:", file=sys.stderr)
     for path in template_paths:
         print(f"  - {path}")
 
@@ -261,7 +261,7 @@ def is_service_enabled():
         )
         return result.returncode == 0 and result.stdout.strip() == "enabled"
     except (OSError, subprocess.SubprocessError) as e:
-        print(f"Debug: Failed to check service enabled status: {e}", file=sys.stderr)
+        print(f"Warning: Failed to check service enabled status: {e}", file=sys.stderr)
         return False
 
 
@@ -280,7 +280,7 @@ def is_service_active():
         )
         return result.returncode == 0 and result.stdout.strip() == "active"
     except (OSError, subprocess.SubprocessError) as e:
-        print(f"Debug: Failed to check service active status: {e}", file=sys.stderr)
+        print(f"Warning: Failed to check service active status: {e}", file=sys.stderr)
         return False
 
 
@@ -420,7 +420,7 @@ def check_loginctl_available():
         )
         return result.returncode == 0
     except (OSError, subprocess.SubprocessError, Exception) as e:
-        print(f"Debug: Failed to check loginctl availability: {e}", file=sys.stderr)
+        print(f"Warning: Failed to check loginctl availability: {e}", file=sys.stderr)
         return False
 
 
