@@ -403,11 +403,11 @@ def check_e2ee_enabled_silently(args=None):
             try:
                 with open(path, "r", encoding="utf-8") as f:
                     config = yaml.load(f, Loader=SafeLoader)
-                if config:
-                    return is_e2ee_enabled(config)
+                if config and is_e2ee_enabled(config):
+                    return True
             except (yaml.YAMLError, PermissionError, OSError):
                 continue  # Silently try the next path
-    # No valid config found
+    # No valid config found or E2EE not enabled in any config
     return False
 
 

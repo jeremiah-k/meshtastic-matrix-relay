@@ -457,10 +457,16 @@ def service_needs_update():
         )
 
     # Check if the PATH environment includes common user-bin locations
-    if (
-        "%h/.local/pipx/venvs/mmrelay/bin" not in existing_service
-        and "%h/.local/bin" not in existing_service
-    ):
+    # Look specifically in Environment lines, not the entire file
+    environment_lines = [
+        line for line in existing_service.splitlines()
+        if line.strip().startswith("Environment=")
+    ]
+    path_in_environment = any(
+        "%h/.local/pipx/venvs/mmrelay/bin" in line or "%h/.local/bin" in line
+        for line in environment_lines
+    )
+    if not path_in_environment:
         return True, "Service PATH does not include common user-bin locations"
 
     # Check if the service file has been modified recently
