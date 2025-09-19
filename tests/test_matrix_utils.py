@@ -1631,7 +1631,7 @@ async def test_login_matrix_bot_success(
     """Test successful login_matrix_bot execution."""
     # Mock user inputs
     mock_input.side_effect = [
-        "https://matrix.org",  # homeserver
+        "matrix.org",  # homeserver
         "testuser",  # username
         "y",  # logout_others
     ]
@@ -1640,20 +1640,12 @@ async def test_login_matrix_bot_success(
     # Mock SSL context
     mock_ssl_context.return_value = None
 
-    # Mock the two clients that will be created
-    mock_discovery_client = AsyncMock()
-    mock_main_client = AsyncMock()
+    # Mock the client
+    mock_client = AsyncMock()
+    mock_async_client.return_value = mock_client
 
-    # Set up the side effect to return the two mock clients in order
-    mock_async_client.side_effect = [mock_discovery_client, mock_main_client]
-
-    # Configure the discovery client
-    mock_discovery_client.discovery_info.return_value = MagicMock(
-        homeserver_url="https://matrix.org"
-    )
-
-    # Configure the main client
-    mock_main_client.login.return_value = MagicMock(
+    # Configure the client
+    mock_client.login.return_value = MagicMock(
         access_token="test_token", device_id="test_device"
     )
 
@@ -1664,16 +1656,12 @@ async def test_login_matrix_bot_success(
     assert result is True
     mock_save_credentials.assert_called_once()
 
-    # Verify discovery client calls
-    mock_discovery_client.discovery_info.assert_awaited_once()
-    mock_discovery_client.close.assert_awaited_once()
+    # Verify client calls
+    mock_client.login.assert_awaited_once()
+    mock_client.close.assert_awaited_once()
 
-    # Verify main client calls
-    mock_main_client.login.assert_awaited_once()
-    mock_main_client.close.assert_awaited_once()
-
-    # AsyncClient should be called twice: once for discovery, once for main login
-    assert mock_async_client.call_count == 2
+    # AsyncClient should be called once
+    mock_async_client.assert_called_once()
 
 
 @patch("mmrelay.matrix_utils.input")
@@ -1730,8 +1718,8 @@ async def test_login_matrix_bot_login_failure(mock_input, mock_getpass):
 
         # Verify failure
         assert result is False
-        # close() is called twice: once for discovery client, once for main client
-        assert mock_client.close.call_count == 2
+        # close() is only called once now that discovery client is removed
+        assert mock_client.close.call_count == 1
 
 
 # Matrix logout tests

@@ -1096,45 +1096,12 @@ async def login_matrix_bot(
         if not (homeserver.startswith("https://") or homeserver.startswith("http://")):
             homeserver = "https://" + homeserver
 
-        # Step 1: Perform server discovery to get the actual homeserver URL
-        logger.info(f"Performing server discovery for {homeserver}...")
-
         # Create SSL context using certifi's certificates
         ssl_context = _create_ssl_context()
         if ssl_context is None:
             logger.warning(
-                "Failed to create SSL context for server discovery; falling back to default system SSL"
+                "Failed to create SSL context for login; falling back to default system SSL"
             )
-
-        # Create a temporary client for discovery
-        temp_client = AsyncClient(homeserver, "", ssl=ssl_context)
-        try:
-            discovery_response = await asyncio.wait_for(
-                temp_client.discovery_info(), timeout=MATRIX_LOGIN_TIMEOUT
-            )
-
-            if isinstance(discovery_response, DiscoveryInfoResponse):
-                actual_homeserver = discovery_response.homeserver_url
-                logger.info(f"Server discovery successful: {actual_homeserver}")
-                homeserver = actual_homeserver
-            elif isinstance(discovery_response, DiscoveryInfoError):
-                logger.info(
-                    f"Server discovery failed, using original URL: {homeserver}"
-                )
-                # Continue with original homeserver URL
-
-        except asyncio.TimeoutError:
-            logger.warning(
-                f"Server discovery timed out, using original URL: {homeserver}"
-            )
-            # Continue with original homeserver URL
-        except Exception as e:
-            logger.warning(
-                f"Server discovery error: {e}, using original URL: {homeserver}"
-            )
-            # Continue with original homeserver URL
-        finally:
-            await temp_client.close()
 
         # Get username
         if not username:
@@ -1144,8 +1111,12 @@ async def login_matrix_bot(
         if not username.startswith("@"):
             username = f"@{username}"
 
-        server_name = urlparse(homeserver).netloc
+        # The homeserver is just the server name - nio will handle discovery
+        # We need to extract the server name for the username if not provided
         if ":" not in username:
+            # Use urlparse to handle homeservers with and without protocol
+            parsed_homeserver = urlparse(homeserver)
+            server_name = parsed_homeserver.netloc or parsed_homeserver.path
             username = f"{username}:{server_name}"
 
         logger.info(f"Using username: {username}")
