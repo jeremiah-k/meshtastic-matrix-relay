@@ -20,6 +20,8 @@ from nio import (
     AsyncClientConfig,
     DiscoveryInfoError,
     DiscoveryInfoResponse,
+    LoginError,
+    LoginResponse,
     MatrixRoom,
     MegolmEvent,
     ReactionEvent,
@@ -1270,13 +1272,13 @@ async def login_matrix_bot(
             await client.close()
             return False
 
-        if hasattr(response, "access_token"):
+        if isinstance(response, LoginResponse):
             logger.info("Login successful!")
 
             # Save credentials to credentials.json
             credentials = {
                 "homeserver": homeserver,
-                "user_id": username,
+                "user_id": response.user_id,
                 "access_token": response.access_token,
                 "device_id": response.device_id,
             }
@@ -1294,21 +1296,16 @@ async def login_matrix_bot(
 
             await client.close()
             return True
-        else:
-            # Provide detailed error information and troubleshooting guidance
-            response_type = type(response).__name__
-            logger.error(f"Login failed: {response_type}")
+        elif isinstance(response, LoginError):
+            # Handle login error response
+            logger.error(f"Login failed: {type(response).__name__}")
+            logger.error(f"Error message: {response.message}")
+            if hasattr(response, "status_code") and response.status_code:
+                logger.error(f"HTTP status code: {response.status_code}")
 
-            # Extract and log specific error details
-            error_message = "Unknown error"
-            status_code = None
-
-            if hasattr(response, "message"):
-                error_message = response.message
-                logger.error(f"Error message: {error_message}")
-            if hasattr(response, "status_code"):
-                status_code = response.status_code
-                logger.error(f"HTTP status code: {status_code}")
+            # Extract error details for troubleshooting
+            error_message = response.message
+            status_code = getattr(response, "status_code", None)
 
             # Provide specific troubleshooting guidance
             if status_code == 401 or "M_FORBIDDEN" in str(error_message):
@@ -1331,6 +1328,12 @@ async def login_matrix_bot(
                 logger.error("Login failed for unknown reason.")
                 logger.error("Try using 'mmrelay auth login' for interactive setup.")
 
+            await client.close()
+            return False
+        else:
+            # Unexpected response type
+            logger.error(f"Unexpected login response type: {type(response).__name__}")
+            logger.error("This may indicate a matrix-nio library issue or server problem.")
             await client.close()
             return False
 
