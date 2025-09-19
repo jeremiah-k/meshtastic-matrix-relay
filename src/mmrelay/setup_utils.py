@@ -39,15 +39,25 @@ def get_executable_path():
         return f"{sys.executable} -m mmrelay"
 
 
-def get_resolved_exec_start():
-    """Get the resolved ExecStart line for the service template."""
+def _quote_if_needed(path: str) -> str:
+    """Quote executable paths that contain spaces for systemd compatibility."""
+    return f'"{path}"' if " " in path else path
+
+
+def get_resolved_exec_cmd() -> str:
+    """Return the resolved mmrelay executable command (path or 'python -m mmrelay')."""
     mmrelay_path = shutil.which("mmrelay")
     if mmrelay_path:
-        # Use the resolved path directly
-        return f"ExecStart={mmrelay_path} --config %h/.mmrelay/config.yaml --logfile %h/.mmrelay/logs/mmrelay.log"
-    else:
-        # Fallback to python -m mmrelay when binary is not available
-        return f"ExecStart={sys.executable} -m mmrelay --config %h/.mmrelay/config.yaml --logfile %h/.mmrelay/logs/mmrelay.log"
+        return mmrelay_path
+    py = _quote_if_needed(sys.executable)
+    return f"{py} -m mmrelay"
+
+
+def get_resolved_exec_start(
+    args_suffix: str = " --config %h/.mmrelay/config.yaml --logfile %h/.mmrelay/logs/mmrelay.log",
+) -> str:
+    """Return a full ExecStart line using the resolved command plus a default arg suffix."""
+    return f"ExecStart={get_resolved_exec_cmd()}{args_suffix}"
 
 
 def get_user_service_path():
@@ -313,16 +323,12 @@ def create_service_file():
         )
     )
 
-    # Only replace ExecStart line if it contains problematic patterns like /usr/bin/env mmrelay
-    # when mmrelay is not available
-    if "/usr/bin/env mmrelay" in service_content and not shutil.which("mmrelay"):
-        resolved_exec_start = get_resolved_exec_start()
-        service_content = re.sub(
-            r"^ExecStart=/usr/bin/env mmrelay.*$",
-            resolved_exec_start,
-            service_content,
-            flags=re.MULTILINE,
-        )
+    # Normalize ExecStart: replace any mmrelay launcher with resolved command, preserving args
+    service_content = re.sub(
+        r"(?m)^(ExecStart=)(?:/usr/bin/env\s+mmrelay|.*?\bmmrelay)(\s+.*)$",
+        rf"\1{get_resolved_exec_cmd()}\2",
+        service_content,
+    )
 
     # Write service file
     try:
@@ -381,9 +387,12 @@ def service_needs_update():
             f"({ ' or '.join(acceptable_execs) }).",
         )
 
-    # Check if the PATH environment includes pipx paths
-    if "%h/.local/pipx/venvs/mmrelay/bin" not in existing_service:
-        return True, "Service file does not include pipx paths in PATH environment"
+    # Check if the PATH environment includes common user-bin locations
+    if (
+        "%h/.local/pipx/venvs/mmrelay/bin" not in existing_service
+        and "%h/.local/bin" not in existing_service
+    ):
+        return True, "Service PATH does not include common user-bin locations"
 
     # Check if the service file has been modified recently
     template_mtime = os.path.getmtime(template_path)
@@ -424,8 +433,11 @@ def check_lingering_enabled():
     """
     try:
         username = os.environ.get("USER", os.environ.get("USERNAME"))
+        loginctl = shutil.which("loginctl")
+        if not loginctl:
+            return False
         result = subprocess.run(
-            ["loginctl", "show-user", username, "--property=Linger"],
+            [loginctl, "show-user", username, "--property=Linger"],
             check=False,
             capture_output=True,
             text=True,

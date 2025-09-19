@@ -128,7 +128,7 @@ class TestCLIWindowsErrorHandling(unittest.TestCase):
     @patch("mmrelay.windows_utils.is_windows", return_value=True)
     @patch("builtins.print")
     def test_generate_config_windows_troubleshooting_guidance(
-        self, mock_print, mock_is_windows
+        self, mock_print, _mock_is_windows
     ):
         """Test that generate_sample_config provides Windows troubleshooting guidance."""
         # Mock all config generation methods to fail

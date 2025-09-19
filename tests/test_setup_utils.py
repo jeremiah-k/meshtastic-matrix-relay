@@ -28,6 +28,7 @@ from mmrelay.setup_utils import (
     create_service_file,
     enable_lingering,
     get_executable_path,
+    get_resolved_exec_cmd,
     get_resolved_exec_start,
     get_template_service_content,
     get_template_service_path,
@@ -84,6 +85,33 @@ class TestSetupUtils(unittest.TestCase):
         path = get_executable_path()
 
         self.assertEqual(path, f"{sys.executable} -m mmrelay")
+
+    @patch("shutil.which")
+    def test_get_resolved_exec_cmd_found(self, mock_which):
+        """Test get_resolved_exec_cmd when mmrelay binary is found."""
+        mock_which.return_value = "/usr/local/bin/mmrelay"
+
+        result = get_resolved_exec_cmd()
+
+        self.assertEqual(result, "/usr/local/bin/mmrelay")
+
+    @patch("shutil.which")
+    def test_get_resolved_exec_cmd_not_found(self, mock_which):
+        """Test get_resolved_exec_cmd when mmrelay binary is not found."""
+        mock_which.return_value = None
+
+        result = get_resolved_exec_cmd()
+
+        self.assertEqual(result, f"{sys.executable} -m mmrelay")
+
+    @patch("shutil.which")
+    def test_get_resolved_exec_cmd_with_spaces(self, mock_which):
+        """Test get_resolved_exec_cmd quotes paths with spaces."""
+        mock_which.return_value = None
+
+        with patch("sys.executable", "/path with spaces/python"):
+            result = get_resolved_exec_cmd()
+            self.assertEqual(result, '"/path with spaces/python" -m mmrelay')
 
     @patch("shutil.which")
     def test_get_resolved_exec_start_found(self, mock_which):
@@ -196,7 +224,7 @@ class TestSetupUtils(unittest.TestCase):
         mock_exists.return_value = True
 
         # This should fall back to importlib.resources or default template
-        get_template_service_content()
+        _ = get_template_service_content()
 
         # Should have attempted to read the file and caught the error
         mock_open.assert_called()

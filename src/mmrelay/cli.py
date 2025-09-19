@@ -1094,8 +1094,9 @@ def main():
             from mmrelay.windows_utils import setup_windows_console
 
             setup_windows_console()
-        except ImportError:
+        except Exception:  # nosec B110
             # windows_utils not available, continue without it
+            # This is intentional - we want to continue if Windows utils fail
             pass
 
         args = parse_arguments()
@@ -1147,11 +1148,11 @@ def main():
 
             if is_windows():
                 error_msg = get_windows_error_message(e)
-                print(f"Error: {error_msg}")
+                print(f"Error: {error_msg}", file=sys.stderr)
             else:
-                print(f"Unexpected error: {e}")
+                print(f"Unexpected error: {e.__class__.__name__}: {e}", file=sys.stderr)
         except ImportError:
-            print(f"Unexpected error: {e}")
+            print(f"Unexpected error: {e.__class__.__name__}: {e}", file=sys.stderr)
         return 1
 
 

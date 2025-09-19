@@ -369,26 +369,21 @@ def check_e2ee_enabled_silently(args=None):
     Returns:
         bool: True if E2EE is enabled, False otherwise or if no config found.
     """
-    try:
-        # Get config paths without logging
-        config_paths = get_config_paths(args)
+    # Get config paths without logging
+    config_paths = get_config_paths(args)
 
-        # Try each config path silently
-        for path in config_paths:
-            if os.path.isfile(path):
-                try:
-                    with open(path, "r", encoding="utf-8") as f:
-                        config = yaml.load(f, Loader=SafeLoader)
-                    if config:
-                        return is_e2ee_enabled(config)
-                except (yaml.YAMLError, PermissionError, OSError):
-                    continue  # Silently try the next path
-
-        # No valid config found
-        return False
-    except Exception:
-        # Silently handle any unexpected errors
-        return False
+    # Try each config path silently
+    for path in config_paths:
+        if os.path.isfile(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    config = yaml.load(f, Loader=SafeLoader)
+                if config:
+                    return is_e2ee_enabled(config)
+            except (yaml.YAMLError, PermissionError, OSError):
+                continue  # Silently try the next path
+    # No valid config found
+    return False
 
 
 def apply_env_config_overrides(config):
@@ -477,16 +472,16 @@ def save_credentials(credentials):
 # Set up a basic logger for config
 logger = logging.getLogger("Config")
 logger.setLevel(logging.INFO)
-handler = logging.StreamHandler()
-handler.setFormatter(
-    logging.Formatter(
-        fmt="%(asctime)s %(levelname)s:%(name)s:%(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S %z",
-    )
-)
 if not logger.handlers:
+    handler = logging.StreamHandler()
+    handler.setFormatter(
+        logging.Formatter(
+            fmt="%(asctime)s %(levelname)s:%(name)s:%(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S %z",
+        )
+    )
     logger.addHandler(handler)
-    logger.propagate = False
+logger.propagate = False
 
 # Initialize empty config
 relay_config = {}

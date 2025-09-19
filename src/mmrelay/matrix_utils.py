@@ -294,7 +294,7 @@ def _get_detailed_sync_error_message(sync_response) -> str:
         else:
             return "Network connectivity issue or server unreachable"
 
-    except Exception as e:
+    except (AttributeError, ValueError, TypeError) as e:
         logger.debug(
             "Failed to extract sync error details from %r: %s", sync_response, e
         )
@@ -814,59 +814,58 @@ async def connect_matrix(passed_config=None):
                         logger.error(
                             "Please reinstall with: pipx install 'mmrelay[e2e]'"
                         )
-                        raise RuntimeError(
-                            "Missing E2EE dependency (Olm/SqliteStore)"
-                        ) from e
-
-                    e2ee_enabled = True
-                    logger.info("End-to-End Encryption (E2EE) is enabled")
-
-                    # Get store path from config or use default
-                    if (
-                        "encryption" in config["matrix"]
-                        and "store_path" in config["matrix"]["encryption"]
-                    ):
-                        e2ee_store_path = os.path.expanduser(
-                            config["matrix"]["encryption"]["store_path"]
-                        )
-                    elif (
-                        "e2ee" in config["matrix"]
-                        and "store_path" in config["matrix"]["e2ee"]
-                    ):
-                        e2ee_store_path = os.path.expanduser(
-                            config["matrix"]["e2ee"]["store_path"]
-                        )
+                        logger.warning("E2EE will be disabled for this session.")
+                        e2ee_enabled = False
                     else:
-                        from mmrelay.config import get_e2ee_store_dir
+                        e2ee_enabled = True
+                        logger.info("End-to-End Encryption (E2EE) is enabled")
 
-                        e2ee_store_path = get_e2ee_store_dir()
+                        # Get store path from config or use default
+                        if (
+                            "encryption" in config["matrix"]
+                            and "store_path" in config["matrix"]["encryption"]
+                        ):
+                            e2ee_store_path = os.path.expanduser(
+                                config["matrix"]["encryption"]["store_path"]
+                            )
+                        elif (
+                            "e2ee" in config["matrix"]
+                            and "store_path" in config["matrix"]["e2ee"]
+                        ):
+                            e2ee_store_path = os.path.expanduser(
+                                config["matrix"]["e2ee"]["store_path"]
+                            )
+                        else:
+                            from mmrelay.config import get_e2ee_store_dir
 
-                    # Create store directory if it doesn't exist
-                    os.makedirs(e2ee_store_path, exist_ok=True)
+                            e2ee_store_path = get_e2ee_store_dir()
 
-                    # Check if store directory contains database files
-                    store_files = (
-                        os.listdir(e2ee_store_path)
-                        if os.path.exists(e2ee_store_path)
-                        else []
-                    )
-                    db_files = [f for f in store_files if f.endswith(".db")]
-                    if db_files:
-                        logger.debug(
-                            f"Found existing E2EE store files: {', '.join(db_files)}"
+                        # Create store directory if it doesn't exist
+                        os.makedirs(e2ee_store_path, exist_ok=True)
+
+                        # Check if store directory contains database files
+                        store_files = (
+                            os.listdir(e2ee_store_path)
+                            if os.path.exists(e2ee_store_path)
+                            else []
                         )
-                    else:
-                        logger.warning(
-                            "No existing E2EE store files found. Encryption may not work correctly."
-                        )
+                        db_files = [f for f in store_files if f.endswith(".db")]
+                        if db_files:
+                            logger.debug(
+                                f"Found existing E2EE store files: {', '.join(db_files)}"
+                            )
+                        else:
+                            logger.warning(
+                                "No existing E2EE store files found. Encryption may not work correctly."
+                            )
 
-                    logger.debug(f"Using E2EE store path: {e2ee_store_path}")
+                        logger.debug(f"Using E2EE store path: {e2ee_store_path}")
 
-                    # If device_id is not present in credentials, we can attempt to learn it later.
-                    if not e2ee_device_id:
-                        logger.debug(
-                            "No device_id in credentials; will retrieve from store/whoami later if available"
-                        )
+                        # If device_id is not present in credentials, we can attempt to learn it later.
+                        if not e2ee_device_id:
+                            logger.debug(
+                                "No device_id in credentials; will retrieve from store/whoami later if available"
+                            )
                 except ImportError:
                     logger.warning(
                         "E2EE is enabled in config but python-olm is not installed."
@@ -1169,7 +1168,7 @@ async def login_matrix_bot(
             credentials_path = os.path.join(config_dir, "credentials.json")
 
             if os.path.exists(credentials_path):
-                with open(credentials_path, "r") as f:
+                with open(credentials_path, "r", encoding="utf-8") as f:
                     existing_creds = json.load(f)
                     if (
                         "device_id" in existing_creds

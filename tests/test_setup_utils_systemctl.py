@@ -223,7 +223,7 @@ class TestInstallServiceSystemctlUsage(unittest.TestCase):
     @patch("builtins.input", side_effect=["y", "y"])  # Enable service, start service
     @patch("builtins.print")
     def test_install_service_uses_custom_systemctl_path(
-        self, mock_print, mock_input, mock_run
+        self, _mock_print, _mock_input, mock_run
     ):
         """Test that install_service uses the resolved systemctl path."""
         from mmrelay.setup_utils import install_service
@@ -258,7 +258,7 @@ class TestInstallServiceSystemctlUsage(unittest.TestCase):
     @patch("mmrelay.setup_utils.SYSTEMCTL", "/test/systemctl")
     @patch("builtins.input", side_effect=["y", "y"])  # Enable service, start service
     @patch("builtins.print")
-    def test_install_service_handles_systemctl_error(self, mock_print, mock_input):
+    def test_install_service_handles_systemctl_error(self, _mock_print, _mock_input):
         """Test that install_service handles systemctl errors gracefully."""
         from mmrelay.setup_utils import install_service
 
@@ -281,7 +281,7 @@ class TestInstallServiceSystemctlUsage(unittest.TestCase):
             self.assertTrue(result)
 
             # Should print error messages
-            mock_print.assert_called()
+            _mock_print.assert_called()
 
 
 if __name__ == "__main__":
