@@ -75,8 +75,9 @@ class TestAuthFlowFixes(unittest.TestCase):
                             # Should create directory
                             mock_makedirs.assert_called_with("C:\\Users\\Test\\AppData\\Local\\mmrelay", exist_ok=True)
 
-                            # Should open the correct path
-                            expected_path = "C:\\Users\\Test\\AppData\\Local\\mmrelay\\credentials.json"
+                            # Should open the correct path - use os.path.join to get the right separator
+                            import os
+                            expected_path = os.path.join("C:\\Users\\Test\\AppData\\Local\\mmrelay", "credentials.json")
                             mock_file.assert_called_with(expected_path, "w", encoding="utf-8")
 
     def test_credentials_loading_with_debug_info(self):
@@ -84,8 +85,17 @@ class TestAuthFlowFixes(unittest.TestCase):
         from mmrelay.config import load_credentials
 
         with patch("sys.platform", "win32"):
-            with patch("mmrelay.config.get_base_dir", return_value="C:\\Users\\Test\\AppData\\Local\\mmrelay"):
-                with patch("os.path.exists", return_value=False):
+            config_dir = "C:\\Users\\Test\\AppData\\Local\\mmrelay"
+            with patch("mmrelay.config.get_base_dir", return_value=config_dir):
+                # Mock os.path.exists to return False for credentials.json but True for the directory
+                def mock_exists(path):
+                    if path.endswith("credentials.json"):
+                        return False
+                    elif path == config_dir:
+                        return True
+                    return False
+
+                with patch("os.path.exists", side_effect=mock_exists):
                     with patch("os.listdir", return_value=["config.yaml", "other_file.txt"]):
                         with patch("mmrelay.config.logger") as mock_logger:
                             result = load_credentials()

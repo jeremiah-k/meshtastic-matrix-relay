@@ -1385,7 +1385,9 @@ def test_load_credentials_file_not_exists(mock_exists, mock_get_base_dir):
 @patch("mmrelay.config.get_base_dir")
 @patch("builtins.open")
 @patch("json.dump")
-def test_save_credentials(mock_json_dump, mock_open, mock_get_base_dir):
+@patch("os.makedirs")  # Mock the directory creation
+@patch("os.path.exists", return_value=True)  # Mock file existence check
+def test_save_credentials(mock_exists, mock_makedirs, mock_json_dump, mock_open, mock_get_base_dir):
     """Test credentials saving."""
     mock_get_base_dir.return_value = "/test/config"
 
@@ -1398,6 +1400,10 @@ def test_save_credentials(mock_json_dump, mock_open, mock_get_base_dir):
 
     save_credentials(test_credentials)
 
+    # Verify directory creation was attempted
+    mock_makedirs.assert_called_once_with("/test/config", exist_ok=True)
+
+    # Verify file operations
     mock_open.assert_called_once()
     mock_json_dump.assert_called_once_with(
         test_credentials, mock_open().__enter__(), indent=2
