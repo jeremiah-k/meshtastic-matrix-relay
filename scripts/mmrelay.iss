@@ -22,12 +22,17 @@ Name: "{group}\Setup Authentication"; Filename: "{app}\setup-auth.bat"; Comment:
 Name: "{group}\Logout"; Filename: "{app}\logout.bat"; Comment: "Logout and clear credentials"; Check: FileExists(ExpandConstant('{app}\logout.bat'))
 
 [Run]
-Filename: "{app}\setup-auth.bat"; Description: "Set up Matrix authentication (recommended first step)"; Flags: nowait postinstall skipifsilent; Check: AuthenticateOption.Checked and FileExists(ExpandConstant('{app}\setup-auth.bat'))
+Filename: "{app}\setup-auth.bat"; Description: "Set up Matrix authentication (recommended first step)"; Flags: nowait postinstall skipifsilent; Check: ShouldRunAuth
 Filename: "{app}\mmrelay.bat"; Description: "Launch MMRelay"; Flags: nowait postinstall skipifsilent unchecked; Check: FileExists(ExpandConstant('{app}\mmrelay.bat'))
 
 [Code]
 var
   AuthenticateOption: TCheckBox;
+
+function ShouldRunAuth(): Boolean;
+begin
+  Result := AuthenticateOption.Checked and FileExists(ExpandConstant('{app}\setup-auth.bat'));
+end;
 
 function ExtractHostFromURL(const Url: string): string;
 var S: string; P, i, colonCount, lastColonPos, rb: Integer;
