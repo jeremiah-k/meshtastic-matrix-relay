@@ -321,7 +321,7 @@ def load_logging_config_from_env():
 def load_database_config_from_env():
     """
     Build a database configuration fragment from environment variables.
-    
+
     Reads environment variables defined in the module-level _DATABASE_ENV_VAR_MAPPINGS and converts them into a configuration dictionary suitable for merging into the application's config. Returns None if no mapped environment variables were present.
     """
     config = _load_config_from_env_mapping(_DATABASE_ENV_VAR_MAPPINGS)
@@ -406,15 +406,15 @@ def check_e2ee_enabled_silently(args=None):
 def apply_env_config_overrides(config):
     """
     Apply environment-derived overrides to a configuration dictionary.
-    
+
     If `config` is falsy, a new dict is created. Values obtained from environment variables
     for Meshtastic, logging, and database settings are merged into the top-level keys
     "meshtastic", "logging", and "database" respectively. Existing keys in those sections
     are updated with environment-sourced values; other keys are preserved.
-    
+
     Parameters:
         config (dict | None): Base configuration to update. May be mutated in place.
-    
+
     Returns:
         dict: The configuration dictionary with environment overrides applied (the same object
         passed in, or a newly created dict if a falsy value was provided).
@@ -478,16 +478,16 @@ def load_credentials():
 def save_credentials(credentials):
     """
     Save Matrix credentials to the application's credentials.json file.
-    
+
     Writes the provided JSON-serializable credentials dictionary to
     <base_dir>/credentials.json using UTF-8 encoding, then attempts to
     restrict file permissions to 0o600 on Unix-like systems. I/O and
     permission errors are caught and logged; this function does not raise
     those exceptions.
-    
+
     Parameters:
         credentials (dict): JSON-serializable mapping of credentials to persist.
-    
+
     Returns:
         None
     """
@@ -518,7 +518,9 @@ def save_credentials(credentials):
         logger.exception(f"Error saving credentials.json to {config_dir}")
         # Try to provide helpful Windows-specific guidance
         if sys.platform == "win32":
-            logger.error("On Windows, ensure the application has write permissions to the user data directory")
+            logger.error(
+                "On Windows, ensure the application has write permissions to the user data directory"
+            )
             logger.error(f"Attempted path: {config_dir}")
 
 
@@ -735,13 +737,13 @@ def set_config(module, passed_config):
 def load_config(config_file=None, args=None):
     """
     Load the application configuration from a YAML file or from environment variables.
-    
+
     If config_file is provided and exists, that file is read and parsed as YAML; otherwise the function searches candidate locations returned by get_config_paths(args) and loads the first readable YAML file found. Empty or null YAML is treated as an empty dict. After loading, environment-derived overrides are merged via apply_env_config_overrides(). The function updates the module-level relay_config and config_path.
-    
+
     Parameters:
         config_file (str, optional): Path to a specific YAML configuration file to load. If None, candidate paths from get_config_paths(args) are used.
         args: Parsed command-line arguments forwarded to get_config_paths() to influence the search order.
-    
+
     Returns:
         dict: The resulting configuration dictionary. If no configuration is found or a file read/parse error occurs, returns an empty dict.
     """

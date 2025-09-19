@@ -20,7 +20,7 @@ def is_windows() -> bool:
 def setup_windows_console() -> None:
     """
     Configure the Windows console for UTF-8 output and ANSI (VT100) color support.
-    
+
     On Windows, attempts to reconfigure sys.stdout/sys.stderr to UTF-8 and enable
     virtual terminal processing so ANSI color and Unicode output render correctly.
     This is a best-effort operation: it is a no-op on non-Windows platforms and
@@ -56,17 +56,17 @@ def setup_windows_console() -> None:
 def get_windows_error_message(error: Exception) -> str:
     """
     Return a Windows-tailored, user-friendly message for common filesystem and network exceptions.
-    
+
     If not running on Windows this returns str(error) unchanged. For Windows, the function recognizes
     permission errors (PermissionError or OSError with EACCES/EPERM), missing-file errors
     (FileNotFoundError or OSError with ENOENT), and common network-related OSErrors
     (EHOSTUNREACH, ENETDOWN, ENETUNREACH, ECONNREFUSED, ETIMEDOUT) and returns guidance specific
     to each case (possible causes and suggested next steps). For other exceptions it returns
     str(error).
-    
+
     Parameters:
         error (Exception): The exception to translate into a user-facing message.
-    
+
     Returns:
         str: A user-oriented error message; either a Windows-specific guidance string or the
         original exception string for unhandled cases or non-Windows platforms.
@@ -125,12 +125,12 @@ def get_windows_error_message(error: Exception) -> str:
 def check_windows_requirements() -> Optional[str]:
     """
     Return a formatted warning string if common Windows environment issues are detected, otherwise None.
-    
+
     Checks:
     - Python version (recommends Python 3.9+ on Windows).
     - Whether the process appears to be running inside a virtual environment (venv/pipx).
     - Current working directory path length (warns if > 200 characters).
-    
+
     Returns:
         Optional[str]: A multi-line, human-readable warning message when one or more checks fail;
         None if no issues are found or the platform is not Windows.
@@ -169,23 +169,23 @@ def check_windows_requirements() -> Optional[str]:
 def test_config_generation_windows(args=None) -> dict:
     """
     Run Windows-only diagnostics for MMRelay configuration generation.
-    
+
     Performs four checks and returns a dictionary with per-test results and an overall status:
     - sample_config_path: verifies mmrelay.tools.get_sample_config_path() exists.
     - importlib_resources: attempts to read mmrelay.tools/sample_config.yaml via importlib.resources.
     - config_paths: calls mmrelay.config.get_config_paths(args) and reports the returned paths.
     - directory_creation: ensures parent directories for the config paths exist (creates them if missing).
-    
+
     Parameters:
         args (optional): Forwarded to mmrelay.config.get_config_paths; typically CLI-style arguments or None.
-    
+
     Returns:
         dict: Diagnostic results with these keys:
             - sample_config_path, importlib_resources, config_paths, directory_creation:
                 dict objects with "status" ("ok" or "error") and "details" (string).
             - overall_status: one of "ok" (no errors), "partial" (1–2 errors), or "error" (3+ errors).
         If called on a non-Windows platform, returns {"error": "This function is only for Windows systems"}.
-    
+
     Notes:
         - The function does not raise on expected failures; errors are reported in the returned dict.
         - Directory creation test may create directories on disk when missing.
@@ -292,9 +292,9 @@ def test_config_generation_windows(args=None) -> dict:
 def get_windows_install_guidance() -> str:
     """
     Return a Windows-specific installation and troubleshooting guide as a formatted string.
-    
+
     The returned text contains recommended installation methods, common Windows-specific problems with actionable remedies, and troubleshooting tips for configuration and runtime issues. It is safe to display directly to end users or include in logs/help output.
-    
+
     Returns:
         str: Multiline guidance text suited for Windows users.
     """

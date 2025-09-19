@@ -21,7 +21,7 @@ class TestMainEntryPoint(unittest.TestCase):
     def setUp(self):
         """
         Save a copy of sys.argv before each test.
-        
+
         Preserves the original command-line arguments so individual tests can modify sys.argv and restore it in tearDown.
         """
         self.original_argv = sys.argv.copy()
@@ -29,7 +29,7 @@ class TestMainEntryPoint(unittest.TestCase):
     def tearDown(self):
         """
         Restore the original sys.argv saved in setUp to avoid cross-test contamination.
-        
+
         This resets the global argv list after each test so subsequent tests run with the
         same command-line state that existed before the test.
         """
@@ -101,7 +101,7 @@ class TestMainEntryPoint(unittest.TestCase):
     ):
         """
         Verify that an unexpected exception raised by mmrelay.cli.main is reported to stderr and causes the process to exit with code 1.
-        
+
         Executes src/mmrelay/__main__.py with __name__ set to "__main__" (the test patches mmrelay.cli.main to raise a RuntimeError). Asserts that a single error message of the form "Unexpected error: <message>" is printed to stderr and that sys.exit is called with 1.
         """
         # Execute the main module code with __name__ == "__main__"
@@ -197,7 +197,7 @@ class TestMainEntryPointIntegration(unittest.TestCase):
     def test_main_entry_point_error_messages(self):
         """
         Verify that __main__.py emits correctly formatted error messages and directs them to stderr.
-        
+
         Reads src/mmrelay/__main__.py and asserts the source contains:
         - a write to stderr (e.g., `file=sys.stderr`),
         - the import error guidance "Error importing MMRelay CLI" and "Please ensure MMRelay is properly installed",

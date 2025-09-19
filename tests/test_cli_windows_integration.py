@@ -28,7 +28,7 @@ class TestCLIWindowsConsoleSetup(unittest.TestCase):
     ):
         """
         Verify that main() invokes Windows console setup when running on Windows.
-        
+
         Sets up minimal parsed CLI arguments and patches the main execution path so the test
         exercises only the CLI entry behavior. Asserts that the Windows console setup helper
         is called exactly once and that main() returns the expected exit code (0).

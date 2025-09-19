@@ -22,7 +22,7 @@ class TestHandleConfigDiagnose(unittest.TestCase):
     def setUp(self):
         """
         Create test fixtures for each test.
-        
+
         Initializes self.mock_args as a MagicMock that represents the CLI argument object passed to the functions under test.
         """
         self.mock_args = MagicMock()
@@ -133,7 +133,7 @@ class TestWindowsErrorHandling(unittest.TestCase):
     def setUp(self):
         """
         Create test fixtures for each test.
-        
+
         Initializes self.mock_args as a MagicMock that represents the CLI argument object passed to the functions under test.
         """
         self.mock_args = MagicMock()
@@ -166,7 +166,7 @@ class TestWindowsErrorHandling(unittest.TestCase):
         mock_get_error.assert_called_once()
         mock_print.assert_called_with(
             "Error: Detailed Windows error message with troubleshooting",
-            file=sys.stderr
+            file=sys.stderr,
         )
 
     @patch("sys.platform", "linux")
@@ -185,7 +185,9 @@ class TestWindowsErrorHandling(unittest.TestCase):
         self.assertEqual(result, 1)
 
         # Should use standard error message
-        mock_print.assert_called_with("Unexpected error: RuntimeError: Test error", file=sys.stderr)
+        mock_print.assert_called_with(
+            "Unexpected error: RuntimeError: Test error", file=sys.stderr
+        )
 
     @patch("sys.platform", "win32")
     @patch("mmrelay.windows_utils.is_windows", return_value=True)
@@ -265,7 +267,7 @@ class TestConfigDiagnoseIntegration(unittest.TestCase):
     def setUp(self):
         """
         Create test fixtures for each test.
-        
+
         Initializes self.mock_args as a MagicMock that represents the CLI argument object passed to the functions under test.
         """
         self.mock_args = MagicMock()

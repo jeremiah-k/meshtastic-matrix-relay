@@ -1,9 +1,13 @@
 """Tests for ExecStart handling improvements in setup_utils.py."""
 
 import unittest
-from unittest.mock import patch, mock_open
+from unittest.mock import patch
 
-from mmrelay.setup_utils import get_resolved_exec_cmd, get_resolved_exec_start, _quote_if_needed
+from mmrelay.setup_utils import (
+    _quote_if_needed,
+    get_resolved_exec_cmd,
+    get_resolved_exec_start,
+)
 
 
 class TestExecStartImprovements(unittest.TestCase):
@@ -25,9 +29,9 @@ class TestExecStartImprovements(unittest.TestCase):
     def test_get_resolved_exec_cmd_found(self, mock_which):
         """Test get_resolved_exec_cmd when mmrelay binary is found."""
         mock_which.return_value = "/usr/local/bin/mmrelay"
-        
+
         result = get_resolved_exec_cmd()
-        
+
         self.assertEqual(result, "/usr/local/bin/mmrelay")
 
     @patch("shutil.which")
@@ -35,9 +39,9 @@ class TestExecStartImprovements(unittest.TestCase):
     def test_get_resolved_exec_cmd_not_found(self, mock_which):
         """Test get_resolved_exec_cmd when mmrelay binary is not found."""
         mock_which.return_value = None
-        
+
         result = get_resolved_exec_cmd()
-        
+
         self.assertEqual(result, "/usr/bin/python -m mmrelay")
 
     @patch("shutil.which")
@@ -45,18 +49,18 @@ class TestExecStartImprovements(unittest.TestCase):
     def test_get_resolved_exec_cmd_with_spaces_in_python(self, mock_which):
         """Test get_resolved_exec_cmd with spaces in Python path."""
         mock_which.return_value = None
-        
+
         result = get_resolved_exec_cmd()
-        
+
         self.assertEqual(result, '"/path with spaces/python" -m mmrelay')
 
     @patch("mmrelay.setup_utils.get_resolved_exec_cmd")
     def test_get_resolved_exec_start_default_args(self, mock_get_cmd):
         """Test get_resolved_exec_start with default arguments."""
         mock_get_cmd.return_value = "/usr/local/bin/mmrelay"
-        
+
         result = get_resolved_exec_start()
-        
+
         expected = "ExecStart=/usr/local/bin/mmrelay --config %h/.mmrelay/config.yaml --logfile %h/.mmrelay/logs/mmrelay.log"
         self.assertEqual(result, expected)
 
@@ -79,6 +83,7 @@ class TestExecStartImprovements(unittest.TestCase):
 
         # Test that the fix is applied in service logic
         from mmrelay.setup_utils import get_resolved_exec_cmd
+
         with patch("shutil.which", return_value=None):
             with patch("sys.executable", path_with_spaces):
                 result = get_resolved_exec_cmd()

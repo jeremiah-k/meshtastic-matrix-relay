@@ -1,7 +1,7 @@
 """Tests specifically targeting patch coverage improvements."""
 
 import unittest
-from unittest.mock import MagicMock, patch, mock_open
+from unittest.mock import MagicMock, mock_open, patch
 
 from mmrelay.setup_utils import (
     check_lingering_enabled,
@@ -19,11 +19,11 @@ class TestPatchCoverageImprovements(unittest.TestCase):
         """Test that warning messages are printed to stderr."""
         # Test the warning message in get_template_service_path
         from mmrelay.setup_utils import get_template_service_path
-        
+
         with patch("os.path.exists", return_value=False):
             with patch("builtins.print") as mock_print:
                 result = get_template_service_path()
-                
+
         # Should print warning to stderr
         self.assertIsNone(result)
         mock_print.assert_called()
@@ -37,7 +37,7 @@ class TestPatchCoverageImprovements(unittest.TestCase):
         with patch("subprocess.run", side_effect=OSError("Test error")):
             with patch("builtins.print") as mock_print:
                 result = is_service_enabled()
-                
+
         self.assertFalse(result)
         mock_print.assert_called()
         # Check that warning is printed
@@ -49,7 +49,7 @@ class TestPatchCoverageImprovements(unittest.TestCase):
         with patch("subprocess.run", side_effect=OSError("Test error")):
             with patch("builtins.print") as mock_print:
                 result = is_service_active()
-                
+
         self.assertFalse(result)
         mock_print.assert_called()
 
@@ -67,7 +67,7 @@ class TestPatchCoverageImprovements(unittest.TestCase):
         with patch("subprocess.run", side_effect=OSError("Test error")):
             with patch("builtins.print") as mock_print:
                 result = check_lingering_enabled()
-                
+
         self.assertFalse(result)
         mock_print.assert_called()
 
@@ -76,7 +76,7 @@ class TestPatchCoverageImprovements(unittest.TestCase):
         with patch("subprocess.run", side_effect=OSError("Test error")):
             with patch("builtins.print") as mock_print:
                 result = enable_lingering()
-                
+
         self.assertFalse(result)
         mock_print.assert_called()
 
@@ -109,27 +109,16 @@ class TestPatchCoverageImprovements(unittest.TestCase):
         self.assertFalse(is_e2ee_enabled(""))
 
         # Test with encryption enabled (legacy)
-        config_encryption = {
-            "matrix": {
-                "encryption": {"enabled": True}
-            }
-        }
+        config_encryption = {"matrix": {"encryption": {"enabled": True}}}
         self.assertTrue(is_e2ee_enabled(config_encryption))
 
         # Test with e2ee enabled (new format)
-        config_e2ee = {
-            "matrix": {
-                "e2ee": {"enabled": True}
-            }
-        }
+        config_e2ee = {"matrix": {"e2ee": {"enabled": True}}}
         self.assertTrue(is_e2ee_enabled(config_e2ee))
 
         # Test with both disabled
         config_disabled = {
-            "matrix": {
-                "encryption": {"enabled": False},
-                "e2ee": {"enabled": False}
-            }
+            "matrix": {"encryption": {"enabled": False}, "e2ee": {"enabled": False}}
         }
         self.assertFalse(is_e2ee_enabled(config_disabled))
 
@@ -154,25 +143,18 @@ class TestPatchCoverageImprovements(unittest.TestCase):
         from mmrelay.config import is_e2ee_enabled
 
         # Test with missing matrix section
-        no_matrix_config = {
-            "other_section": {"key": "value"}
-        }
+        no_matrix_config = {"other_section": {"key": "value"}}
         self.assertFalse(is_e2ee_enabled(no_matrix_config))
 
         # Test with encryption enabled but e2ee disabled (both should be true for OR logic)
         mixed_config = {
-            "matrix": {
-                "encryption": {"enabled": True},
-                "e2ee": {"enabled": False}
-            }
+            "matrix": {"encryption": {"enabled": True}, "e2ee": {"enabled": False}}
         }
         # Should be True because encryption is enabled (OR logic)
         self.assertTrue(is_e2ee_enabled(mixed_config))
 
         # Test with matrix section being None
-        none_matrix_config = {
-            "matrix": None
-        }
+        none_matrix_config = {"matrix": None}
         self.assertFalse(is_e2ee_enabled(none_matrix_config))
 
     def test_config_silent_check_exception_paths(self):
@@ -188,9 +170,13 @@ class TestPatchCoverageImprovements(unittest.TestCase):
 
         # Test YAML error handling (line 383-384)
         mock_args.config = None
-        with patch("mmrelay.config.get_config_paths", return_value=["/test/config.yaml"]):
+        with patch(
+            "mmrelay.config.get_config_paths", return_value=["/test/config.yaml"]
+        ):
             with patch("os.path.isfile", return_value=True):
-                with patch("builtins.open", mock_open(read_data="invalid: yaml: content: [")):
+                with patch(
+                    "builtins.open", mock_open(read_data="invalid: yaml: content: [")
+                ):
                     result = check_e2ee_enabled_silently(mock_args)
                     self.assertFalse(result)
 
@@ -201,7 +187,9 @@ class TestPatchCoverageImprovements(unittest.TestCase):
         # Test with config file that loads as None/empty (line 381)
         mock_args = MagicMock()
         mock_args.config = None
-        with patch("mmrelay.config.get_config_paths", return_value=["/test/config.yaml"]):
+        with patch(
+            "mmrelay.config.get_config_paths", return_value=["/test/config.yaml"]
+        ):
             with patch("os.path.isfile", return_value=True):
                 with patch("builtins.open", mock_open(read_data="")):
                     with patch("yaml.load", return_value=None):  # Falsy config

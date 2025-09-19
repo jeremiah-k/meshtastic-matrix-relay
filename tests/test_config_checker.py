@@ -1057,7 +1057,9 @@ class TestConfigChecker(unittest.TestCase):
         result = check_config()
 
         self.assertFalse(result)
-        mock_print.assert_any_call("Error checking configuration: General error", file=sys.stderr)
+        mock_print.assert_any_call(
+            "Error checking configuration: General error", file=sys.stderr
+        )
 
 
 if __name__ == "__main__":

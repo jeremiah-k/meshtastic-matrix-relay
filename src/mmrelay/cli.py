@@ -236,9 +236,9 @@ def print_version():
 def _validate_e2ee_dependencies():
     """
     Check whether end-to-end encryption (E2EE) is supported on this platform and required Python packages are available.
-    
+
     Performs a platform check (Windows is treated as unsupported) and attempts to import the native and nio-backed E2EE components (python-olm, nio.crypto.OlmDevice, nio.store.SqliteStore). Prints concise, user-facing status and guidance messages.
-    
+
     Returns:
         bool: True if the platform supports E2EE and all required imports succeed; False if running on an unsupported platform or if any dependency is missing.
     """
@@ -773,20 +773,20 @@ def _print_environment_summary():
 def check_config(args=None):
     """
     Validate the application's YAML configuration file and its required sections.
-    
+
     Performs these checks: locates the first existing config file from get_config_paths(args),
     validates YAML syntax and non-empty content, verifies Matrix authentication (prefers
     credentials.json but accepts access_token or password in the matrix section), performs
     E2EE configuration and dependency checks, validates matrix_rooms and meshtastic sections
     (including connection-specific requirements), checks a set of optional meshtastic settings
     (and value constraints), and warns about deprecated sections.
-    
+
     Side effects:
     - Prints human-readable errors, warnings, and status messages to stdout.
-    
+
     Parameters:
         args (argparse.Namespace | None): Parsed CLI arguments; if None, CLI arguments are parsed internally.
-    
+
     Returns:
         bool: True if a configuration file was found and passed all checks; False otherwise.
     """
@@ -1035,7 +1035,7 @@ def check_config(args=None):
                         if option == "message_delay" and value < 2.0:
                             print(
                                 f"Error: 'message_delay' must be at least 2.0 seconds (firmware limitation), got: {value}",
-                                file=sys.stderr
+                                file=sys.stderr,
                             )
                             return False
                     else:
@@ -1050,11 +1050,11 @@ def check_config(args=None):
                 if "db" in config:
                     print(
                         "\nWarning: 'db' section is deprecated. Please use 'database' instead.",
-                        file=sys.stderr
+                        file=sys.stderr,
                     )
                     print(
                         "This option still works but may be removed in future versions.\n",
-                        file=sys.stderr
+                        file=sys.stderr,
                     )
 
                 print("\n✅ Configuration file is valid!")
@@ -1155,7 +1155,7 @@ def main():
 def handle_subcommand(args):
     """
     Dispatch the modern grouped CLI subcommand to the appropriate handler and return an exit code.
-    
+
     The function expects an argparse.Namespace from parse_arguments() with a `command`
     attribute set to one of: "config", "auth", or "service". Delegates to the
     corresponding handler and returns its exit code. If `command` is unknown,
@@ -1176,14 +1176,14 @@ def handle_subcommand(args):
 def handle_config_command(args):
     """
     Handle the "config" command group: dispatches "generate", "check", and "diagnose" subcommands.
-    
+
     - "generate": create a sample configuration file at the preferred config path.
     - "check": validate the resolved configuration (delegates to check_config).
     - "diagnose": run a multi-step diagnostic and report issues (delegates to handle_config_diagnose).
-    
+
     Parameters:
         args (argparse.Namespace): CLI namespace containing `config_command` (one of "generate", "check", "diagnose") and any subcommand-specific options.
-    
+
     Returns:
         int: Exit code (0 on success, 1 on failure or unknown subcommand).
     """
@@ -1303,6 +1303,7 @@ def handle_auth_login(args):
         except (OSError, PermissionError, ImportError, ValueError) as e:
             # Fallback if silent checking fails due to config file or import issues
             from mmrelay.log_utils import get_logger
+
             logger = get_logger("CLI")
             logger.debug(f"Failed to silently check E2EE status: {e}")
             print("\nMatrix Bot Authentication")
@@ -1493,17 +1494,17 @@ def handle_service_command(args):
 def _diagnose_config_paths(args):
     """
     Diagnose and print resolved configuration file search paths and their directory accessibility.
-    
+
     Takes the CLI argument namespace (passed to get_config_paths) and prints a numbered list of candidate config file paths.
     For each path it reports one of three status icons:
       - ✅ directory exists and is writable
       - ⚠️ directory exists but is not writable
       - ❌ directory does not exist
-    
+
     Parameters:
         args: argparse.Namespace
             Parsed command-line arguments forwarded to get_config_paths; used to determine the config search order.
-    
+
     Returns:
         None
     """
@@ -1524,14 +1525,14 @@ def _diagnose_config_paths(args):
 def _diagnose_sample_config_accessibility():
     """
     Check accessibility of the bundled sample configuration file.
-    
+
     Performs two checks:
     - Resolves the sample config path via mmrelay.tools.get_sample_config_path() and reports whether the file exists.
     - Attempts to read the embedded resource sample_config.yaml via importlib.resources as a fallback and reports success and content length.
-    
+
     Returns:
         bool: True if the filesystem sample config exists at the resolved path; False otherwise.
-    
+
     Notes:
     - This function prints human-facing diagnostic lines and does not raise on importlib.resources failures; failures are reported and the function still returns the filesystem existence result.
     """
@@ -1563,17 +1564,17 @@ def _diagnose_sample_config_accessibility():
 def _diagnose_platform_specific(args):
     """
     Run platform-specific diagnostic checks and report results.
-    
+
     If running on Windows, executes Windows-specific requirement checks and a
     config-generation test (via mmrelay.windows_utils), printing any warnings,
     per-component results, and an overall status. On non-Windows (Unix-like)
     systems this prints a short confirmation that platform-specific tests are
     not required.
-    
+
     Parameters:
         args: The parsed CLI arguments namespace forwarded to the Windows
             config-generation test (only used on Windows).
-    
+
     Returns:
         bool: True if the current platform is Windows, False otherwise.
     """
@@ -1635,9 +1636,9 @@ def _diagnose_platform_specific(args):
 def _get_minimal_config_template():
     """
     Return a minimal MMRelay YAML configuration template used as a fallback when the packaged sample_config.yaml cannot be located.
-    
+
     The template contains a small, functional configuration (matrix connection hints, a serial meshtastic connection, one room entry, and basic logging) that users can edit to create a working config file.
-    
+
     Returns:
         str: A YAML-formatted minimal configuration template.
     """
@@ -1682,7 +1683,7 @@ logging:
 def _diagnose_minimal_config_template():
     """
     Validate the built-in minimal configuration template and print a concise result.
-    
+
     Calls _get_minimal_config_template(), parses the returned YAML with yaml.safe_load to ensure it is valid YAML, and prints a one-line success message with the template length or an error message on failure. Intended as a diagnostic step; has no return value and prints output for user consumption.
     """
     print("4. Testing minimal config template fallback...")
@@ -1701,20 +1702,20 @@ def _diagnose_minimal_config_template():
 def handle_config_diagnose(args):
     """
     Run a sequence of diagnostics for the MMRelay configuration subsystem and report results.
-    
+
     Performs four non-destructive checks and prints human-readable guidance:
     1. Config path resolution and writability checks.
     2. Accessibility and availability of the packaged sample configuration.
     3. Platform-specific diagnostics (Windows vs. Unix-like) and related checks.
     4. Validation of the minimal fallback configuration template.
-    
+
     Parameters:
         args (argparse.Namespace): Parsed CLI arguments (as returned by parse_arguments()).
             Used to resolve config locations and to adjust platform-specific checks.
-    
+
     Returns:
         int: Exit code — 0 when diagnostics complete successfully, 1 on failure.
-    
+
     Notes:
         - The function prints detailed diagnostic output and platform-specific tips to stdout.
         - Exceptions are caught internally; in case of failure a non-zero exit code is returned
