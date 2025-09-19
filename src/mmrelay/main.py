@@ -291,27 +291,16 @@ def run_main(args):
     """
     Run the application's top-level startup sequence and invoke the main async runner.
 
-    Performs initial setup (prints banner, optionally sets a custom data directory, loads and applies configuration and logging overrides), validates that required configuration sections are present (required keys differ if credentials.json is present), then runs the main coroutine. Returns an exit code: 0 for successful run or user interrupt, 1 for configuration errors or unhandled exceptions.
+    Performs initial setup (prints banner, loads and applies configuration and logging overrides), validates that required configuration sections are present (required keys differ if credentials.json is present), then runs the main coroutine. Returns an exit code: 0 for successful run or user interrupt, 1 for configuration errors or unhandled exceptions.
 
     Parameters:
-        args: Parsed command-line arguments (may be None). Recognized options used here include `data_dir` and `log_level`.
+        args: Parsed command-line arguments (may be None). Recognized options used here include `log_level`.
 
     Returns:
         int: Exit code (0 on success or user-initiated interrupt, 1 on failure such as invalid config or runtime error).
     """
     # Print the banner at startup
     print_banner()
-
-    # Handle the --data-dir option
-    if args and args.data_dir:
-        import os
-
-        import mmrelay.config
-
-        # Set the global custom_data_dir variable
-        mmrelay.config.custom_data_dir = os.path.abspath(args.data_dir)
-        # Create the directory if it doesn't exist
-        os.makedirs(mmrelay.config.custom_data_dir, exist_ok=True)
 
     # Load configuration
     from mmrelay.config import load_config

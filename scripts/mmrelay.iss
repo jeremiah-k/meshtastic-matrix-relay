@@ -19,12 +19,17 @@ Source: "..\dist\mmrelay.exe"; DestDir: "{app}"; Flags: recursesubdirs createall
 Name: "{group}\MMRelay"; Filename: "{app}\mmrelay.bat"; Check: FileExists(ExpandConstant('{app}\mmrelay.bat'))
 Name: "{group}\MMRelay Config"; Filename: "{sys}\notepad.exe"; Parameters: """{app}\config.yaml"""; WorkingDir: "{app}"; Check: FileExists(ExpandConstant('{app}\config.yaml'))
 Name: "{group}\Setup Authentication"; Filename: "{app}\setup-auth.bat"; Comment: "Set up Matrix authentication for MMRelay"; Check: FileExists(ExpandConstant('{app}\setup-auth.bat'))
+Name: "{group}\Logout"; Filename: "{app}\logout.bat"; Comment: "Logout and clear credentials"; Check: FileExists(ExpandConstant('{app}\logout.bat'))
 
 [Run]
-Filename: "{app}\setup-auth.bat"; Description: "Set up Matrix authentication (recommended first step)"; Flags: nowait postinstall skipifsilent; Check: FileExists(ExpandConstant('{app}\setup-auth.bat'))
+Filename: "{app}\setup-auth.bat"; Description: "Set up Matrix authentication (recommended first step)"; Flags: nowait postinstall skipifsilent; Check: ShouldRunAuth
 Filename: "{app}\mmrelay.bat"; Description: "Launch MMRelay"; Flags: nowait postinstall skipifsilent unchecked; Check: FileExists(ExpandConstant('{app}\mmrelay.bat'))
 
 [Code]
+function ShouldRunAuth(): Boolean;
+begin
+  Result := OverwriteConfig.Values[0] and FileExists(ExpandConstant('{app}\setup-auth.bat'));
+end;
 
 function ExtractHostFromURL(const Url: string): string;
 var S: string; P, i, colonCount, lastColonPos, rb: Integer;
@@ -261,6 +266,7 @@ var
   log_level: string;
   batch_file: string;
   setup_auth_batch: string;
+  logout_batch: string;
   HomeserverURL: string;
   ServerName: string;
 
@@ -464,6 +470,21 @@ begin
   if Not SaveStringToFile(sAppDir + '\setup-auth.bat', setup_auth_batch, false) then
   begin
     MsgBox('Could not create setup batch file "setup-auth.bat". Close any applications that may have it open and re-run setup', mbError, MB_OK);
+  end;
+
+  // Create logout.bat for manual logout
+  logout_batch := '@echo off' + #13#10 +
+                  'echo Logging out and clearing all session data...' + #13#10 +
+                  'echo.' + #13#10 +
+                  'cd /d "' + sAppDir + '"' + #13#10 +
+                  '"' + sAppDir + '\mmrelay.exe" auth logout' + #13#10 +
+                  'echo.' + #13#10 +
+                  'echo Logout complete.' + #13#10 +
+                  'pause';
+
+  if Not SaveStringToFile(sAppDir + '\logout.bat', logout_batch, false) then
+  begin
+    MsgBox('Could not create logout batch file "logout.bat". Close any applications that may have it open and re-run setup', mbError, MB_OK);
   end;
 
   // Show completion message with setup instructions
