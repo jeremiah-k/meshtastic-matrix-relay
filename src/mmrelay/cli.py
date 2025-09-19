@@ -1306,6 +1306,8 @@ def handle_auth_login(args):
                 print("=========================")
         except Exception as e:
             # Fallback if silent checking fails
+            from mmrelay.log_utils import get_logger
+            logger = get_logger("CLI")
             logger.debug(f"Failed to silently check E2EE status: {e}")
             print("\nMatrix Bot Authentication")
             print("=========================")

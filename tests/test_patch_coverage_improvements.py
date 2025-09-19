@@ -92,6 +92,57 @@ class TestPatchCoverageImprovements(unittest.TestCase):
         # Should return False when no config is found
         self.assertFalse(result)
 
+    def test_is_e2ee_enabled_function(self):
+        """Test the new is_e2ee_enabled function in config.py."""
+        from mmrelay.config import is_e2ee_enabled
+
+        # Test with None config
+        self.assertFalse(is_e2ee_enabled(None))
+
+        # Test with empty config
+        self.assertFalse(is_e2ee_enabled({}))
+
+        # Test with encryption enabled (legacy)
+        config_encryption = {
+            "matrix": {
+                "encryption": {"enabled": True}
+            }
+        }
+        self.assertTrue(is_e2ee_enabled(config_encryption))
+
+        # Test with e2ee enabled (new format)
+        config_e2ee = {
+            "matrix": {
+                "e2ee": {"enabled": True}
+            }
+        }
+        self.assertTrue(is_e2ee_enabled(config_e2ee))
+
+        # Test with both disabled
+        config_disabled = {
+            "matrix": {
+                "encryption": {"enabled": False},
+                "e2ee": {"enabled": False}
+            }
+        }
+        self.assertFalse(is_e2ee_enabled(config_disabled))
+
+    def test_check_e2ee_enabled_silently_function(self):
+        """Test the new check_e2ee_enabled_silently function."""
+        from mmrelay.config import check_e2ee_enabled_silently
+
+        # Test with no args - should not crash
+        result = check_e2ee_enabled_silently()
+        self.assertFalse(result)
+
+        # Test with mock args
+        mock_args = MagicMock()
+        mock_args.config = None
+
+        with patch("mmrelay.config.get_config_paths", return_value=[]):
+            result = check_e2ee_enabled_silently(mock_args)
+            self.assertFalse(result)
+
 
 if __name__ == "__main__":
     unittest.main()
