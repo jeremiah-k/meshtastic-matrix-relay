@@ -3,10 +3,10 @@
 //WizardImageFile=wizard.bmp
 //WizardSmallImageFile=smallwiz.bmp
 
-AppName=MMRelay
+AppName=Matrix <> Meshtastic Relay
 AppVersion={#AppVersion}
-DefaultDirName={userpf}\MMRelay
-DefaultGroupName=MMRelay
+DefaultDirName={userpf}\MM Relay
+DefaultGroupName=MM Relay
 UninstallFilesDir={app}
 OutputDir=.
 OutputBaseFilename=MMRelay_setup_{#AppVersion}
@@ -16,14 +16,14 @@ PrivilegesRequiredOverridesAllowed=dialog commandline
 Source: "..\dist\mmrelay.exe"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs; AfterInstall: AfterInstall(ExpandConstant('{app}'));
 
 [Icons]
-Name: "{group}\MMRelay"; Filename: "{app}\mmrelay.bat"; Check: FileExists(ExpandConstant('{app}\mmrelay.bat'))
-Name: "{group}\MMRelay Config"; Filename: "{sys}\notepad.exe"; Parameters: """{app}\config.yaml"""; WorkingDir: "{app}"; Check: FileExists(ExpandConstant('{app}\config.yaml'))
-Name: "{group}\Setup Authentication"; Filename: "{app}\setup-auth.bat"; Comment: "Set up Matrix authentication for MMRelay"; Check: FileExists(ExpandConstant('{app}\setup-auth.bat'))
+Name: "{group}\MM Relay"; Filename: "{app}\mmrelay.bat"; Check: FileExists(ExpandConstant('{app}\mmrelay.bat'))
+Name: "{group}\MM Relay Config"; Filename: "{sys}\notepad.exe"; Parameters: """{app}\config.yaml"""; WorkingDir: "{app}"; Check: FileExists(ExpandConstant('{app}\config.yaml'))
+Name: "{group}\Setup Authentication"; Filename: "{app}\setup-auth.bat"; Comment: "Set up Matrix authentication for MM Relay"; Check: FileExists(ExpandConstant('{app}\setup-auth.bat'))
 Name: "{group}\Logout"; Filename: "{app}\logout.bat"; Comment: "Logout and clear credentials"; Check: FileExists(ExpandConstant('{app}\logout.bat'))
 
 [Run]
-Filename: "{app}\setup-auth.bat"; Description: "Set up Matrix authentication (recommended first step)"; Flags: nowait postinstall skipifsilent; Check: ShouldRunAuth
-Filename: "{app}\mmrelay.bat"; Description: "Launch MMRelay"; Flags: nowait postinstall skipifsilent unchecked; Check: FileExists(ExpandConstant('{app}\mmrelay.bat'))
+Filename: "{app}\setup-auth.bat"; Description: "Set up Matrix authentication (recommended first step)"; Flags: nowait postinstall skipifsilent; Check: FileExists(ExpandConstant('{app}\setup-auth.bat'))
+Filename: "{app}\mmrelay.bat"; Description: "Launch MM Relay"; Flags: nowait postinstall skipifsilent unchecked; Check: FileExists(ExpandConstant('{app}\mmrelay.bat'))
 
 [Code]
 
@@ -68,10 +68,7 @@ var
   OptionsPage: TInputOptionWizardPage;
   Connection: string;
 
-function ShouldRunAuth(): Boolean;
-begin
-  Result := OverwriteConfig.Values[0] and FileExists(ExpandConstant('{app}\setup-auth.bat'));
-end;
+
 
 procedure InitializeWizard;
 begin
@@ -441,14 +438,12 @@ begin
   end;
 
   batch_file := '@echo off' + #13#10 +
-                'chcp 65001 >nul' + #13#10 +
-                'set PYTHONUTF8=1' + #13#10 +
                 'cd /d "' + sAppDir + '"' + #13#10 +
-                'echo Starting MMRelay...' + #13#10 +
+                'echo Starting MM Relay...' + #13#10 +
                 'echo.' + #13#10 +
                 '"' + sAppDir + '\mmrelay.exe" --config "' + sAppDir + '\config.yaml"' + #13#10 +
                 'echo.' + #13#10 +
-                'echo MMRelay has stopped.' + #13#10 +
+                'echo MM Relay has stopped.' + #13#10 +
                 'pause';
 
   if Not SaveStringToFile(sAppDir + '\mmrelay.bat', batch_file, false) then
@@ -458,9 +453,7 @@ begin
 
   // Create setup-auth.bat for manual authentication
   setup_auth_batch := '@echo off' + #13#10 +
-                      'chcp 65001 >nul' + #13#10 +
-                      'set PYTHONUTF8=1' + #13#10 +
-                      'echo Setting up Matrix authentication for MMRelay...' + #13#10 +
+                      'echo Setting up Matrix authentication for MM Relay...' + #13#10 +
                       'echo.' + #13#10 +
                       'cd /d "' + sAppDir + '"' + #13#10 +
                       '"' + sAppDir + '\mmrelay.exe" --config "' + sAppDir + '\config.yaml" auth login' + #13#10 +
@@ -475,8 +468,6 @@ begin
 
   // Create logout.bat for manual logout
   logout_batch := '@echo off' + #13#10 +
-                  'chcp 65001 >nul' + #13#10 +
-                  'set PYTHONUTF8=1' + #13#10 +
                   'echo Logging out and clearing all session data...' + #13#10 +
                   'echo.' + #13#10 +
                   'cd /d "' + sAppDir + '"' + #13#10 +
@@ -494,7 +485,7 @@ begin
   if (HomeserverURL <> '') and (MatrixPage.Values[1] <> '') and (MatrixPage.Values[2] <> '') then
   begin
     // User provided full credentials for non-interactive setup
-    MsgBox('MMRelay installation complete!' + #13#10 + #13#10 +
+    MsgBox('MM Relay installation complete!' + #13#10 + #13#10 +
            'Next step: Run "mmrelay.bat" to start the relay.' + #13#10 +
            'It will authenticate automatically on the first run.' + #13#10 + #13#10 +
            'The file is located in: ' + sAppDir, mbInformation, MB_OK);
@@ -502,7 +493,7 @@ begin
   else
   begin
     // User needs to perform interactive authentication
-    MsgBox('MMRelay installation complete!' + #13#10 + #13#10 +
+    MsgBox('MM Relay installation complete!' + #13#10 + #13#10 +
            'Next step: Run "setup-auth.bat" to configure Matrix authentication.' + #13#10 + #13#10 +
            'The file is located in: ' + sAppDir, mbInformation, MB_OK);
   end;
