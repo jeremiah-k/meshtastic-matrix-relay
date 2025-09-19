@@ -26,10 +26,6 @@ Filename: "{app}\setup-auth.bat"; Description: "Set up Matrix authentication (re
 Filename: "{app}\mmrelay.bat"; Description: "Launch MMRelay"; Flags: nowait postinstall skipifsilent unchecked; Check: FileExists(ExpandConstant('{app}\mmrelay.bat'))
 
 [Code]
-function ShouldRunAuth(): Boolean;
-begin
-  Result := OverwriteConfig.Values[0] and FileExists(ExpandConstant('{app}\setup-auth.bat'));
-end;
 
 function ExtractHostFromURL(const Url: string): string;
 var S: string; P, i, colonCount, lastColonPos, rb: Integer;
@@ -72,7 +68,10 @@ var
   OptionsPage: TInputOptionWizardPage;
   Connection: string;
 
-
+function ShouldRunAuth(): Boolean;
+begin
+  Result := OverwriteConfig.Values[0] and FileExists(ExpandConstant('{app}\setup-auth.bat'));
+end;
 
 procedure InitializeWizard;
 begin
