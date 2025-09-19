@@ -1061,6 +1061,8 @@ def check_config(args=None):
                 return True
             except (OSError, ValueError, UnicodeDecodeError) as e:
                 print(f"Error checking configuration: {e.__class__.__name__}: {e}", file=sys.stderr)
+            except Exception as e:
+                print(f"Error checking configuration: {e}", file=sys.stderr)
                 return False
 
     print("Error: No configuration file found in any of the following locations:")
