@@ -26,12 +26,9 @@ Filename: "{app}\setup-auth.bat"; Description: "Set up Matrix authentication (re
 Filename: "{app}\mmrelay.bat"; Description: "Launch MMRelay"; Flags: nowait postinstall skipifsilent unchecked; Check: FileExists(ExpandConstant('{app}\mmrelay.bat'))
 
 [Code]
-var
-  AuthenticateOption: TCheckBox;
-
 function ShouldRunAuth(): Boolean;
 begin
-  Result := AuthenticateOption.Checked and FileExists(ExpandConstant('{app}\setup-auth.bat'));
+  Result := OverwriteConfig.Values[0] and FileExists(ExpandConstant('{app}\setup-auth.bat'));
 end;
 
 function ExtractHostFromURL(const Url: string): string;
@@ -100,21 +97,6 @@ begin
 
   OverwriteConfig.Add('Generate configuration (overwrite any current config files)');
   OverwriteConfig.Values[0] := False;
-
-  // Add the "Authenticate bot user" checkbox
-  AuthenticateOption := TCheckBox.Create(WizardForm);
-  AuthenticateOption.Parent := OverwriteConfig.Surface;
-  AuthenticateOption.Caption := 'Authenticate bot user (recommended for new installs)';
-  AuthenticateOption.Checked := OverwriteConfig.Values[0];
-  AuthenticateOption.Top := OverwriteConfig.CheckListBox.Top + OverwriteConfig.CheckListBox.Height + 12;
-  AuthenticateOption.Left := OverwriteConfig.CheckListBox.Left;
-
-  // When "Generate configuration" is clicked, update the "Authenticate" checkbox state
-  OverwriteConfig.CheckListBox.OnClickCheck := procedure(Sender: TObject);
-  begin
-    AuthenticateOption.Checked := OverwriteConfig.Values[0];
-    AuthenticateOption.Enabled := OverwriteConfig.Values[0];
-  end;
 
   MatrixPage.Add('Homeserver (example: https://matrix.org):', False);
   MatrixPage.Add('Bot username or MXID (example: mybotuser or @mybotuser:matrix.org):', False);
