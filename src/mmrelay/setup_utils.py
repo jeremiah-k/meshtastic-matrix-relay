@@ -512,7 +512,11 @@ def check_lingering_enabled():
     fails, or an unexpected error occurs, the function returns False.
     """
     try:
-        username = os.environ.get("USER", os.environ.get("USERNAME"))
+        import getpass
+        username = os.environ.get("USER") or os.environ.get("USERNAME") or getpass.getuser()
+        if not username:
+            print("Error checking lingering status: could not determine current user", file=sys.stderr)
+            return False
         loginctl = shutil.which("loginctl")
         if not loginctl:
             return False
@@ -523,7 +527,7 @@ def check_lingering_enabled():
             text=True,
         )
         return result.returncode == 0 and "Linger=yes" in result.stdout
-    except (OSError, subprocess.SubprocessError, KeyError) as e:
+    except (OSError, subprocess.SubprocessError, KeyError, RuntimeError) as e:
         print(f"Error checking lingering status: {e}", file=sys.stderr)
         return False
 
@@ -535,7 +539,11 @@ def enable_lingering():
         bool: True if lingering was enabled successfully, False otherwise.
     """
     try:
-        username = os.environ.get("USER", os.environ.get("USERNAME"))
+        import getpass
+        username = os.environ.get("USER") or os.environ.get("USERNAME") or getpass.getuser()
+        if not username:
+            print("Error enabling lingering: could not determine current user", file=sys.stderr)
+            return False
         print(f"Enabling lingering for user {username}...")
         result = subprocess.run(
             ["sudo", "loginctl", "enable-linger", username],
