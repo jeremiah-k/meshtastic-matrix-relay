@@ -442,7 +442,12 @@ def service_needs_update():
         acceptable_execs = [f'{_quote_if_needed(sys.executable)} -m mmrelay']
 
     # Check if the ExecStart line in the existing service file contains an acceptable executable form
-    if not any(exec_str in existing_service for exec_str in acceptable_execs):
+    exec_start_line = next((line for line in existing_service.splitlines() if line.strip().startswith("ExecStart=")), None)
+
+    if not exec_start_line:
+        return True, "Service file is missing ExecStart line"
+
+    if not any(exec_str in exec_start_line for exec_str in acceptable_execs):
         return (
             True,
             "Service file does not use an acceptable executable "
