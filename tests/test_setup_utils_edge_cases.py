@@ -160,7 +160,8 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
 
                         # Check that fallback message was printed
                         mock_print.assert_any_call(
-                            "mmrelay binary not found in PATH, using python -m mmrelay fallback"
+                            "Warning: Could not find mmrelay executable in PATH. Using current Python interpreter.",
+                            file=sys.stderr
                         )
 
                         # Check that the service content includes python -m mmrelay
@@ -278,7 +279,8 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
                             result = install_service()
                             self.assertTrue(result)  # Should succeed with fallback
                             mock_print.assert_any_call(
-                                "mmrelay binary not found in PATH, using python -m mmrelay fallback"
+                                "Warning: Could not find mmrelay executable in PATH. Using current Python interpreter.",
+                                file=sys.stderr
                             )
 
     def test_install_service_create_file_failure(self):
