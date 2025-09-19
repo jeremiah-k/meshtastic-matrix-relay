@@ -54,13 +54,13 @@ class TestSetupUtilsEdgeCases(unittest.TestCase):
 
     def test_get_executable_path_not_found(self):
         """
-        Test that get_executable_path returns the system Python executable when the "mmrelay" executable is not found.
+        Test that get_executable_path returns the system Python executable with -m mmrelay when the "mmrelay" executable is not found.
         """
         with patch("shutil.which", return_value=None):
             with patch("builtins.print"):  # Suppress warning print
                 result = get_executable_path()
-                # Should return sys.executable as fallback
-                self.assertEqual(result, sys.executable)
+                # Should return sys.executable -m mmrelay as fallback
+                self.assertEqual(result, f"{sys.executable} -m mmrelay")
 
     def test_get_executable_path_multiple_locations(self):
         """

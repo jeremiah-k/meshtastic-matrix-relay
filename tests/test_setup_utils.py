@@ -23,6 +23,7 @@ from unittest.mock import MagicMock, mock_open, patch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.setup_utils import (
+    SYSTEMCTL,
     check_lingering_enabled,
     create_service_file,
     enable_lingering,
@@ -78,7 +79,7 @@ class TestSetupUtils(unittest.TestCase):
 
         path = get_executable_path()
 
-        self.assertEqual(path, sys.executable)
+        self.assertEqual(path, f"{sys.executable} -m mmrelay")
 
     @patch("mmrelay.setup_utils.Path.home")
     def test_get_user_service_path(self, mock_home):
@@ -227,7 +228,7 @@ class TestSetupUtils(unittest.TestCase):
 
         self.assertTrue(result)
         mock_run.assert_called_once_with(
-            ["/usr/bin/systemctl", "--user", "is-active", "mmrelay.service"],
+            [SYSTEMCTL, "--user", "is-active", "mmrelay.service"],
             check=False,
             capture_output=True,
             text=True,
@@ -289,7 +290,7 @@ class TestSetupUtils(unittest.TestCase):
 
         self.assertTrue(result)
         mock_run.assert_called_once_with(
-            ["/usr/bin/systemctl", "--user", "start", "mmrelay.service"], check=True
+            [SYSTEMCTL, "--user", "start", "mmrelay.service"], check=True
         )
 
     @patch("subprocess.run")
@@ -314,7 +315,7 @@ class TestSetupUtils(unittest.TestCase):
 
         self.assertTrue(result)
         mock_run.assert_called_once_with(
-            ["/usr/bin/systemctl", "--user", "daemon-reload"], check=True
+            [SYSTEMCTL, "--user", "daemon-reload"], check=True
         )
 
     @patch("subprocess.run")
@@ -494,7 +495,7 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
 
         self.assertTrue(result)
         mock_run.assert_called_once_with(
-            ["/usr/bin/systemctl", "--user", "status", "mmrelay.service"],
+            [SYSTEMCTL, "--user", "status", "mmrelay.service"],
             check=True,
             capture_output=True,
             text=True,

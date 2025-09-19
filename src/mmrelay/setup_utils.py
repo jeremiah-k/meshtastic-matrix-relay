@@ -36,7 +36,7 @@ def get_executable_path():
         print(
             "Warning: Could not find mmrelay executable in PATH. Using current Python interpreter."
         )
-        return sys.executable
+        return f"{sys.executable} -m mmrelay"
 
 
 def get_resolved_exec_start():
