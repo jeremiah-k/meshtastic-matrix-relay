@@ -20,8 +20,6 @@ from nio import (
     AsyncClientConfig,
     DiscoveryInfoError,
     DiscoveryInfoResponse,
-    LoginError,
-    LoginResponse,
     MatrixRoom,
     MegolmEvent,
     ReactionEvent,
@@ -1272,7 +1270,7 @@ async def login_matrix_bot(
             await client.close()
             return False
 
-        if isinstance(response, LoginResponse):
+        if hasattr(response, "access_token"):
             logger.info("Login successful!")
 
             # Save credentials to credentials.json
@@ -1296,7 +1294,7 @@ async def login_matrix_bot(
 
             await client.close()
             return True
-        elif isinstance(response, LoginError):
+        else:
             # Provide detailed error information and troubleshooting guidance
             response_type = type(response).__name__
             logger.error(f"Login failed: {response_type}")
@@ -1335,28 +1333,7 @@ async def login_matrix_bot(
 
             await client.close()
             return False
-        else:
-            # Unexpected response type
-            logger.error(f"Unexpected login response type: {type(response).__name__}")
-            logger.error("This may indicate a matrix-nio library issue.")
-            logger.error("Try using 'mmrelay auth login' for interactive setup.")
-            await client.close()
-            return False
 
-    except TypeError as e:
-        # Handle matrix-nio type comparison bug ('>=' not supported between instances of 'str' and 'int')
-        if "'>=' not supported between instances of 'str' and 'int'" in str(e):
-            logger.error("Matrix-nio library bug detected (power level type mismatch).")
-            logger.error("This is a known issue with the matrix-nio library.")
-            logger.error("Authentication may have failed due to invalid credentials.")
-            logger.error("Please verify your username and password are correct.")
-        else:
-            logger.error(f"Type error during login: {e}")
-        try:
-            await client.close()
-        except Exception:
-            pass  # Ignore errors during cleanup
-        return False
     except Exception as e:
         logger.error(f"Error during login: {e}")
         try:
