@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import re
+import ssl
 import sys
 import time
 from typing import Any, Dict, Union
@@ -1247,13 +1248,13 @@ async def login_matrix_bot(
             logger.exception(f"Login failed with {error_type}")
 
             # Provide specific guidance based on error type
-            if "ConnectionError" in error_type or "ConnectTimeout" in error_type:
+            if isinstance(e, (ConnectionError, asyncio.TimeoutError)):
                 logger.error("Network connectivity issue detected.")
                 logger.error("Troubleshooting steps:")
                 logger.error("1. Check your internet connection")
                 logger.error(f"2. Verify the homeserver URL is correct: {homeserver}")
                 logger.error("3. Check if the Matrix server is online")
-            elif "SSLError" in error_type or "CertificateError" in error_type:
+            elif isinstance(e, (ssl.SSLError, ssl.CertificateError)):
                 logger.error("SSL/TLS certificate issue detected.")
                 logger.error(
                     "This may indicate a problem with the server's SSL certificate."
