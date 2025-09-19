@@ -7,8 +7,9 @@ import importlib.resources
 import os
 import shutil
 import sys
-import yaml
 from collections.abc import Mapping
+
+import yaml
 
 # Import version from package
 from mmrelay import __version__
@@ -1061,7 +1062,10 @@ def check_config(args=None):
                 print("\n✅ Configuration file is valid!")
                 return True
             except (OSError, ValueError, UnicodeDecodeError) as e:
-                print(f"Error checking configuration: {e.__class__.__name__}: {e}", file=sys.stderr)
+                print(
+                    f"Error checking configuration: {e.__class__.__name__}: {e}",
+                    file=sys.stderr,
+                )
             except Exception as e:
                 print(f"Error checking configuration: {e}", file=sys.stderr)
                 return False

@@ -512,9 +512,15 @@ def check_lingering_enabled():
     """
     try:
         import getpass
-        username = os.environ.get("USER") or os.environ.get("USERNAME") or getpass.getuser()
+
+        username = (
+            os.environ.get("USER") or os.environ.get("USERNAME") or getpass.getuser()
+        )
         if not username:
-            print("Error checking lingering status: could not determine current user", file=sys.stderr)
+            print(
+                "Error checking lingering status: could not determine current user",
+                file=sys.stderr,
+            )
             return False
         loginctl = shutil.which("loginctl")
         if not loginctl:
@@ -539,9 +545,15 @@ def enable_lingering():
     """
     try:
         import getpass
-        username = os.environ.get("USER") or os.environ.get("USERNAME") or getpass.getuser()
+
+        username = (
+            os.environ.get("USER") or os.environ.get("USERNAME") or getpass.getuser()
+        )
         if not username:
-            print("Error enabling lingering: could not determine current user", file=sys.stderr)
+            print(
+                "Error enabling lingering: could not determine current user",
+                file=sys.stderr,
+            )
             return False
         print(f"Enabling lingering for user {username}...")
         result = subprocess.run(
