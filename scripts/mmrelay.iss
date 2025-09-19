@@ -10,6 +10,7 @@ DefaultGroupName=MM Relay
 UninstallFilesDir={app}
 OutputDir=.
 OutputBaseFilename=MMRelay_setup_{#AppVersion}
+PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog commandline
 
 [Files]
