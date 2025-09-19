@@ -334,14 +334,28 @@ def load_database_config_from_env():
 
 def is_e2ee_enabled(config):
     """
-    Return True if End-to-End Encryption (E2EE) is enabled in the provided configuration.
-    
-    Checks the `matrix.encryption.enabled` and the legacy `matrix.e2ee.enabled` keys for backward compatibility and returns True if either is truthy. If `config` is falsy or neither key is set, returns False.
+    Check if End-to-End Encryption (E2EE) is enabled in the configuration.
+
+    Checks both 'encryption' and 'e2ee' keys in the matrix section for backward compatibility.
+    On Windows, this always returns False since E2EE is not supported.
+
+    Parameters:
+        config (dict): Configuration dictionary to check.
+
+    Returns:
+        bool: True if E2EE is enabled, False otherwise.
     """
+    # E2EE is not supported on Windows
+    if sys.platform == "win32":
+        return False
+
     if not config:
         return False
 
     matrix_cfg = config.get("matrix", {}) or {}
+    if not matrix_cfg:
+        return False
+
     encryption_enabled = matrix_cfg.get("encryption", {}).get("enabled", False)
     e2ee_enabled = matrix_cfg.get("e2ee", {}).get("enabled", False)
 
@@ -351,15 +365,21 @@ def is_e2ee_enabled(config):
 def check_e2ee_enabled_silently(args=None):
     """
     Return True if End-to-End Encryption (E2EE) is enabled in any discovered configuration.
-    
+
     Searches candidate configuration file paths (as returned by get_config_paths(args)), attempts to load each existing file with yaml.safe_load, and returns True as soon as a parsed config indicates E2EE is enabled. All I/O and YAML parsing errors are ignored so the function never raises; if no valid config enabling E2EE is found, returns False.
-    
+
+    On Windows, this always returns False since E2EE is not supported.
+
     Parameters:
         args: Optional parsed command-line arguments that influence config search order.
-    
+
     Returns:
         bool: True if E2EE is enabled in any readable config file, otherwise False.
     """
+    # E2EE is not supported on Windows
+    if sys.platform == "win32":
+        return False
+
     # Get config paths without logging
     config_paths = get_config_paths(args)
 
@@ -427,16 +447,25 @@ def load_credentials():
         config_dir = get_base_dir()
         credentials_path = os.path.join(config_dir, "credentials.json")
 
+        logger.debug(f"Looking for credentials at: {credentials_path}")
+
         if os.path.exists(credentials_path):
             with open(credentials_path, "r", encoding="utf-8") as f:
                 credentials = json.load(f)
-            logger.debug(f"Loaded credentials from {credentials_path}")
+            logger.debug(f"Successfully loaded credentials from {credentials_path}")
             return credentials
         else:
             logger.debug(f"No credentials file found at {credentials_path}")
+            # On Windows, also log the directory contents for debugging
+            if sys.platform == "win32" and os.path.exists(config_dir):
+                try:
+                    files = os.listdir(config_dir)
+                    logger.debug(f"Directory contents of {config_dir}: {files}")
+                except OSError:
+                    pass
             return None
     except (OSError, PermissionError, json.JSONDecodeError) as e:
-        logger.error(f"Error loading credentials.json: {e}")
+        logger.error(f"Error loading credentials.json from {config_dir}: {e}")
         return None
 
 
@@ -458,7 +487,12 @@ def save_credentials(credentials):
     """
     try:
         config_dir = get_base_dir()
+        # Ensure the directory exists and is writable
+        os.makedirs(config_dir, exist_ok=True)
         credentials_path = os.path.join(config_dir, "credentials.json")
+
+        # Log the path for debugging, especially on Windows
+        logger.info(f"Saving credentials to: {credentials_path}")
 
         with open(credentials_path, "w", encoding="utf-8") as f:
             json.dump(credentials, f, indent=2)
@@ -466,9 +500,20 @@ def save_credentials(credentials):
         # Set secure permissions on Unix systems (600 - owner read/write only)
         set_secure_file_permissions(credentials_path)
 
-        logger.info(f"Saved credentials to {credentials_path}")
+        logger.info(f"Successfully saved credentials to {credentials_path}")
+
+        # Verify the file was actually created
+        if os.path.exists(credentials_path):
+            logger.debug(f"Verified credentials.json exists at {credentials_path}")
+        else:
+            logger.error(f"Failed to create credentials.json at {credentials_path}")
+
     except (OSError, PermissionError) as e:
-        logger.error(f"Error saving credentials.json: {e}")
+        logger.error(f"Error saving credentials.json to {config_dir}: {e}")
+        # Try to provide helpful Windows-specific guidance
+        if sys.platform == "win32":
+            logger.error("On Windows, ensure the application has write permissions to the user data directory")
+            logger.error(f"Attempted path: {config_dir}")
 
 
 # Set up a basic logger for config

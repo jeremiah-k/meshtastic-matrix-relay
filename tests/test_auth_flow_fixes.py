@@ -1,0 +1,103 @@
+"""Tests for authentication flow fixes."""
+
+import json
+import os
+import tempfile
+import unittest
+from unittest.mock import MagicMock, patch, mock_open
+
+from mmrelay.config import check_e2ee_enabled_silently, is_e2ee_enabled
+
+
+class TestAuthFlowFixes(unittest.TestCase):
+    """Test authentication flow and E2EE detection fixes."""
+
+    def test_e2ee_detection_with_no_config(self):
+        """Test that E2EE is not detected as enabled when no config exists."""
+        # Test with no config file
+        with patch("mmrelay.config.get_config_paths", return_value=["/nonexistent/config.yaml"]):
+            result = check_e2ee_enabled_silently()
+            self.assertFalse(result, "E2EE should not be detected as enabled when no config exists")
+
+    def test_e2ee_detection_with_empty_config(self):
+        """Test that E2EE is not detected as enabled with empty config."""
+        # Test with empty config file
+        with patch("mmrelay.config.get_config_paths", return_value=["/test/config.yaml"]):
+            with patch("os.path.isfile", return_value=True):
+                with patch("builtins.open", mock_open(read_data="")):
+                    with patch("yaml.load", return_value={}):
+                        result = check_e2ee_enabled_silently()
+                        self.assertFalse(result, "E2EE should not be detected as enabled with empty config")
+
+    def test_e2ee_detection_with_no_matrix_section(self):
+        """Test that E2EE is not detected as enabled when matrix section is missing."""
+        config = {"other_section": {"key": "value"}}
+        result = is_e2ee_enabled(config)
+        self.assertFalse(result, "E2EE should not be detected as enabled without matrix section")
+
+    def test_windows_e2ee_always_disabled(self):
+        """Test that E2EE is always disabled on Windows."""
+        # Test with config that would enable E2EE on other platforms
+        config_with_e2ee = {
+            "matrix": {
+                "e2ee": {"enabled": True}
+            }
+        }
+
+        with patch("sys.platform", "win32"):
+            result = is_e2ee_enabled(config_with_e2ee)
+            self.assertFalse(result, "E2EE should always be disabled on Windows")
+
+            # Test silent check too
+            result = check_e2ee_enabled_silently()
+            self.assertFalse(result, "E2EE silent check should always return False on Windows")
+
+    def test_windows_credentials_path_handling(self):
+        """Test that credentials.json path handling works on Windows."""
+        from mmrelay.config import save_credentials, load_credentials
+
+        # Mock Windows paths
+        with patch("sys.platform", "win32"):
+            with patch("mmrelay.config.get_base_dir", return_value="C:\\Users\\Test\\AppData\\Local\\mmrelay"):
+                with patch("os.makedirs") as mock_makedirs:
+                    with patch("builtins.open", mock_open()) as mock_file:
+                        with patch("os.path.exists", return_value=True):
+                            # Test saving credentials
+                            test_credentials = {
+                                "homeserver": "https://matrix.example.com",
+                                "access_token": "test_token",
+                                "user_id": "@test:example.com",
+                                "device_id": "TEST_DEVICE"
+                            }
+
+                            save_credentials(test_credentials)
+
+                            # Should create directory
+                            mock_makedirs.assert_called_with("C:\\Users\\Test\\AppData\\Local\\mmrelay", exist_ok=True)
+
+                            # Should open the correct path
+                            expected_path = "C:\\Users\\Test\\AppData\\Local\\mmrelay\\credentials.json"
+                            mock_file.assert_called_with(expected_path, "w", encoding="utf-8")
+
+    def test_credentials_loading_with_debug_info(self):
+        """Test that credentials loading provides debug info on Windows."""
+        from mmrelay.config import load_credentials
+
+        with patch("sys.platform", "win32"):
+            with patch("mmrelay.config.get_base_dir", return_value="C:\\Users\\Test\\AppData\\Local\\mmrelay"):
+                with patch("os.path.exists", return_value=False):
+                    with patch("os.listdir", return_value=["config.yaml", "other_file.txt"]):
+                        with patch("mmrelay.config.logger") as mock_logger:
+                            result = load_credentials()
+
+                            # Should return None when file doesn't exist
+                            self.assertIsNone(result)
+
+                            # Should log debug info about directory contents on Windows
+                            mock_logger.debug.assert_called()
+                            debug_calls = [call.args[0] for call in mock_logger.debug.call_args_list]
+                            self.assertTrue(any("Directory contents" in call for call in debug_calls))
+
+
+if __name__ == "__main__":
+    unittest.main()
