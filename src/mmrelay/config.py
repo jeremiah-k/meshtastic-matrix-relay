@@ -470,8 +470,8 @@ def load_credentials():
                 except OSError:
                     pass
             return None
-    except (OSError, PermissionError, json.JSONDecodeError) as e:
-        logger.error(f"Error loading credentials.json from {config_dir}: {e}")
+    except (OSError, PermissionError, json.JSONDecodeError):
+        logger.exception(f"Error loading credentials.json from {config_dir}")
         return None
 
 
@@ -514,8 +514,8 @@ def save_credentials(credentials):
         else:
             logger.error(f"Failed to create credentials.json at {credentials_path}")
 
-    except (OSError, PermissionError) as e:
-        logger.error(f"Error saving credentials.json to {config_dir}: {e}")
+    except (OSError, PermissionError):
+        logger.exception(f"Error saving credentials.json to {config_dir}")
         # Try to provide helpful Windows-specific guidance
         if sys.platform == "win32":
             logger.error("On Windows, ensure the application has write permissions to the user data directory")

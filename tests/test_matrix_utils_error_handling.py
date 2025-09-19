@@ -7,6 +7,7 @@ added to matrix_utils.py for better user experience.
 
 import os
 import sys
+import types
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -56,6 +57,30 @@ class FakeNioErrorResponseWithException:
 class TestDetailedSyncErrorMessage(unittest.TestCase):
     """Test cases for _get_detailed_sync_error_message function."""
 
+    def setUp(self):
+        """Set up fake nio module for testing."""
+        # Create fake nio module to avoid isinstance patching
+        self.fake_nio = types.ModuleType("nio")
+
+        class FakeErrorResponse:
+            """Fake nio.ErrorResponse for isinstance checks."""
+            pass
+
+        self.fake_nio.ErrorResponse = FakeErrorResponse
+
+        # Store original module if it exists
+        self.original_nio = sys.modules.get("nio")
+
+        # Install fake module
+        sys.modules["nio"] = self.fake_nio
+
+    def tearDown(self):
+        """Restore original nio module."""
+        if self.original_nio is not None:
+            sys.modules["nio"] = self.original_nio
+        else:
+            sys.modules.pop("nio", None)
+
     def test_nio_error_response_with_message(self):
         """Test handling of nio ErrorResponse with message."""
         # Create a fake nio ErrorResponse
@@ -94,9 +119,8 @@ class TestDetailedSyncErrorMessage(unittest.TestCase):
         mock_response = MagicMock()
         mock_response.message = "Connection timeout"
 
-        # Mock the nio import to avoid isinstance issues with mocked nio
-        with patch("mmrelay.matrix_utils.isinstance", return_value=False):
-            result = _get_detailed_sync_error_message(mock_response)
+        # Use fake nio module instead of patching isinstance
+        result = _get_detailed_sync_error_message(mock_response)
 
         self.assertEqual(result, "Connection timeout")
 
@@ -106,9 +130,8 @@ class TestDetailedSyncErrorMessage(unittest.TestCase):
         mock_response.message = None
         mock_response.status_code = 401
 
-        # Mock the nio import to avoid isinstance issues with mocked nio
-        with patch("mmrelay.matrix_utils.isinstance", return_value=False):
-            result = _get_detailed_sync_error_message(mock_response)
+        # Use fake nio module instead of patching isinstance
+        result = _get_detailed_sync_error_message(mock_response)
 
         self.assertEqual(
             result, "Authentication failed - invalid or expired credentials"
@@ -120,9 +143,8 @@ class TestDetailedSyncErrorMessage(unittest.TestCase):
         mock_response.message = None
         mock_response.status_code = 403
 
-        # Mock the nio import to avoid isinstance issues with mocked nio
-        with patch("mmrelay.matrix_utils.isinstance", return_value=False):
-            result = _get_detailed_sync_error_message(mock_response)
+        # Use fake nio module instead of patching isinstance
+        result = _get_detailed_sync_error_message(mock_response)
 
         self.assertEqual(result, "Access forbidden - check user permissions")
 
@@ -132,9 +154,8 @@ class TestDetailedSyncErrorMessage(unittest.TestCase):
         mock_response.message = None
         mock_response.status_code = 404
 
-        # Mock the nio import to avoid isinstance issues with mocked nio
-        with patch("mmrelay.matrix_utils.isinstance", return_value=False):
-            result = _get_detailed_sync_error_message(mock_response)
+        # Use fake nio module instead of patching isinstance
+        result = _get_detailed_sync_error_message(mock_response)
 
         self.assertEqual(result, "Server not found - check homeserver URL")
 
@@ -144,9 +165,8 @@ class TestDetailedSyncErrorMessage(unittest.TestCase):
         mock_response.message = None
         mock_response.status_code = 429
 
-        # Mock the nio import to avoid isinstance issues with mocked nio
-        with patch("mmrelay.matrix_utils.isinstance", return_value=False):
-            result = _get_detailed_sync_error_message(mock_response)
+        # Use fake nio module instead of patching isinstance
+        result = _get_detailed_sync_error_message(mock_response)
 
         self.assertEqual(result, "Rate limited - too many requests")
 
@@ -156,9 +176,8 @@ class TestDetailedSyncErrorMessage(unittest.TestCase):
         mock_response.message = None
         mock_response.status_code = 502
 
-        # Mock the nio import to avoid isinstance issues with mocked nio
-        with patch("mmrelay.matrix_utils.isinstance", return_value=False):
-            result = _get_detailed_sync_error_message(mock_response)
+        # Use fake nio module instead of patching isinstance
+        result = _get_detailed_sync_error_message(mock_response)
 
         self.assertEqual(
             result, "Server error (HTTP 502) - the Matrix server is experiencing issues"
@@ -170,9 +189,8 @@ class TestDetailedSyncErrorMessage(unittest.TestCase):
         mock_response.message = None
         mock_response.status_code = 418
 
-        # Mock the nio import to avoid isinstance issues with mocked nio
-        with patch("mmrelay.matrix_utils.isinstance", return_value=False):
-            result = _get_detailed_sync_error_message(mock_response)
+        # Use fake nio module instead of patching isinstance
+        result = _get_detailed_sync_error_message(mock_response)
 
         self.assertEqual(result, "HTTP error 418")
 
@@ -184,9 +202,8 @@ class TestDetailedSyncErrorMessage(unittest.TestCase):
         mock_response.transport_response = MagicMock()
         mock_response.transport_response.status_code = 0
 
-        # Mock the nio import to avoid isinstance issues with mocked nio
-        with patch("mmrelay.matrix_utils.isinstance", return_value=False):
-            result = _get_detailed_sync_error_message(mock_response)
+        # Use fake nio module instead of patching isinstance
+        result = _get_detailed_sync_error_message(mock_response)
 
         self.assertEqual(result, "Transport error: HTTP 0")
 
@@ -200,9 +217,8 @@ class TestDetailedSyncErrorMessage(unittest.TestCase):
         # Make str() return None to trigger the fallback
         mock_response.__str__ = MagicMock(return_value="None")
 
-        # Mock the nio import to avoid isinstance issues with mocked nio
-        with patch("mmrelay.matrix_utils.isinstance", return_value=False):
-            result = _get_detailed_sync_error_message(mock_response)
+        # Use fake nio module instead of patching isinstance
+        result = _get_detailed_sync_error_message(mock_response)
 
         self.assertEqual(result, "Network connectivity issue or server unreachable")
 

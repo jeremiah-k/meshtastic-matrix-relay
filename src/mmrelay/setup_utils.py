@@ -203,7 +203,7 @@ def get_template_service_path():
     # Warning output to help diagnose issues
     print("Warning: Could not find mmrelay.service in any of these locations:", file=sys.stderr)
     for path in template_paths:
-        print(f"  - {path}")
+        print(f"  - {path}", file=sys.stderr)
 
     # If we get here, we couldn't find the template
     return None
@@ -509,7 +509,7 @@ def check_lingering_enabled():
         )
         return result.returncode == 0 and "Linger=yes" in result.stdout
     except (OSError, subprocess.SubprocessError, KeyError) as e:
-        print(f"Error checking lingering status: {e}")
+        print(f"Error checking lingering status: {e}", file=sys.stderr)
         return False
 
 

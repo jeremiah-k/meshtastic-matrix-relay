@@ -21,7 +21,7 @@ class TestCLIWindowsConsoleSetup(unittest.TestCase):
 
     @patch("sys.platform", "win32")
     @patch("os.name", "nt")  # Also mock os.name to make is_windows() return True
-    @patch("mmrelay.windows_utils.setup_windows_console")
+    @patch("mmrelay.cli.setup_windows_console")
     @patch("mmrelay.cli.parse_arguments")
     def test_main_calls_windows_console_setup(
         self, mock_parse_args, mock_setup_console
