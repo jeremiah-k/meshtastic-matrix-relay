@@ -17,7 +17,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, mock_open, patch
+from unittest.mock import MagicMock, mock_open, patch, call
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -28,17 +28,21 @@ from mmrelay.setup_utils import (
     create_service_file,
     enable_lingering,
     get_executable_path,
+    get_resolved_exec_start,
     get_template_service_content,
     get_template_service_path,
     get_user_service_path,
+    install_service,
     is_service_active,
     is_service_enabled,
+    print_service_commands,
     read_service_file,
     reload_daemon,
     service_exists,
     service_needs_update,
     show_service_status,
     start_service,
+    wait_for_service_start,
 )
 
 
@@ -80,6 +84,118 @@ class TestSetupUtils(unittest.TestCase):
         path = get_executable_path()
 
         self.assertEqual(path, f"{sys.executable} -m mmrelay")
+
+    @patch("shutil.which")
+    def test_get_resolved_exec_start_found(self, mock_which):
+        """Test get_resolved_exec_start when mmrelay binary is found."""
+        mock_which.return_value = "/usr/local/bin/mmrelay"
+
+        result = get_resolved_exec_start()
+
+        expected = "ExecStart=/usr/local/bin/mmrelay --config %h/.mmrelay/config.yaml --logfile %h/.mmrelay/logs/mmrelay.log"
+        self.assertEqual(result, expected)
+
+    @patch("shutil.which")
+    def test_get_resolved_exec_start_not_found(self, mock_which):
+        """Test get_resolved_exec_start when mmrelay binary is not found."""
+        mock_which.return_value = None
+
+        result = get_resolved_exec_start()
+
+        expected = f"ExecStart={sys.executable} -m mmrelay --config %h/.mmrelay/config.yaml --logfile %h/.mmrelay/logs/mmrelay.log"
+        self.assertEqual(result, expected)
+
+    @patch("builtins.print")
+    def test_print_service_commands(self, mock_print):
+        """Test that print_service_commands prints the correct commands."""
+        print_service_commands()
+
+        # Verify all expected commands were printed
+        expected_calls = [
+            call("  systemctl --user start mmrelay.service    # Start the service"),
+            call("  systemctl --user stop mmrelay.service     # Stop the service"),
+            call("  systemctl --user restart mmrelay.service  # Restart the service"),
+            call("  systemctl --user status mmrelay.service   # Check service status"),
+        ]
+        mock_print.assert_has_calls(expected_calls)
+
+    @patch("mmrelay.setup_utils.is_service_active")
+    @patch("time.sleep")
+    def test_wait_for_service_start_early_completion(self, mock_sleep, mock_is_active):
+        """Test wait_for_service_start completes early when service becomes active."""
+        # Mock service becoming active on first check (i=5)
+        mock_is_active.return_value = True
+
+        wait_for_service_start()
+
+        # Should have called sleep 6 times (iterations 0-5)
+        self.assertEqual(mock_sleep.call_count, 6)
+        # Should have checked service status once (when i=5)
+        self.assertEqual(mock_is_active.call_count, 1)
+
+    @patch("mmrelay.setup_utils.is_service_active")
+    @patch("time.sleep")
+    def test_wait_for_service_start_full_duration(self, mock_sleep, mock_is_active):
+        """Test wait_for_service_start runs full 10 seconds when service doesn't start."""
+        # Mock service never becoming active
+        mock_is_active.return_value = False
+
+        wait_for_service_start()
+
+        # Should have called sleep 10 times (full duration)
+        self.assertEqual(mock_sleep.call_count, 10)
+        # Should have checked service status 5 times (iterations 5-9)
+        self.assertEqual(mock_is_active.call_count, 5)
+
+    @patch("mmrelay.setup_utils.read_service_file")
+    @patch("mmrelay.setup_utils.service_needs_update")
+    @patch("mmrelay.setup_utils.print_service_commands")
+    @patch("builtins.input")
+    def test_install_service_update_cancelled_by_user(self, mock_input, mock_print_commands, mock_needs_update, mock_read_service):
+        """Test install_service when user cancels update."""
+        mock_read_service.return_value = "existing service content"
+        mock_needs_update.return_value = (True, "Executable path changed")
+        mock_input.return_value = "n"
+
+        result = install_service()
+
+        self.assertTrue(result)
+        mock_print_commands.assert_called_once()
+        mock_input.assert_called_once_with("Do you want to update the service file? (y/n): ")
+
+    @patch("mmrelay.setup_utils.read_service_file")
+    @patch("mmrelay.setup_utils.service_needs_update")
+    @patch("mmrelay.setup_utils.print_service_commands")
+    @patch("builtins.input")
+    def test_install_service_update_cancelled_by_eof(self, mock_input, mock_print_commands, mock_needs_update, mock_read_service):
+        """Test install_service when user input is cancelled with EOF."""
+        mock_read_service.return_value = "existing service content"
+        mock_needs_update.return_value = (True, "Executable path changed")
+        mock_input.side_effect = EOFError()
+
+        result = install_service()
+
+        self.assertTrue(result)
+        mock_print_commands.assert_called_once()
+
+    @patch("mmrelay.setup_utils.get_template_service_path")
+    @patch("os.path.exists")
+    @patch("builtins.open", side_effect=IOError("File read error"))
+    @patch("sys.stderr")
+    def test_get_template_service_content_file_read_error(self, mock_stderr, mock_open, mock_exists, mock_get_path):
+        """Test get_template_service_content handles file read errors gracefully."""
+        mock_get_path.return_value = "/path/to/template"
+        mock_exists.return_value = True
+
+        # This should fall back to importlib.resources or default template
+        result = get_template_service_content()
+
+        # Should have attempted to read the file and caught the error
+        mock_open.assert_called()
+        # Should have printed error message
+        mock_stderr.write.assert_called()
+
+
 
     @patch("mmrelay.setup_utils.Path.home")
     def test_get_user_service_path(self, mock_home):
