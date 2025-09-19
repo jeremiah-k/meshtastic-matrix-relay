@@ -86,27 +86,33 @@ class TestAuthFlowFixes(unittest.TestCase):
 
         with patch("sys.platform", "win32"):
             config_dir = "C:\\Users\\Test\\AppData\\Local\\mmrelay"
+            credentials_path = os.path.join(config_dir, "credentials.json")
+
             with patch("mmrelay.config.get_base_dir", return_value=config_dir):
                 # Mock os.path.exists to return False for credentials.json but True for the directory
                 def mock_exists(path):
-                    if path.endswith("credentials.json"):
-                        return False
+                    if path == credentials_path:
+                        return False  # credentials.json doesn't exist
                     elif path == config_dir:
-                        return True
+                        return True   # but the directory exists
                     return False
 
                 with patch("os.path.exists", side_effect=mock_exists):
-                    with patch("os.listdir", return_value=["config.yaml", "other_file.txt"]):
+                    with patch("os.listdir", return_value=["config.yaml", "other_file.txt"]) as mock_listdir:
                         with patch("mmrelay.config.logger") as mock_logger:
                             result = load_credentials()
 
                             # Should return None when file doesn't exist
                             self.assertIsNone(result)
 
+                            # Should have called listdir on the config directory
+                            mock_listdir.assert_called_once_with(config_dir)
+
                             # Should log debug info about directory contents on Windows
                             mock_logger.debug.assert_called()
                             debug_calls = [call.args[0] for call in mock_logger.debug.call_args_list]
-                            self.assertTrue(any("Directory contents" in call for call in debug_calls))
+                            self.assertTrue(any("Directory contents" in call for call in debug_calls),
+                                          f"Expected 'Directory contents' in debug calls: {debug_calls}")
 
 
 if __name__ == "__main__":

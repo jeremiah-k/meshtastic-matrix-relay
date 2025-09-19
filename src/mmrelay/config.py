@@ -364,9 +364,15 @@ def is_e2ee_enabled(config):
 
 def check_e2ee_enabled_silently(args=None):
     """
-    Return True if End-to-End Encryption (E2EE) is enabled in any discovered configuration.
+    Return True if End-to-End Encryption (E2EE) is enabled in the active configuration.
 
-    Searches candidate configuration file paths (as returned by get_config_paths(args)), attempts to load each existing file with yaml.safe_load, and returns True as soon as a parsed config indicates E2EE is enabled. All I/O and YAML parsing errors are ignored so the function never raises; if no valid config enabling E2EE is found, returns False.
+    Searches candidate configuration file paths in priority order (as returned by
+    get_config_paths(args)) and returns the E2EE status from the first valid config
+    file found. This respects configuration priority: command-line specified configs
+    take precedence over user directory configs, etc.
+
+    All I/O and YAML parsing errors are silently ignored. If no valid config file
+    is found, returns False.
 
     On Windows, this always returns False since E2EE is not supported.
 
@@ -374,7 +380,7 @@ def check_e2ee_enabled_silently(args=None):
         args: Optional parsed command-line arguments that influence config search order.
 
     Returns:
-        bool: True if E2EE is enabled in any readable config file, otherwise False.
+        bool: True if E2EE is enabled in the first valid config file, otherwise False.
     """
     # E2EE is not supported on Windows
     if sys.platform == "win32":

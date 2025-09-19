@@ -24,12 +24,11 @@ SYSTEMCTL = shutil.which("systemctl") or "/usr/bin/systemctl"
 
 def get_executable_path():
     """
-    Return the resolved command to invoke the mmrelay executable.
-    
-    Tries to locate an `mmrelay` binary on PATH and returns its absolute path when found.
-    If not found, emits a warning to stdout and returns a fallback invocation that uses
-    the current Python interpreter to run mmrelay as a module (e.g. "<python> -m mmrelay").
-    
+    Return the resolved command to invoke the mmrelay executable with user feedback.
+
+    This is a wrapper around get_resolved_exec_cmd() that adds print statements
+    for user feedback during setup operations.
+
     Returns:
         str: Either the filesystem path to the `mmrelay` executable or a Python module
         invocation string using the current interpreter.
@@ -40,9 +39,10 @@ def get_executable_path():
         return mmrelay_path
     else:
         print(
-            "Warning: Could not find mmrelay executable in PATH. Using current Python interpreter."
+            "Warning: Could not find mmrelay executable in PATH. Using current Python interpreter.",
+            file=sys.stderr
         )
-        return f"{sys.executable} -m mmrelay"
+        return get_resolved_exec_cmd()
 
 
 def _quote_if_needed(path: str) -> str:

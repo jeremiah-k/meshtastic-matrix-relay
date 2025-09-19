@@ -1034,7 +1034,8 @@ def check_config(args=None):
                         # Special validation for message_delay
                         if option == "message_delay" and value < 2.0:
                             print(
-                                f"Error: 'message_delay' must be at least 2.0 seconds (firmware limitation), got: {value}"
+                                f"Error: 'message_delay' must be at least 2.0 seconds (firmware limitation), got: {value}",
+                                file=sys.stderr
                             )
                             return False
                     else:
@@ -1048,16 +1049,18 @@ def check_config(args=None):
                 # Check for deprecated db section
                 if "db" in config:
                     print(
-                        "\nWarning: 'db' section is deprecated. Please use 'database' instead."
+                        "\nWarning: 'db' section is deprecated. Please use 'database' instead.",
+                        file=sys.stderr
                     )
                     print(
-                        "This option still works but may be removed in future versions.\n"
+                        "This option still works but may be removed in future versions.\n",
+                        file=sys.stderr
                     )
 
                 print("\n✅ Configuration file is valid!")
                 return True
             except Exception as e:
-                print(f"Error checking configuration: {e}")
+                print(f"Error checking configuration: {e}", file=sys.stderr)
                 return False
 
     print("Error: No configuration file found in any of the following locations:")
@@ -1087,8 +1090,8 @@ def main():
             from mmrelay.windows_utils import setup_windows_console
 
             setup_windows_console()
-        except Exception:  # nosec B110
-            # windows_utils not available, continue without it
+        except (ImportError, OSError, AttributeError):
+            # windows_utils not available or Windows console setup failed
             # This is intentional - we want to continue if Windows utils fail
             pass
 
@@ -1297,8 +1300,8 @@ def handle_auth_login(args):
             else:
                 print("\nMatrix Bot Authentication")
                 print("=========================")
-        except Exception as e:
-            # Fallback if silent checking fails
+        except (OSError, PermissionError, ImportError, ValueError) as e:
+            # Fallback if silent checking fails due to config file or import issues
             from mmrelay.log_utils import get_logger
             logger = get_logger("CLI")
             logger.debug(f"Failed to silently check E2EE status: {e}")
@@ -1747,7 +1750,7 @@ def handle_config_diagnose(args):
         return 0
 
     except Exception as e:
-        print(f"❌ Diagnostics failed: {e}")
+        print(f"❌ Diagnostics failed: {e}", file=sys.stderr)
 
         # Provide platform-specific guidance
         try:
@@ -1755,7 +1758,7 @@ def handle_config_diagnose(args):
 
             if is_windows():
                 error_msg = get_windows_error_message(e)
-                print(f"\nWindows-specific guidance: {error_msg}")
+                print(f"\nWindows-specific guidance: {error_msg}", file=sys.stderr)
         except ImportError:
             pass
 
