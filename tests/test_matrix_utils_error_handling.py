@@ -20,6 +20,13 @@ class FakeNioErrorResponse:
     """Fake nio.ErrorResponse for testing."""
 
     def __init__(self, message=None, status_code=None):
+        """
+        Initialize the error-like object.
+        
+        Parameters:
+            message (str|None): Human-readable error message, if available.
+            status_code (int|None): HTTP status code associated with the error, if known.
+        """
         self.message = message
         self.status_code = status_code
 
@@ -28,10 +35,21 @@ class FakeNioErrorResponseWithException:
     """Fake nio.ErrorResponse that raises exception when accessing message."""
 
     def __init__(self, status_code=None):
+        """
+        Initialize the object with an optional HTTP status code.
+        
+        Parameters:
+            status_code (int | None): HTTP status code associated with the error response (e.g., 404). If omitted, no status code is set.
+        """
         self.status_code = status_code
 
     @property
     def message(self):
+        """
+        Simulate an attribute access error by always raising an AttributeError.
+        
+        This property/method is intended for tests; calling it will raise AttributeError("Test exception") to mimic a failure when reading a `.message` attribute on a response object.
+        """
         raise AttributeError("Test exception")
 
 
@@ -206,7 +224,11 @@ class TestMatrixLoginErrorHandling(unittest.TestCase):
     """Test cases for enhanced Matrix login error handling."""
 
     def setUp(self):
-        """Set up test fixtures."""
+        """
+        Prepare test fixtures by patching mmrelay.matrix_utils.matrix_homeserver to "https://matrix.org" and starting the patcher.
+        
+        Stores the started patcher on self.patcher_homeserver and the mock value on self.mock_homeserver for use in tests and cleanup.
+        """
         # Mock the global variables
         self.patcher_homeserver = patch(
             "mmrelay.matrix_utils.matrix_homeserver", "https://matrix.org"
@@ -214,7 +236,11 @@ class TestMatrixLoginErrorHandling(unittest.TestCase):
         self.mock_homeserver = self.patcher_homeserver.start()
 
     def tearDown(self):
-        """Clean up patches."""
+        """
+        Stop and remove the homeserver patch created in setUp.
+        
+        Called after each test to stop self.patcher_homeserver and restore the original matrix_homeserver value.
+        """
         self.patcher_homeserver.stop()
 
     @patch("mmrelay.matrix_utils.logger")

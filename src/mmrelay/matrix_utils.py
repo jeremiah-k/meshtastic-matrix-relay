@@ -244,13 +244,15 @@ def _get_msgs_to_keep_config():
 
 def _get_detailed_sync_error_message(sync_response) -> str:
     """
-    Extract detailed error information from a Matrix sync response.
-
-    Args:
-        sync_response: The sync response object that contains error information
-
+    Return a concise, user-facing description of why a Matrix initial sync failed.
+    
+    Given a sync response object (commonly a nio ErrorResponse or an HTTP/transport error object), extract the most specific, human-readable failure reason available. The helper maps common HTTP status codes (401, 403, 404, 429, 5xx) to friendly messages, inspects nio error messages and transport responses, and falls back to a generic network/connectivity message when necessary.
+    
+    Parameters:
+        sync_response: The sync response or error object returned by the Matrix client; can be a nio ErrorResponse, an HTTP/transport error, or any object carrying `message`, `status_code`, or `transport_response` attributes.
+    
     Returns:
-        str: A detailed error message with specific information about the failure
+        str: A short, user-focused error description suitable for logs and user-facing troubleshooting hints.
     """
     try:
         # Handle nio ErrorResponse explicitly when available (module-level alias)
@@ -308,12 +310,17 @@ def _create_mapping_info(
     matrix_event_id, room_id, text, meshnet=None, msgs_to_keep=None
 ):
     """
-    Create a metadata dictionary linking a Matrix event to a Meshtastic message for message mapping.
-
-    Removes quoted lines from the message text and includes identifiers and message retention settings. Returns `None` if any required parameter is missing.
-
+    Create metadata linking a Matrix event to a Meshtastic message for cross-network mapping.
+    
+    Strips quoted lines from `text` and populates a mapping dict containing identifiers and retention settings. If `msgs_to_keep` is None the value is obtained from _get_msgs_to_keep_config(). Returns None when any of `matrix_event_id`, `room_id`, or `text` is missing or falsy.
+    
     Returns:
-        dict: Mapping information for the message queue, or `None` if required fields are missing.
+        dict or None: Mapping with keys:
+            - matrix_event_id: original Matrix event id
+            - room_id: Matrix room id
+            - text: cleaned text with quoted lines removed
+            - meshnet: optional meshnet name (may be None)
+            - msgs_to_keep: number of message mappings to retain
     """
     if not matrix_event_id or not room_id or not text:
         return None
