@@ -184,7 +184,7 @@ def get_template_service_content():
             with open(template_path, "r", encoding="utf-8") as f:
                 service_template = f.read()
             return service_template
-        except Exception as e:
+        except (OSError, IOError, UnicodeDecodeError) as e:
             print(f"Error reading service template file: {e}", file=sys.stderr)
 
     # If the helper function failed, try using importlib.resources directly
@@ -209,7 +209,7 @@ def get_template_service_content():
                 with open(template_path, "r", encoding="utf-8") as f:
                     service_template = f.read()
                 return service_template
-            except Exception as e:
+            except (OSError, IOError, UnicodeDecodeError) as e:
                 print(f"Error reading service template file: {e}", file=sys.stderr)
 
     # If we couldn't find or read the template file, use a default template
@@ -250,7 +250,8 @@ def is_service_enabled():
             text=True,
         )
         return result.returncode == 0 and result.stdout.strip() == "enabled"
-    except Exception:
+    except (OSError, subprocess.SubprocessError) as e:
+        print(f"Debug: Failed to check service enabled status: {e}", file=sys.stderr)
         return False
 
 
@@ -268,7 +269,8 @@ def is_service_active():
             text=True,
         )
         return result.returncode == 0 and result.stdout.strip() == "active"
-    except Exception:
+    except (OSError, subprocess.SubprocessError) as e:
+        print(f"Debug: Failed to check service active status: {e}", file=sys.stderr)
         return False
 
 
@@ -408,7 +410,8 @@ def check_loginctl_available():
             [path, "--version"], check=False, capture_output=True, text=True
         )
         return result.returncode == 0
-    except Exception:
+    except (OSError, subprocess.SubprocessError) as e:
+        print(f"Debug: Failed to check loginctl availability: {e}", file=sys.stderr)
         return False
 
 
@@ -428,7 +431,7 @@ def check_lingering_enabled():
             text=True,
         )
         return result.returncode == 0 and "Linger=yes" in result.stdout
-    except Exception as e:
+    except (OSError, subprocess.SubprocessError, KeyError) as e:
         print(f"Error checking lingering status: {e}")
         return False
 
@@ -454,7 +457,7 @@ def enable_lingering():
         else:
             print(f"Error enabling lingering: {result.stderr}")
             return False
-    except Exception as e:
+    except (OSError, subprocess.SubprocessError) as e:
         print(f"Error enabling lingering: {e}")
         return False
 
