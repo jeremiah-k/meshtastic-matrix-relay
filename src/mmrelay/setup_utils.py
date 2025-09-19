@@ -432,11 +432,9 @@ def service_needs_update():
 
     # Get the acceptable executable paths
     mmrelay_path = shutil.which("mmrelay")
-    acceptable_execs = []
+    acceptable_execs = [f"{_quote_if_needed(sys.executable)} -m mmrelay"]
     if mmrelay_path:
-        acceptable_execs = [mmrelay_path, "/usr/bin/env mmrelay"]
-    else:
-        acceptable_execs = [f"{_quote_if_needed(sys.executable)} -m mmrelay"]
+        acceptable_execs.extend([_quote_if_needed(mmrelay_path), "/usr/bin/env mmrelay"])
 
     # Check if the ExecStart line in the existing service file contains an acceptable executable form
     exec_start_line = next(

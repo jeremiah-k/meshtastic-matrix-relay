@@ -815,8 +815,11 @@ async def connect_matrix(passed_config=None):
                         logger.warning("E2EE will be disabled for this session.")
                         e2ee_enabled = False
                     else:
-                        e2ee_enabled = True
-                        logger.info("End-to-End Encryption (E2EE) is enabled")
+                        # Dependencies are available, keep the config-determined value
+                        if e2ee_enabled:
+                            logger.info("End-to-End Encryption (E2EE) is enabled")
+                        else:
+                            logger.debug("E2EE dependencies available but E2EE is disabled in configuration")
 
                         # Get store path from config or use default
                         if (
