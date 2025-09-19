@@ -320,10 +320,9 @@ def load_logging_config_from_env():
 
 def load_database_config_from_env():
     """
-    Load database configuration from environment variables.
-
-    Returns:
-        dict: Database configuration dictionary if any env vars found, None otherwise.
+    Build a database configuration fragment from environment variables.
+    
+    Reads environment variables defined in the module-level _DATABASE_ENV_VAR_MAPPINGS and converts them into a configuration dictionary suitable for merging into the application's config. Returns None if no mapped environment variables were present.
     """
     config = _load_config_from_env_mapping(_DATABASE_ENV_VAR_MAPPINGS)
     if config:
@@ -335,15 +334,9 @@ def load_database_config_from_env():
 
 def is_e2ee_enabled(config):
     """
-    Check if End-to-End Encryption (E2EE) is enabled in the configuration.
-
-    Checks both 'encryption' and 'e2ee' keys in the matrix section for backward compatibility.
-
-    Parameters:
-        config (dict): Configuration dictionary to check.
-
-    Returns:
-        bool: True if E2EE is enabled, False otherwise.
+    Return True if End-to-End Encryption (E2EE) is enabled in the provided configuration.
+    
+    Checks the `matrix.encryption.enabled` and the legacy `matrix.e2ee.enabled` keys for backward compatibility and returns True if either is truthy. If `config` is falsy or neither key is set, returns False.
     """
     if not config:
         return False
@@ -357,17 +350,15 @@ def is_e2ee_enabled(config):
 
 def check_e2ee_enabled_silently(args=None):
     """
-    Silently check if E2EE is enabled without producing warnings or errors.
-
-    This function searches for config files and parses them silently, ignoring
-    any errors if files don't exist or are invalid. This is useful for checking
-    E2EE status during initial setup when config files may not exist yet.
-
+    Return True if End-to-End Encryption (E2EE) is enabled in any discovered configuration.
+    
+    Searches candidate configuration file paths (as returned by get_config_paths(args)), attempts to load each existing file with yaml.safe_load, and returns True as soon as a parsed config indicates E2EE is enabled. All I/O and YAML parsing errors are ignored so the function never raises; if no valid config enabling E2EE is found, returns False.
+    
     Parameters:
-        args: Parsed command-line arguments used to influence the search order.
-
+        args: Optional parsed command-line arguments that influence config search order.
+    
     Returns:
-        bool: True if E2EE is enabled, False otherwise or if no config found.
+        bool: True if E2EE is enabled in any readable config file, otherwise False.
     """
     # Get config paths without logging
     config_paths = get_config_paths(args)
@@ -388,18 +379,19 @@ def check_e2ee_enabled_silently(args=None):
 
 def apply_env_config_overrides(config):
     """
-    Apply environment-variable-derived overrides to a configuration dictionary.
-
-    If `config` is falsy a new dict is created. Environment values from the Meshtastic, logging,
-    and database loaders are merged into the corresponding top-level sections ("meshtastic",
-    "logging", "database"); existing keys in those sections are updated with environment-supplied
-    values while other keys are left intact.
-
+    Apply environment-derived overrides to a configuration dictionary.
+    
+    If `config` is falsy, a new dict is created. Values obtained from environment variables
+    for Meshtastic, logging, and database settings are merged into the top-level keys
+    "meshtastic", "logging", and "database" respectively. Existing keys in those sections
+    are updated with environment-sourced values; other keys are preserved.
+    
     Parameters:
-        config (dict): Base configuration to update; may be None or an empty value.
-
+        config (dict | None): Base configuration to update. May be mutated in place.
+    
     Returns:
-        dict: The resulting configuration dictionary with environment overrides applied.
+        dict: The configuration dictionary with environment overrides applied (the same object
+        passed in, or a newly created dict if a falsy value was provided).
     """
     if not config:
         config = {}
@@ -450,9 +442,19 @@ def load_credentials():
 
 def save_credentials(credentials):
     """
-    Write the provided Matrix credentials dict to "credentials.json" in the application's base config directory and apply secure file permissions (Unix 0o600) to the file.
-
-    If writing or permission changes fail, an error is logged; exceptions are not propagated.
+    Save Matrix credentials to the application's credentials.json file.
+    
+    Writes the provided JSON-serializable credentials dictionary to
+    <base_dir>/credentials.json using UTF-8 encoding, then attempts to
+    restrict file permissions to 0o600 on Unix-like systems. I/O and
+    permission errors are caught and logged; this function does not raise
+    those exceptions.
+    
+    Parameters:
+        credentials (dict): JSON-serializable mapping of credentials to persist.
+    
+    Returns:
+        None
     """
     try:
         config_dir = get_base_dir()
@@ -681,16 +683,16 @@ def set_config(module, passed_config):
 
 def load_config(config_file=None, args=None):
     """
-    Load the application configuration from a file or from environment variables.
-
-    If config_file is provided and exists, load and parse it as YAML. Otherwise search prioritized locations returned by get_config_paths(args) and load the first readable YAML file found. After loading (or when no file is found) environment-variable-derived overrides are merged into the configuration via apply_env_config_overrides(). The function updates the module-level relay_config and config_path.
-
+    Load the application configuration from a YAML file or from environment variables.
+    
+    If config_file is provided and exists, that file is read and parsed as YAML; otherwise the function searches candidate locations returned by get_config_paths(args) and loads the first readable YAML file found. Empty or null YAML is treated as an empty dict. After loading, environment-derived overrides are merged via apply_env_config_overrides(). The function updates the module-level relay_config and config_path.
+    
     Parameters:
-        config_file (str, optional): Path to a specific YAML configuration file. If None, the function searches default locations.
-        args: Parsed command-line arguments used to influence the search order (passed to get_config_paths).
-
+        config_file (str, optional): Path to a specific YAML configuration file to load. If None, candidate paths from get_config_paths(args) are used.
+        args: Parsed command-line arguments forwarded to get_config_paths() to influence the search order.
+    
     Returns:
-        dict: The resulting configuration dictionary. Returns an empty dict on read/parse errors or if no configuration is provided via files or environment.
+        dict: The resulting configuration dictionary. If no configuration is found or a file read/parse error occurs, returns an empty dict.
     """
     global relay_config, config_path
 

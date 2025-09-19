@@ -26,7 +26,13 @@ class TestCLIWindowsConsoleSetup(unittest.TestCase):
     def test_main_calls_windows_console_setup(
         self, mock_parse_args, mock_setup_console
     ):
-        """Test that main() calls Windows console setup on Windows."""
+        """
+        Verify that main() invokes Windows console setup when running on Windows.
+        
+        Sets up minimal parsed CLI arguments and patches the main execution path so the test
+        exercises only the CLI entry behavior. Asserts that the Windows console setup helper
+        is called exactly once and that main() returns the expected exit code (0).
+        """
         # Mock parse_arguments to return minimal args and exit early
         mock_args = MagicMock()
         mock_args.command = None
