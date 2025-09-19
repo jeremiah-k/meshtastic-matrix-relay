@@ -139,8 +139,8 @@ class TestWindowsErrorHandling(unittest.TestCase):
         self.mock_args = MagicMock()
 
     @patch("sys.platform", "win32")
-    @patch("mmrelay.cli.is_windows", return_value=True)
-    @patch("mmrelay.cli.get_windows_error_message")
+    @patch("mmrelay.windows_utils.is_windows", return_value=True)
+    @patch("mmrelay.windows_utils.get_windows_error_message")
     @patch("builtins.print")
     def test_windows_error_handling_in_main(
         self, mock_print, mock_get_error, mock_is_windows
@@ -188,8 +188,8 @@ class TestWindowsErrorHandling(unittest.TestCase):
         mock_print.assert_called_with("Unexpected error: RuntimeError: Test error", file=sys.stderr)
 
     @patch("sys.platform", "win32")
-    @patch("mmrelay.cli.is_windows", return_value=True)
-    @patch("mmrelay.cli.get_windows_error_message")
+    @patch("mmrelay.windows_utils.is_windows", return_value=True)
+    @patch("mmrelay.windows_utils.get_windows_error_message")
     @patch("builtins.print")
     def test_windows_error_in_generate_config(
         self, mock_print, mock_get_error, mock_is_windows
@@ -292,8 +292,8 @@ class TestConfigDiagnoseIntegration(unittest.TestCase):
         )
 
     @patch("sys.platform", "win32")
-    @patch("mmrelay.cli.is_windows", return_value=True)
-    @patch("mmrelay.cli.test_config_generation_windows")
+    @patch("mmrelay.windows_utils.is_windows", return_value=True)
+    @patch("mmrelay.windows_utils.test_config_generation_windows")
     @patch("builtins.print")
     def test_config_diagnose_windows_integration(
         self, mock_print, mock_windows_test, mock_is_windows
