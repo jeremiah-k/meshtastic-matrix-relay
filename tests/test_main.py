@@ -534,6 +534,55 @@ class TestRunMain(unittest.TestCase):
 
         self.assertEqual(result, 1)  # Should return error code
 
+    @patch("os.makedirs")
+    @patch("os.path.abspath")
+    @patch("asyncio.run")
+    @patch("mmrelay.config.load_config")
+    @patch("mmrelay.config.set_config")
+    @patch("mmrelay.log_utils.configure_component_debug_logging")
+    @patch("mmrelay.main.print_banner")
+    def test_run_main_with_data_dir(
+        self,
+        mock_print_banner,
+        mock_configure_logging,
+        mock_set_config,
+        mock_load_config,
+        mock_asyncio_run,
+        mock_abspath,
+        mock_makedirs,
+    ):
+        """
+        Test that run_main creates and uses the absolute path of a custom data directory.
+
+        Verifies that when a custom data directory is specified, run_main ensures the directory exists by creating it if necessary and resolves its absolute path for initialization.
+        """
+
+        mock_config = {
+            "matrix": {"homeserver": "https://matrix.org"},
+            "meshtastic": {"connection_type": "serial"},
+            "matrix_rooms": [{"id": "!room:matrix.org"}],
+        }
+        mock_load_config.return_value = mock_config
+
+        # Mock asyncio.run with coroutine cleanup to prevent warnings
+        mock_asyncio_run.side_effect = _close_coro_if_possible
+
+        # Use a simple custom data directory path
+        custom_data_dir = "/home/user/test_custom_data"
+        mock_abspath.return_value = custom_data_dir
+
+        mock_args = MagicMock()
+        mock_args.data_dir = custom_data_dir
+        mock_args.log_level = None
+
+        result = run_main(mock_args)
+
+        self.assertEqual(result, 0)
+        # Check that abspath was called with our custom data dir (may be called multiple times)
+        mock_abspath.assert_any_call(custom_data_dir)
+        # Check that makedirs was called with our custom data dir (may be called multiple times for logs too)
+        mock_makedirs.assert_any_call(custom_data_dir, exist_ok=True)
+
     @patch("asyncio.run", spec=True)
     @patch("mmrelay.config.load_config", spec=True)
     @patch("mmrelay.config.set_config", spec=True)
@@ -878,6 +927,49 @@ class TestRunMainFunction(unittest.TestCase):
 
         self.assertEqual(result, 0)
         mock_asyncio_run.assert_called_once()
+
+    @patch("mmrelay.main.print_banner")
+    @patch("mmrelay.config.load_config")
+    @patch("mmrelay.config.load_credentials")
+    @patch("mmrelay.main.asyncio.run")
+    @patch("os.makedirs")
+    @patch("os.path.abspath")
+    def test_run_main_with_custom_data_dir(
+        self,
+        mock_abspath,
+        mock_makedirs,
+        mock_asyncio_run,
+        mock_load_credentials,
+        mock_load_config,
+        mock_print_banner,
+    ):
+        """Test run_main with custom data directory."""
+        # Use a simple custom data directory path
+        custom_data_dir = "/home/user/test_custom_data"
+        mock_abspath.return_value = custom_data_dir
+
+        mock_config = {
+            "matrix": {"homeserver": "https://matrix.org"},
+            "meshtastic": {"connection_type": "serial"},
+            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+        }
+        mock_load_config.return_value = mock_config
+        mock_load_credentials.return_value = None
+
+        # Mock asyncio.run to properly close coroutines
+        mock_asyncio_run.side_effect = _close_coro_if_possible
+
+        mock_args = MagicMock()
+        mock_args.data_dir = custom_data_dir
+        mock_args.log_level = None
+
+        result = run_main(mock_args)
+
+        self.assertEqual(result, 0)
+        # Check that abspath was called with our custom data dir (may be called multiple times)
+        mock_abspath.assert_any_call(custom_data_dir)
+        # Check that makedirs was called with our custom data dir (may be called multiple times for logs too)
+        mock_makedirs.assert_any_call(custom_data_dir, exist_ok=True)
 
     @patch("mmrelay.main.print_banner")
     @patch("mmrelay.config.load_config")

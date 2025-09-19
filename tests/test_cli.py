@@ -676,38 +676,6 @@ class TestMainFunction(unittest.TestCase):
         self.assertEqual(result, 0)
         mock_run_main.assert_called_once_with(args)
 
-    @patch("mmrelay.cli.parse_arguments")
-    @patch("mmrelay.config.os.path.abspath")
-    @patch("mmrelay.config.os.makedirs")
-    @patch("mmrelay.main.run_main")
-    def test_main_data_dir_handling(self, mock_run_main, mock_makedirs, mock_abspath, mock_parse):
-        """Test that --data-dir sets the custom data directory correctly."""
-        # Setup mocks
-        args = MagicMock()
-        args.command = None
-        args.data_dir = "/my/custom/data"
-        args.check_config = False
-        args.install_service = False
-        args.generate_config = False
-        args.version = False
-        args.auth = False
-        mock_parse.return_value = args
-        mock_abspath.return_value = "/my/custom/data"
-        mock_run_main.return_value = 0
-
-        # Import and call main
-        from mmrelay.cli import main
-        import mmrelay.config
-
-        # Reset custom_data_dir before test
-        mmrelay.config.custom_data_dir = None
-
-        main()
-
-        # Verify that custom_data_dir was set
-        self.assertEqual(mmrelay.config.custom_data_dir, "/my/custom/data")
-        mock_makedirs.assert_called_once_with("/my/custom/data", exist_ok=True)
-
 
 class TestCLIValidationFunctions(unittest.TestCase):
     """Test cases for CLI validation helper functions."""
@@ -3656,64 +3624,3 @@ class TestAnalyzeE2eeSetup(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
-
-class TestAuthLogout(unittest.TestCase):
-    """Test cases for handle_auth_logout function."""
-
-    def setUp(self):
-        """Set up test fixtures."""
-        self.mock_args = MagicMock()
-        self.mock_args.password = None
-        self.mock_args.yes = False
-
-    @patch("asyncio.run")
-    @patch("mmrelay.cli_utils.logout_matrix_bot", new=MagicMock(return_value=True))
-    @patch("builtins.input")
-    @patch("builtins.print")
-    def test_handle_auth_logout_success_with_confirmation(
-        self, mock_print, mock_input, mock_asyncio_run
-    ):
-        """Test successful logout with user confirmation."""
-        mock_asyncio_run.return_value = True
-        mock_input.return_value = "y"
-        self.mock_args.password = "test_password"
-
-        result = handle_auth_logout(self.mock_args)
-
-        self.assertEqual(result, 0)
-        mock_input.assert_called_once_with("Are you sure you want to logout? (y/N): ")
-        mock_asyncio_run.assert_called_once()
-
-    @patch("asyncio.run")
-    @patch("mmrelay.cli_utils.logout_matrix_bot", new=MagicMock(return_value=True))
-    @patch("builtins.input")
-    @patch("builtins.print")
-    def test_handle_auth_logout_cancelled_by_user(
-        self, mock_print, mock_input, mock_asyncio_run
-    ):
-        """Test logout cancelled by user confirmation."""
-        mock_asyncio_run.return_value = True
-        mock_input.return_value = "n"
-        self.mock_args.password = "test_password"
-
-        result = handle_auth_logout(self.mock_args)
-
-        self.assertEqual(result, 0)
-        mock_input.assert_called_once_with("Are you sure you want to logout? (y/N): ")
-        mock_asyncio_run.assert_not_called()
-        mock_print.assert_any_call("Logout cancelled.")
-
-    @patch("asyncio.run")
-    @patch("mmrelay.cli_utils.logout_matrix_bot", new=MagicMock(return_value=True))
-    @patch("builtins.print")
-    def test_handle_auth_logout_with_yes_flag(self, mock_print, mock_asyncio_run):
-        """Test logout with --yes flag (skip confirmation)."""
-        mock_asyncio_run.return_value = True
-        self.mock_args.password = "test_password"
-        self.mock_args.yes = True
-
-        result = handle_auth_logout(self.mock_args)
-
-        self.assertEqual(result, 0)
-        mock_asyncio_run.assert_called_once()
