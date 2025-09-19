@@ -337,7 +337,9 @@ def create_service_file():
     Returns:
         bool: True on successful creation/update of the service file; False if the template cannot be obtained or writing the file fails.
     """
-    # Executable resolution/logging handled by get_executable_path()
+    # Get executable paths once to avoid duplicate calls and output
+    executable_path = get_executable_path()
+    resolved_exec_cmd = get_resolved_exec_cmd()
 
     # Create service directory if it doesn't exist
     service_dir = get_user_service_path().parent
@@ -361,7 +363,7 @@ def create_service_file():
         )
         .replace(
             "%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-relay/main.py",
-            get_executable_path(),
+            executable_path,
         )
         .replace(
             "--config %h/.mmrelay/config/config.yaml",
@@ -372,7 +374,7 @@ def create_service_file():
     # Normalize ExecStart: replace any mmrelay launcher with resolved command, preserving args
     service_content = re.sub(
         r"(?m)^(ExecStart=)(?:/usr/bin/env\s+mmrelay|[\S/]*mmrelay|.+python\s+-m\s+mmrelay)(\s.*)?$",
-        rf"\1{get_resolved_exec_cmd()}\2",
+        rf"\1{resolved_exec_cmd}\2",
         service_content,
     )
 

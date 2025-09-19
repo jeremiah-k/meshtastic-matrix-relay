@@ -1065,9 +1065,9 @@ async def login_matrix_bot(
     homeserver=None, username=None, password=None, logout_others=False
 ):
     """
-    Perform an interactive Matrix login for the bot, enable end-to-end encryption, and persist credentials for later use.
+    Perform an interactive Matrix login for the bot and persist credentials for later use.
 
-    This coroutine attempts server discovery for the provided homeserver, logs in as the given username, initializes an encrypted client store, and saves resulting credentials (homeserver, user_id, access_token, device_id) to credentials.json so the relay can restore the session non-interactively. If an existing credentials.json contains a matching user_id, the device_id will be reused when available.
+    This coroutine attempts server discovery for the provided homeserver, logs in as the given username, optionally initializes an encrypted client store (if E2EE is enabled in configuration), and saves resulting credentials (homeserver, user_id, access_token, device_id) to credentials.json so the relay can restore the session non-interactively. If an existing credentials.json contains a matching user_id, the device_id will be reused when available.
 
     Parameters:
         homeserver (str | None): Homeserver URL to use. If None, the user is prompted.
@@ -1180,14 +1180,30 @@ async def login_matrix_bot(
         except Exception as e:
             logger.debug(f"Could not load existing credentials: {e}")
 
-        # Get the E2EE store path
-        store_path = get_e2ee_store_dir()
-        os.makedirs(store_path, exist_ok=True)
-        logger.debug(f"Using E2EE store path: {store_path}")
+        # Check if E2EE is enabled in configuration
+        from mmrelay.config import load_config, is_e2ee_enabled
 
-        # Create client config for E2EE
+        try:
+            config = load_config()
+            e2ee_enabled = is_e2ee_enabled(config)
+        except Exception as e:
+            logger.debug(f"Could not load config for E2EE check: {e}")
+            e2ee_enabled = False
+
+        logger.debug(f"E2EE enabled in config: {e2ee_enabled}")
+
+        # Get the E2EE store path only if E2EE is enabled
+        store_path = None
+        if e2ee_enabled:
+            store_path = get_e2ee_store_dir()
+            os.makedirs(store_path, exist_ok=True)
+            logger.debug(f"Using E2EE store path: {store_path}")
+        else:
+            logger.debug("E2EE disabled in configuration, not using store path")
+
+        # Create client config with E2EE based on configuration
         client_config = AsyncClientConfig(
-            store_sync_tokens=True, encryption_enabled=True
+            store_sync_tokens=True, encryption_enabled=e2ee_enabled
         )
 
         # Use the same SSL context as discovery client
@@ -1207,8 +1223,8 @@ async def login_matrix_bot(
         logger.info(f"Logging in as {username} to {homeserver}...")
 
         # Login with consistent device name and timeout
-        # Use the original working device name
-        device_name = "mmrelay-e2ee"
+        # Use appropriate device name based on E2EE configuration
+        device_name = "mmrelay-e2ee" if e2ee_enabled else "mmrelay"
         try:
             # Set device_id on client if we have an existing one
             if existing_device_id:
