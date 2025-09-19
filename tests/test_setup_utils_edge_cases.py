@@ -209,7 +209,7 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         """
         with patch("shutil.which", return_value="/usr/bin/loginctl"):
             with patch("subprocess.run") as mock_run:
-                mock_run.side_effect = Exception("Command failed")
+                mock_run.side_effect = OSError("Command failed")
                 result = check_loginctl_available()
                 self.assertFalse(result)
 
@@ -218,7 +218,7 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         Test that check_lingering_enabled returns False and prints an error when the loginctl command raises an exception.
         """
         with patch("subprocess.run") as mock_run:
-            mock_run.side_effect = Exception("Command failed")
+            mock_run.side_effect = OSError("Command failed")
             with patch("builtins.print") as mock_print:
                 result = check_lingering_enabled()
                 self.assertFalse(result)
@@ -253,7 +253,7 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         """
         Test that enable_lingering returns False and prints an error when subprocess.run raises an exception.
         """
-        with patch("subprocess.run", side_effect=Exception("Command failed")):
+        with patch("subprocess.run", side_effect=OSError("Command failed")):
             with patch("builtins.print") as mock_print:
                 result = enable_lingering()
                 self.assertFalse(result)
