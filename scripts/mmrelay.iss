@@ -92,7 +92,7 @@ begin
   WizardForm.ClientHeight := WizardForm.ClientHeight + 50;
 
   OverwriteConfig.Add('Generate configuration (overwrite any current config files)');
-  OverwriteConfig.Values[0] := False;
+  OverwriteConfig.Values[0] := True;
 
   MatrixPage.Add('Homeserver (example: https://matrix.org):', False);
   MatrixPage.Add('Bot username or MXID (example: mybotuser or @mybotuser:matrix.org):', False);
@@ -290,8 +290,7 @@ begin
       DeleteFile(sAppDir + '\config-old.yaml');
     if not RenameFile(sAppDir + '\config.yaml', sAppDir + '\config-old.yaml') then
     begin
-      MsgBox('Could not rename existing "config.yaml". Close any applications that may have it open and re-run setup.', mbError, MB_OK);
-      Abort;
+      MsgBox('Could not rename existing "config.yaml". Installation will continue but existing config may be overwritten.', mbInformation, MB_OK);
     end;
   end;
 
