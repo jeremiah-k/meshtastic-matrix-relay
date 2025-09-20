@@ -515,3 +515,531 @@ ExpandConstant('{app}')     // Expand Inno Setup constant
 ```
 
 Remember: **Every change to mmrelay.iss should be minimal, well-tested, and thoroughly documented.**
+
+## Windows Service Management
+
+### Overview
+
+MM Relay can be run as a Windows service for automatic startup and background operation. This section provides comprehensive guidance for service installation, management, and troubleshooting.
+
+### Service Installation Commands
+
+#### Using NSSM (Non-Sucking Service Manager)
+
+**Recommended approach** - NSSM provides robust service management:
+
+```batch
+# Install MM Relay as a service using NSSM
+nssm install MMRelay "C:\Program Files\MM Relay\mmrelay.exe" --config "C:\Program Files\MM Relay\config.yaml"
+
+# Set service description
+nssm set MMRelay Description "Matrix <> Meshtastic Relay Service"
+
+# Set service to auto-start
+nssm set MMRelay Start SERVICE_AUTO_START
+
+# Start the service
+nssm start MMRelay
+```
+
+#### Using Windows SC Command
+
+**Alternative approach** - Built-in Windows service control:
+
+```batch
+# Install service (requires full paths)
+sc create MMRelay binPath= "\"C:\Program Files\MM Relay\mmrelay.exe\" --config \"C:\Program Files\MM Relay\config.yaml\"" DisplayName= "Matrix <> Meshtastic Relay" start= auto
+
+# Set service description
+sc description MMRelay "Matrix <> Meshtastic Relay Service"
+
+# Start the service
+net start MMRelay
+```
+
+### Service Management Commands
+
+#### Basic Service Operations
+
+```batch
+# Start service
+net start MMRelay
+nssm start MMRelay
+
+# Stop service
+net stop MMRelay
+nssm stop MMRelay
+
+# Restart service
+net stop MMRelay && net start MMRelay
+nssm restart MMRelay
+
+# Check service status
+sc query MMRelay
+nssm status MMRelay
+
+# Delete service (service must be stopped first)
+sc delete MMRelay
+nssm remove MMRelay confirm
+```
+
+#### Advanced Service Configuration
+
+```batch
+# Set service recovery options (using NSSM)
+nssm set MMRelay AppExit Default Exit
+nssm set MMRelay AppRestartDelay 5000
+
+# Set service dependencies (using SC)
+sc config MMRelay depend= Tcpip/Dnscache
+
+# Set service logon account
+sc config MMRelay obj= "NT AUTHORITY\LocalService"
+sc config MMRelay obj= ".\LocalUser" password= "password"
+```
+
+### Service Troubleshooting
+
+#### Common Issues and Solutions
+
+**Service fails to start:**
+
+```batch
+# Check service error code
+sc query MMRelay
+
+# View Windows Event Log
+eventvwr.msc
+# Look for Application logs with source "MMRelay" or "Service Control Manager"
+
+# Test service manually
+"C:\Program Files\MM Relay\mmrelay.exe" --config "C:\Program Files\MM Relay\config.yaml" --log-level debug
+```
+
+**Permission issues:**
+
+```batch
+# Check service account permissions
+sc qc MMRelay
+
+# Test with different service account
+sc config MMRelay obj= "NT AUTHORITY\LocalService"
+net stop MMRelay && net start MMRelay
+```
+
+**Configuration file access issues:**
+
+```batch
+# Verify config file exists and is accessible
+dir "C:\Program Files\MM Relay\config.yaml"
+type "C:\Program Files\MM Relay\config.yaml"
+
+# Test config file syntax
+"C:\Program Files\MM Relay\mmrelay.exe" --config "C:\Program Files\MM Relay\config.yaml" validate
+```
+
+### Service Configuration
+
+#### Configuration File Location
+
+Service configuration should be stored in a secure, accessible location:
+
+```yaml
+# Recommended config file location: C:\Program Files\MM Relay\config.yaml
+# Ensure the service account has read access to this file
+
+matrix:
+  homeserver: "https://matrix.org"
+  bot_user_id: "@mmrelay:matrix.org"
+  password: "your_password"
+
+meshtastic:
+  connection_type: "network"
+  host: "localhost"
+  meshnet_name: "MyMeshNet"
+  broadcast_enabled: true
+
+logging:
+  level: "info"
+  file: "C:\Program Files\MM Relay\logs\mmrelay.log"
+```
+
+#### Service-Specific Configuration
+
+```yaml
+# Add service-specific settings to config.yaml
+service:
+  enabled: true
+  name: "MMRelay"
+  display_name: "Matrix <> Meshtastic Relay"
+  description: "Relays messages between Matrix and Meshtastic networks"
+  
+# Configure logging for service environment
+logging:
+  level: "info"
+  file: "C:\Program Files\MM Relay\logs\service.log"
+  max_size: "10MB"
+  backup_count: 5
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+```
+
+### Service Logs Location
+
+#### Default Log Locations
+
+```batch
+# Application logs (Windows Event Log)
+eventvwr.msc
+# Navigate to: Windows Logs -> Application
+# Filter by source: "MMRelay"
+
+# File-based logs (if configured in config.yaml)
+dir "C:\Program Files\MM Relay\logs\"
+type "C:\Program Files\MM Relay\logs\mmrelay.log"
+
+# NSSM service logs (if using NSSM)
+dir "C:\Program Files\MM Relay\logs\"
+type "C:\Program Files\MM Relay\logs\MMRelay.log"
+```
+
+#### Log Configuration
+
+```yaml
+# Configure comprehensive logging in config.yaml
+logging:
+  level: "info"  # debug, info, warning, error, critical
+  file: "C:\Program Files\MM Relay\logs\mmrelay.log"
+  max_size: "10MB"
+  backup_count: 5
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  
+  # Console logging (useful for debugging)
+  console: true
+  console_level: "info"
+  
+  # Error logging to Windows Event Log
+  event_log: true
+  event_log_source: "MMRelay"
+```
+
+### Service Startup Type
+
+#### Configuring Startup Behavior
+
+```batch
+# Auto-start service when system boots
+sc config MMRelay start= auto
+
+# Manual start only
+sc config MMRelay start= demand
+
+# Disabled (won't start automatically)
+sc config MMRelay start= disabled
+
+# Delayed auto-start (for better system boot performance)
+sc config MMRelay start= delayed-auto
+```
+
+#### Startup Dependencies
+
+```batch
+# Set service dependencies (service will wait for these to start)
+sc config MMRelay depend= Tcpip/Dnscache/EventLog
+
+# Remove all dependencies
+sc config MMRelay depend= 
+
+# Check current dependencies
+sc qc MMRelay
+```
+
+### Service Dependencies
+
+#### Network Dependencies
+
+```batch
+# Ensure network services are available before starting
+sc config MMRelay depend= Tcpip/Dnscache
+
+# For services that require internet connectivity
+sc config MMRelay depend= Tcpip/Dnscache/EventLog
+
+# For services that depend on specific network adapters
+sc config MMRelay depend= Tcpip/Dnscache/Netman
+```
+
+#### Application Dependencies
+
+```batch
+# If MM Relay depends on other services
+sc config MMRelay depend= Tcpip/Dnscache/OtherServiceName
+
+# Check dependency status
+sc query MMRelay
+sc query OtherServiceName
+```
+
+### Service Security Context
+
+#### Service Account Configuration
+
+```batch
+# Local System account (full system access)
+sc config MMRelay obj= "NT AUTHORITY\LocalSystem"
+
+# Local Service account (limited access, recommended)
+sc config MMRelay obj= "NT AUTHORITY\LocalService"
+
+# Network Service account (network access)
+sc config MMRelay obj= "NT AUTHORITY\NetworkService"
+
+# Custom user account
+sc config MMRelay obj= ".\ServiceUser" password= "SecurePassword"
+```
+
+#### Permission Requirements
+
+```batch
+# Grant read access to config file
+icacls "C:\Program Files\MM Relay\config.yaml" /grant "LocalService":R
+
+# Grant write access to log directory
+icacls "C:\Program Files\MM Relay\logs" /grant "LocalService":W
+
+# Grant modify access to data directory
+icacls "C:\Program Files\MM Relay\data" /grant "LocalService":M
+```
+
+### Service Recovery Options
+
+#### Automatic Recovery Configuration
+
+```batch
+# Using NSSM for advanced recovery options
+nssm set MMRelay AppExit Default Exit
+nssm set MMRelay AppRestartDelay 5000
+nssm set MMRelay AppThrottle 15000
+
+# Using SC for basic recovery
+sc failure MMRelay reset= 86400 actions= restart/60000/restart/60000/restart/60000
+```
+
+#### Recovery Actions
+
+```batch
+# Configure service to restart on failure
+sc failure MMRelay command= "C:\Program Files\MM Relay\restart.bat" reset= 86400 actions= restart/60000/restart/60000/restart/60000
+
+# Create restart.bat file
+@echo off
+echo Restarting MM Relay service at %DATE% %TIME% >> "C:\Program Files\MM Relay\logs\restart.log"
+net stop MMRelay
+timeout /t 5
+net start MMRelay
+```
+
+### Service Removal
+
+#### Safe Service Removal
+
+```batch
+# Stop service first
+net stop MMRelay
+
+# Remove service
+sc delete MMRelay
+
+# Using NSSM
+nssm stop MMRelay
+nssm remove MMRelay confirm
+```
+
+#### Cleanup After Removal
+
+```batch
+# Remove service-related files
+rd /s /q "C:\Program Files\MM Relay\logs"
+rd /s /q "C:\Program Files\MM Relay\data"
+
+# Remove registry entries (if any)
+reg delete "HKLM\SYSTEM\CurrentControlSet\Services\MMRelay" /f
+```
+
+### Service Debugging
+
+#### Debug Mode Configuration
+
+```batch
+# Create debug batch file
+@echo off
+echo Starting MM Relay in debug mode...
+"C:\Program Files\MM Relay\mmrelay.exe" --config "C:\Program Files\MM Relay\config.yaml" --log-level debug --console
+
+# Run service interactively for debugging
+"C:\Program Files\MM Relay\mmrelay.exe" --config "C:\Program Files\MM Relay\config.yaml" --log-level debug
+```
+
+#### Debug Logging
+
+```yaml
+# Configure debug logging in config.yaml
+logging:
+  level: "debug"
+  file: "C:\Program Files\MM Relay\logs\debug.log"
+  console: true
+  console_level: "debug"
+  
+  # Enable detailed component logging
+  components:
+    matrix: "debug"
+    meshtastic: "debug"
+    plugins: "debug"
+    database: "debug"
+```
+
+### Service Performance
+
+#### Performance Monitoring
+
+```batch
+# Monitor service resource usage
+tasklist /fi "imagename eq mmrelay.exe" /v
+
+# Monitor service performance counters
+typeperf "\Process(mmrelay)\*" -sc 10
+
+# Check service memory usage
+wmic process where "name='mmrelay.exe'" get WorkingSetSize,PageFileUsage
+```
+
+#### Performance Optimization
+
+```yaml
+# Configure performance settings in config.yaml
+performance:
+  max_memory_usage: "512MB"
+  max_cpu_usage: 80
+  connection_pool_size: 10
+  message_queue_size: 1000
+  
+  # Throttling settings
+  rate_limit:
+    enabled: true
+    messages_per_second: 100
+    burst_size: 1000
+```
+
+### Service Monitoring
+
+#### Health Checks
+
+```batch
+# Create health check script
+@echo off
+sc query MMRelay | find "RUNNING" > nul
+if %errorlevel% equ 0 (
+    echo Service is running
+    exit 0
+) else (
+    echo Service is not running
+    exit 1
+)
+```
+
+#### Monitoring Scripts
+
+```batch
+# Monitor service and restart if needed
+@echo off
+:loop
+sc query MMRelay | find "RUNNING" > nul
+if %errorlevel% neq 0 (
+    echo Service is down, restarting at %DATE% %TIME% >> "C:\Program Files\MM Relay\logs\monitor.log"
+    net start MMRelay
+)
+timeout /t 60
+goto loop
+```
+
+### Service Backup
+
+#### Backup Configuration
+
+```batch
+# Create backup script
+@echo off
+set backup_dir="C:\MMRelay_Backup\%DATE:/=-%"
+mkdir %backup_dir%
+
+# Backup configuration
+copy "C:\Program Files\MM Relay\config.yaml" %backup_dir%\
+
+# Backup logs
+xcopy "C:\Program Files\MM Relay\logs" %backup_dir%\logs\ /E /I
+
+# Backup data
+xcopy "C:\Program Files\MM Relay\data" %backup_dir%\data\ /E /I
+
+echo Backup completed at %DATE% %TIME% >> %backup_dir%\backup.log
+```
+
+#### Automated Backup
+
+```batch
+# Schedule daily backup
+schtasks /create /tn "MMRelay Backup" /tr "C:\Program Files\MM Relay\backup.bat" /sc daily /st 02:00 /ru "SYSTEM"
+
+# View backup schedule
+schtasks /query /tn "MMRelay Backup"
+```
+
+### Service Migration
+
+#### Migration to New Server
+
+```batch
+# Export service configuration
+sc qc MMRelay > "C:\MMRelay_Backup\service_config.txt"
+
+# Backup all data
+robocopy "C:\Program Files\MM Relay" "C:\MMRelay_Backup" /E /COPYALL
+
+# On new server:
+# 1. Install application
+# 2. Restore configuration
+# 3. Recreate service using exported config
+```
+
+#### Migration Steps
+
+```batch
+# Step 1: Stop and backup current service
+net stop MMRelay
+sc qc MMRelay > "C:\MMRelay_Backup\service_config.txt"
+robocopy "C:\Program Files\MM Relay" "C:\MMRelay_Backup" /E /COPYALL
+
+# Step 2: Install on new server
+# Run installer on new server
+
+# Step 3: Restore configuration
+robocopy "C:\MMRelay_Backup" "C:\Program Files\MM Relay" /E /COPYALL
+
+# Step 4: Create service on new server
+nssm install MMRelay "C:\Program Files\MM Relay\mmrelay.exe" --config "C:\Program Files\MM Relay\config.yaml"
+
+# Step 5: Start service
+net start MMRelay
+```
+
+### Best Practices for Windows Services
+
+1. **Use Local Service account** for better security
+2. **Configure proper logging** for troubleshooting
+3. **Set up recovery options** for automatic restart
+4. **Monitor service health** regularly
+5. **Backup configuration** before making changes
+6. **Test service manually** before installing as service
+7. **Document all changes** to service configuration
+8. **Use NSSM** for advanced service management features
+9. **Configure appropriate dependencies** for reliable startup
+10. **Implement monitoring** for production environments

@@ -524,8 +524,8 @@ class TestMeshRelayPlugin(unittest.TestCase):
             self.assertIsNone(result)
 
             # Should log error message
-            self.plugin.logger.error.assert_called()
-            error_call = self.plugin.logger.error.call_args[0][0]
+            self.plugin.logger.exception.assert_called()
+            error_call = self.plugin.logger.exception.call_args[0][0]
             self.assertIn("Error processing embedded packet", error_call)
 
         import asyncio

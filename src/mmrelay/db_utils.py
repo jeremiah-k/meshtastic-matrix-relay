@@ -262,7 +262,7 @@ def get_longname(meshtastic_id):
             result = cursor.fetchone()
         return result[0] if result else None
     except sqlite3.Error as e:
-        logger.error(f"Database error retrieving longname for {meshtastic_id}: {e}")
+        logger.exception(f"Database error retrieving longname for {meshtastic_id}: {e}")
         return None
 
 
@@ -281,7 +281,7 @@ def save_longname(meshtastic_id, longname):
             )
             conn.commit()
     except sqlite3.Error as e:
-        logger.error(f"Database error saving longname for {meshtastic_id}: {e}")
+        logger.exception(f"Database error saving longname for {meshtastic_id}: {e}")
 
 
 def update_longnames(nodes):
@@ -320,7 +320,7 @@ def get_shortname(meshtastic_id):
             result = cursor.fetchone()
         return result[0] if result else None
     except sqlite3.Error as e:
-        logger.error(f"Database error retrieving shortname for {meshtastic_id}: {e}")
+        logger.exception(f"Database error retrieving shortname for {meshtastic_id}: {e}")
         return None
 
 
@@ -339,7 +339,7 @@ def save_shortname(meshtastic_id, shortname):
             )
             conn.commit()
     except sqlite3.Error as e:
-        logger.error(f"Database error saving shortname for {meshtastic_id}: {e}")
+        logger.exception(f"Database error saving shortname for {meshtastic_id}: {e}")
 
 
 def update_shortnames(nodes):
@@ -393,7 +393,7 @@ def store_message_map(
             )
             conn.commit()
     except sqlite3.Error as e:
-        logger.error(f"Database error storing message map for {matrix_event_id}: {e}")
+        logger.exception(f"Database error storing message map for {matrix_event_id}: {e}")
 
 
 def get_message_map_by_meshtastic_id(meshtastic_id):

@@ -410,7 +410,7 @@ def connect_meshtastic(passed_config=None, force_connect=False):
 
             except (TimeoutError, ConnectionRefusedError, MemoryError) as e:
                 # Handle critical errors that should not be retried
-                logger.error(f"Critical connection error: {e}")
+                logger.exception(f"Critical connection error: {e}")
                 return None
             except (serial.SerialException, BleakDBusError, BleakError) as e:
                 # Handle specific connection errors
@@ -427,7 +427,7 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                     )
                     time.sleep(wait_time)
                 else:
-                    logger.error(f"Connection failed after {attempts} attempts: {e}")
+                    logger.exception(f"Connection failed after {attempts} attempts: {e}")
                     return None
             except Exception as e:
                 if shutting_down:
@@ -443,7 +443,7 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                     )
                     time.sleep(wait_time)
                 else:
-                    logger.error(f"Connection failed after {attempts} attempts: {e}")
+                    logger.exception(f"Connection failed after {attempts} attempts: {e}")
                     return None
 
     return meshtastic_client
@@ -551,7 +551,7 @@ async def reconnect():
             except Exception as e:
                 if shutting_down:
                     break
-                logger.error(f"Reconnection attempt failed: {e}")
+                logger.exception(f"Reconnection attempt failed: {e}")
                 backoff_time = min(backoff_time * 2, 300)  # Cap backoff at 5 minutes
     except asyncio.CancelledError:
         logger.info("Reconnection task was cancelled.")
@@ -834,7 +834,7 @@ def on_meshtastic_message(packet, interface):
                     if found_matching_plugin:
                         logger.debug(f"Processed by plugin {plugin.plugin_name}")
                 except Exception as e:
-                    logger.error(f"Plugin {plugin.plugin_name} failed: {e}")
+                    logger.exception(f"Plugin {plugin.plugin_name} failed: {e}")
                     # Continue processing other plugins
 
         # If message is a DM or handled by plugin, do not relay further
@@ -874,7 +874,7 @@ def on_meshtastic_message(packet, interface):
                         loop=loop,
                     )
                 except Exception as e:
-                    logger.error(f"Error relaying message to Matrix: {e}")
+                    logger.exception(f"Error relaying message to Matrix: {e}")
     else:
         # Non-text messages via plugins
         portnum = decoded.get("portnum")
@@ -900,7 +900,7 @@ def on_meshtastic_message(packet, interface):
                             f"Processed {portnum} with plugin {plugin.plugin_name}"
                         )
                 except Exception as e:
-                    logger.error(f"Plugin {plugin.plugin_name} failed: {e}")
+                    logger.exception(f"Plugin {plugin.plugin_name} failed: {e}")
                     # Continue processing other plugins
 
 
@@ -1038,7 +1038,7 @@ def sendTextReply(
             mesh_packet, destinationId=destinationId, wantAck=wantAck
         )
     except Exception as e:
-        logger.error(f"Failed to send text reply: {e}")
+        logger.exception(f"Failed to send text reply: {e}")
         return None
 
 

@@ -129,7 +129,7 @@ class TestErrorBoundaries(unittest.TestCase):
 
                     # Failing plugin should have been called and failed
                     failing_plugin.handle_meshtastic_message.assert_called_once()
-                    mock_logger.error.assert_called()
+                    mock_logger.exception.assert_called()
 
                     # Working plugin should still have been called
                     working_plugin.handle_meshtastic_message.assert_called_once()

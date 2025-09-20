@@ -28,7 +28,7 @@
 - **Warning Handling**: Treat all warnings as errors - fix underlying issues, don't suppress
 - **Test Organization**: Use Arrange-Act-Assert pattern, descriptive test names, independent tests
 - **Mock Patterns**: Mock external dependencies, not internal logic; use proper patch paths
-- **Coverage**: Run tests with `pytest --cov --tb=short` and ensure no warnings
+- **Coverage**: Run tests with `pytest --cov=src/mmrelay --cov-report=term-missing --tb=short` and ensure no warnings
 
 ## Inno Setup Guidelines (from INNO_SETUP_GUIDE.md)
 

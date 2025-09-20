@@ -12,8 +12,7 @@ import time
 from typing import Any, Dict, Union
 from urllib.parse import urlparse
 
-import bleach
-import markdown
+
 import meshtastic.protobuf.portnums_pb2
 from nio import (
     AsyncClient,
@@ -256,11 +255,31 @@ def _get_detailed_sync_error_message(sync_response) -> str:
         str: A short, user-focused error description suitable for logs and user-facing troubleshooting hints.
     """
     try:
+        # Handle bytes/bytearray types by converting to string
+        if isinstance(sync_response, (bytes, bytearray)):
+            try:
+                sync_response = sync_response.decode('utf-8')
+            except UnicodeDecodeError:
+                return "Network connectivity issue or server unreachable (binary data)"
+
         # Try to extract specific error information
         if hasattr(sync_response, "message") and sync_response.message:
-            return sync_response.message
+            message = sync_response.message
+            # Handle if message is bytes/bytearray
+            if isinstance(message, (bytes, bytearray)):
+                try:
+                    message = message.decode('utf-8')
+                except UnicodeDecodeError:
+                    return "Network connectivity issue or server unreachable"
+            return message
         elif hasattr(sync_response, "status_code") and sync_response.status_code:
             status_code = sync_response.status_code
+            # Handle if status_code is not an int
+            try:
+                status_code = int(status_code)
+            except (ValueError, TypeError):
+                return "Network connectivity issue or server unreachable"
+            
             if status_code == 401:
                 return "Authentication failed - invalid or expired credentials"
             elif status_code == 403:
@@ -277,14 +296,30 @@ def _get_detailed_sync_error_message(sync_response) -> str:
             # Check for transport-level errors
             transport = sync_response.transport_response
             if hasattr(transport, "status_code"):
-                return f"Transport error: HTTP {transport.status_code}"
+                try:
+                    status_code = int(transport.status_code)
+                    return f"Transport error: HTTP {status_code}"
+                except (ValueError, TypeError):
+                    return "Network connectivity issue or server unreachable"
 
-        # Fallback to string representation
-        error_str = str(sync_response)
-        if "unknown error" in error_str.lower():
+        # Fallback to string representation with safety checks
+        try:
+            error_str = str(sync_response)
+        except Exception:
             return "Network connectivity issue or server unreachable"
-        elif error_str and error_str != "None" and "<" not in error_str:
-            return error_str
+        
+        # Clean up object repr strings that contain angle brackets
+        if error_str and error_str != "None":
+            # Remove object repr patterns like <object at 0x...>
+            if "<" in error_str and ">" in error_str and " at 0x" in error_str:
+                return "Network connectivity issue or server unreachable"
+            # Remove HTML/XML-like content
+            elif "<" in error_str and ">" in error_str:
+                return "Network connectivity issue or server unreachable"
+            elif "unknown error" in error_str.lower():
+                return "Network connectivity issue or server unreachable"
+            else:
+                return error_str
         else:
             return "Network connectivity issue or server unreachable"
 
@@ -711,7 +746,7 @@ async def connect_matrix(passed_config=None):
                 )
                 return None
         except Exception as e:
-            logger.error(f"Error during automatic login: {type(e).__name__}")
+            logger.exception(f"Error during automatic login: {type(e).__name__}")
             logger.error("Please use 'mmrelay auth login' for interactive setup")
             return None
     else:
@@ -943,7 +978,7 @@ async def connect_matrix(passed_config=None):
             else:
                 logger.debug("No key upload needed - keys already present")
         except Exception as e:
-            logger.error(f"Failed to upload E2EE keys: {e}")
+            logger.exception(f"Failed to upload E2EE keys: {e}")
             # E2EE might still work, so we don't disable it here
             logger.error("Consider regenerating credentials with: mmrelay auth login")
 
@@ -1417,7 +1452,7 @@ async def login_matrix_bot(
                 else:
                     logger.debug(f"Response.{attr}: NOT PRESENT")
         except asyncio.TimeoutError:
-            logger.error(f"Login timed out after {MATRIX_LOGIN_TIMEOUT} seconds")
+            logger.exception(f"Login timed out after {MATRIX_LOGIN_TIMEOUT} seconds")
             logger.error(
                 "This may indicate network connectivity issues or a slow Matrix server"
             )
@@ -1439,7 +1474,7 @@ async def login_matrix_bot(
                     "5. Try using a different homeserver URL format (e.g., with https://)"
                 )
             else:
-                logger.error(f"Type error during login: {e}")
+                logger.exception(f"Type error during login: {e}")
             await client.close()
             return False
         except Exception as e:
@@ -1579,7 +1614,7 @@ async def login_matrix_bot(
             return False
 
     except Exception as e:
-        logger.error(f"Error during login: {e}")
+        logger.exception(f"Error during login: {e}")
         try:
             await client.close()
         except Exception as e:
@@ -1627,7 +1662,7 @@ async def join_matrix_room(matrix_client, room_id_or_alias: str) -> None:
         else:
             logger.debug(f"Bot is already in room '{room_id_or_alias}'")
     except Exception as e:
-        logger.error(f"Error joining room '{room_id_or_alias}': {e}")
+        logger.exception(f"Error joining room '{room_id_or_alias}': {e}")
 
 
 def _get_e2ee_error_message():
@@ -1729,33 +1764,22 @@ async def matrix_relay(
         has_html = bool(re.search(r"</?[a-zA-Z][^>]*>", message))
         has_markdown = bool(re.search(r"[*_`~]", message))  # Basic markdown indicators
 
-        # Process markdown to HTML if needed (like base plugin does)
+        # Process markdown/HTML if available; otherwise, safe fallback
         if has_markdown or has_html:
-            raw_html = markdown.markdown(message)
-
-            # Sanitize HTML to prevent injection attacks
-            formatted_body = bleach.clean(
-                raw_html,
-                tags=[
-                    "b",
-                    "strong",
-                    "i",
-                    "em",
-                    "code",
-                    "pre",
-                    "br",
-                    "blockquote",
-                    "a",
-                    "ul",
-                    "ol",
-                    "li",
-                    "p",
-                ],
-                attributes={"a": ["href"]},
-                strip=True,
-            )
-
-            plain_body = re.sub(r"</?[^>]*>", "", formatted_body)
+            try:
+                import markdown  # lazy import
+                import bleach    # lazy import
+                raw_html = markdown.markdown(message)
+                formatted_body = bleach.clean(
+                    raw_html,
+                    tags=["b","strong","i","em","code","pre","br","blockquote","a","ul","ol","li","p"],
+                    attributes={"a": ["href"]},
+                    strip=True,
+                )
+                plain_body = re.sub(r"</?[^>]*>", "", formatted_body)
+            except ImportError:
+                formatted_body = html.escape(message).replace("\n", "<br/>")
+                plain_body = message
         else:
             formatted_body = html.escape(message).replace("\n", "<br/>")
             plain_body = message
@@ -1905,7 +1929,7 @@ async def matrix_relay(
             logger.error(f"Timeout sending message to Matrix room {room_id}")
             return
         except Exception as e:
-            logger.error(f"Error sending message to Matrix room {room_id}: {e}")
+            logger.exception(f"Error sending message to Matrix room {room_id}: {e}")
             return
 
         # Only store message map if any interactions are enabled and conditions are met
@@ -1936,7 +1960,7 @@ async def matrix_relay(
     except asyncio.TimeoutError:
         logger.error("Timed out while waiting for Matrix response")
     except Exception as e:
-        logger.error(f"Error sending radio message to matrix room {room_id}: {e}")
+        logger.exception(f"Error sending radio message to matrix room {room_id}: {e}")
 
 
 def truncate_message(text, max_bytes=DEFAULT_MESSAGE_TRUNCATE_BYTES):
@@ -2115,7 +2139,7 @@ async def send_reply_to_meshtastic(
             # Message mapping is now handled automatically by the queue system
 
         except Exception as e:
-            meshtastic_logger.error(f"Error sending Matrix reply to Meshtastic: {e}")
+            meshtastic_logger.exception(f"Error sending Matrix reply to Meshtastic: {e}")
 
 
 async def handle_matrix_reply(
@@ -2205,7 +2229,7 @@ async def on_decryption_failure(room: MatrixRoom, event: MegolmEvent) -> None:
         await matrix_client.to_device(request)
         logger.info(f"Requested keys for failed decryption of event {event.event_id}")
     except Exception as e:
-        logger.error(f"Failed to request keys for event {event.event_id}: {e}")
+        logger.exception(f"Failed to request keys for event {event.event_id}: {e}")
 
 
 # Callback for new messages in Matrix room

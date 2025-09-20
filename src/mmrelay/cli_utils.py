@@ -628,7 +628,7 @@ async def logout_matrix_bot(password: str):
             logger.error("Timeout while fetching user_id")
             print("❌ Timeout while fetching user_id")
         except Exception as e:
-            logger.error(f"Error fetching user_id: {e}")
+            logger.exception(f"Error fetching user_id: {e}")
             print(f"❌ Error fetching user_id: {e}")
         finally:
             try:
@@ -738,6 +738,6 @@ async def logout_matrix_bot(password: str):
         return success
 
     except Exception as e:
-        logger.error(f"Error during logout process: {e}")
+        logger.exception(f"Error during logout process: {e}")
         print(f"❌ Error during logout process: {e}")
         return False

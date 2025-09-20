@@ -295,7 +295,7 @@ class TestMatrixUtilsEdgeCases(unittest.TestCase):
             Asynchronously tests joining a Matrix room with an invalid alias and verifies that an error is logged.
             """
             await join_matrix_room(mock_client, "#test:matrix.org")
-            mock_logger.error.assert_called()
+            mock_logger.exception.assert_called()
 
         asyncio.run(run_test())
 
