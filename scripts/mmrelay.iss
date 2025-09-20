@@ -122,7 +122,11 @@ begin
 
   if (FileExists(sAppDir + '/config.yaml')) then
   begin
-    RenameFile(sAppDir + '/config.yaml', sAppDir + '/config-old.yaml');
+    if not RenameFile(sAppDir + '/config.yaml', sAppDir + '/config-old.yaml') then
+    begin
+        MsgBox('Failed to back up existing config.yaml. Please ensure the file is not open in another application and run the installer again.', mbError, MB_OK);
+        Abort;
+    end;
   end;
 
   connection_type := MeshtasticPage.Values[0];
@@ -175,7 +179,7 @@ begin
 
   if Not SaveStringToFile(sAppDir + '/mmrelay.bat', batch_file, false) then
   begin
-    MsgBox('Could not create batch file "relay.bat". Close any applications that may have it open and re-run setup', mbInformation, MB_OK);
+    MsgBox('Could not create batch file "mmrelay.bat". Close any applications that may have it open and re-run setup', mbInformation, MB_OK);
   end;
 
   // Create setup-auth.bat for easy authentication setup

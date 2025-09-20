@@ -373,8 +373,8 @@ def create_service_file():
 
     # Normalize ExecStart: replace any mmrelay launcher with resolved command, preserving args
     service_content = re.sub(
-        r"(?m)^(ExecStart=)(?:/usr/bin/env\s+mmrelay|[\S/]*mmrelay|.+\bpython(?:\d+(?:\.\d+)*)?\b\s+-m\s+mmrelay)(\s.*)?$",
-        rf"\1{resolved_exec_cmd}\2",
+        r'(?m)^(ExecStart=)"?(?:/usr/bin/env\s+mmrelay|[\S/]*mmrelay|.+\bpython(?:\d+(?:\.\d+)*)?\b\s+-m\s+mmrelay)"?(\s.*)?$',
+        rf'\1{resolved_exec_cmd}\2',
         service_content,
     )
 
@@ -384,7 +384,7 @@ def create_service_file():
         print(f"Service file created at {get_user_service_path()}")
         return True
     except (IOError, OSError) as e:
-        print(f"Error creating service file: {e}")
+        print(f"Error creating service file: {e}", file=sys.stderr)
         return False
 
 
@@ -401,10 +401,10 @@ def reload_daemon():
         print("Systemd user daemon reloaded")
         return True
     except subprocess.CalledProcessError as e:
-        print(f"Error reloading systemd daemon: {e}")
+        print(f"Error reloading systemd daemon: {e}", file=sys.stderr)
         return False
     except OSError as e:
-        print(f"Error: {e}")
+        print(f"Error: {e}", file=sys.stderr)
         return False
 
 
@@ -570,10 +570,10 @@ def enable_lingering():
             print("Lingering enabled successfully")
             return True
         else:
-            print(f"Error enabling lingering: {result.stderr}")
+            print(f"Error enabling lingering: {result.stderr}", file=sys.stderr)
             return False
     except (OSError, subprocess.SubprocessError) as e:
-        print(f"Error enabling lingering: {e}")
+        print(f"Error enabling lingering: {e}", file=sys.stderr)
         return False
 
 

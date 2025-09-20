@@ -1388,7 +1388,7 @@ def test_load_credentials_file_not_exists(mock_exists, mock_get_base_dir):
 @patch("os.makedirs")  # Mock the directory creation
 @patch("os.path.exists", return_value=True)  # Mock file existence check
 def test_save_credentials(
-    mock_exists, mock_makedirs, mock_json_dump, mock_open, mock_get_base_dir
+    _mock_exists, mock_makedirs, mock_json_dump, mock_open, mock_get_base_dir
 ):
     """Test credentials saving."""
     mock_get_base_dir.return_value = "/test/config"

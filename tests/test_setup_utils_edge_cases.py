@@ -13,6 +13,7 @@ Tests edge cases and error handling including:
 """
 
 import os
+import re
 import subprocess  # nosec B404 - Used for controlled test environment operations
 import sys
 import unittest
@@ -30,6 +31,7 @@ from mmrelay.setup_utils import (
     get_template_service_content,
     install_service,
     reload_daemon,
+    _quote_if_needed,
 )
 
 
@@ -59,8 +61,8 @@ class TestSetupUtilsEdgeCases(unittest.TestCase):
         with patch("shutil.which", return_value=None):
             with patch("builtins.print"):  # Suppress warning print
                 result = get_executable_path()
-                # Should return sys.executable -m mmrelay as fallback
-                self.assertEqual(result, f"{sys.executable} -m mmrelay")
+                # Should return quoted sys.executable -m mmrelay as fallback (quotes only if needed)
+                self.assertEqual(result, f"{_quote_if_needed(sys.executable)} -m mmrelay")
 
     def test_get_executable_path_multiple_locations(self):
         """
@@ -164,9 +166,12 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
                             file=sys.stderr,
                         )
 
-                        # Check that the service content includes python -m mmrelay
+                        # Check that the ExecStart uses a python* -m mmrelay fallback
                         written_content = mock_path.write_text.call_args[0][0]
-                        self.assertIn("python -m mmrelay", written_content)
+                        self.assertRegex(
+                            written_content,
+                            r'(?m)^ExecStart=.*\bpython(?:\d+(?:\.\d+)*)?\b\s+-m\s+mmrelay\b'
+                        )
 
     def test_reload_daemon_command_failure(self):
         """
