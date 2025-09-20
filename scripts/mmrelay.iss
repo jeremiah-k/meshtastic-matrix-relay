@@ -23,7 +23,6 @@ Name: "{group}\Setup Authentication"; Filename: "{app}\setup-auth.bat"; Comment:
 Name: "{group}\Logout"; Filename: "{app}\logout.bat"; Comment: "Logout and clear credentials"; Check: FileExists(ExpandConstant('{app}\logout.bat'))
 
 [Run]
-Filename: "{app}\setup-auth.bat"; Description: "Set up Matrix authentication (recommended first step)"; Flags: nowait postinstall skipifsilent; Check: FileExists(ExpandConstant('{app}\setup-auth.bat'))
 Filename: "{app}\mmrelay.bat"; Description: "Launch MM Relay"; Flags: nowait postinstall skipifsilent unchecked; Check: FileExists(ExpandConstant('{app}\mmrelay.bat'))
 
 [Code]
@@ -389,8 +388,8 @@ begin
   begin
     if Trim(serial_port) = '' then
     begin
-      MsgBox('Serial selected but no serial port provided.', mbError, MB_OK);
-      Abort;
+      MsgBox('Serial selected but no serial port provided. Using default COM3.', mbInformation, MB_OK);
+      serial_port := 'COM3';
     end;
     // Use single quotes to avoid backslash-escape pitfalls; escape internal single quotes
     SafeSerial := serial_port; StringChangeEx(SafeSerial, '''', '''''', True);
@@ -400,8 +399,8 @@ begin
   begin
     if Trim(host) = '' then
     begin
-      MsgBox('TCP selected but no hostname/IP provided.', mbError, MB_OK);
-      Abort;
+      MsgBox('TCP selected but no hostname/IP provided. Using default localhost.', mbInformation, MB_OK);
+      host := 'localhost';
     end;
     // Use single quotes for host; escape internal single quotes
     SafeHost := host; StringChangeEx(SafeHost, '''', '''''', True);
@@ -411,8 +410,8 @@ begin
   begin
     if Trim(ble_address) = '' then
     begin
-      MsgBox('BLE selected but no BLE address/name provided.', mbError, MB_OK);
-      Abort;
+      MsgBox('BLE selected but no BLE address/name provided. Using placeholder.', mbInformation, MB_OK);
+      ble_address := 'YOUR_BLE_ADDRESS';
     end;
     // Use single quotes for BLE address; escape internal single quotes
     SafeBle := ble_address; StringChangeEx(SafeBle, '''', '''''', True);
@@ -430,16 +429,24 @@ begin
   tempPath := sAppDir + '\config.new.yaml';
   if not SaveStringToFile(tempPath, config, False) then
   begin
-    MsgBox('Could not create temporary config file. Close any applications that may have files open and re-run setup.', mbError, MB_OK);
-    Abort;
+    MsgBox('Could not create temporary config file. Trying direct write.', mbInformation, MB_OK);
+    // Try direct write as fallback
+    if not SaveStringToFile(sAppDir + '\config.yaml', config, False) then
+    begin
+      MsgBox('Could not create config file. Installation will continue but you may need to create config manually.', mbInformation, MB_OK);
+    end;
   end
   else
   begin
     if not RenameFile(tempPath, sAppDir + '\config.yaml') then
     begin
-      MsgBox('Could not finalize config write. Your configuration may be incomplete.', mbError, MB_OK);
+      MsgBox('Could not finalize config write. Trying direct write.', mbInformation, MB_OK);
       DeleteFile(tempPath);
-      Abort;
+      // Try direct write as fallback
+      if not SaveStringToFile(sAppDir + '\config.yaml', config, False) then
+      begin
+        MsgBox('Could not create config file. Installation will continue but you may need to create config manually.', mbInformation, MB_OK);
+      end;
     end;
   end;
 
