@@ -978,7 +978,7 @@ async def connect_matrix(passed_config=None):
             else:
                 logger.debug("No key upload needed - keys already present")
         except Exception as e:
-            logger.exception(f"Failed to upload E2EE keys: {e}")
+            logger.exception(f"Failed to upload E2EE keys")
             # E2EE might still work, so we don't disable it here
             logger.error("Consider regenerating credentials with: mmrelay auth login")
 
@@ -1474,7 +1474,7 @@ async def login_matrix_bot(
                     "5. Try using a different homeserver URL format (e.g., with https://)"
                 )
             else:
-                logger.exception(f"Type error during login: {e}")
+                logger.exception(f"Type error during login")
             await client.close()
             return False
         except Exception as e:
@@ -1614,7 +1614,7 @@ async def login_matrix_bot(
             return False
 
     except Exception as e:
-        logger.exception(f"Error during login: {e}")
+        logger.exception(f"Error during login")
         try:
             await client.close()
         except Exception as e:
@@ -1662,7 +1662,7 @@ async def join_matrix_room(matrix_client, room_id_or_alias: str) -> None:
         else:
             logger.debug(f"Bot is already in room '{room_id_or_alias}'")
     except Exception as e:
-        logger.exception(f"Error joining room '{room_id_or_alias}': {e}")
+        logger.exception(f"Error joining room '{room_id_or_alias}'")
 
 
 def _get_e2ee_error_message():
@@ -1929,7 +1929,7 @@ async def matrix_relay(
             logger.error(f"Timeout sending message to Matrix room {room_id}")
             return
         except Exception as e:
-            logger.exception(f"Error sending message to Matrix room {room_id}: {e}")
+            logger.exception(f"Error sending message to Matrix room {room_id}")
             return
 
         # Only store message map if any interactions are enabled and conditions are met
@@ -1960,7 +1960,7 @@ async def matrix_relay(
     except asyncio.TimeoutError:
         logger.error("Timed out while waiting for Matrix response")
     except Exception as e:
-        logger.exception(f"Error sending radio message to matrix room {room_id}: {e}")
+        logger.exception(f"Error sending radio message to matrix room {room_id}")
 
 
 def truncate_message(text, max_bytes=DEFAULT_MESSAGE_TRUNCATE_BYTES):
@@ -2139,7 +2139,7 @@ async def send_reply_to_meshtastic(
             # Message mapping is now handled automatically by the queue system
 
         except Exception as e:
-            meshtastic_logger.exception(f"Error sending Matrix reply to Meshtastic: {e}")
+            meshtastic_logger.exception(f"Error sending Matrix reply to Meshtastic")
 
 
 async def handle_matrix_reply(
@@ -2229,7 +2229,7 @@ async def on_decryption_failure(room: MatrixRoom, event: MegolmEvent) -> None:
         await matrix_client.to_device(request)
         logger.info(f"Requested keys for failed decryption of event {event.event_id}")
     except Exception as e:
-        logger.exception(f"Failed to request keys for event {event.event_id}: {e}")
+        logger.exception(f"Failed to request keys for event {event.event_id}")
 
 
 # Callback for new messages in Matrix room

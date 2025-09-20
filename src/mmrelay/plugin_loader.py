@@ -852,8 +852,8 @@ def load_plugins(passed_config=None):
                     )
                     continue
             else:
-                logger.exception("Repository URL not specified for a community plugin")
-                logger.exception("Please specify the repository URL in config.yaml")
+                logger.error("Repository URL not specified for a community plugin")
+                logger.error("Please specify the repository URL in config.yaml")
                 continue
 
     # Only load community plugins that are explicitly enabled

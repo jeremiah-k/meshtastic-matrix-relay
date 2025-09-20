@@ -164,7 +164,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
                         result = connect_meshtastic(config)
                         self.assertIsNone(result)
                         # Should log error for critical failure
-                        mock_logger.exception.assert_called()
+                mock_logger.error.assert_called()
 
     def test_on_meshtastic_message_malformed_packet(self):
         """
@@ -282,7 +282,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             # Prevent async reconnect
             mock_submit_coro.return_value = None
             on_lost_meshtastic_connection(mock_interface)
-            mock_logger.exception.assert_called()
+            mock_logger.error.assert_called()
 
     def test_on_lost_meshtastic_connection_detection_source_edge_cases(self):
         """
