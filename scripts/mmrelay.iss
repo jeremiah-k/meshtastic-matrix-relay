@@ -74,9 +74,6 @@ begin
   MatrixPage.Edits[1].Hint := 'yourusername';
   MatrixPage.Edits[2].Hint := 'Your Matrix account password';
 
-  // Set up password masking for the password field
-  MatrixPage.Edits[2].PasswordChar := '*';
-
   MatrixMeshtasticPage.Add('Matrix room ID/alias (example: #someroom:example.matrix.org):', False);
   MatrixMeshtasticPage.Add('Meshtastic channel # (0 is primary, 1-7 secondary):', False);
   MatrixMeshtasticPage.Edits[0].Hint := '!someroomid:example.matrix.org';
@@ -96,15 +93,7 @@ begin
     result := 'false';
 end;
 
-// Password masking for the Matrix password input field
-procedure MatrixPagePasswordChange(Sender: TObject);
-var
-  PasswordEdit: TEdit;
-begin
-  PasswordEdit := TEdit(Sender);
-  // Mask the password with asterisks
-  PasswordEdit.PasswordChar := '*';
-end;
+
 
 { Skips config setup pages if needed}
 function ShouldSkipPage(PageID: Integer): Boolean;
