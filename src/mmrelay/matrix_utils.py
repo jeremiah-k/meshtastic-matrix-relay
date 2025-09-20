@@ -1168,14 +1168,44 @@ async def login_matrix_bot(
             username = f"@{username}"
 
         server_name = urlparse(homeserver).netloc
+        logger.debug(f"Extracted server_name from homeserver: {server_name}")
+        logger.debug(f"Original username: {username}")
+
         if ":" not in username:
             username = f"{username}:{server_name}"
+            logger.debug(f"Added server to username: {username}")
 
         logger.info(f"Using username: {username}")
+
+        # Validate username format
+        if not username.startswith("@"):
+            logger.warning(f"Username doesn't start with @: {username}")
+        if username.count(":") != 1:
+            logger.warning(f"Username has unexpected colon count: {username.count(':')}")
+
+        # Check for special characters in username that might cause issues
+        username_special_chars = set(username) - set('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@:.-_')
+        if username_special_chars:
+            logger.warning(f"Username contains unusual characters: {username_special_chars}")
 
         # Get password
         if not password:
             password = getpass.getpass("Enter Matrix password: ")
+
+        # Debug password handling (without logging the actual password)
+        logger.debug(f"Password length: {len(password) if password else 0}")
+        logger.debug(f"Password type: {type(password).__name__}")
+        logger.debug(f"Password encoding: {password.encode('utf-8') if password else 'None'}")
+        if password:
+            # Check for special characters that might cause issues
+            special_chars = set(password) - set('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789')
+            if special_chars:
+                logger.debug(f"Password contains special characters: {len(special_chars)} unique chars")
+                # Log the character codes without revealing the password
+                char_codes = [ord(c) for c in special_chars]
+                logger.debug(f"Special character codes: {char_codes}")
+            else:
+                logger.debug("Password contains only alphanumeric characters")
 
         # Ask about logging out other sessions
         if logout_others is None:
@@ -1253,6 +1283,22 @@ async def login_matrix_bot(
 
         logger.debug(f"AsyncClient created successfully")
 
+        # Test JSON encoding of password to see if special characters are handled correctly
+        if password:
+            import json
+            test_dict = {"password": password}
+            try:
+                json_str = json.dumps(test_dict, separators=(",", ":"))
+                logger.debug(f"Password JSON encoding test successful, length: {len(json_str)}")
+                # Check if the JSON contains the expected password length
+                parsed_back = json.loads(json_str)
+                if len(parsed_back["password"]) != len(password):
+                    logger.error("Password length mismatch after JSON encoding/decoding!")
+                else:
+                    logger.debug("Password JSON round-trip successful")
+            except Exception as e:
+                logger.error(f"Password JSON encoding failed: {e}")
+
         logger.info(f"Logging in as {username} to {homeserver}...")
 
         # Login with consistent device name and timeout
@@ -1264,6 +1310,35 @@ async def login_matrix_bot(
                 client.device_id = existing_device_id
 
             logger.debug(f"Attempting login to {homeserver} as {username}")
+            logger.debug(f"Login parameters:")
+            logger.debug(f"  device_name: {device_name}")
+            logger.debug(f"  password length: {len(password) if password else 0}")
+            logger.debug(f"  client.user: {client.user}")
+            logger.debug(f"  client.homeserver: {client.homeserver}")
+
+            # Test the API call that matrix-nio will make
+            try:
+                from nio.api import Api
+                method, path, data = Api.login(
+                    user=username,
+                    password=password,
+                    device_name=device_name,
+                    device_id=existing_device_id
+                )
+                logger.debug(f"Matrix API call details:")
+                logger.debug(f"  method: {method}")
+                logger.debug(f"  path: {path}")
+                logger.debug(f"  data length: {len(data) if data else 0}")
+
+                # Parse the JSON to see the structure (without logging the password)
+                import json
+                parsed_data = json.loads(data)
+                safe_data = {k: (v if k != 'password' else f'[{len(v)} chars]') for k, v in parsed_data.items()}
+                logger.debug(f"  parsed data: {safe_data}")
+
+            except Exception as e:
+                logger.error(f"Failed to test API call: {e}")
+
             response = await asyncio.wait_for(
                 client.login(password, device_name=device_name),
                 timeout=MATRIX_LOGIN_TIMEOUT,
