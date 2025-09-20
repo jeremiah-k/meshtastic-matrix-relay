@@ -42,6 +42,7 @@ lint:
     - linters: [bandit]
       paths:
         - src/mmrelay/setup_utils.py
+        - src/mmrelay/cli_utils.py # Ignore B110 for client close error handling during logout
         - tests/** # Ignore all bandit security warnings in test files (hardcoded test passwords, asserts, etc.)
 actions:
   disabled:

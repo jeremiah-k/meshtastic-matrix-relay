@@ -164,7 +164,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
                         result = connect_meshtastic(config)
                         self.assertIsNone(result)
                         # Should log error for critical failure
-                mock_logger.error.assert_called()
+                mock_logger.exception.assert_called()
 
     def test_on_meshtastic_message_malformed_packet(self):
         """

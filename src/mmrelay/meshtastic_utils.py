@@ -427,7 +427,9 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                     )
                     time.sleep(wait_time)
                 else:
-                    logger.exception(f"Connection failed after {attempts} attempts: {e}")
+                    logger.exception(
+                        f"Connection failed after {attempts} attempts: {e}"
+                    )
                     return None
             except Exception as e:
                 if shutting_down:
@@ -443,7 +445,9 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                     )
                     time.sleep(wait_time)
                 else:
-                    logger.exception(f"Connection failed after {attempts} attempts: {e}")
+                    logger.exception(
+                        f"Connection failed after {attempts} attempts: {e}"
+                    )
                     return None
 
     return meshtastic_client
@@ -593,7 +597,9 @@ def on_meshtastic_message(packet, interface):
 
     # Check if config is available
     if config is None:
-        logger.exception("No configuration available. Cannot process Meshtastic message.")
+        logger.exception(
+            "No configuration available. Cannot process Meshtastic message."
+        )
         return
 
     # Import the configuration helpers

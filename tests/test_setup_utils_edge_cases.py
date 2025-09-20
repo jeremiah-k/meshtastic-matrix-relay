@@ -13,7 +13,6 @@ Tests edge cases and error handling including:
 """
 
 import os
-import re
 import subprocess  # nosec B404 - Used for controlled test environment operations
 import sys
 import unittest
@@ -23,6 +22,7 @@ from unittest.mock import MagicMock, patch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.setup_utils import (
+    _quote_if_needed,
     check_lingering_enabled,
     check_loginctl_available,
     create_service_file,
@@ -31,7 +31,6 @@ from mmrelay.setup_utils import (
     get_template_service_content,
     install_service,
     reload_daemon,
-    _quote_if_needed,
 )
 
 
@@ -62,7 +61,9 @@ class TestSetupUtilsEdgeCases(unittest.TestCase):
             with patch("builtins.print"):  # Suppress warning print
                 result = get_executable_path()
                 # Should return quoted sys.executable -m mmrelay as fallback (quotes only if needed)
-                self.assertEqual(result, f"{_quote_if_needed(sys.executable)} -m mmrelay")
+                self.assertEqual(
+                    result, f"{_quote_if_needed(sys.executable)} -m mmrelay"
+                )
 
     def test_get_executable_path_multiple_locations(self):
         """
@@ -170,7 +171,7 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
                         written_content = mock_path.write_text.call_args[0][0]
                         self.assertRegex(
                             written_content,
-                            r'(?m)^ExecStart=.*\bpython(?:\d+(?:\.\d+)*)?\b\s+-m\s+mmrelay\b'
+                            r"(?m)^ExecStart=.*\bpython(?:\d+(?:\.\d+)*)?\b\s+-m\s+mmrelay\b",
                         )
 
     def test_reload_daemon_command_failure(self):

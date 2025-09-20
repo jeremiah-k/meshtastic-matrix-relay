@@ -320,7 +320,9 @@ def get_shortname(meshtastic_id):
             result = cursor.fetchone()
         return result[0] if result else None
     except sqlite3.Error as e:
-        logger.exception(f"Database error retrieving shortname for {meshtastic_id}: {e}")
+        logger.exception(
+            f"Database error retrieving shortname for {meshtastic_id}: {e}"
+        )
         return None
 
 
@@ -393,7 +395,9 @@ def store_message_map(
             )
             conn.commit()
     except sqlite3.Error as e:
-        logger.exception(f"Database error storing message map for {matrix_event_id}: {e}")
+        logger.exception(
+            f"Database error storing message map for {matrix_event_id}: {e}"
+        )
 
 
 def get_message_map_by_meshtastic_id(meshtastic_id):

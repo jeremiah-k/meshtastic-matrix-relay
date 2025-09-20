@@ -406,8 +406,11 @@ class TestErrorBoundaries(unittest.TestCase):
 
                             # Should have logged errors (error or exception) and continued processing
                             self.assertTrue(
-                                (getattr(mock_logger, "error").call_count
-                                 + getattr(mock_logger, "exception").call_count) > 0
+                                (
+                                    mock_logger.error.call_count
+                                    + mock_logger.exception.call_count
+                                )
+                                > 0
                             )
 
     def test_transient_failure_recovery(self):

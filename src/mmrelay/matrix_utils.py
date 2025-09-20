@@ -12,7 +12,6 @@ import time
 from typing import Any, Dict, Union
 from urllib.parse import urlparse
 
-
 import meshtastic.protobuf.portnums_pb2
 from nio import (
     AsyncClient,
@@ -258,7 +257,7 @@ def _get_detailed_sync_error_message(sync_response) -> str:
         # Handle bytes/bytearray types by converting to string
         if isinstance(sync_response, (bytes, bytearray)):
             try:
-                sync_response = sync_response.decode('utf-8')
+                sync_response = sync_response.decode("utf-8")
             except UnicodeDecodeError:
                 return "Network connectivity issue or server unreachable (binary data)"
 
@@ -268,7 +267,7 @@ def _get_detailed_sync_error_message(sync_response) -> str:
             # Handle if message is bytes/bytearray
             if isinstance(message, (bytes, bytearray)):
                 try:
-                    message = message.decode('utf-8')
+                    message = message.decode("utf-8")
                 except UnicodeDecodeError:
                     return "Network connectivity issue or server unreachable"
             return message
@@ -279,7 +278,7 @@ def _get_detailed_sync_error_message(sync_response) -> str:
                 status_code = int(status_code)
             except (ValueError, TypeError):
                 return "Network connectivity issue or server unreachable"
-            
+
             if status_code == 401:
                 return "Authentication failed - invalid or expired credentials"
             elif status_code == 403:
@@ -307,7 +306,7 @@ def _get_detailed_sync_error_message(sync_response) -> str:
             error_str = str(sync_response)
         except Exception:
             return "Network connectivity issue or server unreachable"
-        
+
         # Clean up object repr strings that contain angle brackets
         if error_str and error_str != "None":
             # Remove object repr patterns like <object at 0x...>
@@ -977,8 +976,8 @@ async def connect_matrix(passed_config=None):
                 logger.info("Encryption keys uploaded successfully")
             else:
                 logger.debug("No key upload needed - keys already present")
-        except Exception as e:
-            logger.exception(f"Failed to upload E2EE keys")
+        except Exception:
+            logger.exception("Failed to upload E2EE keys")
             # E2EE might still work, so we don't disable it here
             logger.error("Consider regenerating credentials with: mmrelay auth login")
 
@@ -1474,7 +1473,7 @@ async def login_matrix_bot(
                     "5. Try using a different homeserver URL format (e.g., with https://)"
                 )
             else:
-                logger.exception(f"Type error during login")
+                logger.exception("Type error during login")
             await client.close()
             return False
         except Exception as e:
@@ -1613,8 +1612,8 @@ async def login_matrix_bot(
             await client.close()
             return False
 
-    except Exception as e:
-        logger.exception(f"Error during login")
+    except Exception:
+        logger.exception("Error during login")
         try:
             await client.close()
         except Exception as e:
@@ -1661,7 +1660,7 @@ async def join_matrix_room(matrix_client, room_id_or_alias: str) -> None:
                 )
         else:
             logger.debug(f"Bot is already in room '{room_id_or_alias}'")
-    except Exception as e:
+    except Exception:
         logger.exception(f"Error joining room '{room_id_or_alias}'")
 
 
@@ -1767,12 +1766,27 @@ async def matrix_relay(
         # Process markdown/HTML if available; otherwise, safe fallback
         if has_markdown or has_html:
             try:
+                import bleach  # lazy import
                 import markdown  # lazy import
-                import bleach    # lazy import
+
                 raw_html = markdown.markdown(message)
                 formatted_body = bleach.clean(
                     raw_html,
-                    tags=["b","strong","i","em","code","pre","br","blockquote","a","ul","ol","li","p"],
+                    tags=[
+                        "b",
+                        "strong",
+                        "i",
+                        "em",
+                        "code",
+                        "pre",
+                        "br",
+                        "blockquote",
+                        "a",
+                        "ul",
+                        "ol",
+                        "li",
+                        "p",
+                    ],
                     attributes={"a": ["href"]},
                     strip=True,
                 )
@@ -1928,7 +1942,7 @@ async def matrix_relay(
         except asyncio.TimeoutError:
             logger.error(f"Timeout sending message to Matrix room {room_id}")
             return
-        except Exception as e:
+        except Exception:
             logger.exception(f"Error sending message to Matrix room {room_id}")
             return
 
@@ -1959,7 +1973,7 @@ async def matrix_relay(
 
     except asyncio.TimeoutError:
         logger.error("Timed out while waiting for Matrix response")
-    except Exception as e:
+    except Exception:
         logger.exception(f"Error sending radio message to matrix room {room_id}")
 
 
@@ -2138,8 +2152,8 @@ async def send_reply_to_meshtastic(
 
             # Message mapping is now handled automatically by the queue system
 
-        except Exception as e:
-            meshtastic_logger.exception(f"Error sending Matrix reply to Meshtastic")
+        except Exception:
+            meshtastic_logger.exception("Error sending Matrix reply to Meshtastic")
 
 
 async def handle_matrix_reply(
@@ -2228,7 +2242,7 @@ async def on_decryption_failure(room: MatrixRoom, event: MegolmEvent) -> None:
         request = event.as_key_request(matrix_client.user_id, matrix_client.device_id)
         await matrix_client.to_device(request)
         logger.info(f"Requested keys for failed decryption of event {event.event_id}")
-    except Exception as e:
+    except Exception:
         logger.exception(f"Failed to request keys for event {event.event_id}")
 
 

@@ -628,12 +628,13 @@ async def logout_matrix_bot(password: str):
             logger.error("Timeout while fetching user_id")
             print("❌ Timeout while fetching user_id")
         except Exception as e:
-            logger.exception(f"Error fetching user_id")
+            logger.exception("Error fetching user_id")
             print(f"❌ Error fetching user_id: {e}")
         finally:
             try:
                 await temp_client.close()
             except Exception:
+                # Ignore errors when closing client during logout
                 pass
 
     if not all([homeserver, user_id, access_token, device_id]):
@@ -738,6 +739,6 @@ async def logout_matrix_bot(password: str):
         return success
 
     except Exception as e:
-        logger.exception(f"Error during logout process")
+        logger.exception("Error during logout process")
         print(f"❌ Error during logout process: {e}")
         return False
