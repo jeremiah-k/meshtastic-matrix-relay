@@ -1083,9 +1083,11 @@ async def login_matrix_bot(
     """
     try:
         # Enable nio debug logging for detailed connection analysis
+        # But suppress validation warnings that are expected during login failures
         logging.getLogger("nio").setLevel(logging.DEBUG)
         logging.getLogger("nio.client").setLevel(logging.DEBUG)
         logging.getLogger("nio.http_client").setLevel(logging.DEBUG)
+        logging.getLogger("nio.responses").setLevel(logging.ERROR)  # Suppress validation warnings
         logging.getLogger("aiohttp").setLevel(logging.DEBUG)
 
         # Get homeserver URL
@@ -1257,6 +1259,20 @@ async def login_matrix_bot(
             logger.error(
                 "This may indicate network connectivity issues or a slow Matrix server"
             )
+            await client.close()
+            return False
+        except TypeError as e:
+            # Handle the specific ">=" comparison error that can occur in matrix-nio
+            if "'>=' not supported between instances of 'str' and 'int'" in str(e):
+                logger.error("Matrix-nio library error during login (known issue)")
+                logger.error("This typically indicates invalid credentials")
+                logger.error("Troubleshooting steps:")
+                logger.error("1. Verify your username and password are correct")
+                logger.error("2. Check if your account is locked or suspended")
+                logger.error("3. Try logging in through a web browser first")
+                logger.error("4. Use 'mmrelay auth login' to set up new credentials")
+            else:
+                logger.error(f"Type error during login: {e}")
             await client.close()
             return False
         except Exception as e:
