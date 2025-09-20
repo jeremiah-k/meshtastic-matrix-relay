@@ -1469,9 +1469,6 @@ async def login_matrix_bot(
                 logger.error("1. Invalid username or password")
                 logger.error("2. Server response format not as expected")
                 logger.error("3. Matrix server compatibility issues")
-                logger.error(
-                    "4. Password special characters causing JSON serialization issues"
-                )
                 logger.error("Troubleshooting steps:")
                 logger.error("1. Verify credentials by logging in via web browser")
                 logger.error(
@@ -1481,9 +1478,7 @@ async def login_matrix_bot(
                     "3. Check if your Matrix server is compatible with matrix-nio"
                 )
                 logger.error("4. Try a different Matrix server if available")
-                logger.error(
-                    "5. If password contains special characters (like *), try changing to alphanumeric only"
-                )
+
             else:
                 logger.error("Unexpected error during login.")
 
@@ -1562,7 +1557,7 @@ async def login_matrix_bot(
                 elif status_code == 429:
                     logger.error("Rate limited - too many login attempts.")
                     logger.error("Wait a few minutes before trying again.")
-                elif status_code and status_code >= 500:
+                elif status_code and int(status_code) >= 500:
                     logger.error(
                         "Matrix server error - the server is experiencing issues."
                     )
