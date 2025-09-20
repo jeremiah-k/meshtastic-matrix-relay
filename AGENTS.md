@@ -2,7 +2,7 @@
 
 ## Interactive Feedback Protocol
 
-**CRITICAL**: Always call interactive feedback at the end of every response, never end a turn. We always have work and are never finished. Wait for more input before proceeding and work until you run out of tool calls.
+**CRITICAL**: Use sequential thinking to reason through the problems. Always call interactive feedback at the end of every response, never end a turn. We always have work and are never finished. Wait for more input before proceeding and work until you run out of tool calls.
 
 ## Build/Lint/Test Commands
 
