@@ -185,7 +185,7 @@ class Plugin(BasePlugin):
                 if room_config["id"] == room.room_id:
                     channel = room_config["meshtastic_channel"]
 
-        if not channel:
+        if channel is None:
             self.logger.debug(f"Skipping message from unmapped channel {channel}")
             return False
 

@@ -404,8 +404,11 @@ class TestErrorBoundaries(unittest.TestCase):
                             except Exception as e:
                                 self.fail(f"Cascading failure occurred: {e}")
 
-                            # Should have logged errors but continued processing
-                            self.assertGreater(mock_logger.error.call_count, 0)
+                            # Should have logged errors (error or exception) and continued processing
+                            self.assertTrue(
+                                (getattr(mock_logger, "error").call_count
+                                 + getattr(mock_logger, "exception").call_count) > 0
+                            )
 
     def test_transient_failure_recovery(self):
         """
