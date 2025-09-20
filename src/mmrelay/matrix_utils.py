@@ -1287,141 +1287,54 @@ async def login_matrix_bot(
             await client.close()
             return False
 
-        try:
-            if isinstance(response, LoginResponse):
-                logger.info("Login successful!")
+        # Handle login response - check for access_token first (most reliable indicator)
+        if hasattr(response, 'access_token') and response.access_token:
+            logger.info("Login successful!")
 
-                # Save credentials to credentials.json
-                credentials = {
-                    "homeserver": homeserver,
-                    "user_id": response.user_id,
-                    "access_token": response.access_token,
-                    "device_id": response.device_id,
-                }
+            # Get the actual user_id from whoami() - this is the proper way
+            try:
+                whoami_response = await client.whoami()
+                if hasattr(whoami_response, 'user_id'):
+                    actual_user_id = whoami_response.user_id
+                    logger.debug(f"Got user_id from whoami: {actual_user_id}")
+                else:
+                    # Fallback to response user_id or username
+                    actual_user_id = getattr(response, 'user_id', username)
+                    logger.warning(f"whoami failed, using fallback user_id: {actual_user_id}")
+            except Exception as e:
+                logger.warning(f"whoami call failed: {e}, using fallback")
+                actual_user_id = getattr(response, 'user_id', username)
 
-                config_dir = get_base_dir()
-                credentials_path = os.path.join(config_dir, "credentials.json")
-                save_credentials(credentials)
-                logger.info(f"Credentials saved to {credentials_path}")
+            # Save credentials to credentials.json
+            credentials = {
+                "homeserver": homeserver,
+                "user_id": actual_user_id,
+                "access_token": response.access_token,
+                "device_id": getattr(response, 'device_id', existing_device_id),
+            }
 
-                # Logout other sessions if requested
-                if logout_others:
-                    logger.info("Logging out other sessions...")
-                    # Note: This would require additional implementation
-                    logger.warning("Logout others not yet implemented")
+            config_dir = get_base_dir()
+            credentials_path = os.path.join(config_dir, "credentials.json")
+            save_credentials(credentials)
+            logger.info(f"Credentials saved to {credentials_path}")
 
-                await client.close()
-                return True
-            elif isinstance(response, LoginError):
-                # Handle login error response
-                logger.error(f"Login failed: {type(response).__name__}")
-                logger.error(f"Error message: {response.message}")
-                if hasattr(response, "status_code") and response.status_code:
-                    logger.error(f"HTTP status code: {response.status_code}")
+            # Logout other sessions if requested
+            if logout_others:
+                logger.info("Logging out other sessions...")
+                # Note: This would require additional implementation
+                logger.warning("Logout others not yet implemented")
 
-                # Extract error details for troubleshooting
+            await client.close()
+            return True
+        else:
+            # Handle login failure
+            if hasattr(response, 'status_code') and hasattr(response, 'message'):
+                status_code = response.status_code
                 error_message = response.message
-                status_code = getattr(response, "status_code", None)
 
-                # Provide specific troubleshooting guidance
-                if status_code == 401 or "M_FORBIDDEN" in str(error_message):
-                    logger.error("Authentication failed - invalid username or password.")
-                    logger.error("Troubleshooting steps:")
-                    logger.error("1. Verify your username and password are correct")
-                    logger.error("2. Check if your account is locked or suspended")
-                    logger.error("3. Try logging in through a web browser first")
-                    logger.error("4. Use 'mmrelay auth login' to set up new credentials")
-                elif status_code == 404:
-                    logger.error("User not found or homeserver not found.")
-                    logger.error(f"Check that the homeserver URL is correct: {homeserver}")
-                elif status_code == 429:
-                    logger.error("Rate limited - too many login attempts.")
-                    logger.error("Wait a few minutes before trying again.")
-                elif status_code and status_code >= 500:
-                    logger.error("Matrix server error - the server is experiencing issues.")
-                    logger.error("Try again later or contact your server administrator.")
-                else:
-                    logger.error("Login failed for unknown reason.")
-                    logger.error("Try using 'mmrelay auth login' for interactive setup.")
-
-                await client.close()
-                return False
-            else:
-                # Fallback for test environments or unexpected response types
-                if hasattr(response, 'access_token') and hasattr(response, 'device_id'):
-                    # Looks like a successful login response
-                    logger.info("Login successful!")
-
-                    # Save credentials to credentials.json
-                    user_id = getattr(response, 'user_id', username)  # Fallback to username if user_id not available
-                    credentials = {
-                        "homeserver": homeserver,
-                        "user_id": user_id,
-                        "access_token": response.access_token,
-                        "device_id": response.device_id,
-                    }
-
-                    config_dir = get_base_dir()
-                    credentials_path = os.path.join(config_dir, "credentials.json")
-                    save_credentials(credentials)
-                    logger.info(f"Credentials saved to {credentials_path}")
-
-                    # Logout other sessions if requested
-                    if logout_others:
-                        logger.info("Logging out other sessions...")
-                        # Note: This would require additional implementation
-                        logger.warning("Logout others not yet implemented")
-
-                    await client.close()
-                    return True
-                else:
-                    # Unexpected response type
-                    logger.error(f"Unexpected login response type: {type(response).__name__}")
-                    logger.error("This may indicate a matrix-nio library issue or server problem.")
-                    await client.close()
-                    return False
-        except TypeError as e:
-            # Handle isinstance() errors in test environments
-            logger.warning(f"Response type checking error: {e}")
-
-            # Fallback to attribute-based checking
-            if hasattr(response, 'access_token') and hasattr(response, 'device_id'):
-                # Looks like a successful login response
-                logger.info("Login successful!")
-
-                # Save credentials to credentials.json
-                user_id = getattr(response, 'user_id', username)  # Fallback to username if user_id not available
-                credentials = {
-                    "homeserver": homeserver,
-                    "user_id": user_id,
-                    "access_token": response.access_token,
-                    "device_id": response.device_id,
-                }
-
-                config_dir = get_base_dir()
-                credentials_path = os.path.join(config_dir, "credentials.json")
-                save_credentials(credentials)
-                logger.info(f"Credentials saved to {credentials_path}")
-
-                # Logout other sessions if requested
-                if logout_others:
-                    logger.info("Logging out other sessions...")
-                    # Note: This would require additional implementation
-                    logger.warning("Logout others not yet implemented")
-
-                await client.close()
-                return True
-            else:
-                # Treat as error response
                 logger.error(f"Login failed: {type(response).__name__}")
-                if hasattr(response, 'message'):
-                    logger.error(f"Error message: {response.message}")
-                if hasattr(response, 'status_code'):
-                    logger.error(f"HTTP status code: {response.status_code}")
-
-                # Extract error details for troubleshooting
-                error_message = getattr(response, 'message', '')
-                status_code = getattr(response, 'status_code', None)
+                logger.error(f"Error message: {error_message}")
+                logger.error(f"HTTP status code: {status_code}")
 
                 # Provide specific troubleshooting guidance
                 if status_code == 401 or "M_FORBIDDEN" in str(error_message):
@@ -1443,9 +1356,13 @@ async def login_matrix_bot(
                 else:
                     logger.error("Login failed for unknown reason.")
                     logger.error("Try using 'mmrelay auth login' for interactive setup.")
+            else:
+                logger.error(f"Unexpected login response: {type(response).__name__}")
+                logger.error("This may indicate a matrix-nio library issue or server problem.")
 
-                await client.close()
-                return False
+            await client.close()
+            return False
+
 
     except Exception as e:
         logger.error(f"Error during login: {e}")

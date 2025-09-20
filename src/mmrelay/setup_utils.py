@@ -373,7 +373,7 @@ def create_service_file():
 
     # Normalize ExecStart: replace any mmrelay launcher with resolved command, preserving args
     service_content = re.sub(
-        r"(?m)^(ExecStart=)(?:/usr/bin/env\s+mmrelay|[\S/]*mmrelay|.+python\s+-m\s+mmrelay)(\s.*)?$",
+        r"(?m)^(ExecStart=)(?:/usr/bin/env\s+mmrelay|[\S/]*mmrelay|.+\bpython(?:\d+(?:\.\d+)*)?\b\s+-m\s+mmrelay)(\s.*)?$",
         rf"\1{resolved_exec_cmd}\2",
         service_content,
     )

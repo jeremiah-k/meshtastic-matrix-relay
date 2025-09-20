@@ -323,9 +323,19 @@ begin
   ServerName := ExtractHostFromURL(HomeserverURL);
 
   // If IPv6 literal, ensure brackets for MXID server name
-  if (Length(ServerName) > 0) and (Pos(':', ServerName) > 0) then
+  // Check for more than one colon to better detect IPv6 addresses
+  if (Length(ServerName) > 0) then
   begin
-    if not ((ServerName[1] = '[') and (ServerName[Length(ServerName)] = ']')) then
+    var colonCount: Integer;
+    var i: Integer;
+    colonCount := 0;
+    for i := 1 to Length(ServerName) do
+    begin
+      if ServerName[i] = ':' then
+        colonCount := colonCount + 1;
+    end;
+
+    if (colonCount > 1) and not ((ServerName[1] = '[') and (ServerName[Length(ServerName)] = ']')) then
       ServerName := '[' + ServerName + ']';
   end;
 

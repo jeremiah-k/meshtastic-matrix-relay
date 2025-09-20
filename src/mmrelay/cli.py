@@ -1158,17 +1158,17 @@ def main():
         print(f"System error: {e.__class__.__name__}: {e}", file=sys.stderr)
         return 1
     except Exception as e:
+        # Default error message
+        error_msg = f"Unexpected error: {e.__class__.__name__}: {e}"
         # Provide Windows-specific error guidance if available
         try:
             from mmrelay.windows_utils import get_windows_error_message, is_windows
 
             if is_windows():
-                error_msg = get_windows_error_message(e)
-                print(f"Error: {error_msg}", file=sys.stderr)
-            else:
-                print(f"Unexpected error: {e.__class__.__name__}: {e}", file=sys.stderr)
+                error_msg = f"Error: {get_windows_error_message(e)}"
         except ImportError:
-            print(f"Unexpected error: {e.__class__.__name__}: {e}", file=sys.stderr)
+            pass  # Use default message
+        print(error_msg, file=sys.stderr)
         return 1
 
 
