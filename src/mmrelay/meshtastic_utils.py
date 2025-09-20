@@ -270,7 +270,7 @@ def connect_meshtastic(passed_config=None, force_connect=False):
 
         # Check if config is available
         if config is None:
-            logger.exception("No configuration available. Cannot connect to Meshtastic.")
+            logger.error("No configuration available. Cannot connect to Meshtastic.")
             return None
 
         # Check if meshtastic config section exists
@@ -278,7 +278,7 @@ def connect_meshtastic(passed_config=None, force_connect=False):
             CONFIG_SECTION_MESHTASTIC not in config
             or config[CONFIG_SECTION_MESHTASTIC] is None
         ):
-            logger.exception(
+            logger.error(
                 "No Meshtastic configuration section found. Cannot connect to Meshtastic."
             )
             return None
@@ -288,7 +288,7 @@ def connect_meshtastic(passed_config=None, force_connect=False):
             CONFIG_KEY_CONNECTION_TYPE not in config[CONFIG_SECTION_MESHTASTIC]
             or config[CONFIG_SECTION_MESHTASTIC][CONFIG_KEY_CONNECTION_TYPE] is None
         ):
-            logger.exception(
+            logger.error(
                 "No connection type specified in Meshtastic configuration. Cannot connect to Meshtastic."
             )
             return None
@@ -472,7 +472,7 @@ def on_lost_meshtastic_connection(interface=None, detection_source="unknown"):
             )
             return
         reconnecting = True
-        logger.exception(f"Lost connection ({detection_source}). Reconnecting...")
+        logger.error(f"Lost connection ({detection_source}). Reconnecting...")
 
         if meshtastic_client:
             try:
