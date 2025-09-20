@@ -1945,6 +1945,75 @@ async def test_logout_matrix_bot_timeout():
         mock_temp_client.close.assert_called_once()
 
 
+@pytest.mark.asyncio
+async def test_logout_matrix_bot_missing_user_id_fetch_success():
+    """Test logout when user_id is missing but can be fetched via whoami()."""
+    mock_credentials = {
+        "homeserver": "https://matrix.org",
+        "access_token": "test_token",
+        "device_id": "test_device",
+        # Note: user_id is intentionally missing
+    }
+
+    with patch(
+        "mmrelay.matrix_utils.load_credentials", return_value=mock_credentials.copy()
+    ), patch("mmrelay.cli_utils.AsyncClient") as mock_async_client, patch(
+        "mmrelay.config.save_credentials"
+    ) as mock_save_credentials, patch(
+        "mmrelay.cli_utils._create_ssl_context", return_value=None
+    ), patch(
+        "mmrelay.cli_utils._cleanup_local_session_data", return_value=True
+    ) as mock_cleanup:
+
+        # Mock temporary client for whoami (first client)
+        mock_whoami_client = AsyncMock()
+        mock_whoami_client.close = AsyncMock()
+
+        # Mock whoami response to return user_id
+        mock_whoami_response = MagicMock()
+        mock_whoami_response.user_id = "@fetched:matrix.org"
+        mock_whoami_client.whoami.return_value = mock_whoami_response
+
+        # Mock password verification client (second client)
+        mock_password_client = AsyncMock()
+        mock_password_client.close = AsyncMock()
+        mock_password_client.login = AsyncMock(
+            return_value=MagicMock(access_token="temp_token")
+        )
+        mock_password_client.logout = AsyncMock()
+
+        # Mock main logout client (third client)
+        mock_main_client = AsyncMock()
+        mock_main_client.restore_login = MagicMock()
+        mock_main_client.logout = AsyncMock(
+            return_value=MagicMock(transport_response="success")
+        )
+        mock_main_client.close = AsyncMock()
+
+        # Return clients in the order they'll be created
+        mock_async_client.side_effect = [
+            mock_whoami_client,
+            mock_password_client,
+            mock_main_client,
+        ]
+
+        result = await logout_matrix_bot(password="test_password")
+
+        assert result is True
+        # Verify whoami was called to fetch user_id
+        mock_whoami_client.whoami.assert_called_once()
+        # Verify credentials were saved with fetched user_id
+        expected_credentials = mock_credentials.copy()
+        expected_credentials["user_id"] = "@fetched:matrix.org"
+        mock_save_credentials.assert_called_once_with(expected_credentials)
+        # Verify password verification was performed
+        mock_password_client.login.assert_called_once()
+        # Verify main logout was called
+        mock_main_client.logout.assert_called_once()
+        # Verify cleanup was called
+        mock_cleanup.assert_called_once()
+
+
 def test_cleanup_local_session_data_success():
     """Test successful cleanup of local session data."""
     with patch("mmrelay.config.get_base_dir", return_value="/test/config"), patch(

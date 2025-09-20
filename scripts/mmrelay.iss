@@ -25,6 +25,7 @@ Filename: "{app}\mmrelay.bat"; Description: "Launch MM Relay"; Flags: nowait pos
 [Code]
 var
   OverwriteConfig: TInputOptionWizardPage;
+  MatrixPage: TInputQueryWizardPage;
   MatrixMeshtasticPage: TInputQueryWizardPage;
   MeshtasticPage: TInputQueryWizardPage;
   OptionsPage: TInputOptionWizardPage;
@@ -38,7 +39,10 @@ begin
   MeshtasticPage := CreateInputQueryPage(OverwriteConfig.ID,
       'Meshtastic Setup', 'Configure Meshtastic Settings',
       'Enter the settings for connecting with your Meshtastic radio.');
-  MatrixMeshtasticPage := CreateInputQueryPage(MeshtasticPage.ID,
+  MatrixPage := CreateInputQueryPage(MeshtasticPage.ID,
+      'Matrix Setup', 'Configure Matrix Authentication',
+      'Enter your Matrix server and account details for authentication.');
+  MatrixMeshtasticPage := CreateInputQueryPage(MatrixPage.ID,
       'Matrix <> Meshtastic Setup', 'Configure Matrix <> Meshtastic Settings',
       'Connect a Matrix room with a Meshtastic radio channel.');
   OptionsPage := CreateInputOptionPage(MatrixMeshtasticPage.ID,
@@ -63,6 +67,16 @@ begin
   MeshtasticPage.Edits[3].Hint := 'BLE address or name (if ble)';
   MeshtasticPage.Edits[4].Hint := 'Name for radio Meshnet';
 
+  MatrixPage.Add('Matrix homeserver URL (e.g., https://matrix.org):', False);
+  MatrixPage.Add('Matrix username (without @):', False);
+  MatrixPage.Add('Matrix password:', True);
+  MatrixPage.Edits[0].Hint := 'https://matrix.org or https://your.server.com';
+  MatrixPage.Edits[1].Hint := 'yourusername';
+  MatrixPage.Edits[2].Hint := 'Your Matrix account password';
+
+  // Set up password masking for the password field
+  MatrixPage.Edits[2].PasswordChar := '*';
+
   MatrixMeshtasticPage.Add('Matrix room ID/alias (example: #someroom:example.matrix.org):', False);
   MatrixMeshtasticPage.Add('Meshtastic channel # (0 is primary, 1-7 secondary):', False);
   MatrixMeshtasticPage.Edits[0].Hint := '!someroomid:example.matrix.org';
@@ -80,6 +94,16 @@ begin
     result := 'true'
   else
     result := 'false';
+end;
+
+// Password masking for the Matrix password input field
+procedure MatrixPagePasswordChange(Sender: TObject);
+var
+  PasswordEdit: TEdit;
+begin
+  PasswordEdit := TEdit(Sender);
+  // Mask the password with asterisks
+  PasswordEdit.PasswordChar := '*';
 end;
 
 { Skips config setup pages if needed}
@@ -100,6 +124,9 @@ var
   ble_address: string;
   log_level: string;
   batch_file: string;
+  matrix_homeserver: string;
+  matrix_username: string;
+  matrix_password: string;
 begin
   If Not OverwriteConfig.Values[0] then
     Exit;
@@ -113,6 +140,9 @@ begin
   serial_port := MeshtasticPage.Values[1];
   host := MeshtasticPage.Values[2];
   ble_address := MeshtasticPage.Values[3];
+  matrix_homeserver := MatrixPage.Values[0];
+  matrix_username := MatrixPage.Values[1];
+  matrix_password := MatrixPage.Values[2];
 
   if OptionsPage.Values[0] then
   begin
@@ -123,7 +153,11 @@ begin
     log_level := 'info';
   end;
 
-  config := 'matrix_rooms:' + #13#10 +
+  config := 'matrix:' + #13#10 +
+            '  homeserver: "' + matrix_homeserver + '"' + #13#10 +
+            '  bot_user_id: "@' + matrix_username + '"' + #13#10 +
+            '  password: "' + matrix_password + '"' + #13#10 +
+            'matrix_rooms:' + #13#10 +
             '  - id: "' + MatrixMeshtasticPage.Values[0] + '"' + #13#10 +
             '    meshtastic_channel: ' + MatrixMeshtasticPage.Values[1] + #13#10 +
             'meshtastic:' + #13#10 +
