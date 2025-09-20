@@ -2,16 +2,12 @@
 
 ## Interactive Feedback Protocol
 
-**CRITICAL**: Always call interactive feedback at the end of every response, never end a turn. We always have work and are never finished. Wait for more input before proceeding.
+**CRITICAL**: Always call interactive feedback at the end of every response, never end a turn. We always have work and are never finished. Wait for more input before proceeding and work until you run out of tool calls.
 
 ## Build/Lint/Test Commands
 
-- **Run all tests**: `pytest`
-- **Run single test**: `pytest tests/test_specific_file.py::test_function_name`
 - **Run with coverage**: `pytest --cov=src/mmrelay --cov-report=term-missing`
-- **Lint code**: `trunk check --fix --all` or `ruff check src/`
-- **Format code**: `black src/ && isort src/`
-- **Type checking**: `mypy src/` (if mypy installed)
+- **Lint code**: `trunk check --fix --all` (do not need to run each time, it wastes time)
 
 ## Code Style Guidelines
 
@@ -26,20 +22,13 @@
 
 ## Testing Guidelines (from TESTING_GUIDE.md)
 
+- **Read the testing guide in full**: Follow existing patterns (Located in docs/dev/TESTING_GUIDE.md)
+- **Set up a venv**: Create a virtual environment in venv/ and `pip install -r requirements.txt -r requirements-e2e.txt
 - **Async Mocking**: Use regular `Mock` with `return_value` for functions called via `asyncio.run()`, not `AsyncMock`
 - **Warning Handling**: Treat all warnings as errors - fix underlying issues, don't suppress
 - **Test Organization**: Use Arrange-Act-Assert pattern, descriptive test names, independent tests
 - **Mock Patterns**: Mock external dependencies, not internal logic; use proper patch paths
 - **Coverage**: Run tests with `pytest --cov --tb=short` and ensure no warnings
-
-## E2EE Guidelines (from E2EE.md)
-
-- **Windows Limitation**: E2EE is not supported on Windows due to python-olm library limitations
-- **Configuration**: E2EE enabled via `matrix.e2ee.enabled: true` in config.yaml, respects config settings
-- **Installation**: Use `pipx install 'mmrelay[e2e]'` for E2EE support on Linux/macOS
-- **Authentication**: Use `mmrelay auth login` for proper E2EE credential setup
-- **File Locations**: Credentials in `~/.mmrelay/credentials.json`, store in `~/.mmrelay/store/`
-- **Troubleshooting**: "Failed to decrypt" errors are normal temporary behavior, keys sync automatically
 
 ## Inno Setup Guidelines (from INNO_SETUP_GUIDE.md)
 
