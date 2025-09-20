@@ -595,7 +595,7 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         # Should print fallback message
         mock_print.assert_any_call(
             "Warning: Could not find mmrelay executable in PATH. Using current Python interpreter.",
-            file=sys.stderr
+            file=sys.stderr,
         )
 
         # Should write service content with python -m mmrelay

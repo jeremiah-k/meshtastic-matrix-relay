@@ -436,7 +436,9 @@ def service_needs_update():
     mmrelay_path = shutil.which("mmrelay")
     acceptable_execs = [f"{_quote_if_needed(sys.executable)} -m mmrelay"]
     if mmrelay_path:
-        acceptable_execs.extend([_quote_if_needed(mmrelay_path), "/usr/bin/env mmrelay"])
+        acceptable_execs.extend(
+            [_quote_if_needed(mmrelay_path), "/usr/bin/env mmrelay"]
+        )
 
     # Check if the ExecStart line in the existing service file contains an acceptable executable form
     exec_start_line = next(
@@ -461,7 +463,8 @@ def service_needs_update():
     # Check if the PATH environment includes common user-bin locations
     # Look specifically in Environment lines, not the entire file
     environment_lines = [
-        line for line in existing_service.splitlines()
+        line
+        for line in existing_service.splitlines()
         if line.strip().startswith("Environment=")
     ]
     path_in_environment = any(

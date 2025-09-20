@@ -20,8 +20,6 @@ from nio import (
     AsyncClientConfig,
     DiscoveryInfoError,
     DiscoveryInfoResponse,
-    LoginError,
-    LoginResponse,
     MatrixRoom,
     MegolmEvent,
     ReactionEvent,
@@ -822,7 +820,9 @@ async def connect_matrix(passed_config=None):
                         if e2ee_enabled:
                             logger.info("End-to-End Encryption (E2EE) is enabled")
                         else:
-                            logger.debug("E2EE dependencies available but E2EE is disabled in configuration")
+                            logger.debug(
+                                "E2EE dependencies available but E2EE is disabled in configuration"
+                            )
 
                         # Get store path from config or use default
                         if (
@@ -1087,7 +1087,9 @@ async def login_matrix_bot(
         logging.getLogger("nio").setLevel(logging.DEBUG)
         logging.getLogger("nio.client").setLevel(logging.DEBUG)
         logging.getLogger("nio.http_client").setLevel(logging.DEBUG)
-        logging.getLogger("nio.responses").setLevel(logging.DEBUG)  # Enable validation logging
+        logging.getLogger("nio.responses").setLevel(
+            logging.DEBUG
+        )  # Enable validation logging
         logging.getLogger("aiohttp").setLevel(logging.DEBUG)
 
         # Get homeserver URL
@@ -1133,7 +1135,7 @@ async def login_matrix_bot(
                     # Continue with original homeserver URL
                 else:
                     # Fallback for test environments or unexpected response types
-                    if hasattr(discovery_response, 'homeserver_url'):
+                    if hasattr(discovery_response, "homeserver_url"):
                         actual_homeserver = discovery_response.homeserver_url
                         logger.info(f"Server discovery successful: {actual_homeserver}")
                         homeserver = actual_homeserver
@@ -1181,12 +1183,18 @@ async def login_matrix_bot(
         if not username.startswith("@"):
             logger.warning(f"Username doesn't start with @: {username}")
         if username.count(":") != 1:
-            logger.warning(f"Username has unexpected colon count: {username.count(':')}")
+            logger.warning(
+                f"Username has unexpected colon count: {username.count(':')}"
+            )
 
         # Check for special characters in username that might cause issues
-        username_special_chars = set(username) - set('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@:.-_')
+        username_special_chars = set(username) - set(
+            "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@:.-_"
+        )
         if username_special_chars:
-            logger.warning(f"Username contains unusual characters: {username_special_chars}")
+            logger.warning(
+                f"Username contains unusual characters: {username_special_chars}"
+            )
 
         # Get password
         if not password:
@@ -1195,12 +1203,18 @@ async def login_matrix_bot(
         # Debug password handling (without logging the actual password)
         logger.debug(f"Password length: {len(password) if password else 0}")
         logger.debug(f"Password type: {type(password).__name__}")
-        logger.debug(f"Password encoding: {password.encode('utf-8') if password else 'None'}")
+        logger.debug(
+            f"Password encoding: {password.encode('utf-8') if password else 'None'}"
+        )
         if password:
             # Check for special characters that might cause issues
-            special_chars = set(password) - set('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789')
+            special_chars = set(password) - set(
+                "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+            )
             if special_chars:
-                logger.debug(f"Password contains special characters: {len(special_chars)} unique chars")
+                logger.debug(
+                    f"Password contains special characters: {len(special_chars)} unique chars"
+                )
                 # Log the character codes without revealing the password
                 char_codes = [ord(c) for c in special_chars]
                 logger.debug(f"Special character codes: {char_codes}")
@@ -1235,7 +1249,7 @@ async def login_matrix_bot(
             logger.debug(f"Could not load existing credentials: {e}")
 
         # Check if E2EE is enabled in configuration
-        from mmrelay.config import load_config, is_e2ee_enabled
+        from mmrelay.config import is_e2ee_enabled, load_config
 
         try:
             config = load_config()
@@ -1265,7 +1279,7 @@ async def login_matrix_bot(
 
         # Initialize client with E2EE support
         # Use most common pattern from matrix-nio examples: positional homeserver and user
-        logger.debug(f"Creating AsyncClient with:")
+        logger.debug("Creating AsyncClient with:")
         logger.debug(f"  homeserver: {homeserver}")
         logger.debug(f"  username: {username}")
         logger.debug(f"  device_id: {existing_device_id}")
@@ -1281,19 +1295,24 @@ async def login_matrix_bot(
             ssl=ssl_context,
         )
 
-        logger.debug(f"AsyncClient created successfully")
+        logger.debug("AsyncClient created successfully")
 
         # Test JSON encoding of password to see if special characters are handled correctly
         if password:
             import json
+
             test_dict = {"password": password}
             try:
                 json_str = json.dumps(test_dict, separators=(",", ":"))
-                logger.debug(f"Password JSON encoding test successful, length: {len(json_str)}")
+                logger.debug(
+                    f"Password JSON encoding test successful, length: {len(json_str)}"
+                )
                 # Check if the JSON contains the expected password length
                 parsed_back = json.loads(json_str)
                 if len(parsed_back["password"]) != len(password):
-                    logger.error("Password length mismatch after JSON encoding/decoding!")
+                    logger.error(
+                        "Password length mismatch after JSON encoding/decoding!"
+                    )
                 else:
                     logger.debug("Password JSON round-trip successful")
             except Exception as e:
@@ -1310,7 +1329,7 @@ async def login_matrix_bot(
                 client.device_id = existing_device_id
 
             logger.debug(f"Attempting login to {homeserver} as {username}")
-            logger.debug(f"Login parameters:")
+            logger.debug("Login parameters:")
             logger.debug(f"  device_name: {device_name}")
             logger.debug(f"  password length: {len(password) if password else 0}")
             logger.debug(f"  client.user: {client.user}")
@@ -1319,21 +1338,26 @@ async def login_matrix_bot(
             # Test the API call that matrix-nio will make
             try:
                 from nio.api import Api
+
                 method, path, data = Api.login(
                     user=username,
                     password=password,
                     device_name=device_name,
-                    device_id=existing_device_id
+                    device_id=existing_device_id,
                 )
-                logger.debug(f"Matrix API call details:")
+                logger.debug("Matrix API call details:")
                 logger.debug(f"  method: {method}")
                 logger.debug(f"  path: {path}")
                 logger.debug(f"  data length: {len(data) if data else 0}")
 
                 # Parse the JSON to see the structure (without logging the password)
                 import json
+
                 parsed_data = json.loads(data)
-                safe_data = {k: (v if k != 'password' else f'[{len(v)} chars]') for k, v in parsed_data.items()}
+                safe_data = {
+                    k: (v if k != "password" else f"[{len(v)} chars]")
+                    for k, v in parsed_data.items()
+                }
                 logger.debug(f"  parsed data: {safe_data}")
 
             except Exception as e:
@@ -1347,14 +1371,22 @@ async def login_matrix_bot(
             # Debug: Log the actual response received
             logger.debug(f"Login response type: {type(response).__name__}")
             logger.debug(f"Login response attributes: {dir(response)}")
-            if hasattr(response, '__dict__'):
+            if hasattr(response, "__dict__"):
                 logger.debug(f"Login response dict: {response.__dict__}")
 
             # Check specific attributes that should be present
-            for attr in ['user_id', 'device_id', 'access_token', 'status_code', 'message']:
+            for attr in [
+                "user_id",
+                "device_id",
+                "access_token",
+                "status_code",
+                "message",
+            ]:
                 if hasattr(response, attr):
                     value = getattr(response, attr)
-                    logger.debug(f"Response.{attr}: {value} (type: {type(value).__name__})")
+                    logger.debug(
+                        f"Response.{attr}: {value} (type: {type(value).__name__})"
+                    )
                 else:
                     logger.debug(f"Response.{attr}: NOT PRESENT")
         except asyncio.TimeoutError:
@@ -1407,29 +1439,31 @@ async def login_matrix_bot(
             return False
 
         # Handle login response - check for access_token first (most reliable indicator)
-        if hasattr(response, 'access_token') and response.access_token:
+        if hasattr(response, "access_token") and response.access_token:
             logger.info("Login successful!")
 
             # Get the actual user_id from whoami() - this is the proper way
             try:
                 whoami_response = await client.whoami()
-                if hasattr(whoami_response, 'user_id'):
+                if hasattr(whoami_response, "user_id"):
                     actual_user_id = whoami_response.user_id
                     logger.debug(f"Got user_id from whoami: {actual_user_id}")
                 else:
                     # Fallback to response user_id or username
-                    actual_user_id = getattr(response, 'user_id', username)
-                    logger.warning(f"whoami failed, using fallback user_id: {actual_user_id}")
+                    actual_user_id = getattr(response, "user_id", username)
+                    logger.warning(
+                        f"whoami failed, using fallback user_id: {actual_user_id}"
+                    )
             except Exception as e:
                 logger.warning(f"whoami call failed: {e}, using fallback")
-                actual_user_id = getattr(response, 'user_id', username)
+                actual_user_id = getattr(response, "user_id", username)
 
             # Save credentials to credentials.json
             credentials = {
                 "homeserver": homeserver,
                 "user_id": actual_user_id,
                 "access_token": response.access_token,
-                "device_id": getattr(response, 'device_id', existing_device_id),
+                "device_id": getattr(response, "device_id", existing_device_id),
             }
 
             config_dir = get_base_dir()
@@ -1447,7 +1481,7 @@ async def login_matrix_bot(
             return True
         else:
             # Handle login failure
-            if hasattr(response, 'status_code') and hasattr(response, 'message'):
+            if hasattr(response, "status_code") and hasattr(response, "message"):
                 status_code = response.status_code
                 error_message = response.message
 
@@ -1457,31 +1491,44 @@ async def login_matrix_bot(
 
                 # Provide specific troubleshooting guidance
                 if status_code == 401 or "M_FORBIDDEN" in str(error_message):
-                    logger.error("Authentication failed - invalid username or password.")
+                    logger.error(
+                        "Authentication failed - invalid username or password."
+                    )
                     logger.error("Troubleshooting steps:")
                     logger.error("1. Verify your username and password are correct")
                     logger.error("2. Check if your account is locked or suspended")
                     logger.error("3. Try logging in through a web browser first")
-                    logger.error("4. Use 'mmrelay auth login' to set up new credentials")
+                    logger.error(
+                        "4. Use 'mmrelay auth login' to set up new credentials"
+                    )
                 elif status_code == 404:
                     logger.error("User not found or homeserver not found.")
-                    logger.error(f"Check that the homeserver URL is correct: {homeserver}")
+                    logger.error(
+                        f"Check that the homeserver URL is correct: {homeserver}"
+                    )
                 elif status_code == 429:
                     logger.error("Rate limited - too many login attempts.")
                     logger.error("Wait a few minutes before trying again.")
                 elif status_code and status_code >= 500:
-                    logger.error("Matrix server error - the server is experiencing issues.")
-                    logger.error("Try again later or contact your server administrator.")
+                    logger.error(
+                        "Matrix server error - the server is experiencing issues."
+                    )
+                    logger.error(
+                        "Try again later or contact your server administrator."
+                    )
                 else:
                     logger.error("Login failed for unknown reason.")
-                    logger.error("Try using 'mmrelay auth login' for interactive setup.")
+                    logger.error(
+                        "Try using 'mmrelay auth login' for interactive setup."
+                    )
             else:
                 logger.error(f"Unexpected login response: {type(response).__name__}")
-                logger.error("This may indicate a matrix-nio library issue or server problem.")
+                logger.error(
+                    "This may indicate a matrix-nio library issue or server problem."
+                )
 
             await client.close()
             return False
-
 
     except Exception as e:
         logger.error(f"Error during login: {e}")
