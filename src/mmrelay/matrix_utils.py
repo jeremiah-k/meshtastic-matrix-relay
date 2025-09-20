@@ -1400,12 +1400,17 @@ async def login_matrix_bot(
             # Handle the specific ">=" comparison error that can occur in matrix-nio
             if "'>=' not supported between instances of 'str' and 'int'" in str(e):
                 logger.error("Matrix-nio library error during login (known issue)")
-                logger.error("This typically indicates invalid credentials")
+                logger.error(
+                    "This typically indicates invalid credentials or server response format issues"
+                )
                 logger.error("Troubleshooting steps:")
                 logger.error("1. Verify your username and password are correct")
                 logger.error("2. Check if your account is locked or suspended")
                 logger.error("3. Try logging in through a web browser first")
-                logger.error("4. Use 'mmrelay auth login' to set up new credentials")
+                logger.error("4. Ensure your Matrix server supports the login API")
+                logger.error(
+                    "5. Try using a different homeserver URL format (e.g., with https://)"
+                )
             else:
                 logger.error(f"Type error during login: {e}")
             await client.close()
@@ -1431,6 +1436,21 @@ async def login_matrix_bot(
                 logger.error("DNS resolution failed.")
                 logger.error(f"Cannot resolve hostname: {homeserver}")
                 logger.error("Check your DNS settings and internet connection.")
+            elif "'user_id' is a required property" in str(e):
+                logger.error("Matrix server response validation failed.")
+                logger.error("This typically indicates:")
+                logger.error("1. Invalid username or password")
+                logger.error("2. Server response format not as expected")
+                logger.error("3. Matrix server compatibility issues")
+                logger.error("Troubleshooting steps:")
+                logger.error("1. Verify credentials by logging in via web browser")
+                logger.error(
+                    "2. Try using the full homeserver URL (e.g., https://matrix.org)"
+                )
+                logger.error(
+                    "3. Check if your Matrix server is compatible with matrix-nio"
+                )
+                logger.error("4. Try a different Matrix server if available")
             else:
                 logger.error("Unexpected error during login.")
 
