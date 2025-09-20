@@ -116,6 +116,10 @@ var
   matrix_homeserver: string;
   matrix_username: string;
   matrix_password: string;
+  meshtastic_channel: string;
+  chanInt: Integer;
+  room_id: string;
+  meshnet_name: string;
 begin
   If Not OverwriteConfig.Values[0] then
     Exit;
@@ -137,6 +141,70 @@ begin
   matrix_username := MatrixPage.Values[1];
   matrix_password := MatrixPage.Values[2];
 
+  // Validate connection-specific fields
+  if connection_type = 'serial' then
+  begin
+    if Trim(serial_port) = '' then
+    begin
+      MsgBox('Serial port cannot be empty when connection type is "serial".', mbError, MB_OK);
+      Abort;
+    end;
+  end
+  else if connection_type = 'network' then
+  begin
+    if Trim(host) = '' then
+    begin
+      MsgBox('Hostname/IP cannot be empty when connection type is "network".', mbError, MB_OK);
+      Abort;
+    end;
+  end
+  else if connection_type = 'ble' then
+  begin
+    if Trim(ble_address) = '' then
+    begin
+      MsgBox('BLE address cannot be empty when connection type is "ble".', mbError, MB_OK);
+      Abort;
+    end;
+  end;
+
+  // Escape double quotes and backslashes in user-provided string values for YAML
+  StringChangeEx(matrix_homeserver, '"', '\"', True);
+  StringChangeEx(matrix_homeserver, '\', '\\', True);
+  StringChangeEx(matrix_username, '"', '\"', True);
+  StringChangeEx(matrix_username, '\', '\\', True);
+  StringChangeEx(matrix_password, '"', '\"', True);
+  StringChangeEx(matrix_password, '\', '\\', True);
+  
+  // Escape additional string values that will be used in config
+  StringChangeEx(serial_port, '"', '\"', True);
+  StringChangeEx(serial_port, '\', '\\', True);
+  StringChangeEx(host, '"', '\"', True);
+  StringChangeEx(host, '\', '\\', True);
+  StringChangeEx(ble_address, '"', '\"', True);
+  StringChangeEx(ble_address, '\', '\\', True);
+
+  // Validate and process Meshtastic channel
+  meshtastic_channel := Trim(MatrixMeshtasticPage.Values[1]);
+  if meshtastic_channel = '' then
+    meshtastic_channel := '0'; // default to primary channel
+  
+  // Ensure integer 0-7 (use StrToIntDef to avoid exceptions)
+  chanInt := StrToIntDef(meshtastic_channel, -1);
+  if (chanInt < 0) or (chanInt > 7) or (IntToStr(chanInt) <> meshtastic_channel) then
+  begin
+    MsgBox('Invalid Meshtastic channel. Enter a number 0–7.', mbError, MB_OK);
+    Abort;
+  end;
+  meshtastic_channel := IntToStr(chanInt);
+
+  // Escape remaining string values
+  room_id := MatrixMeshtasticPage.Values[0];
+  meshnet_name := MeshtasticPage.Values[4];
+  StringChangeEx(room_id, '"', '\"', True);
+  StringChangeEx(room_id, '\', '\\', True);
+  StringChangeEx(meshnet_name, '"', '\"', True);
+  StringChangeEx(meshnet_name, '\', '\\', True);
+
   if OptionsPage.Values[0] then
   begin
     log_level := 'debug';
@@ -151,8 +219,8 @@ begin
             '  bot_user_id: "@' + matrix_username + '"' + #13#10 +
             '  password: "' + matrix_password + '"' + #13#10 +
             'matrix_rooms:' + #13#10 +
-            '  - id: "' + MatrixMeshtasticPage.Values[0] + '"' + #13#10 +
-            '    meshtastic_channel: ' + MatrixMeshtasticPage.Values[1] + #13#10 +
+            '  - id: "' + room_id + '"' + #13#10 +
+            '    meshtastic_channel: ' + meshtastic_channel + #13#10 +
             'meshtastic:' + #13#10 +
             '  connection_type: "' + connection_type + '"' + #13#10;
 
@@ -163,7 +231,7 @@ begin
   else if connection_type = 'ble' then
     config := config + '  ble_address: "' + ble_address + '"' + #13#10;
 
-  config := config + '  meshnet_name: "' + MeshtasticPage.Values[4] + '"' + #13#10 +
+  config := config + '  meshnet_name: "' + meshnet_name + '"' + #13#10 +
             '  broadcast_enabled: ' + BoolToStr(OptionsPage.Values[1]) + #13#10 +
             'logging:' + #13#10 +
             '  level: "' + log_level + '"' + #13#10 +
