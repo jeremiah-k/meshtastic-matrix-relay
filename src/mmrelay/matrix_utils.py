@@ -1083,11 +1083,11 @@ async def login_matrix_bot(
     """
     try:
         # Enable nio debug logging for detailed connection analysis
-        # But suppress validation warnings that are expected during login failures
+        # Enable ALL logging to debug the validation issue
         logging.getLogger("nio").setLevel(logging.DEBUG)
         logging.getLogger("nio.client").setLevel(logging.DEBUG)
         logging.getLogger("nio.http_client").setLevel(logging.DEBUG)
-        logging.getLogger("nio.responses").setLevel(logging.ERROR)  # Suppress validation warnings
+        logging.getLogger("nio.responses").setLevel(logging.DEBUG)  # Enable validation logging
         logging.getLogger("aiohttp").setLevel(logging.DEBUG)
 
         # Get homeserver URL
@@ -1109,6 +1109,10 @@ async def login_matrix_bot(
             logger.warning(
                 "Failed to create SSL context for server discovery; falling back to default system SSL"
             )
+        else:
+            logger.debug(f"SSL context created successfully: {ssl_context}")
+            logger.debug(f"SSL context protocol: {ssl_context.protocol}")
+            logger.debug(f"SSL context verify_mode: {ssl_context.verify_mode}")
 
         # Create a temporary client for discovery
         temp_client = AsyncClient(homeserver, "", ssl=ssl_context)
@@ -1231,6 +1235,13 @@ async def login_matrix_bot(
 
         # Initialize client with E2EE support
         # Use most common pattern from matrix-nio examples: positional homeserver and user
+        logger.debug(f"Creating AsyncClient with:")
+        logger.debug(f"  homeserver: {homeserver}")
+        logger.debug(f"  username: {username}")
+        logger.debug(f"  device_id: {existing_device_id}")
+        logger.debug(f"  store_path: {store_path}")
+        logger.debug(f"  e2ee_enabled: {e2ee_enabled}")
+
         client = AsyncClient(
             homeserver,
             username,
@@ -1239,6 +1250,8 @@ async def login_matrix_bot(
             config=client_config,
             ssl=ssl_context,
         )
+
+        logger.debug(f"AsyncClient created successfully")
 
         logger.info(f"Logging in as {username} to {homeserver}...")
 
@@ -1250,10 +1263,25 @@ async def login_matrix_bot(
             if existing_device_id:
                 client.device_id = existing_device_id
 
+            logger.debug(f"Attempting login to {homeserver} as {username}")
             response = await asyncio.wait_for(
                 client.login(password, device_name=device_name),
                 timeout=MATRIX_LOGIN_TIMEOUT,
             )
+
+            # Debug: Log the actual response received
+            logger.debug(f"Login response type: {type(response).__name__}")
+            logger.debug(f"Login response attributes: {dir(response)}")
+            if hasattr(response, '__dict__'):
+                logger.debug(f"Login response dict: {response.__dict__}")
+
+            # Check specific attributes that should be present
+            for attr in ['user_id', 'device_id', 'access_token', 'status_code', 'message']:
+                if hasattr(response, attr):
+                    value = getattr(response, attr)
+                    logger.debug(f"Response.{attr}: {value} (type: {type(value).__name__})")
+                else:
+                    logger.debug(f"Response.{attr}: NOT PRESENT")
         except asyncio.TimeoutError:
             logger.error(f"Login timed out after {MATRIX_LOGIN_TIMEOUT} seconds")
             logger.error(
