@@ -96,7 +96,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
                 ), patch("mmrelay.matrix_utils.matrix_client", None):
                     result = connect_meshtastic(config)
                     self.assertIsNone(result)
-                    mock_logger.error.assert_called()
+                    mock_logger.exception.assert_called()
 
     def test_connect_meshtastic_ble_device_not_found(self):
         """
@@ -118,7 +118,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
                 ), patch("mmrelay.matrix_utils.matrix_client", None):
                     result = connect_meshtastic(config)
                     self.assertIsNone(result)
-                    mock_logger.error.assert_called()
+                    mock_logger.exception.assert_called()
 
     def test_connect_meshtastic_tcp_connection_refused(self):
         """
@@ -133,7 +133,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
                 result = connect_meshtastic(config)
                 self.assertIsNone(result)
-                mock_logger.error.assert_called()
+                mock_logger.exception.assert_called()
 
     def test_connect_meshtastic_invalid_connection_type(self):
         """
@@ -144,7 +144,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
             result = connect_meshtastic(config)
             self.assertIsNone(result)
-            mock_logger.error.assert_called()
+            mock_logger.exception.assert_called()
 
     def test_connect_meshtastic_exponential_backoff_max_retries(self):
         """
@@ -164,7 +164,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
                         result = connect_meshtastic(config)
                         self.assertIsNone(result)
                         # Should log error for critical failure
-                        mock_logger.error.assert_called()
+                        mock_logger.exception.assert_called()
 
     def test_on_meshtastic_message_malformed_packet(self):
         """
@@ -210,7 +210,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             mock_submit_coro.side_effect = Exception("Plugin failed")
 
             on_meshtastic_message(packet, mock_interface)
-            mock_logger.error.assert_called()
+            mock_logger.exception.assert_called()
 
     def test_on_meshtastic_message_matrix_relay_failure(self):
         """
@@ -241,7 +241,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             mock_submit_coro.side_effect = Exception("Matrix relay failed")
             mock_matrix_relay.side_effect = Exception("Matrix relay failed")
             on_meshtastic_message(packet, mock_interface)
-            mock_logger.error.assert_called()
+            mock_logger.exception.assert_called()
 
     def test_on_meshtastic_message_database_error(self):
         """
@@ -282,7 +282,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             # Prevent async reconnect
             mock_submit_coro.return_value = None
             on_lost_meshtastic_connection(mock_interface)
-            mock_logger.error.assert_called()
+            mock_logger.exception.assert_called()
 
     def test_on_lost_meshtastic_connection_detection_source_edge_cases(self):
         """
@@ -324,7 +324,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
             result = sendTextReply(None, "test message", 12345)
             self.assertIsNone(result)
-            mock_logger.error.assert_called()
+            mock_logger.exception.assert_called()
 
     def test_sendTextReply_client_send_failure(self):
         """
@@ -340,7 +340,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
             result = sendTextReply(mock_client, "test message", 12345)
             self.assertIsNone(result)
-            mock_logger.error.assert_called()
+            mock_logger.exception.assert_called()
 
     def test_is_running_as_service_detection_failure(self):
         """
@@ -390,7 +390,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
                 with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
                     result = connect_meshtastic(config)
                     self.assertIsNone(result)
-                    mock_logger.error.assert_called()
+                    mock_logger.exception.assert_called()
 
     def test_on_meshtastic_message_large_node_list(self):
         """

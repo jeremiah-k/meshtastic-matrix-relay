@@ -77,7 +77,7 @@ class TestPluginLoaderEdgeCases(unittest.TestCase):
             with patch("mmrelay.plugin_loader.logger") as mock_logger:
                 plugins = load_plugins_from_directory(temp_dir)
                 self.assertEqual(plugins, [])
-                mock_logger.error.assert_called()
+                mock_logger.exception.assert_called()
 
     def test_load_plugins_from_directory_missing_plugin_class(self):
         """
@@ -115,7 +115,7 @@ class Plugin:
             with patch("mmrelay.plugin_loader.logger") as mock_logger:
                 plugins = load_plugins_from_directory(temp_dir)
                 self.assertEqual(plugins, [])
-                mock_logger.error.assert_called()
+                mock_logger.exception.assert_called()
 
     def test_load_plugins_from_directory_import_error_with_dependency_install(self):
         """
@@ -198,7 +198,7 @@ class Plugin:
                 with patch("mmrelay.plugin_loader.logger") as mock_logger:
                     plugins = load_plugins_from_directory(temp_dir)
                     self.assertEqual(plugins, [])
-                    mock_logger.error.assert_called()
+                    mock_logger.exception.assert_called()
 
     def test_load_plugins_from_directory_sys_path_manipulation_error(self):
         """
@@ -303,7 +303,7 @@ class Plugin:
         with patch("mmrelay.plugin_loader.logger") as mock_logger:
             plugins = load_plugins(None)
             self.assertEqual(plugins, [])
-            mock_logger.error.assert_called()
+            mock_logger.exception.assert_called()
 
     def test_load_plugins_empty_config(self):
         """
@@ -369,7 +369,7 @@ class Plugin:
                             self.assertGreaterEqual(len(plugins), 1)
                     except Exception:
                         pass  # nosec B110 - Intentionally ignoring exceptions in stress test to focus on error logging
-                    mock_logger.error.assert_called()
+                    mock_logger.exception.assert_called()
 
     def test_load_plugins_memory_constraint(self):
         """
@@ -393,7 +393,7 @@ class Plugin:
                         load_plugins(config)
                     except Exception:
                         pass  # nosec B110 - Intentionally ignoring exceptions in stress test to focus on error logging
-                    mock_logger.error.assert_called()
+                    mock_logger.exception.assert_called()
 
     def test_load_plugins_circular_dependency(self):
         """

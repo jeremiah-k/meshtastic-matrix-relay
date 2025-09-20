@@ -270,7 +270,7 @@ def connect_meshtastic(passed_config=None, force_connect=False):
 
         # Check if config is available
         if config is None:
-            logger.error("No configuration available. Cannot connect to Meshtastic.")
+            logger.exception("No configuration available. Cannot connect to Meshtastic.")
             return None
 
         # Check if meshtastic config section exists
@@ -278,7 +278,7 @@ def connect_meshtastic(passed_config=None, force_connect=False):
             CONFIG_SECTION_MESHTASTIC not in config
             or config[CONFIG_SECTION_MESHTASTIC] is None
         ):
-            logger.error(
+            logger.exception(
                 "No Meshtastic configuration section found. Cannot connect to Meshtastic."
             )
             return None
@@ -288,7 +288,7 @@ def connect_meshtastic(passed_config=None, force_connect=False):
             CONFIG_KEY_CONNECTION_TYPE not in config[CONFIG_SECTION_MESHTASTIC]
             or config[CONFIG_SECTION_MESHTASTIC][CONFIG_KEY_CONNECTION_TYPE] is None
         ):
-            logger.error(
+            logger.exception(
                 "No connection type specified in Meshtastic configuration. Cannot connect to Meshtastic."
             )
             return None
@@ -316,7 +316,7 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                     # Serial connection
                     serial_port = config["meshtastic"].get(CONFIG_KEY_SERIAL_PORT)
                     if not serial_port:
-                        logger.error(
+                        logger.exception(
                             "No serial port specified in Meshtastic configuration."
                         )
                         return None
@@ -350,14 +350,14 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                             noNodes=False,
                         )
                     else:
-                        logger.error("No BLE address provided.")
+                        logger.exception("No BLE address provided.")
                         return None
 
                 elif connection_type == CONNECTION_TYPE_TCP:
                     # TCP connection
                     target_host = config["meshtastic"].get(CONFIG_KEY_HOST)
                     if not target_host:
-                        logger.error(
+                        logger.exception(
                             "No host specified in Meshtastic configuration for TCP connection."
                         )
                         return None
@@ -369,7 +369,7 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                         hostname=target_host
                     )
                 else:
-                    logger.error(f"Unknown connection type: {connection_type}")
+                    logger.exception(f"Unknown connection type: {connection_type}")
                     return None
 
                 successful = True
@@ -472,7 +472,7 @@ def on_lost_meshtastic_connection(interface=None, detection_source="unknown"):
             )
             return
         reconnecting = True
-        logger.error(f"Lost connection ({detection_source}). Reconnecting...")
+        logger.exception(f"Lost connection ({detection_source}). Reconnecting...")
 
         if meshtastic_client:
             try:
@@ -581,7 +581,7 @@ def on_meshtastic_message(packet, interface):
 
     # Validate packet structure
     if not packet or not isinstance(packet, dict):
-        logger.error("Received malformed packet: packet is None or not a dict")
+        logger.exception("Received malformed packet: packet is None or not a dict")
         return
 
     # Log that we received a message (without the full packet details)
@@ -593,7 +593,7 @@ def on_meshtastic_message(packet, interface):
 
     # Check if config is available
     if config is None:
-        logger.error("No configuration available. Cannot process Meshtastic message.")
+        logger.exception("No configuration available. Cannot process Meshtastic message.")
         return
 
     # Import the configuration helpers
@@ -626,7 +626,7 @@ def on_meshtastic_message(packet, interface):
         return
 
     if event_loop is None:
-        logger.error("Event loop is not set. Cannot process message.")
+        logger.exception("Event loop is not set. Cannot process message.")
         return
 
     loop = event_loop
@@ -852,7 +852,7 @@ def on_meshtastic_message(packet, interface):
 
         # Check if matrix_rooms is empty
         if not matrix_rooms:
-            logger.error("matrix_rooms is empty. Cannot relay message to Matrix.")
+            logger.exception("matrix_rooms is empty. Cannot relay message to Matrix.")
             return
 
         for room in matrix_rooms:
@@ -1017,7 +1017,7 @@ def sendTextReply(
 
     # Check if interface is available
     if interface is None:
-        logger.error("No Meshtastic interface available for sending reply")
+        logger.exception("No Meshtastic interface available for sending reply")
         return None
 
     # Create the Data protobuf message with reply_id set

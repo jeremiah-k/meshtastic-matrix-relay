@@ -647,17 +647,17 @@ def load_plugins_from_directory(directory, recursive=False):
                                         f"{plugin_path} does not define a Plugin class."
                                     )
                             except ModuleNotFoundError:
-                                logger.error(
+                                logger.exception(
                                     f"Module {missing_module} still not available after installation. "
                                     f"The package name might be different from the import name."
                                 )
                             except Exception as retry_error:
-                                logger.error(
+                                logger.exception(
                                     f"Error loading plugin {plugin_path} after dependency installation: {retry_error}"
                                 )
 
                         except subprocess.CalledProcessError:
-                            logger.error(
+                            logger.exception(
                                 f"Failed to automatically install {missing_module}"
                             )
                             logger.error("Please install it manually:")
@@ -714,7 +714,7 @@ def load_plugins(passed_config=None):
 
     # Check if config is available
     if config is None:
-        logger.error("No configuration available. Cannot load plugins.")
+        logger.exception("No configuration available. Cannot load plugins.")
         return []
 
     # Import core plugins
@@ -852,8 +852,8 @@ def load_plugins(passed_config=None):
                     )
                     continue
             else:
-                logger.error("Repository URL not specified for a community plugin")
-                logger.error("Please specify the repository URL in config.yaml")
+                logger.exception("Repository URL not specified for a community plugin")
+                logger.exception("Please specify the repository URL in config.yaml")
                 continue
 
     # Only load community plugins that are explicitly enabled
@@ -877,7 +877,7 @@ def load_plugins(passed_config=None):
                         plugin_found = True
                         break
                     except Exception as e:
-                        logger.error(
+                        logger.exception(
                             f"Failed to load community plugin {repo_name}: {e}"
                         )
                         continue
@@ -887,7 +887,7 @@ def load_plugins(passed_config=None):
                     f"Community plugin '{repo_name}' not found in any of the plugin directories"
                 )
         else:
-            logger.error(
+            logger.exception(
                 f"Repository URL not specified for community plugin: {plugin_name}"
             )
 
