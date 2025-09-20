@@ -27,41 +27,9 @@ Filename: "{app}\mmrelay.bat"; Description: "Launch MM Relay"; Flags: nowait pos
 
 [Code]
 
-function ExtractHostFromURL(const Url: string): string;
-var S: string; P, i, colonCount, lastColonPos, rb: Integer;
-begin
-  S := Trim(Url);
-  P := Pos('://', S); if P > 0 then S := Copy(S, P + 3, MaxInt);
-  P := Pos('/', S);   if P > 0 then S := Copy(S, 1, P - 1);
-  // Handle [IPv6]:port by stripping brackets
-  if (Length(S) > 0) and (S[1] = '[') then
-  begin
-    rb := Pos(']', S);
-    if rb > 1 then
-      S := Copy(S, 2, rb - 2);
-  end
-  else
-  begin
-    // Only strip :port when there is exactly one ':' and no brackets (avoid unbracketed IPv6)
-    colonCount := 0; lastColonPos := 0;
-    for i := 1 to Length(S) do
-    begin
-      if S[i] = ':' then
-      begin
-        colonCount := colonCount + 1;
-        lastColonPos := i;
-      end;
-    end;
-    if colonCount = 1 then
-      S := Copy(S, 1, lastColonPos - 1);
-  end;
-  Result := S;
-end;
+
 
 var
-  TokenInfoLabel: TLabel;
-  TokenInfoLink: TNewStaticText;
-  MatrixPage: TInputQueryWizardPage;
   OverwriteConfig: TInputOptionWizardPage;
   MatrixMeshtasticPage: TInputQueryWizardPage;
   MeshtasticPage: TInputQueryWizardPage;
@@ -75,10 +43,7 @@ begin
   OverwriteConfig := CreateInputOptionPage(wpWelcome,
     'Configure the relay', 'Create new configuration',
     '', False, False);
-  MatrixPage := CreateInputQueryPage(OverwriteConfig.ID,
-      'Matrix Setup', 'Configure Matrix Settings',
-      'Enter the settings for your Matrix server.');
-  MeshtasticPage := CreateInputQueryPage(MatrixPage.ID,
+  MeshtasticPage := CreateInputQueryPage(OverwriteConfig.ID,
       'Meshtastic Setup', 'Configure Meshtastic Settings',
       'Enter the settings for connecting with your Meshtastic radio.');
   MatrixMeshtasticPage := CreateInputQueryPage(MeshtasticPage.ID,
@@ -93,28 +58,6 @@ begin
 
   OverwriteConfig.Add('Generate configuration (overwrite any current config files)');
   OverwriteConfig.Values[0] := False;
-
-  MatrixPage.Add('Homeserver (example: https://matrix.org):', False);
-  MatrixPage.Add('Bot username or MXID (example: mybotuser or @mybotuser:matrix.org):', False);
-  MatrixPage.Add('Password:', True);
-
-  TokenInfoLabel := TLabel.Create(WizardForm);
-  TokenInfoLabel.Caption := 'MMRelay will use modern authentication' + #13#10 + '(compatible with Matrix 2.0/MAS).';
-  TokenInfoLabel.Parent := MatrixPage.Surface;
-  TokenInfoLabel.Left := 0;
-  TokenInfoLabel.Top := MatrixPage.Edits[2].Top + MatrixPage.Edits[2].Height + 8;
-  TokenInfoLabel.WordWrap := True;
-  TokenInfoLabel.Width := MatrixPage.Surface.Width;
-
-  TokenInfoLink := TNewStaticText.Create(WizardForm);
-  TokenInfoLink.Caption := 'No access tokens needed - secure OIDC authentication' + #13#10 + 'will be used automatically.';
-  TokenInfoLink.Parent := MatrixPage.Surface;
-  TokenInfoLink.Left := TokenInfoLabel.Left;
-  TokenInfoLink.Top := TokenInfoLabel.Top + TokenInfoLabel.Height + 4;
-
-  MatrixPage.Edits[0].Hint := 'https://example.matrix.org';
-  MatrixPage.Edits[1].Hint := 'Enter username (no @ or :server) or a full MXID';
-  MatrixPage.Edits[2].Hint := 'Your Matrix account password';
 
   MeshtasticPage.Add('Connection type (tcp, serial, ble):', False);
   MeshtasticPage.Add('Serial port (if serial):', False);
@@ -172,23 +115,6 @@ begin
   // Only validate when generating configuration
   if not OverwriteConfig.Values[0] then
     Exit;
-
-  // Validate Matrix page
-  if CurPageID = MatrixPage.ID then
-  begin
-    if Trim(MatrixPage.Values[0]) = '' then
-    begin
-      MsgBox('Please enter your Matrix homeserver (e.g., https://matrix.org).', mbError, MB_OK);
-      Result := False;
-      Exit;
-    end;
-    if Trim(MatrixPage.Values[1]) = '' then
-    begin
-      MsgBox('Please enter the bot username or full MXID.', mbError, MB_OK);
-      Result := False;
-      Exit;
-    end;
-  end;
 
   // Validate Meshtastic connection page
   if CurPageID = MeshtasticPage.ID then
@@ -263,15 +189,6 @@ var
   batch_file: string;
   setup_auth_batch: string;
   logout_batch: string;
-  HomeserverURL: string;
-  ServerName: string;
-
-  bot_user_id: string;
-
-
-  SafeHomeserver: string;
-  SafeUser: string;
-  SafePwd: string;
   SafeRoomId: string;
   SafeSerial: string;
   SafeHost: string;
@@ -358,55 +275,6 @@ begin
     log_level := 'info';
   end;
 
-  // Normalize homeserver (default https when scheme missing)
-  HomeserverURL := Trim(MatrixPage.Values[0]);
-  if Pos('://', HomeserverURL) = 0 then
-    HomeserverURL := 'https://' + HomeserverURL;
-
-  // Extract host from URL (strip scheme and any path)
-  ServerName := ExtractHostFromURL(HomeserverURL);
-
-  // If IPv6 literal, ensure brackets for MXID server name
-  if (Length(ServerName) > 0) and (Pos(':', ServerName) > 0) then
-  begin
-    if not ((ServerName[1] = '[') and (ServerName[Length(ServerName)] = ']')) then
-      ServerName := '[' + ServerName + ']';
-  end;
-
-  // Build bot_user_id (accept full MXID only when it looks like one)
-  bot_user_id := Trim(MatrixPage.Values[1]);
-  if (Length(bot_user_id) > 0) and (bot_user_id[1] = '@') and (Pos(':', bot_user_id) > 1) then
-  begin
-    bot_user_id := Trim(bot_user_id); // use as-is
-  end
-  else
-  begin
-    if (Length(bot_user_id) > 0) and (bot_user_id[1] = '@') then
-      bot_user_id := Copy(bot_user_id, 2, MaxInt);
-    bot_user_id := Trim(bot_user_id);
-    if bot_user_id = '' then
-    begin
-      MsgBox('Invalid username. Enter a username (without "@") or a full MXID like @name:server.', mbError, MB_OK);
-      Abort;
-    end;
-    bot_user_id := '@' + bot_user_id + ':' + ServerName;
-  end;
-
-  // YAML-safe single-quoted values (escape single quotes by doubling)
-  SafeHomeserver := HomeserverURL;
-  StringChangeEx(SafeHomeserver, '''', '''''', True);
-  SafeUser := bot_user_id;
-  StringChangeEx(SafeUser, '''', '''''', True);
-  config := 'matrix:' + #13#10 +
-            '  homeserver: ''' + SafeHomeserver + '''' + #13#10 +
-            '  bot_user_id: ''' + SafeUser + '''' + #13#10;
-  // append password line only when provided
-  if MatrixPage.Values[2] <> '' then
-  begin
-    SafePwd := MatrixPage.Values[2];
-    StringChangeEx(SafePwd, '''', '''''', True); // double single-quotes
-    config := config + '  password: ''' + SafePwd + '''' + #13#10;
-  end;
   // Default/validate Meshtastic channel
   meshtastic_channel := Trim(MatrixMeshtasticPage.Values[1]);
   if meshtastic_channel = '' then
@@ -422,8 +290,7 @@ begin
 
   SafeRoomId := MatrixMeshtasticPage.Values[0];
   StringChangeEx(SafeRoomId, '''', '''''', True);
-  config := config +
-            'matrix_rooms:' + #13#10 +
+  config := 'matrix_rooms:' + #13#10 +
             '  - id: ''' + SafeRoomId + '''' + #13#10 +
             '    meshtastic_channel: ' + meshtastic_channel + #13#10 +
             'meshtastic:' + #13#10 +
