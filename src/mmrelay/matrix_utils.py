@@ -1534,8 +1534,9 @@ async def login_matrix_bot(
         logger.error(f"Error during login: {e}")
         try:
             await client.close()
-        except Exception:
-            pass  # Ignore errors during cleanup
+        except Exception as e:
+            # Ignore errors during client cleanup - connection may already be closed
+            logger.debug(f"Ignoring error during client cleanup: {e}")
         return False
 
 
