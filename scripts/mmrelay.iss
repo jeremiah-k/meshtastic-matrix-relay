@@ -92,7 +92,7 @@ begin
   WizardForm.ClientHeight := WizardForm.ClientHeight + 50;
 
   OverwriteConfig.Add('Generate configuration (overwrite any current config files)');
-  OverwriteConfig.Values[0] := True;
+  OverwriteConfig.Values[0] := False;
 
   MatrixPage.Add('Homeserver (example: https://matrix.org):', False);
   MatrixPage.Add('Bot username or MXID (example: mybotuser or @mybotuser:matrix.org):', False);
@@ -281,6 +281,52 @@ var
   meshtastic_channel: string;
   chanInt: Integer;
 begin
+  // Always create batch files regardless of config generation setting
+  batch_file := '@echo off' + #13#10 +
+                'cd /d "' + sAppDir + '"' + #13#10 +
+                'echo Starting MM Relay...' + #13#10 +
+                'echo.' + #13#10 +
+                '"' + sAppDir + '\mmrelay.exe" --data-dir "' + sAppDir + '" --config "' + sAppDir + '\config.yaml"' + #13#10 +
+                'echo.' + #13#10 +
+                'echo MM Relay has stopped.' + #13#10 +
+                'pause';
+
+  if Not SaveStringToFile(sAppDir + '\mmrelay.bat', batch_file, false) then
+  begin
+    MsgBox('Could not create batch file "mmrelay.bat". Close any applications that may have it open and re-run setup', mbError, MB_OK);
+  end;
+
+  // Create setup-auth.bat for manual authentication
+  setup_auth_batch := '@echo off' + #13#10 +
+                      'echo Setting up Matrix authentication for MM Relay...' + #13#10 +
+                      'echo.' + #13#10 +
+                      'cd /d "' + sAppDir + '"' + #13#10 +
+                      '"' + sAppDir + '\mmrelay.exe" --data-dir "' + sAppDir + '" --config "' + sAppDir + '\config.yaml" auth login' + #13#10 +
+                      'echo.' + #13#10 +
+                      'echo Authentication setup complete.' + #13#10 +
+                      'pause';
+
+  if Not SaveStringToFile(sAppDir + '\setup-auth.bat', setup_auth_batch, false) then
+  begin
+    MsgBox('Could not create setup batch file "setup-auth.bat". Close any applications that may have it open and re-run setup', mbError, MB_OK);
+  end;
+
+  // Create logout.bat for manual logout
+  logout_batch := '@echo off' + #13#10 +
+                  'echo Logging out and clearing all session data...' + #13#10 +
+                  'echo.' + #13#10 +
+                  'cd /d "' + sAppDir + '"' + #13#10 +
+                  '"' + sAppDir + '\mmrelay.exe" --data-dir "' + sAppDir + '" --config "' + sAppDir + '\config.yaml" auth logout' + #13#10 +
+                  'echo.' + #13#10 +
+                  'echo Logout complete.' + #13#10 +
+                  'pause';
+
+  if Not SaveStringToFile(sAppDir + '\logout.bat', logout_batch, false) then
+  begin
+    MsgBox('Could not create logout batch file "logout.bat". Close any applications that may have it open and re-run setup', mbError, MB_OK);
+  end;
+
+  // Only generate config.yaml if user checked the option
   If Not OverwriteConfig.Values[0] then
     Exit;
 
@@ -449,64 +495,10 @@ begin
     end;
   end;
 
-  batch_file := '@echo off' + #13#10 +
-                'cd /d "' + sAppDir + '"' + #13#10 +
-                'echo Starting MM Relay...' + #13#10 +
-                'echo.' + #13#10 +
-                '"' + sAppDir + '\mmrelay.exe" --data-dir "' + sAppDir + '" --config "' + sAppDir + '\config.yaml"' + #13#10 +
-                'echo.' + #13#10 +
-                'echo MM Relay has stopped.' + #13#10 +
-                'pause';
-
-  if Not SaveStringToFile(sAppDir + '\mmrelay.bat', batch_file, false) then
-  begin
-    MsgBox('Could not create batch file "mmrelay.bat". Close any applications that may have it open and re-run setup', mbError, MB_OK);
-  end;
-
-  // Create setup-auth.bat for manual authentication
-  setup_auth_batch := '@echo off' + #13#10 +
-                      'echo Setting up Matrix authentication for MM Relay...' + #13#10 +
-                      'echo.' + #13#10 +
-                      'cd /d "' + sAppDir + '"' + #13#10 +
-                      '"' + sAppDir + '\mmrelay.exe" --data-dir "' + sAppDir + '" --config "' + sAppDir + '\config.yaml" auth login' + #13#10 +
-                      'echo.' + #13#10 +
-                      'echo Authentication setup complete.' + #13#10 +
-                      'pause';
-
-  if Not SaveStringToFile(sAppDir + '\setup-auth.bat', setup_auth_batch, false) then
-  begin
-    MsgBox('Could not create setup batch file "setup-auth.bat". Close any applications that may have it open and re-run setup', mbError, MB_OK);
-  end;
-
-  // Create logout.bat for manual logout
-  logout_batch := '@echo off' + #13#10 +
-                  'echo Logging out and clearing all session data...' + #13#10 +
-                  'echo.' + #13#10 +
-                  'cd /d "' + sAppDir + '"' + #13#10 +
-                  '"' + sAppDir + '\mmrelay.exe" --data-dir "' + sAppDir + '" --config "' + sAppDir + '\config.yaml" auth logout' + #13#10 +
-                  'echo.' + #13#10 +
-                  'echo Logout complete.' + #13#10 +
-                  'pause';
-
-  if Not SaveStringToFile(sAppDir + '\logout.bat', logout_batch, false) then
-  begin
-    MsgBox('Could not create logout batch file "logout.bat". Close any applications that may have it open and re-run setup', mbError, MB_OK);
-  end;
-
-  // Show completion message with setup instructions
-  if (HomeserverURL <> '') and (MatrixPage.Values[1] <> '') and (MatrixPage.Values[2] <> '') then
-  begin
-    // User provided full credentials for non-interactive setup
-    MsgBox('MM Relay installation complete!' + #13#10 + #13#10 +
-           'Next step: Run "mmrelay.bat" to start the relay.' + #13#10 +
-           'It will authenticate automatically on the first run.' + #13#10 + #13#10 +
-           'The file is located in: ' + sAppDir, mbInformation, MB_OK);
-  end
-  else
-  begin
-    // User needs to perform interactive authentication
-    MsgBox('MM Relay installation complete!' + #13#10 + #13#10 +
-           'Next step: Run "setup-auth.bat" to configure Matrix authentication.' + #13#10 + #13#10 +
-           'The file is located in: ' + sAppDir, mbInformation, MB_OK);
-  end;
+  // Show completion message with setup instructions (always show regardless of config generation)
+  MsgBox('MM Relay installation complete!' + #13#10 + #13#10 +
+         'Batch files created: mmrelay.bat, setup-auth.bat, logout.bat' + #13#10 + #13#10 +
+         'Next step: Run "setup-auth.bat" to configure Matrix authentication.' + #13#10 +
+         'Then run "mmrelay.bat" to start the relay.' + #13#10 + #13#10 +
+         'Files are located in: ' + sAppDir, mbInformation, MB_OK);
 end;
