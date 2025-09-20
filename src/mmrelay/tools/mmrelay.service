@@ -11,6 +11,7 @@ WorkingDirectory=%h/.mmrelay
 Restart=on-failure
 RestartSec=10
 Environment=PYTHONUNBUFFERED=1
+Environment=LANG=C.UTF-8
 # Ensure both pipx and pip environments are properly loaded
 Environment=PATH=%h/.local/bin:%h/.local/pipx/venvs/mmrelay/bin:/usr/local/bin:/usr/bin:/bin
 

@@ -277,6 +277,7 @@ WorkingDirectory=%h/.mmrelay
 Restart=on-failure
 RestartSec=10
 Environment=PYTHONUNBUFFERED=1
+Environment=LANG=C.UTF-8
 # Ensure both pipx and pip environments are properly loaded
 Environment=PATH=%h/.local/bin:%h/.local/pipx/venvs/mmrelay/bin:/usr/local/bin:/usr/bin:/bin
 
@@ -682,9 +683,9 @@ def install_service():
                 print("Service enabled successfully")
                 service_enabled = True
             except subprocess.CalledProcessError as e:
-                print(f"Error enabling service: {e}")
+                print(f"Error enabling service: {e}", file=sys.stderr)
             except OSError as e:
-                print(f"Error: {e}")
+                print(f"Error: {e}", file=sys.stderr)
 
     # Check if the service is already running
     service_active = is_service_active()
@@ -709,9 +710,9 @@ def install_service():
                 # Show service status
                 show_service_status()
             except subprocess.CalledProcessError as e:
-                print(f"Error restarting service: {e}")
+                print(f"Error restarting service: {e}", file=sys.stderr)
             except OSError as e:
-                print(f"Error: {e}")
+                print(f"Error: {e}", file=sys.stderr)
     else:
         print("The service is not currently running.")
         try:
@@ -754,10 +755,10 @@ def start_service():
         subprocess.run([SYSTEMCTL, "--user", "start", "mmrelay.service"], check=True)
         return True
     except subprocess.CalledProcessError as e:
-        print(f"Error starting service: {e}")
+        print(f"Error starting service: {e}", file=sys.stderr)
         return False
     except OSError as e:
-        print(f"Error: {e}")
+        print(f"Error: {e}", file=sys.stderr)
         return False
 
 
@@ -782,5 +783,5 @@ def show_service_status():
         print(f"Could not get service status: {e}")
         return False
     except OSError as e:
-        print(f"Error: {e}")
+        print(f"Error: {e}", file=sys.stderr)
         return False
