@@ -1218,6 +1218,33 @@ async def login_matrix_bot(
                 # Log the character codes without revealing the password
                 char_codes = [ord(c) for c in special_chars]
                 logger.debug(f"Special character codes: {char_codes}")
+
+                # Test JSON serialization with special characters
+                try:
+                    import json
+
+                    test_dict = {"password": password}
+                    json_str = json.dumps(test_dict)
+                    parsed_back = json.loads(json_str)
+                    if parsed_back["password"] != password:
+                        logger.error(
+                            "Password JSON round-trip failed - special characters not handled correctly"
+                        )
+                        logger.error(
+                            "This may cause login failures with matrix-nio library"
+                        )
+                        logger.error(
+                            "Consider using a password with only alphanumeric characters"
+                        )
+                except Exception as json_e:
+                    logger.error(f"Password JSON serialization failed: {json_e}")
+                    logger.error(
+                        "Password contains characters that cannot be properly serialized"
+                    )
+                    logger.error("This will likely cause login to fail")
+                    logger.error(
+                        "Please use a password with only alphanumeric characters"
+                    )
             else:
                 logger.debug("Password contains only alphanumeric characters")
 
@@ -1442,6 +1469,9 @@ async def login_matrix_bot(
                 logger.error("1. Invalid username or password")
                 logger.error("2. Server response format not as expected")
                 logger.error("3. Matrix server compatibility issues")
+                logger.error(
+                    "4. Password special characters causing JSON serialization issues"
+                )
                 logger.error("Troubleshooting steps:")
                 logger.error("1. Verify credentials by logging in via web browser")
                 logger.error(
@@ -1451,6 +1481,9 @@ async def login_matrix_bot(
                     "3. Check if your Matrix server is compatible with matrix-nio"
                 )
                 logger.error("4. Try a different Matrix server if available")
+                logger.error(
+                    "5. If password contains special characters (like *), try changing to alphanumeric only"
+                )
             else:
                 logger.error("Unexpected error during login.")
 
