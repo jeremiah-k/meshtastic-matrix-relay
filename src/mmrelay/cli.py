@@ -9,6 +9,8 @@ import shutil
 import sys
 from collections.abc import Mapping
 
+import yaml
+
 # Import version from package
 from mmrelay import __version__
 from mmrelay.cli_utils import (
@@ -132,6 +134,11 @@ def parse_arguments():
         help="Validate configuration file",
         description="Check configuration file syntax and completeness",
     )
+    config_subparsers.add_parser(
+        "diagnose",
+        help="Diagnose configuration system issues",
+        description="Test config generation capabilities and troubleshoot platform-specific issues",
+    )
 
     # AUTH group
     auth_parser = subparsers.add_parser(
@@ -230,14 +237,12 @@ def print_version():
 
 def _validate_e2ee_dependencies():
     """
-    Check whether end-to-end encryption (E2EE) runtime dependencies are available.
+    Check whether end-to-end encryption (E2EE) is supported on this platform and required Python packages are available.
 
-    Performs a platform check and attempts to import required packages (python-olm, nio.crypto.OlmDevice,
-    and nio.store.SqliteStore). Prints a short user-facing status message and guidance.
+    Performs a platform check (Windows is treated as unsupported) and attempts to import the native and nio-backed E2EE components (python-olm, nio.crypto.OlmDevice, nio.store.SqliteStore). Prints concise, user-facing status and guidance messages.
 
     Returns:
-        bool: True if the platform supports E2EE and all required dependencies can be imported;
-              False if running on an unsupported platform (Windows) or if any dependency is missing.
+        bool: True if the platform supports E2EE and all required imports succeed; False if running on an unsupported platform or if any dependency is missing.
     """
     if sys.platform == WINDOWS_PLATFORM:
         print("❌ Error: E2EE is not supported on Windows")
@@ -254,7 +259,8 @@ def _validate_e2ee_dependencies():
         print("✅ E2EE dependencies are installed")
         return True
     except ImportError:
-        print("❌ Error: E2EE enabled but dependencies not installed")
+        print("❌ Error: E2EE dependencies not installed")
+        print("   End-to-end encryption features require additional dependencies")
         print("   Install E2EE support: pipx install 'mmrelay[e2e]'")
         return False
 
@@ -770,23 +776,18 @@ def check_config(args=None):
     """
     Validate the application's YAML configuration file and its required sections.
 
-    Performs these checks:
-    - Locates the first existing config file from get_config_paths(args) (parses CLI args if args is None).
-    - Verifies YAML syntax and reports syntax errors or style warnings.
-    - Ensures the config is non-empty.
-    - Validates Matrix authentication: accepts credentials supplied via credentials.json or requires a matrix section with homeserver and bot_user_id plus either access_token or password when credentials.json is absent.
-    - Validates end-to-end-encryption (E2EE) configuration and dependencies.
-    - Ensures matrix_rooms exists, is a non-empty list, and each room is a dict containing an id.
-    - Validates the meshtastic section: requires connection_type and the connection-specific fields (serial_port for serial, host for tcp/network, ble_address for ble). Warns about deprecated connection types.
-    - Validates optional meshtastic fields and types (broadcast_enabled, detection_sensor, message_delay >= 2.0, meshnet_name) and reports missing optional settings as guidance.
-    - Warns if a deprecated db section is present.
-    - Prints a unified E2EE analysis summary on success.
+    Performs these checks: locates the first existing config file from get_config_paths(args),
+    validates YAML syntax and non-empty content, verifies Matrix authentication (prefers
+    credentials.json but accepts access_token or password in the matrix section), performs
+    E2EE configuration and dependency checks, validates matrix_rooms and meshtastic sections
+    (including connection-specific requirements), checks a set of optional meshtastic settings
+    (and value constraints), and warns about deprecated sections.
 
     Side effects:
-    - Prints errors, warnings, and status messages to stdout.
+    - Prints human-readable errors, warnings, and status messages to stdout.
 
     Parameters:
-        args (argparse.Namespace | None): Parsed CLI arguments. If None, CLI arguments will be parsed internally.
+        args (argparse.Namespace | None): Parsed CLI arguments; if None, CLI arguments are parsed internally.
 
     Returns:
         bool: True if a configuration file was found and passed all checks; False otherwise.
@@ -805,7 +806,7 @@ def check_config(args=None):
             config_path = path
             print(f"Found configuration file at: {config_path}")
             try:
-                with open(config_path, "r") as f:
+                with open(config_path, "r", encoding="utf-8") as f:
                     config_content = f.read()
 
                 # Validate YAML syntax first
@@ -1035,7 +1036,8 @@ def check_config(args=None):
                         # Special validation for message_delay
                         if option == "message_delay" and value < 2.0:
                             print(
-                                f"Error: 'message_delay' must be at least 2.0 seconds (firmware limitation), got: {value}"
+                                f"Error: 'message_delay' must be at least 2.0 seconds (firmware limitation), got: {value}",
+                                file=sys.stderr,
                             )
                             return False
                     else:
@@ -1049,16 +1051,23 @@ def check_config(args=None):
                 # Check for deprecated db section
                 if "db" in config:
                     print(
-                        "\nWarning: 'db' section is deprecated. Please use 'database' instead."
+                        "\nWarning: 'db' section is deprecated. Please use 'database' instead.",
+                        file=sys.stderr,
                     )
                     print(
-                        "This option still works but may be removed in future versions.\n"
+                        "This option still works but may be removed in future versions.\n",
+                        file=sys.stderr,
                     )
 
                 print("\n✅ Configuration file is valid!")
                 return True
+            except (OSError, ValueError, UnicodeDecodeError) as e:
+                print(
+                    f"Error checking configuration: {e.__class__.__name__}: {e}",
+                    file=sys.stderr,
+                )
             except Exception as e:
-                print(f"Error checking configuration: {e}")
+                print(f"Error checking configuration: {e}", file=sys.stderr)
                 return False
 
     print("Error: No configuration file found in any of the following locations:")
@@ -1083,7 +1092,26 @@ def main():
         int: Exit code (0 on success, non-zero on failure).
     """
     try:
+        # Set up Windows console for better compatibility
+        try:
+            from mmrelay.windows_utils import setup_windows_console
+
+            setup_windows_console()
+        except (ImportError, OSError, AttributeError):
+            # windows_utils not available or Windows console setup failed
+            # This is intentional - we want to continue if Windows utils fail
+            pass
+
         args = parse_arguments()
+
+        # Handle the --data-dir option
+        if args and args.data_dir:
+            import mmrelay.config
+
+            # Set the global custom_data_dir variable
+            mmrelay.config.custom_data_dir = os.path.abspath(args.data_dir)
+            # Create the directory if it doesn't exist
+            os.makedirs(mmrelay.config.custom_data_dir, exist_ok=True)
 
         # Handle subcommands first (modern interface)
         if hasattr(args, "command") and args.command:
@@ -1125,20 +1153,33 @@ def main():
             print(f"Error importing main module: {e}")
             return 1
 
+    except (OSError, PermissionError, KeyboardInterrupt) as e:
+        # Handle common system-level errors
+        print(f"System error: {e.__class__.__name__}: {e}", file=sys.stderr)
+        return 1
     except Exception as e:
-        print(f"Unexpected error: {e}")
+        # Default error message
+        error_msg = f"Unexpected error: {e.__class__.__name__}: {e}"
+        # Provide Windows-specific error guidance if available
+        try:
+            from mmrelay.windows_utils import get_windows_error_message, is_windows
+
+            if is_windows():
+                error_msg = f"Error: {get_windows_error_message(e)}"
+        except ImportError:
+            pass  # Use default message
+        print(error_msg, file=sys.stderr)
         return 1
 
 
 def handle_subcommand(args):
     """
-    Dispatch the modern grouped CLI subcommand to its handler and return an exit code.
+    Dispatch the modern grouped CLI subcommand to the appropriate handler and return an exit code.
 
-    Parameters:
-        args (argparse.Namespace): Parsed CLI arguments (as produced by parse_arguments()). Must have a `command` attribute with one of: "config", "auth", or "service".
-
-    Returns:
-        int: Process exit code — 0 on success, non-zero on error or unknown command.
+    The function expects an argparse.Namespace from parse_arguments() with a `command`
+    attribute set to one of: "config", "auth", or "service". Delegates to the
+    corresponding handler and returns its exit code. If `command` is unknown,
+    prints an error and returns 1.
     """
     if args.command == "config":
         return handle_config_command(args)
@@ -1146,6 +1187,7 @@ def handle_subcommand(args):
         return handle_auth_command(args)
     elif args.command == "service":
         return handle_service_command(args)
+
     else:
         print(f"Unknown command: {args.command}")
         return 1
@@ -1153,21 +1195,24 @@ def handle_subcommand(args):
 
 def handle_config_command(args):
     """
-    Dispatch the 'config' subgroup commands: "generate" and "check".
+    Handle the "config" command group: dispatches "generate", "check", and "diagnose" subcommands.
 
-    If `args.config_command` is "generate", writes a sample config to the default location.
-    If "check", validates the configuration referenced by `args` (see check_config).
+    - "generate": create a sample configuration file at the preferred config path.
+    - "check": validate the resolved configuration (delegates to check_config).
+    - "diagnose": run a multi-step diagnostic and report issues (delegates to handle_config_diagnose).
 
     Parameters:
-        args (argparse.Namespace): Parsed CLI namespace with a `config_command` attribute.
+        args (argparse.Namespace): CLI namespace containing `config_command` (one of "generate", "check", "diagnose") and any subcommand-specific options.
 
     Returns:
-        int: Process exit code (0 on success, 1 on failure or unknown subcommand).
+        int: Exit code (0 on success, 1 on failure or unknown subcommand).
     """
     if args.config_command == "generate":
         return 0 if generate_sample_config() else 1
     elif args.config_command == "check":
         return 0 if check_config(args) else 1
+    elif args.config_command == "diagnose":
+        return handle_config_diagnose(args)
     else:
         print(f"Unknown config command: {args.config_command}")
         return 1
@@ -1262,8 +1307,27 @@ def handle_auth_login(args):
         return 1
     else:
         # No parameters provided - run in interactive mode
-        print("Matrix Bot Authentication for E2EE")
-        print("===================================")
+        # Check if E2EE is actually configured before mentioning it
+        # Use silent checking to avoid warnings during initial setup
+        try:
+            from mmrelay.config import check_e2ee_enabled_silently
+
+            e2ee_enabled = check_e2ee_enabled_silently(args)
+
+            if e2ee_enabled:
+                print("Matrix Bot Authentication for E2EE")
+                print("===================================")
+            else:
+                print("\nMatrix Bot Authentication")
+                print("=========================")
+        except (OSError, PermissionError, ImportError, ValueError) as e:
+            # Fallback if silent checking fails due to config file or import issues
+            from mmrelay.log_utils import get_logger
+
+            logger = get_logger("CLI")
+            logger.debug(f"Failed to silently check E2EE status: {e}")
+            print("\nMatrix Bot Authentication")
+            print("=========================")
 
     try:
         result = asyncio.run(
@@ -1447,6 +1511,279 @@ def handle_service_command(args):
         return 1
 
 
+def _diagnose_config_paths(args):
+    """
+    Diagnose and print resolved configuration file search paths and their directory accessibility.
+
+    Takes the CLI argument namespace (passed to get_config_paths) and prints a numbered list of candidate config file paths.
+    For each path it reports one of three status icons:
+      - ✅ directory exists and is writable
+      - ⚠️ directory exists but is not writable
+      - ❌ directory does not exist
+
+    Parameters:
+        args: argparse.Namespace
+            Parsed command-line arguments forwarded to get_config_paths; used to determine the config search order.
+
+    Returns:
+        None
+    """
+    print("1. Testing configuration paths...")
+    from mmrelay.config import get_config_paths
+
+    paths = get_config_paths(args)
+    print(f"   Config search paths: {len(paths)} locations")
+    for i, path in enumerate(paths, 1):
+        dir_path = os.path.dirname(path)
+        dir_exists = os.path.exists(dir_path)
+        dir_writable = os.access(dir_path, os.W_OK) if dir_exists else False
+        status = "✅" if dir_exists and dir_writable else "⚠️" if dir_exists else "❌"
+        print(f"   {i}. {path} {status}")
+    print()
+
+
+def _diagnose_sample_config_accessibility():
+    """
+    Check accessibility of the bundled sample configuration file.
+
+    Performs two checks:
+    - Resolves the sample config path via mmrelay.tools.get_sample_config_path() and reports whether the file exists.
+    - Attempts to read the embedded resource sample_config.yaml via importlib.resources as a fallback and reports success and content length.
+
+    Returns:
+        bool: True if the filesystem sample config exists at the resolved path; False otherwise.
+
+    Notes:
+    - This function prints human-facing diagnostic lines and does not raise on importlib.resources failures; failures are reported and the function still returns the filesystem existence result.
+    """
+    print("2. Testing sample config accessibility...")
+    from mmrelay.tools import get_sample_config_path
+
+    sample_path = get_sample_config_path()
+    sample_exists = os.path.exists(sample_path)
+    print(f"   Sample config path: {sample_path}")
+    print(f"   Sample config exists: {'✅' if sample_exists else '❌'}")
+
+    # Test importlib.resources fallback
+    try:
+        import importlib.resources
+
+        content = (
+            importlib.resources.files("mmrelay.tools")
+            .joinpath("sample_config.yaml")
+            .read_text()
+        )
+        print(f"   importlib.resources fallback: ✅ ({len(content)} chars)")
+    except (FileNotFoundError, ImportError, OSError) as e:
+        print(f"   importlib.resources fallback: ❌ ({e})")
+    print()
+
+    return sample_exists
+
+
+def _diagnose_platform_specific(args):
+    """
+    Run platform-specific diagnostic checks and report results.
+
+    If running on Windows, executes Windows-specific requirement checks and a
+    config-generation test (via mmrelay.windows_utils), printing any warnings,
+    per-component results, and an overall status. On non-Windows (Unix-like)
+    systems this prints a short confirmation that platform-specific tests are
+    not required.
+
+    Parameters:
+        args: The parsed CLI arguments namespace forwarded to the Windows
+            config-generation test (only used on Windows).
+
+    Returns:
+        bool: True if the current platform is Windows, False otherwise.
+    """
+    print("3. Platform-specific diagnostics...")
+    import sys
+
+    from mmrelay.constants.app import WINDOWS_PLATFORM
+
+    on_windows = sys.platform == WINDOWS_PLATFORM
+    print(f"   Platform: {sys.platform}")
+    print(f"   Windows: {'Yes' if on_windows else 'No'}")
+
+    if on_windows:
+        try:
+            from mmrelay.windows_utils import (
+                check_windows_requirements,
+                test_config_generation_windows,
+            )
+
+            # Check Windows requirements
+            warnings = check_windows_requirements()
+            if warnings:
+                print("   Windows warnings: ⚠️")
+                for line in warnings.split("\n"):
+                    if line.strip():
+                        print(f"     {line}")
+            else:
+                print("   Windows compatibility: ✅")
+
+            # Run Windows-specific tests
+            print("\n   Windows config generation test:")
+            results = test_config_generation_windows(args)
+
+            for component, result in results.items():
+                if component == "overall_status":
+                    continue
+                if isinstance(result, dict):
+                    status_icon = (
+                        "✅"
+                        if result["status"] == "ok"
+                        else "❌" if result["status"] == "error" else "⚠️"
+                    )
+                    print(f"     {component}: {status_icon}")
+
+            overall = results.get("overall_status", "unknown")
+            print(
+                f"   Overall Windows status: {'✅' if overall == 'ok' else '⚠️' if overall == 'partial' else '❌'}"
+            )
+
+        except ImportError:
+            print("   Windows utilities: ❌ (not available)")
+    else:
+        print("   Platform-specific tests: ✅ (Unix-like system)")
+
+    print()
+    return on_windows
+
+
+def _get_minimal_config_template():
+    """
+    Return a minimal MMRelay YAML configuration template used as a fallback when the packaged sample_config.yaml cannot be located.
+
+    The template contains a small, functional configuration (matrix connection hints, a serial meshtastic connection, one room entry, and basic logging) that users can edit to create a working config file.
+
+    Returns:
+        str: A YAML-formatted minimal configuration template.
+    """
+    return """# MMRelay Configuration File
+# This is a minimal template created when the full sample config was unavailable
+# For complete configuration options, visit:
+# https://github.com/jeremiah-k/meshtastic-matrix-relay/wiki
+
+matrix:
+  homeserver: https://matrix.example.org
+  # Use 'mmrelay auth login' to set up authentication
+  # access_token: your_access_token_here
+  # bot_user_id: '@your_bot:matrix.example.org'
+
+meshtastic:
+  connection_type: serial
+  serial_port: /dev/ttyUSB0  # Windows: COM3, macOS: /dev/cu.usbserial-*
+  # host: meshtastic.local  # For network connection
+  # ble_address: "your_device_address"  # For BLE connection
+
+matrix_rooms:
+  - id: '#your-room:matrix.example.org'
+    meshtastic_channel: 0
+
+logging:
+  level: info
+
+# Uncomment and configure as needed:
+# database:
+#   msg_map:
+#     msgs_to_keep: 100
+
+# plugins:
+#   ping:
+#     active: true
+#   weather:
+#     active: true
+#     units: metric
+"""
+
+
+def _diagnose_minimal_config_template():
+    """
+    Validate the built-in minimal configuration template and print a concise result.
+
+    Calls _get_minimal_config_template(), parses the returned YAML with yaml.safe_load to ensure it is valid YAML, and prints a one-line success message with the template length or an error message on failure. Intended as a diagnostic step; has no return value and prints output for user consumption.
+    """
+    print("4. Testing minimal config template fallback...")
+    try:
+        template = _get_minimal_config_template()
+        yaml.safe_load(template)
+        print(f"   Minimal template: ✅ ({len(template)} chars, valid YAML)")
+    except yaml.YAMLError as e:
+        print(f"   Minimal template: ❌ ({e})")
+
+    print()
+
+
+def handle_config_diagnose(args):
+    """
+    Run a sequence of diagnostics for the MMRelay configuration subsystem and report results.
+
+    Performs four non-destructive checks and prints human-readable guidance:
+    1. Config path resolution and writability checks.
+    2. Accessibility and availability of the packaged sample configuration.
+    3. Platform-specific diagnostics (Windows vs. Unix-like) and related checks.
+    4. Validation of the minimal fallback configuration template.
+
+    Parameters:
+        args (argparse.Namespace): Parsed CLI arguments (as returned by parse_arguments()).
+            Used to resolve config locations and to adjust platform-specific checks.
+
+    Returns:
+        int: Exit code — 0 when diagnostics complete successfully, 1 on failure.
+
+    Notes:
+        - The function prints detailed diagnostic output and platform-specific tips to stdout.
+        - Exceptions are caught internally; in case of failure a non-zero exit code is returned
+          and additional Windows-specific guidance may be printed when available.
+    """
+    print("MMRelay Configuration System Diagnostics")
+    print("=" * 40)
+    print()
+
+    try:
+        # Test 1: Basic config path resolution
+        _diagnose_config_paths(args)
+
+        # Test 2: Sample config accessibility
+        sample_exists = _diagnose_sample_config_accessibility()
+
+        # Test 3: Platform-specific diagnostics
+        on_windows = _diagnose_platform_specific(args)
+
+        # Test 4: Minimal config template
+        _diagnose_minimal_config_template()
+
+        print("=" * 40)
+        print("Diagnostics complete!")
+
+        # Provide guidance based on results
+        if on_windows and not sample_exists:
+            print("\n💡 Windows Troubleshooting Tips:")
+            print("   • Try: pip install --upgrade --force-reinstall mmrelay")
+            print("   • Use: python -m mmrelay config generate")
+            print("   • Check antivirus software for quarantined files")
+
+        return 0
+
+    except Exception as e:
+        print(f"❌ Diagnostics failed: {e}", file=sys.stderr)
+
+        # Provide platform-specific guidance
+        try:
+            from mmrelay.windows_utils import get_windows_error_message, is_windows
+
+            if is_windows():
+                error_msg = get_windows_error_message(e)
+                print(f"\nWindows-specific guidance: {error_msg}", file=sys.stderr)
+        except ImportError:
+            pass
+
+        return 1
+
+
 if __name__ == "__main__":
     import sys
 
@@ -1509,7 +1846,8 @@ def generate_sample_config():
     If an existing config file is found in any candidate path (from get_config_paths()), this function aborts and prints its location. Otherwise it creates a sample config at the first candidate path. Sources tried, in order, are:
     - the path returned by get_sample_config_path(),
     - the packaged resource mmrelay.tools:sample_config.yaml via importlib.resources,
-    - a set of fallback filesystem locations relative to the package and current working directory.
+    - a set of fallback filesystem locations relative to the package and current working directory,
+    - a minimal configuration template as a last resort.
 
     On success the sample is written to disk and (on Unix-like systems) secure file permissions are applied (owner read/write, 0o600). Returns True when a sample config is successfully generated and False on any error or if a config already exists.
     """
@@ -1554,7 +1892,17 @@ def generate_sample_config():
             )
             return True
         except (IOError, OSError) as e:
-            print(f"Error copying sample config file: {e}")
+            # Provide Windows-specific error guidance if available
+            try:
+                from mmrelay.windows_utils import get_windows_error_message, is_windows
+
+                if is_windows():
+                    error_msg = get_windows_error_message(e)
+                    print(f"Error copying sample config file: {error_msg}")
+                else:
+                    print(f"Error copying sample config file: {e}")
+            except ImportError:
+                print(f"Error copying sample config file: {e}")
             return False
 
     # If the helper function failed, try using importlib.resources directly
@@ -1567,7 +1915,7 @@ def generate_sample_config():
         )
 
         # Write the sample config to the target path
-        with open(target_path, "w") as f:
+        with open(target_path, "w", encoding="utf-8") as f:
             f.write(sample_config_content)
 
         # Set secure permissions on Unix systems (600 - owner read/write)
@@ -1579,7 +1927,17 @@ def generate_sample_config():
         )
         return True
     except (FileNotFoundError, ImportError, OSError) as e:
-        print(f"Error accessing sample_config.yaml: {e}")
+        print(f"Error accessing sample_config.yaml via importlib.resources: {e}")
+
+        # Provide Windows-specific guidance if needed
+        try:
+            from mmrelay.windows_utils import is_windows
+
+            if is_windows():
+                print("This may be due to Windows installer packaging differences.")
+                print("Trying alternative methods...")
+        except ImportError:
+            pass
 
         # Fallback to traditional file paths if importlib.resources fails
         # First, check in the package directory
@@ -1607,8 +1965,61 @@ def generate_sample_config():
                     )
                     return True
                 except (IOError, OSError) as e:
-                    print(f"Error copying sample config file from {path}: {e}")
+                    # Provide Windows-specific error guidance if available
+                    try:
+                        from mmrelay.windows_utils import (
+                            get_windows_error_message,
+                            is_windows,
+                        )
+
+                        if is_windows():
+                            error_msg = get_windows_error_message(e)
+                            print(
+                                f"Error copying sample config file from {path}: {error_msg}"
+                            )
+                        else:
+                            print(f"Error copying sample config file from {path}: {e}")
+                    except ImportError:
+                        print(f"Error copying sample config file from {path}: {e}")
                     return False
 
-        print("Error: Could not find sample_config.yaml")
+        print("Error: Could not find sample_config.yaml in any location")
+
+        # Last resort: create a minimal config template
+        print("\nAttempting to create minimal config template...")
+        try:
+            minimal_config = _get_minimal_config_template()
+            with open(target_path, "w", encoding="utf-8") as f:
+                f.write(minimal_config)
+
+            # Set secure permissions on Unix systems
+            set_secure_file_permissions(target_path)
+
+            print(f"Created minimal config template at: {target_path}")
+            print(
+                "\n⚠️  This is a minimal template. Please refer to documentation for full configuration options."
+            )
+            print("Visit: https://github.com/jeremiah-k/meshtastic-matrix-relay/wiki")
+            return True
+
+        except (IOError, OSError) as e:
+            print(f"Failed to create minimal config template: {e}")
+
+        # Provide Windows-specific troubleshooting guidance
+        try:
+            from mmrelay.windows_utils import is_windows
+
+            if is_windows():
+                print("\nWindows Troubleshooting:")
+                print("1. Check if MMRelay was installed correctly")
+                print("2. Try reinstalling with: pipx install --force mmrelay")
+                print(
+                    "3. Use alternative entry point: python -m mmrelay config generate"
+                )
+                print("4. Check antivirus software - it may have quarantined files")
+                print("5. Run diagnostics: python -m mmrelay config diagnose")
+                print("6. Manually create config file using documentation")
+        except ImportError:
+            pass
+
         return False

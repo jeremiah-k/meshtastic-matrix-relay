@@ -127,8 +127,12 @@ def get_data_dir():
         # Use ~/.mmrelay/data/ for Linux and Mac
         data_dir = os.path.join(get_base_dir(), "data")
     else:
-        # Use platformdirs default for Windows
-        data_dir = platformdirs.user_data_dir(APP_NAME, APP_AUTHOR)
+        # Honor --data-dir on Windows too
+        if custom_data_dir:
+            data_dir = os.path.join(custom_data_dir, "data")
+        else:
+            # Use platformdirs default for Windows
+            data_dir = platformdirs.user_data_dir(APP_NAME, APP_AUTHOR)
 
     os.makedirs(data_dir, exist_ok=True)
     return data_dir
@@ -169,8 +173,12 @@ def get_log_dir():
         # Use ~/.mmrelay/logs/ for Linux and Mac
         log_dir = os.path.join(get_base_dir(), "logs")
     else:
-        # Use platformdirs default for Windows
-        log_dir = platformdirs.user_log_dir(APP_NAME, APP_AUTHOR)
+        # Honor --data-dir on Windows too
+        if custom_data_dir:
+            log_dir = os.path.join(custom_data_dir, "logs")
+        else:
+            # Use platformdirs default for Windows
+            log_dir = platformdirs.user_log_dir(APP_NAME, APP_AUTHOR)
 
     os.makedirs(log_dir, exist_ok=True)
     return log_dir
@@ -320,10 +328,9 @@ def load_logging_config_from_env():
 
 def load_database_config_from_env():
     """
-    Load database configuration from environment variables.
+    Build a database configuration fragment from environment variables.
 
-    Returns:
-        dict: Database configuration dictionary if any env vars found, None otherwise.
+    Reads environment variables defined in the module-level _DATABASE_ENV_VAR_MAPPINGS and converts them into a configuration dictionary suitable for merging into the application's config. Returns None if no mapped environment variables were present.
     """
     config = _load_config_from_env_mapping(_DATABASE_ENV_VAR_MAPPINGS)
     if config:
@@ -333,20 +340,92 @@ def load_database_config_from_env():
     return config
 
 
-def apply_env_config_overrides(config):
+def is_e2ee_enabled(config):
     """
-    Apply environment-variable-derived overrides to a configuration dictionary.
+    Check if End-to-End Encryption (E2EE) is enabled in the configuration.
 
-    If `config` is falsy a new dict is created. Environment values from the Meshtastic, logging,
-    and database loaders are merged into the corresponding top-level sections ("meshtastic",
-    "logging", "database"); existing keys in those sections are updated with environment-supplied
-    values while other keys are left intact.
+    Checks both 'encryption' and 'e2ee' keys in the matrix section for backward compatibility.
+    On Windows, this always returns False since E2EE is not supported.
 
     Parameters:
-        config (dict): Base configuration to update; may be None or an empty value.
+        config (dict): Configuration dictionary to check.
 
     Returns:
-        dict: The resulting configuration dictionary with environment overrides applied.
+        bool: True if E2EE is enabled, False otherwise.
+    """
+    # E2EE is not supported on Windows
+    if sys.platform == "win32":
+        return False
+
+    if not config:
+        return False
+
+    matrix_cfg = config.get("matrix", {}) or {}
+    if not matrix_cfg:
+        return False
+
+    encryption_enabled = matrix_cfg.get("encryption", {}).get("enabled", False)
+    e2ee_enabled = matrix_cfg.get("e2ee", {}).get("enabled", False)
+
+    return encryption_enabled or e2ee_enabled
+
+
+def check_e2ee_enabled_silently(args=None):
+    """
+    Return True if End-to-End Encryption (E2EE) is enabled in the active configuration.
+
+    Searches candidate configuration file paths in priority order (as returned by
+    get_config_paths(args)) and returns the E2EE status from the first valid config
+    file found. This respects configuration priority: command-line specified configs
+    take precedence over user directory configs, etc.
+
+    All I/O and YAML parsing errors are silently ignored. If no valid config file
+    is found, returns False.
+
+    On Windows, this always returns False since E2EE is not supported.
+
+    Parameters:
+        args: Optional parsed command-line arguments that influence config search order.
+
+    Returns:
+        bool: True if E2EE is enabled in the first valid config file, otherwise False.
+    """
+    # E2EE is not supported on Windows
+    if sys.platform == "win32":
+        return False
+
+    # Get config paths without logging
+    config_paths = get_config_paths(args)
+
+    # Try each config path silently
+    for path in config_paths:
+        if os.path.isfile(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    config = yaml.load(f, Loader=SafeLoader)
+                if config and is_e2ee_enabled(config):
+                    return True
+            except (yaml.YAMLError, PermissionError, OSError):
+                continue  # Silently try the next path
+    # No valid config found or E2EE not enabled in any config
+    return False
+
+
+def apply_env_config_overrides(config):
+    """
+    Apply environment-derived overrides to a configuration dictionary.
+
+    If `config` is falsy, a new dict is created. Values obtained from environment variables
+    for Meshtastic, logging, and database settings are merged into the top-level keys
+    "meshtastic", "logging", and "database" respectively. Existing keys in those sections
+    are updated with environment-sourced values; other keys are preserved.
+
+    Parameters:
+        config (dict | None): Base configuration to update. May be mutated in place.
+
+    Returns:
+        dict: The configuration dictionary with environment overrides applied (the same object
+        passed in, or a newly created dict if a falsy value was provided).
     """
     if not config:
         config = {}
@@ -382,51 +461,90 @@ def load_credentials():
         config_dir = get_base_dir()
         credentials_path = os.path.join(config_dir, "credentials.json")
 
+        logger.debug(f"Looking for credentials at: {credentials_path}")
+
         if os.path.exists(credentials_path):
-            with open(credentials_path, "r") as f:
+            with open(credentials_path, "r", encoding="utf-8") as f:
                 credentials = json.load(f)
-            logger.debug(f"Loaded credentials from {credentials_path}")
+            logger.debug(f"Successfully loaded credentials from {credentials_path}")
             return credentials
         else:
             logger.debug(f"No credentials file found at {credentials_path}")
+            # On Windows, also log the directory contents for debugging
+            if sys.platform == "win32" and os.path.exists(config_dir):
+                try:
+                    files = os.listdir(config_dir)
+                    logger.debug(f"Directory contents of {config_dir}: {files}")
+                except OSError:
+                    pass
             return None
-    except (OSError, PermissionError, json.JSONDecodeError) as e:
-        logger.error(f"Error loading credentials.json: {e}")
+    except (OSError, PermissionError, json.JSONDecodeError):
+        logger.exception(f"Error loading credentials.json from {config_dir}")
         return None
 
 
 def save_credentials(credentials):
     """
-    Write the provided Matrix credentials dict to "credentials.json" in the application's base config directory and apply secure file permissions (Unix 0o600) to the file.
+    Save Matrix credentials to the application's credentials.json file.
 
-    If writing or permission changes fail, an error is logged; exceptions are not propagated.
+    Writes the provided JSON-serializable credentials dictionary to
+    <base_dir>/credentials.json using UTF-8 encoding, then attempts to
+    restrict file permissions to 0o600 on Unix-like systems. I/O and
+    permission errors are caught and logged; this function does not raise
+    those exceptions.
+
+    Parameters:
+        credentials (dict): JSON-serializable mapping of credentials to persist.
+
+    Returns:
+        None
     """
     try:
         config_dir = get_base_dir()
+        # Ensure the directory exists and is writable
+        os.makedirs(config_dir, exist_ok=True)
         credentials_path = os.path.join(config_dir, "credentials.json")
 
-        with open(credentials_path, "w") as f:
+        # Log the path for debugging, especially on Windows
+        logger.info(f"Saving credentials to: {credentials_path}")
+
+        with open(credentials_path, "w", encoding="utf-8") as f:
             json.dump(credentials, f, indent=2)
 
         # Set secure permissions on Unix systems (600 - owner read/write only)
         set_secure_file_permissions(credentials_path)
 
-        logger.info(f"Saved credentials to {credentials_path}")
-    except (OSError, PermissionError) as e:
-        logger.error(f"Error saving credentials.json: {e}")
+        logger.info(f"Successfully saved credentials to {credentials_path}")
+
+        # Verify the file was actually created
+        if os.path.exists(credentials_path):
+            logger.debug(f"Verified credentials.json exists at {credentials_path}")
+        else:
+            logger.error(f"Failed to create credentials.json at {credentials_path}")
+
+    except (OSError, PermissionError):
+        logger.exception(f"Error saving credentials.json to {config_dir}")
+        # Try to provide helpful Windows-specific guidance
+        if sys.platform == "win32":
+            logger.error(
+                "On Windows, ensure the application has write permissions to the user data directory"
+            )
+            logger.error(f"Attempted path: {config_dir}")
 
 
 # Set up a basic logger for config
 logger = logging.getLogger("Config")
 logger.setLevel(logging.INFO)
-handler = logging.StreamHandler()
-handler.setFormatter(
-    logging.Formatter(
-        fmt="%(asctime)s %(levelname)s:%(name)s:%(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S %z",
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    handler.setFormatter(
+        logging.Formatter(
+            fmt="%(asctime)s %(levelname)s:%(name)s:%(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S %z",
+        )
     )
-)
-logger.addHandler(handler)
+    logger.addHandler(handler)
+logger.propagate = False
 
 # Initialize empty config
 relay_config = {}
@@ -626,16 +744,16 @@ def set_config(module, passed_config):
 
 def load_config(config_file=None, args=None):
     """
-    Load the application configuration from a file or from environment variables.
+    Load the application configuration from a YAML file or from environment variables.
 
-    If config_file is provided and exists, load and parse it as YAML. Otherwise search prioritized locations returned by get_config_paths(args) and load the first readable YAML file found. After loading (or when no file is found) environment-variable-derived overrides are merged into the configuration via apply_env_config_overrides(). The function updates the module-level relay_config and config_path.
+    If config_file is provided and exists, that file is read and parsed as YAML; otherwise the function searches candidate locations returned by get_config_paths(args) and loads the first readable YAML file found. Empty or null YAML is treated as an empty dict. After loading, environment-derived overrides are merged via apply_env_config_overrides(). The function updates the module-level relay_config and config_path.
 
     Parameters:
-        config_file (str, optional): Path to a specific YAML configuration file. If None, the function searches default locations.
-        args: Parsed command-line arguments used to influence the search order (passed to get_config_paths).
+        config_file (str, optional): Path to a specific YAML configuration file to load. If None, candidate paths from get_config_paths(args) are used.
+        args: Parsed command-line arguments forwarded to get_config_paths() to influence the search order.
 
     Returns:
-        dict: The resulting configuration dictionary. Returns an empty dict on read/parse errors or if no configuration is provided via files or environment.
+        dict: The resulting configuration dictionary. If no configuration is found or a file read/parse error occurs, returns an empty dict.
     """
     global relay_config, config_path
 
@@ -643,7 +761,7 @@ def load_config(config_file=None, args=None):
     if config_file and os.path.isfile(config_file):
         # Store the config path but don't log it yet - will be logged by main.py
         try:
-            with open(config_file, "r") as f:
+            with open(config_file, "r", encoding="utf-8") as f:
                 relay_config = yaml.load(f, Loader=SafeLoader)
             config_path = config_file
             # Treat empty/null YAML files as an empty config dictionary
@@ -665,7 +783,7 @@ def load_config(config_file=None, args=None):
             config_path = path
             # Store the config path but don't log it yet - will be logged by main.py
             try:
-                with open(config_path, "r") as f:
+                with open(config_path, "r", encoding="utf-8") as f:
                     relay_config = yaml.load(f, Loader=SafeLoader)
                 # Treat empty/null YAML files as an empty config dictionary
                 if relay_config is None:
@@ -731,8 +849,8 @@ def validate_yaml_syntax(config_content, config_path):
 
         # Check for non-standard boolean values (style warning)
         bool_pattern = r":\s*(yes|no|on|off|Yes|No|YES|NO)\s*$"
-        if re.search(bool_pattern, line):
-            match = re.search(bool_pattern, line)
+        match = re.search(bool_pattern, line)
+        if match:
             non_standard_bool = match.group(1)
             syntax_issues.append(
                 f"Line {line_num}: Style warning - Consider using 'true' or 'false' instead of '{non_standard_bool}' for clarity - {line.strip()}"

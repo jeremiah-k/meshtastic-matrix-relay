@@ -1,4 +1,4 @@
-# M<>M Relay
+# MMRelay
 
 ## (Meshtastic <=> Matrix Relay)
 
@@ -34,7 +34,7 @@ MMRelay supports multiple deployment methods including Docker, pip installation,
 
 ## Plugins
 
-M<>M Relay supports plugins for extending its functionality, enabling customization and enhancement of the relay to suit specific needs.
+MMRelay supports plugins for extending its functionality, enabling customization and enhancement of the relay to suit specific needs.
 
 ### Core Plugins
 
@@ -83,7 +83,7 @@ Plugins make it easy to extend functionality without modifying the core program.
 
 ## Getting Started with Matrix
 
-See our Wiki page [Getting Started With Matrix & MM Relay](https://github.com/jeremiah-k/meshtastic-matrix-relay/wiki/Getting-Started-With-Matrix-&-MM-Relay).
+See our Wiki page [Getting Started With Matrix & MMRelay](https://github.com/jeremiah-k/meshtastic-matrix-relay/wiki/Getting-Started-With-Matrix-&-MM-Relay).
 
 ---
 

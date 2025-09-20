@@ -17,27 +17,33 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, mock_open, patch
+from unittest.mock import MagicMock, call, mock_open, patch
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.setup_utils import (
+    SYSTEMCTL,
     check_lingering_enabled,
     create_service_file,
     enable_lingering,
     get_executable_path,
+    get_resolved_exec_cmd,
+    get_resolved_exec_start,
     get_template_service_content,
     get_template_service_path,
     get_user_service_path,
+    install_service,
     is_service_active,
     is_service_enabled,
+    print_service_commands,
     read_service_file,
     reload_daemon,
     service_exists,
     service_needs_update,
     show_service_status,
     start_service,
+    wait_for_service_start,
 )
 
 
@@ -78,7 +84,152 @@ class TestSetupUtils(unittest.TestCase):
 
         path = get_executable_path()
 
-        self.assertEqual(path, sys.executable)
+        self.assertEqual(path, f"{sys.executable} -m mmrelay")
+
+    @patch("shutil.which")
+    def test_get_resolved_exec_cmd_found(self, mock_which):
+        """Test get_resolved_exec_cmd when mmrelay binary is found."""
+        mock_which.return_value = "/usr/local/bin/mmrelay"
+
+        result = get_resolved_exec_cmd()
+
+        self.assertEqual(result, "/usr/local/bin/mmrelay")
+
+    @patch("shutil.which")
+    def test_get_resolved_exec_cmd_not_found(self, mock_which):
+        """Test get_resolved_exec_cmd when mmrelay binary is not found."""
+        mock_which.return_value = None
+
+        result = get_resolved_exec_cmd()
+
+        self.assertEqual(result, f"{sys.executable} -m mmrelay")
+
+    @patch("shutil.which")
+    def test_get_resolved_exec_cmd_with_spaces(self, mock_which):
+        """Test get_resolved_exec_cmd quotes paths with spaces."""
+        mock_which.return_value = None
+
+        with patch("sys.executable", "/path with spaces/python"):
+            result = get_resolved_exec_cmd()
+            self.assertEqual(result, '"/path with spaces/python" -m mmrelay')
+
+    @patch("shutil.which")
+    def test_get_resolved_exec_start_found(self, mock_which):
+        """Test get_resolved_exec_start when mmrelay binary is found."""
+        mock_which.return_value = "/usr/local/bin/mmrelay"
+
+        result = get_resolved_exec_start()
+
+        expected = "ExecStart=/usr/local/bin/mmrelay --config %h/.mmrelay/config.yaml --logfile %h/.mmrelay/logs/mmrelay.log"
+        self.assertEqual(result, expected)
+
+    @patch("shutil.which")
+    def test_get_resolved_exec_start_not_found(self, mock_which):
+        """Test get_resolved_exec_start when mmrelay binary is not found."""
+        mock_which.return_value = None
+
+        result = get_resolved_exec_start()
+
+        expected = f"ExecStart={sys.executable} -m mmrelay --config %h/.mmrelay/config.yaml --logfile %h/.mmrelay/logs/mmrelay.log"
+        self.assertEqual(result, expected)
+
+    @patch("builtins.print")
+    def test_print_service_commands(self, mock_print):
+        """Test that print_service_commands prints the correct commands."""
+        print_service_commands()
+
+        # Verify all expected commands were printed
+        expected_calls = [
+            call("  systemctl --user start mmrelay.service    # Start the service"),
+            call("  systemctl --user stop mmrelay.service     # Stop the service"),
+            call("  systemctl --user restart mmrelay.service  # Restart the service"),
+            call("  systemctl --user status mmrelay.service   # Check service status"),
+        ]
+        mock_print.assert_has_calls(expected_calls)
+
+    @patch("mmrelay.setup_utils.is_service_active")
+    @patch("time.sleep")
+    def test_wait_for_service_start_early_completion(self, mock_sleep, mock_is_active):
+        """Test wait_for_service_start completes early when service becomes active."""
+        # Mock service becoming active on first check (i=5)
+        mock_is_active.return_value = True
+
+        wait_for_service_start()
+
+        # Should have called sleep 6 times (iterations 0-5)
+        self.assertEqual(mock_sleep.call_count, 6)
+        # Should have checked service status once (when i=5)
+        self.assertEqual(mock_is_active.call_count, 1)
+
+    @patch("mmrelay.setup_utils.is_service_active")
+    @patch("time.sleep")
+    def test_wait_for_service_start_full_duration(self, mock_sleep, mock_is_active):
+        """Test wait_for_service_start runs full 10 seconds when service doesn't start."""
+        # Mock service never becoming active
+        mock_is_active.return_value = False
+
+        wait_for_service_start()
+
+        # Should have called sleep 10 times (full duration)
+        self.assertEqual(mock_sleep.call_count, 10)
+        # Should have checked service status 5 times (iterations 5-9)
+        self.assertEqual(mock_is_active.call_count, 5)
+
+    @patch("mmrelay.setup_utils.read_service_file")
+    @patch("mmrelay.setup_utils.service_needs_update")
+    @patch("mmrelay.setup_utils.print_service_commands")
+    @patch("builtins.input")
+    def test_install_service_update_cancelled_by_user(
+        self, mock_input, mock_print_commands, mock_needs_update, mock_read_service
+    ):
+        """Test install_service when user cancels update."""
+        mock_read_service.return_value = "existing service content"
+        mock_needs_update.return_value = (True, "Executable path changed")
+        mock_input.return_value = "n"
+
+        result = install_service()
+
+        self.assertTrue(result)
+        mock_print_commands.assert_called_once()
+        mock_input.assert_called_once_with(
+            "Do you want to update the service file? (y/n): "
+        )
+
+    @patch("mmrelay.setup_utils.read_service_file")
+    @patch("mmrelay.setup_utils.service_needs_update")
+    @patch("mmrelay.setup_utils.print_service_commands")
+    @patch("builtins.input")
+    def test_install_service_update_cancelled_by_eof(
+        self, mock_input, mock_print_commands, mock_needs_update, mock_read_service
+    ):
+        """Test install_service when user input is cancelled with EOF."""
+        mock_read_service.return_value = "existing service content"
+        mock_needs_update.return_value = (True, "Executable path changed")
+        mock_input.side_effect = EOFError()
+
+        result = install_service()
+
+        self.assertTrue(result)
+        mock_print_commands.assert_called_once()
+
+    @patch("mmrelay.setup_utils.get_template_service_path")
+    @patch("os.path.exists")
+    @patch("builtins.open", side_effect=IOError("File read error"))
+    @patch("sys.stderr")
+    def test_get_template_service_content_file_read_error(
+        self, mock_stderr, mock_open, mock_exists, mock_get_path
+    ):
+        """Test get_template_service_content handles file read errors gracefully."""
+        mock_get_path.return_value = "/path/to/template"
+        mock_exists.return_value = True
+
+        # This should fall back to importlib.resources or default template
+        _ = get_template_service_content()
+
+        # Should have attempted to read the file and caught the error
+        mock_open.assert_called()
+        # Should have printed error message
+        mock_stderr.write.assert_called()
 
     @patch("mmrelay.setup_utils.Path.home")
     def test_get_user_service_path(self, mock_home):
@@ -211,7 +362,7 @@ class TestSetupUtils(unittest.TestCase):
 
         # Should return default template
         self.assertIn("[Unit]", content)
-        self.assertIn("Description=A Meshtastic <=> Matrix Relay", content)
+        self.assertIn("Description=MMRelay - Meshtastic <=> Matrix Relay", content)
 
     @patch("subprocess.run")
     def test_is_service_active_true(self, mock_run):
@@ -227,7 +378,7 @@ class TestSetupUtils(unittest.TestCase):
 
         self.assertTrue(result)
         mock_run.assert_called_once_with(
-            ["/usr/bin/systemctl", "--user", "is-active", "mmrelay.service"],
+            [SYSTEMCTL, "--user", "is-active", "mmrelay.service"],
             check=False,
             capture_output=True,
             text=True,
@@ -289,7 +440,7 @@ class TestSetupUtils(unittest.TestCase):
 
         self.assertTrue(result)
         mock_run.assert_called_once_with(
-            ["/usr/bin/systemctl", "--user", "start", "mmrelay.service"], check=True
+            [SYSTEMCTL, "--user", "start", "mmrelay.service"], check=True
         )
 
     @patch("subprocess.run")
@@ -314,7 +465,7 @@ class TestSetupUtils(unittest.TestCase):
 
         self.assertTrue(result)
         mock_run.assert_called_once_with(
-            ["/usr/bin/systemctl", "--user", "daemon-reload"], check=True
+            [SYSTEMCTL, "--user", "daemon-reload"], check=True
         )
 
     @patch("subprocess.run")
@@ -412,16 +563,44 @@ class TestSetupUtils(unittest.TestCase):
         self.assertTrue(result)
         mock_path.write_text.assert_called_once()
 
-    @patch("mmrelay.setup_utils.get_executable_path")
-    def test_create_service_file_no_executable(self, mock_get_executable):
+    @patch("shutil.which")
+    @patch("mmrelay.setup_utils.get_template_service_content")
+    @patch("mmrelay.setup_utils.get_user_service_path")
+    @patch("builtins.print")
+    def test_create_service_file_no_executable(
+        self, mock_print, mock_get_path, mock_get_content, mock_which
+    ):
         """
-        Test that creating a service file returns False when the executable path cannot be determined.
+        Test that creating a service file succeeds using python -m mmrelay fallback when mmrelay binary is not found.
         """
-        mock_get_executable.return_value = None
+        # Mock mmrelay not found in PATH
+        mock_which.return_value = None
+
+        # Mock template content with placeholder
+        mock_get_content.return_value = """[Unit]
+Description=Test Service
+[Service]
+ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-relay/main.py --config %h/.mmrelay/config/config.yaml
+"""
+
+        # Mock service path
+        mock_path = MagicMock()
+        mock_get_path.return_value = mock_path
 
         result = create_service_file()
 
-        self.assertFalse(result)
+        # Should succeed with fallback
+        self.assertTrue(result)
+
+        # Should print fallback message
+        mock_print.assert_any_call(
+            "Warning: Could not find mmrelay executable in PATH. Using current Python interpreter.",
+            file=sys.stderr,
+        )
+
+        # Should write service content with python -m mmrelay
+        written_content = mock_path.write_text.call_args[0][0]
+        self.assertIn("python -m mmrelay", written_content)
 
     @patch("mmrelay.setup_utils.read_service_file")
     @patch("mmrelay.setup_utils.get_executable_path")
@@ -456,7 +635,7 @@ class TestSetupUtils(unittest.TestCase):
         needs_update, reason = service_needs_update()
 
         self.assertTrue(needs_update)
-        self.assertIn("does not use the current executable", reason)
+        self.assertIn("does not use an acceptable executable", reason)
 
     @patch("subprocess.run")
     def test_show_service_status_success(self, mock_run):
@@ -467,7 +646,7 @@ class TestSetupUtils(unittest.TestCase):
 
         self.assertTrue(result)
         mock_run.assert_called_once_with(
-            ["/usr/bin/systemctl", "--user", "status", "mmrelay.service"],
+            [SYSTEMCTL, "--user", "status", "mmrelay.service"],
             check=True,
             capture_output=True,
             text=True,

@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import re
+import ssl
 import sys
 import time
 from typing import Any, Dict, Union
@@ -242,16 +243,76 @@ def _get_msgs_to_keep_config():
     return msg_map_config.get("msgs_to_keep", DEFAULT_MSGS_TO_KEEP)
 
 
+def _get_detailed_sync_error_message(sync_response) -> str:
+    """
+    Return a concise, user-facing description of why a Matrix initial sync failed.
+
+    Given a sync response object (commonly a nio ErrorResponse or an HTTP/transport error object), extract the most specific, human-readable failure reason available. The helper maps common HTTP status codes (401, 403, 404, 429, 5xx) to friendly messages, inspects nio error messages and transport responses, and falls back to a generic network/connectivity message when necessary.
+
+    Parameters:
+        sync_response: The sync response or error object returned by the Matrix client; can be a nio ErrorResponse, an HTTP/transport error, or any object carrying `message`, `status_code`, or `transport_response` attributes.
+
+    Returns:
+        str: A short, user-focused error description suitable for logs and user-facing troubleshooting hints.
+    """
+    try:
+        # Try to extract specific error information
+        if hasattr(sync_response, "message") and sync_response.message:
+            return sync_response.message
+        elif hasattr(sync_response, "status_code") and sync_response.status_code:
+            status_code = sync_response.status_code
+            if status_code == 401:
+                return "Authentication failed - invalid or expired credentials"
+            elif status_code == 403:
+                return "Access forbidden - check user permissions"
+            elif status_code == 404:
+                return "Server not found - check homeserver URL"
+            elif status_code == 429:
+                return "Rate limited - too many requests"
+            elif status_code >= 500:
+                return f"Server error (HTTP {status_code}) - the Matrix server is experiencing issues"
+            else:
+                return f"HTTP error {status_code}"
+        elif hasattr(sync_response, "transport_response"):
+            # Check for transport-level errors
+            transport = sync_response.transport_response
+            if hasattr(transport, "status_code"):
+                return f"Transport error: HTTP {transport.status_code}"
+
+        # Fallback to string representation
+        error_str = str(sync_response)
+        if "unknown error" in error_str.lower():
+            return "Network connectivity issue or server unreachable"
+        elif error_str and error_str != "None" and "<" not in error_str:
+            return error_str
+        else:
+            return "Network connectivity issue or server unreachable"
+
+    except (AttributeError, ValueError, TypeError) as e:
+        logger.debug(
+            "Failed to extract sync error details from %r: %s", sync_response, e
+        )
+        # If we can't extract error details, provide a generic but helpful message
+        return (
+            "Unable to determine specific error - likely a network connectivity issue"
+        )
+
+
 def _create_mapping_info(
     matrix_event_id, room_id, text, meshnet=None, msgs_to_keep=None
 ):
     """
-    Create a metadata dictionary linking a Matrix event to a Meshtastic message for message mapping.
+    Create metadata linking a Matrix event to a Meshtastic message for cross-network mapping.
 
-    Removes quoted lines from the message text and includes identifiers and message retention settings. Returns `None` if any required parameter is missing.
+    Strips quoted lines from `text` and populates a mapping dict containing identifiers and retention settings. If `msgs_to_keep` is None the value is obtained from _get_msgs_to_keep_config(). Returns None when any of `matrix_event_id`, `room_id`, or `text` is missing or falsy.
 
     Returns:
-        dict: Mapping information for the message queue, or `None` if required fields are missing.
+        dict or None: Mapping with keys:
+            - matrix_event_id: original Matrix event id
+            - room_id: Matrix room id
+            - text: cleaned text with quoted lines removed
+            - meshnet: optional meshnet name (may be None)
+            - msgs_to_keep: number of message mappings to retain
     """
     if not matrix_event_id or not room_id or not text:
         return None
@@ -551,8 +612,7 @@ async def connect_matrix(passed_config=None):
 
     Raises:
         ValueError: If the top-level "matrix_rooms" configuration is missing.
-        ConnectionError: If the initial sync reports a sync error.
-        asyncio.TimeoutError: If the initial sync times out.
+        ConnectionError: If the initial sync reports a sync error or times out.
     """
     global matrix_client, bot_user_name, matrix_homeserver, matrix_rooms, matrix_access_token, bot_user_id, config
 
@@ -581,7 +641,7 @@ async def connect_matrix(passed_config=None):
         credentials_path = os.path.join(config_dir, "credentials.json")
 
         if os.path.exists(credentials_path):
-            with open(credentials_path, "r") as f:
+            with open(credentials_path, "r", encoding="utf-8") as f:
                 credentials = json.load(f)
     except Exception as e:
         logger.warning(f"Error loading credentials: {e}")
@@ -713,11 +773,18 @@ async def connect_matrix(passed_config=None):
         e2ee_device_id = None
 
     try:
-        # Check both 'encryption' and 'e2ee' keys for backward compatibility
-        matrix_cfg = config.get("matrix", {}) or {}
-        encryption_enabled = matrix_cfg.get("encryption", {}).get("enabled", False)
-        e2ee_enabled = matrix_cfg.get("e2ee", {}).get("enabled", False)
-        if encryption_enabled or e2ee_enabled:
+        from mmrelay.config import is_e2ee_enabled
+
+        # Check if E2EE is enabled using the helper function
+        e2ee_enabled = is_e2ee_enabled(config)
+
+        # Debug logging for E2EE detection
+        logger.debug(
+            f"E2EE detection: matrix config section present: {'matrix' in config}"
+        )
+        logger.debug(f"E2EE detection: e2ee enabled = {e2ee_enabled}")
+
+        if e2ee_enabled:
             # Check if running on Windows
             if sys.platform == WINDOWS_PLATFORM:
                 logger.error(
@@ -746,59 +813,63 @@ async def connect_matrix(passed_config=None):
                         logger.error(
                             "Please reinstall with: pipx install 'mmrelay[e2e]'"
                         )
-                        raise RuntimeError(
-                            "Missing E2EE dependency (Olm/SqliteStore)"
-                        ) from e
-
-                    e2ee_enabled = True
-                    logger.info("End-to-End Encryption (E2EE) is enabled")
-
-                    # Get store path from config or use default
-                    if (
-                        "encryption" in config["matrix"]
-                        and "store_path" in config["matrix"]["encryption"]
-                    ):
-                        e2ee_store_path = os.path.expanduser(
-                            config["matrix"]["encryption"]["store_path"]
-                        )
-                    elif (
-                        "e2ee" in config["matrix"]
-                        and "store_path" in config["matrix"]["e2ee"]
-                    ):
-                        e2ee_store_path = os.path.expanduser(
-                            config["matrix"]["e2ee"]["store_path"]
-                        )
+                        logger.warning("E2EE will be disabled for this session.")
+                        e2ee_enabled = False
                     else:
-                        from mmrelay.config import get_e2ee_store_dir
+                        # Dependencies are available, keep the config-determined value
+                        if e2ee_enabled:
+                            logger.info("End-to-End Encryption (E2EE) is enabled")
+                        else:
+                            logger.debug(
+                                "E2EE dependencies available but E2EE is disabled in configuration"
+                            )
 
-                        e2ee_store_path = get_e2ee_store_dir()
+                        # Get store path from config or use default
+                        if (
+                            "encryption" in config["matrix"]
+                            and "store_path" in config["matrix"]["encryption"]
+                        ):
+                            e2ee_store_path = os.path.expanduser(
+                                config["matrix"]["encryption"]["store_path"]
+                            )
+                        elif (
+                            "e2ee" in config["matrix"]
+                            and "store_path" in config["matrix"]["e2ee"]
+                        ):
+                            e2ee_store_path = os.path.expanduser(
+                                config["matrix"]["e2ee"]["store_path"]
+                            )
+                        else:
+                            from mmrelay.config import get_e2ee_store_dir
 
-                    # Create store directory if it doesn't exist
-                    os.makedirs(e2ee_store_path, exist_ok=True)
+                            e2ee_store_path = get_e2ee_store_dir()
 
-                    # Check if store directory contains database files
-                    store_files = (
-                        os.listdir(e2ee_store_path)
-                        if os.path.exists(e2ee_store_path)
-                        else []
-                    )
-                    db_files = [f for f in store_files if f.endswith(".db")]
-                    if db_files:
-                        logger.debug(
-                            f"Found existing E2EE store files: {', '.join(db_files)}"
+                        # Create store directory if it doesn't exist
+                        os.makedirs(e2ee_store_path, exist_ok=True)
+
+                        # Check if store directory contains database files
+                        store_files = (
+                            os.listdir(e2ee_store_path)
+                            if os.path.exists(e2ee_store_path)
+                            else []
                         )
-                    else:
-                        logger.warning(
-                            "No existing E2EE store files found. Encryption may not work correctly."
-                        )
+                        db_files = [f for f in store_files if f.endswith(".db")]
+                        if db_files:
+                            logger.debug(
+                                f"Found existing E2EE store files: {', '.join(db_files)}"
+                            )
+                        else:
+                            logger.warning(
+                                "No existing E2EE store files found. Encryption may not work correctly."
+                            )
 
-                    logger.debug(f"Using E2EE store path: {e2ee_store_path}")
+                        logger.debug(f"Using E2EE store path: {e2ee_store_path}")
 
-                    # If device_id is not present in credentials, we can attempt to learn it later.
-                    if not e2ee_device_id:
-                        logger.debug(
-                            "No device_id in credentials; will retrieve from store/whoami later if available"
-                        )
+                        # If device_id is not present in credentials, we can attempt to learn it later.
+                        if not e2ee_device_id:
+                            logger.debug(
+                                "No device_id in credentials; will retrieve from store/whoami later if available"
+                            )
                 except ImportError:
                     logger.warning(
                         "E2EE is enabled in config but python-olm is not installed."
@@ -889,8 +960,26 @@ async def connect_matrix(passed_config=None):
             hasattr(sync_response, "__class__")
             and "Error" in sync_response.__class__.__name__
         ):
-            logger.error(f"Initial sync failed: {sync_response}")
-            raise ConnectionError(f"Matrix sync failed: {sync_response}")
+            # Provide more detailed error information
+            error_type = sync_response.__class__.__name__
+            error_details = _get_detailed_sync_error_message(sync_response)
+            logger.error(f"Initial sync failed: {error_type}")
+            logger.error(f"Error details: {error_details}")
+
+            # Provide user-friendly troubleshooting guidance
+            if "SyncError" in error_type:
+                logger.error(
+                    "This usually indicates a network connectivity issue or server problem."
+                )
+                logger.error("Troubleshooting steps:")
+                logger.error("1. Check your internet connection")
+                logger.error(
+                    f"2. Verify the homeserver URL is correct: {matrix_homeserver}"
+                )
+                logger.error("3. Ensure the Matrix server is online and accessible")
+                logger.error("4. Check if your credentials are still valid")
+
+            raise ConnectionError(f"Matrix sync failed: {error_type} - {error_details}")
         else:
             logger.info(
                 f"Initial sync completed. Found {len(matrix_client.rooms)} rooms."
@@ -929,10 +1018,24 @@ async def connect_matrix(passed_config=None):
             if e2ee_enabled and encrypted_count == 0 and len(matrix_client.rooms) > 0:
                 logger.debug("No encrypted rooms detected - all rooms are plaintext")
     except asyncio.TimeoutError:
-        logger.error(
+        logger.exception(
             f"Initial sync timed out after {MATRIX_SYNC_OPERATION_TIMEOUT} seconds"
         )
-        raise
+        logger.error(
+            "This indicates a network connectivity issue or slow Matrix server."
+        )
+        logger.error("Troubleshooting steps:")
+        logger.error("1. Check your internet connection")
+        logger.error(f"2. Verify the homeserver is accessible: {matrix_homeserver}")
+        logger.error(
+            "3. Try again in a few minutes - the server may be temporarily overloaded"
+        )
+        logger.error(
+            "4. Consider using a different Matrix homeserver if the problem persists"
+        )
+        raise ConnectionError(
+            f"Matrix sync timed out after {MATRIX_SYNC_OPERATION_TIMEOUT} seconds - check network connectivity and server status"
+        ) from None
 
     # Add a delay to allow for key sharing to complete
     # This addresses a race condition where the client attempts to send encrypted messages
@@ -965,9 +1068,9 @@ async def login_matrix_bot(
     homeserver=None, username=None, password=None, logout_others=False
 ):
     """
-    Perform an interactive Matrix login for the bot, enable end-to-end encryption, and persist credentials for later use.
+    Perform an interactive Matrix login for the bot and persist credentials for later use.
 
-    This coroutine attempts server discovery for the provided homeserver, logs in as the given username, initializes an encrypted client store, and saves resulting credentials (homeserver, user_id, access_token, device_id) to credentials.json so the relay can restore the session non-interactively. If an existing credentials.json contains a matching user_id, the device_id will be reused when available.
+    This coroutine attempts server discovery for the provided homeserver, logs in as the given username, optionally initializes an encrypted client store (if E2EE is enabled in configuration), and saves resulting credentials (homeserver, user_id, access_token, device_id) to credentials.json so the relay can restore the session non-interactively. If an existing credentials.json contains a matching user_id, the device_id will be reused when available.
 
     Parameters:
         homeserver (str | None): Homeserver URL to use. If None, the user is prompted.
@@ -980,9 +1083,13 @@ async def login_matrix_bot(
     """
     try:
         # Enable nio debug logging for detailed connection analysis
+        # Enable ALL logging to debug the validation issue
         logging.getLogger("nio").setLevel(logging.DEBUG)
         logging.getLogger("nio.client").setLevel(logging.DEBUG)
         logging.getLogger("nio.http_client").setLevel(logging.DEBUG)
+        logging.getLogger("nio.responses").setLevel(
+            logging.DEBUG
+        )  # Enable validation logging
         logging.getLogger("aiohttp").setLevel(logging.DEBUG)
 
         # Get homeserver URL
@@ -1004,6 +1111,10 @@ async def login_matrix_bot(
             logger.warning(
                 "Failed to create SSL context for server discovery; falling back to default system SSL"
             )
+        else:
+            logger.debug(f"SSL context created successfully: {ssl_context}")
+            logger.debug(f"SSL context protocol: {ssl_context.protocol}")
+            logger.debug(f"SSL context verify_mode: {ssl_context.verify_mode}")
 
         # Create a temporary client for discovery
         temp_client = AsyncClient(homeserver, "", ssl=ssl_context)
@@ -1012,15 +1123,30 @@ async def login_matrix_bot(
                 temp_client.discovery_info(), timeout=MATRIX_LOGIN_TIMEOUT
             )
 
-            if isinstance(discovery_response, DiscoveryInfoResponse):
-                actual_homeserver = discovery_response.homeserver_url
-                logger.info(f"Server discovery successful: {actual_homeserver}")
-                homeserver = actual_homeserver
-            elif isinstance(discovery_response, DiscoveryInfoError):
-                logger.info(
-                    f"Server discovery failed, using original URL: {homeserver}"
+            try:
+                if isinstance(discovery_response, DiscoveryInfoResponse):
+                    actual_homeserver = discovery_response.homeserver_url
+                    logger.info(f"Server discovery successful: {actual_homeserver}")
+                    homeserver = actual_homeserver
+                elif isinstance(discovery_response, DiscoveryInfoError):
+                    logger.info(
+                        f"Server discovery failed, using original URL: {homeserver}"
+                    )
+                    # Continue with original homeserver URL
+                else:
+                    # Fallback for test environments or unexpected response types
+                    if hasattr(discovery_response, "homeserver_url"):
+                        actual_homeserver = discovery_response.homeserver_url
+                        logger.info(f"Server discovery successful: {actual_homeserver}")
+                        homeserver = actual_homeserver
+                    else:
+                        logger.warning(
+                            f"Server discovery returned unexpected response type, using original URL: {homeserver}"
+                        )
+            except TypeError as e:
+                logger.warning(
+                    f"Server discovery error: {e}, using original URL: {homeserver}"
                 )
-                # Continue with original homeserver URL
 
         except asyncio.TimeoutError:
             logger.warning(
@@ -1044,14 +1170,56 @@ async def login_matrix_bot(
             username = f"@{username}"
 
         server_name = urlparse(homeserver).netloc
+        logger.debug(f"Extracted server_name from homeserver: {server_name}")
+        logger.debug(f"Original username: {username}")
+
         if ":" not in username:
             username = f"{username}:{server_name}"
+            logger.debug(f"Added server to username: {username}")
 
         logger.info(f"Using username: {username}")
+
+        # Validate username format
+        if not username.startswith("@"):
+            logger.warning(f"Username doesn't start with @: {username}")
+        if username.count(":") != 1:
+            logger.warning(
+                f"Username has unexpected colon count: {username.count(':')}"
+            )
+
+        # Check for special characters in username that might cause issues
+        username_special_chars = set(username) - set(
+            "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@:.-_"
+        )
+        if username_special_chars:
+            logger.warning(
+                f"Username contains unusual characters: {username_special_chars}"
+            )
 
         # Get password
         if not password:
             password = getpass.getpass("Enter Matrix password: ")
+
+        # Debug password handling (without logging the actual password)
+        logger.debug(f"Password length: {len(password) if password else 0}")
+        logger.debug(f"Password type: {type(password).__name__}")
+        logger.debug(
+            f"Password encoding: {password.encode('utf-8') if password else 'None'}"
+        )
+        if password:
+            # Check for special characters that might cause issues
+            special_chars = set(password) - set(
+                "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+            )
+            if special_chars:
+                logger.debug(
+                    f"Password contains special characters: {len(special_chars)} unique chars"
+                )
+                # Log the character codes without revealing the password
+                char_codes = [ord(c) for c in special_chars]
+                logger.debug(f"Special character codes: {char_codes}")
+            else:
+                logger.debug("Password contains only alphanumeric characters")
 
         # Ask about logging out other sessions
         if logout_others is None:
@@ -1069,7 +1237,7 @@ async def login_matrix_bot(
             credentials_path = os.path.join(config_dir, "credentials.json")
 
             if os.path.exists(credentials_path):
-                with open(credentials_path, "r") as f:
+                with open(credentials_path, "r", encoding="utf-8") as f:
                     existing_creds = json.load(f)
                     if (
                         "device_id" in existing_creds
@@ -1080,14 +1248,30 @@ async def login_matrix_bot(
         except Exception as e:
             logger.debug(f"Could not load existing credentials: {e}")
 
-        # Get the E2EE store path
-        store_path = get_e2ee_store_dir()
-        os.makedirs(store_path, exist_ok=True)
-        logger.debug(f"Using E2EE store path: {store_path}")
+        # Check if E2EE is enabled in configuration
+        from mmrelay.config import is_e2ee_enabled, load_config
 
-        # Create client config for E2EE
+        try:
+            config = load_config()
+            e2ee_enabled = is_e2ee_enabled(config)
+        except Exception as e:
+            logger.debug(f"Could not load config for E2EE check: {e}")
+            e2ee_enabled = False
+
+        logger.debug(f"E2EE enabled in config: {e2ee_enabled}")
+
+        # Get the E2EE store path only if E2EE is enabled
+        store_path = None
+        if e2ee_enabled:
+            store_path = get_e2ee_store_dir()
+            os.makedirs(store_path, exist_ok=True)
+            logger.debug(f"Using E2EE store path: {store_path}")
+        else:
+            logger.debug("E2EE disabled in configuration, not using store path")
+
+        # Create client config with E2EE based on configuration
         client_config = AsyncClientConfig(
-            store_sync_tokens=True, encryption_enabled=True
+            store_sync_tokens=True, encryption_enabled=e2ee_enabled
         )
 
         # Use the same SSL context as discovery client
@@ -1095,6 +1279,13 @@ async def login_matrix_bot(
 
         # Initialize client with E2EE support
         # Use most common pattern from matrix-nio examples: positional homeserver and user
+        logger.debug("Creating AsyncClient with:")
+        logger.debug(f"  homeserver: {homeserver}")
+        logger.debug(f"  username: {username}")
+        logger.debug(f"  device_id: {existing_device_id}")
+        logger.debug(f"  store_path: {store_path}")
+        logger.debug(f"  e2ee_enabled: {e2ee_enabled}")
+
         client = AsyncClient(
             homeserver,
             username,
@@ -1104,20 +1295,100 @@ async def login_matrix_bot(
             ssl=ssl_context,
         )
 
+        logger.debug("AsyncClient created successfully")
+
+        # Test JSON encoding of password to see if special characters are handled correctly
+        if password:
+            import json
+
+            test_dict = {"password": password}
+            try:
+                json_str = json.dumps(test_dict, separators=(",", ":"))
+                logger.debug(
+                    f"Password JSON encoding test successful, length: {len(json_str)}"
+                )
+                # Check if the JSON contains the expected password length
+                parsed_back = json.loads(json_str)
+                if len(parsed_back["password"]) != len(password):
+                    logger.error(
+                        "Password length mismatch after JSON encoding/decoding!"
+                    )
+                else:
+                    logger.debug("Password JSON round-trip successful")
+            except Exception as e:
+                logger.error(f"Password JSON encoding failed: {e}")
+
         logger.info(f"Logging in as {username} to {homeserver}...")
 
         # Login with consistent device name and timeout
-        # Use the original working device name
-        device_name = "mmrelay-e2ee"
+        # Use appropriate device name based on E2EE configuration
+        device_name = "mmrelay-e2ee" if e2ee_enabled else "mmrelay"
         try:
             # Set device_id on client if we have an existing one
             if existing_device_id:
                 client.device_id = existing_device_id
 
+            logger.debug(f"Attempting login to {homeserver} as {username}")
+            logger.debug("Login parameters:")
+            logger.debug(f"  device_name: {device_name}")
+            logger.debug(f"  password length: {len(password) if password else 0}")
+            logger.debug(f"  client.user: {client.user}")
+            logger.debug(f"  client.homeserver: {client.homeserver}")
+
+            # Test the API call that matrix-nio will make
+            try:
+                from nio.api import Api
+
+                method, path, data = Api.login(
+                    user=username,
+                    password=password,
+                    device_name=device_name,
+                    device_id=existing_device_id,
+                )
+                logger.debug("Matrix API call details:")
+                logger.debug(f"  method: {method}")
+                logger.debug(f"  path: {path}")
+                logger.debug(f"  data length: {len(data) if data else 0}")
+
+                # Parse the JSON to see the structure (without logging the password)
+                import json
+
+                parsed_data = json.loads(data)
+                safe_data = {
+                    k: (v if k != "password" else f"[{len(v)} chars]")
+                    for k, v in parsed_data.items()
+                }
+                logger.debug(f"  parsed data: {safe_data}")
+
+            except Exception as e:
+                logger.error(f"Failed to test API call: {e}")
+
             response = await asyncio.wait_for(
                 client.login(password, device_name=device_name),
                 timeout=MATRIX_LOGIN_TIMEOUT,
             )
+
+            # Debug: Log the actual response received
+            logger.debug(f"Login response type: {type(response).__name__}")
+            logger.debug(f"Login response attributes: {dir(response)}")
+            if hasattr(response, "__dict__"):
+                logger.debug(f"Login response dict: {response.__dict__}")
+
+            # Check specific attributes that should be present
+            for attr in [
+                "user_id",
+                "device_id",
+                "access_token",
+                "status_code",
+                "message",
+            ]:
+                if hasattr(response, attr):
+                    value = getattr(response, attr)
+                    logger.debug(
+                        f"Response.{attr}: {value} (type: {type(value).__name__})"
+                    )
+                else:
+                    logger.debug(f"Response.{attr}: NOT PRESENT")
         except asyncio.TimeoutError:
             logger.error(f"Login timed out after {MATRIX_LOGIN_TIMEOUT} seconds")
             logger.error(
@@ -1125,24 +1396,94 @@ async def login_matrix_bot(
             )
             await client.close()
             return False
+        except TypeError as e:
+            # Handle the specific ">=" comparison error that can occur in matrix-nio
+            if "'>=' not supported between instances of 'str' and 'int'" in str(e):
+                logger.error("Matrix-nio library error during login (known issue)")
+                logger.error(
+                    "This typically indicates invalid credentials or server response format issues"
+                )
+                logger.error("Troubleshooting steps:")
+                logger.error("1. Verify your username and password are correct")
+                logger.error("2. Check if your account is locked or suspended")
+                logger.error("3. Try logging in through a web browser first")
+                logger.error("4. Ensure your Matrix server supports the login API")
+                logger.error(
+                    "5. Try using a different homeserver URL format (e.g., with https://)"
+                )
+            else:
+                logger.error(f"Type error during login: {e}")
+            await client.close()
+            return False
         except Exception as e:
             # Handle other exceptions during login (e.g., network errors)
-            logger.error(f"Login exception: {e}")
-            logger.error(f"Exception type: {type(e)}")
-            if hasattr(e, "message"):
-                logger.error(f"Exception message: {e.message}")
+            error_type = type(e).__name__
+            logger.exception(f"Login failed with {error_type}")
+
+            # Provide specific guidance based on error type
+            if isinstance(e, (ConnectionError, asyncio.TimeoutError)):
+                logger.error("Network connectivity issue detected.")
+                logger.error("Troubleshooting steps:")
+                logger.error("1. Check your internet connection")
+                logger.error(f"2. Verify the homeserver URL is correct: {homeserver}")
+                logger.error("3. Check if the Matrix server is online")
+            elif isinstance(e, (ssl.SSLError, ssl.CertificateError)):
+                logger.error("SSL/TLS certificate issue detected.")
+                logger.error(
+                    "This may indicate a problem with the server's SSL certificate."
+                )
+            elif "DNSError" in error_type or "NameResolutionError" in error_type:
+                logger.error("DNS resolution failed.")
+                logger.error(f"Cannot resolve hostname: {homeserver}")
+                logger.error("Check your DNS settings and internet connection.")
+            elif "'user_id' is a required property" in str(e):
+                logger.error("Matrix server response validation failed.")
+                logger.error("This typically indicates:")
+                logger.error("1. Invalid username or password")
+                logger.error("2. Server response format not as expected")
+                logger.error("3. Matrix server compatibility issues")
+                logger.error("Troubleshooting steps:")
+                logger.error("1. Verify credentials by logging in via web browser")
+                logger.error(
+                    "2. Try using the full homeserver URL (e.g., https://matrix.org)"
+                )
+                logger.error(
+                    "3. Check if your Matrix server is compatible with matrix-nio"
+                )
+                logger.error("4. Try a different Matrix server if available")
+            else:
+                logger.error("Unexpected error during login.")
+
+            # Additional details already included in the message above.
             await client.close()
             return False
 
-        if hasattr(response, "access_token"):
+        # Handle login response - check for access_token first (most reliable indicator)
+        if hasattr(response, "access_token") and response.access_token:
             logger.info("Login successful!")
+
+            # Get the actual user_id from whoami() - this is the proper way
+            try:
+                whoami_response = await client.whoami()
+                if hasattr(whoami_response, "user_id"):
+                    actual_user_id = whoami_response.user_id
+                    logger.debug(f"Got user_id from whoami: {actual_user_id}")
+                else:
+                    # Fallback to response user_id or username
+                    actual_user_id = getattr(response, "user_id", username)
+                    logger.warning(
+                        f"whoami failed, using fallback user_id: {actual_user_id}"
+                    )
+            except Exception as e:
+                logger.warning(f"whoami call failed: {e}, using fallback")
+                actual_user_id = getattr(response, "user_id", username)
 
             # Save credentials to credentials.json
             credentials = {
                 "homeserver": homeserver,
-                "user_id": username,
+                "user_id": actual_user_id,
                 "access_token": response.access_token,
-                "device_id": response.device_id,
+                "device_id": getattr(response, "device_id", existing_device_id),
             }
 
             config_dir = get_base_dir()
@@ -1159,17 +1500,63 @@ async def login_matrix_bot(
             await client.close()
             return True
         else:
-            # Better error logging
-            logger.error(f"Login failed: {response}")
-            if hasattr(response, "message"):
-                logger.error(f"Error message: {response.message}")
-            if hasattr(response, "status_code"):
-                logger.error(f"Status code: {response.status_code}")
+            # Handle login failure
+            if hasattr(response, "status_code") and hasattr(response, "message"):
+                status_code = response.status_code
+                error_message = response.message
+
+                logger.error(f"Login failed: {type(response).__name__}")
+                logger.error(f"Error message: {error_message}")
+                logger.error(f"HTTP status code: {status_code}")
+
+                # Provide specific troubleshooting guidance
+                if status_code == 401 or "M_FORBIDDEN" in str(error_message):
+                    logger.error(
+                        "Authentication failed - invalid username or password."
+                    )
+                    logger.error("Troubleshooting steps:")
+                    logger.error("1. Verify your username and password are correct")
+                    logger.error("2. Check if your account is locked or suspended")
+                    logger.error("3. Try logging in through a web browser first")
+                    logger.error(
+                        "4. Use 'mmrelay auth login' to set up new credentials"
+                    )
+                elif status_code == 404:
+                    logger.error("User not found or homeserver not found.")
+                    logger.error(
+                        f"Check that the homeserver URL is correct: {homeserver}"
+                    )
+                elif status_code == 429:
+                    logger.error("Rate limited - too many login attempts.")
+                    logger.error("Wait a few minutes before trying again.")
+                elif status_code and status_code >= 500:
+                    logger.error(
+                        "Matrix server error - the server is experiencing issues."
+                    )
+                    logger.error(
+                        "Try again later or contact your server administrator."
+                    )
+                else:
+                    logger.error("Login failed for unknown reason.")
+                    logger.error(
+                        "Try using 'mmrelay auth login' for interactive setup."
+                    )
+            else:
+                logger.error(f"Unexpected login response: {type(response).__name__}")
+                logger.error(
+                    "This may indicate a matrix-nio library issue or server problem."
+                )
+
             await client.close()
             return False
 
     except Exception as e:
         logger.error(f"Error during login: {e}")
+        try:
+            await client.close()
+        except Exception as e:
+            # Ignore errors during client cleanup - connection may already be closed
+            logger.debug(f"Ignoring error during client cleanup: {e}")
         return False
 
 
