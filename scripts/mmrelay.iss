@@ -26,6 +26,8 @@ Filename: "{app}\mmrelay.bat"; Description: "Launch MM Relay"; Flags: nowait pos
 var
   OverwriteConfig: TInputOptionWizardPage;
   ConnectionTypePage: TInputOptionWizardPage;
+  ConnectionTypeLabel: TLabel;
+  ConnectionTypeCombo: TNewComboBox;
   MatrixPage: TInputQueryWizardPage;
   MatrixMeshtasticPage: TInputQueryWizardPage;
   MeshtasticPage: TInputQueryWizardPage;
@@ -59,10 +61,25 @@ begin
   OverwriteConfig.Add('Generate configuration (overwrite any current config files)');
   OverwriteConfig.Values[0] := False;
 
-  ConnectionTypePage.Add('Network connection (TCP/IP)');
-  ConnectionTypePage.Add('Serial connection (USB/Serial)');
-  ConnectionTypePage.Add('Bluetooth Low Energy (BLE)');
-  ConnectionTypePage.Values[0] := True; // Default to network
+  // Create connection type dropdown
+  ConnectionTypeLabel := TLabel.Create(WizardForm);
+  ConnectionTypeLabel.Parent := ConnectionTypePage.Surface;
+  ConnectionTypeLabel.Left := 0;
+  ConnectionTypeLabel.Top := 0;
+  ConnectionTypeLabel.Caption := 'Connection Type:';
+  ConnectionTypeLabel.Font.Style := [fsBold];
+
+  ConnectionTypeCombo := TNewComboBox.Create(WizardForm);
+  ConnectionTypeCombo.Parent := ConnectionTypePage.Surface;
+  ConnectionTypeCombo.Left := 0;
+  ConnectionTypeCombo.Top := ConnectionTypeLabel.Top + ConnectionTypeLabel.Height + 8;
+  ConnectionTypeCombo.Width := 300;
+  ConnectionTypeCombo.Style := csDropDownList;
+
+  ConnectionTypeCombo.Items.Add('Network connection (TCP/IP)');
+  ConnectionTypeCombo.Items.Add('Serial connection (USB/Serial)');
+  ConnectionTypeCombo.Items.Add('Bluetooth Low Energy (BLE)');
+  ConnectionTypeCombo.ItemIndex := 0; // Default to network
   MeshtasticPage.Add('Serial port (if serial):', False);
   MeshtasticPage.Add('Hostname/IP (if network):', False);
   MeshtasticPage.Add('BLE address/name (if ble):', False);
@@ -135,12 +152,12 @@ begin
     end;
   end;
 
-  // Determine connection type from radio button selection
-  if ConnectionTypePage.Values[0] then
+  // Determine connection type from dropdown selection
+  if ConnectionTypeCombo.ItemIndex = 0 then
     connection_type := 'network'
-  else if ConnectionTypePage.Values[1] then
+  else if ConnectionTypeCombo.ItemIndex = 1 then
     connection_type := 'serial'
-  else if ConnectionTypePage.Values[2] then
+  else if ConnectionTypeCombo.ItemIndex = 2 then
     connection_type := 'ble'
   else
     connection_type := 'network'; // fallback
