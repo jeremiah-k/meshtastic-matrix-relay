@@ -1013,6 +1013,12 @@ async def connect_matrix(passed_config=None):
                 logger.error("3. Ensure the Matrix server is online and accessible")
                 logger.error("4. Check if your credentials are still valid")
 
+            try:
+                await matrix_client.close()
+            except Exception:
+                logger.debug("Ignoring error while closing client after sync failure")
+            finally:
+                matrix_client = None
             raise ConnectionError(f"Matrix sync failed: {error_type} - {error_details}")
         else:
             logger.info(
@@ -1067,6 +1073,12 @@ async def connect_matrix(passed_config=None):
         logger.error(
             "4. Consider using a different Matrix homeserver if the problem persists"
         )
+        try:
+            await matrix_client.close()
+        except Exception:
+            logger.debug("Ignoring error while closing client after sync timeout")
+        finally:
+            matrix_client = None
         raise ConnectionError(
             f"Matrix sync timed out after {MATRIX_SYNC_OPERATION_TIMEOUT} seconds - check network connectivity and server status"
         ) from None
@@ -1234,50 +1246,11 @@ async def login_matrix_bot(
         if not password:
             password = getpass.getpass("Enter Matrix password: ")
 
-        # Debug password handling (without logging the actual password)
-        logger.debug(f"Password length: {len(password) if password else 0}")
-        logger.debug(f"Password type: {type(password).__name__}")
+        # Simple password validation without logging sensitive information
         if password:
-            # Check for special characters that might cause issues
-            special_chars = set(password) - set(
-                "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-            )
-            if special_chars:
-                logger.debug(
-                    f"Password contains special characters: {len(special_chars)} unique chars"
-                )
-                # Log the character codes without revealing the password
-                char_codes = [ord(c) for c in special_chars]
-                logger.debug(f"Special character codes: {char_codes}")
-
-                # Test JSON serialization with special characters
-                try:
-                    import json
-
-                    test_dict = {"password": password}
-                    json_str = json.dumps(test_dict)
-                    parsed_back = json.loads(json_str)
-                    if parsed_back["password"] != password:
-                        logger.error(
-                            "Password JSON round-trip failed - special characters not handled correctly"
-                        )
-                        logger.error(
-                            "This may cause login failures with matrix-nio library"
-                        )
-                        logger.error(
-                            "Consider using a password with only alphanumeric characters"
-                        )
-                except Exception as json_e:
-                    logger.error(f"Password JSON serialization failed: {json_e}")
-                    logger.error(
-                        "Password contains characters that cannot be properly serialized"
-                    )
-                    logger.error("This will likely cause login to fail")
-                    logger.error(
-                        "Please use a password with only alphanumeric characters"
-                    )
-            else:
-                logger.debug("Password contains only alphanumeric characters")
+            logger.debug("Password provided for login")
+        else:
+            logger.warning("No password provided")
 
         # Ask about logging out other sessions
         if logout_others is None:
@@ -1291,6 +1264,8 @@ async def login_matrix_bot(
         # Check for existing credentials to reuse device_id
         existing_device_id = None
         try:
+            import json
+
             config_dir = get_base_dir()
             credentials_path = os.path.join(config_dir, "credentials.json")
 
@@ -1355,27 +1330,6 @@ async def login_matrix_bot(
 
         logger.debug("AsyncClient created successfully")
 
-        # Test JSON encoding of password to see if special characters are handled correctly
-        if password:
-            import json
-
-            test_dict = {"password": password}
-            try:
-                json_str = json.dumps(test_dict, separators=(",", ":"))
-                logger.debug(
-                    f"Password JSON encoding test successful, length: {len(json_str)}"
-                )
-                # Check if the JSON contains the expected password length
-                parsed_back = json.loads(json_str)
-                if len(parsed_back["password"]) != len(password):
-                    logger.error(
-                        "Password length mismatch after JSON encoding/decoding!"
-                    )
-                else:
-                    logger.debug("Password JSON round-trip successful")
-            except Exception as e:
-                logger.error(f"Password JSON encoding failed: {e}")
-
         logger.info(f"Logging in as {username} to {homeserver}...")
 
         # Login with consistent device name and timeout
@@ -1426,13 +1380,10 @@ async def login_matrix_bot(
                 timeout=MATRIX_LOGIN_TIMEOUT,
             )
 
-            # Debug: Log the actual response received
+            # Debug: Log the response type and safe attributes only
             logger.debug(f"Login response type: {type(response).__name__}")
-            logger.debug(f"Login response attributes: {dir(response)}")
-            if hasattr(response, "__dict__"):
-                logger.debug(f"Login response dict: {response.__dict__}")
 
-            # Check specific attributes that should be present
+            # Check specific attributes that should be present, masking sensitive data
             for attr in [
                 "user_id",
                 "device_id",
@@ -1442,9 +1393,20 @@ async def login_matrix_bot(
             ]:
                 if hasattr(response, attr):
                     value = getattr(response, attr)
-                    logger.debug(
-                        f"Response.{attr}: {value} (type: {type(value).__name__})"
-                    )
+                    if attr == "access_token" and value:
+                        # Mask access token for security
+                        masked_value = (
+                            f"{value[:8]}...{value[-4:]}"
+                            if len(value) > 12
+                            else "***masked***"
+                        )
+                        logger.debug(
+                            f"Response.{attr}: {masked_value} (type: {type(value).__name__})"
+                        )
+                    else:
+                        logger.debug(
+                            f"Response.{attr}: {value} (type: {type(value).__name__})"
+                        )
                 else:
                     logger.debug(f"Response.{attr}: NOT PRESENT")
         except asyncio.TimeoutError:

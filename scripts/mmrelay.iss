@@ -92,19 +92,19 @@ begin
   if CurPageID = MeshtasticPage.ID then
   begin
     // Simplified validation for dropdown
-    if ConnectionTypeCombo.ItemIndex = 1 and Trim(MeshtasticPage.Values[1]) = '' then
+    if ConnectionTypeCombo.ItemIndex = 1 and (Length(Trim(MeshtasticPage.Values[1])) = 0) then
     begin
       MsgBox('Serial connection selected, but no serial port provided.', mbError, MB_OK);
       Result := False;
       Exit;
     end;
-    if ConnectionTypeCombo.ItemIndex = 0 and Trim(MeshtasticPage.Values[2]) = '' then
+    if ConnectionTypeCombo.ItemIndex = 0 and (Length(Trim(MeshtasticPage.Values[2])) = 0) then
     begin
       MsgBox('Network connection selected, but no hostname/IP provided.', mbError, MB_OK);
       Result := False;
       Exit;
     end;
-    if ConnectionTypeCombo.ItemIndex = 2 and Trim(MeshtasticPage.Values[3]) = '' then
+    if ConnectionTypeCombo.ItemIndex = 2 and (Length(Trim(MeshtasticPage.Values[3])) = 0) then
     begin
       MsgBox('BLE connection selected, but no BLE address provided.', mbError, MB_OK);
       Result := False;
