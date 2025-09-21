@@ -145,12 +145,12 @@ def _submit_coro(coro, loop=None):
 def _get_device_metadata(client):
     """
     Retrieve firmware metadata from a Meshtastic client.
-    
+
     Calls client.localNode.getMetadata() (if present) and captures its stdout/stderr to extract a firmware version and raw output. Returns a dict with:
     - firmware_version: parsed version string or "unknown" when not found,
     - raw_output: captured output (truncated to 4096 characters with a trailing ellipsis if longer),
     - success: True when a firmware_version was successfully parsed.
-    
+
     If the client lacks localNode.getMetadata or parsing fails, returns defaults without raising.
     """
     result = {"firmware_version": "unknown", "raw_output": "", "success": False}
@@ -203,13 +203,13 @@ def _get_device_metadata(client):
 def serial_port_exists(port_name):
     """
     Return True if a serial port with the given device name is present on the system.
-    
+
     Checks available serial ports via pyserial's list_ports and compares their `.device`
     strings to the provided port_name.
-    
+
     Parameters:
         port_name (str): Device name to check (e.g., '/dev/ttyUSB0' on Unix or 'COM3' on Windows).
-    
+
     Returns:
         bool: True if the port is found, False otherwise.
     """
@@ -912,7 +912,7 @@ def on_meshtastic_message(packet, interface):
 async def check_connection():
     """
     Periodically verify the Meshtastic connection and initiate a reconnect when the device appears unresponsive.
-    
+
     Runs until the module-level shutting_down flag becomes True. Behavior:
     - Controlled by config["meshtastic"]["health_check"]:
       - "enabled" (bool, default True) — enable/disable periodic checks.
@@ -1014,9 +1014,9 @@ def sendTextReply(
 ):
     """
     Send a text reply referencing a previous Meshtastic message.
-    
+
     Creates a Data payload with the given text and reply_id, wraps it in a MeshPacket on the specified channel, and sends it via the provided Meshtastic interface. Returns the sent MeshPacket (as returned by the interface) or None if the interface is unavailable or sending fails.
-    
+
     Parameters:
         text (str): UTF-8 text to send.
         reply_id (int): ID of the message being replied to.

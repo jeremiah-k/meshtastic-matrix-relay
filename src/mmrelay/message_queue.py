@@ -356,7 +356,7 @@ class MessageQueue:
     async def _process_queue(self):
         """
         Process queued messages in FIFO order, sending each when the connection is ready and the configured inter-message delay has elapsed.
-        
+
         This background coroutine continuously pulls QueuedMessage items from the internal queue and executes their send_function in the configured executor, enforcing rate limiting (_message_delay) and checking connection/readiness via _should_send_message. After a successful send, it updates last-send timestamps and optionally persists message mapping information via _handle_message_mapping when mapping_info is present and the send result exposes an `id`. The coroutine exits when the queue is stopped or when cancelled; cancellation may drop an in-flight message, which will be logged.
         """
         logger.debug("Message queue processor started")
@@ -474,7 +474,7 @@ class MessageQueue:
     def _should_send_message(self) -> bool:
         """
         Return True if it is currently safe to send a message via Meshtastic.
-        
+
         Performs runtime checks: verifies the global reconnection flag is not set, that a Meshtastic client exists, and if the client exposes `is_connected` (callable or boolean) that it reports connected. If any check fails the function returns False. On ImportError while importing meshtastic utilities, logs a critical error, starts a background thread to stop this MessageQueue, and returns False.
         """
         # Import here to avoid circular imports
@@ -516,9 +516,9 @@ class MessageQueue:
     def _handle_message_mapping(self, result, mapping_info):
         """
         Persist a sent message's mapping (mesh message id → Matrix event) and optionally prune old mappings.
-        
+
         If mapping_info contains 'matrix_event_id', 'room_id', and 'text', this will store a mapping using result.id as the mesh message id. If 'msgs_to_keep' is present and greater than 0 (otherwise DEFAULT_MSGS_TO_KEEP is used), older mappings will be pruned to retain that many entries.
-        
+
         Parameters:
             result: The send function's result object; must have an `id` attribute representing the mesh message id.
             mapping_info (dict): Mapping details. Relevant keys:

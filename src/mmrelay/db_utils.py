@@ -32,12 +32,12 @@ def clear_db_path_cache():
 def get_db_path():
     """
     Return the resolved filesystem path to the SQLite database.
-    
+
     Resolution precedence:
     1. config["database"]["path"] (preferred)
     2. config["db"]["path"] (legacy)
     3. Default: "meshtastic.sqlite" inside the application data directory returned by get_data_dir().
-    
+
     The chosen path is cached and returned quickly on subsequent calls. The cache is invalidated automatically when the relevant parts of `config` change. When a configured path is used, this function will attempt to create the parent directory (and will attempt to create the standard data directory for the default path). Directory creation failures are logged as warnings but do not raise here; actual database connection errors may surface later.
     """
     global config, _cached_db_path, _db_path_logged, _cached_config_hash
@@ -274,12 +274,12 @@ def get_plugin_data(plugin_name):
 def get_longname(meshtastic_id):
     """
     Return the stored long name for a Meshtastic node.
-    
+
     Retrieves the longname string for the given Meshtastic node identifier from the database.
     Returns None if no entry exists or if a database error occurs.
     Parameters:
         meshtastic_id (str): The Meshtastic node identifier.
-    
+
     Returns:
         str | None: The long name if found, otherwise None.
     """
@@ -299,10 +299,10 @@ def get_longname(meshtastic_id):
 def save_longname(meshtastic_id, longname):
     """
     Persist or update the long display name for a Meshtastic node.
-    
+
     Writes or replaces the row for the given meshtastic_id in the longnames table and commits the change.
     If a database error occurs it is logged and swallowed (no exception is raised).
-    
+
     Parameters:
         meshtastic_id: Unique identifier for the Meshtastic node (string-like).
         longname: The full/display name to store for the node (string).
@@ -322,11 +322,11 @@ def save_longname(meshtastic_id, longname):
 def update_longnames(nodes):
     """
     Update stored long names for nodes that contain user information.
-    
+
     Iterates over the provided mapping of nodes and, for each node that contains a "user" object,
     extracts the user's Meshtastic ID and `longName` (defaults to "N/A" when missing) and persists it
     via save_longname. Has no return value; skips nodes without a "user" key.
-    
+
     Parameters:
         nodes (Mapping): Mapping of node identifiers to node dictionaries. Each node dictionary
             is expected to contain a "user" dict with at least an "id" key and an optional
@@ -368,9 +368,9 @@ def get_shortname(meshtastic_id):
 def save_shortname(meshtastic_id, shortname):
     """
     Insert or update the short name for a Meshtastic node.
-    
+
     Stores the provided shortname in the shortnames table keyed by meshtastic_id and commits the change. Database errors are logged (with stacktrace) and suppressed; the function does not raise on sqlite3 errors.
-    
+
     Parameters:
         meshtastic_id (str): Node identifier used as the primary key in the shortnames table.
         shortname (str): Display name to store for the node.
@@ -390,7 +390,7 @@ def save_shortname(meshtastic_id, shortname):
 def update_shortnames(nodes):
     """
     Update stored shortnames for all nodes that include a user entry.
-    
+
     Iterates over the values of the provided nodes mapping; for each node with a "user" object, extracts
     user["id"] as the Meshtastic ID and user.get("shortName", "N/A") as the shortname, and persists it
     via save_shortname. Nodes lacking a "user" entry are ignored. This function has no return value and

@@ -30,7 +30,7 @@ def _quote_if_needed(path: str) -> str:
 def get_resolved_exec_cmd() -> str:
     """
     Return the resolved command used to invoke MMRelay.
-    
+
     Prefers an mmrelay executable found on PATH; if found returns its filesystem path (quoted if it contains spaces). If not found, returns an invocation that runs the current Python interpreter with `-m mmrelay` (the interpreter path will be quoted if it contains spaces). The returned string is suitable for use as an ExecStart value in a systemd unit.
     """
     mmrelay_path = shutil.which("mmrelay")
@@ -102,7 +102,7 @@ def print_service_commands():
 def wait_for_service_start():
     """
     Wait up to ~10 seconds for the user mmrelay systemd service to become active, displaying a progress spinner when running interactively.
-    
+
     If the process is not running as a service, this shows a Rich spinner and elapsed time, sleeping in one-second intervals and checking service status; if the service becomes active after 5 seconds the wait ends early. When running as a service (non-interactive), the function performs the same timed checks but without the Rich UI. This function does not return a value; it blocks for up to ~10 seconds and calls is_service_active() to detect service readiness.
     """
     import time
@@ -228,14 +228,14 @@ def get_template_service_path():
 def get_template_service_content():
     """
     Return the systemd service unit content to install for the user-level mmrelay service.
-    
+
     Attempts to load a template in this order:
     1. The external path returned by get_service_template_path() (UTF-8).
     2. The embedded package resource "mmrelay.service" from mmrelay.tools via importlib.resources.
     3. A second filesystem probe using get_template_service_path() (UTF-8).
-    
+
     If none of the above can be read, returns a built-in default service unit that includes a resolved ExecStart (from get_resolved_exec_start()), sensible Environment settings (including PYTHONUNBUFFERED and a PATH containing common user-local locations), and standard Unit/Service/Install sections.
-    
+
     Returns:
         str: Complete service file content to write. Read/access errors are reported to stderr.
     """
@@ -347,9 +347,9 @@ def is_service_active():
 def create_service_file():
     """
     Create or update the user's systemd service unit for MMRelay.
-    
+
     Ensures the user service directory and the MMRelay logs directory exist, obtains a service template (with multiple fallbacks), normalizes the unit's ExecStart to the resolved MMRelay invocation (either an mmrelay executable on PATH or a Python `-m mmrelay` fallback), and writes the resulting unit to ~/.config/systemd/user/mmrelay.service.
-    
+
     Returns:
         bool: True if the service file was written successfully; False if a template could not be obtained or writing the file failed.
     """
@@ -407,7 +407,7 @@ def create_service_file():
 def reload_daemon():
     """
     Reload the current user's systemd daemon to apply unit file changes.
-    
+
     Attempts to run the resolved `SYSTEMCTL` command with `--user daemon-reload`. Returns True if the subprocess exits successfully; returns False on failure (subprocess error or OSError). Side effects: prints a success message to stdout or an error message to stderr.
     """
     try:
@@ -559,10 +559,10 @@ def check_lingering_enabled():
 def enable_lingering():
     """
     Enable systemd "lingering" for the current user by invoking `sudo loginctl enable-linger <user>`.
-    
+
     The function determines the current username from the USER or USERNAME environment variables or falls back to getpass.getuser().
     It runs `sudo loginctl enable-linger <username>` and prints success or error messages to stdout/stderr.
-    
+
     Returns:
         bool: True if the subprocess exit code indicates success (lingering enabled), False otherwise.
     """
@@ -766,10 +766,10 @@ def install_service():
 def start_service():
     """
     Start the user-level systemd service for MMRelay.
-    
+
     Attempts to run `SYSTEMCTL --user start mmrelay.service`. Returns True if the command exits successfully.
     On failure the function prints an error message to stderr and returns False.
-    
+
     Returns:
         bool: True when the service was started successfully; False on error.
     """

@@ -517,7 +517,7 @@ class TestMeshRelayPlugin(unittest.TestCase):
         async def run_test():
             """
             Test that handle_room_message returns None and logs an exception when parsing the embedded meshtastic_packet JSON fails.
-            
+
             This async test calls handle_room_message with a room and event whose embedded
             `meshtastic_packet` contains invalid JSON. It asserts:
             - the coroutine returns None (indicating processing stopped on parse error), and

@@ -549,7 +549,7 @@ class TestRunMain(unittest.TestCase):
     ):
         """
         Test that run_main returns success when args includes data_dir.
-        
+
         This verifies run_main executes successfully when passed args.data_dir (processing of
         `--data-dir` is performed by the CLI layer before calling run_main, so run_main does not
         modify or create the directory). Uses a minimal valid config and a mocked asyncio.run
@@ -1276,7 +1276,7 @@ class TestMainAsyncFunction(unittest.TestCase):
     def test_main_async_event_loop_setup(self):
         """
         Verify that the async main startup accesses the running event loop.
-        
+
         This test runs run_main with a minimal config while patching startup hooks so execution stops quickly,
         and asserts that asyncio.get_running_loop() is called (the running loop is retrieved for use by Meshtastic and other async components).
         """

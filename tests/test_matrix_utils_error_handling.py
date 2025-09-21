@@ -38,7 +38,7 @@ class FakeNioErrorResponseWithException:
     def __init__(self, status_code=None):
         """
         Initialize the test error-response object.
-        
+
         Parameters:
             status_code (int | None): Optional HTTP status code associated with the fake error response (e.g., 404). When omitted or None, no status code is set.
         """
@@ -48,7 +48,7 @@ class FakeNioErrorResponseWithException:
     def message(self):
         """
         Simulate attribute access failure by raising AttributeError when this property is accessed.
-        
+
         Used in tests to emulate a response whose `.message` attribute raises AttributeError("Test exception").
         """
         raise AttributeError("Test exception")
@@ -60,7 +60,7 @@ class TestDetailedSyncErrorMessage(unittest.TestCase):
     def setUp(self):
         """
         Set up a fake `nio` module in sys.modules for tests that rely on isinstance checks.
-        
+
         Creates a temporary module named "nio" with an `ErrorResponse` dummy class, saves any existing
         `sys.modules["nio"]` value to `self.original_nio` for restoration, and installs the fake module
         at `sys.modules["nio"]`. This allows tests to run without the real `nio` package while enabling

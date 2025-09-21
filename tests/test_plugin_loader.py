@@ -250,9 +250,13 @@ class Plugin:
             if path not in sys.path:
                 sys.path.insert(0, path)
 
-        with patch("mmrelay.plugin_loader.subprocess.check_call", side_effect=fake_check_call), patch(
+        with patch(
+            "mmrelay.plugin_loader.subprocess.check_call", side_effect=fake_check_call
+        ), patch(
             "mmrelay.plugin_loader.site.getusersitepackages", return_value=[user_site]
-        ), patch("mmrelay.plugin_loader.site.getsitepackages", return_value=[]), patch(
+        ), patch(
+            "mmrelay.plugin_loader.site.getsitepackages", return_value=[]
+        ), patch(
             "mmrelay.plugin_loader.site.addsitedir", side_effect=fake_addsitedir
         ):
             try:

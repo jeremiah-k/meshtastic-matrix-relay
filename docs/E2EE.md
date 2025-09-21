@@ -249,7 +249,7 @@ pipx install 'mmrelay[e2e]'
   ```bash
   # Remove old credentials and store
   mmrelay auth logout
-  
+
   # Create new credentials
   mmrelay auth login
   ```

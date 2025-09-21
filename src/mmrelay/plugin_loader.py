@@ -118,14 +118,14 @@ def get_community_plugin_dirs():
 def clone_or_update_repo(repo_url, ref, plugins_dir):
     """
     Clone or update a community plugin Git repository and ensure its Python dependencies are installed.
-    
+
     Performs a best-effort clone or update of the repository at repo_url into plugins_dir/repo_name using the provided ref (a dict with keys "type" ("tag" or "branch") and "value" (name)). If the repository already exists, the function attempts to fetch and switch to the requested branch or tag, with fallbacks to common default branches ("main", "master") when appropriate. After a successful clone/update, if a requirements.txt file exists in the repo root the function installs its requirements using pip or pipx (when a pipx environment is detected).
-    
+
     Parameters:
         ref (dict): Reference spec with keys:
             - type: either "tag" or "branch".
             - value: the tag or branch name to check out.
-    
+
     Returns:
         bool: True if the repository was successfully cloned/updated and dependency handling completed (or non-fatal errors occurred); False if a fatal git or filesystem error prevented cloning or updating.
     """

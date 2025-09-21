@@ -97,7 +97,7 @@ class TestPluginLoaderEdgeCases(unittest.TestCase):
     def test_load_plugins_from_directory_plugin_initialization_failure(self):
         """
         Verify that a Plugin class whose __init__ raises is not loaded.
-        
+
         Creates a temporary plugin file defining a `Plugin` class that raises an exception during initialization, calls `load_plugins_from_directory` for that directory, and asserts that no plugins are returned and that an exception was logged.
         """
         with tempfile.TemporaryDirectory() as temp_dir:
