@@ -2,7 +2,7 @@
 
 This guide covers testing patterns and best practices for the meshtastic-matrix-relay project.
 
-First check for an existing virtual environment in venv/ if it does not exist, create one and run `pip install -r requirements.txt -r requirements-e2e.txt` then continue.
+First check for an existing virtual environment in venv/ if it does not exist, create one and run `. venv/bin/activate && pip install -r requirements.txt -r requirements-e2e.txt` then continue.
 
 ## Async Function Mocking Patterns
 
