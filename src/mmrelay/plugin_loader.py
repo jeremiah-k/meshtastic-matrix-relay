@@ -340,8 +340,8 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
         # Repository doesn't exist yet, clone it
         try:
             os.makedirs(plugins_dir, exist_ok=True)
-        except (OSError, PermissionError) as e:
-            logger.exception(f"Cannot create plugin directory {plugins_dir}: {e}")
+        except (OSError, PermissionError):
+            logger.exception(f"Cannot create plugin directory {plugins_dir}")
             logger.error(f"Skipping repository {repo_name} due to permission error")
             return False
 
@@ -670,8 +670,8 @@ def load_plugins_from_directory(directory, recursive=False):
                             logger.error(
                                 f"Plugin directory: {os.path.dirname(plugin_path)}"
                             )
-                    except Exception as e:
-                        logger.exception(f"Error loading plugin {plugin_path}: {e}")
+                    except Exception:
+                        logger.exception(f"Error loading plugin {plugin_path}")
             if not recursive:
                 break
     else:
@@ -775,8 +775,8 @@ def load_plugins(passed_config=None):
                     )
                     plugin_found = True
                     break
-                except Exception as e:
-                    logger.exception(f"Failed to load custom plugin {plugin_name}: {e}")
+                except Exception:
+                    logger.exception(f"Failed to load custom plugin {plugin_name}")
                     continue
 
         if not plugin_found:
@@ -919,8 +919,8 @@ def load_plugins(passed_config=None):
             active_plugins.append(plugin)
             try:
                 plugin.start()
-            except Exception as e:
-                logger.exception(f"Error starting plugin {plugin_name}: {e}")
+            except Exception:
+                logger.exception(f"Error starting plugin {plugin_name}")
 
     sorted_active_plugins = sorted(active_plugins, key=lambda plugin: plugin.priority)
 

@@ -123,7 +123,7 @@ class Plugin(BasePlugin):
 
         if not channel_mapped:
             self.logger.debug(f"Skipping message from unmapped channel {channel}")
-            return
+            return False
 
         await matrix_client.room_send(
             room_id=room["id"],
@@ -197,8 +197,8 @@ class Plugin(BasePlugin):
         try:
             packet = json.loads(packet_json)
         except (json.JSONDecodeError, TypeError) as e:
-            self.logger.exception(f"Error processing embedded packet: {e}")
-            return
+            self.logger.error(f"Error processing embedded packet: {e}")
+            return False
 
         from mmrelay.meshtastic_utils import connect_meshtastic
 

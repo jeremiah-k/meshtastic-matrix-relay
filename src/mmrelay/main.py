@@ -217,15 +217,15 @@ async def main(config):
                         matrix_logger.warning(
                             "Matrix sync_forever completed unexpectedly"
                         )
-                    except Exception as e:
+                    except Exception:
                         # Log the exception and continue to retry
-                        matrix_logger.exception(f"Matrix sync failed: {e}")
+                        matrix_logger.exception("Matrix sync failed")
                         # The outer try/catch will handle the retry logic
 
-            except Exception as e:
+            except Exception:
                 if shutdown_event.is_set():
                     break
-                matrix_logger.exception(f"Error syncing with Matrix server: {e}")
+                matrix_logger.exception("Error syncing with Matrix server")
                 await asyncio.sleep(5)  # Wait briefly before retrying
     except KeyboardInterrupt:
         await shutdown()
@@ -394,9 +394,9 @@ def run_main(args):
     except KeyboardInterrupt:
         logger.info("Interrupted by user. Exiting.")
         return 0
-    except Exception as e:
+    except Exception:
 
-        logger.exception(f"Error running main functionality: {e}")
+        logger.exception("Error running main functionality")
         return 1
 
 

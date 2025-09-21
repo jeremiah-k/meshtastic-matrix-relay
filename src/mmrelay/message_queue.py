@@ -467,8 +467,8 @@ class MessageQueue:
                 self._in_flight = False
                 self._has_current = False
                 break
-            except Exception as e:
-                logger.exception(f"Error in message queue processor: {e}")
+            except Exception:
+                logger.exception("Error in message queue processor")
                 await asyncio.sleep(1.0)  # Prevent tight error loop
 
     def _should_send_message(self) -> bool:
@@ -557,8 +557,8 @@ class MessageQueue:
                 if msgs_to_keep > 0:
                     prune_message_map(msgs_to_keep)
 
-        except Exception as e:
-            logger.exception(f"Error handling message mapping: {e}")
+        except Exception:
+            logger.exception("Error handling message mapping")
 
 
 # Global message queue instance

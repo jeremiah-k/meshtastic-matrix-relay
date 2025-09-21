@@ -103,26 +103,36 @@ def wait_for_service_start():
     """
     import time
 
-    from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
+    from mmrelay.meshtastic_utils import is_running_as_service
+
+    if not is_running_as_service():
+        from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
     # Create a Rich progress display with spinner and elapsed time
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[bold green]Starting mmrelay service..."),
-        TimeElapsedColumn(),
-        transient=True,
-    ) as progress:
-        # Add a task that will run for approximately 10 seconds
-        task = progress.add_task("Starting", total=PROGRESS_TOTAL_STEPS)
+    if not is_running_as_service():
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[bold green]Starting mmrelay service..."),
+            TimeElapsedColumn(),
+            transient=True,
+        ) as progress:
+            # Add a task that will run for approximately 10 seconds
+            task = progress.add_task("Starting", total=PROGRESS_TOTAL_STEPS)
 
-        # Update progress over 10 seconds
+            # Update progress over 10 seconds
+            for i in range(10):
+                time.sleep(1)
+                progress.update(task, completed=10 * (i + 1))
+
+                # Check if service is active after 5 seconds to potentially finish early
+                if i >= 5 and is_service_active():
+                    progress.update(task, completed=PROGRESS_COMPLETE)
+                    break
+    else:
+        # Simple fallback when running as service
         for i in range(10):
             time.sleep(1)
-            progress.update(task, completed=10 * (i + 1))
-
-            # Check if service is active after 5 seconds to potentially finish early
             if i >= 5 and is_service_active():
-                progress.update(task, completed=PROGRESS_COMPLETE)
                 break
 
 

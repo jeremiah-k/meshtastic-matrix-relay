@@ -189,7 +189,7 @@ def get_e2ee_store_dir():
     Return the path to the directory used for storing E2EE data (e.g., encryption keys), creating it if missing.
 
     On Linux/macOS the directory is "<base_dir>/store" where base_dir is returned by get_base_dir().
-    On Windows the directory is under the platform user data directory for the app (user_data_dir(APP_NAME, APP_AUTHOR)/store).
+    On Windows the directory honors --data-dir if specified, otherwise uses the platform user data directory for the app.
 
     Returns:
         str: Absolute path to the ensured store directory.
@@ -198,10 +198,14 @@ def get_e2ee_store_dir():
         # Use ~/.mmrelay/store/ for Linux and Mac
         store_dir = os.path.join(get_base_dir(), "store")
     else:
-        # Use platformdirs default for Windows
-        store_dir = os.path.join(
-            platformdirs.user_data_dir(APP_NAME, APP_AUTHOR), "store"
-        )
+        # Honor --data-dir on Windows too
+        if custom_data_dir:
+            store_dir = os.path.join(custom_data_dir, "store")
+        else:
+            # Use platformdirs default for Windows
+            store_dir = os.path.join(
+                platformdirs.user_data_dir(APP_NAME, APP_AUTHOR), "store"
+            )
 
     os.makedirs(store_dir, exist_ok=True)
     return store_dir
@@ -771,7 +775,7 @@ def load_config(config_file=None, args=None):
             relay_config = apply_env_config_overrides(relay_config)
             return relay_config
         except (yaml.YAMLError, PermissionError, OSError):
-            logger.exception(f"Error loading config file {config_file}")
+            logger.error(f"Error loading config file {config_file}")
             return {}
 
     # Otherwise, search for a config file
@@ -792,7 +796,7 @@ def load_config(config_file=None, args=None):
                 relay_config = apply_env_config_overrides(relay_config)
                 return relay_config
             except (yaml.YAMLError, PermissionError, OSError):
-                logger.exception(f"Error loading config file {path}")
+                logger.error(f"Error loading config file {path}")
                 continue  # Try the next config path
 
     # No config file found - try to use environment variables only

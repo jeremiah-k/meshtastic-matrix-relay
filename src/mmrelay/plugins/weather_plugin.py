@@ -198,20 +198,20 @@ class Plugin(BasePlugin):
                 if hasattr(requests, "RequestException") and isinstance(
                     e, requests.RequestException
                 ):
-                    self.logger.exception(f"Error fetching weather data: {e}")
+                    self.logger.exception("Error fetching weather data")
                     return "Error fetching weather data."
             except (AttributeError, TypeError):
                 # Fallback to string-based detection if isinstance fails
                 exception_module = getattr(type(e), "__module__", "")
                 if "requests" in exception_module:
-                    self.logger.exception(f"Error fetching weather data: {e}")
+                    self.logger.exception("Error fetching weather data")
                     return "Error fetching weather data."
 
             # Handle data parsing errors
             if isinstance(
                 e, (KeyError, IndexError, TypeError, ValueError, AttributeError)
             ):
-                self.logger.exception(f"Malformed weather data: {e}")
+                self.logger.exception("Malformed weather data")
                 return "Error parsing weather data."
             else:
                 # Re-raise unexpected exceptions

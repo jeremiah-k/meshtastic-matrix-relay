@@ -37,15 +37,15 @@ def get_db_path():
     """
     global config, _cached_db_path, _db_path_logged, _cached_config_hash
 
-    # Create a hash of the relevant config sections to detect changes
+    # Create a deterministic JSON representation of relevant config sections to detect changes
     current_config_hash = None
     if config is not None:
-        # Hash only the database-related config sections
+        # Use only the database-related config sections
         db_config = {
             "database": config.get("database", {}),
             "db": config.get("db", {}),  # Legacy format
         }
-        current_config_hash = hash(str(sorted(db_config.items())))
+        current_config_hash = json.dumps(db_config, sort_keys=True)
 
     # Check if cache is valid (path exists and config hasn't changed)
     if _cached_db_path is not None and current_config_hash == _cached_config_hash:
@@ -100,7 +100,10 @@ def get_db_path():
                 return custom_path
 
     # Use the standard data directory
-    default_path = os.path.join(get_data_dir(), "meshtastic.sqlite")
+    data_dir = get_data_dir()
+    # Ensure the data directory exists before using it
+    os.makedirs(data_dir, exist_ok=True)
+    default_path = os.path.join(data_dir, "meshtastic.sqlite")
     _cached_db_path = default_path
     return default_path
 
@@ -148,8 +151,18 @@ def initialize_database():
             except sqlite3.OperationalError:
                 # Column already exists, or table just created with it
                 pass
-    except sqlite3.Error as e:
-        logger.error(f"Database initialization failed: {e}")
+
+            # Create index on meshtastic_id for performance improvement
+            # This is a no-op if the index already exists.
+            try:
+                cursor.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_message_map_meshtastic_id ON message_map (meshtastic_id)"
+                )
+            except sqlite3.OperationalError:
+                # Index creation failed, continue without it
+                pass
+    except sqlite3.Error:
+        logger.exception("Database initialization failed")
         raise
 
 
@@ -261,8 +274,8 @@ def get_longname(meshtastic_id):
             )
             result = cursor.fetchone()
         return result[0] if result else None
-    except sqlite3.Error as e:
-        logger.exception(f"Database error retrieving longname for {meshtastic_id}: {e}")
+    except sqlite3.Error:
+        logger.exception(f"Database error retrieving longname for {meshtastic_id}")
         return None
 
 
@@ -280,8 +293,8 @@ def save_longname(meshtastic_id, longname):
                 (meshtastic_id, longname),
             )
             conn.commit()
-    except sqlite3.Error as e:
-        logger.exception(f"Database error saving longname for {meshtastic_id}: {e}")
+    except sqlite3.Error:
+        logger.exception(f"Database error saving longname for {meshtastic_id}")
 
 
 def update_longnames(nodes):
@@ -320,9 +333,7 @@ def get_shortname(meshtastic_id):
             result = cursor.fetchone()
         return result[0] if result else None
     except sqlite3.Error as e:
-        logger.exception(
-            f"Database error retrieving shortname for {meshtastic_id}: {e}"
-        )
+        logger.error(f"Database error retrieving shortname for {meshtastic_id}: {e}")
         return None
 
 
@@ -340,8 +351,8 @@ def save_shortname(meshtastic_id, shortname):
                 (meshtastic_id, shortname),
             )
             conn.commit()
-    except sqlite3.Error as e:
-        logger.exception(f"Database error saving shortname for {meshtastic_id}: {e}")
+    except sqlite3.Error:
+        logger.exception(f"Database error saving shortname for {meshtastic_id}")
 
 
 def update_shortnames(nodes):
@@ -395,9 +406,7 @@ def store_message_map(
             )
             conn.commit()
     except sqlite3.Error as e:
-        logger.exception(
-            f"Database error storing message map for {matrix_event_id}: {e}"
-        )
+        logger.error(f"Database error storing message map for {matrix_event_id}: {e}")
 
 
 def get_message_map_by_meshtastic_id(meshtastic_id):
