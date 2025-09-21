@@ -355,9 +355,9 @@ class MessageQueue:
 
     async def _process_queue(self):
         """
-        Asynchronously processes messages from the queue, sending each in order while enforcing rate limiting and connection readiness.
-
-        This method runs as a background task, monitoring the queue, waiting for the connection to be ready, and ensuring a minimum delay between sends. Messages are sent using their provided callable, and optional message mapping is handled after successful sends. The processor logs queue depth warnings, handles errors gracefully, and maintains FIFO order even when waiting for connection or rate limits.
+        Process queued messages in FIFO order, sending each when the connection is ready and the configured inter-message delay has elapsed.
+        
+        This background coroutine continuously pulls QueuedMessage items from the internal queue and executes their send_function in the configured executor, enforcing rate limiting (_message_delay) and checking connection/readiness via _should_send_message. After a successful send, it updates last-send timestamps and optionally persists message mapping information via _handle_message_mapping when mapping_info is present and the send result exposes an `id`. The coroutine exits when the queue is stopped or when cancelled; cancellation may drop an in-flight message, which will be logged.
         """
         logger.debug("Message queue processor started")
         current_message = None
@@ -467,18 +467,15 @@ class MessageQueue:
                 self._in_flight = False
                 self._has_current = False
                 break
-            except Exception as e:
-                logger.error(f"Error in message queue processor: {e}")
+            except Exception:
+                logger.exception("Error in message queue processor")
                 await asyncio.sleep(1.0)  # Prevent tight error loop
 
     def _should_send_message(self) -> bool:
         """
-        Return True if it's currently safe to send a message over Meshtastic.
-
-        Checks that the Meshtastic client exists, is connected (supports callable or boolean
-        `is_connected`), and that a global reconnection flag is not set. Returns False otherwise.
-        If importing meshtastic utilities raises ImportError, logs a critical error, starts a
-        background thread to stop this MessageQueue, and returns False.
+        Return True if it is currently safe to send a message via Meshtastic.
+        
+        Performs runtime checks: verifies the global reconnection flag is not set, that a Meshtastic client exists, and if the client exposes `is_connected` (callable or boolean) that it reports connected. If any check fails the function returns False. On ImportError while importing meshtastic utilities, logs a critical error, starts a background thread to stop this MessageQueue, and returns False.
         """
         # Import here to avoid circular imports
         try:
@@ -518,18 +515,18 @@ class MessageQueue:
 
     def _handle_message_mapping(self, result, mapping_info):
         """
-        Store a sent message's mapping (mesh ID → Matrix event) and prune old mappings according to retention settings.
-
-        If `mapping_info` contains the required keys (`matrix_event_id`, `room_id`, `text`), this will call the DB helpers to persist a mapping for `result.id` and then prune older mappings using `mapping_info["msgs_to_keep"]` if present (falls back to DEFAULT_MSGS_TO_KEEP).
-
+        Persist a sent message's mapping (mesh message id → Matrix event) and optionally prune old mappings.
+        
+        If mapping_info contains 'matrix_event_id', 'room_id', and 'text', this will store a mapping using result.id as the mesh message id. If 'msgs_to_keep' is present and greater than 0 (otherwise DEFAULT_MSGS_TO_KEEP is used), older mappings will be pruned to retain that many entries.
+        
         Parameters:
-            result: The send function's result object; must expose an `id` attribute (the mesh message id).
-            mapping_info: Dict supplying mapping fields:
+            result: The send function's result object; must have an `id` attribute representing the mesh message id.
+            mapping_info (dict): Mapping details. Relevant keys:
                 - matrix_event_id (str): Matrix event id to associate with the mesh message.
                 - room_id (str): Matrix room id for the event.
-                - text (str): The message text to store in the mapping.
-                - meshnet (optional): Mesh network identifier passed to the store function.
-                - msgs_to_keep (optional, int): Number of mappings to retain; if > 0, prune older entries.
+                - text (str): Message text to store.
+                - meshnet (optional): Mesh network identifier passed to the store operation.
+                - msgs_to_keep (optional, int): Number of mappings to retain; if > 0, triggers pruning.
         """
         try:
             # Import here to avoid circular imports
@@ -557,8 +554,8 @@ class MessageQueue:
                 if msgs_to_keep > 0:
                     prune_message_map(msgs_to_keep)
 
-        except Exception as e:
-            logger.error(f"Error handling message mapping: {e}")
+        except Exception:
+            logger.exception("Error handling message mapping")
 
 
 # Global message queue instance

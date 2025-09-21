@@ -99,7 +99,10 @@ async def test_on_room_message_simple_text(
 
     Ensures that when a user sends a simple text message, the message is correctly queued with the expected content for relaying.
     """
-    mock_isinstance.return_value = False
+    # Use real isinstance for this test so type checks on strings behave normally
+    import builtins
+
+    mock_isinstance.side_effect = builtins.isinstance
 
     # Create a proper async mock function
     async def mock_get_user_display_name_func(*args, **kwargs):
@@ -124,6 +127,51 @@ async def test_on_room_message_simple_text(
             mock_queue_message.assert_called_once()
             call_args = mock_queue_message.call_args[1]
             assert "Hello, world!" in call_args["text"]
+
+
+@patch("mmrelay.matrix_utils.connect_meshtastic")
+@patch("mmrelay.matrix_utils.queue_message")
+@patch("mmrelay.matrix_utils.bot_start_time", 1234567880)
+@patch("mmrelay.matrix_utils.isinstance")
+async def test_on_room_message_remote_prefers_meshtastic_text(
+    mock_isinstance,
+    mock_queue_message,
+    mock_connect_meshtastic,
+    mock_room,
+    mock_event,
+    test_config,
+):
+    """Ensure remote mesh messages fall back to raw meshtastic_text when body is empty."""
+
+    import builtins
+
+    mock_isinstance.side_effect = builtins.isinstance
+    mock_event.body = ""
+    mock_event.source = {
+        "content": {
+            "body": "",
+            "meshtastic_longname": "LoRa",
+            "meshtastic_shortname": "Trak",
+            "meshtastic_meshnet": "remote",
+            "meshtastic_text": "Hello from remote mesh",
+            "meshtastic_portnum": "TEXT_MESSAGE_APP",
+        }
+    }
+
+    # Remote mesh must differ from local meshnet_name to exercise relay path
+    test_config["meshtastic"]["meshnet_name"] = "local_mesh"
+
+    matrix_rooms = test_config["matrix_rooms"]
+    with patch("mmrelay.matrix_utils.config", test_config), patch(
+        "mmrelay.matrix_utils.matrix_rooms", matrix_rooms
+    ), patch("mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]):
+        mock_matrix_client = MagicMock()
+        with patch("mmrelay.matrix_utils.matrix_client", mock_matrix_client):
+            await on_room_message(mock_room, mock_event)
+
+    mock_queue_message.assert_called_once()
+    queued_kwargs = mock_queue_message.call_args.kwargs
+    assert "Hello from remote mesh" in queued_kwargs["text"]
 
 
 @patch("mmrelay.matrix_utils.connect_meshtastic")
@@ -757,6 +805,42 @@ def test_format_reply_message():
     assert "This is a reply" in result
 
 
+def test_format_reply_message_remote_mesh_prefix():
+    """Ensure remote mesh replies use the remote mesh prefix and raw payload."""
+
+    config = {}
+    result = format_reply_message(
+        config,
+        "MtP Relay",
+        "[LoRa/Mt.P]: Test",
+        longname="LoRa",
+        shortname="Trak",
+        meshnet_name="Mt.P",
+        local_meshnet_name="Forx",
+        mesh_text_override="Test",
+    )
+
+    assert result == "Trak/Mt.P: Test"
+
+
+def test_format_reply_message_remote_without_longname():
+    """Remote replies fall back to shortname when longname missing."""
+
+    config = {}
+    result = format_reply_message(
+        config,
+        "MtP Relay",
+        "Tr/Mt.Peak: Hi",
+        longname=None,
+        shortname="Tr",
+        meshnet_name="Mt.Peak",
+        local_meshnet_name="Forx",
+        mesh_text_override="Hi",
+    )
+
+    assert result == "Tr/Mt.P: Hi"
+
+
 # Bot command detection tests - refactored to use test class with fixtures for better maintainability
 
 
@@ -1385,7 +1469,11 @@ def test_load_credentials_file_not_exists(mock_exists, mock_get_base_dir):
 @patch("mmrelay.config.get_base_dir")
 @patch("builtins.open")
 @patch("json.dump")
-def test_save_credentials(mock_json_dump, mock_open, mock_get_base_dir):
+@patch("os.makedirs")  # Mock the directory creation
+@patch("os.path.exists", return_value=True)  # Mock file existence check
+def test_save_credentials(
+    _mock_exists, mock_makedirs, mock_json_dump, mock_open, mock_get_base_dir
+):
     """Test credentials saving."""
     mock_get_base_dir.return_value = "/test/config"
 
@@ -1398,6 +1486,10 @@ def test_save_credentials(mock_json_dump, mock_open, mock_get_base_dir):
 
     save_credentials(test_credentials)
 
+    # Verify directory creation was attempted
+    mock_makedirs.assert_called_once_with("/test/config", exist_ok=True)
+
+    # Verify file operations
     mock_open.assert_called_once()
     mock_json_dump.assert_called_once_with(
         test_credentials, mock_open().__enter__(), indent=2
@@ -1646,7 +1738,9 @@ async def test_login_matrix_bot_success(
 
     # Configure the main client
     mock_main_client.login.return_value = MagicMock(
-        access_token="test_token", device_id="test_device"
+        access_token="test_token",
+        device_id="test_device",
+        user_id="@testuser:matrix.org",
     )
 
     # Call the function
@@ -1677,7 +1771,9 @@ async def test_login_matrix_bot_with_parameters(mock_input):
         # Mock AsyncClient instance
         mock_client = AsyncMock()
         mock_client.login.return_value = MagicMock(
-            access_token="test_token", device_id="test_device"
+            access_token="test_token",
+            device_id="test_device",
+            user_id="@testuser:matrix.org",
         )
         mock_client.whoami.return_value = MagicMock(user_id="@testuser:matrix.org")
         mock_client.close = AsyncMock()
@@ -1931,6 +2027,75 @@ async def test_logout_matrix_bot_timeout():
 
         assert result is False
         mock_temp_client.close.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_logout_matrix_bot_missing_user_id_fetch_success():
+    """Test logout when user_id is missing but can be fetched via whoami()."""
+    mock_credentials = {
+        "homeserver": "https://matrix.org",
+        "access_token": "test_token",
+        "device_id": "test_device",
+        # Note: user_id is intentionally missing
+    }
+
+    with patch(
+        "mmrelay.matrix_utils.load_credentials", return_value=mock_credentials.copy()
+    ), patch("mmrelay.cli_utils.AsyncClient") as mock_async_client, patch(
+        "mmrelay.config.save_credentials"
+    ) as mock_save_credentials, patch(
+        "mmrelay.cli_utils._create_ssl_context", return_value=None
+    ), patch(
+        "mmrelay.cli_utils._cleanup_local_session_data", return_value=True
+    ) as mock_cleanup:
+
+        # Mock temporary client for whoami (first client)
+        mock_whoami_client = AsyncMock()
+        mock_whoami_client.close = AsyncMock()
+
+        # Mock whoami response to return user_id
+        mock_whoami_response = MagicMock()
+        mock_whoami_response.user_id = "@fetched:matrix.org"
+        mock_whoami_client.whoami.return_value = mock_whoami_response
+
+        # Mock password verification client (second client)
+        mock_password_client = AsyncMock()
+        mock_password_client.close = AsyncMock()
+        mock_password_client.login = AsyncMock(
+            return_value=MagicMock(access_token="temp_token")
+        )
+        mock_password_client.logout = AsyncMock()
+
+        # Mock main logout client (third client)
+        mock_main_client = AsyncMock()
+        mock_main_client.restore_login = MagicMock()
+        mock_main_client.logout = AsyncMock(
+            return_value=MagicMock(transport_response="success")
+        )
+        mock_main_client.close = AsyncMock()
+
+        # Return clients in the order they'll be created
+        mock_async_client.side_effect = [
+            mock_whoami_client,
+            mock_password_client,
+            mock_main_client,
+        ]
+
+        result = await logout_matrix_bot(password="test_password")
+
+        assert result is True
+        # Verify whoami was called to fetch user_id
+        mock_whoami_client.whoami.assert_called_once()
+        # Verify credentials were saved with fetched user_id
+        expected_credentials = mock_credentials.copy()
+        expected_credentials["user_id"] = "@fetched:matrix.org"
+        mock_save_credentials.assert_called_once_with(expected_credentials)
+        # Verify password verification was performed
+        mock_password_client.login.assert_called_once()
+        # Verify main logout was called
+        mock_main_client.logout.assert_called_once()
+        # Verify cleanup was called
+        mock_cleanup.assert_called_once()
 
 
 def test_cleanup_local_session_data_success():

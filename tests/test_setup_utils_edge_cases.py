@@ -16,20 +16,19 @@ import os
 import subprocess  # nosec B404 - Used for controlled test environment operations
 import sys
 import unittest
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.setup_utils import (
+    _quote_if_needed,
     check_lingering_enabled,
     check_loginctl_available,
     create_service_file,
     enable_lingering,
     get_executable_path,
     get_template_service_content,
-    get_user_service_path,
     install_service,
     reload_daemon,
 )
@@ -38,26 +37,33 @@ from mmrelay.setup_utils import (
 class TestSetupUtilsEdgeCases(unittest.TestCase):
     """Test cases for Setup utilities edge cases and error handling."""
 
-    def test_get_user_service_path_permission_error(self):
+    def test_create_service_file_permission_error(self):
         """
-        Test that get_user_service_path returns a Path object without raising an exception when directory creation fails due to a PermissionError.
+        Test that create_service_file returns False when directory creation fails due to a PermissionError.
         """
         with patch(
-            "pathlib.Path.mkdir", side_effect=PermissionError("Permission denied")
+            "mmrelay.setup_utils.get_executable_path", return_value="/usr/bin/mmrelay"
         ):
-            # Should not raise exception, just return the path
-            result = get_user_service_path()
-            self.assertIsInstance(result, Path)
+            with patch(
+                "pathlib.Path.write_text",
+                side_effect=PermissionError("Permission denied"),
+            ):
+                with patch("builtins.print") as mock_print:
+                    result = create_service_file()
+                    self.assertFalse(result)
+                    mock_print.assert_called()
 
     def test_get_executable_path_not_found(self):
         """
-        Test that get_executable_path returns the system Python executable when the "mmrelay" executable is not found.
+        Test that get_executable_path returns the system Python executable with -m mmrelay when the "mmrelay" executable is not found.
         """
         with patch("shutil.which", return_value=None):
             with patch("builtins.print"):  # Suppress warning print
                 result = get_executable_path()
-                # Should return sys.executable as fallback
-                self.assertEqual(result, sys.executable)
+                # Should return quoted sys.executable -m mmrelay as fallback (quotes only if needed)
+                self.assertEqual(
+                    result, f"{_quote_if_needed(sys.executable)} -m mmrelay"
+                )
 
     def test_get_executable_path_multiple_locations(self):
         """
@@ -92,7 +98,7 @@ class TestSetupUtilsEdgeCases(unittest.TestCase):
             result = get_template_service_content()
             # Should return default template
             self.assertIn("[Unit]", result)
-            self.assertIn("Description=A Meshtastic", result)
+            self.assertIn("Description=MMRelay - Meshtastic", result)
 
     def test_get_template_service_content_read_error(self):
         """
@@ -131,15 +137,42 @@ class TestSetupUtilsEdgeCases(unittest.TestCase):
                         self.assertFalse(result)
                         mock_print.assert_called()
 
-    def test_create_service_file_no_executable(self):
+    def test_create_service_file_no_executable_uses_fallback(self):
         """
-        Test that create_service_file returns False and prints an error when the executable path cannot be found.
+        Test that create_service_file uses python -m mmrelay fallback when mmrelay binary is not found.
         """
-        with patch("mmrelay.setup_utils.get_executable_path", return_value=None):
-            with patch("builtins.print") as mock_print:
-                result = create_service_file()
-                self.assertFalse(result)
-                mock_print.assert_called()
+        template_with_placeholder = """[Unit]
+Description=Test Service
+[Service]
+ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-relay/main.py --config %h/.mmrelay/config/config.yaml
+"""
+        with patch("shutil.which", return_value=None):  # mmrelay not in PATH
+            with patch(
+                "mmrelay.setup_utils.get_template_service_content",
+                return_value=template_with_placeholder,
+            ):
+                with patch(
+                    "mmrelay.setup_utils.get_user_service_path"
+                ) as mock_get_path:
+                    mock_path = MagicMock()
+                    mock_get_path.return_value = mock_path
+
+                    with patch("builtins.print") as mock_print:
+                        result = create_service_file()
+                        self.assertTrue(result)  # Should succeed with fallback
+
+                        # Check that fallback message was printed
+                        mock_print.assert_any_call(
+                            "Warning: Could not find mmrelay executable in PATH. Using current Python interpreter.",
+                            file=sys.stderr,
+                        )
+
+                        # Check that the ExecStart uses a python* -m mmrelay fallback
+                        written_content = mock_path.write_text.call_args[0][0]
+                        self.assertRegex(
+                            written_content,
+                            r"(?m)^ExecStart=.*\bpython(?:\d+(?:\.\d+)*)?\b\s+-m\s+mmrelay\b",
+                        )
 
     def test_reload_daemon_command_failure(self):
         """
@@ -183,7 +216,7 @@ class TestSetupUtilsEdgeCases(unittest.TestCase):
         """
         with patch("shutil.which", return_value="/usr/bin/loginctl"):
             with patch("subprocess.run") as mock_run:
-                mock_run.side_effect = Exception("Command failed")
+                mock_run.side_effect = OSError("Command failed")
                 result = check_loginctl_available()
                 self.assertFalse(result)
 
@@ -192,7 +225,7 @@ class TestSetupUtilsEdgeCases(unittest.TestCase):
         Test that check_lingering_enabled returns False and prints an error when the loginctl command raises an exception.
         """
         with patch("subprocess.run") as mock_run:
-            mock_run.side_effect = Exception("Command failed")
+            mock_run.side_effect = OSError("Command failed")
             with patch("builtins.print") as mock_print:
                 result = check_lingering_enabled()
                 self.assertFalse(result)
@@ -206,7 +239,7 @@ class TestSetupUtilsEdgeCases(unittest.TestCase):
             mock_run.return_value.returncode = 0
             mock_run.return_value.stdout = "invalid output format"
 
-            with patch("getpass.getuser", return_value="testuser"):
+            with patch.dict(os.environ, {"USER": "testuser"}):
                 result = check_lingering_enabled()
                 self.assertFalse(result)
 
@@ -227,21 +260,34 @@ class TestSetupUtilsEdgeCases(unittest.TestCase):
         """
         Test that enable_lingering returns False and prints an error when subprocess.run raises an exception.
         """
-        with patch("subprocess.run", side_effect=Exception("Command failed")):
+        with patch("subprocess.run", side_effect=OSError("Command failed")):
             with patch("builtins.print") as mock_print:
                 result = enable_lingering()
                 self.assertFalse(result)
                 mock_print.assert_called()
 
-    def test_install_service_no_executable(self):
+    def test_install_service_no_executable_uses_fallback(self):
         """
-        Test that install_service returns False and prints an error when the executable path cannot be found.
+        Test that install_service succeeds using python -m mmrelay fallback when mmrelay binary is not found.
         """
-        with patch("mmrelay.setup_utils.get_executable_path", return_value=None):
-            with patch("builtins.print") as mock_print:
-                result = install_service()
-                self.assertFalse(result)
-                mock_print.assert_called()
+        with patch("shutil.which", return_value=None):  # mmrelay not in PATH
+            with patch(
+                "mmrelay.setup_utils.get_template_service_content",
+                return_value="[Unit]\nTest",
+            ):
+                with patch(
+                    "mmrelay.setup_utils.read_service_file", return_value=None
+                ):  # No existing service
+                    with patch("builtins.print") as mock_print:
+                        with patch(
+                            "builtins.input", return_value="n"
+                        ):  # Mock input to avoid stdin issues
+                            result = install_service()
+                            self.assertTrue(result)  # Should succeed with fallback
+                            mock_print.assert_any_call(
+                                "Warning: Could not find mmrelay executable in PATH. Using current Python interpreter.",
+                                file=sys.stderr,
+                            )
 
     def test_install_service_create_file_failure(self):
         """
@@ -252,8 +298,11 @@ class TestSetupUtilsEdgeCases(unittest.TestCase):
         ):
             with patch("mmrelay.setup_utils.create_service_file", return_value=False):
                 with patch("builtins.print"):
-                    result = install_service()
-                    self.assertFalse(result)
+                    with patch(
+                        "builtins.input", return_value="y"
+                    ):  # Mock input to avoid stdin issues
+                        result = install_service()
+                        self.assertFalse(result)
 
     def test_install_service_daemon_reload_failure(self):
         """
@@ -398,7 +447,7 @@ class TestSetupUtilsEdgeCases(unittest.TestCase):
             "mmrelay.setup_utils.get_template_service_content", return_value=template
         ):
             with patch(
-                "mmrelay.setup_utils.get_executable_path",
+                "shutil.which",
                 return_value="/usr/bin/mmrelay",
             ):
                 with patch(

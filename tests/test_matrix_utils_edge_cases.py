@@ -281,9 +281,9 @@ class TestMatrixUtilsEdgeCases(unittest.TestCase):
     @patch("mmrelay.matrix_utils.logger")
     def test_join_matrix_room_exception_handling(self, mock_logger):
         """
-        Test that join_matrix_room logs an error when an exception is raised during room alias resolution.
-
-        This test mocks the Matrix client to raise an exception when resolving a room alias and verifies that an error is logged.
+        Verify join_matrix_room logs the raised exception via logger.exception when room alias resolution raises an exception.
+        
+        This test mocks a Matrix client whose room_resolve_alias coroutine raises an Exception, calls join_matrix_room with that client and an alias, and asserts that mock_logger.exception was invoked.
         """
         # Use MagicMock to prevent coroutine warnings
         mock_client = MagicMock()
@@ -295,7 +295,7 @@ class TestMatrixUtilsEdgeCases(unittest.TestCase):
             Asynchronously tests joining a Matrix room with an invalid alias and verifies that an error is logged.
             """
             await join_matrix_room(mock_client, "#test:matrix.org")
-            mock_logger.error.assert_called()
+            mock_logger.exception.assert_called()
 
         asyncio.run(run_test())
 

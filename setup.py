@@ -57,7 +57,7 @@ setup(
         "py-staticmaps>=0.4.0",
         "psutil>=5.8.0",
         "rich==14.1.0",
-        "setuptools==80.9.0",
+        "setuptools>=80.9.0",  # Required for console script entry points and Windows compatibility
     ],
     extras_require={
         "e2e": [
@@ -68,6 +68,6 @@ setup(
     packages=find_packages(where="src"),
     package_dir={"": "src"},
     include_package_data=True,
-    package_data={"mmrelay.tools": ["sample_config.yaml"]},
+    package_data={"mmrelay.tools": ["sample_config.yaml", "mmrelay.service"]},
     entry_points={"console_scripts": ["mmrelay = mmrelay.cli:main"]},
 )

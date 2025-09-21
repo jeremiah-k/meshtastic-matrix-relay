@@ -1,8 +1,19 @@
 import logging
 from logging.handlers import RotatingFileHandler
 
-from rich.console import Console
-from rich.logging import RichHandler
+# Import Rich components only when not running as a service
+try:
+    from mmrelay.runtime_utils import is_running_as_service
+
+    if not is_running_as_service():
+        from rich.console import Console
+        from rich.logging import RichHandler
+
+        RICH_AVAILABLE = True
+    else:
+        RICH_AVAILABLE = False
+except ImportError:
+    RICH_AVAILABLE = False
 
 # Import parse_arguments only when needed to avoid conflicts with pytest
 from mmrelay.config import get_log_dir
@@ -13,8 +24,8 @@ from mmrelay.constants.messages import (
     LOG_SIZE_BYTES_MULTIPLIER,
 )
 
-# Initialize Rich console
-console = Console()
+# Initialize Rich console only if available
+console = Console() if RICH_AVAILABLE else None
 
 # Define custom log level styles - not used directly but kept for reference
 # Rich 14.0.0+ supports level_styles parameter, but we're using an approach
@@ -144,7 +155,7 @@ def get_logger(name):
         return logger
 
     # Add handler for console logging (with or without colors)
-    if color_enabled:
+    if color_enabled and RICH_AVAILABLE:
         # Use Rich handler with colors
         console_handler = RichHandler(
             rich_tracebacks=True,

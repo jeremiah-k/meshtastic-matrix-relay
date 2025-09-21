@@ -550,19 +550,21 @@ def _handle_matrix_error(exception: Exception, context: str, log_level: str = "e
 
 async def logout_matrix_bot(password: str):
     """
-    Log out the configured Matrix account and remove local session data.
-
-    Verifies the provided Matrix password by performing a temporary login, then attempts to
-    log out the active session on the homeserver (invalidating the access token) and remove
-    local session artifacts (credentials.json and any E2EE store). If there is no active
-    session, the function reports that and returns True.
-
+    Log out the configured Matrix account (if any), verify credentials, and remove local session data.
+    
+    Performs an optional verification of the supplied Matrix password by performing a temporary login, attempts to log out the active server session (invalidating the access token), and removes local session artifacts (e.g., credentials.json and any E2EE store directories). If the stored credentials lack a user_id but include an access_token and homeserver, the function will try to fetch and persist the missing user_id before proceeding.
+    
     Parameters:
-        password (str): The Matrix account password used to verify the session before logout.
-
+        password (str): The Matrix account password used to verify the session before performing server logout.
+    
     Returns:
-        bool: True when local cleanup (and server logout, if applicable) completed successfully;
-              False on failure. If matrix-nio is not installed, prints an error and returns False.
+        bool: True when local cleanup (and server logout, if attempted) completed successfully; False on failure.
+        If the matrix-nio dependency is not available the function prints an error and returns False.
+    
+    Side effects:
+        - May update credentials.json if the user_id is fetched.
+        - Removes local session files and E2EE store directories when cleanup runs.
+        - Performs network requests to the homeserver for verification and logout when credentials are complete.
     """
 
     # Import inside function to avoid circular imports
@@ -588,6 +590,54 @@ async def logout_matrix_bot(password: str):
     user_id = credentials.get("user_id")
     access_token = credentials.get("access_token")
     device_id = credentials.get("device_id")
+
+    # If user_id is missing, try to fetch it using the access token
+    if not user_id and access_token and homeserver:
+        logger.info("user_id missing from credentials, attempting to fetch it...")
+        print("🔍 user_id missing from credentials, attempting to fetch it...")
+
+        try:
+            # Create SSL context for the temporary client
+            ssl_context = _create_ssl_context()
+
+            # Create a temporary client to fetch user_id
+            temp_client = AsyncClient(homeserver, ssl=ssl_context)
+            temp_client.access_token = access_token
+
+            # Fetch user_id using whoami
+            whoami_response = await asyncio.wait_for(
+                temp_client.whoami(),
+                timeout=MATRIX_LOGIN_TIMEOUT,
+            )
+
+            if hasattr(whoami_response, "user_id"):
+                user_id = whoami_response.user_id
+                logger.info(f"Successfully fetched user_id: {user_id}")
+                print(f"✅ Successfully fetched user_id: {user_id}")
+
+                # Update credentials with the fetched user_id
+                credentials["user_id"] = user_id
+                from mmrelay.config import save_credentials
+
+                save_credentials(credentials)
+                logger.info("Updated credentials.json with fetched user_id")
+                print("✅ Updated credentials.json with fetched user_id")
+            else:
+                logger.error("Failed to fetch user_id from whoami response")
+                print("❌ Failed to fetch user_id from whoami response")
+
+        except asyncio.TimeoutError:
+            logger.error("Timeout while fetching user_id")
+            print("❌ Timeout while fetching user_id")
+        except Exception as e:
+            logger.exception("Error fetching user_id")
+            print(f"❌ Error fetching user_id: {e}")
+        finally:
+            try:
+                await temp_client.close()
+            except Exception:
+                # Ignore errors when closing client during logout
+                pass
 
     if not all([homeserver, user_id, access_token, device_id]):
         logger.error("Invalid credentials found. Cannot verify logout.")
@@ -691,6 +741,6 @@ async def logout_matrix_bot(password: str):
         return success
 
     except Exception as e:
-        logger.error(f"Error during logout process: {e}")
+        logger.exception("Error during logout process")
         print(f"❌ Error during logout process: {e}")
         return False

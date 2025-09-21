@@ -534,8 +534,6 @@ class TestRunMain(unittest.TestCase):
 
         self.assertEqual(result, 1)  # Should return error code
 
-    @patch("os.makedirs")
-    @patch("os.path.abspath")
     @patch("asyncio.run")
     @patch("mmrelay.config.load_config")
     @patch("mmrelay.config.set_config")
@@ -548,13 +546,14 @@ class TestRunMain(unittest.TestCase):
         mock_set_config,
         mock_load_config,
         mock_asyncio_run,
-        mock_abspath,
-        mock_makedirs,
     ):
         """
-        Test that run_main creates and uses the absolute path of a custom data directory.
-
-        Verifies that when a custom data directory is specified, run_main ensures the directory exists by creating it if necessary and resolves its absolute path for initialization.
+        Test that run_main returns success when args includes data_dir.
+        
+        This verifies run_main executes successfully when passed args.data_dir (processing of
+        `--data-dir` is performed by the CLI layer before calling run_main, so run_main does not
+        modify or create the directory). Uses a minimal valid config and a mocked asyncio.run
+        to avoid running the real event loop.
         """
 
         mock_config = {
@@ -569,7 +568,6 @@ class TestRunMain(unittest.TestCase):
 
         # Use a simple custom data directory path
         custom_data_dir = "/home/user/test_custom_data"
-        mock_abspath.return_value = custom_data_dir
 
         mock_args = MagicMock()
         mock_args.data_dir = custom_data_dir
@@ -578,10 +576,8 @@ class TestRunMain(unittest.TestCase):
         result = run_main(mock_args)
 
         self.assertEqual(result, 0)
-        # Check that abspath was called with our custom data dir (may be called multiple times)
-        mock_abspath.assert_any_call(custom_data_dir)
-        # Check that makedirs was called with our custom data dir (may be called multiple times for logs too)
-        mock_makedirs.assert_any_call(custom_data_dir, exist_ok=True)
+        # run_main() no longer processes --data-dir (that's handled in cli.py)
+        # Just verify it runs successfully
 
     @patch("asyncio.run", spec=True)
     @patch("mmrelay.config.load_config", spec=True)
@@ -932,21 +928,20 @@ class TestRunMainFunction(unittest.TestCase):
     @patch("mmrelay.config.load_config")
     @patch("mmrelay.config.load_credentials")
     @patch("mmrelay.main.asyncio.run")
-    @patch("os.makedirs")
-    @patch("os.path.abspath")
     def test_run_main_with_custom_data_dir(
         self,
-        mock_abspath,
-        mock_makedirs,
         mock_asyncio_run,
         mock_load_credentials,
         mock_load_config,
         mock_print_banner,
     ):
-        """Test run_main with custom data directory."""
+        """Test run_main with custom data directory.
+
+        Note: --data-dir processing is now handled in cli.py before run_main() is called,
+        so run_main() no longer processes the data_dir argument directly.
+        """
         # Use a simple custom data directory path
         custom_data_dir = "/home/user/test_custom_data"
-        mock_abspath.return_value = custom_data_dir
 
         mock_config = {
             "matrix": {"homeserver": "https://matrix.org"},
@@ -966,10 +961,8 @@ class TestRunMainFunction(unittest.TestCase):
         result = run_main(mock_args)
 
         self.assertEqual(result, 0)
-        # Check that abspath was called with our custom data dir (may be called multiple times)
-        mock_abspath.assert_any_call(custom_data_dir)
-        # Check that makedirs was called with our custom data dir (may be called multiple times for logs too)
-        mock_makedirs.assert_any_call(custom_data_dir, exist_ok=True)
+        # run_main() no longer processes --data-dir (that's handled in cli.py)
+        # Just verify it runs successfully
 
     @patch("mmrelay.main.print_banner")
     @patch("mmrelay.config.load_config")
@@ -1281,14 +1274,19 @@ class TestMainAsyncFunction(unittest.TestCase):
         self.assertEqual(mock_join.call_count, 2)
 
     def test_main_async_event_loop_setup(self):
-        """Test that main async function sets up event loop correctly."""
+        """
+        Verify that the async main startup accesses the running event loop.
+        
+        This test runs run_main with a minimal config while patching startup hooks so execution stops quickly,
+        and asserts that asyncio.get_running_loop() is called (the running loop is retrieved for use by Meshtastic and other async components).
+        """
         config = {
             "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
             "matrix": {"homeserver": "https://matrix.org"},
             "meshtastic": {"connection_type": "serial"},
         }
 
-        with patch("mmrelay.main.asyncio.get_event_loop") as mock_get_loop, patch(
+        with patch("mmrelay.main.asyncio.get_running_loop") as mock_get_loop, patch(
             "mmrelay.main.initialize_database", side_effect=KeyboardInterrupt
         ), patch("mmrelay.main.load_plugins"), patch(
             "mmrelay.main.start_message_queue"

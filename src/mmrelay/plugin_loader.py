@@ -79,19 +79,17 @@ def get_community_plugin_dirs():
 
 def clone_or_update_repo(repo_url, ref, plugins_dir):
     """
-    Clone or update a community plugin Git repository and ensure its dependencies are installed.
-
-    Attempts to clone the repository at the specified branch or tag, or update it if it already exists. Handles switching between branches and tags, falls back to default branches if needed, and installs Python dependencies from `requirements.txt` using either pip or pipx. Logs errors and warnings for any issues encountered.
-
+    Clone or update a community plugin Git repository and ensure its Python dependencies are installed.
+    
+    Performs a best-effort clone or update of the repository at repo_url into plugins_dir/repo_name using the provided ref (a dict with keys "type" ("tag" or "branch") and "value" (name)). If the repository already exists, the function attempts to fetch and switch to the requested branch or tag, with fallbacks to common default branches ("main", "master") when appropriate. After a successful clone/update, if a requirements.txt file exists in the repo root the function installs its requirements using pip or pipx (when a pipx environment is detected).
+    
     Parameters:
-        repo_url (str): The URL of the Git repository to clone or update.
-        ref (dict): Reference specification with keys:
-            - type: "tag" or "branch"
-            - value: The tag or branch name to use.
-        plugins_dir (str): Directory where the repository should be cloned or updated.
-
+        ref (dict): Reference spec with keys:
+            - type: either "tag" or "branch".
+            - value: the tag or branch name to check out.
+    
     Returns:
-        bool: True if the repository was successfully cloned or updated and dependencies were handled; False if any critical error occurred.
+        bool: True if the repository was successfully cloned/updated and dependency handling completed (or non-fatal errors occurred); False if a fatal git or filesystem error prevented cloning or updating.
     """
     # Extract the repository name from the URL
     repo_name = os.path.splitext(os.path.basename(repo_url.rstrip("/")))[0]
@@ -340,8 +338,8 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
         # Repository doesn't exist yet, clone it
         try:
             os.makedirs(plugins_dir, exist_ok=True)
-        except (OSError, PermissionError) as e:
-            logger.error(f"Cannot create plugin directory {plugins_dir}: {e}")
+        except (OSError, PermissionError):
+            logger.exception(f"Cannot create plugin directory {plugins_dir}")
             logger.error(f"Skipping repository {repo_name} due to permission error")
             return False
 
@@ -647,17 +645,18 @@ def load_plugins_from_directory(directory, recursive=False):
                                         f"{plugin_path} does not define a Plugin class."
                                     )
                             except ModuleNotFoundError:
-                                logger.error(
+                                logger.exception(
                                     f"Module {missing_module} still not available after installation. "
                                     f"The package name might be different from the import name."
                                 )
-                            except Exception as retry_error:
-                                logger.error(
-                                    f"Error loading plugin {plugin_path} after dependency installation: {retry_error}"
+                            except Exception:
+                                logger.exception(
+                                    "Error loading plugin %s after dependency installation",
+                                    plugin_path,
                                 )
 
                         except subprocess.CalledProcessError:
-                            logger.error(
+                            logger.exception(
                                 f"Failed to automatically install {missing_module}"
                             )
                             logger.error("Please install it manually:")
@@ -670,8 +669,8 @@ def load_plugins_from_directory(directory, recursive=False):
                             logger.error(
                                 f"Plugin directory: {os.path.dirname(plugin_path)}"
                             )
-                    except Exception as e:
-                        logger.error(f"Error loading plugin {plugin_path}: {e}")
+                    except Exception:
+                        logger.exception(f"Error loading plugin {plugin_path}")
             if not recursive:
                 break
     else:
@@ -775,8 +774,8 @@ def load_plugins(passed_config=None):
                     )
                     plugin_found = True
                     break
-                except Exception as e:
-                    logger.error(f"Failed to load custom plugin {plugin_name}: {e}")
+                except Exception:
+                    logger.exception(f"Failed to load custom plugin {plugin_name}")
                     continue
 
         if not plugin_found:
@@ -876,9 +875,9 @@ def load_plugins(passed_config=None):
                         )
                         plugin_found = True
                         break
-                    except Exception as e:
-                        logger.error(
-                            f"Failed to load community plugin {repo_name}: {e}"
+                    except Exception:
+                        logger.exception(
+                            "Failed to load community plugin %s", repo_name
                         )
                         continue
 
@@ -888,7 +887,8 @@ def load_plugins(passed_config=None):
                 )
         else:
             logger.error(
-                f"Repository URL not specified for community plugin: {plugin_name}"
+                "Repository URL not specified for community plugin: %s",
+                plugin_name,
             )
 
     # Filter and sort active plugins by priority
@@ -919,8 +919,8 @@ def load_plugins(passed_config=None):
             active_plugins.append(plugin)
             try:
                 plugin.start()
-            except Exception as e:
-                logger.error(f"Error starting plugin {plugin_name}: {e}")
+            except Exception:
+                logger.exception(f"Error starting plugin {plugin_name}")
 
     sorted_active_plugins = sorted(active_plugins, key=lambda plugin: plugin.priority)
 

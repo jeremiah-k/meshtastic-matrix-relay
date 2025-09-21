@@ -96,7 +96,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
                 ), patch("mmrelay.matrix_utils.matrix_client", None):
                     result = connect_meshtastic(config)
                     self.assertIsNone(result)
-                    mock_logger.error.assert_called()
+                    mock_logger.exception.assert_called()
 
     def test_connect_meshtastic_ble_device_not_found(self):
         """
@@ -118,11 +118,13 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
                 ), patch("mmrelay.matrix_utils.matrix_client", None):
                     result = connect_meshtastic(config)
                     self.assertIsNone(result)
-                    mock_logger.error.assert_called()
+                    mock_logger.exception.assert_called()
 
     def test_connect_meshtastic_tcp_connection_refused(self):
         """
-        Verifies that connect_meshtastic returns None and logs an error when a TCP connection is refused.
+        Verify connect_meshtastic returns None and logs an exception when a TCP connection is refused.
+        
+        Patches the TCPInterface to raise ConnectionRefusedError and asserts that connect_meshtastic returns None and that logger.exception is invoked.
         """
         config = {"meshtastic": {"connection_type": "tcp", "host": "192.168.1.100"}}
 
@@ -133,7 +135,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
                 result = connect_meshtastic(config)
                 self.assertIsNone(result)
-                mock_logger.error.assert_called()
+                mock_logger.exception.assert_called()
 
     def test_connect_meshtastic_invalid_connection_type(self):
         """
@@ -144,11 +146,13 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
             result = connect_meshtastic(config)
             self.assertIsNone(result)
-            mock_logger.error.assert_called()
+            mock_logger.exception.assert_called()
 
     def test_connect_meshtastic_exponential_backoff_max_retries(self):
         """
-        Verify that connect_meshtastic returns None and logs an error when repeated connection attempts with exponential backoff reach the maximum retries due to persistent MemoryError exceptions.
+        Test that connect_meshtastic returns None and logs an exception when repeated connection attempts hit the maximum retries due to persistent MemoryError.
+        
+        Sets a serial connection config, patches serial_port_exists to True and SerialInterface to raise MemoryError on each attempt, patches time.sleep to avoid delays, and asserts connect_meshtastic returns None and that logger.exception was called.
         """
         config = {
             "meshtastic": {"connection_type": "serial", "serial_port": "/dev/ttyUSB0"}
@@ -164,7 +168,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
                         result = connect_meshtastic(config)
                         self.assertIsNone(result)
                         # Should log error for critical failure
-                        mock_logger.error.assert_called()
+                mock_logger.exception.assert_called()
 
     def test_on_meshtastic_message_malformed_packet(self):
         """
@@ -199,18 +203,54 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
 
         mock_interface = MagicMock()
 
+        from concurrent.futures import Future
+
+        def _submit_coro_mock(coro, loop=None):
+            """
+            Run the given coroutine synchronously (using asyncio.run) and return a concurrent.futures.Future that is completed with its result or exception.
+            
+            This test helper executes the coroutine immediately to surface any exceptions and wraps the outcome in a Future. The optional `loop` parameter is accepted for API compatibility but is ignored.
+            """
+            f = Future()
+            try:
+                # Execute the coroutine to trigger the exception
+                result = asyncio.run(coro)
+                f.set_result(result)
+            except Exception as e:
+                f.set_exception(e)
+            return f
+
         with patch("mmrelay.plugin_loader.load_plugins") as mock_load_plugins, patch(
             "mmrelay.meshtastic_utils._submit_coro"
         ) as mock_submit_coro, patch("mmrelay.meshtastic_utils.logger") as mock_logger:
             mock_plugin = MagicMock()
+            mock_plugin.plugin_name = "test_plugin"
             mock_plugin.handle_meshtastic_message = AsyncMock(
                 side_effect=Exception("Plugin failed")
             )
             mock_load_plugins.return_value = [mock_plugin]
-            mock_submit_coro.side_effect = Exception("Plugin failed")
+            mock_submit_coro.side_effect = _submit_coro_mock
+
+            # Set up required globals for the function to reach plugin processing
+            import mmrelay.meshtastic_utils
+
+            mmrelay.meshtastic_utils.config = {
+                "matrix": {"homeserver": "test"},
+                "meshtastic": {
+                    "meshnet_name": "test_meshnet",
+                    "message_interactions": {"reactions": True, "replies": True},
+                },
+            }
+            # Set up matrix_rooms to map channel 0 so the message is processed
+            mmrelay.meshtastic_utils.matrix_rooms = [
+                {"meshtastic_channel": 0, "matrix_room_id": "!test:example.com"}
+            ]
+            mmrelay.meshtastic_utils.event_loop = MagicMock()
+            # Mock the interface myInfo to avoid direct message detection
+            mock_interface.myInfo.my_node_num = 999999
 
             on_meshtastic_message(packet, mock_interface)
-            mock_logger.error.assert_called()
+            mock_logger.exception.assert_called()
 
     def test_on_meshtastic_message_matrix_relay_failure(self):
         """
@@ -233,15 +273,24 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
 
         with patch("mmrelay.plugin_loader.load_plugins", return_value=[]), patch(
             "mmrelay.meshtastic_utils._submit_coro"
-        ) as mock_submit_coro, patch(
-            "mmrelay.matrix_utils.matrix_relay", new_callable=AsyncMock
-        ) as mock_matrix_relay, patch(
+        ) as mock_submit_coro, patch("mmrelay.matrix_utils.matrix_relay"), patch(
             "mmrelay.meshtastic_utils.logger"
         ) as mock_logger:
+            # Set up required globals for the function to run
+            import mmrelay.meshtastic_utils
+
+            mmrelay.meshtastic_utils.config = {
+                "matrix": {"homeserver": "test"},
+                "meshtastic": {
+                    "meshnet_name": "test_meshnet",
+                    "message_interactions": {"reactions": True, "replies": True},
+                },
+            }
+            mmrelay.meshtastic_utils.event_loop = MagicMock()
+
             mock_submit_coro.side_effect = Exception("Matrix relay failed")
-            mock_matrix_relay.side_effect = Exception("Matrix relay failed")
             on_meshtastic_message(packet, mock_interface)
-            mock_logger.error.assert_called()
+            mock_logger.exception.assert_called()
 
     def test_on_meshtastic_message_database_error(self):
         """
@@ -324,11 +373,13 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
             result = sendTextReply(None, "test message", 12345)
             self.assertIsNone(result)
-            mock_logger.error.assert_called()
+            mock_logger.exception.assert_called()
 
     def test_sendTextReply_client_send_failure(self):
         """
-        Test that sendTextReply returns None and logs an error when the client's send operation raises an exception.
+        Test that sendTextReply returns None and logs an exception when the client's send operation raises.
+        
+        Ensures that if the client's `_sendPacket` raises an exception, `sendTextReply` handles it by returning None and calling `logger.exception`.
         """
         mock_client = MagicMock()
         mock_client._sendPacket.side_effect = Exception("Send failed")
@@ -340,7 +391,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
             result = sendTextReply(mock_client, "test message", 12345)
             self.assertIsNone(result)
-            mock_logger.error.assert_called()
+            mock_logger.exception.assert_called()
 
     def test_is_running_as_service_detection_failure(self):
         """
@@ -390,7 +441,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
                 with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
                     result = connect_meshtastic(config)
                     self.assertIsNone(result)
-                    mock_logger.error.assert_called()
+                    mock_logger.exception.assert_called()
 
     def test_on_meshtastic_message_large_node_list(self):
         """

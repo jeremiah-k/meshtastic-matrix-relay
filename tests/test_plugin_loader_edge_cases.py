@@ -77,7 +77,7 @@ class TestPluginLoaderEdgeCases(unittest.TestCase):
             with patch("mmrelay.plugin_loader.logger") as mock_logger:
                 plugins = load_plugins_from_directory(temp_dir)
                 self.assertEqual(plugins, [])
-                mock_logger.error.assert_called()
+                mock_logger.exception.assert_called()
 
     def test_load_plugins_from_directory_missing_plugin_class(self):
         """
@@ -96,9 +96,9 @@ class TestPluginLoaderEdgeCases(unittest.TestCase):
 
     def test_load_plugins_from_directory_plugin_initialization_failure(self):
         """
-        Verify that plugins whose initialization fails are not loaded.
-
-        Creates a plugin file with a `Plugin` class that raises an exception during initialization, then checks that `load_plugins_from_directory` returns an empty list and logs an error.
+        Verify that a Plugin class whose __init__ raises is not loaded.
+        
+        Creates a temporary plugin file defining a `Plugin` class that raises an exception during initialization, calls `load_plugins_from_directory` for that directory, and asserts that no plugins are returned and that an exception was logged.
         """
         with tempfile.TemporaryDirectory() as temp_dir:
             # Create a plugin file with failing initialization
@@ -115,7 +115,7 @@ class Plugin:
             with patch("mmrelay.plugin_loader.logger") as mock_logger:
                 plugins = load_plugins_from_directory(temp_dir)
                 self.assertEqual(plugins, [])
-                mock_logger.error.assert_called()
+                mock_logger.exception.assert_called()
 
     def test_load_plugins_from_directory_import_error_with_dependency_install(self):
         """
@@ -198,7 +198,7 @@ class Plugin:
                 with patch("mmrelay.plugin_loader.logger") as mock_logger:
                     plugins = load_plugins_from_directory(temp_dir)
                     self.assertEqual(plugins, [])
-                    mock_logger.error.assert_called()
+                    mock_logger.exception.assert_called()
 
     def test_load_plugins_from_directory_sys_path_manipulation_error(self):
         """
@@ -369,7 +369,7 @@ class Plugin:
                             self.assertGreaterEqual(len(plugins), 1)
                     except Exception:
                         pass  # nosec B110 - Intentionally ignoring exceptions in stress test to focus on error logging
-                    mock_logger.error.assert_called()
+                    mock_logger.exception.assert_called()
 
     def test_load_plugins_memory_constraint(self):
         """
@@ -393,7 +393,7 @@ class Plugin:
                         load_plugins(config)
                     except Exception:
                         pass  # nosec B110 - Intentionally ignoring exceptions in stress test to focus on error logging
-                    mock_logger.error.assert_called()
+                    mock_logger.exception.assert_called()
 
     def test_load_plugins_circular_dependency(self):
         """

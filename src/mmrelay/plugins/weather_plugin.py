@@ -21,24 +21,23 @@ class Plugin(BasePlugin):
     def generate_forecast(self, latitude, longitude):
         """
         Generate a concise one-line weather forecast for the given GPS coordinates.
-
-        Builds and queries the Open-Meteo API for current conditions and hour-aligned forecasts ~+2h and ~+5h, formats temperatures according to the plugin configuration (`self.config["units"]`, default "metric"), and returns a single-line summary including current conditions and the two forecast points.
-
+        
+        Queries the Open-Meteo API for current conditions and hour-aligned forecasts at approximately +2h and +5h, formats temperatures according to self.config.get("units", "metric") ("metric" -> °C, "imperial" -> °F), and returns a single-line summary like:
+        "Now: ☀️ Clear sky - 12.3°C | +2h: 🌧️ Light rain - 13.1°C 20% | +5h: ⛅️ Partly cloudy - 10.8°C 5%".
+        
         Parameters:
             latitude (float): Latitude in decimal degrees.
             longitude (float): Longitude in decimal degrees.
-
+        
         Returns:
-            str: A single-line forecast such as
-                 "Now: ☀️ Clear sky - 12.3°C | +2h: 🌧️ Light rain - 13.1°C 20% | +5h: ⛅️ Partly cloudy - 10.8°C 5%".
-                 On recoverable failures returns a short error message: "Weather data temporarily unavailable.",
-                 "Error fetching weather data.", or "Error parsing weather data.".
-
+            str: A one-line forecast string on success. On recoverable failures returns one of:
+                 - "Weather data temporarily unavailable." (missing hourly data),
+                 - "Error fetching weather data." (network/HTTP/request errors),
+                 - "Error parsing weather data." (malformed or unexpected API response).
+        
         Notes:
-            - Temperature units are determined by `self.config.get("units", "metric")` ("metric" -> °C, "imperial" -> °F).
-            - The function attempts to anchor forecasts to hourly timestamps when available; if timestamps cannot be matched it falls back to hour-of-day indexing (may be less accurate).
-            - Network/HTTP errors and request-related exceptions are handled and result in the "Error fetching weather data." message.
-            - Malformed or incomplete API responses result in "Error parsing weather data." Unexpected exceptions are re-raised.
+            - The function attempts to anchor forecasts to hourly timestamps when available; if a timestamp match cannot be found it falls back to hour-of-day indexing.
+            - Network/request-related errors and parsing errors are handled as described above; unexpected exceptions are re-raised.
         """
         units = self.config.get("units", "metric")  # Default to metric
         temperature_unit = "°C" if units == "metric" else "°F"
@@ -198,20 +197,20 @@ class Plugin(BasePlugin):
                 if hasattr(requests, "RequestException") and isinstance(
                     e, requests.RequestException
                 ):
-                    self.logger.error(f"Error fetching weather data: {e}")
+                    self.logger.exception("Error fetching weather data")
                     return "Error fetching weather data."
             except (AttributeError, TypeError):
                 # Fallback to string-based detection if isinstance fails
                 exception_module = getattr(type(e), "__module__", "")
                 if "requests" in exception_module:
-                    self.logger.error(f"Error fetching weather data: {e}")
+                    self.logger.exception("Error fetching weather data")
                     return "Error fetching weather data."
 
             # Handle data parsing errors
             if isinstance(
                 e, (KeyError, IndexError, TypeError, ValueError, AttributeError)
             ):
-                self.logger.error(f"Malformed weather data: {e}")
+                self.logger.exception("Malformed weather data")
                 return "Error parsing weather data."
             else:
                 # Re-raise unexpected exceptions

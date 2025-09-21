@@ -120,15 +120,24 @@ def get_config_paths(args=None):
 
 def get_data_dir():
     """
-    Returns the directory for storing application data files.
-    Creates the directory if it doesn't exist.
+    Return the directory for application data, creating it if it does not exist.
+    
+    On Linux and macOS this is <base_dir>/data (where base_dir is returned by get_base_dir()).
+    On Windows, if a global custom_data_dir is set it returns <custom_data_dir>/data; otherwise it falls back to platformdirs.user_data_dir(APP_NAME, APP_AUTHOR).
+    
+    Returns:
+        str: Absolute path to the data directory.
     """
     if sys.platform in ["linux", "darwin"]:
         # Use ~/.mmrelay/data/ for Linux and Mac
         data_dir = os.path.join(get_base_dir(), "data")
     else:
-        # Use platformdirs default for Windows
-        data_dir = platformdirs.user_data_dir(APP_NAME, APP_AUTHOR)
+        # Honor --data-dir on Windows too
+        if custom_data_dir:
+            data_dir = os.path.join(custom_data_dir, "data")
+        else:
+            # Use platformdirs default for Windows
+            data_dir = platformdirs.user_data_dir(APP_NAME, APP_AUTHOR)
 
     os.makedirs(data_dir, exist_ok=True)
     return data_dir
@@ -162,15 +171,24 @@ def get_plugin_data_dir(plugin_name=None):
 
 def get_log_dir():
     """
-    Returns the directory for storing log files.
-    Creates the directory if it doesn't exist.
+    Return the path to the application's log directory, creating it if missing.
+    
+    On Linux/macOS this is '<base_dir>/logs' (where base_dir is returned by get_base_dir()).
+    On Windows, if a global custom_data_dir is set it uses '<custom_data_dir>/logs'; otherwise it uses the platform-specific user log directory from platformdirs.
+    
+    Returns:
+        str: Absolute path to the log directory that now exists (created if necessary).
     """
     if sys.platform in ["linux", "darwin"]:
         # Use ~/.mmrelay/logs/ for Linux and Mac
         log_dir = os.path.join(get_base_dir(), "logs")
     else:
-        # Use platformdirs default for Windows
-        log_dir = platformdirs.user_log_dir(APP_NAME, APP_AUTHOR)
+        # Honor --data-dir on Windows too
+        if custom_data_dir:
+            log_dir = os.path.join(custom_data_dir, "logs")
+        else:
+            # Use platformdirs default for Windows
+            log_dir = platformdirs.user_log_dir(APP_NAME, APP_AUTHOR)
 
     os.makedirs(log_dir, exist_ok=True)
     return log_dir
@@ -178,22 +196,29 @@ def get_log_dir():
 
 def get_e2ee_store_dir():
     """
-    Return the path to the directory used for storing E2EE data (e.g., encryption keys), creating it if missing.
-
-    On Linux/macOS the directory is "<base_dir>/store" where base_dir is returned by get_base_dir().
-    On Windows the directory is under the platform user data directory for the app (user_data_dir(APP_NAME, APP_AUTHOR)/store).
-
+    Return the absolute path to the E2EE data store directory, creating it if missing.
+    
+    On Linux/macOS this is "<base_dir>/store" where base_dir is returned by get_base_dir().
+    On Windows the function uses the global custom_data_dir if set, otherwise falls back to the platform user data directory for the app.
+    
     Returns:
         str: Absolute path to the ensured store directory.
+    
+    Side effects:
+        Creates the directory (and parent directories) if it does not already exist.
     """
     if sys.platform in ["linux", "darwin"]:
         # Use ~/.mmrelay/store/ for Linux and Mac
         store_dir = os.path.join(get_base_dir(), "store")
     else:
-        # Use platformdirs default for Windows
-        store_dir = os.path.join(
-            platformdirs.user_data_dir(APP_NAME, APP_AUTHOR), "store"
-        )
+        # Honor --data-dir on Windows too
+        if custom_data_dir:
+            store_dir = os.path.join(custom_data_dir, "store")
+        else:
+            # Use platformdirs default for Windows
+            store_dir = os.path.join(
+                platformdirs.user_data_dir(APP_NAME, APP_AUTHOR), "store"
+            )
 
     os.makedirs(store_dir, exist_ok=True)
     return store_dir
@@ -320,10 +345,9 @@ def load_logging_config_from_env():
 
 def load_database_config_from_env():
     """
-    Load database configuration from environment variables.
+    Build a database configuration fragment from environment variables.
 
-    Returns:
-        dict: Database configuration dictionary if any env vars found, None otherwise.
+    Reads environment variables defined in the module-level _DATABASE_ENV_VAR_MAPPINGS and converts them into a configuration dictionary suitable for merging into the application's config. Returns None if no mapped environment variables were present.
     """
     config = _load_config_from_env_mapping(_DATABASE_ENV_VAR_MAPPINGS)
     if config:
@@ -333,20 +357,84 @@ def load_database_config_from_env():
     return config
 
 
-def apply_env_config_overrides(config):
+def is_e2ee_enabled(config):
     """
-    Apply environment-variable-derived overrides to a configuration dictionary.
+    Check if End-to-End Encryption (E2EE) is enabled in the configuration.
 
-    If `config` is falsy a new dict is created. Environment values from the Meshtastic, logging,
-    and database loaders are merged into the corresponding top-level sections ("meshtastic",
-    "logging", "database"); existing keys in those sections are updated with environment-supplied
-    values while other keys are left intact.
+    Checks both 'encryption' and 'e2ee' keys in the matrix section for backward compatibility.
+    On Windows, this always returns False since E2EE is not supported.
 
     Parameters:
-        config (dict): Base configuration to update; may be None or an empty value.
+        config (dict): Configuration dictionary to check.
 
     Returns:
-        dict: The resulting configuration dictionary with environment overrides applied.
+        bool: True if E2EE is enabled, False otherwise.
+    """
+    # E2EE is not supported on Windows
+    if sys.platform == "win32":
+        return False
+
+    if not config:
+        return False
+
+    matrix_cfg = config.get("matrix", {}) or {}
+    if not matrix_cfg:
+        return False
+
+    encryption_enabled = matrix_cfg.get("encryption", {}).get("enabled", False)
+    e2ee_enabled = matrix_cfg.get("e2ee", {}).get("enabled", False)
+
+    return encryption_enabled or e2ee_enabled
+
+
+def check_e2ee_enabled_silently(args=None):
+    """
+    Return True if End-to-End Encryption (E2EE) is enabled in the first valid configuration file found.
+    
+    Searches candidate configuration file paths (using get_config_paths(args)) in priority order and checks the first readable YAML config for E2EE settings. I/O and YAML parsing errors are ignored; if no valid config is found or E2EE is not enabled, the function returns False. On Windows this always returns False (E2EE not supported).
+    
+    Parameters:
+        args (optional): Parsed command-line arguments used to influence config search order.
+    
+    Returns:
+        bool: True if E2EE is enabled in the first valid configuration file, otherwise False.
+    """
+    # E2EE is not supported on Windows
+    if sys.platform == "win32":
+        return False
+
+    # Get config paths without logging
+    config_paths = get_config_paths(args)
+
+    # Try each config path silently
+    for path in config_paths:
+        if os.path.isfile(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    config = yaml.load(f, Loader=SafeLoader)
+                if config and is_e2ee_enabled(config):
+                    return True
+            except (yaml.YAMLError, PermissionError, OSError):
+                continue  # Silently try the next path
+    # No valid config found or E2EE not enabled in any config
+    return False
+
+
+def apply_env_config_overrides(config):
+    """
+    Apply environment-derived configuration overrides to a configuration dictionary.
+    
+    If `config` is falsy, a new dict is created. Environment variables are read and merged into
+    the top-level keys "meshtastic", "logging", and "database" when corresponding environment
+    fragments are present. Existing subkeys are updated with environment values while other keys
+    in those sections are preserved. The input dict may be mutated in place.
+    
+    Parameters:
+        config (dict | None): Base configuration to update.
+    
+    Returns:
+        dict: The configuration dictionary with environment overrides applied (the same object
+        passed in, or a newly created dict if a falsy value was provided).
     """
     if not config:
         config = {}
@@ -382,51 +470,89 @@ def load_credentials():
         config_dir = get_base_dir()
         credentials_path = os.path.join(config_dir, "credentials.json")
 
+        logger.debug(f"Looking for credentials at: {credentials_path}")
+
         if os.path.exists(credentials_path):
-            with open(credentials_path, "r") as f:
+            with open(credentials_path, "r", encoding="utf-8") as f:
                 credentials = json.load(f)
-            logger.debug(f"Loaded credentials from {credentials_path}")
+            logger.debug(f"Successfully loaded credentials from {credentials_path}")
             return credentials
         else:
             logger.debug(f"No credentials file found at {credentials_path}")
+            # On Windows, also log the directory contents for debugging
+            if sys.platform == "win32" and os.path.exists(config_dir):
+                try:
+                    files = os.listdir(config_dir)
+                    logger.debug(f"Directory contents of {config_dir}: {files}")
+                except OSError:
+                    pass
             return None
-    except (OSError, PermissionError, json.JSONDecodeError) as e:
-        logger.error(f"Error loading credentials.json: {e}")
+    except (OSError, PermissionError, json.JSONDecodeError):
+        logger.exception(f"Error loading credentials.json from {config_dir}")
         return None
 
 
 def save_credentials(credentials):
     """
-    Write the provided Matrix credentials dict to "credentials.json" in the application's base config directory and apply secure file permissions (Unix 0o600) to the file.
-
-    If writing or permission changes fail, an error is logged; exceptions are not propagated.
+    Save Matrix credentials to the application's credentials.json file.
+    
+    Writes the provided JSON-serializable credentials mapping to
+    <base_dir>/credentials.json using UTF-8 encoding and attempts to restrict
+    file permissions to 0o600 on Unix-like systems. I/O and permission errors
+    are caught and logged; the function does not raise these exceptions.
+    
+    Parameters:
+        credentials (dict): JSON-serializable mapping of credentials to persist.
+    
+    Returns:
+        None
     """
     try:
         config_dir = get_base_dir()
+        # Ensure the directory exists and is writable
+        os.makedirs(config_dir, exist_ok=True)
         credentials_path = os.path.join(config_dir, "credentials.json")
 
-        with open(credentials_path, "w") as f:
+        # Log the path for debugging, especially on Windows
+        logger.info(f"Saving credentials to: {credentials_path}")
+
+        with open(credentials_path, "w", encoding="utf-8") as f:
             json.dump(credentials, f, indent=2)
 
         # Set secure permissions on Unix systems (600 - owner read/write only)
         set_secure_file_permissions(credentials_path)
 
-        logger.info(f"Saved credentials to {credentials_path}")
-    except (OSError, PermissionError) as e:
-        logger.error(f"Error saving credentials.json: {e}")
+        logger.info(f"Successfully saved credentials to {credentials_path}")
+
+        # Verify the file was actually created
+        if os.path.exists(credentials_path):
+            logger.debug(f"Verified credentials.json exists at {credentials_path}")
+        else:
+            logger.error(f"Failed to create credentials.json at {credentials_path}")
+
+    except (OSError, PermissionError):
+        logger.exception(f"Error saving credentials.json to {config_dir}")
+        # Try to provide helpful Windows-specific guidance
+        if sys.platform == "win32":
+            logger.error(
+                "On Windows, ensure the application has write permissions to the user data directory"
+            )
+            logger.error(f"Attempted path: {config_dir}")
 
 
 # Set up a basic logger for config
 logger = logging.getLogger("Config")
 logger.setLevel(logging.INFO)
-handler = logging.StreamHandler()
-handler.setFormatter(
-    logging.Formatter(
-        fmt="%(asctime)s %(levelname)s:%(name)s:%(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S %z",
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    handler.setFormatter(
+        logging.Formatter(
+            fmt="%(asctime)s %(levelname)s:%(name)s:%(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S %z",
+        )
     )
-)
-logger.addHandler(handler)
+    logger.addHandler(handler)
+logger.propagate = False
 
 # Initialize empty config
 relay_config = {}
@@ -626,16 +752,16 @@ def set_config(module, passed_config):
 
 def load_config(config_file=None, args=None):
     """
-    Load the application configuration from a file or from environment variables.
+    Load the application configuration from a YAML file or from environment variables.
 
-    If config_file is provided and exists, load and parse it as YAML. Otherwise search prioritized locations returned by get_config_paths(args) and load the first readable YAML file found. After loading (or when no file is found) environment-variable-derived overrides are merged into the configuration via apply_env_config_overrides(). The function updates the module-level relay_config and config_path.
+    If config_file is provided and exists, that file is read and parsed as YAML; otherwise the function searches candidate locations returned by get_config_paths(args) and loads the first readable YAML file found. Empty or null YAML is treated as an empty dict. After loading, environment-derived overrides are merged via apply_env_config_overrides(). The function updates the module-level relay_config and config_path.
 
     Parameters:
-        config_file (str, optional): Path to a specific YAML configuration file. If None, the function searches default locations.
-        args: Parsed command-line arguments used to influence the search order (passed to get_config_paths).
+        config_file (str, optional): Path to a specific YAML configuration file to load. If None, candidate paths from get_config_paths(args) are used.
+        args: Parsed command-line arguments forwarded to get_config_paths() to influence the search order.
 
     Returns:
-        dict: The resulting configuration dictionary. Returns an empty dict on read/parse errors or if no configuration is provided via files or environment.
+        dict: The resulting configuration dictionary. If no configuration is found or a file read/parse error occurs, returns an empty dict.
     """
     global relay_config, config_path
 
@@ -643,7 +769,7 @@ def load_config(config_file=None, args=None):
     if config_file and os.path.isfile(config_file):
         # Store the config path but don't log it yet - will be logged by main.py
         try:
-            with open(config_file, "r") as f:
+            with open(config_file, "r", encoding="utf-8") as f:
                 relay_config = yaml.load(f, Loader=SafeLoader)
             config_path = config_file
             # Treat empty/null YAML files as an empty config dictionary
@@ -652,8 +778,8 @@ def load_config(config_file=None, args=None):
             # Apply environment variable overrides
             relay_config = apply_env_config_overrides(relay_config)
             return relay_config
-        except (yaml.YAMLError, PermissionError, OSError) as e:
-            logger.error(f"Error loading config file {config_file}: {e}")
+        except (yaml.YAMLError, PermissionError, OSError):
+            logger.exception(f"Error loading config file {config_file}")
             return {}
 
     # Otherwise, search for a config file
@@ -665,7 +791,7 @@ def load_config(config_file=None, args=None):
             config_path = path
             # Store the config path but don't log it yet - will be logged by main.py
             try:
-                with open(config_path, "r") as f:
+                with open(config_path, "r", encoding="utf-8") as f:
                     relay_config = yaml.load(f, Loader=SafeLoader)
                 # Treat empty/null YAML files as an empty config dictionary
                 if relay_config is None:
@@ -673,8 +799,8 @@ def load_config(config_file=None, args=None):
                 # Apply environment variable overrides
                 relay_config = apply_env_config_overrides(relay_config)
                 return relay_config
-            except (yaml.YAMLError, PermissionError, OSError) as e:
-                logger.error(f"Error loading config file {path}: {e}")
+            except (yaml.YAMLError, PermissionError, OSError):
+                logger.exception(f"Error loading config file {path}")
                 continue  # Try the next config path
 
     # No config file found - try to use environment variables only
@@ -696,22 +822,19 @@ def load_config(config_file=None, args=None):
 
 def validate_yaml_syntax(config_content, config_path):
     """
-    Validate YAML content and return parsing results plus human-readable syntax feedback.
-
-    Performs lightweight line-based checks for common mistakes (unclosed quotes, use of '=' instead of ':',
-    and non-standard boolean words like 'yes'/'no') and then attempts to parse the content with PyYAML.
-    If only style warnings are found the parser result is returned with warnings; if syntax errors are detected
-    or YAML parsing fails, a detailed error message is returned.
-
+    Validate YAML text for syntax and common style issues, parse it with PyYAML, and return results.
+    
+    Performs lightweight line checks for common mistakes (use of '=' instead of ':', and non-standard boolean words like 'yes'/'no' or 'on'/'off') and then attempts to parse the content with yaml.safe_load. If only style warnings are found, returns parsed data with warnings; if syntax errors are detected or parsing fails, returns a detailed error message referencing config_path.
+    
     Parameters:
         config_content (str): Raw YAML text to validate.
-        config_path (str): Path used in error messages to identify the source file.
-
+        config_path (str): Path or label used in error messages to identify the source.
+    
     Returns:
         tuple:
-            is_valid (bool): True if parsing succeeded (even if style warnings exist), False on syntax/parsing error.
-            error_message (str|None): Human-readable warnings or error details. None when parsing succeeded with no issues.
-            parsed_config (dict|list|None): The parsed YAML structure on success; None when parsing failed.
+            is_valid (bool): True when YAML was parsed successfully (warnings allowed), False on syntax/parsing error.
+            message (str|None): Human-readable warnings or a detailed error description (includes config_path). None when parsing succeeded without issues.
+            parsed_config (object|None): The structure produced by yaml.safe_load on success; None when parsing failed.
     """
     lines = config_content.split("\n")
 
@@ -731,8 +854,8 @@ def validate_yaml_syntax(config_content, config_path):
 
         # Check for non-standard boolean values (style warning)
         bool_pattern = r":\s*(yes|no|on|off|Yes|No|YES|NO)\s*$"
-        if re.search(bool_pattern, line):
-            match = re.search(bool_pattern, line)
+        match = re.search(bool_pattern, line)
+        if match:
             non_standard_bool = match.group(1)
             syntax_issues.append(
                 f"Line {line_num}: Style warning - Consider using 'true' or 'false' instead of '{non_standard_bool}' for clarity - {line.strip()}"

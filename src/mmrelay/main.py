@@ -82,8 +82,8 @@ async def main(config):
 
     matrix_rooms: List[dict] = config["matrix_rooms"]
 
-    # Set the event loop in meshtastic_utils
-    meshtastic_utils.event_loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
+    meshtastic_utils.event_loop = loop
 
     # Initialize the SQLite database
     initialize_database()
@@ -119,7 +119,9 @@ async def main(config):
     start_message_queue(message_delay=message_delay)
 
     # Connect to Meshtastic
-    meshtastic_utils.meshtastic_client = connect_meshtastic(passed_config=config)
+    meshtastic_utils.meshtastic_client = await asyncio.to_thread(
+        connect_meshtastic, passed_config=config
+    )
 
     # Connect to Matrix
     matrix_client = await connect_matrix(passed_config=config)
@@ -151,11 +153,14 @@ async def main(config):
     shutdown_event = asyncio.Event()
 
     async def shutdown():
+        """
+        Signal application shutdown: mark Meshtastic shutdown flag, set the shutdown event, and log a shutdown notice.
+        
+        This coroutine performs the minimal shutdown signaling used by the main loop: it sets meshtastic_utils.shutting_down = True and sets the module-local shutdown_event to wake any waiters. It does not perform cleanup or resource closing itself; those are handled elsewhere once the event is observed.
+        """
         matrix_logger.info("Shutdown signal received. Closing down...")
         meshtastic_utils.shutting_down = True  # Set the shutting_down flag
         shutdown_event.set()
-
-    loop = asyncio.get_running_loop()
 
     # Handle signals differently based on the platform
     if sys.platform != WINDOWS_PLATFORM:
@@ -177,9 +182,17 @@ async def main(config):
         while not shutdown_event.is_set():
             try:
                 if meshtastic_utils.meshtastic_client:
-                    # Update longnames & shortnames
-                    update_longnames(meshtastic_utils.meshtastic_client.nodes)
-                    update_shortnames(meshtastic_utils.meshtastic_client.nodes)
+                    nodes_snapshot = dict(meshtastic_utils.meshtastic_client.nodes)
+                    await loop.run_in_executor(
+                        None,
+                        update_longnames,
+                        nodes_snapshot,
+                    )
+                    await loop.run_in_executor(
+                        None,
+                        update_shortnames,
+                        nodes_snapshot,
+                    )
                 else:
                     meshtastic_logger.warning("Meshtastic client is not connected.")
 
@@ -217,15 +230,15 @@ async def main(config):
                         matrix_logger.warning(
                             "Matrix sync_forever completed unexpectedly"
                         )
-                    except Exception as e:
+                    except Exception:  # noqa: BLE001 — sync loop must keep retrying
                         # Log the exception and continue to retry
-                        matrix_logger.error(f"Matrix sync failed: {e}")
+                        matrix_logger.exception("Matrix sync failed")
                         # The outer try/catch will handle the retry logic
 
-            except Exception as e:
+            except Exception:  # noqa: BLE001 — keep loop alive for retries
                 if shutdown_event.is_set():
                     break
-                matrix_logger.error(f"Error syncing with Matrix server: {e}")
+                matrix_logger.exception("Error syncing with Matrix server")
                 await asyncio.sleep(5)  # Wait briefly before retrying
     except KeyboardInterrupt:
         await shutdown()
@@ -276,42 +289,36 @@ async def main(config):
             meshtastic_logger.info("Cancelled Meshtastic reconnect task.")
 
         # Cancel any remaining tasks (including the check_conn_task)
-        tasks = [t for t in asyncio.all_tasks(loop) if not t.done()]
-        for task in tasks:
+        current_task = asyncio.current_task()
+        pending_tasks = [
+            task
+            for task in asyncio.all_tasks(loop)
+            if task is not current_task and not task.done()
+        ]
+
+        for task in pending_tasks:
             task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
+
+        if pending_tasks:
+            await asyncio.gather(*pending_tasks, return_exceptions=True)
 
         matrix_logger.info("Shutdown complete.")
 
 
 def run_main(args):
     """
-    Run the application's top-level startup sequence and invoke the main async runner.
-
-    Performs initial setup (prints banner, optionally sets a custom data directory, loads and applies configuration and logging overrides), validates that required configuration sections are present (required keys differ if credentials.json is present), then runs the main coroutine. Returns an exit code: 0 for successful run or user interrupt, 1 for configuration errors or unhandled exceptions.
-
+    Start the application: load configuration, validate required keys, and run the main async runner.
+    
+    Loads and applies configuration (optionally overriding logging level from args), initializes module configuration, verifies required configuration sections (required keys are ["meshtastic", "matrix_rooms"] when credentials.json is present, otherwise ["matrix", "meshtastic", "matrix_rooms"]), and executes the main async entrypoint. Returns process exit codes: 0 for successful completion or user interrupt, 1 for configuration errors or unhandled exceptions.
+    
     Parameters:
-        args: Parsed command-line arguments (may be None). Recognized options used here include `data_dir` and `log_level`.
-
+        args: Parsed command-line arguments (may be None). Recognized option used here: `log_level` to override the configured logging level.
+    
     Returns:
         int: Exit code (0 on success or user-initiated interrupt, 1 on failure such as invalid config or runtime error).
     """
     # Print the banner at startup
     print_banner()
-
-    # Handle the --data-dir option
-    if args and args.data_dir:
-        import os
-
-        import mmrelay.config
-
-        # Set the global custom_data_dir variable
-        mmrelay.config.custom_data_dir = os.path.abspath(args.data_dir)
-        # Create the directory if it doesn't exist
-        os.makedirs(mmrelay.config.custom_data_dir, exist_ok=True)
 
     # Load configuration
     from mmrelay.config import load_config
@@ -405,12 +412,8 @@ def run_main(args):
     except KeyboardInterrupt:
         logger.info("Interrupted by user. Exiting.")
         return 0
-    except Exception as e:
-        import traceback
-
-        logger.error(f"Error running main functionality: {e}")
-        logger.error("Full traceback:")
-        logger.error(traceback.format_exc())
+    except Exception:  # noqa: BLE001 — top-level guard to log and exit cleanly
+        logger.exception("Error running main functionality")
         return 1
 
 

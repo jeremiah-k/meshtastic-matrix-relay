@@ -516,7 +516,12 @@ class TestMeshRelayPlugin(unittest.TestCase):
 
         async def run_test():
             """
-            Asynchronously tests that `handle_room_message` returns None and logs an error when embedded packet JSON parsing fails.
+            Test that handle_room_message returns None and logs an exception when parsing the embedded meshtastic_packet JSON fails.
+            
+            This async test calls handle_room_message with a room and event whose embedded
+            `meshtastic_packet` contains invalid JSON. It asserts:
+            - the coroutine returns None (indicating processing stopped on parse error), and
+            - plugin.logger.exception was called with a message containing "Error processing embedded packet".
             """
             result = await self.plugin.handle_room_message(room, event, "full_message")
 
@@ -524,8 +529,8 @@ class TestMeshRelayPlugin(unittest.TestCase):
             self.assertIsNone(result)
 
             # Should log error message
-            self.plugin.logger.error.assert_called()
-            error_call = self.plugin.logger.error.call_args[0][0]
+            self.plugin.logger.exception.assert_called()
+            error_call = self.plugin.logger.exception.call_args[0][0]
             self.assertIn("Error processing embedded packet", error_call)
 
         import asyncio

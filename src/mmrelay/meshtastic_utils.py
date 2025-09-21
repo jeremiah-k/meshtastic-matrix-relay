@@ -2,7 +2,6 @@ import asyncio
 import contextlib
 import inspect
 import io
-import os
 import re
 import threading
 import time
@@ -42,10 +41,8 @@ from mmrelay.constants.network import (
     CONNECTION_TYPE_SERIAL,
     CONNECTION_TYPE_TCP,
     DEFAULT_BACKOFF_TIME,
-    DEFAULT_RETRY_ATTEMPTS,
     ERRNO_BAD_FILE_DESCRIPTOR,
     INFINITE_RETRIES,
-    SYSTEMD_INIT_SYSTEM,
 )
 
 # Import BLE exceptions conditionally
@@ -68,6 +65,7 @@ from mmrelay.db_utils import (
     save_shortname,
 )
 from mmrelay.log_utils import get_logger
+from mmrelay.runtime_utils import is_running_as_service
 
 # Global config variable that will be set from config.py
 config = None
@@ -122,28 +120,38 @@ def _submit_coro(coro, loop=None):
         running = asyncio.get_running_loop()
         return running.create_task(coro)
     except RuntimeError:
-        # No running loop: run synchronously and wrap the result in a completed Future
-        f = Future()
+        # No running loop: check if we can safely create a new loop
         try:
-            result = asyncio.run(coro)
-            f.set_result(result)
+            # Try to get the current event loop policy and create a new loop
+            # This is safer than asyncio.run() which can cause deadlocks
+            policy = asyncio.get_event_loop_policy()
+            new_loop = policy.new_event_loop()
+            asyncio.set_event_loop(new_loop)
+            try:
+                result = new_loop.run_until_complete(coro)
+                f = Future()
+                f.set_result(result)
+                return f
+            finally:
+                new_loop.close()
+                asyncio.set_event_loop(None)
         except Exception as e:
+            # Ultimate fallback: create a completed Future with the exception
+            f = Future()
             f.set_exception(e)
-        return f
+            return f
 
 
 def _get_device_metadata(client):
     """
-    Retrieve device metadata from a Meshtastic client.
-
-    Attempts to call client.localNode.getMetadata() to extract a firmware version and capture the raw output. If the client lacks a usable localNode.getMetadata method or parsing fails, returns defaults. The captured raw output is truncated to 4096 characters.
-
-    Returns:
-        dict: {
-            "firmware_version": str,  # parsed firmware version or "unknown"
-            "raw_output": str,        # captured output from getMetadata() (possibly truncated)
-            "success": bool           # True when a firmware_version was successfully parsed
-        }
+    Retrieve firmware metadata from a Meshtastic client.
+    
+    Calls client.localNode.getMetadata() (if present) and captures its stdout/stderr to extract a firmware version and raw output. Returns a dict with:
+    - firmware_version: parsed version string or "unknown" when not found,
+    - raw_output: captured output (truncated to 4096 characters with a trailing ellipsis if longer),
+    - success: True when a firmware_version was successfully parsed.
+    
+    If the client lacks localNode.getMetadata or parsing fails, returns defaults without raising.
     """
     result = {"firmware_version": "unknown", "raw_output": "", "success": False}
 
@@ -192,35 +200,18 @@ def _get_device_metadata(client):
     return result
 
 
-def is_running_as_service():
-    """
-    Determine if the application is running as a systemd service.
-
-    Returns:
-        bool: True if the process is running under systemd, either by detecting the INVOCATION_ID environment variable or by checking if the parent process is systemd; otherwise, False.
-    """
-    # Check for INVOCATION_ID environment variable (set by systemd)
-    if os.environ.get("INVOCATION_ID"):
-        return True
-
-    # Check if parent process is systemd
-    try:
-        with open("/proc/self/status") as f:
-            for line in f:
-                if line.startswith("PPid:"):
-                    ppid = int(line.split()[1])
-                    with open(f"/proc/{ppid}/comm") as p:
-                        return p.read().strip() == SYSTEMD_INIT_SYSTEM
-    except (FileNotFoundError, PermissionError, ValueError):
-        pass
-
-    return False
-
-
 def serial_port_exists(port_name):
     """
-    Check if the specified serial port exists.
-    This prevents attempting connections on non-existent ports.
+    Return True if a serial port with the given device name is present on the system.
+    
+    Checks available serial ports via pyserial's list_ports and compares their `.device`
+    strings to the provided port_name.
+    
+    Parameters:
+        port_name (str): Device name to check (e.g., '/dev/ttyUSB0' on Unix or 'COM3' on Windows).
+    
+    Returns:
+        bool: True if the port is found, False otherwise.
     """
     ports = [p.device for p in serial.tools.list_ports.comports()]
     return port_name in ports
@@ -302,77 +293,85 @@ def connect_meshtastic(passed_config=None, force_connect=False):
             logger.warning(
                 "Using 'network' connection type (legacy). 'tcp' is now the preferred name and 'network' will be deprecated in a future version."
             )
-        retry_limit = INFINITE_RETRIES  # 0 means infinite retries
-        attempts = DEFAULT_RETRY_ATTEMPTS
-        successful = False
 
-        while (
-            not successful
-            and (retry_limit == 0 or attempts <= retry_limit)
-            and not shutting_down
-        ):
-            try:
-                if connection_type == CONNECTION_TYPE_SERIAL:
-                    # Serial connection
-                    serial_port = config["meshtastic"].get(CONFIG_KEY_SERIAL_PORT)
-                    if not serial_port:
-                        logger.error(
-                            "No serial port specified in Meshtastic configuration."
-                        )
-                        return None
+    # Move retry loop outside the lock to prevent blocking other threads
+    meshtastic_settings = config.get("meshtastic", {}) if config else {}
+    retry_limit = meshtastic_settings.get("retries", INFINITE_RETRIES)
+    try:
+        retry_limit = int(retry_limit)
+    except (TypeError, ValueError):
+        retry_limit = INFINITE_RETRIES
+    attempts = 0
+    successful = False
 
-                    logger.info(f"Connecting to serial port {serial_port}")
-
-                    # Check if serial port exists before connecting
-                    if not serial_port_exists(serial_port):
-                        logger.warning(
-                            f"Serial port {serial_port} does not exist. Waiting..."
-                        )
-                        time.sleep(5)
-                        attempts += 1
-                        continue
-
-                    meshtastic_client = meshtastic.serial_interface.SerialInterface(
-                        serial_port
+    while (
+        not successful
+        and (retry_limit == 0 or attempts <= retry_limit)
+        and not shutting_down
+    ):
+        try:
+            client = None
+            if connection_type == CONNECTION_TYPE_SERIAL:
+                # Serial connection
+                serial_port = config["meshtastic"].get(CONFIG_KEY_SERIAL_PORT)
+                if not serial_port:
+                    logger.error(
+                        "No serial port specified in Meshtastic configuration."
                     )
-
-                elif connection_type == CONNECTION_TYPE_BLE:
-                    # BLE connection
-                    ble_address = config["meshtastic"].get(CONFIG_KEY_BLE_ADDRESS)
-                    if ble_address:
-                        logger.info(f"Connecting to BLE address {ble_address}")
-
-                        # Connect without progress indicator
-                        meshtastic_client = meshtastic.ble_interface.BLEInterface(
-                            address=ble_address,
-                            noProto=False,
-                            debugOut=None,
-                            noNodes=False,
-                        )
-                    else:
-                        logger.error("No BLE address provided.")
-                        return None
-
-                elif connection_type == CONNECTION_TYPE_TCP:
-                    # TCP connection
-                    target_host = config["meshtastic"].get(CONFIG_KEY_HOST)
-                    if not target_host:
-                        logger.error(
-                            "No host specified in Meshtastic configuration for TCP connection."
-                        )
-                        return None
-
-                    logger.info(f"Connecting to host {target_host}")
-
-                    # Connect without progress indicator
-                    meshtastic_client = meshtastic.tcp_interface.TCPInterface(
-                        hostname=target_host
-                    )
-                else:
-                    logger.error(f"Unknown connection type: {connection_type}")
                     return None
 
-                successful = True
+                logger.info(f"Connecting to serial port {serial_port}")
+
+                # Check if serial port exists before connecting
+                if not serial_port_exists(serial_port):
+                    logger.warning(
+                        f"Serial port {serial_port} does not exist. Waiting..."
+                    )
+                    time.sleep(5)
+                    attempts += 1
+                    continue
+
+                client = meshtastic.serial_interface.SerialInterface(serial_port)
+
+            elif connection_type == CONNECTION_TYPE_BLE:
+                # BLE connection
+                ble_address = config["meshtastic"].get(CONFIG_KEY_BLE_ADDRESS)
+                if ble_address:
+                    logger.info(f"Connecting to BLE address {ble_address}")
+
+                    # Connect without progress indicator
+                    client = meshtastic.ble_interface.BLEInterface(
+                        address=ble_address,
+                        noProto=False,
+                        debugOut=None,
+                        noNodes=False,
+                    )
+                else:
+                    logger.error("No BLE address provided.")
+                    return None
+
+            elif connection_type == CONNECTION_TYPE_TCP:
+                # TCP connection
+                target_host = config["meshtastic"].get(CONFIG_KEY_HOST)
+                if not target_host:
+                    logger.error(
+                        "No host specified in Meshtastic configuration for TCP connection."
+                    )
+                    return None
+
+                logger.info(f"Connecting to host {target_host}")
+
+                # Connect without progress indicator
+                client = meshtastic.tcp_interface.TCPInterface(hostname=target_host)
+            else:
+                logger.exception(f"Unknown connection type: {connection_type}")
+                return None
+
+            successful = True
+
+            # Acquire lock only for the final setup and subscription
+            with meshtastic_lock:
+                meshtastic_client = client
                 nodeInfo = meshtastic_client.getMyNodeInfo()
 
                 # Safely access node info fields
@@ -408,43 +407,43 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                     subscribed_to_connection_lost = True
                     logger.debug("Subscribed to meshtastic.connection.lost")
 
-            except (TimeoutError, ConnectionRefusedError, MemoryError) as e:
-                # Handle critical errors that should not be retried
-                logger.error(f"Critical connection error: {e}")
+        except (TimeoutError, ConnectionRefusedError, MemoryError) as e:
+            # Handle critical errors that should not be retried
+            logger.exception(f"Critical connection error: {e}")
+            return None
+        except (serial.SerialException, BleakDBusError, BleakError) as e:
+            # Handle specific connection errors
+            if shutting_down:
+                logger.debug("Shutdown in progress. Aborting connection attempts.")
+                break
+            attempts += 1
+            if retry_limit == 0 or attempts <= retry_limit:
+                wait_time = min(
+                    2**attempts, 60
+                )  # Consistent exponential backoff, capped at 60s
+                logger.warning(
+                    f"Connection attempt {attempts} failed: {e}. Retrying in {wait_time} seconds..."
+                )
+                time.sleep(wait_time)
+            else:
+                logger.exception(f"Connection failed after {attempts} attempts: {e}")
                 return None
-            except (serial.SerialException, BleakDBusError, BleakError) as e:
-                # Handle specific connection errors
-                if shutting_down:
-                    logger.debug("Shutdown in progress. Aborting connection attempts.")
-                    break
-                attempts += 1
-                if retry_limit == 0 or attempts <= retry_limit:
-                    wait_time = min(
-                        2**attempts, 60
-                    )  # Consistent exponential backoff, capped at 60s
-                    logger.warning(
-                        f"Connection attempt {attempts} failed: {e}. Retrying in {wait_time} seconds..."
-                    )
-                    time.sleep(wait_time)
-                else:
-                    logger.error(f"Connection failed after {attempts} attempts: {e}")
-                    return None
-            except Exception as e:
-                if shutting_down:
-                    logger.debug("Shutdown in progress. Aborting connection attempts.")
-                    break
-                attempts += 1
-                if retry_limit == 0 or attempts <= retry_limit:
-                    wait_time = min(
-                        2**attempts, 60
-                    )  # Consistent exponential backoff, capped at 60s
-                    logger.warning(
-                        f"An unexpected error occurred on attempt {attempts}: {e}. Retrying in {wait_time} seconds..."
-                    )
-                    time.sleep(wait_time)
-                else:
-                    logger.error(f"Connection failed after {attempts} attempts: {e}")
-                    return None
+        except Exception as e:
+            if shutting_down:
+                logger.debug("Shutdown in progress. Aborting connection attempts.")
+                break
+            attempts += 1
+            if retry_limit == 0 or attempts <= retry_limit:
+                wait_time = min(
+                    2**attempts, 60
+                )  # Consistent exponential backoff, capped at 60s
+                logger.warning(
+                    f"An unexpected error occurred on attempt {attempts}: {e}. Retrying in {wait_time} seconds..."
+                )
+                time.sleep(wait_time)
+            else:
+                logger.exception(f"Connection failed after {attempts} attempts: {e}")
+                return None
 
     return meshtastic_client
 
@@ -513,26 +512,32 @@ async def reconnect():
 
                 # Show reconnection countdown with Rich (if not in a service)
                 if not is_running_as_service():
-                    from rich.progress import (
-                        BarColumn,
-                        Progress,
-                        TextColumn,
-                        TimeRemainingColumn,
-                    )
-
-                    with Progress(
-                        TextColumn("[cyan]Meshtastic: Reconnecting in"),
-                        BarColumn(),
-                        TextColumn("[cyan]{task.percentage:.0f}%"),
-                        TimeRemainingColumn(),
-                        transient=True,
-                    ) as progress:
-                        task = progress.add_task("Waiting", total=backoff_time)
-                        for _ in range(backoff_time):
-                            if shutting_down:
-                                break
-                            await asyncio.sleep(1)
-                            progress.update(task, advance=1)
+                    try:
+                        from rich.progress import (
+                            BarColumn,
+                            Progress,
+                            TextColumn,
+                            TimeRemainingColumn,
+                        )
+                    except ImportError:
+                        logger.debug(
+                            "Rich not available; falling back to simple reconnection delay"
+                        )
+                        await asyncio.sleep(backoff_time)
+                    else:
+                        with Progress(
+                            TextColumn("[cyan]Meshtastic: Reconnecting in"),
+                            BarColumn(),
+                            TextColumn("[cyan]{task.percentage:.0f}%"),
+                            TimeRemainingColumn(),
+                            transient=True,
+                        ) as progress:
+                            task = progress.add_task("Waiting", total=backoff_time)
+                            for _ in range(backoff_time):
+                                if shutting_down:
+                                    break
+                                await asyncio.sleep(1)
+                                progress.update(task, advance=1)
                 else:
                     await asyncio.sleep(backoff_time)
                 if shutting_down:
@@ -548,10 +553,10 @@ async def reconnect():
                 if meshtastic_client:
                     logger.info("Reconnected successfully.")
                     break
-            except Exception as e:
+            except Exception:
                 if shutting_down:
                     break
-                logger.error(f"Reconnection attempt failed: {e}")
+                logger.exception("Reconnection attempt failed")
                 backoff_time = min(backoff_time * 2, 300)  # Cap backoff at 5 minutes
     except asyncio.CancelledError:
         logger.info("Reconnection task was cancelled.")
@@ -833,8 +838,8 @@ def on_meshtastic_message(packet, interface):
                     found_matching_plugin = result.result()
                     if found_matching_plugin:
                         logger.debug(f"Processed by plugin {plugin.plugin_name}")
-                except Exception as e:
-                    logger.error(f"Plugin {plugin.plugin_name} failed: {e}")
+                except Exception:
+                    logger.exception(f"Plugin {plugin.plugin_name} failed")
                     # Continue processing other plugins
 
         # If message is a DM or handled by plugin, do not relay further
@@ -873,8 +878,8 @@ def on_meshtastic_message(packet, interface):
                         ),
                         loop=loop,
                     )
-                except Exception as e:
-                    logger.error(f"Error relaying message to Matrix: {e}")
+                except Exception:
+                    logger.exception("Error relaying message to Matrix")
     else:
         # Non-text messages via plugins
         portnum = decoded.get("portnum")
@@ -899,22 +904,25 @@ def on_meshtastic_message(packet, interface):
                         logger.debug(
                             f"Processed {portnum} with plugin {plugin.plugin_name}"
                         )
-                except Exception as e:
-                    logger.error(f"Plugin {plugin.plugin_name} failed: {e}")
+                except Exception:
+                    logger.exception(f"Plugin {plugin.plugin_name} failed")
                     # Continue processing other plugins
 
 
 async def check_connection():
     """
-    Periodically verify Meshtastic connection health and trigger reconnection when the device is unresponsive.
-
-    Checks run continuously until shutdown. Behavior:
-    - Controlled by config['meshtastic']['health_check']:
-      - 'enabled' (bool, default True) — enable/disable periodic checks.
-      - 'heartbeat_interval' (int, seconds, default 60) — check interval. Backwards-compatible: if 'heartbeat_interval' exists directly under config['meshtastic'], that value is used.
-    - For non-BLE connections, calls _get_device_metadata(client). If metadata parsing fails, performs a fallback probe via client.getMyNodeInfo(); if both fail, on_lost_meshtastic_connection(...) is invoked to start reconnection.
-    - BLE connections are excluded from periodic checks because the underlying library detects disconnections in real time.
-    - No return value; runs as a background coroutine until global shutting_down is True.
+    Periodically verify the Meshtastic connection and initiate a reconnect when the device appears unresponsive.
+    
+    Runs until the module-level shutting_down flag becomes True. Behavior:
+    - Controlled by config["meshtastic"]["health_check"]:
+      - "enabled" (bool, default True) — enable/disable periodic checks.
+      - "heartbeat_interval" (int, seconds, default 60) — interval between checks.
+      - Backward compatibility: if "heartbeat_interval" exists directly under config["meshtastic"], that value is used.
+    - BLE connections are excluded from periodic checks (Bleak provides real-time disconnect detection).
+    - For non-BLE connections:
+      - Calls _get_device_metadata(client) in an executor; if metadata parsing fails, performs a fallback probe via client.getMyNodeInfo().
+      - If both probes fail and no reconnection is currently in progress, calls on_lost_meshtastic_connection(...) to start a reconnection.
+    No return value; side effect is scheduling/triggering reconnection when the device is unresponsive.
     """
     global meshtastic_client, shutting_down, config
 
@@ -953,12 +961,17 @@ async def check_connection():
                     ble_skip_logged = True
             else:
                 try:
-                    # Use helper function to get device metadata
-                    metadata = _get_device_metadata(meshtastic_client)
+                    loop = asyncio.get_running_loop()
+                    # Use helper function to get device metadata, run in executor
+                    metadata = await loop.run_in_executor(
+                        None, _get_device_metadata, meshtastic_client
+                    )
                     if not metadata["success"]:
                         # Fallback probe: device responding at all?
                         try:
-                            _ = meshtastic_client.getMyNodeInfo()
+                            _ = await loop.run_in_executor(
+                                None, meshtastic_client.getMyNodeInfo
+                            )
                         except Exception as probe_err:
                             raise Exception(
                                 "Metadata and nodeInfo probes failed"
@@ -1000,24 +1013,22 @@ def sendTextReply(
     channelIndex: int = 0,
 ):
     """
-    Sends a text message as a reply to a specific previous message via the Meshtastic interface.
-
+    Send a text reply referencing a previous Meshtastic message.
+    
+    Creates a Data payload with the given text and reply_id, wraps it in a MeshPacket on the specified channel, and sends it via the provided Meshtastic interface. Returns the sent MeshPacket (as returned by the interface) or None if the interface is unavailable or sending fails.
+    
     Parameters:
-        interface: The Meshtastic interface to send through.
-        text (str): The message content to send.
-        reply_id (int): The ID of the message being replied to.
-        destinationId: The recipient address (defaults to broadcast).
-        wantAck (bool): Whether to request acknowledgment for the message.
-        channelIndex (int): The channel index to send the message on.
-
-    Returns:
-        The sent MeshPacket with its ID field populated, or None if sending fails or the interface is unavailable.
+        text (str): UTF-8 text to send.
+        reply_id (int): ID of the message being replied to.
+        destinationId (int|str, optional): Recipient address; defaults to broadcast.
+        wantAck (bool, optional): If True, request an acknowledgement for the packet.
+        channelIndex (int, optional): Channel index to send the packet on.
     """
     logger.debug(f"Sending text reply: '{text}' replying to message ID {reply_id}")
 
     # Check if interface is available
     if interface is None:
-        logger.error("No Meshtastic interface available for sending reply")
+        logger.exception("No Meshtastic interface available for sending reply")
         return None
 
     # Create the Data protobuf message with reply_id set
@@ -1037,8 +1048,8 @@ def sendTextReply(
         return interface._sendPacket(
             mesh_packet, destinationId=destinationId, wantAck=wantAck
         )
-    except Exception as e:
-        logger.error(f"Failed to send text reply: {e}")
+    except Exception:
+        logger.exception("Failed to send text reply")
         return None
 
 

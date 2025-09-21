@@ -1047,7 +1047,10 @@ class TestConfigChecker(unittest.TestCase):
         mock_parse_args,
     ):
         """
-        Test that check_config returns False and prints an error message for a general exception.
+        Ensure check_config handles unexpected exceptions by returning False and printing the error to stderr.
+        
+        Simulates validate_yaml raising Exception("General error") and verifies that check_config() returns False and that the message
+        "Error checking configuration: General error" is printed to sys.stderr.
         """
         mock_parse_args.return_value = self.mock_args
         mock_get_paths.return_value = ["/test/config.yaml"]
@@ -1057,7 +1060,9 @@ class TestConfigChecker(unittest.TestCase):
         result = check_config()
 
         self.assertFalse(result)
-        mock_print.assert_any_call("Error checking configuration: General error")
+        mock_print.assert_any_call(
+            "Error checking configuration: General error", file=sys.stderr
+        )
 
 
 if __name__ == "__main__":
