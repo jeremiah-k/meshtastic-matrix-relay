@@ -199,15 +199,49 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
 
         mock_interface = MagicMock()
 
+        from concurrent.futures import Future
+
+        def _submit_coro_mock(coro, loop=None):
+            """Mock _submit_coro that executes the coroutine and returns a future."""
+            f = Future()
+            try:
+                # Execute the coroutine to trigger the exception
+                result = asyncio.run(coro)
+                f.set_result(result)
+            except Exception as e:
+                f.set_exception(e)
+            return f
+
         with patch("mmrelay.plugin_loader.load_plugins") as mock_load_plugins, patch(
             "mmrelay.meshtastic_utils._submit_coro"
         ) as mock_submit_coro, patch("mmrelay.meshtastic_utils.logger") as mock_logger:
             mock_plugin = MagicMock()
+            mock_plugin.plugin_name = "test_plugin"
             mock_plugin.handle_meshtastic_message = AsyncMock(
                 side_effect=Exception("Plugin failed")
             )
             mock_load_plugins.return_value = [mock_plugin]
-            mock_submit_coro.side_effect = Exception("Plugin failed")
+            mock_submit_coro.side_effect = _submit_coro_mock
+
+            # Set up required globals for the function to reach plugin processing
+            import mmrelay.meshtastic_utils
+            mmrelay.meshtastic_utils.config = {
+                "matrix": {"homeserver": "test"},
+                "meshtastic": {
+                    "meshnet_name": "test_meshnet",
+                    "message_interactions": {
+                        "reactions": True,
+                        "replies": True
+                    }
+                }
+            }
+            # Set up matrix_rooms to map channel 0 so the message is processed
+            mmrelay.meshtastic_utils.matrix_rooms = [
+                {"meshtastic_channel": 0, "matrix_room_id": "!test:example.com"}
+            ]
+            mmrelay.meshtastic_utils.event_loop = MagicMock()
+            # Mock the interface myInfo to avoid direct message detection
+            mock_interface.myInfo.my_node_num = 999999
 
             on_meshtastic_message(packet, mock_interface)
             mock_logger.exception.assert_called()
@@ -234,12 +268,25 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         with patch("mmrelay.plugin_loader.load_plugins", return_value=[]), patch(
             "mmrelay.meshtastic_utils._submit_coro"
         ) as mock_submit_coro, patch(
-            "mmrelay.matrix_utils.matrix_relay", new_callable=AsyncMock
+            "mmrelay.matrix_utils.matrix_relay"
         ) as mock_matrix_relay, patch(
             "mmrelay.meshtastic_utils.logger"
         ) as mock_logger:
+            # Set up required globals for the function to run
+            import mmrelay.meshtastic_utils
+            mmrelay.meshtastic_utils.config = {
+                "matrix": {"homeserver": "test"},
+                "meshtastic": {
+                    "meshnet_name": "test_meshnet",
+                    "message_interactions": {
+                        "reactions": True,
+                        "replies": True
+                    }
+                }
+            }
+            mmrelay.meshtastic_utils.event_loop = MagicMock()
+
             mock_submit_coro.side_effect = Exception("Matrix relay failed")
-            mock_matrix_relay.side_effect = Exception("Matrix relay failed")
             on_meshtastic_message(packet, mock_interface)
             mock_logger.exception.assert_called()
 

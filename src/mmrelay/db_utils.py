@@ -88,7 +88,13 @@ def get_db_path():
                 # Ensure the directory exists
                 db_dir = os.path.dirname(custom_path)
                 if db_dir:
-                    os.makedirs(db_dir, exist_ok=True)
+                    try:
+                        os.makedirs(db_dir, exist_ok=True)
+                    except (OSError, PermissionError) as e:
+                        logger.warning(
+                            f"Could not create database directory {db_dir}: {e}"
+                        )
+                        # Continue anyway - the database connection will fail later if needed
 
                 # Cache the path and log only once
                 _cached_db_path = custom_path
@@ -102,7 +108,13 @@ def get_db_path():
     # Use the standard data directory
     data_dir = get_data_dir()
     # Ensure the data directory exists before using it
-    os.makedirs(data_dir, exist_ok=True)
+    try:
+        os.makedirs(data_dir, exist_ok=True)
+    except (OSError, PermissionError) as e:
+        logger.warning(
+            f"Could not create data directory {data_dir}: {e}"
+        )
+        # Continue anyway - the database connection will fail later if needed
     default_path = os.path.join(data_dir, "meshtastic.sqlite")
     _cached_db_path = default_path
     return default_path
@@ -162,7 +174,7 @@ def initialize_database():
                 # Index creation failed, continue without it
                 pass
     except sqlite3.Error:
-        logger.exception("Database initialization failed")
+        logger.error("Database initialization failed")
         raise
 
 

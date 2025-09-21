@@ -383,7 +383,7 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                     hostname=target_host
                 )
             else:
-                logger.error(f"Unknown connection type: {connection_type}")
+                logger.exception(f"Unknown connection type: {connection_type}")
                 return None
 
             successful = True
@@ -427,7 +427,7 @@ def connect_meshtastic(passed_config=None, force_connect=False):
 
         except (TimeoutError, ConnectionRefusedError, MemoryError) as e:
             # Handle critical errors that should not be retried
-            logger.error(f"Critical connection error: {e}")
+            logger.exception(f"Critical connection error: {e}")
             return None
         except (serial.SerialException, BleakDBusError, BleakError) as e:
             # Handle specific connection errors
@@ -444,7 +444,7 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                 )
                 time.sleep(wait_time)
             else:
-                logger.error(f"Connection failed after {attempts} attempts: {e}")
+                logger.exception(f"Connection failed after {attempts} attempts: {e}")
                 return None
         except Exception as e:
             if shutting_down:
@@ -460,7 +460,7 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                 )
                 time.sleep(wait_time)
             else:
-                logger.error(f"Connection failed after {attempts} attempts: {e}")
+                logger.exception(f"Connection failed after {attempts} attempts: {e}")
                 return None
 
     return meshtastic_client
@@ -1034,7 +1034,7 @@ def sendTextReply(
 
     # Check if interface is available
     if interface is None:
-        logger.error("No Meshtastic interface available for sending reply")
+        logger.exception("No Meshtastic interface available for sending reply")
         return None
 
     # Create the Data protobuf message with reply_id set

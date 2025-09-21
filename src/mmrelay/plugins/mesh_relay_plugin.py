@@ -96,7 +96,7 @@ class Plugin(BasePlugin):
             meshnet_name (str): Name of the mesh network
 
         Returns:
-            bool: Always returns False to allow other plugins to process the same packet
+            None: Returns None when message is not processed, None when processed
 
         Processes the packet by normalizing and preparing it, connects to the Matrix client,
         checks if the meshtastic channel is mapped to a Matrix room based on config,
@@ -123,7 +123,7 @@ class Plugin(BasePlugin):
 
         if not channel_mapped:
             self.logger.debug(f"Skipping message from unmapped channel {channel}")
-            return False
+            return None
 
         await matrix_client.room_send(
             room_id=room["id"],
@@ -136,7 +136,7 @@ class Plugin(BasePlugin):
             },
         )
 
-        return False
+        return None
 
     def matches(self, event):
         """Check if Matrix event is a relayed radio packet.
@@ -168,7 +168,7 @@ class Plugin(BasePlugin):
             full_message (str): Raw message body text
 
         Returns:
-            bool: True if packet relaying succeeded, False otherwise
+            None: Returns None when message is not processed, None when processed
 
         Checks if the Matrix event matches the expected embedded packet format,
         retrieves the packet JSON, decodes it, reconstructs a MeshPacket,
@@ -187,18 +187,18 @@ class Plugin(BasePlugin):
 
         if channel is None:
             self.logger.debug(f"Skipping message from unmapped channel {channel}")
-            return False
+            return None
 
         packet_json = event.source["content"].get("meshtastic_packet")
         if not packet_json:
             self.logger.debug("Missing embedded packet")
-            return False
+            return None
 
         try:
             packet = json.loads(packet_json)
         except (json.JSONDecodeError, TypeError) as e:
-            self.logger.error(f"Error processing embedded packet: {e}")
-            return False
+            self.logger.exception(f"Error processing embedded packet: {e}")
+            return None
 
         from mmrelay.meshtastic_utils import connect_meshtastic
 
@@ -215,4 +215,4 @@ class Plugin(BasePlugin):
         meshtastic_client._sendPacket(
             meshPacket=meshPacket, destinationId=packet["toId"]
         )
-        return True
+        return None
