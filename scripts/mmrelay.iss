@@ -25,8 +25,6 @@ Filename: "{app}\mmrelay.bat"; Description: "Launch MM Relay"; Flags: nowait pos
 [Code]
 var
   OverwriteConfig: TInputOptionWizardPage;
-  ConnectionTypePage: TInputOptionWizardPage;
-  ConnectionTypeLabel: TLabel;
   ConnectionTypeCombo: TNewComboBox;
   MatrixPage: TInputQueryWizardPage;
   MatrixMeshtasticPage: TInputQueryWizardPage;
@@ -39,10 +37,7 @@ begin
   OverwriteConfig := CreateInputOptionPage(wpWelcome,
     'Configure the relay', 'Create new configuration',
     '', False, False);
-  ConnectionTypePage := CreateInputOptionPage(OverwriteConfig.ID,
-      'Meshtastic Connection Type', 'Select Connection Type',
-      'Select the connection type for your Meshtastic radio.', False, True);
-  MeshtasticPage := CreateInputQueryPage(ConnectionTypePage.ID,
+  MeshtasticPage := CreateInputQueryPage(OverwriteConfig.ID,
       'Meshtastic Setup', 'Configure Meshtastic Settings',
       'Enter the settings for connecting with your Meshtastic radio.');
   MatrixPage := CreateInputQueryPage(MeshtasticPage.ID,
@@ -61,34 +56,33 @@ begin
   OverwriteConfig.Add('Generate configuration (overwrite any current config files)');
   OverwriteConfig.Values[0] := False;
 
-  // Create connection type dropdown
-  ConnectionTypeLabel := TLabel.Create(WizardForm);
-  ConnectionTypeLabel.Parent := ConnectionTypePage.Surface;
-  ConnectionTypeLabel.Left := 0;
-  ConnectionTypeLabel.Top := 0;
-  ConnectionTypeLabel.Caption := 'Connection Type:';
-  ConnectionTypeLabel.Font.Style := [fsBold];
+  MeshtasticPage.Add('Connection type:', False);
+  MeshtasticPage.Add('Serial port (if serial):', False);
+  MeshtasticPage.Add('Hostname/IP (if network):', False);
+  MeshtasticPage.Add('BLE address/name (if ble):', False);
+  MeshtasticPage.Add('Meshnet name:', False);
 
+  MeshtasticPage.Edits[0].Hint := 'Select connection type from dropdown';
+  MeshtasticPage.Edits[1].Hint := 'COM3, /dev/ttyUSB0, etc.';
+  MeshtasticPage.Edits[2].Hint := '192.168.1.100, meshtastic.local, etc.';
+  MeshtasticPage.Edits[3].Hint := 'BLE address or device name';
+  MeshtasticPage.Edits[4].Hint := 'Name for radio Meshnet';
+
+  // Create connection type dropdown to replace the first edit field
   ConnectionTypeCombo := TNewComboBox.Create(WizardForm);
-  ConnectionTypeCombo.Parent := ConnectionTypePage.Surface;
-  ConnectionTypeCombo.Left := 0;
-  ConnectionTypeCombo.Top := ConnectionTypeLabel.Top + ConnectionTypeLabel.Height + 8;
-  ConnectionTypeCombo.Width := 300;
+  ConnectionTypeCombo.Parent := MeshtasticPage.Surface;
+  ConnectionTypeCombo.Left := MeshtasticPage.Edits[0].Left;
+  ConnectionTypeCombo.Top := MeshtasticPage.Edits[0].Top;
+  ConnectionTypeCombo.Width := MeshtasticPage.Edits[0].Width;
   ConnectionTypeCombo.Style := csDropDownList;
 
   ConnectionTypeCombo.Items.Add('Network connection (TCP/IP)');
   ConnectionTypeCombo.Items.Add('Serial connection (USB/Serial)');
   ConnectionTypeCombo.Items.Add('Bluetooth Low Energy (BLE)');
   ConnectionTypeCombo.ItemIndex := 0; // Default to network
-  MeshtasticPage.Add('Serial port (if serial):', False);
-  MeshtasticPage.Add('Hostname/IP (if network):', False);
-  MeshtasticPage.Add('BLE address/name (if ble):', False);
-  MeshtasticPage.Add('Meshnet name:', False);
 
-  MeshtasticPage.Edits[0].Hint := 'COM3, /dev/ttyUSB0, etc.';
-  MeshtasticPage.Edits[1].Hint := '192.168.1.100, meshtastic.local, etc.';
-  MeshtasticPage.Edits[2].Hint := 'BLE address or device name';
-  MeshtasticPage.Edits[3].Hint := 'Name for radio Meshnet';
+  // Hide the original edit field for connection type since we're replacing it with dropdown
+  MeshtasticPage.Edits[0].Visible := False;
 
   MatrixPage.Add('Matrix homeserver URL (e.g., https://matrix.org):', False);
   MatrixPage.Add('Matrix username (without @):', False);
@@ -162,9 +156,9 @@ begin
   else
     connection_type := 'network'; // fallback
 
-  serial_port := MeshtasticPage.Values[0];
-  host := MeshtasticPage.Values[1];
-  ble_address := MeshtasticPage.Values[2];
+  serial_port := MeshtasticPage.Values[1];
+  host := MeshtasticPage.Values[2];
+  ble_address := MeshtasticPage.Values[3];
   matrix_homeserver := MatrixPage.Values[0];
   matrix_username := MatrixPage.Values[1];
   matrix_password := MatrixPage.Values[2];
@@ -195,7 +189,7 @@ begin
   else if connection_type = 'ble' then
     config := config + '  ble_address: "' + ble_address + '"' + #13#10;
 
-  config := config + '  meshnet_name: "' + MeshtasticPage.Values[3] + '"' + #13#10 +
+  config := config + '  meshnet_name: "' + MeshtasticPage.Values[4] + '"' + #13#10 +
             '  broadcast_enabled: ' + BoolToStr(OptionsPage.Values[1]) + #13#10 +
             'logging:' + #13#10 +
             '  level: "' + log_level + '"' + #13#10 +
