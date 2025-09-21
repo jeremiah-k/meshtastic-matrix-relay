@@ -303,7 +303,7 @@ class Plugin:
         with patch("mmrelay.plugin_loader.logger") as mock_logger:
             plugins = load_plugins(None)
             self.assertEqual(plugins, [])
-            mock_logger.exception.assert_called()
+            mock_logger.error.assert_called()
 
     def test_load_plugins_empty_config(self):
         """

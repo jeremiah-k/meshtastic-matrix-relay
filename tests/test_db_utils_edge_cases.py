@@ -99,7 +99,7 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
                 # Should raise exception on connection failure (fail fast)
                 with self.assertRaises(sqlite3.Error):
                     initialize_database()
-                mock_logger.error.assert_called()
+                mock_logger.exception.assert_called()
 
     def test_initialize_database_corrupted_database(self):
         """

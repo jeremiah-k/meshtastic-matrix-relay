@@ -1279,7 +1279,7 @@ class TestMainAsyncFunction(unittest.TestCase):
             "meshtastic": {"connection_type": "serial"},
         }
 
-        with patch("mmrelay.main.asyncio.get_event_loop") as mock_get_loop, patch(
+        with patch("mmrelay.main.asyncio.get_running_loop") as mock_get_loop, patch(
             "mmrelay.main.initialize_database", side_effect=KeyboardInterrupt
         ), patch("mmrelay.main.load_plugins"), patch(
             "mmrelay.main.start_message_queue"
