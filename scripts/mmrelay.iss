@@ -5,8 +5,8 @@
 
 AppName=MMRelay
 AppVersion={#AppVersion}
-DefaultDirName={userpf}\MMRelay
-DefaultGroupName=MMRelay
+DefaultDirName={userpf}\MM Relay
+DefaultGroupName=MM Relay
 UninstallFilesDir={app}
 OutputDir=.
 OutputBaseFilename=MMRelay_setup_{#AppVersion}
@@ -16,11 +16,11 @@ PrivilegesRequiredOverridesAllowed=dialog commandline
 Source: "..\dist\mmrelay.exe"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs; AfterInstall: AfterInstall(ExpandConstant('{app}'));
 
 [Icons]
-Name: "{group}\MMRelay"; Filename: "{app}\mmrelay.bat"
-Name: "{group}\MMRelay Config"; Filename: "{app}\config.yaml"; IconFilename: "{sys}\notepad.exe"; WorkingDir: "{app}"; Parameters: "config.yaml";
+Name: "{group}\MM Relay"; Filename: "{app}\mmrelay.bat"
+Name: "{group}\MM Relay Config"; Filename: "{app}\config.yaml"; IconFilename: "{sys}\notepad.exe"; WorkingDir: "{app}"; Parameters: "config.yaml";
 
 [Run]
-Filename: "{app}\mmrelay.bat"; Description: "Launch MMRelay"; Flags: nowait postinstall
+Filename: "{app}\mmrelay.bat"; Description: "Launch MM Relay"; Flags: nowait postinstall
 
 [Code]
 var
