@@ -970,12 +970,17 @@ async def check_connection():
                     ble_skip_logged = True
             else:
                 try:
-                    # Use helper function to get device metadata
-                    metadata = _get_device_metadata(meshtastic_client)
+                    loop = asyncio.get_running_loop()
+                    # Use helper function to get device metadata, run in executor
+                    metadata = await loop.run_in_executor(
+                        None, _get_device_metadata, meshtastic_client
+                    )
                     if not metadata["success"]:
                         # Fallback probe: device responding at all?
                         try:
-                            _ = meshtastic_client.getMyNodeInfo()
+                            _ = await loop.run_in_executor(
+                                None, meshtastic_client.getMyNodeInfo
+                            )
                         except Exception as probe_err:
                             raise Exception(
                                 "Metadata and nodeInfo probes failed"

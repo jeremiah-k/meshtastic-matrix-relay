@@ -1914,19 +1914,23 @@ async def matrix_relay(
             and hasattr(response, "event_id")
         ):
             try:
-                # Store the message map
-                store_message_map(
-                    meshtastic_id,
-                    response.event_id,
-                    room_id,
-                    meshtastic_text if meshtastic_text else message,
-                    meshtastic_meshnet=local_meshnet_name,
+                loop = asyncio.get_running_loop()
+                # Store the message map in executor
+                await loop.run_in_executor(
+                    None,
+                    lambda: store_message_map(
+                        meshtastic_id,
+                        response.event_id,
+                        room_id,
+                        meshtastic_text if meshtastic_text else message,
+                        meshtastic_meshnet=local_meshnet_name,
+                    ),
                 )
                 logger.debug(f"Stored message map for meshtastic_id: {meshtastic_id}")
 
                 # If msgs_to_keep > 0, prune old messages after inserting a new one
                 if msgs_to_keep > 0:
-                    prune_message_map(msgs_to_keep)
+                    await loop.run_in_executor(None, prune_message_map, msgs_to_keep)
             except Exception as e:
                 logger.error(f"Error storing message map: {e}")
 
@@ -2029,7 +2033,8 @@ async def send_reply_to_meshtastic(
         - The function logs errors and does not raise; actual transmission is handled asynchronously by the Meshtastic queue system.
         - Mapping creation uses configured limits (msgs_to_keep) and _create_mapping_info; if mapping creation fails, the message is still attempted without mapping.
     """
-    meshtastic_interface = connect_meshtastic()
+    loop = asyncio.get_running_loop()
+    meshtastic_interface = await loop.run_in_executor(None, connect_meshtastic)
     from mmrelay.meshtastic_utils import logger as meshtastic_logger
 
     meshtastic_channel = room_config["meshtastic_channel"]
@@ -2134,7 +2139,10 @@ async def handle_matrix_reply(
         bool: True if the reply was relayed to Meshtastic, False otherwise.
     """
     # Look up the original message in the message map
-    orig = get_message_map_by_matrix_event_id(reply_to_event_id)
+    loop = asyncio.get_running_loop()
+    orig = await loop.run_in_executor(
+        None, get_message_map_by_matrix_event_id, reply_to_event_id
+    )
     if not orig:
         logger.debug(
             f"Original message for Matrix reply not found in DB: {reply_to_event_id}"
