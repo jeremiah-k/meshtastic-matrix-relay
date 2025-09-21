@@ -236,8 +236,10 @@ class Plugin:
         with open(plugin_file, "w", encoding="utf-8") as handle:
             handle.write(plugin_content)
 
-        def fake_check_call(cmd, *args, **kwargs):  # nosec B603
-            with open(os.path.join(user_site, "mockdep.py"), "w", encoding="utf-8") as dep:
+        def fake_check_call(_cmd, *_args, **_kwargs):  # nosec B603
+            with open(
+                os.path.join(user_site, "mockdep.py"), "w", encoding="utf-8"
+            ) as dep:
                 dep.write("VALUE = 1\n")
             return 0
 

@@ -1,5 +1,6 @@
 # trunk-ignore-all(bandit)
 import hashlib
+import importlib
 import importlib.util
 import os
 import site
@@ -54,8 +55,14 @@ def _refresh_dependency_paths() -> None:
         if path not in sys.path:
             try:
                 site.addsitedir(path)
-            except (OSError, RuntimeError):
+            except OSError as e:
+                logger.warning(
+                    f"site.addsitedir failed for '{path}': {e}. Falling back to sys.path.append."
+                )
                 sys.path.append(path)
+
+    # Ensure import machinery notices new packages
+    importlib.invalidate_caches()
 
 
 def _get_plugin_dirs(plugin_type):

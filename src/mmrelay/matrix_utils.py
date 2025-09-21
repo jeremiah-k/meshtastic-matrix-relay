@@ -1597,14 +1597,18 @@ async def join_matrix_room(matrix_client, room_id_or_alias: str) -> None:
                 return
             room_id = response.room_id
 
-            for idx, entry in enumerate(matrix_rooms):
-                if isinstance(entry, dict) and entry.get("id") == room_id_or_alias:
-                    matrix_rooms[idx]["id"] = room_id
-                    break
-                if isinstance(entry, str) and entry == room_id_or_alias:
-                    matrix_rooms[idx] = room_id
-                    break
-
+            if not isinstance(matrix_rooms, list):
+                logger.debug(
+                    "matrix_rooms is not a list; skipping alias->id mapping update"
+                )
+            else:
+                for idx, entry in enumerate(matrix_rooms):
+                    if isinstance(entry, dict) and entry.get("id") == room_id_or_alias:
+                        matrix_rooms[idx]["id"] = room_id
+                        break
+                    elif isinstance(entry, str) and entry == room_id_or_alias:
+                        matrix_rooms[idx] = room_id
+                        break
             logger.info(
                 f"Resolved Matrix room alias '{room_id_or_alias}' to '{room_id}'"
             )
@@ -1615,10 +1619,10 @@ async def join_matrix_room(matrix_client, room_id_or_alias: str) -> None:
         if room_id not in matrix_client.rooms:
             response = await matrix_client.join(room_id)
             if response and hasattr(response, "room_id"):
-                logger.info(f"Joined room '{room_id_or_alias}' successfully")
+                logger.info(f"Joined room '{room_id}' successfully")
             else:
                 logger.error(
-                    f"Failed to join room '{room_id_or_alias}': {getattr(response, 'message', str(response))}"
+                    f"Failed to join room '{room_id}': {getattr(response, 'message', str(response))}"
                 )
         else:
             logger.debug(f"Bot is already in room '{room_id_or_alias}'")
