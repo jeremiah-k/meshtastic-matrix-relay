@@ -211,6 +211,60 @@ def some_function():
         plugins = load_plugins_from_directory(self.custom_dir)
         self.assertEqual(plugins, [])
 
+    def test_load_plugins_dependency_install_refreshes_path(self):
+        """Ensure dependency installs on user site become importable for plugins."""
+
+        for var in ("PIPX_HOME", "PIPX_LOCAL_VENVS"):
+            os.environ.pop(var, None)
+
+        user_site = os.path.join(self.test_dir, "user_site")
+        os.makedirs(user_site, exist_ok=True)
+
+        plugin_content = """
+import mockdep
+
+
+class Plugin:
+    def __init__(self):
+        self.plugin_name = "dep_plugin"
+        self.priority = 1
+
+    def start(self):
+        pass
+"""
+        plugin_file = os.path.join(self.custom_dir, "dep_plugin.py")
+        with open(plugin_file, "w", encoding="utf-8") as handle:
+            handle.write(plugin_content)
+
+        def fake_check_call(cmd, *args, **kwargs):  # nosec B603
+            with open(os.path.join(user_site, "mockdep.py"), "w", encoding="utf-8") as dep:
+                dep.write("VALUE = 1\n")
+            return 0
+
+        added_dirs = []
+
+        def fake_addsitedir(path):
+            added_dirs.append(path)
+            if path not in sys.path:
+                sys.path.insert(0, path)
+
+        with patch("mmrelay.plugin_loader.subprocess.check_call", side_effect=fake_check_call), patch(
+            "mmrelay.plugin_loader.site.getusersitepackages", return_value=[user_site]
+        ), patch("mmrelay.plugin_loader.site.getsitepackages", return_value=[]), patch(
+            "mmrelay.plugin_loader.site.addsitedir", side_effect=fake_addsitedir
+        ):
+            try:
+                plugins = load_plugins_from_directory(self.custom_dir)
+            finally:
+                sys.modules.pop("mockdep", None)
+                if user_site in sys.path:
+                    sys.path.remove(user_site)
+
+        self.assertEqual(len(plugins), 1)
+        self.assertEqual(plugins[0].plugin_name, "dep_plugin")
+        self.assertIn(user_site, added_dirs)
+        self.assertNotIn(self.custom_dir, sys.path)
+
     def test_load_plugins_from_directory_syntax_error(self):
         """
         Verify that loading plugins from a directory containing a Python file with a syntax error returns an empty list without raising exceptions.

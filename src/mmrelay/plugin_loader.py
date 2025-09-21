@@ -2,6 +2,7 @@
 import hashlib
 import importlib.util
 import os
+import site
 import subprocess
 import sys
 
@@ -25,6 +26,36 @@ def _reset_caches_for_tests():
     global sorted_active_plugins, plugins_loaded
     sorted_active_plugins = []
     plugins_loaded = False
+
+
+def _refresh_dependency_paths() -> None:
+    """Ensure newly installed packages are visible to the interpreter."""
+
+    candidate_paths = []
+
+    try:
+        user_site = site.getusersitepackages()
+        if isinstance(user_site, str):
+            candidate_paths.append(user_site)
+        else:
+            candidate_paths.extend(user_site)
+    except AttributeError:
+        pass
+
+    try:
+        site_packages = site.getsitepackages()
+        candidate_paths.extend(site_packages)
+    except AttributeError:
+        pass
+
+    for path in candidate_paths:
+        if not path:
+            continue
+        if path not in sys.path:
+            try:
+                site.addsitedir(path)
+            except (OSError, RuntimeError):
+                sys.path.append(path)
 
 
 def _get_plugin_dirs(plugin_type):
@@ -577,18 +608,11 @@ def load_plugins_from_directory(directory, recursive=False):
 
                         sys.modules["plugins"] = mmrelay.plugins
 
+                    plugin_dir = os.path.dirname(plugin_path)
+
                     try:
-                        # Add the plugin's directory to sys.path temporarily
-                        plugin_dir = os.path.dirname(plugin_path)
                         sys.path.insert(0, plugin_dir)
-
-                        # Execute the module
                         spec.loader.exec_module(plugin_module)
-
-                        # Remove the plugin directory from sys.path
-                        if plugin_dir in sys.path:
-                            sys.path.remove(plugin_dir)
-
                         if hasattr(plugin_module, "Plugin"):
                             plugins.append(plugin_module.Plugin())
                         else:
@@ -633,9 +657,12 @@ def load_plugins_from_directory(directory, recursive=False):
                             logger.info(
                                 f"Successfully installed {missing_module}, retrying plugin load"
                             )
+                            _refresh_dependency_paths()
 
                             # Try to load the module again
                             try:
+                                if plugin_dir not in sys.path:
+                                    sys.path.insert(0, plugin_dir)
                                 spec.loader.exec_module(plugin_module)
 
                                 if hasattr(plugin_module, "Plugin"):
@@ -671,6 +698,12 @@ def load_plugins_from_directory(directory, recursive=False):
                             )
                     except Exception:
                         logger.exception(f"Error loading plugin {plugin_path}")
+                    finally:
+                        if plugin_dir in sys.path:
+                            try:
+                                sys.path.remove(plugin_dir)
+                            except ValueError:
+                                pass
             if not recursive:
                 break
     else:

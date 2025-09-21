@@ -841,6 +841,19 @@ def test_format_reply_message_remote_without_longname():
     assert result == "Tr/Mt.P: Hi"
 
 
+def test_validate_matrix_room_ids_rejects_alias():
+    from mmrelay.matrix_utils import _validate_matrix_room_ids
+
+    with pytest.raises(ValueError):
+        _validate_matrix_room_ids([{"id": "#mesh:example.com"}])
+
+
+def test_validate_matrix_room_ids_accepts_room_id():
+    from mmrelay.matrix_utils import _validate_matrix_room_ids
+
+    _validate_matrix_room_ids([{"id": "!abc123:example.com"}])
+
+
 # Bot command detection tests - refactored to use test class with fixtures for better maintainability
 
 
