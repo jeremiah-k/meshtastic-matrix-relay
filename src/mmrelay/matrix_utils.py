@@ -211,6 +211,47 @@ def _can_auto_create_credentials(matrix_config: dict) -> bool:
     return all(isinstance(v, str) and v.strip() for v in (homeserver, user, password))
 
 
+def _normalize_bot_user_id(homeserver: str, bot_user_id: str) -> str:
+    """
+    Normalize the bot_user_id to ensure it's a full Matrix ID.
+
+    This function is forgiving with different bot_user_id formats:
+    - If it's already a full MXID (@user:server.com), return as-is
+    - If it starts with @ but no server (e.g., @relaybot), add the homeserver domain
+    - If it doesn't start with @ (e.g., relaybot), add @ prefix and homeserver domain
+
+    Parameters:
+        homeserver (str): The Matrix homeserver URL (e.g., "https://example.com")
+        bot_user_id (str): The bot user ID from config (various formats accepted)
+
+    Returns:
+        str: The normalized full Matrix ID (e.g., "@relaybot:example.com")
+    """
+    if not bot_user_id:
+        return bot_user_id
+
+    # Extract domain from homeserver URL
+    try:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(homeserver)
+        domain = parsed.netloc
+        if not domain:
+            domain = homeserver  # Fallback if parsing fails
+    except Exception:
+        domain = homeserver.replace("https://", "").replace("http://", "")
+
+    # Remove @ prefix if present for processing
+    user_part = bot_user_id[1:] if bot_user_id.startswith("@") else bot_user_id
+
+    # If it already contains a server part, return as-is
+    if ":" in user_part and user_part.split(":")[-1]:
+        return bot_user_id
+
+    # Construct the full MXID
+    return f"@{user_part}:{domain}"
+
+
 def _get_msgs_to_keep_config():
     """
     Return the configured number of Meshtastic–Matrix message mappings to retain.
@@ -244,12 +285,12 @@ def _get_msgs_to_keep_config():
 def _get_detailed_sync_error_message(sync_response) -> str:
     """
     Return a concise, user-facing explanation for why an initial Matrix sync failed.
-    
+
     Given a sync response or error object (commonly a nio ErrorResponse, an HTTP/transport error, raw bytes, or any object exposing `message`, `status_code`, or `transport_response`), extract the most specific human-readable reason available and map common HTTP/transport conditions to short, actionable messages (e.g., authentication failure, forbidden, not found, rate limited, server error). Falls back to a generic network/connectivity message when no specific detail can be reliably extracted.
-    
+
     Parameters:
         sync_response: The sync response or error object to summarize. May be bytes/bytearray, a nio ErrorResponse-like object, or any object with `message`, `status_code`, or `transport_response` attributes.
-    
+
     Returns:
         str: A short, user-focused error description suitable for logs and brief troubleshooting hints.
     """
@@ -713,6 +754,9 @@ async def connect_matrix(passed_config=None):
         matrix_section = config["matrix"]
         homeserver = matrix_section["homeserver"]
         username = matrix_section.get("bot_user_id") or matrix_section.get("user_id")
+        # Normalize the username to ensure it's a full MXID
+        if username:
+            username = _normalize_bot_user_id(homeserver, username)
         password = matrix_section["password"]
 
         # Attempt automatic login
@@ -778,7 +822,9 @@ async def connect_matrix(passed_config=None):
         # Extract Matrix configuration from config
         matrix_homeserver = matrix_section["homeserver"]
         matrix_access_token = matrix_section["access_token"]
-        bot_user_id = matrix_section["bot_user_id"]
+        bot_user_id = _normalize_bot_user_id(
+            matrix_homeserver, matrix_section["bot_user_id"]
+        )
 
         # Manual method does not support device_id - use auth system for E2EE
         e2ee_device_id = None
@@ -1037,16 +1083,22 @@ async def connect_matrix(passed_config=None):
 
             # Resolve room aliases before displaying mappings
             for room_config in matrix_rooms:
-                if isinstance(room_config, dict) and room_config.get("id", "").startswith("#"):
+                if isinstance(room_config, dict) and room_config.get(
+                    "id", ""
+                ).startswith("#"):
                     alias = room_config["id"]
                     logger.debug(f"Resolving alias from config: {alias}")
                     try:
                         response = await matrix_client.room_resolve_alias(alias)
                         if hasattr(response, "room_id") and response.room_id:
                             room_config["id"] = response.room_id
-                            logger.debug(f"Resolved alias {alias} to {response.room_id}")
+                            logger.debug(
+                                f"Resolved alias {alias} to {response.room_id}"
+                            )
                         else:
-                            logger.warning(f"Could not resolve alias {alias}: {response.message}")
+                            logger.warning(
+                                f"Could not resolve alias {alias}: {response.message}"
+                            )
                     except Exception:
                         logger.exception(f"Error resolving alias {alias}")
 
@@ -1940,16 +1992,16 @@ async def matrix_relay(
 def truncate_message(text, max_bytes=DEFAULT_MESSAGE_TRUNCATE_BYTES):
     """
     Truncate a string so its UTF-8 encoding fits within max_bytes.
-    
+
     Returns a substring whose UTF-8 byte length is at most `max_bytes`. If
     `max_bytes` falls in the middle of a multi-byte UTF-8 character, the
     incomplete character is dropped (decoding uses 'ignore').
-    
+
     Parameters:
         text (str): Input text to truncate.
         max_bytes (int): Maximum allowed size in bytes for the UTF-8 encoded result
             (defaults to DEFAULT_MESSAGE_TRUNCATE_BYTES).
-    
+
     Returns:
         str: Truncated string.
     """
@@ -2066,9 +2118,9 @@ async def send_reply_to_meshtastic(
 ):
     """
     Queue a Matrix-origin reply for transmission over Meshtastic, optionally targeting a specific Meshtastic message ID.
-    
+
     If Meshtastic broadcasting is disabled in configuration the function returns without action. When broadcasting is enabled this enqueues either a structured reply (if reply_id is provided) or a regular text broadcast. If storage_enabled is True, a mapping record linking the originating Matrix event to the Meshtastic message is created and attached to the queued item when possible.
-    
+
     Parameters:
         reply_message (str): Message text already formatted and truncated for Meshtastic.
         full_display_name (str): Human-readable sender name used in queue descriptions.
@@ -2079,7 +2131,7 @@ async def send_reply_to_meshtastic(
         storage_enabled (bool): If True, attempt to create and attach message-mapping metadata.
         local_meshnet_name (str | None): Optional meshnet identifier to include in mapping metadata.
         reply_id (int | None): Meshtastic message ID to target for a structured reply; if None, a regular broadcast is sent.
-    
+
     Behavior:
         - Uses the Meshtastic queue system to enqueue the message; does not perform the send synchronously.
         - On successful enqueue logs an informational message (includes queue size when >1); on failure logs an error.
@@ -2190,9 +2242,9 @@ async def handle_matrix_reply(
 ):
     """
     Relay a Matrix reply back to Meshtastic when a Meshtastic↔Matrix mapping exists.
-    
+
     Looks up the Meshtastic message mapped to the Matrix event being replied to; if a mapping is found, formats a Meshtastic reply that preserves the original sender attribution and queues it to be sent as a reply (using the original Meshtastic message ID). If no mapping exists the function returns False so normal Matrix processing can continue.
-    
+
     Returns:
         bool: True if the reply was relayed to Meshtastic (mapping found and queued), False if no mapping existed and no relay was performed.
     """

@@ -1,5 +1,4 @@
 import os
-import re
 import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -8,11 +7,8 @@ import pytest
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from mmrelay.cli_utils import _cleanup_local_session_data, logout_matrix_bot
-from mmrelay.config import get_e2ee_store_dir, load_credentials, save_credentials
 from mmrelay.matrix_utils import (
     _add_truncated_vars,
-    _can_auto_create_credentials,
     _create_mapping_info,
     _get_msgs_to_keep_config,
     bot_command,
@@ -21,17 +17,11 @@ from mmrelay.matrix_utils import (
     get_interaction_settings,
     get_matrix_prefix,
     get_meshtastic_prefix,
-    get_user_display_name,
     join_matrix_room,
-    login_matrix_bot,
-    matrix_relay,
     message_storage_enabled,
     on_room_message,
-    send_reply_to_meshtastic,
-    send_room_image,
     strip_quoted_lines,
     truncate_message,
-    upload_image,
     validate_prefix_format,
 )
 
@@ -841,34 +831,6 @@ def test_format_reply_message_remote_without_longname():
     assert result == "Tr/Mt.P: Hi"
 
 
-@pytest.mark.asyncio
-async def test_join_matrix_room_by_id(monkeypatch):
-    """Test joining a matrix room by ID."""
-    from mmrelay import matrix_utils
-
-    fake_client = MagicMock()
-    fake_client.rooms = {}
-    fake_client.join = AsyncMock(return_value=MagicMock(room_id="!room:matrix.org"))
-
-    await join_matrix_room(fake_client, "!room:matrix.org")
-
-    fake_client.join.assert_awaited_once_with("!room:matrix.org")
-
-
-@pytest.mark.asyncio
-async def test_join_matrix_room_already_joined(monkeypatch):
-    """Test joining a matrix room when already a member."""
-    from mmrelay import matrix_utils
-
-    fake_client = MagicMock()
-    fake_client.rooms = {"!room:matrix.org": MagicMock()}
-    fake_client.join = AsyncMock()
-
-    await join_matrix_room(fake_client, "!room:matrix.org")
-
-    fake_client.join.assert_not_awaited()
-
-
 # Bot command detection tests - refactored to use test class with fixtures for better maintainability
 
 
@@ -1079,3 +1041,326 @@ async def test_join_matrix_room_already_joined(mock_logger, mock_matrix_client):
     mock_logger.debug.assert_called_with(
         "Bot is already in room '!room:matrix.org', no action needed."
     )
+
+
+@patch("mmrelay.matrix_utils.matrix_client", None)
+@patch("mmrelay.matrix_utils.AsyncClient")
+@patch("mmrelay.matrix_utils.logger")
+@patch("mmrelay.matrix_utils.login_matrix_bot")
+@patch("mmrelay.matrix_utils.load_credentials")
+async def test_connect_matrix_alias_resolution_success(
+    mock_load_credentials, mock_login_bot, mock_logger, mock_async_client
+):
+    """
+    Test that connect_matrix successfully resolves room aliases to room IDs.
+    """
+    with patch("ssl.create_default_context") as mock_ssl_context:
+        # Mock SSL context creation
+        mock_ssl_context.return_value = MagicMock()
+
+        # Mock login_matrix_bot to return True (successful automatic login)
+        mock_login_bot.return_value = True
+
+        # Mock load_credentials to return valid credentials
+        mock_load_credentials.return_value = {
+            "homeserver": "https://matrix.org",
+            "access_token": "test_token",
+            "user_id": "@test:matrix.org",
+            "device_id": "test_device_id",
+        }
+
+        # Mock the AsyncClient instance
+        mock_client_instance = MagicMock()
+        mock_client_instance.rooms = {}
+
+        # Create proper async mock methods
+        async def mock_whoami():
+            return MagicMock(device_id="test_device_id")
+
+        async def mock_sync(*args, **kwargs):
+            return MagicMock()
+
+        async def mock_get_displayname(*args, **kwargs):
+            return MagicMock(displayname="Test Bot")
+
+        # Create a mock for room_resolve_alias that returns a proper response
+        mock_room_resolve_alias = MagicMock()
+
+        async def mock_room_resolve_alias_impl(alias):
+            response = MagicMock()
+            response.room_id = "!resolved:matrix.org"
+            response.message = ""
+            return response
+
+        mock_room_resolve_alias.side_effect = mock_room_resolve_alias_impl
+
+        mock_client_instance.whoami = mock_whoami
+        mock_client_instance.sync = mock_sync
+        mock_client_instance.get_displayname = mock_get_displayname
+        mock_client_instance.room_resolve_alias = mock_room_resolve_alias
+        mock_async_client.return_value = mock_client_instance
+
+        # Create config with room aliases
+        config = {
+            "matrix": {
+                "homeserver": "https://matrix.org",
+                "bot_user_id": "@test:matrix.org",
+                "password": "test_password",
+            },
+            "matrix_rooms": [
+                {"id": "#alias1:matrix.org", "channel": 1},
+                {"id": "#alias2:matrix.org", "channel": 2},
+            ],
+        }
+
+        result = await connect_matrix(config)
+
+        # Verify client was created
+        mock_async_client.assert_called_once()
+        assert result == mock_client_instance
+
+        # Verify alias resolution was called for both aliases
+        assert mock_client_instance.room_resolve_alias.call_count == 2
+        mock_client_instance.room_resolve_alias.assert_any_call("#alias1:matrix.org")
+        mock_client_instance.room_resolve_alias.assert_any_call("#alias2:matrix.org")
+
+        # Verify config was modified with resolved room IDs
+        assert config["matrix_rooms"][0]["id"] == "!resolved:matrix.org"
+        assert config["matrix_rooms"][1]["id"] == "!resolved:matrix.org"
+
+
+@patch("mmrelay.matrix_utils.matrix_client", None)
+@patch("mmrelay.matrix_utils.AsyncClient")
+@patch("mmrelay.matrix_utils.logger")
+@patch("mmrelay.matrix_utils.login_matrix_bot")
+@patch("mmrelay.matrix_utils.load_credentials")
+async def test_connect_matrix_alias_resolution_failure(
+    mock_load_credentials, mock_login_bot, mock_logger, mock_async_client
+):
+    """
+    Test that connect_matrix handles alias resolution failures gracefully.
+    """
+    with patch("ssl.create_default_context") as mock_ssl_context:
+        # Mock SSL context creation
+        mock_ssl_context.return_value = MagicMock()
+
+        # Mock login_matrix_bot to return True (successful automatic login)
+        mock_login_bot.return_value = True
+
+        # Mock load_credentials to return valid credentials
+        mock_load_credentials.return_value = {
+            "homeserver": "https://matrix.org",
+            "access_token": "test_token",
+            "user_id": "@test:matrix.org",
+            "device_id": "test_device_id",
+        }
+
+        # Mock the AsyncClient instance
+        mock_client_instance = MagicMock()
+        mock_client_instance.rooms = {}
+
+        # Create proper async mock methods
+        async def mock_whoami():
+            return MagicMock(device_id="test_device_id")
+
+        async def mock_sync(*args, **kwargs):
+            return MagicMock()
+
+        async def mock_get_displayname(*args, **kwargs):
+            return MagicMock(displayname="Test Bot")
+
+        # Create a mock for room_resolve_alias that returns failure response
+        mock_room_resolve_alias = MagicMock()
+
+        async def mock_room_resolve_alias_impl(alias):
+            response = MagicMock()
+            response.room_id = None
+            response.message = "Room not found"
+            return response
+
+        mock_room_resolve_alias.side_effect = mock_room_resolve_alias_impl
+
+        mock_client_instance.whoami = mock_whoami
+        mock_client_instance.sync = mock_sync
+        mock_client_instance.get_displayname = mock_get_displayname
+        mock_client_instance.room_resolve_alias = mock_room_resolve_alias
+        mock_async_client.return_value = mock_client_instance
+
+        # Create config with room aliases
+        config = {
+            "matrix": {
+                "homeserver": "https://matrix.org",
+                "bot_user_id": "@test:matrix.org",
+                "password": "test_password",
+            },
+            "matrix_rooms": [{"id": "#invalid:matrix.org", "channel": 1}],
+        }
+
+        result = await connect_matrix(config)
+
+        # Verify client was created
+        mock_async_client.assert_called_once()
+        assert result == mock_client_instance
+
+        # Verify alias resolution was called
+        mock_client_instance.room_resolve_alias.assert_called_once_with(
+            "#invalid:matrix.org"
+        )
+
+        # Verify warning was logged for failed resolution
+        mock_logger.warning.assert_called_with(
+            "Could not resolve alias #invalid:matrix.org: Room not found"
+        )
+
+        # Verify config was not modified (still contains alias)
+        assert config["matrix_rooms"][0]["id"] == "#invalid:matrix.org"
+
+
+@patch("mmrelay.matrix_utils.matrix_client", None)
+@patch("mmrelay.matrix_utils.AsyncClient")
+@patch("mmrelay.matrix_utils.logger")
+@patch("mmrelay.matrix_utils.login_matrix_bot")
+@patch("mmrelay.matrix_utils.load_credentials")
+async def test_connect_matrix_alias_resolution_exception(
+    mock_load_credentials, mock_login_bot, mock_logger, mock_async_client
+):
+    """
+    Test that connect_matrix handles alias resolution exceptions gracefully.
+    """
+    with patch("ssl.create_default_context") as mock_ssl_context:
+        # Mock SSL context creation
+        mock_ssl_context.return_value = MagicMock()
+
+        # Mock login_matrix_bot to return True (successful automatic login)
+        mock_login_bot.return_value = True
+
+        # Mock load_credentials to return valid credentials
+        mock_load_credentials.return_value = {
+            "homeserver": "https://matrix.org",
+            "access_token": "test_token",
+            "user_id": "@test:matrix.org",
+            "device_id": "test_device_id",
+        }
+
+        # Mock the AsyncClient instance
+        mock_client_instance = MagicMock()
+        mock_client_instance.rooms = {}
+
+        # Create proper async mock methods
+        async def mock_whoami():
+            return MagicMock(device_id="test_device_id")
+
+        async def mock_sync(*args, **kwargs):
+            return MagicMock()
+
+        async def mock_get_displayname(*args, **kwargs):
+            return MagicMock(displayname="Test Bot")
+
+        # Create a mock for room_resolve_alias that raises an exception
+        mock_room_resolve_alias = MagicMock()
+
+        async def mock_room_resolve_alias_impl(alias):
+            raise Exception("Network error")
+
+        mock_room_resolve_alias.side_effect = mock_room_resolve_alias_impl
+
+        mock_client_instance.whoami = mock_whoami
+        mock_client_instance.sync = mock_sync
+        mock_client_instance.get_displayname = mock_get_displayname
+        mock_client_instance.room_resolve_alias = mock_room_resolve_alias
+        mock_async_client.return_value = mock_client_instance
+
+        # Create config with room aliases
+        config = {
+            "matrix": {
+                "homeserver": "https://matrix.org",
+                "bot_user_id": "@test:matrix.org",
+                "password": "test_password",
+            },
+            "matrix_rooms": [{"id": "#error:matrix.org", "channel": 1}],
+        }
+
+        result = await connect_matrix(config)
+
+        # Verify client was created
+        mock_async_client.assert_called_once()
+        assert result == mock_client_instance
+
+        # Verify alias resolution was called
+        mock_client_instance.room_resolve_alias.assert_called_once_with(
+            "#error:matrix.org"
+        )
+
+        # Verify exception was logged
+        mock_logger.exception.assert_called_with(
+            "Error resolving alias #error:matrix.org"
+        )
+
+        # Verify config was not modified (still contains alias)
+        assert config["matrix_rooms"][0]["id"] == "#error:matrix.org"
+
+
+def test_normalize_bot_user_id_already_full_mxid():
+    """Test that _normalize_bot_user_id returns full MXID as-is."""
+    from mmrelay.matrix_utils import _normalize_bot_user_id
+
+    homeserver = "https://example.com"
+    bot_user_id = "@relaybot:example.com"
+
+    result = _normalize_bot_user_id(homeserver, bot_user_id)
+    assert result == "@relaybot:example.com"
+
+
+def test_normalize_bot_user_id_with_at_prefix():
+    """Test that _normalize_bot_user_id adds homeserver to @-prefixed username."""
+    from mmrelay.matrix_utils import _normalize_bot_user_id
+
+    homeserver = "https://example.com"
+    bot_user_id = "@relaybot"
+
+    result = _normalize_bot_user_id(homeserver, bot_user_id)
+    assert result == "@relaybot:example.com"
+
+
+def test_normalize_bot_user_id_without_at_prefix():
+    """Test that _normalize_bot_user_id adds @ and homeserver to plain username."""
+    from mmrelay.matrix_utils import _normalize_bot_user_id
+
+    homeserver = "https://example.com"
+    bot_user_id = "relaybot"
+
+    result = _normalize_bot_user_id(homeserver, bot_user_id)
+    assert result == "@relaybot:example.com"
+
+
+def test_normalize_bot_user_id_with_complex_homeserver():
+    """Test that _normalize_bot_user_id handles complex homeserver URLs."""
+    from mmrelay.matrix_utils import _normalize_bot_user_id
+
+    homeserver = "https://matrix.example.com:8448"
+    bot_user_id = "relaybot"
+
+    result = _normalize_bot_user_id(homeserver, bot_user_id)
+    assert result == "@relaybot:matrix.example.com:8448"
+
+
+def test_normalize_bot_user_id_empty_input():
+    """Test that _normalize_bot_user_id handles empty input gracefully."""
+    from mmrelay.matrix_utils import _normalize_bot_user_id
+
+    homeserver = "https://example.com"
+    bot_user_id = ""
+
+    result = _normalize_bot_user_id(homeserver, bot_user_id)
+    assert result == ""
+
+
+def test_normalize_bot_user_id_none_input():
+    """Test that _normalize_bot_user_id handles None input gracefully."""
+    from mmrelay.matrix_utils import _normalize_bot_user_id
+
+    homeserver = "https://example.com"
+    bot_user_id = None
+
+    result = _normalize_bot_user_id(homeserver, bot_user_id)
+    assert result is None
