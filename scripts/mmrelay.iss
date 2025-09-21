@@ -25,11 +25,11 @@ Filename: "{app}\mmrelay.bat"; Description: "Launch MM Relay"; Flags: nowait pos
 [Code]
 var
   OverwriteConfig: TInputOptionWizardPage;
+  ConnectionTypeCombo: TNewComboBox;
   MatrixPage: TInputQueryWizardPage;
   MatrixMeshtasticPage: TInputQueryWizardPage;
   MeshtasticPage: TInputQueryWizardPage;
   OptionsPage: TInputOptionWizardPage;
-  ConnectionTypePage: TInputOptionWizardPage;
   Connection: string;
 
 procedure InitializeWizard;
@@ -37,10 +37,7 @@ begin
   OverwriteConfig := CreateInputOptionPage(wpWelcome,
     'Configure the relay', 'Create new configuration',
     '', False, False);
-  ConnectionTypePage := CreateInputOptionPage(OverwriteConfig.ID,
-      'Meshtastic Setup', 'Configure Meshtastic Settings',
-      'Select the connection type for your Meshtastic radio.', False, True);
-  MeshtasticPage := CreateInputQueryPage(ConnectionTypePage.ID,
+  MeshtasticPage := CreateInputQueryPage(OverwriteConfig.ID,
       'Meshtastic Setup', 'Configure Meshtastic Settings',
       'Enter the settings for connecting with your Meshtastic radio.');
   MatrixPage := CreateInputQueryPage(MeshtasticPage.ID,
@@ -59,20 +56,33 @@ begin
   OverwriteConfig.Add('Generate configuration (overwrite any current config files)');
   OverwriteConfig.Values[0] := False;
 
-  ConnectionTypePage.Add('Network connection (TCP/IP)');
-  ConnectionTypePage.Add('Serial connection (USB/Serial)');
-  ConnectionTypePage.Add('Bluetooth Low Energy (BLE)');
-  ConnectionTypePage.Values[0] := True; // Default to network
-
+  MeshtasticPage.Add('Connection type:', False);
   MeshtasticPage.Add('Serial port (if serial):', False);
   MeshtasticPage.Add('Hostname/IP (if network):', False);
   MeshtasticPage.Add('BLE address/name (if ble):', False);
   MeshtasticPage.Add('Meshnet name:', False);
 
-  MeshtasticPage.Edits[0].Hint := 'COM3, /dev/ttyUSB0, etc.';
-  MeshtasticPage.Edits[1].Hint := '192.168.1.100, meshtastic.local, etc.';
-  MeshtasticPage.Edits[2].Hint := 'BLE address or device name';
-  MeshtasticPage.Edits[3].Hint := 'Name for radio Meshnet';
+  MeshtasticPage.Edits[0].Hint := 'Select connection type from dropdown';
+  MeshtasticPage.Edits[1].Hint := 'COM3, /dev/ttyUSB0, etc.';
+  MeshtasticPage.Edits[2].Hint := '192.168.1.100, meshtastic.local, etc.';
+  MeshtasticPage.Edits[3].Hint := 'BLE address or device name';
+  MeshtasticPage.Edits[4].Hint := 'Name for radio Meshnet';
+
+  // Create connection type dropdown to replace the first edit field
+  ConnectionTypeCombo := TNewComboBox.Create(WizardForm);
+  ConnectionTypeCombo.Parent := MeshtasticPage.Surface;
+  ConnectionTypeCombo.Left := MeshtasticPage.Edits[0].Left;
+  ConnectionTypeCombo.Top := MeshtasticPage.Edits[0].Top;
+  ConnectionTypeCombo.Width := MeshtasticPage.Edits[0].Width;
+  ConnectionTypeCombo.Style := csDropDownList;
+
+  ConnectionTypeCombo.Items.Add('Network connection (TCP/IP)');
+  ConnectionTypeCombo.Items.Add('Serial connection (USB/Serial)');
+  ConnectionTypeCombo.Items.Add('Bluetooth Low Energy (BLE)');
+  ConnectionTypeCombo.ItemIndex := 0; // Default to network
+
+  // Hide the original edit field for connection type since we're replacing it with dropdown
+  MeshtasticPage.Edits[0].Visible := False;
 
   MatrixPage.Add('Matrix homeserver URL (e.g., https://matrix.org):', False);
   MatrixPage.Add('Matrix username (without @):', False);
@@ -81,9 +91,9 @@ begin
   MatrixPage.Edits[1].Hint := 'yourusername';
   MatrixPage.Edits[2].Hint := 'Your Matrix account password';
 
-  MatrixMeshtasticPage.Add('Matrix room ID/alias (example: #someroom:example.matrix.org or !someroomid:example.matrix.org):', False);
+  MatrixMeshtasticPage.Add('Matrix room ID/alias (example: #someroom:example.matrix.org):', False);
   MatrixMeshtasticPage.Add('Meshtastic channel # (0 is primary, 1-7 secondary):', False);
-  MatrixMeshtasticPage.Edits[0].Hint := '#room:server.com or !roomid:server.com';
+  MatrixMeshtasticPage.Edits[0].Hint := '!someroomid:example.matrix.org';
   MatrixMeshtasticPage.Edits[1].Hint := '0-7 (default 0)';
 
   OptionsPage.Add('Detailed logging');
@@ -123,10 +133,6 @@ var
   matrix_homeserver: string;
   matrix_username: string;
   matrix_password: string;
-  meshtastic_channel: string;
-  chanInt: Integer;
-  room_id: string;
-  meshnet_name: string;
 begin
   If Not OverwriteConfig.Values[0] then
     Exit;
@@ -140,86 +146,22 @@ begin
     end;
   end;
 
-  // Determine connection type from radio button selection
-  if ConnectionTypePage.Values[0] then
+  // Determine connection type from dropdown selection
+  if ConnectionTypeCombo.ItemIndex = 0 then
     connection_type := 'network'
-  else if ConnectionTypePage.Values[1] then
+  else if ConnectionTypeCombo.ItemIndex = 1 then
     connection_type := 'serial'
-  else if ConnectionTypePage.Values[2] then
+  else if ConnectionTypeCombo.ItemIndex = 2 then
     connection_type := 'ble'
   else
     connection_type := 'network'; // fallback
 
-  serial_port := MeshtasticPage.Values[0];
-  host := MeshtasticPage.Values[1];
-  ble_address := MeshtasticPage.Values[2];
+  serial_port := MeshtasticPage.Values[1];
+  host := MeshtasticPage.Values[2];
+  ble_address := MeshtasticPage.Values[3];
   matrix_homeserver := MatrixPage.Values[0];
   matrix_username := MatrixPage.Values[1];
   matrix_password := MatrixPage.Values[2];
-
-  // Validate connection-specific fields
-  if connection_type = 'serial' then
-  begin
-    if Trim(serial_port) = '' then
-    begin
-      MsgBox('Serial port cannot be empty when connection type is "serial".', mbError, MB_OK);
-      Abort;
-    end;
-  end
-  else if connection_type = 'network' then
-  begin
-    if Trim(host) = '' then
-    begin
-      MsgBox('Hostname/IP cannot be empty when connection type is "network".', mbError, MB_OK);
-      Abort;
-    end;
-  end
-  else if connection_type = 'ble' then
-  begin
-    if Trim(ble_address) = '' then
-    begin
-      MsgBox('BLE address cannot be empty when connection type is "ble".', mbError, MB_OK);
-      Abort;
-    end;
-  end;
-
-  // Escape double quotes and backslashes in user-provided string values for YAML
-  StringChangeEx(matrix_homeserver, '"', '\"', True);
-  StringChangeEx(matrix_homeserver, '\', '\\', True);
-  StringChangeEx(matrix_username, '"', '\"', True);
-  StringChangeEx(matrix_username, '\', '\\', True);
-  StringChangeEx(matrix_password, '"', '\"', True);
-  StringChangeEx(matrix_password, '\', '\\', True);
-  
-  // Escape additional string values that will be used in config
-  StringChangeEx(serial_port, '"', '\"', True);
-  StringChangeEx(serial_port, '\', '\\', True);
-  StringChangeEx(host, '"', '\"', True);
-  StringChangeEx(host, '\', '\\', True);
-  StringChangeEx(ble_address, '"', '\"', True);
-  StringChangeEx(ble_address, '\', '\\', True);
-
-  // Validate and process Meshtastic channel
-  meshtastic_channel := Trim(MatrixMeshtasticPage.Values[1]);
-  if meshtastic_channel = '' then
-    meshtastic_channel := '0'; // default to primary channel
-  
-  // Ensure integer 0-7 (use StrToIntDef to avoid exceptions)
-  chanInt := StrToIntDef(meshtastic_channel, -1);
-  if (chanInt < 0) or (chanInt > 7) or (IntToStr(chanInt) <> meshtastic_channel) then
-  begin
-    MsgBox('Invalid Meshtastic channel. Enter a number 0–7.', mbError, MB_OK);
-    Abort;
-  end;
-  meshtastic_channel := IntToStr(chanInt);
-
-  // Escape remaining string values
-  room_id := MatrixMeshtasticPage.Values[0];
-  meshnet_name := MeshtasticPage.Values[4];
-  StringChangeEx(room_id, '"', '\"', True);
-  StringChangeEx(room_id, '\', '\\', True);
-  StringChangeEx(meshnet_name, '"', '\"', True);
-  StringChangeEx(meshnet_name, '\', '\\', True);
 
   if OptionsPage.Values[0] then
   begin
@@ -235,8 +177,8 @@ begin
             '  bot_user_id: "@' + matrix_username + '"' + #13#10 +
             '  password: "' + matrix_password + '"' + #13#10 +
             'matrix_rooms:' + #13#10 +
-            '  - id: "' + room_id + '"' + #13#10 +
-            '    meshtastic_channel: ' + meshtastic_channel + #13#10 +
+            '  - id: "' + MatrixMeshtasticPage.Values[0] + '"' + #13#10 +
+            '    meshtastic_channel: ' + MatrixMeshtasticPage.Values[1] + #13#10 +
             'meshtastic:' + #13#10 +
             '  connection_type: "' + connection_type + '"' + #13#10;
 
@@ -247,7 +189,7 @@ begin
   else if connection_type = 'ble' then
     config := config + '  ble_address: "' + ble_address + '"' + #13#10;
 
-  config := config + '  meshnet_name: "' + meshnet_name + '"' + #13#10 +
+  config := config + '  meshnet_name: "' + MeshtasticPage.Values[4] + '"' + #13#10 +
             '  broadcast_enabled: ' + BoolToStr(OptionsPage.Values[1]) + #13#10 +
             'logging:' + #13#10 +
             '  level: "' + log_level + '"' + #13#10 +
@@ -270,9 +212,8 @@ begin
 
   // Create setup-auth.bat for easy authentication setup
   batch_file := '@echo off' + #13#10 +
-                'cd /d "' + sAppDir + '"' + #13#10 +
                 'echo Setting up Matrix authentication...' + #13#10 +
-                '"' + sAppDir + '\mmrelay.exe" auth login --data-dir .' + #13#10 +
+                '"' + sAppDir + '\mmrelay.exe" auth login --data-dir "' + sAppDir + '"' + #13#10 +
                 'pause';
 
   if Not SaveStringToFile(sAppDir + '\setup-auth.bat', batch_file, false) then
@@ -282,9 +223,8 @@ begin
 
   // Create logout.bat for easy authentication cleanup
   batch_file := '@echo off' + #13#10 +
-                'cd /d "' + sAppDir + '"' + #13#10 +
                 'echo Logging out from Matrix authentication...' + #13#10 +
-                '"' + sAppDir + '\mmrelay.exe" auth logout --data-dir .' + #13#10 +
+                '"' + sAppDir + '\mmrelay.exe" auth logout --data-dir "' + sAppDir + '"' + #13#10 +
                 'pause';
 
   if Not SaveStringToFile(sAppDir + '\logout.bat', batch_file, false) then
