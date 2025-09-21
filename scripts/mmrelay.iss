@@ -42,7 +42,7 @@ begin
       'Enter the settings for connecting with your Meshtastic radio.');
   MatrixPage := CreateInputQueryPage(MeshtasticPage.ID,
       'Matrix Setup', 'Configure Matrix Authentication',
-      'Enter your Matrix server and account details for authentication.');
+      'Enter your Matrix server and account details for authentication.' + #13#10 + #13#10 + 'Note: Your password will be saved in plaintext in config.yaml. You can remove it after the first successful run when the bot has logged in.');
   MatrixMeshtasticPage := CreateInputQueryPage(MatrixPage.ID,
       'Matrix <> Meshtastic Setup', 'Configure Matrix <> Meshtastic Settings',
       'Connect a Matrix room with a Meshtastic radio channel.');
