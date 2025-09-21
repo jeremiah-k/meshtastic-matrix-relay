@@ -1035,6 +1035,21 @@ async def connect_matrix(passed_config=None):
             # Get comprehensive E2EE status
             e2ee_status = get_e2ee_status(config, config_path)
 
+            # Resolve room aliases before displaying mappings
+            for room_config in matrix_rooms:
+                if isinstance(room_config, dict) and room_config.get("id", "").startswith("#"):
+                    alias = room_config["id"]
+                    logger.debug(f"Resolving alias from config: {alias}")
+                    try:
+                        response = await matrix_client.room_resolve_alias(alias)
+                        if hasattr(response, "room_id") and response.room_id:
+                            room_config["id"] = response.room_id
+                            logger.debug(f"Resolved alias {alias} to {response.room_id}")
+                        else:
+                            logger.warning(f"Could not resolve alias {alias}: {response.message}")
+                    except Exception:
+                        logger.exception(f"Error resolving alias {alias}")
+
             # Display rooms with channel mappings
             _display_room_channel_mappings(matrix_client.rooms, config, e2ee_status)
 
@@ -1579,43 +1594,18 @@ async def login_matrix_bot(
         return False
 
 
-async def join_matrix_room(matrix_client, room_id_or_alias: str) -> None:
+async def join_matrix_room(matrix_client, room_id: str) -> None:
     """
-    Join a Matrix room by ID or alias, resolving aliases and updating the global matrix_rooms mapping.
-    
-    If a room alias (starts with '#') is provided the alias is resolved to a canonical room ID and any entry in the global matrix_rooms list that referenced that alias will be replaced with the resolved room ID. If the bot is not already in the resolved room (or the provided room ID), the function attempts to join it. Errors are logged and handled internally; the function does not raise.
+    Join a Matrix room by its ID.
+
+    If the bot is not already in the room, it will attempt to join.
+    This function assumes that any aliases have already been resolved.
+
     Parameters:
-        room_id_or_alias (str): Room ID (e.g. "!abcdef:server") or alias (e.g. "#room:server") to join.
+        matrix_client (AsyncClient): The Matrix client instance.
+        room_id (str): The ID of the room to join (e.g., "!room:server.com").
     """
     try:
-        if room_id_or_alias.startswith("#"):
-            response = await matrix_client.room_resolve_alias(room_id_or_alias)
-            if not hasattr(response, "room_id") or not response.room_id:
-                logger.error(
-                    f"Failed to resolve room alias '{room_id_or_alias}': {getattr(response, 'message', str(response))}"
-                )
-                return
-            room_id = response.room_id
-
-            if not isinstance(matrix_rooms, list):
-                logger.debug(
-                    "matrix_rooms is not a list; skipping alias->id mapping update"
-                )
-            else:
-                for idx, entry in enumerate(matrix_rooms):
-                    if isinstance(entry, dict) and entry.get("id") == room_id_or_alias:
-                        matrix_rooms[idx]["id"] = room_id
-                        break
-                    elif isinstance(entry, str) and entry == room_id_or_alias:
-                        matrix_rooms[idx] = room_id
-                        break
-            logger.info(
-                f"Resolved Matrix room alias '{room_id_or_alias}' to '{room_id}'"
-            )
-        else:
-            room_id = room_id_or_alias
-
-        # Attempt to join the room if not already joined
         if room_id not in matrix_client.rooms:
             response = await matrix_client.join(room_id)
             if response and hasattr(response, "room_id"):
@@ -1625,9 +1615,9 @@ async def join_matrix_room(matrix_client, room_id_or_alias: str) -> None:
                     f"Failed to join room '{room_id}': {getattr(response, 'message', str(response))}"
                 )
         else:
-            logger.debug(f"Bot is already in room '{room_id_or_alias}'")
+            logger.debug(f"Bot is already in room '{room_id}', no action needed.")
     except Exception:
-        logger.exception(f"Error joining room '{room_id_or_alias}'")
+        logger.exception(f"Error joining room '{room_id}'")
 
 
 def _get_e2ee_error_message():
