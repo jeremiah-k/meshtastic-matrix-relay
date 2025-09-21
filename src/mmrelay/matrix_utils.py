@@ -1237,9 +1237,6 @@ async def login_matrix_bot(
         # Debug password handling (without logging the actual password)
         logger.debug(f"Password length: {len(password) if password else 0}")
         logger.debug(f"Password type: {type(password).__name__}")
-        logger.debug(
-            f"Password encoding: {password.encode('utf-8') if password else 'None'}"
-        )
         if password:
             # Check for special characters that might cause issues
             special_chars = set(password) - set(

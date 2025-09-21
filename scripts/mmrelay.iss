@@ -32,6 +32,87 @@ var
   OptionsPage: TInputOptionWizardPage;
   Connection: string;
 
+function ExtractHostFromURL(const Url: string): string;
+var S: string; P, i, colonCount, lastColonPos, rb: Integer;
+begin
+  S := Trim(Url);
+  P := Pos('://', S); if P > 0 then S := Copy(S, P + 3, MaxInt);
+  P := Pos('/', S);   if P > 0 then S := Copy(S, 1, P - 1);
+  // Handle [IPv6]:port by stripping brackets
+  if (Length(S) > 0) and (S[1] = '[') then
+  begin
+    rb := Pos(']', S);
+    if rb > 1 then
+      S := Copy(S, 2, rb - 2);
+  end
+  else
+  begin
+    // Only strip :port when there is exactly one ':' and no brackets (avoid unbracketed IPv6)
+    colonCount := 0; lastColonPos := 0;
+    for i := 1 to Length(S) do
+    begin
+      if S[i] = ':' then
+      begin
+        colonCount := colonCount + 1;
+        lastColonPos := i;
+      end;
+    end;
+    if colonCount = 1 then
+      S := Copy(S, 1, lastColonPos - 1);
+  end;
+  Result := S;
+end;
+
+function NextButtonClick(CurPageID: Integer): Boolean;
+begin
+  Result := True;
+
+  // Only validate when generating configuration
+  if not OverwriteConfig.Values[0] then
+    Exit;
+
+  // Validate Matrix page
+  if CurPageID = MatrixPage.ID then
+  begin
+    if Trim(MatrixPage.Values[0]) = '' then
+    begin
+      MsgBox('Please enter your Matrix homeserver URL.', mbError, MB_OK);
+      Result := False;
+      Exit;
+    end;
+    if Trim(MatrixPage.Values[1]) = '' then
+    begin
+      MsgBox('Please enter your Matrix username.', mbError, MB_OK);
+      Result := False;
+      Exit;
+    end;
+  end;
+
+  // Validate Meshtastic page
+  if CurPageID = MeshtasticPage.ID then
+  begin
+    // Simplified validation for dropdown
+    if ConnectionTypeCombo.ItemIndex = 1 and Trim(MeshtasticPage.Values[1]) = '' then
+    begin
+      MsgBox('Serial connection selected, but no serial port provided.', mbError, MB_OK);
+      Result := False;
+      Exit;
+    end;
+    if ConnectionTypeCombo.ItemIndex = 0 and Trim(MeshtasticPage.Values[2]) = '' then
+    begin
+      MsgBox('Network connection selected, but no hostname/IP provided.', mbError, MB_OK);
+      Result := False;
+      Exit;
+    end;
+    if ConnectionTypeCombo.ItemIndex = 2 and Trim(MeshtasticPage.Values[3]) = '' then
+    begin
+      MsgBox('BLE connection selected, but no BLE address provided.', mbError, MB_OK);
+      Result := False;
+      Exit;
+    end;
+  end;
+end;
+
 procedure InitializeWizard;
 begin
   OverwriteConfig := CreateInputOptionPage(wpWelcome,
@@ -133,6 +214,9 @@ var
   matrix_homeserver: string;
   matrix_username: string;
   matrix_password: string;
+  bot_user_id: string;
+  HomeserverURL: string;
+  ServerName: string;
 begin
   If Not OverwriteConfig.Values[0] then
     Exit;
@@ -159,8 +243,43 @@ begin
   serial_port := MeshtasticPage.Values[1];
   host := MeshtasticPage.Values[2];
   ble_address := MeshtasticPage.Values[3];
-  matrix_homeserver := MatrixPage.Values[0];
-  matrix_username := MatrixPage.Values[1];
+  
+  // Process Matrix homeserver and username
+  HomeserverURL := Trim(MatrixPage.Values[0]);
+  if Pos('://', HomeserverURL) = 0 then
+    HomeserverURL := 'https://' + HomeserverURL;
+
+  // Extract host from URL (strip scheme and any path)
+  ServerName := ExtractHostFromURL(HomeserverURL);
+
+  // If IPv6 literal, ensure brackets for MXID server name
+  if (Length(ServerName) > 0) and (Pos(':', ServerName) > 0) then
+  begin
+    if not ((ServerName[1] = '[') and (ServerName[Length(ServerName)] = ']')) then
+      ServerName := '[' + ServerName + ']';
+  end;
+
+  // Build bot_user_id (accept full MXID only when it looks like one)
+  bot_user_id := Trim(MatrixPage.Values[1]);
+  if (Length(bot_user_id) > 0) and (bot_user_id[1] = '@') and (Pos(':', bot_user_id) > 1) then
+  begin
+    bot_user_id := Trim(bot_user_id); // use as-is
+  end
+  else
+  begin
+    if (Length(bot_user_id) > 0) and (bot_user_id[1] = '@') then
+      bot_user_id := Copy(bot_user_id, 2, MaxInt);
+    bot_user_id := Trim(bot_user_id);
+    if bot_user_id = '' then
+    begin
+      MsgBox('Invalid username. Enter a username (without "@") or a full MXID like @name:server.', mbError, MB_OK);
+      Abort;
+    end;
+    bot_user_id := '@' + bot_user_id + ':' + ServerName;
+  end;
+
+  matrix_homeserver := HomeserverURL;
+  matrix_username := bot_user_id;
   matrix_password := MatrixPage.Values[2];
 
   if OptionsPage.Values[0] then
@@ -174,7 +293,7 @@ begin
 
   config := 'matrix:' + #13#10 +
             '  homeserver: "' + matrix_homeserver + '"' + #13#10 +
-            '  bot_user_id: "@' + matrix_username + '"' + #13#10 +
+            '  bot_user_id: "' + matrix_username + '"' + #13#10 +
             '  password: "' + matrix_password + '"' + #13#10 +
             'matrix_rooms:' + #13#10 +
             '  - id: "' + MatrixMeshtasticPage.Values[0] + '"' + #13#10 +

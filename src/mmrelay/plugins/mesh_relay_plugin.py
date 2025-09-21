@@ -186,7 +186,7 @@ class Plugin(BasePlugin):
                     channel = room_config["meshtastic_channel"]
 
         if channel is None:
-            self.logger.debug(f"Skipping message from unmapped channel {channel}")
+            self.logger.debug(f"Could not determine channel for room {room.room_id}, skipping message")
             return False
 
         packet_json = event.source["content"].get("meshtastic_packet")
