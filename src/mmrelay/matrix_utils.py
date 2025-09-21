@@ -1983,7 +1983,17 @@ async def get_user_display_name(room, event):
     return display_name_response.displayname or event.sender
 
 
-def format_reply_message(config, full_display_name, text):
+def format_reply_message(
+    config,
+    full_display_name,
+    text,
+    *,
+    longname=None,
+    shortname=None,
+    meshnet_name=None,
+    local_meshnet_name=None,
+    mesh_text_override=None,
+):
     """
     Format a reply message by prefixing a truncated display name and removing quoted lines.
 
@@ -1996,11 +2006,43 @@ def format_reply_message(config, full_display_name, text):
     Returns:
         str: The formatted and truncated reply message.
     """
-    prefix = get_meshtastic_prefix(config, full_display_name)
+    # Determine the base text to use (prefer the raw Meshtastic payload when present)
+    base_text = mesh_text_override if mesh_text_override else text
 
-    # Strip quoted content from the reply text
-    clean_text = strip_quoted_lines(text)
-    reply_message = f"{prefix}{clean_text}"
+    clean_text = strip_quoted_lines(base_text).strip()
+
+    # Handle remote meshnet replies by using the remote sender's prefix format
+    if (
+        longname
+        and meshnet_name
+        and local_meshnet_name
+        and meshnet_name != local_meshnet_name
+    ):
+        # Use a fallback shortname if none provided
+        if not shortname and longname:
+            shortname = longname[:SHORTNAME_FALLBACK_LENGTH] if longname else "???"
+
+        # Remove any original prefix that might already be present in the text
+        original_prefix = get_matrix_prefix(config, longname, shortname, meshnet_name)
+        if original_prefix and clean_text.startswith(original_prefix):
+            clean_text = clean_text[len(original_prefix) :].lstrip()
+        else:
+            # Fallback removal for the default formatting if custom config differs
+            default_prefix = f"[{longname}/{meshnet_name}]: "
+            if clean_text.startswith(default_prefix):
+                clean_text = clean_text[len(default_prefix) :].lstrip()
+
+        if not clean_text and mesh_text_override:
+            clean_text = strip_quoted_lines(mesh_text_override).strip()
+
+        short_meshnet_name = meshnet_name[:MESHNET_NAME_ABBREVIATION_LENGTH]
+        prefix = get_matrix_prefix(config, longname, shortname, short_meshnet_name)
+        reply_message = f"{prefix}{clean_text}" if clean_text else prefix.rstrip()
+        return truncate_message(reply_message)
+
+    # Default behavior for local Matrix users (retain existing prefix logic)
+    prefix = get_meshtastic_prefix(config, full_display_name)
+    reply_message = f"{prefix}{clean_text}" if clean_text else prefix.rstrip()
     return truncate_message(reply_message)
 
 
@@ -2133,6 +2175,11 @@ async def handle_matrix_reply(
     storage_enabled,
     local_meshnet_name,
     config,
+    *,
+    mesh_text_override=None,
+    longname=None,
+    shortname=None,
+    meshnet_name=None,
 ):
     """
     Relay a Matrix reply back to Meshtastic when a Meshtastic↔Matrix mapping exists.
@@ -2161,7 +2208,16 @@ async def handle_matrix_reply(
     full_display_name = await get_user_display_name(room, event)
 
     # Format the reply message
-    reply_message = format_reply_message(config, full_display_name, text)
+    reply_message = format_reply_message(
+        config,
+        full_display_name,
+        text,
+        longname=longname,
+        shortname=shortname,
+        meshnet_name=meshnet_name,
+        local_meshnet_name=local_meshnet_name,
+        mesh_text_override=mesh_text_override,
+    )
 
     logger.info(
         f"Relaying Matrix reply from {full_display_name} to Meshtastic as reply to message {original_meshtastic_id}"
@@ -2533,6 +2589,10 @@ async def on_room_message(
             storage_enabled,
             local_meshnet_name,
             config,
+            mesh_text_override=mesh_text_override,
+            longname=longname,
+            shortname=shortname,
+            meshnet_name=meshnet_name,
         )
         if reply_handled:
             return

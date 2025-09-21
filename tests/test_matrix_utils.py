@@ -805,6 +805,24 @@ def test_format_reply_message():
     assert "This is a reply" in result
 
 
+def test_format_reply_message_remote_mesh_prefix():
+    """Ensure remote mesh replies use the remote mesh prefix and raw payload."""
+
+    config = {}
+    result = format_reply_message(
+        config,
+        "MtP Relay",
+        "[LoRa/Mt.P]: Test",
+        longname="LoRa",
+        shortname=None,
+        meshnet_name="Mt.P",
+        local_meshnet_name="Forx",
+        mesh_text_override="Test",
+    )
+
+    assert result == "[LoRa/Mt.P]: Test"
+
+
 # Bot command detection tests - refactored to use test class with fixtures for better maintainability
 
 
