@@ -3,7 +3,7 @@
 //WizardImageFile=wizard.bmp
 //WizardSmallImageFile=smallwiz.bmp
 
-AppName=MMRelay
+AppName=Matrix <> Meshtastic Relay
 AppVersion={#AppVersion}
 DefaultDirName={userpf}\MM Relay
 DefaultGroupName=MM Relay
