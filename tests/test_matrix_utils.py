@@ -841,17 +841,56 @@ def test_format_reply_message_remote_without_longname():
     assert result == "Tr/Mt.P: Hi"
 
 
-def test_validate_matrix_room_ids_rejects_alias():
-    from mmrelay.matrix_utils import _validate_matrix_room_ids
+@pytest.mark.asyncio
+async def test_join_matrix_room_resolves_alias_dict(monkeypatch):
+    from types import SimpleNamespace
 
-    with pytest.raises(ValueError):
-        _validate_matrix_room_ids([{"id": "#mesh:example.com"}])
+    from mmrelay import matrix_utils
+
+    monkeypatch.setattr(
+        matrix_utils,
+        "matrix_rooms",
+        [{"id": "#channel:server", "meshtastic_channel": 0}],
+        raising=False,
+    )
+
+    fake_client = MagicMock()
+    fake_client.rooms = {}
+    fake_client.room_resolve_alias = AsyncMock(
+        return_value=SimpleNamespace(room_id="!roomid:server")
+    )
+    fake_client.join = AsyncMock(return_value=SimpleNamespace(room_id="!roomid:server"))
+
+    await join_matrix_room(fake_client, "#channel:server")
+
+    assert matrix_utils.matrix_rooms[0]["id"] == "!roomid:server"
+    fake_client.join.assert_awaited_once_with("!roomid:server")
 
 
-def test_validate_matrix_room_ids_accepts_room_id():
-    from mmrelay.matrix_utils import _validate_matrix_room_ids
+@pytest.mark.asyncio
+async def test_join_matrix_room_resolves_alias_string(monkeypatch):
+    from types import SimpleNamespace
 
-    _validate_matrix_room_ids([{"id": "!abc123:example.com"}])
+    from mmrelay import matrix_utils
+
+    monkeypatch.setattr(
+        matrix_utils,
+        "matrix_rooms",
+        ["#radio:server"],
+        raising=False,
+    )
+
+    fake_client = MagicMock()
+    fake_client.rooms = {}
+    fake_client.room_resolve_alias = AsyncMock(
+        return_value=SimpleNamespace(room_id="!abcd:server")
+    )
+    fake_client.join = AsyncMock(return_value=SimpleNamespace(room_id="!abcd:server"))
+
+    await join_matrix_room(fake_client, "#radio:server")
+
+    assert matrix_utils.matrix_rooms[0] == "!abcd:server"
+    fake_client.join.assert_awaited_once_with("!abcd:server")
 
 
 # Bot command detection tests - refactored to use test class with fixtures for better maintainability

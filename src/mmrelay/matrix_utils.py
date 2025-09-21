@@ -591,24 +591,6 @@ bot_start_time = int(
 matrix_client = None
 
 
-def _validate_matrix_room_ids(room_entries):
-    """Ensure configured Matrix rooms use canonical room IDs."""
-
-    for entry in room_entries:
-        room_id = None
-        if isinstance(entry, dict):
-            room_id = entry.get("id")
-        elif isinstance(entry, str):
-            room_id = entry
-
-        if isinstance(room_id, str) and room_id.startswith("#"):
-            raise ValueError(
-                "Matrix room aliases (#...) are no longer supported. "
-                "Update your configuration to use the canonical room ID (!...). "
-                f"Offending entry: {room_id}"
-            )
-
-
 def bot_command(command, event):
     """
     Checks if the given command is directed at the bot,
@@ -809,7 +791,6 @@ async def connect_matrix(passed_config=None):
         )
         raise ValueError("Missing required 'matrix_rooms' configuration")
     matrix_rooms = config["matrix_rooms"]
-    _validate_matrix_room_ids(matrix_rooms)
 
     # Create SSL context using certifi's certificates with system default fallback
     ssl_context = _create_ssl_context()
@@ -1608,7 +1589,6 @@ async def join_matrix_room(matrix_client, room_id_or_alias: str) -> None:
     """
     try:
         if room_id_or_alias.startswith("#"):
-            # If it's a room alias, resolve it to a room ID
             response = await matrix_client.room_resolve_alias(room_id_or_alias)
             if not hasattr(response, "room_id") or not response.room_id:
                 logger.error(
@@ -1616,11 +1596,18 @@ async def join_matrix_room(matrix_client, room_id_or_alias: str) -> None:
                 )
                 return
             room_id = response.room_id
-            # Update the room ID in the matrix_rooms list
-            for room_config in matrix_rooms:
-                if room_config["id"] == room_id_or_alias:
-                    room_config["id"] = room_id
+
+            for idx, entry in enumerate(matrix_rooms):
+                if isinstance(entry, dict) and entry.get("id") == room_id_or_alias:
+                    matrix_rooms[idx]["id"] = room_id
                     break
+                if isinstance(entry, str) and entry == room_id_or_alias:
+                    matrix_rooms[idx] = room_id
+                    break
+
+            logger.info(
+                f"Resolved Matrix room alias '{room_id_or_alias}' to '{room_id}'"
+            )
         else:
             room_id = room_id_or_alias
 
