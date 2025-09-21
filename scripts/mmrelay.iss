@@ -39,7 +39,7 @@ begin
     '', False, False);
   ConnectionTypePage := CreateInputOptionPage(OverwriteConfig.ID,
       'Meshtastic Setup', 'Configure Meshtastic Settings',
-      'Select the connection type for your Meshtastic radio.', False, False);
+      'Select the connection type for your Meshtastic radio.', False, True);
   MeshtasticPage := CreateInputQueryPage(ConnectionTypePage.ID,
       'Meshtastic Setup', 'Configure Meshtastic Settings',
       'Enter the settings for connecting with your Meshtastic radio.');
