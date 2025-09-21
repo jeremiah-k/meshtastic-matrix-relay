@@ -172,7 +172,7 @@ def initialize_database():
                 # Index creation failed, continue without it
                 pass
     except sqlite3.Error:
-        logger.error("Database initialization failed")
+        logger.exception("Database initialization failed")
         raise
 
 

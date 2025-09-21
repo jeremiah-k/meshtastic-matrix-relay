@@ -82,8 +82,8 @@ async def main(config):
 
     matrix_rooms: List[dict] = config["matrix_rooms"]
 
-    # Set the event loop in meshtastic_utils
-    meshtastic_utils.event_loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
+    meshtastic_utils.event_loop = loop
 
     # Initialize the SQLite database
     initialize_database()
@@ -119,7 +119,9 @@ async def main(config):
     start_message_queue(message_delay=message_delay)
 
     # Connect to Meshtastic
-    meshtastic_utils.meshtastic_client = connect_meshtastic(passed_config=config)
+    meshtastic_utils.meshtastic_client = await asyncio.to_thread(
+        connect_meshtastic, passed_config=config
+    )
 
     # Connect to Matrix
     matrix_client = await connect_matrix(passed_config=config)
@@ -155,8 +157,6 @@ async def main(config):
         meshtastic_utils.shutting_down = True  # Set the shutting_down flag
         shutdown_event.set()
 
-    loop = asyncio.get_running_loop()
-
     # Handle signals differently based on the platform
     if sys.platform != WINDOWS_PLATFORM:
         for sig in (signal.SIGINT, signal.SIGTERM):
@@ -177,14 +177,16 @@ async def main(config):
         while not shutdown_event.is_set():
             try:
                 if meshtastic_utils.meshtastic_client:
-                    # Update longnames & shortnames in executor
+                    nodes_snapshot = dict(meshtastic_utils.meshtastic_client.nodes)
                     await loop.run_in_executor(
-                        None, update_longnames, meshtastic_utils.meshtastic_client.nodes
+                        None,
+                        update_longnames,
+                        nodes_snapshot,
                     )
                     await loop.run_in_executor(
                         None,
                         update_shortnames,
-                        meshtastic_utils.meshtastic_client.nodes,
+                        nodes_snapshot,
                     )
                 else:
                     meshtastic_logger.warning("Meshtastic client is not connected.")
@@ -223,12 +225,12 @@ async def main(config):
                         matrix_logger.warning(
                             "Matrix sync_forever completed unexpectedly"
                         )
-                    except Exception:
+                    except Exception:  # noqa: BLE001 — sync loop must keep retrying
                         # Log the exception and continue to retry
                         matrix_logger.exception("Matrix sync failed")
                         # The outer try/catch will handle the retry logic
 
-            except Exception:
+            except Exception:  # noqa: BLE001 — keep loop alive for retries
                 if shutdown_event.is_set():
                     break
                 matrix_logger.exception("Error syncing with Matrix server")
@@ -282,13 +284,18 @@ async def main(config):
             meshtastic_logger.info("Cancelled Meshtastic reconnect task.")
 
         # Cancel any remaining tasks (including the check_conn_task)
-        tasks = [t for t in asyncio.all_tasks(loop) if not t.done()]
-        for task in tasks:
+        current_task = asyncio.current_task()
+        pending_tasks = [
+            task
+            for task in asyncio.all_tasks(loop)
+            if task is not current_task and not task.done()
+        ]
+
+        for task in pending_tasks:
             task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
+
+        if pending_tasks:
+            await asyncio.gather(*pending_tasks, return_exceptions=True)
 
         matrix_logger.info("Shutdown complete.")
 
@@ -400,8 +407,7 @@ def run_main(args):
     except KeyboardInterrupt:
         logger.info("Interrupted by user. Exiting.")
         return 0
-    except Exception:
-
+    except Exception:  # noqa: BLE001 — top-level guard to log and exit cleanly
         logger.exception("Error running main functionality")
         return 1
 

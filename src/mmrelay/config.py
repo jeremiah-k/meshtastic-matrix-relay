@@ -775,7 +775,7 @@ def load_config(config_file=None, args=None):
             relay_config = apply_env_config_overrides(relay_config)
             return relay_config
         except (yaml.YAMLError, PermissionError, OSError):
-            logger.error(f"Error loading config file {config_file}")
+            logger.exception(f"Error loading config file {config_file}")
             return {}
 
     # Otherwise, search for a config file
@@ -796,7 +796,7 @@ def load_config(config_file=None, args=None):
                 relay_config = apply_env_config_overrides(relay_config)
                 return relay_config
             except (yaml.YAMLError, PermissionError, OSError):
-                logger.error(f"Error loading config file {path}")
+                logger.exception(f"Error loading config file {path}")
                 continue  # Try the next config path
 
     # No config file found - try to use environment variables only

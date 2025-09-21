@@ -1128,15 +1128,13 @@ async def login_matrix_bot(
         bool: True on successful login and credentials persisted; False on failure. The function handles errors internally and returns False rather than raising.
     """
     try:
-        # Enable nio debug logging for detailed connection analysis
-        # Enable ALL logging to debug the validation issue
-        logging.getLogger("nio").setLevel(logging.DEBUG)
-        logging.getLogger("nio.client").setLevel(logging.DEBUG)
-        logging.getLogger("nio.http_client").setLevel(logging.DEBUG)
-        logging.getLogger("nio.responses").setLevel(
-            logging.DEBUG
-        )  # Enable validation logging
-        logging.getLogger("aiohttp").setLevel(logging.DEBUG)
+        # Optionally enable verbose nio/aiohttp debug logging
+        if os.getenv("MMRELAY_DEBUG_NIO") == "1":
+            logging.getLogger("nio").setLevel(logging.DEBUG)
+            logging.getLogger("nio.client").setLevel(logging.DEBUG)
+            logging.getLogger("nio.http_client").setLevel(logging.DEBUG)
+            logging.getLogger("nio.responses").setLevel(logging.DEBUG)
+            logging.getLogger("aiohttp").setLevel(logging.DEBUG)
 
         # Get homeserver URL
         if not homeserver:
@@ -2403,7 +2401,13 @@ async def on_room_message(
             reaction_message = f'{shortname}/{short_meshnet_name} reacted {reaction_emoji} to "{abbreviated_text}"'
 
             # Relay the remote reaction to the local meshnet.
-            meshtastic_interface = connect_meshtastic()
+            loop = asyncio.get_running_loop()
+            meshtastic_interface = await loop.run_in_executor(None, connect_meshtastic)
+            if not meshtastic_interface:
+                logger.error(
+                    "Failed to connect to Meshtastic for remote reaction relay"
+                )
+                return
             from mmrelay.meshtastic_utils import logger as meshtastic_logger
 
             meshtastic_channel = room_config["meshtastic_channel"]
@@ -2478,7 +2482,11 @@ async def on_room_message(
             reaction_message = (
                 f'{prefix}reacted {reaction_emoji} to "{abbreviated_text}"'
             )
-            meshtastic_interface = connect_meshtastic()
+            loop = asyncio.get_running_loop()
+            meshtastic_interface = await loop.run_in_executor(None, connect_meshtastic)
+            if not meshtastic_interface:
+                logger.error("Failed to connect to Meshtastic for local reaction relay")
+                return
             from mmrelay.meshtastic_utils import logger as meshtastic_logger
 
             meshtastic_channel = room_config["meshtastic_channel"]
@@ -2614,7 +2622,8 @@ async def on_room_message(
         return
 
     # Connect to Meshtastic
-    meshtastic_interface = connect_meshtastic()
+    loop = asyncio.get_running_loop()
+    meshtastic_interface = await loop.run_in_executor(None, connect_meshtastic)
     from mmrelay.meshtastic_utils import logger as meshtastic_logger
 
     if not meshtastic_interface:

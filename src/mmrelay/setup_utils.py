@@ -103,7 +103,7 @@ def wait_for_service_start():
     """
     import time
 
-    from mmrelay.meshtastic_utils import is_running_as_service
+    from mmrelay.runtime_utils import is_running_as_service
 
     if not is_running_as_service():
         from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
@@ -251,7 +251,7 @@ def get_template_service_content():
         service_template = (
             importlib.resources.files("mmrelay.tools")
             .joinpath("mmrelay.service")
-            .read_text()
+            .read_text(encoding="utf-8")
         )
         return service_template
     except (FileNotFoundError, ImportError, OSError, UnicodeDecodeError) as e:
@@ -350,7 +350,7 @@ def create_service_file():
     """
     # Get executable paths once to avoid duplicate calls and output
     executable_path = get_executable_path()
-    resolved_exec_cmd = get_resolved_exec_cmd()
+    resolved_exec_cmd = executable_path
 
     # Create service directory if it doesn't exist
     service_dir = get_user_service_path().parent
@@ -363,7 +363,7 @@ def create_service_file():
     # Get the template service content
     service_template = get_template_service_content()
     if not service_template:
-        print("Error: Could not find service template file")
+        print("Error: Could not find service template file", file=sys.stderr)
         return False
 
     # Replace placeholders with actual values
@@ -790,7 +790,7 @@ def show_service_status():
         print(result.stdout)
         return True
     except subprocess.CalledProcessError as e:
-        print(f"Could not get service status: {e}")
+        print(f"Could not get service status: {e}", file=sys.stderr)
         return False
     except OSError as e:
         print(f"Error: {e}", file=sys.stderr)

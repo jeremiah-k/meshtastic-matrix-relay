@@ -20,7 +20,7 @@ Name: "{group}\MM Relay"; Filename: "{app}\mmrelay.bat"
 Name: "{group}\MM Relay Config"; Filename: "{app}\config.yaml"; IconFilename: "{sys}\notepad.exe"; WorkingDir: "{app}"; Parameters: "config.yaml";
 
 [Run]
-Filename: "{app}\mmrelay.bat"; Description: "Launch MM Relay"; Flags: nowait postinstall
+Filename: "{app}\mmrelay.bat"; Description: "Launch MM Relay"; Flags: nowait postinstall; WorkingDir: "{app}"
 
 [Code]
 var

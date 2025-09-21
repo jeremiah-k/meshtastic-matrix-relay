@@ -3,7 +3,7 @@ from logging.handlers import RotatingFileHandler
 
 # Import Rich components only when not running as a service
 try:
-    from mmrelay.meshtastic_utils import is_running_as_service
+    from mmrelay.runtime_utils import is_running_as_service
 
     if not is_running_as_service():
         from rich.console import Console

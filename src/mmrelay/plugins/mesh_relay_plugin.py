@@ -176,7 +176,7 @@ class Plugin(BasePlugin):
         """
         # Use the event for matching instead of full_message
         if not self.matches(event):
-            return False
+            return None
 
         channel = None
         if config is not None:

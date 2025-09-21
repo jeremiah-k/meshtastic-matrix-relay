@@ -2,7 +2,6 @@ import asyncio
 import contextlib
 import inspect
 import io
-import os
 import re
 import threading
 import time
@@ -42,10 +41,8 @@ from mmrelay.constants.network import (
     CONNECTION_TYPE_SERIAL,
     CONNECTION_TYPE_TCP,
     DEFAULT_BACKOFF_TIME,
-    DEFAULT_RETRY_ATTEMPTS,
     ERRNO_BAD_FILE_DESCRIPTOR,
     INFINITE_RETRIES,
-    SYSTEMD_INIT_SYSTEM,
 )
 
 # Import BLE exceptions conditionally
@@ -68,6 +65,7 @@ from mmrelay.db_utils import (
     save_shortname,
 )
 from mmrelay.log_utils import get_logger
+from mmrelay.runtime_utils import is_running_as_service
 
 # Global config variable that will be set from config.py
 config = None
@@ -204,31 +202,6 @@ def _get_device_metadata(client):
     return result
 
 
-def is_running_as_service():
-    """
-    Determine if the application is running as a systemd service.
-
-    Returns:
-        bool: True if the process is running under systemd, either by detecting the INVOCATION_ID environment variable or by checking if the parent process is systemd; otherwise, False.
-    """
-    # Check for INVOCATION_ID environment variable (set by systemd)
-    if os.environ.get("INVOCATION_ID"):
-        return True
-
-    # Check if parent process is systemd
-    try:
-        with open("/proc/self/status") as f:
-            for line in f:
-                if line.startswith("PPid:"):
-                    ppid = int(line.split()[1])
-                    with open(f"/proc/{ppid}/comm") as p:
-                        return p.read().strip() == SYSTEMD_INIT_SYSTEM
-    except (FileNotFoundError, PermissionError, ValueError):
-        pass
-
-    return False
-
-
 def serial_port_exists(port_name):
     """
     Check if the specified serial port exists.
@@ -316,8 +289,13 @@ def connect_meshtastic(passed_config=None, force_connect=False):
             )
 
     # Move retry loop outside the lock to prevent blocking other threads
-    retry_limit = INFINITE_RETRIES  # 0 means infinite retries
-    attempts = DEFAULT_RETRY_ATTEMPTS
+    meshtastic_settings = config.get("meshtastic", {}) if config else {}
+    retry_limit = meshtastic_settings.get("retries", INFINITE_RETRIES)
+    try:
+        retry_limit = int(retry_limit)
+    except (TypeError, ValueError):
+        retry_limit = INFINITE_RETRIES
+    attempts = 0
     successful = False
 
     while (
@@ -326,6 +304,7 @@ def connect_meshtastic(passed_config=None, force_connect=False):
         and not shutting_down
     ):
         try:
+            client = None
             if connection_type == CONNECTION_TYPE_SERIAL:
                 # Serial connection
                 serial_port = config["meshtastic"].get(CONFIG_KEY_SERIAL_PORT)
@@ -346,9 +325,7 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                     attempts += 1
                     continue
 
-                meshtastic_client = meshtastic.serial_interface.SerialInterface(
-                    serial_port
-                )
+                client = meshtastic.serial_interface.SerialInterface(serial_port)
 
             elif connection_type == CONNECTION_TYPE_BLE:
                 # BLE connection
@@ -357,7 +334,7 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                     logger.info(f"Connecting to BLE address {ble_address}")
 
                     # Connect without progress indicator
-                    meshtastic_client = meshtastic.ble_interface.BLEInterface(
+                    client = meshtastic.ble_interface.BLEInterface(
                         address=ble_address,
                         noProto=False,
                         debugOut=None,
@@ -379,9 +356,7 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                 logger.info(f"Connecting to host {target_host}")
 
                 # Connect without progress indicator
-                meshtastic_client = meshtastic.tcp_interface.TCPInterface(
-                    hostname=target_host
-                )
+                client = meshtastic.tcp_interface.TCPInterface(hostname=target_host)
             else:
                 logger.exception(f"Unknown connection type: {connection_type}")
                 return None
@@ -390,6 +365,7 @@ def connect_meshtastic(passed_config=None, force_connect=False):
 
             # Acquire lock only for the final setup and subscription
             with meshtastic_lock:
+                meshtastic_client = client
                 nodeInfo = meshtastic_client.getMyNodeInfo()
 
                 # Safely access node info fields
@@ -530,26 +506,32 @@ async def reconnect():
 
                 # Show reconnection countdown with Rich (if not in a service)
                 if not is_running_as_service():
-                    from rich.progress import (
-                        BarColumn,
-                        Progress,
-                        TextColumn,
-                        TimeRemainingColumn,
-                    )
-
-                    with Progress(
-                        TextColumn("[cyan]Meshtastic: Reconnecting in"),
-                        BarColumn(),
-                        TextColumn("[cyan]{task.percentage:.0f}%"),
-                        TimeRemainingColumn(),
-                        transient=True,
-                    ) as progress:
-                        task = progress.add_task("Waiting", total=backoff_time)
-                        for _ in range(backoff_time):
-                            if shutting_down:
-                                break
-                            await asyncio.sleep(1)
-                            progress.update(task, advance=1)
+                    try:
+                        from rich.progress import (
+                            BarColumn,
+                            Progress,
+                            TextColumn,
+                            TimeRemainingColumn,
+                        )
+                    except ImportError:
+                        logger.debug(
+                            "Rich not available; falling back to simple reconnection delay"
+                        )
+                        await asyncio.sleep(backoff_time)
+                    else:
+                        with Progress(
+                            TextColumn("[cyan]Meshtastic: Reconnecting in"),
+                            BarColumn(),
+                            TextColumn("[cyan]{task.percentage:.0f}%"),
+                            TimeRemainingColumn(),
+                            transient=True,
+                        ) as progress:
+                            task = progress.add_task("Waiting", total=backoff_time)
+                            for _ in range(backoff_time):
+                                if shutting_down:
+                                    break
+                                await asyncio.sleep(1)
+                                progress.update(task, advance=1)
                 else:
                     await asyncio.sleep(backoff_time)
                 if shutting_down:

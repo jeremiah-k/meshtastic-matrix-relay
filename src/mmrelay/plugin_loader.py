@@ -651,9 +651,10 @@ def load_plugins_from_directory(directory, recursive=False):
                                     f"Module {missing_module} still not available after installation. "
                                     f"The package name might be different from the import name."
                                 )
-                            except Exception as retry_error:
+                            except Exception:
                                 logger.exception(
-                                    f"Error loading plugin {plugin_path} after dependency installation: {retry_error}"
+                                    "Error loading plugin %s after dependency installation",
+                                    plugin_path,
                                 )
 
                         except subprocess.CalledProcessError:
@@ -714,7 +715,7 @@ def load_plugins(passed_config=None):
 
     # Check if config is available
     if config is None:
-        logger.exception("No configuration available. Cannot load plugins.")
+        logger.error("No configuration available. Cannot load plugins.")
         return []
 
     # Import core plugins
@@ -876,9 +877,9 @@ def load_plugins(passed_config=None):
                         )
                         plugin_found = True
                         break
-                    except Exception as e:
+                    except Exception:
                         logger.exception(
-                            f"Failed to load community plugin {repo_name}: {e}"
+                            "Failed to load community plugin %s", repo_name
                         )
                         continue
 
@@ -887,8 +888,9 @@ def load_plugins(passed_config=None):
                     f"Community plugin '{repo_name}' not found in any of the plugin directories"
                 )
         else:
-            logger.exception(
-                f"Repository URL not specified for community plugin: {plugin_name}"
+            logger.error(
+                "Repository URL not specified for community plugin: %s",
+                plugin_name,
             )
 
     # Filter and sort active plugins by priority
