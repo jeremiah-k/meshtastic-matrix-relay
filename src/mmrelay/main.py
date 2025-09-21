@@ -182,7 +182,9 @@ async def main(config):
                         None, update_longnames, meshtastic_utils.meshtastic_client.nodes
                     )
                     await loop.run_in_executor(
-                        None, update_shortnames, meshtastic_utils.meshtastic_client.nodes
+                        None,
+                        update_shortnames,
+                        meshtastic_utils.meshtastic_client.nodes,
                     )
                 else:
                     meshtastic_logger.warning("Meshtastic client is not connected.")

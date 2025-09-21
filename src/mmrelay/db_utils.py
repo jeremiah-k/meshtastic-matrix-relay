@@ -111,9 +111,7 @@ def get_db_path():
     try:
         os.makedirs(data_dir, exist_ok=True)
     except (OSError, PermissionError) as e:
-        logger.warning(
-            f"Could not create data directory {data_dir}: {e}"
-        )
+        logger.warning(f"Could not create data directory {data_dir}: {e}")
         # Continue anyway - the database connection will fail later if needed
     default_path = os.path.join(data_dir, "meshtastic.sqlite")
     _cached_db_path = default_path

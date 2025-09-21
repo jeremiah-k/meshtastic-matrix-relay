@@ -99,7 +99,10 @@ async def test_on_room_message_simple_text(
 
     Ensures that when a user sends a simple text message, the message is correctly queued with the expected content for relaying.
     """
-    mock_isinstance.return_value = False
+    # Use real isinstance for this test so type checks on strings behave normally
+    import builtins
+
+    mock_isinstance.side_effect = builtins.isinstance
 
     # Create a proper async mock function
     async def mock_get_user_display_name_func(*args, **kwargs):
@@ -124,6 +127,51 @@ async def test_on_room_message_simple_text(
             mock_queue_message.assert_called_once()
             call_args = mock_queue_message.call_args[1]
             assert "Hello, world!" in call_args["text"]
+
+
+@patch("mmrelay.matrix_utils.connect_meshtastic")
+@patch("mmrelay.matrix_utils.queue_message")
+@patch("mmrelay.matrix_utils.bot_start_time", 1234567880)
+@patch("mmrelay.matrix_utils.isinstance")
+async def test_on_room_message_remote_prefers_meshtastic_text(
+    mock_isinstance,
+    mock_queue_message,
+    mock_connect_meshtastic,
+    mock_room,
+    mock_event,
+    test_config,
+):
+    """Ensure remote mesh messages fall back to raw meshtastic_text when body is empty."""
+
+    import builtins
+
+    mock_isinstance.side_effect = builtins.isinstance
+    mock_event.body = ""
+    mock_event.source = {
+        "content": {
+            "body": "",
+            "meshtastic_longname": "LoRa",
+            "meshtastic_shortname": "Trak",
+            "meshtastic_meshnet": "remote",
+            "meshtastic_text": "Hello from remote mesh",
+            "meshtastic_portnum": "TEXT_MESSAGE_APP",
+        }
+    }
+
+    # Remote mesh must differ from local meshnet_name to exercise relay path
+    test_config["meshtastic"]["meshnet_name"] = "local_mesh"
+
+    matrix_rooms = test_config["matrix_rooms"]
+    with patch("mmrelay.matrix_utils.config", test_config), patch(
+        "mmrelay.matrix_utils.matrix_rooms", matrix_rooms
+    ), patch("mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]):
+        mock_matrix_client = MagicMock()
+        with patch("mmrelay.matrix_utils.matrix_client", mock_matrix_client):
+            await on_room_message(mock_room, mock_event)
+
+    mock_queue_message.assert_called_once()
+    queued_kwargs = mock_queue_message.call_args.kwargs
+    assert "Hello from remote mesh" in queued_kwargs["text"]
 
 
 @patch("mmrelay.matrix_utils.connect_meshtastic")

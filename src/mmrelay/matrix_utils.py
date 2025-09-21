@@ -2328,6 +2328,17 @@ async def on_room_message(
 
     text = event.body.strip() if (not is_reaction and hasattr(event, "body")) else ""
 
+    # Some Matrix relays (especially Meshtastic bridges) provide the raw mesh
+    # payload alongside the formatted body. Prefer that when available so we do
+    # not lose content if the formatted text is empty or stripped unexpectedly.
+    mesh_text_override = event.source["content"].get("meshtastic_text")
+    if isinstance(mesh_text_override, str):
+        mesh_text_override = mesh_text_override.strip()
+        if not mesh_text_override:
+            mesh_text_override = None
+    else:
+        mesh_text_override = None
+
     longname = event.source["content"].get("meshtastic_longname")
     shortname = event.source["content"].get("meshtastic_shortname", None)
     meshnet_name = event.source["content"].get("meshtastic_meshnet")
@@ -2524,6 +2535,8 @@ async def on_room_message(
             # If shortname is not available, derive it from the longname
             if shortname is None:
                 shortname = longname[:SHORTNAME_FALLBACK_LENGTH] if longname else "???"
+            if mesh_text_override:
+                text = mesh_text_override
             # Remove the original prefix to avoid double-tagging
             # Get the prefix that would have been used for this message
             original_prefix = get_matrix_prefix(
@@ -2534,10 +2547,18 @@ async def on_room_message(
                 logger.debug(
                     f"Removed original prefix '{original_prefix}' from remote meshnet message"
                 )
+            if not text and mesh_text_override:
+                text = mesh_text_override
             text = truncate_message(text)
             # Use the configured prefix format for remote meshnet messages
             prefix = get_matrix_prefix(config, longname, shortname, short_meshnet_name)
             full_message = f"{prefix}{text}"
+            if not text:
+                logger.warning(
+                    "Remote meshnet message from %s had empty text after formatting; skipping relay",
+                    meshnet_name,
+                )
+                return
         else:
             # If this message is from our local meshnet (loopback), we ignore it
             return

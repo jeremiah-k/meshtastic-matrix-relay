@@ -225,15 +225,13 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
 
             # Set up required globals for the function to reach plugin processing
             import mmrelay.meshtastic_utils
+
             mmrelay.meshtastic_utils.config = {
                 "matrix": {"homeserver": "test"},
                 "meshtastic": {
                     "meshnet_name": "test_meshnet",
-                    "message_interactions": {
-                        "reactions": True,
-                        "replies": True
-                    }
-                }
+                    "message_interactions": {"reactions": True, "replies": True},
+                },
             }
             # Set up matrix_rooms to map channel 0 so the message is processed
             mmrelay.meshtastic_utils.matrix_rooms = [
@@ -267,22 +265,18 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
 
         with patch("mmrelay.plugin_loader.load_plugins", return_value=[]), patch(
             "mmrelay.meshtastic_utils._submit_coro"
-        ) as mock_submit_coro, patch(
-            "mmrelay.matrix_utils.matrix_relay"
-        ) as mock_matrix_relay, patch(
+        ) as mock_submit_coro, patch("mmrelay.matrix_utils.matrix_relay"), patch(
             "mmrelay.meshtastic_utils.logger"
         ) as mock_logger:
             # Set up required globals for the function to run
             import mmrelay.meshtastic_utils
+
             mmrelay.meshtastic_utils.config = {
                 "matrix": {"homeserver": "test"},
                 "meshtastic": {
                     "meshnet_name": "test_meshnet",
-                    "message_interactions": {
-                        "reactions": True,
-                        "replies": True
-                    }
-                }
+                    "message_interactions": {"reactions": True, "replies": True},
+                },
             }
             mmrelay.meshtastic_utils.event_loop = MagicMock()
 
