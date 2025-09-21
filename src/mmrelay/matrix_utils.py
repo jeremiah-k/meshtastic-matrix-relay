@@ -2012,33 +2012,40 @@ def format_reply_message(
     clean_text = strip_quoted_lines(base_text).strip()
 
     # Handle remote meshnet replies by using the remote sender's prefix format
-    if (
-        longname
-        and meshnet_name
-        and local_meshnet_name
-        and meshnet_name != local_meshnet_name
-    ):
-        # Use a fallback shortname if none provided
-        if not shortname and longname:
-            shortname = longname[:SHORTNAME_FALLBACK_LENGTH] if longname else "???"
+    if meshnet_name and local_meshnet_name and meshnet_name != local_meshnet_name:
+        sender_long = longname or full_display_name or shortname or "???"
+        sender_short = shortname or sender_long[:SHORTNAME_FALLBACK_LENGTH] or "???"
+        short_meshnet_name = meshnet_name[:MESHNET_NAME_ABBREVIATION_LENGTH]
 
-        # Remove any original prefix that might already be present in the text
-        original_prefix = get_matrix_prefix(config, longname, shortname, meshnet_name)
-        if original_prefix and clean_text.startswith(original_prefix):
-            clean_text = clean_text[len(original_prefix) :].lstrip()
-        else:
-            # Fallback removal for the default formatting if custom config differs
-            default_prefix = f"[{longname}/{meshnet_name}]: "
-            if clean_text.startswith(default_prefix):
-                clean_text = clean_text[len(default_prefix) :].lstrip()
+        prefix_candidates = [
+            f"[{sender_long}/{meshnet_name}]: ",
+            f"[{sender_long}/{short_meshnet_name}]: ",
+            f"{sender_long}/{meshnet_name}: ",
+            f"{sender_long}/{short_meshnet_name}: ",
+            f"{sender_short}/{meshnet_name}: ",
+            f"{sender_short}/{short_meshnet_name}: ",
+        ]
+
+        matrix_prefix_full = get_matrix_prefix(
+            config, sender_long, sender_short, meshnet_name
+        )
+        matrix_prefix_short = get_matrix_prefix(
+            config, sender_long, sender_short, short_meshnet_name
+        )
+        prefix_candidates.extend([matrix_prefix_full, matrix_prefix_short])
+
+        for candidate in prefix_candidates:
+            if candidate and clean_text.startswith(candidate):
+                clean_text = clean_text[len(candidate) :].lstrip()
+                break
 
         if not clean_text and mesh_text_override:
             clean_text = strip_quoted_lines(mesh_text_override).strip()
 
-        short_meshnet_name = meshnet_name[:MESHNET_NAME_ABBREVIATION_LENGTH]
-        prefix = get_matrix_prefix(config, longname, shortname, short_meshnet_name)
-        reply_message = f"{prefix}{clean_text}" if clean_text else prefix.rstrip()
-        return truncate_message(reply_message)
+        mesh_prefix = f"{sender_short}/{short_meshnet_name}:"
+        reply_body = f" {clean_text}" if clean_text else ""
+        reply_message = f"{mesh_prefix}{reply_body}"
+        return truncate_message(reply_message.strip())
 
     # Default behavior for local Matrix users (retain existing prefix logic)
     prefix = get_meshtastic_prefix(config, full_display_name)

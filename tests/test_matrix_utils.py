@@ -814,13 +814,31 @@ def test_format_reply_message_remote_mesh_prefix():
         "MtP Relay",
         "[LoRa/Mt.P]: Test",
         longname="LoRa",
-        shortname=None,
+        shortname="Trak",
         meshnet_name="Mt.P",
         local_meshnet_name="Forx",
         mesh_text_override="Test",
     )
 
-    assert result == "[LoRa/Mt.P]: Test"
+    assert result == "Trak/Mt.P: Test"
+
+
+def test_format_reply_message_remote_without_longname():
+    """Remote replies fall back to shortname when longname missing."""
+
+    config = {}
+    result = format_reply_message(
+        config,
+        "MtP Relay",
+        "Tr/Mt.Peak: Hi",
+        longname=None,
+        shortname="Tr",
+        meshnet_name="Mt.Peak",
+        local_meshnet_name="Forx",
+        mesh_text_override="Hi",
+    )
+
+    assert result == "Tr/Mt.P: Hi"
 
 
 # Bot command detection tests - refactored to use test class with fixtures for better maintainability
