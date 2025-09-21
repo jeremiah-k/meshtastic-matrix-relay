@@ -79,19 +79,17 @@ def get_community_plugin_dirs():
 
 def clone_or_update_repo(repo_url, ref, plugins_dir):
     """
-    Clone or update a community plugin Git repository and ensure its dependencies are installed.
-
-    Attempts to clone the repository at the specified branch or tag, or update it if it already exists. Handles switching between branches and tags, falls back to default branches if needed, and installs Python dependencies from `requirements.txt` using either pip or pipx. Logs errors and warnings for any issues encountered.
-
+    Clone or update a community plugin Git repository and ensure its Python dependencies are installed.
+    
+    Performs a best-effort clone or update of the repository at repo_url into plugins_dir/repo_name using the provided ref (a dict with keys "type" ("tag" or "branch") and "value" (name)). If the repository already exists, the function attempts to fetch and switch to the requested branch or tag, with fallbacks to common default branches ("main", "master") when appropriate. After a successful clone/update, if a requirements.txt file exists in the repo root the function installs its requirements using pip or pipx (when a pipx environment is detected).
+    
     Parameters:
-        repo_url (str): The URL of the Git repository to clone or update.
-        ref (dict): Reference specification with keys:
-            - type: "tag" or "branch"
-            - value: The tag or branch name to use.
-        plugins_dir (str): Directory where the repository should be cloned or updated.
-
+        ref (dict): Reference spec with keys:
+            - type: either "tag" or "branch".
+            - value: the tag or branch name to check out.
+    
     Returns:
-        bool: True if the repository was successfully cloned or updated and dependencies were handled; False if any critical error occurred.
+        bool: True if the repository was successfully cloned/updated and dependency handling completed (or non-fatal errors occurred); False if a fatal git or filesystem error prevented cloning or updating.
     """
     # Extract the repository name from the URL
     repo_name = os.path.splitext(os.path.basename(repo_url.rstrip("/")))[0]

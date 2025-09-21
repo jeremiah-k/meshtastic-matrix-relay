@@ -243,15 +243,15 @@ def _get_msgs_to_keep_config():
 
 def _get_detailed_sync_error_message(sync_response) -> str:
     """
-    Return a concise, user-facing description of why a Matrix initial sync failed.
-
-    Given a sync response object (commonly a nio ErrorResponse or an HTTP/transport error object), extract the most specific, human-readable failure reason available. The helper maps common HTTP status codes (401, 403, 404, 429, 5xx) to friendly messages, inspects nio error messages and transport responses, and falls back to a generic network/connectivity message when necessary.
-
+    Return a concise, user-facing explanation for why an initial Matrix sync failed.
+    
+    Given a sync response or error object (commonly a nio ErrorResponse, an HTTP/transport error, raw bytes, or any object exposing `message`, `status_code`, or `transport_response`), extract the most specific human-readable reason available and map common HTTP/transport conditions to short, actionable messages (e.g., authentication failure, forbidden, not found, rate limited, server error). Falls back to a generic network/connectivity message when no specific detail can be reliably extracted.
+    
     Parameters:
-        sync_response: The sync response or error object returned by the Matrix client; can be a nio ErrorResponse, an HTTP/transport error, or any object carrying `message`, `status_code`, or `transport_response` attributes.
-
+        sync_response: The sync response or error object to summarize. May be bytes/bytearray, a nio ErrorResponse-like object, or any object with `message`, `status_code`, or `transport_response` attributes.
+    
     Returns:
-        str: A short, user-focused error description suitable for logs and user-facing troubleshooting hints.
+        str: A short, user-focused error description suitable for logs and brief troubleshooting hints.
     """
     try:
         # Handle bytes/bytearray types by converting to string
@@ -1581,10 +1581,9 @@ async def login_matrix_bot(
 
 async def join_matrix_room(matrix_client, room_id_or_alias: str) -> None:
     """
-    Join a Matrix room by ID or alias, resolving aliases and updating the local matrix_rooms mapping.
-
-    If given a room alias (starts with '#'), the alias is resolved to a room ID and any entry in the global matrix_rooms list that referenced that alias will be replaced with the resolved room ID. If the bot is not already in the resolved room (or provided room ID), the function attempts to join it. Successes and failures are logged; exceptions are caught and handled internally (the function does not raise).
-
+    Join a Matrix room by ID or alias, resolving aliases and updating the global matrix_rooms mapping.
+    
+    If a room alias (starts with '#') is provided the alias is resolved to a canonical room ID and any entry in the global matrix_rooms list that referenced that alias will be replaced with the resolved room ID. If the bot is not already in the resolved room (or the provided room ID), the function attempts to join it. Errors are logged and handled internally; the function does not raise.
     Parameters:
         room_id_or_alias (str): Room ID (e.g. "!abcdef:server") or alias (e.g. "#room:server") to join.
     """
@@ -1940,11 +1939,19 @@ async def matrix_relay(
 
 def truncate_message(text, max_bytes=DEFAULT_MESSAGE_TRUNCATE_BYTES):
     """
-    Truncate the given text to fit within the specified byte size.
-
-    :param text: The text to truncate.
-    :param max_bytes: The maximum allowed byte size for the truncated text.
-    :return: The truncated text.
+    Truncate a string so its UTF-8 encoding fits within max_bytes.
+    
+    Returns a substring whose UTF-8 byte length is at most `max_bytes`. If
+    `max_bytes` falls in the middle of a multi-byte UTF-8 character, the
+    incomplete character is dropped (decoding uses 'ignore').
+    
+    Parameters:
+        text (str): Input text to truncate.
+        max_bytes (int): Maximum allowed size in bytes for the UTF-8 encoded result
+            (defaults to DEFAULT_MESSAGE_TRUNCATE_BYTES).
+    
+    Returns:
+        str: Truncated string.
     """
     truncated_text = text.encode("utf-8")[:max_bytes].decode("utf-8", "ignore")
     return truncated_text
@@ -2009,27 +2016,26 @@ async def send_reply_to_meshtastic(
     reply_id=None,
 ):
     """
-    Queue a Matrix-origin reply for transmission over Meshtastic, optionally as a structured reply targeting a specific Meshtastic message.
-
-    If Meshtastic broadcasting is disabled in configuration, the function does nothing. When broadcasting is enabled, it enqueues either a structured reply (if reply_id is provided and supported) or a regular text broadcast. If storage_enabled is True, a message-mapping metadata record is created so the Meshtastic message can be correlated back to the originating Matrix event for future replies/reactions; the mapping retention uses the configured msgs_to_keep value.
-
+    Queue a Matrix-origin reply for transmission over Meshtastic, optionally targeting a specific Meshtastic message ID.
+    
+    If Meshtastic broadcasting is disabled in configuration the function returns without action. When broadcasting is enabled this enqueues either a structured reply (if reply_id is provided) or a regular text broadcast. If storage_enabled is True, a mapping record linking the originating Matrix event to the Meshtastic message is created and attached to the queued item when possible.
+    
     Parameters:
-        reply_message (str): Message text already formatted for Meshtastic.
-        full_display_name (str): Human-readable sender name to include in message descriptions.
-        room_config (dict): Room-specific configuration; must contain "meshtastic_channel".
-        room: Matrix room object where the original event occurred (used for event and room IDs).
+        reply_message (str): Message text already formatted and truncated for Meshtastic.
+        full_display_name (str): Human-readable sender name used in queue descriptions.
+        room_config (dict): Room-specific config; must include "meshtastic_channel".
+        room: Matrix room object where the original event occurred (used for room_id).
         event: Matrix event object being replied to (its event_id is used for mapping metadata).
-        text (str): Original Matrix event text (used when creating mapping metadata).
-        storage_enabled (bool): If True, attach mapping metadata to the queued Meshtastic message.
+        text (str): Original Matrix event text (used to build mapping metadata).
+        storage_enabled (bool): If True, attempt to create and attach message-mapping metadata.
         local_meshnet_name (str | None): Optional meshnet identifier to include in mapping metadata.
         reply_id (int | None): Meshtastic message ID to target for a structured reply; if None, a regular broadcast is sent.
-
-    Returns:
-        None
-
-    Notes:
-        - The function logs errors and does not raise; actual transmission is handled asynchronously by the Meshtastic queue system.
-        - Mapping creation uses configured limits (msgs_to_keep) and _create_mapping_info; if mapping creation fails, the message is still attempted without mapping.
+    
+    Behavior:
+        - Uses the Meshtastic queue system to enqueue the message; does not perform the send synchronously.
+        - On successful enqueue logs an informational message (includes queue size when >1); on failure logs an error.
+        - Mapping creation uses configured retention limits and _create_mapping_info; failures to create mapping do not prevent the message from being queued.
+        - Errors during enqueueing are caught and logged; the function does not raise.
     """
     loop = asyncio.get_running_loop()
     meshtastic_interface = await loop.run_in_executor(None, connect_meshtastic)
@@ -2129,12 +2135,12 @@ async def handle_matrix_reply(
     config,
 ):
     """
-    Relays a Matrix reply to the corresponding Meshtastic message if a mapping exists.
-
-    Looks up the original Meshtastic message using the Matrix event ID being replied to. If found, formats and sends the reply to Meshtastic, preserving conversational context. Returns True if the reply was successfully handled; otherwise, returns False to allow normal message processing.
-
+    Relay a Matrix reply back to Meshtastic when a Meshtastic↔Matrix mapping exists.
+    
+    Looks up the Meshtastic message mapped to the Matrix event being replied to; if a mapping is found, formats a Meshtastic reply that preserves the original sender attribution and queues it to be sent as a reply (using the original Meshtastic message ID). If no mapping exists the function returns False so normal Matrix processing can continue.
+    
     Returns:
-        bool: True if the reply was relayed to Meshtastic, False otherwise.
+        bool: True if the reply was relayed to Meshtastic (mapping found and queued), False if no mapping existed and no relay was performed.
     """
     # Look up the original message in the message map
     loop = asyncio.get_running_loop()

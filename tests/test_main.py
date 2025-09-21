@@ -548,10 +548,12 @@ class TestRunMain(unittest.TestCase):
         mock_asyncio_run,
     ):
         """
-        Test that run_main works correctly when args contains data_dir.
-
-        Note: --data-dir processing is now handled in cli.py before run_main() is called,
-        so run_main() no longer processes the data_dir argument directly.
+        Test that run_main returns success when args includes data_dir.
+        
+        This verifies run_main executes successfully when passed args.data_dir (processing of
+        `--data-dir` is performed by the CLI layer before calling run_main, so run_main does not
+        modify or create the directory). Uses a minimal valid config and a mocked asyncio.run
+        to avoid running the real event loop.
         """
 
         mock_config = {
@@ -1272,7 +1274,12 @@ class TestMainAsyncFunction(unittest.TestCase):
         self.assertEqual(mock_join.call_count, 2)
 
     def test_main_async_event_loop_setup(self):
-        """Test that main async function sets up event loop correctly."""
+        """
+        Verify that the async main startup accesses the running event loop.
+        
+        This test runs run_main with a minimal config while patching startup hooks so execution stops quickly,
+        and asserts that asyncio.get_running_loop() is called (the running loop is retrieved for use by Meshtastic and other async components).
+        """
         config = {
             "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
             "matrix": {"homeserver": "https://matrix.org"},

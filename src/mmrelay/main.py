@@ -153,6 +153,11 @@ async def main(config):
     shutdown_event = asyncio.Event()
 
     async def shutdown():
+        """
+        Signal application shutdown: mark Meshtastic shutdown flag, set the shutdown event, and log a shutdown notice.
+        
+        This coroutine performs the minimal shutdown signaling used by the main loop: it sets meshtastic_utils.shutting_down = True and sets the module-local shutdown_event to wake any waiters. It does not perform cleanup or resource closing itself; those are handled elsewhere once the event is observed.
+        """
         matrix_logger.info("Shutdown signal received. Closing down...")
         meshtastic_utils.shutting_down = True  # Set the shutting_down flag
         shutdown_event.set()
@@ -302,13 +307,13 @@ async def main(config):
 
 def run_main(args):
     """
-    Run the application's top-level startup sequence and invoke the main async runner.
-
-    Performs initial setup (prints banner, loads and applies configuration and logging overrides), validates that required configuration sections are present (required keys differ if credentials.json is present), then runs the main coroutine. Returns an exit code: 0 for successful run or user interrupt, 1 for configuration errors or unhandled exceptions.
-
+    Start the application: load configuration, validate required keys, and run the main async runner.
+    
+    Loads and applies configuration (optionally overriding logging level from args), initializes module configuration, verifies required configuration sections (required keys are ["meshtastic", "matrix_rooms"] when credentials.json is present, otherwise ["matrix", "meshtastic", "matrix_rooms"]), and executes the main async entrypoint. Returns process exit codes: 0 for successful completion or user interrupt, 1 for configuration errors or unhandled exceptions.
+    
     Parameters:
-        args: Parsed command-line arguments (may be None). Recognized options used here include `log_level`.
-
+        args: Parsed command-line arguments (may be None). Recognized option used here: `log_level` to override the configured logging level.
+    
     Returns:
         int: Exit code (0 on success or user-initiated interrupt, 1 on failure such as invalid config or runtime error).
     """

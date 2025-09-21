@@ -28,10 +28,10 @@ class TestMainEntryPoint(unittest.TestCase):
 
     def tearDown(self):
         """
-        Restore the original sys.argv saved in setUp to avoid cross-test contamination.
-
-        This resets the global argv list after each test so subsequent tests run with the
-        same command-line state that existed before the test.
+        Restore the original sys.argv saved in setUp.
+        
+        Resets the global sys.argv to the value captured before the test ran to prevent
+        command-line arguments from leaking between tests.
         """
         sys.argv = self.original_argv
 
@@ -53,7 +53,13 @@ class TestMainEntryPoint(unittest.TestCase):
     @patch("builtins.print")
     @patch("sys.exit")
     def test_main_entry_point_import_error(self, mock_exit, mock_print, mock_main):
-        """Test handling of ImportError when importing CLI."""
+        """Verify that when mmrelay.cli.main raises ImportError the __main__ entrypoint prints two specific error messages to stderr and exits with status 1.
+        
+        Executes src/mmrelay/__main__.py as a script (setting __name__ == "__main__") and asserts that:
+        - "Error importing MMRelay CLI: Module not found" is printed to stderr.
+        - "Please ensure MMRelay is properly installed." is printed to stderr.
+        - sys.exit is called with code 1.
+        """
         # Execute the main module code with __name__ == "__main__"
         with open("src/mmrelay/__main__.py") as f:
             code = f.read()
@@ -85,7 +91,11 @@ class TestMainEntryPoint(unittest.TestCase):
     @patch("mmrelay.cli.main", side_effect=SystemExit(42))
     @patch("sys.exit")
     def test_main_entry_point_system_exit_passthrough(self, mock_exit, mock_main):
-        """Test that SystemExit is passed through unchanged."""
+        """
+        Verify that a SystemExit raised by mmrelay.cli.main is propagated unchanged when executing __main__.py.
+        
+        Executes the package's __main__ module as a script (via exec with __name__ == "__main__") and asserts the raised SystemExit carries the original exit code (42), ensuring passthrough behavior rather than being swallowed or remapped.
+        """
         with self.assertRaises(SystemExit) as cm:
             with open("src/mmrelay/__main__.py") as f:
                 code = f.read()
@@ -129,7 +139,13 @@ class TestMainEntryPoint(unittest.TestCase):
         self.assertIn("SystemExit", content)
 
     def test_main_entry_point_docstring(self):
-        """Test that the __main__.py module has proper documentation."""
+        """
+        Verify mmrelay.__main__ provides the expected module docstring.
+        
+        Checks that the module-level docstring exists and contains the phrases
+        "Alternative entry point", "Windows", and "python -m mmrelay", which
+        are required for user guidance and compatibility notes.
+        """
         # Import the module to check its docstring
         import mmrelay.__main__
 

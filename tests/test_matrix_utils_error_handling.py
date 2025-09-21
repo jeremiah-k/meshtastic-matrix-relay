@@ -37,19 +37,19 @@ class FakeNioErrorResponseWithException:
 
     def __init__(self, status_code=None):
         """
-        Initialize the object with an optional HTTP status code.
-
+        Initialize the test error-response object.
+        
         Parameters:
-            status_code (int | None): HTTP status code associated with the error response (e.g., 404). If omitted, no status code is set.
+            status_code (int | None): Optional HTTP status code associated with the fake error response (e.g., 404). When omitted or None, no status code is set.
         """
         self.status_code = status_code
 
     @property
     def message(self):
         """
-        Simulate an attribute access error by always raising an AttributeError.
-
-        This property/method is intended for tests; calling it will raise AttributeError("Test exception") to mimic a failure when reading a `.message` attribute on a response object.
+        Simulate attribute access failure by raising AttributeError when this property is accessed.
+        
+        Used in tests to emulate a response whose `.message` attribute raises AttributeError("Test exception").
         """
         raise AttributeError("Test exception")
 
@@ -58,7 +58,14 @@ class TestDetailedSyncErrorMessage(unittest.TestCase):
     """Test cases for _get_detailed_sync_error_message function."""
 
     def setUp(self):
-        """Set up fake nio module for testing."""
+        """
+        Set up a fake `nio` module in sys.modules for tests that rely on isinstance checks.
+        
+        Creates a temporary module named "nio" with an `ErrorResponse` dummy class, saves any existing
+        `sys.modules["nio"]` value to `self.original_nio` for restoration, and installs the fake module
+        at `sys.modules["nio"]`. This allows tests to run without the real `nio` package while enabling
+        `isinstance(..., nio.ErrorResponse)` checks.
+        """
         # Create fake nio module to avoid isinstance patching
         self.fake_nio = types.ModuleType("nio")
 

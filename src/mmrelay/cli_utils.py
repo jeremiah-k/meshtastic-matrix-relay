@@ -550,19 +550,21 @@ def _handle_matrix_error(exception: Exception, context: str, log_level: str = "e
 
 async def logout_matrix_bot(password: str):
     """
-    Log out the configured Matrix account and remove local session data.
-
-    Verifies the provided Matrix password by performing a temporary login, then attempts to
-    log out the active session on the homeserver (invalidating the access token) and remove
-    local session artifacts (credentials.json and any E2EE store). If there is no active
-    session, the function reports that and returns True.
-
+    Log out the configured Matrix account (if any), verify credentials, and remove local session data.
+    
+    Performs an optional verification of the supplied Matrix password by performing a temporary login, attempts to log out the active server session (invalidating the access token), and removes local session artifacts (e.g., credentials.json and any E2EE store directories). If the stored credentials lack a user_id but include an access_token and homeserver, the function will try to fetch and persist the missing user_id before proceeding.
+    
     Parameters:
-        password (str): The Matrix account password used to verify the session before logout.
-
+        password (str): The Matrix account password used to verify the session before performing server logout.
+    
     Returns:
-        bool: True when local cleanup (and server logout, if applicable) completed successfully;
-              False on failure. If matrix-nio is not installed, prints an error and returns False.
+        bool: True when local cleanup (and server logout, if attempted) completed successfully; False on failure.
+        If the matrix-nio dependency is not available the function prints an error and returns False.
+    
+    Side effects:
+        - May update credentials.json if the user_id is fetched.
+        - Removes local session files and E2EE store directories when cleanup runs.
+        - Performs network requests to the homeserver for verification and logout when credentials are complete.
     """
 
     # Import inside function to avoid circular imports

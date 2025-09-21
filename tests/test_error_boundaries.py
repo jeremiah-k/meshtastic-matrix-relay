@@ -356,9 +356,9 @@ class TestErrorBoundaries(unittest.TestCase):
 
     def test_cascading_failure_prevention(self):
         """
-        Verify that the system prevents cascading failures by isolating and handling multiple simultaneous exceptions across components during message processing.
-
-        This test simulates concurrent failures in the database, plugin loader, and Matrix relay, ensuring that no exceptions propagate out of the error boundaries and that errors are logged appropriately.
+        Verify that multiple simultaneous component failures during message processing are contained and do not propagate.
+        
+        Simulates failures in the database lookups, plugin loading, and Matrix relay while invoking on_meshtastic_message. The test asserts that no exception escapes the call and that at least one error/exception was logged.
         """
         packet = {
             "decoded": {"text": "test message", "portnum": 1},
@@ -415,9 +415,9 @@ class TestErrorBoundaries(unittest.TestCase):
 
     def test_transient_failure_recovery(self):
         """
-        Test that the message queue recovers from transient failures and continues processing subsequent tasks.
-
-        This test enqueues multiple tasks where the first two attempts fail and subsequent attempts succeed, verifying that all tasks are eventually processed despite initial transient errors.
+        Verify MessageQueue recovers from transient failures and eventually processes all queued tasks.
+        
+        Enqueues multiple calls to a function that raises on its first two invocations and succeeds thereafter, then waits until every queued call has been attempted. Asserts that the total number of attempted calls equals the number of enqueued messages, demonstrating the queue continues processing after transient errors.
         """
         import asyncio
 
