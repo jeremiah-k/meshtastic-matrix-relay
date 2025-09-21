@@ -144,16 +144,14 @@ def _submit_coro(coro, loop=None):
 
 def _get_device_metadata(client):
     """
-    Retrieve device metadata from a Meshtastic client.
-
-    Attempts to call client.localNode.getMetadata() to extract a firmware version and capture the raw output. If the client lacks a usable localNode.getMetadata method or parsing fails, returns defaults. The captured raw output is truncated to 4096 characters.
-
-    Returns:
-        dict: {
-            "firmware_version": str,  # parsed firmware version or "unknown"
-            "raw_output": str,        # captured output from getMetadata() (possibly truncated)
-            "success": bool           # True when a firmware_version was successfully parsed
-        }
+    Retrieve firmware metadata from a Meshtastic client.
+    
+    Calls client.localNode.getMetadata() (if present) and captures its stdout/stderr to extract a firmware version and raw output. Returns a dict with:
+    - firmware_version: parsed version string or "unknown" when not found,
+    - raw_output: captured output (truncated to 4096 characters with a trailing ellipsis if longer),
+    - success: True when a firmware_version was successfully parsed.
+    
+    If the client lacks localNode.getMetadata or parsing fails, returns defaults without raising.
     """
     result = {"firmware_version": "unknown", "raw_output": "", "success": False}
 
@@ -204,8 +202,16 @@ def _get_device_metadata(client):
 
 def serial_port_exists(port_name):
     """
-    Check if the specified serial port exists.
-    This prevents attempting connections on non-existent ports.
+    Return True if a serial port with the given device name is present on the system.
+    
+    Checks available serial ports via pyserial's list_ports and compares their `.device`
+    strings to the provided port_name.
+    
+    Parameters:
+        port_name (str): Device name to check (e.g., '/dev/ttyUSB0' on Unix or 'COM3' on Windows).
+    
+    Returns:
+        bool: True if the port is found, False otherwise.
     """
     ports = [p.device for p in serial.tools.list_ports.comports()]
     return port_name in ports
@@ -905,15 +911,18 @@ def on_meshtastic_message(packet, interface):
 
 async def check_connection():
     """
-    Periodically verify Meshtastic connection health and trigger reconnection when the device is unresponsive.
-
-    Checks run continuously until shutdown. Behavior:
-    - Controlled by config['meshtastic']['health_check']:
-      - 'enabled' (bool, default True) — enable/disable periodic checks.
-      - 'heartbeat_interval' (int, seconds, default 60) — check interval. Backwards-compatible: if 'heartbeat_interval' exists directly under config['meshtastic'], that value is used.
-    - For non-BLE connections, calls _get_device_metadata(client). If metadata parsing fails, performs a fallback probe via client.getMyNodeInfo(); if both fail, on_lost_meshtastic_connection(...) is invoked to start reconnection.
-    - BLE connections are excluded from periodic checks because the underlying library detects disconnections in real time.
-    - No return value; runs as a background coroutine until global shutting_down is True.
+    Periodically verify the Meshtastic connection and initiate a reconnect when the device appears unresponsive.
+    
+    Runs until the module-level shutting_down flag becomes True. Behavior:
+    - Controlled by config["meshtastic"]["health_check"]:
+      - "enabled" (bool, default True) — enable/disable periodic checks.
+      - "heartbeat_interval" (int, seconds, default 60) — interval between checks.
+      - Backward compatibility: if "heartbeat_interval" exists directly under config["meshtastic"], that value is used.
+    - BLE connections are excluded from periodic checks (Bleak provides real-time disconnect detection).
+    - For non-BLE connections:
+      - Calls _get_device_metadata(client) in an executor; if metadata parsing fails, performs a fallback probe via client.getMyNodeInfo().
+      - If both probes fail and no reconnection is currently in progress, calls on_lost_meshtastic_connection(...) to start a reconnection.
+    No return value; side effect is scheduling/triggering reconnection when the device is unresponsive.
     """
     global meshtastic_client, shutting_down, config
 
@@ -1004,18 +1013,16 @@ def sendTextReply(
     channelIndex: int = 0,
 ):
     """
-    Sends a text message as a reply to a specific previous message via the Meshtastic interface.
-
+    Send a text reply referencing a previous Meshtastic message.
+    
+    Creates a Data payload with the given text and reply_id, wraps it in a MeshPacket on the specified channel, and sends it via the provided Meshtastic interface. Returns the sent MeshPacket (as returned by the interface) or None if the interface is unavailable or sending fails.
+    
     Parameters:
-        interface: The Meshtastic interface to send through.
-        text (str): The message content to send.
-        reply_id (int): The ID of the message being replied to.
-        destinationId: The recipient address (defaults to broadcast).
-        wantAck (bool): Whether to request acknowledgment for the message.
-        channelIndex (int): The channel index to send the message on.
-
-    Returns:
-        The sent MeshPacket with its ID field populated, or None if sending fails or the interface is unavailable.
+        text (str): UTF-8 text to send.
+        reply_id (int): ID of the message being replied to.
+        destinationId (int|str, optional): Recipient address; defaults to broadcast.
+        wantAck (bool, optional): If True, request an acknowledgement for the packet.
+        channelIndex (int, optional): Channel index to send the packet on.
     """
     logger.debug(f"Sending text reply: '{text}' replying to message ID {reply_id}")
 

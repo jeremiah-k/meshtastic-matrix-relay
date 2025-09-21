@@ -13,18 +13,26 @@ from mmrelay.constants.app import WINDOWS_PLATFORM
 
 
 def is_windows() -> bool:
-    """Check if running on Windows."""
+    """
+    Return True if the current process is running on a Windows platform.
+    
+    Checks common platform indicators (os.name == "nt" or sys.platform == WINDOWS_PLATFORM)
+    and returns a boolean accordingly.
+    
+    Returns:
+        bool: True when running on Windows, otherwise False.
+    """
     return os.name == "nt" or sys.platform == WINDOWS_PLATFORM
 
 
 def setup_windows_console() -> None:
     """
     Configure the Windows console for UTF-8 output and ANSI (VT100) color support.
-
-    On Windows, attempts to reconfigure sys.stdout/sys.stderr to UTF-8 and enable
-    virtual terminal processing so ANSI color and Unicode output render correctly.
-    This is a best-effort operation: it is a no-op on non-Windows platforms and
-    any failures (older Windows, restricted environments) are silently ignored.
+    
+    Best-effort: on Windows this attempts to set sys.stdout/sys.stderr encoding to UTF-8
+    (if supported) and enable Virtual Terminal Processing so ANSI colors and Unicode
+    render correctly. The function is a no-op on non-Windows platforms and silently
+    returns if the platform or environment does not support these operations.
     """
     if not is_windows():
         return
@@ -124,16 +132,16 @@ def get_windows_error_message(error: Exception) -> str:
 
 def check_windows_requirements() -> Optional[str]:
     """
-    Return a formatted warning string if common Windows environment issues are detected, otherwise None.
-
-    Checks:
-    - Python version (recommends Python 3.9+ on Windows).
-    - Whether the process appears to be running inside a virtual environment (venv/pipx).
-    - Current working directory path length (warns if > 200 characters).
-
+    Return a multi-line warning string when common Windows environment issues are detected; otherwise None.
+    
+    Performs Windows-only checks:
+    - Python version: warns if running on Python < 3.9.
+    - Virtual environment: warns if the process does not appear to be inside a venv/pipx.
+    - Current working directory length: warns if the cwd path length exceeds 200 characters.
+    
     Returns:
-        Optional[str]: A multi-line, human-readable warning message when one or more checks fail;
-        None if no issues are found or the platform is not Windows.
+        Optional[str]: A human-readable, multi-line warning message when one or more checks trigger;
+        returns None if running on a non-Windows platform or no issues are found.
     """
     if not is_windows():
         return None

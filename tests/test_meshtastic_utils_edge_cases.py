@@ -122,7 +122,9 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
 
     def test_connect_meshtastic_tcp_connection_refused(self):
         """
-        Verifies that connect_meshtastic returns None and logs an error when a TCP connection is refused.
+        Verify connect_meshtastic returns None and logs an exception when a TCP connection is refused.
+        
+        Patches the TCPInterface to raise ConnectionRefusedError and asserts that connect_meshtastic returns None and that logger.exception is invoked.
         """
         config = {"meshtastic": {"connection_type": "tcp", "host": "192.168.1.100"}}
 
@@ -148,7 +150,9 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
 
     def test_connect_meshtastic_exponential_backoff_max_retries(self):
         """
-        Verify that connect_meshtastic returns None and logs an error when repeated connection attempts with exponential backoff reach the maximum retries due to persistent MemoryError exceptions.
+        Test that connect_meshtastic returns None and logs an exception when repeated connection attempts hit the maximum retries due to persistent MemoryError.
+        
+        Sets a serial connection config, patches serial_port_exists to True and SerialInterface to raise MemoryError on each attempt, patches time.sleep to avoid delays, and asserts connect_meshtastic returns None and that logger.exception was called.
         """
         config = {
             "meshtastic": {"connection_type": "serial", "serial_port": "/dev/ttyUSB0"}
@@ -202,7 +206,11 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         from concurrent.futures import Future
 
         def _submit_coro_mock(coro, loop=None):
-            """Mock _submit_coro that executes the coroutine and returns a future."""
+            """
+            Run the given coroutine synchronously (using asyncio.run) and return a concurrent.futures.Future that is completed with its result or exception.
+            
+            This test helper executes the coroutine immediately to surface any exceptions and wraps the outcome in a Future. The optional `loop` parameter is accepted for API compatibility but is ignored.
+            """
             f = Future()
             try:
                 # Execute the coroutine to trigger the exception
@@ -369,7 +377,9 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
 
     def test_sendTextReply_client_send_failure(self):
         """
-        Test that sendTextReply returns None and logs an error when the client's send operation raises an exception.
+        Test that sendTextReply returns None and logs an exception when the client's send operation raises.
+        
+        Ensures that if the client's `_sendPacket` raises an exception, `sendTextReply` handles it by returning None and calling `logger.exception`.
         """
         mock_client = MagicMock()
         mock_client._sendPacket.side_effect = Exception("Send failed")

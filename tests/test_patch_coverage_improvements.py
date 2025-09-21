@@ -32,7 +32,10 @@ class TestPatchCoverageImprovements(unittest.TestCase):
         self.assertTrue(any("Warning:" in str(call) for call in call_args))
 
     def test_exception_handling_improvements(self):
-        """Test improved exception handling with specific exception types."""
+        """
+        Verify that is_service_enabled gracefully handles subprocess.run raising OSError:
+        it should return False and emit a warning message (printing contains "Warning:").
+        """
         # Test is_service_enabled with OSError
         with patch("subprocess.run", side_effect=OSError("Test error")):
             with patch("builtins.print") as mock_print:

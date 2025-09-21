@@ -92,7 +92,7 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
 
     def test_initialize_database_connection_failure(self):
         """
-        Test that initialize_database raises an exception and logs an error when the database connection fails.
+        Verify initialize_database raises sqlite3.Error when sqlite3.connect fails and that logger.exception is invoked.
         """
         with patch("sqlite3.connect", side_effect=sqlite3.Error("Connection failed")):
             with patch("mmrelay.db_utils.logger") as mock_logger:

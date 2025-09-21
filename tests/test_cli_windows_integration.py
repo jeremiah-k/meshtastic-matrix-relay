@@ -202,7 +202,10 @@ class TestCLIAuthLoginEnhancements(unittest.TestCase):
     """Test cases for enhanced auth login functionality."""
 
     def setUp(self):
-        """Set up test fixtures."""
+        """
+        Prepare test fixture by creating self.mock_args (a MagicMock) and initializing
+        homeserver, username, and password attributes to None.
+        """
         self.mock_args = MagicMock()
         self.mock_args.homeserver = None
         self.mock_args.username = None

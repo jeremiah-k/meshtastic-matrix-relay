@@ -110,6 +110,17 @@ class TestAuthFlowFixes(unittest.TestCase):
             with patch("mmrelay.config.get_base_dir", return_value=config_dir):
                 # Mock os.path.exists to return False for credentials.json but True for the directory
                 def mock_exists(path):
+                    """
+                    Mock os.path.exists for tests: returns False when queried for the credentials file path, True for the configuration directory path, and False for any other path.
+                    
+                    This function relies on outer-scope variables `credentials_path` and `config_dir` (closures). It's intended for use with monkeypatching or patching `os.path.exists` during unit tests to simulate a missing credentials.json file while the containing directory exists.
+                    
+                    Parameters:
+                        path (str): Filesystem path to check.
+                    
+                    Returns:
+                        bool: Presence of the path according to the mocked rules.
+                    """
                     if path == credentials_path:
                         return False  # credentials.json doesn't exist
                     elif path == config_dir:
