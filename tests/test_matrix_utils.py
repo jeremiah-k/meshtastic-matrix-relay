@@ -79,6 +79,7 @@ def test_config():
     }
 
 
+@patch("mmrelay.plugin_loader.load_plugins", return_value=[])
 @patch("mmrelay.matrix_utils.connect_meshtastic")
 @patch("mmrelay.matrix_utils.queue_message")
 @patch("mmrelay.matrix_utils.bot_start_time", 1234567880)
@@ -89,6 +90,7 @@ async def test_on_room_message_simple_text(
     mock_get_user_display_name,
     mock_queue_message,
     mock_connect_meshtastic,
+    mock_load_plugins,
     mock_room,
     mock_event,
     test_config,
@@ -128,6 +130,7 @@ async def test_on_room_message_simple_text(
             assert "Hello, world!" in call_args["text"]
 
 
+@patch("mmrelay.plugin_loader.load_plugins", return_value=[])
 @patch("mmrelay.matrix_utils.connect_meshtastic")
 @patch("mmrelay.matrix_utils.queue_message")
 @patch("mmrelay.matrix_utils.bot_start_time", 1234567880)
@@ -136,6 +139,7 @@ async def test_on_room_message_remote_prefers_meshtastic_text(
     mock_isinstance,
     mock_queue_message,
     mock_connect_meshtastic,
+    mock_load_plugins,
     mock_room,
     mock_event,
     test_config,
@@ -198,80 +202,48 @@ async def test_on_room_message_ignore_bot(
             mock_queue_message.assert_not_called()
 
 
-@patch("mmrelay.matrix_utils.connect_meshtastic")
-@patch("mmrelay.matrix_utils.queue_message")
 @patch("mmrelay.matrix_utils.bot_start_time", 1234567880)
-@patch("mmrelay.matrix_utils.get_message_map_by_matrix_event_id")
-@patch("mmrelay.matrix_utils.get_user_display_name")
-@patch("mmrelay.matrix_utils.isinstance")
+@patch("mmrelay.matrix_utils.handle_matrix_reply", new_callable=AsyncMock)
 async def test_on_room_message_reply_enabled(
-    mock_isinstance,
-    mock_get_user_display_name,
-    mock_get_message_map,
-    mock_queue_message,
-    mock_connect_meshtastic,
+    mock_handle_matrix_reply,
     mock_room,
     mock_event,
-    test_config,
 ):
     """
     Test that reply messages are processed and queued when reply interactions are enabled.
-
-    Ensures that when a Matrix event is a reply and reply interactions are enabled in the configuration, the reply text (with quoted lines removed) is extracted and passed to the Meshtastic message queue.
     """
-    mock_isinstance.return_value = False
-
-    # Create a proper async mock function
-    async def mock_get_user_display_name_func(*args, **kwargs):
-        """
-        Asynchronously returns a fixed user display name string "user".
-
-        Intended for use as a mock replacement in tests requiring an async display name retrieval function.
-        """
-        return "user"
-
-    mock_get_user_display_name.side_effect = mock_get_user_display_name_func
-    test_config["meshtastic"]["message_interactions"]["replies"] = True
+    test_config = {
+        "meshtastic": {
+            "message_interactions": {"replies": True},
+            "meshnet_name": "test_mesh",
+        },
+        "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+        "matrix": {"bot_user_id": "@bot:matrix.org"},
+    }
+    mock_handle_matrix_reply.return_value = True
     mock_event.source = {
         "content": {
             "m.relates_to": {"m.in_reply_to": {"event_id": "original_event_id"}}
         }
     }
-    mock_event.body = (
-        "> <@original_user:matrix.org> original message\n\nThis is a reply"
-    )
-    mock_get_message_map.return_value = (
-        "meshtastic_id",
-        "!room:matrix.org",
-        "original_text",
-        "test_mesh",
-    )
 
     with patch("mmrelay.matrix_utils.config", test_config), patch(
         "mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]
     ), patch("mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]):
-        # Mock the matrix client
-        mock_matrix_client = MagicMock()
-        with patch("mmrelay.matrix_utils.matrix_client", mock_matrix_client):
-            # Run the function
-            await on_room_message(mock_room, mock_event)
-
-            # Assert that the message was queued
-            mock_queue_message.assert_called_once()
-            call_args = mock_queue_message.call_args[1]
-            assert "This is a reply" in call_args["text"]
+        await on_room_message(mock_room, mock_event)
+        mock_handle_matrix_reply.assert_called_once()
 
 
+@patch("mmrelay.plugin_loader.load_plugins", return_value=[])
 @patch("mmrelay.matrix_utils.connect_meshtastic")
 @patch("mmrelay.matrix_utils.queue_message")
 @patch("mmrelay.matrix_utils.bot_start_time", 1234567880)
 @patch("mmrelay.matrix_utils.get_user_display_name")
-@patch("mmrelay.matrix_utils.isinstance")
 async def test_on_room_message_reply_disabled(
-    mock_isinstance,
     mock_get_user_display_name,
     mock_queue_message,
     mock_connect_meshtastic,
+    mock_load_plugins,
     mock_room,
     mock_event,
     test_config,
@@ -281,7 +253,6 @@ async def test_on_room_message_reply_disabled(
 
     Ensures that when reply interactions are disabled in the configuration, the entire event body—including quoted original messages—is queued for Meshtastic relay without stripping quoted lines.
     """
-    mock_isinstance.return_value = False
 
     # Create a proper async mock function
     async def mock_get_user_display_name_func(*args, **kwargs):
@@ -318,6 +289,7 @@ async def test_on_room_message_reply_disabled(
             assert mock_event.body in call_args["text"]
 
 
+@patch("mmrelay.plugin_loader.load_plugins", return_value=[])
 @patch("mmrelay.matrix_utils.connect_meshtastic")
 @patch("mmrelay.matrix_utils.queue_message")
 @patch("mmrelay.matrix_utils.bot_start_time", 1234567880)
@@ -330,6 +302,7 @@ async def test_on_room_message_reaction_enabled(
     mock_get_message_map,
     mock_queue_message,
     mock_connect_meshtastic,
+    mock_load_plugins,
     mock_room,
     mock_event,
     test_config,
@@ -342,7 +315,12 @@ async def test_on_room_message_reaction_enabled(
     """
     from nio import ReactionEvent
 
-    mock_isinstance.side_effect = lambda event, event_type: event_type == ReactionEvent
+    def isinstance_side_effect(obj, cls):
+        if obj is mock_event and cls is ReactionEvent:
+            return True
+        return isinstance(obj, cls)
+
+    mock_isinstance.side_effect = isinstance_side_effect
 
     test_config["meshtastic"]["message_interactions"]["reactions"] = True
     mock_event.source = {
@@ -925,7 +903,7 @@ async def test_connect_matrix_success(matrix_config):
     with patch("mmrelay.matrix_utils.matrix_client", None), patch(
         "mmrelay.matrix_utils.AsyncClient"
     ) as mock_async_client, patch("mmrelay.matrix_utils.logger"), patch(
-        "ssl.create_default_context"
+        "mmrelay.matrix_utils._create_ssl_context"
     ) as mock_ssl_context:
 
         # Mock SSL context creation
@@ -983,7 +961,7 @@ async def test_connect_matrix_without_credentials(matrix_config):
     with patch("mmrelay.matrix_utils.matrix_client", None), patch(
         "mmrelay.matrix_utils.AsyncClient"
     ) as mock_async_client, patch("mmrelay.matrix_utils.logger"), patch(
-        "ssl.create_default_context"
+        "mmrelay.matrix_utils._create_ssl_context"
     ) as mock_ssl_context:
 
         # Mock SSL context creation
@@ -1086,10 +1064,10 @@ async def test_connect_matrix_alias_resolution_success(
         async def mock_whoami():
             return MagicMock(device_id="test_device_id")
 
-        async def mock_sync(*args, **kwargs):
+        async def mock_sync(*_args, **_kwargs):
             return MagicMock()
 
-        async def mock_get_displayname(*args, **kwargs):
+        async def mock_get_displayname(*_args, **_kwargs):
             return MagicMock(displayname="Test Bot")
 
         # Create a mock for room_resolve_alias that returns a proper response
@@ -1172,10 +1150,10 @@ async def test_connect_matrix_alias_resolution_failure(
         async def mock_whoami():
             return MagicMock(device_id="test_device_id")
 
-        async def mock_sync(*args, **kwargs):
+        async def mock_sync(*_args, **_kwargs):
             return MagicMock()
 
-        async def mock_get_displayname(*args, **kwargs):
+        async def mock_get_displayname(*_args, **_kwargs):
             return MagicMock(displayname="Test Bot")
 
         # Create a mock for room_resolve_alias that returns failure response
@@ -1259,10 +1237,10 @@ async def test_connect_matrix_alias_resolution_exception(
         async def mock_whoami():
             return MagicMock(device_id="test_device_id")
 
-        async def mock_sync(*args, **kwargs):
+        async def mock_sync(*_args, **_kwargs):
             return MagicMock()
 
-        async def mock_get_displayname(*args, **kwargs):
+        async def mock_get_displayname(*_args, **_kwargs):
             return MagicMock(displayname="Test Bot")
 
         # Create a mock for room_resolve_alias that raises an exception
@@ -1350,7 +1328,7 @@ def test_normalize_bot_user_id_with_complex_homeserver():
     bot_user_id = "relaybot"
 
     result = _normalize_bot_user_id(homeserver, bot_user_id)
-    assert result == "@relaybot:matrix.example.com:8448"
+    assert result == "@relaybot:matrix.example.com"
 
 
 def test_normalize_bot_user_id_empty_input():

@@ -242,7 +242,9 @@ def _normalize_bot_user_id(homeserver: str, bot_user_id: str) -> str:
         domain = domain[len("https://") :]
     elif domain.startswith("http://"):
         domain = domain[len("http://") :]
-    domain = domain.split("/", 1)[0]  # drop any trailing path
+    domain = re.sub(
+        r":\d+$", "", domain.split("/", 1)[0]
+    )  # drop any trailing path and port
 
     # If already a full MXID like @user:server, keep as-is
     if (
@@ -1097,88 +1099,50 @@ async def connect_matrix(passed_config=None):
                 return isinstance(s, str) and s.startswith("#")
 
             try:
+                from typing import Optional
+
+                async def _resolve_alias(alias: str) -> Optional[str]:
+                    """Resolves a room alias to a room ID, with logging."""
+                    logger.debug(f"Resolving alias from config: {alias}")
+                    try:
+                        response = await matrix_client.room_resolve_alias(alias)
+                        if hasattr(response, "room_id") and response.room_id:
+                            logger.debug(
+                                f"Resolved alias {alias} to {response.room_id}"
+                            )
+                            return response.room_id
+                        else:
+                            logger.warning(
+                                f"Could not resolve alias {alias}: {getattr(response, 'message', response)}"
+                            )
+                    except Exception:
+                        logger.exception(f"Error resolving alias {alias}")
+                    return None
+
                 if isinstance(matrix_rooms, list):
                     for idx, entry in enumerate(matrix_rooms):
                         if isinstance(entry, dict):
-                            rid = entry.get("id", "")
-                            if _is_alias(rid):
-                                alias = rid
-                                logger.debug(f"Resolving alias from config: {alias}")
-                                try:
-                                    response = await matrix_client.room_resolve_alias(
-                                        alias
-                                    )
-                                    if (
-                                        hasattr(response, "room_id")
-                                        and response.room_id
-                                    ):
-                                        matrix_rooms[idx]["id"] = response.room_id
-                                        logger.debug(
-                                            f"Resolved alias {alias} to {response.room_id}"
-                                        )
-                                    else:
-                                        logger.warning(
-                                            f"Could not resolve alias {alias}: {getattr(response, 'message', response)}"
-                                        )
-                                except Exception:
-                                    logger.exception(f"Error resolving alias {alias}")
+                            alias = entry.get("id", "")
+                            if _is_alias(alias):
+                                resolved_id = await _resolve_alias(alias)
+                                if resolved_id:
+                                    matrix_rooms[idx]["id"] = resolved_id
                         elif _is_alias(entry):
-                            alias = entry
-                            logger.debug(f"Resolving alias from config: {alias}")
-                            try:
-                                response = await matrix_client.room_resolve_alias(alias)
-                                if hasattr(response, "room_id") and response.room_id:
-                                    matrix_rooms[idx] = response.room_id
-                                    logger.debug(
-                                        f"Resolved alias {alias} to {response.room_id}"
-                                    )
-                                else:
-                                    logger.warning(
-                                        f"Could not resolve alias {alias}: {getattr(response, 'message', response)}"
-                                    )
-                            except Exception:
-                                logger.exception(f"Error resolving alias {alias}")
+                            resolved_id = await _resolve_alias(entry)
+                            if resolved_id:
+                                matrix_rooms[idx] = resolved_id
                 elif isinstance(matrix_rooms, dict):
                     for key, entry in list(matrix_rooms.items()):
                         if isinstance(entry, dict):
-                            rid = entry.get("id", "")
-                            if _is_alias(rid):
-                                alias = rid
-                                logger.debug(f"Resolving alias from config: {alias}")
-                                try:
-                                    response = await matrix_client.room_resolve_alias(
-                                        alias
-                                    )
-                                    if (
-                                        hasattr(response, "room_id")
-                                        and response.room_id
-                                    ):
-                                        matrix_rooms[key]["id"] = response.room_id
-                                        logger.debug(
-                                            f"Resolved alias {alias} to {response.room_id}"
-                                        )
-                                    else:
-                                        logger.warning(
-                                            f"Could not resolve alias {alias}: {getattr(response, 'message', response)}"
-                                        )
-                                except Exception:
-                                    logger.exception(f"Error resolving alias {alias}")
+                            alias = entry.get("id", "")
+                            if _is_alias(alias):
+                                resolved_id = await _resolve_alias(alias)
+                                if resolved_id:
+                                    matrix_rooms[key]["id"] = resolved_id
                         elif _is_alias(entry):
-                            alias = entry
-                            logger.debug(f"Resolving alias from config: {alias}")
-                            try:
-                                response = await matrix_client.room_resolve_alias(alias)
-                                if hasattr(response, "room_id") and response.room_id:
-                                    matrix_rooms[key] = response.room_id
-                                    logger.debug(
-                                        f"Resolved alias {alias} to {response.room_id}"
-                                    )
-                                else:
-                                    logger.warning(
-                                        f"Could not resolve alias {alias}: {getattr(response, 'message', response)}"
-                                    )
-                            except Exception:
-                                logger.exception(f"Error resolving alias {alias}")
+                            resolved_id = await _resolve_alias(entry)
+                            if resolved_id:
+                                matrix_rooms[key] = resolved_id
             except Exception:
                 logger.exception("Unexpected error while resolving room aliases")
 
@@ -1787,7 +1751,7 @@ async def matrix_relay(
     Builds a Matrix message payload (plain and HTML/markdown-safe formatted bodies), applies Matrix reply framing when reply_to_event_id is provided, enforces E2EE restrictions (will block sending to encrypted rooms when client E2EE is not enabled), sends the event via the global Matrix client, and — if message-interactions are enabled and a Meshtastic message ID is provided — stores a mapping for future cross-network replies/reactions. Handles timeouts and errors by logging and returning without raising.
 
     Parameters:
-        room_id (str): Matrix room ID or alias to send to.
+        room_id (str): Matrix room ID to send to (e.g., "!room:server.com").
         message (str): Message text to relay; may contain Markdown or HTML which will be converted/stripped as needed.
         longname (str): Sender long display name from Meshtastic used for attribution in formatted output.
         shortname (str): Sender short display name from Meshtastic.
@@ -2474,7 +2438,9 @@ async def on_room_message(
     # Find the room_config that matches this room, if any
     room_config = None
     for room_conf in matrix_rooms:
-        if room_conf["id"] == room.room_id:
+        if not isinstance(room_conf, dict):
+            continue  # ignore string-style entries
+        if room_conf.get("id") == room.room_id:
             room_config = room_conf
             break
 

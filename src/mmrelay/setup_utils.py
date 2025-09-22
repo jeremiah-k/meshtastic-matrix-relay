@@ -392,7 +392,11 @@ def create_service_file():
 
     # Normalize ExecStart: replace any mmrelay launcher with resolved command, preserving args
     pattern = re.compile(
-        r'(?m)^\s*(ExecStart=)"?(?:/usr/bin/env\s+mmrelay|\S*?/mmrelay\b|\S*\bpython(?:\d+(?:\.\d+)*)?\b\s+-m\s+mmrelay)"?(\s.*)?$'
+        r'(?m)^\s*(ExecStart=)"?(?:'
+        r"/usr/bin/env\s+mmrelay"
+        r"|(?:\S*?[\\/])?mmrelay\b"
+        r"|\S*\bpython(?:\d+(?:\.\d+)*)?(?:\.exe)?\b\s+-m\s+mmrelay"
+        r')"?(\s.*)?$'
     )
     service_content = pattern.sub(
         lambda m: f"{m.group(1)}{executable_path}{m.group(2) or ''}",
@@ -494,9 +498,12 @@ def service_needs_update():
 
     # Check if the service file has been modified recently
     service_path = get_user_service_path()
-    if template_path and os.path.exists(service_path):
-        template_mtime = os.path.getmtime(template_path)
-        service_mtime = os.path.getmtime(service_path)
+    if template_path and os.path.exists(template_path) and os.path.exists(service_path):
+        try:
+            template_mtime = os.path.getmtime(template_path)
+            service_mtime = os.path.getmtime(service_path)
+        except OSError:
+            return False, "Unable to stat template or service file"
         if template_mtime > service_mtime:
             return True, "Template service file is newer than installed service file"
 

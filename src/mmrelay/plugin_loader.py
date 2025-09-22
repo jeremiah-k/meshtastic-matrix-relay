@@ -49,7 +49,7 @@ def _refresh_dependency_paths() -> None:
     except AttributeError:
         logger.debug("site.getsitepackages() not available in this environment.")
 
-    for path in candidate_paths:
+    for path in dict.fromkeys(candidate_paths):  # dedupe while preserving order
         if not path:
             continue
         if path not in sys.path:
@@ -600,6 +600,11 @@ def load_plugins_from_directory(directory, recursive=False):
                     spec = importlib.util.spec_from_file_location(
                         module_name, plugin_path
                     )
+                    if not spec or not getattr(spec, "loader", None):
+                        logger.warning(
+                            f"Skipping plugin {plugin_path}: no import spec/loader."
+                        )
+                        continue
                     plugin_module = importlib.util.module_from_spec(spec)
 
                     # Create a compatibility layer for plugins
@@ -627,7 +632,11 @@ def load_plugins_from_directory(directory, recursive=False):
                                 f"{plugin_path} does not define a Plugin class."
                             )
                     except ModuleNotFoundError as e:
-                        missing_module = str(e).split()[-1].strip("'")
+                        missing_module = getattr(e, "name", None)
+                        if not missing_module:
+                            # Fallback for atypical exception messages
+                            msg = str(e)
+                            missing_module = msg.split("'")[1] if "'" in msg else msg
                         logger.warning(
                             f"Missing dependency for plugin {plugin_path}: {missing_module}"
                         )
