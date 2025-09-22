@@ -1042,54 +1042,39 @@ async def test_join_matrix_room_already_joined(_mock_logger, mock_matrix_client)
 
     mock_matrix_client.join.assert_not_called()
     _mock_logger.debug.assert_called_with(
-        "Bot is already in room '!room:matrix.org', no action needed."
+        "Bot is already in room '%s', no action needed.",
+        "!room:matrix.org",
     )
 
 
 @patch("mmrelay.matrix_utils.logger")
-async def test_join_matrix_room_resolves_alias_in_string_list(mock_logger):
+async def test_join_matrix_room_rejects_alias(mock_logger):
     mock_client = MagicMock()
     mock_client.rooms = {}
-    mock_client.room_resolve_alias = AsyncMock(
-        return_value=SimpleNamespace(room_id="!resolved:matrix.org")
-    )
-    mock_client.join = AsyncMock(
-        return_value=SimpleNamespace(room_id="!resolved:matrix.org")
-    )
+    mock_client.join = AsyncMock()
 
-    with patch("mmrelay.matrix_utils.matrix_rooms", ["#alias:matrix.org"]):
-        await join_matrix_room(mock_client, "#alias:matrix.org")
-        mock_client.room_resolve_alias.assert_called_once_with("#alias:matrix.org")
-        mock_client.join.assert_called_once_with("!resolved:matrix.org")
-        from mmrelay import matrix_utils
+    await join_matrix_room(mock_client, "#alias:matrix.org")
 
-        assert matrix_utils.matrix_rooms == ["!resolved:matrix.org"]
-        mock_logger.info.assert_called_with(
-            "Joined room '!resolved:matrix.org' successfully"
-        )
+    mock_client.join.assert_not_called()
+    mock_logger.error.assert_called_with(
+        "join_matrix_room received unresolved alias '%s'. Resolve aliases before joining.",
+        "#alias:matrix.org",
+    )
 
 
 @patch("mmrelay.matrix_utils.logger")
-async def test_join_matrix_room_resolves_alias_in_dict_mapping(mock_logger):
+async def test_join_matrix_room_rejects_non_string_identifier(mock_logger):
     mock_client = MagicMock()
     mock_client.rooms = {}
-    mock_client.room_resolve_alias = AsyncMock(
-        return_value=SimpleNamespace(room_id="!resolved:matrix.org")
-    )
-    mock_client.join = AsyncMock(
-        return_value=SimpleNamespace(room_id="!resolved:matrix.org")
-    )
+    mock_client.join = AsyncMock()
 
-    with patch("mmrelay.matrix_utils.matrix_rooms", {"room": "#alias:matrix.org"}):
-        await join_matrix_room(mock_client, "#alias:matrix.org")
-        mock_client.room_resolve_alias.assert_called_once_with("#alias:matrix.org")
-        mock_client.join.assert_called_once_with("!resolved:matrix.org")
-        from mmrelay import matrix_utils
+    await join_matrix_room(mock_client, 12345)
 
-        assert matrix_utils.matrix_rooms["room"] == "!resolved:matrix.org"
-        mock_logger.info.assert_called_with(
-            "Joined room '!resolved:matrix.org' successfully"
-        )
+    mock_client.join.assert_not_called()
+    mock_logger.error.assert_called_with(
+        "join_matrix_room expected a string room ID, received %r",
+        12345,
+    )
 
 
 @patch("mmrelay.matrix_utils.matrix_client", None)

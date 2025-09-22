@@ -4,10 +4,12 @@ import importlib
 import importlib.util
 import os
 import re
+import shlex
 import shutil
 import site
 import subprocess
 import sys
+from typing import List, Set
 from contextlib import contextmanager
 
 from mmrelay.config import get_app_path, get_base_dir
@@ -37,6 +39,73 @@ else:
         deps_path = os.fspath(_PLUGIN_DEPS_DIR)
         if deps_path not in sys.path:
             sys.path.append(deps_path)
+
+
+def _collect_requirements(requirements_file: str, visited: Set[str] | None = None) -> List[str]:
+    """Return a flattened list of pip install arguments contained in a requirements file."""
+    normalized_path = os.path.abspath(requirements_file)
+    visited = visited or set()
+
+    if normalized_path in visited:
+        logger.warning(
+            "Requirements file recursion detected for %s; skipping duplicate include.",
+            normalized_path,
+        )
+        return []
+
+    visited.add(normalized_path)
+    requirements: List[str] = []
+    base_dir = os.path.dirname(normalized_path)
+
+    with open(normalized_path, encoding="utf-8") as handle:
+        for raw_line in handle:
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if " #" in line:
+                line = line.split(" #", 1)[0].strip()
+                if not line:
+                    continue
+
+            lower_line = line.lower()
+            if lower_line.startswith("--requirement="):
+                nested = line.split("=", 1)[1].strip()
+                nested_path = (
+                    nested
+                    if os.path.isabs(nested)
+                    else os.path.join(base_dir, nested)
+                )
+                requirements.extend(
+                    _collect_requirements(nested_path, visited=visited)
+                )
+                continue
+
+            if lower_line.startswith("-r ") or lower_line.startswith("--requirement "):
+                parts = line.split(None, 1)
+                if len(parts) == 2:
+                    nested = parts[1].strip()
+                    nested_path = (
+                        nested
+                        if os.path.isabs(nested)
+                        else os.path.join(base_dir, nested)
+                    )
+                    requirements.extend(
+                        _collect_requirements(nested_path, visited=visited)
+                    )
+                else:
+                    logger.warning(
+                        "Ignoring malformed requirement include directive in %s: %s",
+                        normalized_path,
+                        raw_line.rstrip(),
+                    )
+                continue
+
+            if line.startswith("-"):
+                requirements.extend(shlex.split(line, posix=True))
+            else:
+                requirements.append(line)
+
+    return requirements
 
 
 @contextmanager
@@ -713,10 +782,17 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                 pipx_path = shutil.which("pipx")
                 if not pipx_path:
                     raise FileNotFoundError("pipx executable not found on PATH")
-                _run(
-                    [pipx_path, "inject", "mmrelay", "-r", requirements_path],
-                    timeout=600,
-                )
+                requirements = _collect_requirements(requirements_path)
+                if requirements:
+                    _run(
+                        [pipx_path, "inject", "mmrelay", *requirements],
+                        timeout=600,
+                    )
+                else:
+                    logger.info(
+                        "No dependencies listed in %s; skipping pipx injection.",
+                        requirements_path,
+                    )
             else:
                 in_venv = (sys.prefix != getattr(sys, "base_prefix", sys.prefix)) or (
                     "VIRTUAL_ENV" in os.environ

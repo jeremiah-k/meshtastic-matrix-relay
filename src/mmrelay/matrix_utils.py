@@ -1107,63 +1107,61 @@ async def connect_matrix(passed_config=None):
                 """
                 return isinstance(s, str) and s.startswith("#")
 
-            try:
+            async def _resolve_alias(alias: str) -> Optional[str]:
+                """
+                Resolve a Matrix room alias to its canonical room ID.
 
-                async def _resolve_alias(alias: str) -> Optional[str]:
-                    """
-                    Resolve a Matrix room alias to its canonical room ID.
+                Attempts to resolve the given room alias via the global Matrix client. Returns the resolved room ID on success, or None if the alias cannot be resolved or an error/timeout occurs. Errors from the underlying nio client are caught and logged; this function does not raise those exceptions.
+                """
+                logger.debug(f"Resolving alias from config: {alias}")
+                try:
+                    response = await matrix_client.room_resolve_alias(alias)
+                    if hasattr(response, "room_id") and response.room_id:
+                        logger.debug(f"Resolved alias {alias} to {response.room_id}")
+                        return response.room_id
+                    logger.warning(
+                        f"Could not resolve alias {alias}: {getattr(response, 'message', response)}"
+                    )
+                except (
+                    NioErrorResponse,
+                    NioLocalProtocolError,
+                    NioRemoteProtocolError,
+                    NioLocalTransportError,
+                    NioRemoteTransportError,
+                    asyncio.TimeoutError,
+                ):
+                    logger.exception(f"Error resolving alias {alias}")
+                return None
 
-                    Attempts to resolve the given room alias via the global Matrix client. Returns the resolved room ID on success, or None if the alias cannot be resolved or an error/timeout occurs. Errors from the underlying nio client are caught and logged; this function does not raise those exceptions.
-                    """
-                    logger.debug(f"Resolving alias from config: {alias}")
-                    try:
-                        response = await matrix_client.room_resolve_alias(alias)
-                        if hasattr(response, "room_id") and response.room_id:
-                            logger.debug(
-                                f"Resolved alias {alias} to {response.room_id}"
-                            )
-                            return response.room_id
-                        else:
-                            logger.warning(
-                                f"Could not resolve alias {alias}: {getattr(response, 'message', response)}"
-                            )
-                    except (
-                        NioErrorResponse,
-                        NioLocalProtocolError,
-                        NioRemoteProtocolError,
-                        NioLocalTransportError,
-                        NioRemoteTransportError,
-                        asyncio.TimeoutError,
-                    ):
-                        logger.exception(f"Error resolving alias {alias}")
-                    return None
-
-                if isinstance(matrix_rooms, list):
-                    for idx, entry in enumerate(matrix_rooms):
-                        if isinstance(entry, dict):
-                            alias = entry.get("id", "")
-                            if _is_alias(alias):
-                                resolved_id = await _resolve_alias(alias)
-                                if resolved_id:
-                                    matrix_rooms[idx]["id"] = resolved_id
-                        elif _is_alias(entry):
-                            resolved_id = await _resolve_alias(entry)
+            if isinstance(matrix_rooms, list):
+                for idx, entry in enumerate(matrix_rooms):
+                    if isinstance(entry, dict):
+                        alias = entry.get("id", "")
+                        if _is_alias(alias):
+                            resolved_id = await _resolve_alias(alias)
                             if resolved_id:
-                                matrix_rooms[idx] = resolved_id
-                elif isinstance(matrix_rooms, dict):
-                    for key, entry in list(matrix_rooms.items()):
-                        if isinstance(entry, dict):
-                            alias = entry.get("id", "")
-                            if _is_alias(alias):
-                                resolved_id = await _resolve_alias(alias)
-                                if resolved_id:
-                                    matrix_rooms[key]["id"] = resolved_id
-                        elif _is_alias(entry):
-                            resolved_id = await _resolve_alias(entry)
+                                matrix_rooms[idx]["id"] = resolved_id
+                    elif _is_alias(entry):
+                        resolved_id = await _resolve_alias(entry)
+                        if resolved_id:
+                            matrix_rooms[idx] = resolved_id
+            elif isinstance(matrix_rooms, dict):
+                for key, entry in list(matrix_rooms.items()):
+                    if isinstance(entry, dict):
+                        alias = entry.get("id", "")
+                        if _is_alias(alias):
+                            resolved_id = await _resolve_alias(alias)
                             if resolved_id:
-                                matrix_rooms[key] = resolved_id
-            except Exception:
-                logger.exception("Unexpected error while resolving room aliases")
+                                matrix_rooms[key]["id"] = resolved_id
+                    elif _is_alias(entry):
+                        resolved_id = await _resolve_alias(entry)
+                        if resolved_id:
+                            matrix_rooms[key] = resolved_id
+            else:
+                logger.warning(
+                    "matrix_rooms is expected to be a list or dict, got %s",
+                    type(matrix_rooms).__name__,
+                )
 
             # Display rooms with channel mappings
             _display_room_channel_mappings(matrix_client.rooms, config, e2ee_status)
@@ -1702,72 +1700,43 @@ async def login_matrix_bot(
 
 async def join_matrix_room(matrix_client, room_id_or_alias: str) -> None:
     """
-    Join the bot to a Matrix room by its room ID.
+    Join the bot to a Matrix room by its canonical room ID.
 
-    This is a no-op if the client is already joined. The function assumes any
-    aliases have been resolved to a room ID (e.g. "!room:server.com") before
-    calling. Success and failure are logged; errors are caught and logged rather
-    than propagated.
+    This is a no-op if the client is already joined. Callers must resolve any
+    aliases (e.g. `#room:server`) to room IDs prior to invoking this helper.
+    Success and failure are logged; errors are caught and logged rather than
+    propagated.
     """
+    if not isinstance(room_id_or_alias, str):
+        logger.error(
+            "join_matrix_room expected a string room ID, received %r",
+            room_id_or_alias,
+        )
+        return
+
+    if room_id_or_alias.startswith("#"):
+        logger.error(
+            "join_matrix_room received unresolved alias '%s'. Resolve aliases before joining.",
+            room_id_or_alias,
+        )
+        return
+
     try:
-        target_room_id = room_id_or_alias
-
-        if isinstance(room_id_or_alias, str) and room_id_or_alias.startswith("#"):
-            try:
-                response = await matrix_client.room_resolve_alias(room_id_or_alias)
-            except (
-                NioErrorResponse,
-                NioLocalProtocolError,
-                NioRemoteProtocolError,
-                NioLocalTransportError,
-                NioRemoteTransportError,
-                asyncio.TimeoutError,
-            ):
-                logger.exception(f"Error resolving room alias '{room_id_or_alias}'")
-                return
-
-            resolved_room_id = getattr(response, "room_id", None) if response else None
-            if not resolved_room_id:
-                logger.error(
-                    f"Failed to resolve room alias '{room_id_or_alias}': {getattr(response, 'message', str(response))}"
-                )
-                return
-
-            target_room_id = resolved_room_id
-
-            try:
-                if isinstance(matrix_rooms, list):
-                    for idx, entry in enumerate(matrix_rooms):
-                        if isinstance(entry, dict):
-                            if entry.get("id") == room_id_or_alias:
-                                matrix_rooms[idx]["id"] = resolved_room_id
-                        elif isinstance(entry, str) and entry == room_id_or_alias:
-                            matrix_rooms[idx] = resolved_room_id
-                elif isinstance(matrix_rooms, dict):
-                    for key, entry in list(matrix_rooms.items()):
-                        if isinstance(entry, dict):
-                            if entry.get("id") == room_id_or_alias:
-                                matrix_rooms[key]["id"] = resolved_room_id
-                        elif isinstance(entry, str) and entry == room_id_or_alias:
-                            matrix_rooms[key] = resolved_room_id
-            except Exception:
-                logger.exception(
-                    "Failed to update matrix_rooms mapping after resolving alias %s",
-                    room_id_or_alias,
-                )
-
-        if target_room_id not in matrix_client.rooms:
-            response = await matrix_client.join(target_room_id)
+        if room_id_or_alias not in matrix_client.rooms:
+            response = await matrix_client.join(room_id_or_alias)
             joined_room_id = getattr(response, "room_id", None) if response else None
             if joined_room_id:
                 logger.info(f"Joined room '{joined_room_id}' successfully")
             else:
                 logger.error(
-                    f"Failed to join room '{room_id_or_alias}': {getattr(response, 'message', str(response))}"
+                    "Failed to join room '%s': %s",
+                    room_id_or_alias,
+                    getattr(response, "message", str(response)),
                 )
         else:
             logger.debug(
-                f"Bot is already in room '{target_room_id}', no action needed."
+                "Bot is already in room '%s', no action needed.",
+                room_id_or_alias,
             )
     except (
         NioLocalProtocolError,

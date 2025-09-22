@@ -826,6 +826,29 @@ def on_meshtastic_message(packet, interface):
 
         plugins = load_plugins()
 
+        default_plugin_timeout = 5.0
+        configured_timeout = None
+        if isinstance(config, dict):
+            configured_timeout = get_meshtastic_config_value(
+                config, "plugin_timeout", default=default_plugin_timeout
+            )
+
+        try:
+            plugin_timeout = float(
+                configured_timeout
+                if configured_timeout is not None
+                else default_plugin_timeout
+            )
+            if plugin_timeout <= 0:
+                raise ValueError
+        except (TypeError, ValueError):
+            logger.warning(
+                "Invalid meshtastic.plugin_timeout value %r; using %ss fallback.",
+                configured_timeout,
+                default_plugin_timeout,
+            )
+            plugin_timeout = default_plugin_timeout
+
         found_matching_plugin = False
         for plugin in plugins:
             if not found_matching_plugin:
@@ -837,11 +860,14 @@ def on_meshtastic_message(packet, interface):
                         loop=loop,
                     )
                     try:
-                        found_matching_plugin = result_future.result(timeout=5)
+                        found_matching_plugin = result_future.result(
+                            timeout=plugin_timeout
+                        )
                     except TimeoutError as exc:
                         logger.warning(
-                            "Plugin %s did not respond within 5s: %s",
+                            "Plugin %s did not respond within %ss: %s",
                             plugin.plugin_name,
+                            plugin_timeout,
                             exc,
                         )
                         found_matching_plugin = False
