@@ -41,13 +41,13 @@ def _refresh_dependency_paths() -> None:
         else:
             candidate_paths.extend(user_site)
     except AttributeError:
-        pass
+        logger.debug("site.getusersitepackages() not available in this environment.")
 
     try:
         site_packages = site.getsitepackages()
         candidate_paths.extend(site_packages)
     except AttributeError:
-        pass
+        logger.debug("site.getsitepackages() not available in this environment.")
 
     for path in candidate_paths:
         if not path:

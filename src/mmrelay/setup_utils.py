@@ -109,11 +109,12 @@ def wait_for_service_start():
 
     from mmrelay.runtime_utils import is_running_as_service
 
-    if not is_running_as_service():
+    running_as_service = is_running_as_service()
+    if not running_as_service:
         from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
     # Create a Rich progress display with spinner and elapsed time
-    if not is_running_as_service():
+    if not running_as_service:
         with Progress(
             SpinnerColumn(),
             TextColumn("[bold green]Starting mmrelay service..."),
@@ -123,10 +124,13 @@ def wait_for_service_start():
             # Add a task that will run for approximately 10 seconds
             task = progress.add_task("Starting", total=PROGRESS_TOTAL_STEPS)
 
-            # Update progress over 10 seconds
+            # Update progress over ~10 seconds
+            step = max(1, PROGRESS_TOTAL_STEPS // 10)
             for i in range(10):
                 time.sleep(1)
-                progress.update(task, completed=10 * (i + 1))
+                progress.update(
+                    task, completed=min(PROGRESS_TOTAL_STEPS, step * (i + 1))
+                )
 
                 # Check if service is active after 5 seconds to potentially finish early
                 if i >= 5 and is_service_active():
@@ -355,7 +359,6 @@ def create_service_file():
     """
     # Get executable paths once to avoid duplicate calls and output
     executable_path = get_executable_path()
-    resolved_exec_cmd = executable_path
 
     # Create service directory if it doesn't exist
     service_dir = get_user_service_path().parent
@@ -388,9 +391,11 @@ def create_service_file():
     )
 
     # Normalize ExecStart: replace any mmrelay launcher with resolved command, preserving args
-    service_content = re.sub(
-        r'(?m)^(ExecStart=)"?(?:/usr/bin/env\s+mmrelay|[\S/]*mmrelay|.+\bpython(?:\d+(?:\.\d+)*)?\b\s+-m\s+mmrelay)"?(\s.*)?$',
-        rf"\1{resolved_exec_cmd}\2",
+    pattern = re.compile(
+        r'(?m)^\s*(ExecStart=)"?(?:/usr/bin/env\s+mmrelay|\S*?/mmrelay\b|\S*\bpython(?:\d+(?:\.\d+)*)?\b\s+-m\s+mmrelay)"?(\s.*)?$'
+    )
+    service_content = pattern.sub(
+        lambda m: f"{m.group(1)}{executable_path}{m.group(2) or ''}",
         service_content,
     )
 
@@ -444,8 +449,6 @@ def service_needs_update():
 
     # Get the template service path
     template_path = get_template_service_path()
-    if not template_path:
-        return False, "Could not find template service file"
 
     # Get the acceptable executable paths
     mmrelay_path = shutil.which("mmrelay")
@@ -490,9 +493,9 @@ def service_needs_update():
         return True, "Service PATH does not include common user-bin locations"
 
     # Check if the service file has been modified recently
-    template_mtime = os.path.getmtime(template_path)
     service_path = get_user_service_path()
-    if os.path.exists(service_path):
+    if template_path and os.path.exists(service_path):
+        template_mtime = os.path.getmtime(template_path)
         service_mtime = os.path.getmtime(service_path)
         if template_mtime > service_mtime:
             return True, "Template service file is newer than installed service file"
