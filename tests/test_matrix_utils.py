@@ -84,9 +84,7 @@ def test_config():
 @patch("mmrelay.matrix_utils.queue_message")
 @patch("mmrelay.matrix_utils.bot_start_time", 1234567880)
 @patch("mmrelay.matrix_utils.get_user_display_name")
-@patch("mmrelay.matrix_utils.isinstance")
 async def test_on_room_message_simple_text(
-    mock_isinstance,
     mock_get_user_display_name,
     mock_queue_message,
     mock_connect_meshtastic,
@@ -100,10 +98,6 @@ async def test_on_room_message_simple_text(
 
     Ensures that when a user sends a simple text message, the message is correctly queued with the expected content for relaying.
     """
-    # Use real isinstance for this test so type checks on strings behave normally
-    import builtins
-
-    mock_isinstance.side_effect = builtins.isinstance
 
     # Create a proper async mock function
     async def mock_get_user_display_name_func(*args, **kwargs):
@@ -134,9 +128,7 @@ async def test_on_room_message_simple_text(
 @patch("mmrelay.matrix_utils.connect_meshtastic")
 @patch("mmrelay.matrix_utils.queue_message")
 @patch("mmrelay.matrix_utils.bot_start_time", 1234567880)
-@patch("mmrelay.matrix_utils.isinstance")
 async def test_on_room_message_remote_prefers_meshtastic_text(
-    mock_isinstance,
     mock_queue_message,
     mock_connect_meshtastic,
     mock_load_plugins,
@@ -145,10 +137,6 @@ async def test_on_room_message_remote_prefers_meshtastic_text(
     test_config,
 ):
     """Ensure remote mesh messages fall back to raw meshtastic_text when body is empty."""
-
-    import builtins
-
-    mock_isinstance.side_effect = builtins.isinstance
     mock_event.body = ""
     mock_event.source = {
         "content": {
@@ -295,16 +283,13 @@ async def test_on_room_message_reply_disabled(
 @patch("mmrelay.matrix_utils.bot_start_time", 1234567880)
 @patch("mmrelay.matrix_utils.get_message_map_by_matrix_event_id")
 @patch("mmrelay.matrix_utils.get_user_display_name")
-@patch("mmrelay.matrix_utils.isinstance")
 async def test_on_room_message_reaction_enabled(
-    mock_isinstance,
     mock_get_user_display_name,
     mock_get_message_map,
     mock_queue_message,
     mock_connect_meshtastic,
     mock_load_plugins,
     mock_room,
-    mock_event,
     test_config,
 ):
     # This is a reaction event
@@ -315,23 +300,27 @@ async def test_on_room_message_reaction_enabled(
     """
     from nio import ReactionEvent
 
-    def isinstance_side_effect(obj, cls):
-        if obj is mock_event and cls is ReactionEvent:
-            return True
-        return isinstance(obj, cls)
+    class MockReactionEvent(ReactionEvent):
+        def __init__(self, source, sender, server_timestamp):
+            self.source = source
+            self.sender = sender
+            self.server_timestamp = server_timestamp
 
-    mock_isinstance.side_effect = isinstance_side_effect
+    mock_event = MockReactionEvent(
+        source={
+            "content": {
+                "m.relates_to": {
+                    "event_id": "original_event_id",
+                    "key": "👍",
+                    "rel_type": "m.annotation",
+                }
+            }
+        },
+        sender="@user:matrix.org",
+        server_timestamp=1234567890,
+    )
 
     test_config["meshtastic"]["message_interactions"]["reactions"] = True
-    mock_event.source = {
-        "content": {
-            "m.relates_to": {
-                "event_id": "original_event_id",
-                "key": "👍",
-                "rel_type": "m.annotation",
-            }
-        }
-    }
     mock_get_message_map.return_value = (
         "meshtastic_id",
         "!room:matrix.org",
@@ -368,13 +357,10 @@ async def test_on_room_message_reaction_enabled(
 @patch("mmrelay.matrix_utils.connect_meshtastic")
 @patch("mmrelay.matrix_utils.queue_message")
 @patch("mmrelay.matrix_utils.bot_start_time", 1234567880)
-@patch("mmrelay.matrix_utils.isinstance")
 async def test_on_room_message_reaction_disabled(
-    mock_isinstance,
     mock_queue_message,
     mock_connect_meshtastic,
     mock_room,
-    mock_event,
     test_config,
 ):
     # This is a reaction event
@@ -383,18 +369,27 @@ async def test_on_room_message_reaction_disabled(
     """
     from nio import ReactionEvent
 
-    mock_isinstance.side_effect = lambda event, event_type: event_type == ReactionEvent
+    class MockReactionEvent(ReactionEvent):
+        def __init__(self, source, sender, server_timestamp):
+            self.source = source
+            self.sender = sender
+            self.server_timestamp = server_timestamp
+
+    mock_event = MockReactionEvent(
+        source={
+            "content": {
+                "m.relates_to": {
+                    "event_id": "original_event_id",
+                    "key": "👍",
+                    "rel_type": "m.annotation",
+                }
+            }
+        },
+        sender="@user:matrix.org",
+        server_timestamp=1234567890,
+    )
 
     test_config["meshtastic"]["message_interactions"]["reactions"] = False
-    mock_event.source = {
-        "content": {
-            "m.relates_to": {
-                "event_id": "original_event_id",
-                "key": "👍",
-                "rel_type": "m.annotation",
-            }
-        }
-    }
 
     with patch("mmrelay.matrix_utils.config", test_config), patch(
         "mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]
@@ -1041,7 +1036,7 @@ async def test_connect_matrix_alias_resolution_success(
     """
     Test that connect_matrix successfully resolves room aliases to room IDs.
     """
-    with patch("ssl.create_default_context") as mock_ssl_context:
+    with patch("mmrelay.matrix_utils._create_ssl_context") as mock_ssl_context:
         # Mock SSL context creation
         mock_ssl_context.return_value = MagicMock()
 
@@ -1127,7 +1122,7 @@ async def test_connect_matrix_alias_resolution_failure(
     """
     Test that connect_matrix handles alias resolution failures gracefully.
     """
-    with patch("ssl.create_default_context") as mock_ssl_context:
+    with patch("mmrelay.matrix_utils._create_ssl_context") as mock_ssl_context:
         # Mock SSL context creation
         mock_ssl_context.return_value = MagicMock()
 
@@ -1214,7 +1209,7 @@ async def test_connect_matrix_alias_resolution_exception(
     """
     Test that connect_matrix handles alias resolution exceptions gracefully.
     """
-    with patch("ssl.create_default_context") as mock_ssl_context:
+    with patch("mmrelay.matrix_utils._create_ssl_context") as mock_ssl_context:
         # Mock SSL context creation
         mock_ssl_context.return_value = MagicMock()
 
@@ -1246,8 +1241,11 @@ async def test_connect_matrix_alias_resolution_exception(
         # Create a mock for room_resolve_alias that raises an exception
         mock_room_resolve_alias = MagicMock()
 
+        class FakeNetworkError(Exception):
+            pass
+
         async def mock_room_resolve_alias_impl(alias):
-            raise Exception("Network error")
+            raise FakeNetworkError("Network error")
 
         mock_room_resolve_alias.side_effect = mock_room_resolve_alias_impl
 

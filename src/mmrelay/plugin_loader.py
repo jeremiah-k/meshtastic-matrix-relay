@@ -3,6 +3,7 @@ import hashlib
 import importlib
 import importlib.util
 import os
+import re
 import site
 import subprocess
 import sys
@@ -634,11 +635,16 @@ def load_plugins_from_directory(directory, recursive=False):
                     except ModuleNotFoundError as e:
                         missing_module = getattr(e, "name", None)
                         if not missing_module:
-                            # Fallback for atypical exception messages
-                            msg = str(e)
-                            missing_module = msg.split("'")[1] if "'" in msg else msg
+                            m = re.search(
+                                r"No module named ['\"]([^'\"]+)['\"]", str(e)
+                            )
+                            missing_module = m.group(1) if m else str(e)
+                        # Prefer top-level distribution name for installation
+                        missing_pkg = (missing_module or "").split(".")[
+                            0
+                        ] or missing_module
                         logger.warning(
-                            f"Missing dependency for plugin {plugin_path}: {missing_module}"
+                            f"Missing dependency for plugin {plugin_path}: {missing_pkg}"
                         )
 
                         # Try to automatically install the missing dependency
@@ -651,27 +657,31 @@ def load_plugins_from_directory(directory, recursive=False):
 
                             if in_pipx:
                                 logger.info(
-                                    f"Attempting to install missing dependency with pipx inject: {missing_module}"
+                                    f"Attempting to install missing dependency with pipx inject: {missing_pkg}"
                                 )
-                                subprocess.check_call(
-                                    ["pipx", "inject", "mmrelay", missing_module]
+                                subprocess.run(
+                                    ["pipx", "inject", "mmrelay", missing_pkg],
+                                    check=True,
+                                    timeout=300,
                                 )
                             else:
                                 logger.info(
-                                    f"Attempting to install missing dependency with pip: {missing_module}"
+                                    f"Attempting to install missing dependency with pip: {missing_pkg}"
                                 )
-                                subprocess.check_call(
+                                subprocess.run(
                                     [
                                         sys.executable,
                                         "-m",
                                         "pip",
                                         "install",
-                                        missing_module,
-                                    ]
+                                        missing_pkg,
+                                    ],
+                                    check=True,
+                                    timeout=300,
                                 )
 
                             logger.info(
-                                f"Successfully installed {missing_module}, retrying plugin load"
+                                f"Successfully installed {missing_pkg}, retrying plugin load"
                             )
                             _refresh_dependency_paths()
 
@@ -700,15 +710,13 @@ def load_plugins_from_directory(directory, recursive=False):
 
                         except subprocess.CalledProcessError:
                             logger.exception(
-                                f"Failed to automatically install {missing_module}"
+                                f"Failed to automatically install {missing_pkg}"
                             )
                             logger.error("Please install it manually:")
                             logger.error(
-                                f"pipx inject mmrelay {missing_module}  # if using pipx"
+                                f"pipx inject mmrelay {missing_pkg}  # if using pipx"
                             )
-                            logger.error(
-                                f"pip install {missing_module}  # if using pip"
-                            )
+                            logger.error(f"pip install {missing_pkg}  # if using pip")
                             logger.error(
                                 f"Plugin directory: {os.path.dirname(plugin_path)}"
                             )

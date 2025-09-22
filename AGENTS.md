@@ -9,7 +9,7 @@
 - **Run with coverage**: `python -m pytest -v --cov --tb=short`
 - **Run specific test**: `python -m pytest tests/test_filename.py -v --cov --tb=short`
 - **Run all tests with coverage**: `python -m pytest -v --cov --junitxml=junit.xml -o junit_family=legacy`
-- **Lint code**: `trunk check --fix --all` (do not need to run each time, it wastes time)
+- **Lint code**: `.trunk/trunk check --fix --all` (do not need to run each time, it wastes time)
 
 ## Code Style Guidelines
 

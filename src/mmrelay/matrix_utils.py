@@ -1712,7 +1712,12 @@ async def join_matrix_room(matrix_client, room_id: str) -> None:
                 )
         else:
             logger.debug(f"Bot is already in room '{room_id}', no action needed.")
-    except Exception:
+    except (
+        NioLocalProtocolError,
+        NioRemoteProtocolError,
+        NioErrorResponse,
+        asyncio.TimeoutError,
+    ):
         logger.exception(f"Error joining room '{room_id}'")
 
 
@@ -2437,10 +2442,9 @@ async def on_room_message(
 
     # Find the room_config that matches this room, if any
     room_config = None
-    for room_conf in matrix_rooms:
-        if not isinstance(room_conf, dict):
-            continue  # ignore string-style entries
-        if room_conf.get("id") == room.room_id:
+    iterable = matrix_rooms.values() if isinstance(matrix_rooms, dict) else matrix_rooms
+    for room_conf in iterable:
+        if isinstance(room_conf, dict) and room_conf.get("id") == room.room_id:
             room_config = room_conf
             break
 
