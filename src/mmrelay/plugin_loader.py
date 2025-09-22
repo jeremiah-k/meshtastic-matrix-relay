@@ -728,7 +728,9 @@ def load_plugins_from_directory(directory, recursive=False):
                             logger.exception(
                                 f"pipx inject mmrelay {missing_pkg}  # if using pipx"
                             )
-                            logger.exception(f"pip install {missing_pkg}  # if using pip")
+                            logger.exception(
+                                f"pip install {missing_pkg}  # if using pip"
+                            )
                             logger.exception(
                                 f"Plugin directory: {os.path.dirname(plugin_path)}"
                             )
