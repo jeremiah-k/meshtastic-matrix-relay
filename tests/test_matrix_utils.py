@@ -1048,18 +1048,27 @@ async def test_join_matrix_room_already_joined(_mock_logger, mock_matrix_client)
 
 
 @patch("mmrelay.matrix_utils.logger")
-async def test_join_matrix_room_rejects_alias(mock_logger):
+async def test_join_matrix_room_resolves_alias(mock_logger, monkeypatch):
     mock_client = MagicMock()
     mock_client.rooms = {}
+    resolved_id = "!resolved:matrix.org"
+    mock_client.room_resolve_alias = AsyncMock(
+        return_value=SimpleNamespace(room_id=resolved_id)
+    )
     mock_client.join = AsyncMock()
+    matrix_rooms_config = [{"id": "#alias:matrix.org"}]
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.matrix_rooms", matrix_rooms_config, raising=False
+    )
 
     await join_matrix_room(mock_client, "#alias:matrix.org")
 
-    mock_client.join.assert_not_called()
-    mock_logger.error.assert_called_with(
-        "join_matrix_room received unresolved alias '%s'. Resolve aliases before joining.",
-        "#alias:matrix.org",
+    mock_client.room_resolve_alias.assert_awaited_once_with("#alias:matrix.org")
+    mock_client.join.assert_awaited_once_with(resolved_id)
+    mock_logger.info.assert_any_call(
+        "Resolved alias '%s' -> '%s'", "#alias:matrix.org", resolved_id
     )
+    assert matrix_rooms_config[0]["id"] == resolved_id
 
 
 @patch("mmrelay.matrix_utils.logger")

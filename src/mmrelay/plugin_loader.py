@@ -9,8 +9,8 @@ import shutil
 import site
 import subprocess
 import sys
-from typing import List, Set
 from contextlib import contextmanager
+from typing import List, Set
 
 from mmrelay.config import get_app_path, get_base_dir
 from mmrelay.log_utils import get_logger
@@ -41,7 +41,9 @@ else:
             sys.path.append(deps_path)
 
 
-def _collect_requirements(requirements_file: str, visited: Set[str] | None = None) -> List[str]:
+def _collect_requirements(
+    requirements_file: str, visited: Set[str] | None = None
+) -> List[str]:
     """Return a flattened list of pip install arguments contained in a requirements file."""
     normalized_path = os.path.abspath(requirements_file)
     visited = visited or set()
@@ -71,13 +73,9 @@ def _collect_requirements(requirements_file: str, visited: Set[str] | None = Non
             if lower_line.startswith("--requirement="):
                 nested = line.split("=", 1)[1].strip()
                 nested_path = (
-                    nested
-                    if os.path.isabs(nested)
-                    else os.path.join(base_dir, nested)
+                    nested if os.path.isabs(nested) else os.path.join(base_dir, nested)
                 )
-                requirements.extend(
-                    _collect_requirements(nested_path, visited=visited)
-                )
+                requirements.extend(_collect_requirements(nested_path, visited=visited))
                 continue
 
             if lower_line.startswith("-r ") or lower_line.startswith("--requirement "):
@@ -187,6 +185,76 @@ def _refresh_dependency_paths() -> None:
 
     # Ensure import machinery notices new packages
     importlib.invalidate_caches()
+
+
+def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
+    """Install Python dependencies for a community plugin repository if requirements.txt exists."""
+
+    requirements_path = os.path.join(repo_path, "requirements.txt")
+    if not os.path.isfile(requirements_path):
+        return
+
+    if not _check_auto_install_enabled(config):
+        logger.warning(
+            "Auto-install of requirements for %s disabled by config; skipping.",
+            repo_name,
+        )
+        return
+
+    try:
+        in_pipx = any(
+            key in os.environ
+            for key in ("PIPX_HOME", "PIPX_LOCAL_VENVS", "PIPX_BIN_DIR")
+        )
+
+        if in_pipx:
+            logger.info("Installing requirements for plugin %s with pipx", repo_name)
+            pipx_path = shutil.which("pipx")
+            if not pipx_path:
+                raise FileNotFoundError("pipx executable not found on PATH")
+            requirements = _collect_requirements(requirements_path)
+            if requirements:
+                _run([pipx_path, "inject", "mmrelay", *requirements], timeout=600)
+            else:
+                logger.info(
+                    "No dependencies listed in %s; skipping pipx injection.",
+                    requirements_path,
+                )
+        else:
+            in_venv = (sys.prefix != getattr(sys, "base_prefix", sys.prefix)) or (
+                "VIRTUAL_ENV" in os.environ
+            )
+            logger.info("Installing requirements for plugin %s with pip", repo_name)
+            cmd = [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "-r",
+                requirements_path,
+                "--disable-pip-version-check",
+                "--no-input",
+            ]
+            if not in_venv:
+                cmd.append("--user")
+            _run(cmd, timeout=600)
+
+        logger.info("Successfully installed requirements for plugin %s", repo_name)
+        _refresh_dependency_paths()
+    except (subprocess.CalledProcessError, FileNotFoundError) as exc:
+        logger.error(
+            "Error installing requirements for plugin %s: %s",
+            repo_name,
+            exc,
+        )
+        logger.error(
+            "Please manually install the requirements from %s",
+            requirements_path,
+        )
+        logger.warning(
+            "Plugin %s may not work correctly without its dependencies",
+            repo_name,
+        )
 
 
 def _get_plugin_dirs(plugin_type):
@@ -305,9 +373,14 @@ def _raise_install_error(pkg_name):
 
 def clone_or_update_repo(repo_url, ref, plugins_dir):
     """
-    Clone or update a community plugin Git repository and ensure its Python dependencies are installed.
+    Clone or update a community plugin Git repository.
 
-    Performs a best-effort clone or update of the repository at repo_url into plugins_dir/repo_name using the provided ref (a dict with keys "type" ("tag" or "branch") and "value" (name)). If the repository already exists, the function attempts to fetch and switch to the requested branch or tag, with fallbacks to common default branches ("main", "master") when appropriate. After a successful clone/update, if a requirements.txt file exists in the repo root the function installs its requirements using pip or pipx (when a pipx environment is detected).
+    Performs a best-effort clone or update of the repository at repo_url into
+    plugins_dir/repo_name using the provided ref (a dict with keys "type"
+    ("tag" or "branch") and "value" (name)). If the repository already exists,
+    the function attempts to fetch and switch to the requested branch or tag,
+    with fallbacks to common default branches ("main", "master") when
+    appropriate.
 
     Parameters:
         ref (dict): Reference spec with keys:
@@ -760,71 +833,6 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                 f"Please manually git clone the repository {repo_url} into {repo_path}"
             )
             return False
-    # Install requirements if requirements.txt exists
-    requirements_path = os.path.join(repo_path, "requirements.txt")
-    if os.path.isfile(requirements_path):
-        auto_install = _check_auto_install_enabled(config)
-        if not auto_install:
-            logger.warning(
-                f"Auto-install of requirements for {repo_name} disabled by config; skipping."
-            )
-            return True
-        try:
-            # Check if we're running in a pipx environment
-            in_pipx = any(
-                key in os.environ
-                for key in ("PIPX_HOME", "PIPX_LOCAL_VENVS", "PIPX_BIN_DIR")
-            )
-
-            if in_pipx:
-                # Use pipx to install the requirements.txt
-                logger.info(f"Installing requirements for plugin {repo_name} with pipx")
-                pipx_path = shutil.which("pipx")
-                if not pipx_path:
-                    raise FileNotFoundError("pipx executable not found on PATH")
-                requirements = _collect_requirements(requirements_path)
-                if requirements:
-                    _run(
-                        [pipx_path, "inject", "mmrelay", *requirements],
-                        timeout=600,
-                    )
-                else:
-                    logger.info(
-                        "No dependencies listed in %s; skipping pipx injection.",
-                        requirements_path,
-                    )
-            else:
-                in_venv = (sys.prefix != getattr(sys, "base_prefix", sys.prefix)) or (
-                    "VIRTUAL_ENV" in os.environ
-                )
-                # Use pip to install the requirements.txt
-                logger.info(f"Installing requirements for plugin {repo_name} with pip")
-                cmd = [
-                    sys.executable,
-                    "-m",
-                    "pip",
-                    "install",
-                    "-r",
-                    requirements_path,
-                    "--disable-pip-version-check",
-                    "--no-input",
-                ]
-                if not in_venv:
-                    cmd += ["--user"]
-                _run(cmd, timeout=600)
-
-            logger.info(f"Successfully installed requirements for plugin {repo_name}")
-            # Make newly installed packages visible immediately
-            _refresh_dependency_paths()
-        except (subprocess.CalledProcessError, FileNotFoundError) as e:
-            logger.error(f"Error installing requirements for plugin {repo_name}: {e}")
-            logger.error(
-                f"Please manually install the requirements from {requirements_path}"
-            )
-            # Don't exit, just continue with a warning
-            logger.warning(
-                f"Plugin {repo_name} may not work correctly without its dependencies"
-            )
 
 
 def load_plugins_from_directory(directory, recursive=False):
@@ -1178,12 +1186,15 @@ def load_plugins(passed_config=None):
                     continue
 
                 # Clone to the user directory by default
+                repo_name = os.path.splitext(os.path.basename(repo_url.rstrip("/")))[0]
                 success = clone_or_update_repo(repo_url, ref, community_plugins_dir)
                 if not success:
                     logger.warning(
                         f"Failed to clone/update plugin {plugin_name}, skipping"
                     )
                     continue
+                repo_path = os.path.join(community_plugins_dir, repo_name)
+                _install_requirements_for_repo(repo_path, repo_name)
             else:
                 logger.error("Repository URL not specified for a community plugin")
                 logger.error("Please specify the repository URL in config.yaml")

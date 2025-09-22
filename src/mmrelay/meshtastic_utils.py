@@ -5,7 +5,8 @@ import io
 import re
 import threading
 import time
-from concurrent.futures import Future, TimeoutError
+from concurrent.futures import Future
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from typing import List
 
 import meshtastic
@@ -408,7 +409,12 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                     subscribed_to_connection_lost = True
                     logger.debug("Subscribed to meshtastic.connection.lost")
 
-        except (TimeoutError, ConnectionRefusedError, MemoryError) as e:
+        except (
+            FuturesTimeoutError,
+            TimeoutError,
+            ConnectionRefusedError,
+            MemoryError,
+        ) as e:
             # Handle critical errors that should not be retried
             logger.exception(f"Critical connection error: {e}")
             return None
@@ -863,7 +869,7 @@ def on_meshtastic_message(packet, interface):
                         found_matching_plugin = result_future.result(
                             timeout=plugin_timeout
                         )
-                    except TimeoutError as exc:
+                    except FuturesTimeoutError as exc:
                         logger.warning(
                             "Plugin %s did not respond within %ss: %s",
                             plugin.plugin_name,
@@ -936,7 +942,7 @@ def on_meshtastic_message(packet, interface):
                     )
                     try:
                         found_matching_plugin = result_future.result(timeout=5)
-                    except TimeoutError as exc:
+                    except FuturesTimeoutError as exc:
                         logger.warning(
                             "Plugin %s did not respond within 5s: %s",
                             plugin.plugin_name,
