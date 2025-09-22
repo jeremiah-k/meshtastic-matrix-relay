@@ -1082,6 +1082,7 @@ async def connect_matrix(passed_config=None):
                 return isinstance(s, str) and s.startswith("#")
 
             try:
+
                 async def _resolve_alias(alias: str) -> Optional[str]:
                     """Resolves a room alias to a room ID, with logging."""
                     logger.debug(f"Resolving alias from config: {alias}")
@@ -1096,7 +1097,14 @@ async def connect_matrix(passed_config=None):
                             logger.warning(
                                 f"Could not resolve alias {alias}: {getattr(response, 'message', response)}"
                             )
-                    except Exception:
+                    except (
+                        NioErrorResponse,
+                        NioLocalProtocolError,
+                        NioRemoteProtocolError,
+                        NioLocalTransportError,
+                        NioRemoteTransportError,
+                        asyncio.TimeoutError,
+                    ):
                         logger.exception(f"Error resolving alias {alias}")
                     return None
 
@@ -1674,16 +1682,6 @@ async def join_matrix_room(matrix_client, room_id: str) -> None:
         room_id (str): The ID of the room to join (e.g., "!room:server.com").
     """
     try:
-        if room_id.startswith("#"):
-            try:
-                resolved = await matrix_client.room_resolve_alias(room_id)
-                if hasattr(resolved, "room_id") and resolved.room_id:
-                    logger.info(f"Resolved alias '{room_id}' to '{resolved.room_id}'")
-                    room_id = resolved.room_id
-            except Exception:
-                logger.exception(f"Error resolving alias '{room_id}'")
-                return
-
         if room_id not in matrix_client.rooms:
             response = await matrix_client.join(room_id)
             if response and hasattr(response, "room_id"):

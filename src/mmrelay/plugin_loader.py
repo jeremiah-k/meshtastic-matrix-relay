@@ -744,6 +744,9 @@ def load_plugins_from_directory(directory, recursive=False):
                             logger.error(
                                 f"  pip install {missing_pkg}        # if using pip"
                             )
+                            logger.error(
+                                f"  pip install --user {missing_pkg}  # if not in a venv"
+                            )
                     except Exception:
                         logger.exception(f"Error loading plugin {plugin_path}")
             if not recursive:
