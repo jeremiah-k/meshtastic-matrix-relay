@@ -21,13 +21,32 @@ sorted_active_plugins = []
 plugins_loaded = False
 
 
+try:
+    _PLUGIN_DEPS_DIR = os.path.join(get_base_dir(), "plugins", "deps")
+except Exception:  # pragma: no cover - base dir may not be resolvable during import
+    _PLUGIN_DEPS_DIR = None
+else:
+    try:
+        os.makedirs(_PLUGIN_DEPS_DIR, exist_ok=True)
+    except OSError as exc:  # pragma: no cover - logging only in unusual environments
+        logger.debug(
+            f"Unable to create plugin dependency directory '{_PLUGIN_DEPS_DIR}': {exc}"
+        )
+        _PLUGIN_DEPS_DIR = None
+    else:
+        deps_path = os.fspath(_PLUGIN_DEPS_DIR)
+        if deps_path not in sys.path:
+            sys.path.append(deps_path)
+
+
 @contextmanager
 def _temp_sys_path(path: str):
     """
     Context manager that temporarily prepends a directory to Python's import search path.
-    
+
     Use as: `with _temp_sys_path(path): ...` — the given `path` is inserted at the front of `sys.path` for the duration of the context. On exit the first occurrence of `path` is removed; if the path is already absent, removal is silently ignored.
     """
+    path = os.fspath(path)
     sys.path.insert(0, path)
     try:
         yield
@@ -52,13 +71,13 @@ def _reset_caches_for_tests():
 def _refresh_dependency_paths() -> None:
     """
     Ensure packages installed into user or site directories become importable.
-    
+
     This function collects candidate site paths from site.getusersitepackages() and
     site.getsitepackages() (when available), and registers each directory with the
     import system. It prefers site.addsitedir(path) but falls back to appending the
     path to sys.path if addsitedir fails. After modifying the import paths it calls
     importlib.invalidate_caches() so newly installed packages are discoverable.
-    
+
     Side effects:
     - May modify sys.path and the interpreter's site directories.
     - Calls importlib.invalidate_caches() to refresh import machinery.
@@ -81,6 +100,9 @@ def _refresh_dependency_paths() -> None:
         candidate_paths.extend(site_packages)
     except AttributeError:
         logger.debug("site.getsitepackages() not available in this environment.")
+
+    if _PLUGIN_DEPS_DIR:
+        candidate_paths.append(os.fspath(_PLUGIN_DEPS_DIR))
 
     for path in dict.fromkeys(candidate_paths):  # dedupe while preserving order
         if not path:
@@ -152,19 +174,19 @@ def _run(cmd, timeout=120, **kwargs):
     # Validate command to prevent shell injection
     """
     Run a subprocess command safely with validated arguments and a configurable timeout.
-    
+
     Validates that `cmd` is a non-empty list of non-empty strings (to avoid shell-injection risks),
     ensures text output by default, and executes the command via subprocess.run with check=True.
-    
+
     Parameters:
         cmd (list[str]): Command and arguments to execute; must be a non-empty list of non-empty strings.
         timeout (int|float): Maximum seconds to allow the process to run before raising TimeoutExpired.
         **kwargs: Additional keyword arguments forwarded to subprocess.run (e.g., cwd, env). `text=True`
             is set by default if not provided.
-    
+
     Returns:
         subprocess.CompletedProcess: The completed process object returned by subprocess.run.
-    
+
     Raises:
         TypeError: If `cmd` is not a list or any element of `cmd` is not a string.
         ValueError: If `cmd` is empty or contains empty/whitespace-only arguments.
@@ -187,7 +209,7 @@ def _run(cmd, timeout=120, **kwargs):
 def _check_auto_install_enabled(config):
     """
     Return whether automatic dependency installation is enabled.
-    
+
     Reads the value at config["security"]["auto_install_deps"] and returns its truthiness.
     If `config` is None or falsy, or the key is missing, this function returns True (auto-install enabled by default).
     """
@@ -199,10 +221,10 @@ def _check_auto_install_enabled(config):
 def _raise_install_error(pkg_name):
     """
     Log a warning about disabled auto-install and raise a CalledProcessError.
-    
+
     Parameters:
         pkg_name (str): Name of the package that could not be installed (used in the log message).
-    
+
     Raises:
         subprocess.CalledProcessError: Always raised to signal an installation failure when auto-install is disabled.
     """
@@ -226,16 +248,30 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
     Returns:
         bool: True if the repository was successfully cloned/updated and dependency handling completed (or non-fatal errors occurred); False if a fatal git or filesystem error prevented cloning or updating.
     """
+    repo_url = (repo_url or "").strip()
+    ref_type = ref.get("type")  # "tag" or "branch"
+    ref_value = (ref.get("value") or "").strip()
+
+    if not repo_url or repo_url.startswith("-"):
+        logger.error("Repository URL looks invalid or dangerous: %r", repo_url)
+        return False
+    if not ref_type:
+        logger.error("Missing ref type for community plugin %r", repo_url)
+        return False
+    if ref_value.startswith("-"):
+        logger.error("Ref value looks invalid (starts with '-'): %r", ref_value)
+        return False
+    if ref_type in {"tag", "branch"} and ref_value:
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]*", ref_value):
+            logger.error("Invalid %s name supplied: %r", ref_type, ref_value)
+            return False
+
     # Extract the repository name from the URL
     repo_name = os.path.splitext(os.path.basename(repo_url.rstrip("/")))[0]
     repo_path = os.path.join(plugins_dir, repo_name)
 
     # Default branch names to try if ref is not specified
     default_branches = ["main", "master"]
-
-    # Get the ref type and value
-    ref_type = ref["type"]  # "tag" or "branch"
-    ref_value = ref["value"]
 
     # Log what we're trying to do
     logger.info(f"Using {ref_type} '{ref_value}' for repository {repo_name}")
@@ -264,7 +300,10 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                     if current_branch == ref_value:
                         # We're on the right branch, just pull
                         try:
-                            _run(["git", "-C", repo_path, "pull", "origin", ref_value])
+                            _run(
+                                ["git", "-C", repo_path, "pull", "origin", ref_value],
+                                timeout=120,
+                            )
                             logger.info(
                                 f"Updated repository {repo_name} branch {ref_value}"
                             )
@@ -275,8 +314,14 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                             return True
                     else:
                         # Switch to the right branch
-                        _run(["git", "-C", repo_path, "checkout", ref_value])
-                        _run(["git", "-C", repo_path, "pull", "origin", ref_value])
+                        _run(
+                            ["git", "-C", repo_path, "checkout", ref_value],
+                            timeout=120,
+                        )
+                        _run(
+                            ["git", "-C", repo_path, "pull", "origin", ref_value],
+                            timeout=120,
+                        )
                         if ref_type == "branch":
                             logger.info(f"Switched to and updated branch {ref_value}")
                         else:
@@ -289,8 +334,14 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                         logger.warning(
                             f"Branch {ref_value} not found, trying {other_default}"
                         )
-                        _run(["git", "-C", repo_path, "checkout", other_default])
-                        _run(["git", "-C", repo_path, "pull", "origin", other_default])
+                        _run(
+                            ["git", "-C", repo_path, "checkout", other_default],
+                            timeout=120,
+                        )
+                        _run(
+                            ["git", "-C", repo_path, "pull", "origin", other_default],
+                            timeout=120,
+                        )
                         logger.info(
                             f"Using {other_default} branch instead of {ref_value}"
                         )
@@ -304,8 +355,14 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
             else:
                 if ref_type == "branch":
                     try:
-                        _run(["git", "-C", repo_path, "checkout", ref_value])
-                        _run(["git", "-C", repo_path, "pull", "origin", ref_value])
+                        _run(
+                            ["git", "-C", repo_path, "checkout", ref_value],
+                            timeout=120,
+                        )
+                        _run(
+                            ["git", "-C", repo_path, "pull", "origin", ref_value],
+                            timeout=120,
+                        )
                         logger.info(
                             f"Updated repository {repo_name} to branch {ref_value}"
                         )
@@ -347,7 +404,10 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                         return True
 
                     # Otherwise, try to checkout the tag or branch
-                    _run(["git", "-C", repo_path, "checkout", ref_value])
+                    _run(
+                        ["git", "-C", repo_path, "checkout", ref_value],
+                        timeout=120,
+                    )
                     logger.info(f"Updated repository {repo_name} to tag {ref_value}")
                     return True
                 except subprocess.CalledProcessError:
@@ -359,7 +419,10 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                         # Try to fetch the specific tag, but first remove any existing tag with the same name
                         try:
                             # Delete the local tag if it exists to avoid conflicts
-                            _run(["git", "-C", repo_path, "tag", "-d", ref_value])
+                            _run(
+                                ["git", "-C", repo_path, "tag", "-d", ref_value],
+                                timeout=120,
+                            )
                         except subprocess.CalledProcessError:
                             # Tag doesn't exist locally, which is fine
                             pass
@@ -375,7 +438,8 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                                     "fetch",
                                     "origin",
                                     f"refs/tags/{ref_value}",
-                                ]
+                                ],
+                                timeout=120,
                             )
                         except subprocess.CalledProcessError:
                             # If that fails, try to fetch the tag without the refs/tags/ prefix
@@ -387,10 +451,14 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                                     "fetch",
                                     "origin",
                                     f"refs/tags/{ref_value}:refs/tags/{ref_value}",
-                                ]
+                                ],
+                                timeout=120,
                             )
 
-                        _run(["git", "-C", repo_path, "checkout", ref_value])
+                        _run(
+                            ["git", "-C", repo_path, "checkout", ref_value],
+                            timeout=120,
+                        )
                         logger.info(
                             f"Successfully fetched and checked out tag {ref_value}"
                         )
@@ -401,9 +469,18 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                             f"Could not fetch tag {ref_value}, trying as a branch"
                         )
                         try:
-                            _run(["git", "-C", repo_path, "fetch", "origin", ref_value])
-                            _run(["git", "-C", repo_path, "checkout", ref_value])
-                            _run(["git", "-C", repo_path, "pull", "origin", ref_value])
+                            _run(
+                                ["git", "-C", repo_path, "fetch", "origin", ref_value],
+                                timeout=120,
+                            )
+                            _run(
+                                ["git", "-C", repo_path, "checkout", ref_value],
+                                timeout=120,
+                            )
+                            _run(
+                                ["git", "-C", repo_path, "pull", "origin", ref_value],
+                                timeout=120,
+                            )
                             logger.info(
                                 f"Updated repository {repo_name} to branch {ref_value}"
                             )
@@ -422,7 +499,8 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                                             repo_path,
                                             "checkout",
                                             default_branch,
-                                        ]
+                                        ],
+                                        timeout=120,
                                     )
                                     _run(
                                         [
@@ -470,6 +548,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                     _run(
                         ["git", "clone", "--branch", ref_value, repo_url],
                         cwd=plugins_dir,
+                        timeout=120,
                     )
                     if ref_type == "branch":
                         logger.info(
@@ -490,6 +569,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                         _run(
                             ["git", "clone", "--branch", other_default, repo_url],
                             cwd=plugins_dir,
+                            timeout=120,
                         )
                         logger.info(
                             f"Cloned repository {repo_name} from {repo_url} at branch {other_default}"
@@ -500,7 +580,11 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                         logger.warning(
                             f"Could not clone with branch {other_default}, cloning default branch"
                         )
-                        _run(["git", "clone", repo_url], cwd=plugins_dir)
+                        _run(
+                            ["git", "clone", repo_url],
+                            cwd=plugins_dir,
+                            timeout=120,
+                        )
                         logger.info(
                             f"Cloned repository {repo_name} from {repo_url} (default branch)"
                         )
@@ -512,6 +596,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                     _run(
                         ["git", "clone", "--branch", ref_value, repo_url],
                         cwd=plugins_dir,
+                        timeout=120,
                     )
                     if ref_type == "branch":
                         logger.info(
@@ -527,7 +612,11 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                     logger.warning(
                         f"Could not clone with tag {ref_value}, cloning default branch"
                     )
-                    _run(["git", "clone", repo_url], cwd=plugins_dir)
+                    _run(
+                        ["git", "clone", repo_url],
+                        cwd=plugins_dir,
+                        timeout=120,
+                    )
 
                     # Then try to fetch and checkout the tag
                     try:
@@ -557,7 +646,10 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                             )
 
                         # Now checkout the tag
-                        _run(["git", "-C", repo_path, "checkout", ref_value])
+                        _run(
+                            ["git", "-C", repo_path, "checkout", ref_value],
+                            timeout=120,
+                        )
                         if ref_type == "branch":
                             logger.info(
                                 f"Cloned repository {repo_name} and checked out branch {ref_value}"
@@ -573,8 +665,14 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                             logger.warning(
                                 f"Could not checkout {ref_value} as a tag, trying as a branch"
                             )
-                            _run(["git", "-C", repo_path, "fetch", "origin", ref_value])
-                            _run(["git", "-C", repo_path, "checkout", ref_value])
+                            _run(
+                                ["git", "-C", repo_path, "fetch", "origin", ref_value],
+                                timeout=120,
+                            )
+                            _run(
+                                ["git", "-C", repo_path, "checkout", ref_value],
+                                timeout=120,
+                            )
                             logger.info(
                                 f"Cloned repository {repo_name} and checked out branch {ref_value}"
                             )
@@ -604,7 +702,10 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
             return True
         try:
             # Check if we're running in a pipx environment
-            in_pipx = "PIPX_HOME" in os.environ or "PIPX_LOCAL_VENVS" in os.environ
+            in_pipx = any(
+                key in os.environ
+                for key in ("PIPX_HOME", "PIPX_LOCAL_VENVS", "PIPX_BIN_DIR")
+            )
 
             if in_pipx:
                 # Use pipx to install the requirements.txt
@@ -653,16 +754,16 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
 def load_plugins_from_directory(directory, recursive=False):
     """
     Load and instantiate Plugin classes from Python files in a directory.
-    
+
     Searches `directory` (optionally recursively) for .py files, imports each module in an isolated module name and, if the module defines a `Plugin` class, instantiates and collects it. If an import fails with ModuleNotFoundError, the function will (when auto-install is enabled in the global `config`) attempt to install the missing distribution with pip or pipx, refresh import paths, and retry importing the module. Files that do not define `Plugin` are skipped; unresolved import errors or other exceptions are logged and do not abort the whole scan.
-    
+
     Parameters:
         directory (str): Path to the directory containing plugin Python files.
         recursive (bool): If True, scan subdirectories recursively; otherwise only the top-level directory.
-    
+
     Returns:
         list: Instances of found plugin classes (may be empty).
-    
+
     Notes:
     - The function mutates interpreter import state (may add entries to sys.modules) and can invoke external installers (pip/pipx) when auto-install is enabled.
     - Only modules that define a top-level `Plugin` attribute are instantiated and returned.
@@ -934,10 +1035,13 @@ def load_plugins(passed_config=None):
     community_plugins_config = config.get("community-plugins", {})
     community_plugin_dirs = get_community_plugin_dirs()
 
-    # Get the first directory for cloning (prefer user directory)
-    community_plugins_dir = community_plugin_dirs[
-        0
-    ]  # Use the user directory for new clones
+    if not community_plugin_dirs:
+        logger.warning(
+            "No writable community plugin directories available; clone/update operations will be skipped."
+        )
+        community_plugins_dir = None
+    else:
+        community_plugins_dir = community_plugin_dirs[0]
 
     # Create community plugins directory if needed
     active_community_plugins = [
@@ -990,6 +1094,13 @@ def load_plugins(passed_config=None):
                 ref = {"type": "branch", "value": "main"}
 
             if repo_url:
+                if community_plugins_dir is None:
+                    logger.warning(
+                        "Skipping community plugin %s: no accessible plugin directory",
+                        plugin_name,
+                    )
+                    continue
+
                 # Clone to the user directory by default
                 success = clone_or_update_repo(repo_url, ref, community_plugins_dir)
                 if not success:

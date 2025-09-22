@@ -214,7 +214,7 @@ def _can_auto_create_credentials(matrix_config: dict) -> bool:
 def _normalize_bot_user_id(homeserver: str, bot_user_id: str) -> str:
     """
     Normalize a bot user identifier into a full Matrix MXID.
-    
+
     Accepts several common input forms and returns a normalized Matrix ID of the form
     "@localpart:server". Behavior:
     - If bot_user_id is falsy, it is returned unchanged.
@@ -225,12 +225,12 @@ def _normalize_bot_user_id(homeserver: str, bot_user_id: str) -> str:
     - The homeserver argument is tolerant of missing URL scheme and will extract the hostname
       portion (handles inputs like "example.com", "https://example.com:8448", or
       "[::1]:8448/path").
-    
+
     Parameters:
         homeserver (str): The Matrix homeserver URL or host used to derive a server domain.
         bot_user_id (str): A bot identifier in one of several forms (with or without leading "@"
             and with or without a server part).
-    
+
     Returns:
         str: A normalized Matrix user ID in the form "@localpart:server".
     """
@@ -241,7 +241,7 @@ def _normalize_bot_user_id(homeserver: str, bot_user_id: str) -> str:
     parsed = urlparse(homeserver)
     domain = parsed.hostname or urlparse(f"//{homeserver}").hostname
     if not domain:
-        # Last‑ditch fallback for malformed inputs; drop any trailing :port
+        # Last-ditch fallback for malformed inputs; drop any trailing :port
         host = homeserver.split("://")[-1].split("/", 1)[0]
         domain = re.sub(r":\d+$", "", host)
 
@@ -678,12 +678,12 @@ def bot_command(command, event):
 async def connect_matrix(passed_config=None):
     """
     Create and initialize a matrix-nio AsyncClient connected to the configured Matrix homeserver, optionally enabling End-to-End Encryption (E2EE).
-    
+
     This routine selects credentials in the following order:
     1. credentials.json (preferred; restores full session including device_id and E2EE store).
     2. Automatic login using username/password from the provided config (saved to credentials.json on success).
     3. Direct token-based values from the config matrix section.
-    
+
     Behavior summary:
     - Validates presence of a top-level "matrix_rooms" configuration and raises ValueError if missing.
     - Builds an AsyncClient with a certifi-backed SSL context when available.
@@ -691,13 +691,13 @@ async def connect_matrix(passed_config=None):
     - Performs an initial full_state sync and resolves room aliases configured as aliases to room IDs.
     - Populates module-level globals used elsewhere (e.g., matrix_client, bot_user_name, matrix_homeserver, matrix_rooms, matrix_access_token, bot_user_id).
     - Returns the initialized AsyncClient instance ready for use.
-    
+
     Parameters:
         passed_config (dict | None): Optional configuration to use for this connection attempt. If provided, it replaces the module-level config for this call.
-    
+
     Returns:
         AsyncClient | None: An initialized matrix-nio AsyncClient on success, or None if connection cannot be established due to missing configuration/credentials.
-    
+
     Raises:
         ValueError: If the top-level "matrix_rooms" configuration is missing from the (effective) config.
         ConnectionError: If the initial Matrix sync fails or times out.
@@ -1098,10 +1098,10 @@ async def connect_matrix(passed_config=None):
             def _is_alias(s: Any) -> bool:
                 """
                 Return True if the given value is a Matrix room alias string (a str starting with '#').
-                
+
                 Parameters:
                     s (Any): Value to test.
-                
+
                 Returns:
                     bool: True when s is a string that begins with '#', otherwise False.
                 """
@@ -1112,7 +1112,7 @@ async def connect_matrix(passed_config=None):
                 async def _resolve_alias(alias: str) -> Optional[str]:
                     """
                     Resolve a Matrix room alias to its canonical room ID.
-                    
+
                     Attempts to resolve the given room alias via the global Matrix client. Returns the resolved room ID on success, or None if the alias cannot be resolved or an error/timeout occurs. Errors from the underlying nio client are caught and logged; this function does not raise those exceptions.
                     """
                     logger.debug(f"Resolving alias from config: {alias}")
@@ -1700,26 +1700,75 @@ async def login_matrix_bot(
         return False
 
 
-async def join_matrix_room(matrix_client, room_id: str) -> None:
+async def join_matrix_room(matrix_client, room_id_or_alias: str) -> None:
     """
     Join the bot to a Matrix room by its room ID.
-    
+
     This is a no-op if the client is already joined. The function assumes any
     aliases have been resolved to a room ID (e.g. "!room:server.com") before
     calling. Success and failure are logged; errors are caught and logged rather
     than propagated.
     """
     try:
-        if room_id not in matrix_client.rooms:
-            response = await matrix_client.join(room_id)
-            if response and hasattr(response, "room_id"):
-                logger.info(f"Joined room '{room_id}' successfully")
+        target_room_id = room_id_or_alias
+
+        if isinstance(room_id_or_alias, str) and room_id_or_alias.startswith("#"):
+            try:
+                response = await matrix_client.room_resolve_alias(room_id_or_alias)
+            except (
+                NioErrorResponse,
+                NioLocalProtocolError,
+                NioRemoteProtocolError,
+                NioLocalTransportError,
+                NioRemoteTransportError,
+                asyncio.TimeoutError,
+            ):
+                logger.exception(f"Error resolving room alias '{room_id_or_alias}'")
+                return
+
+            resolved_room_id = getattr(response, "room_id", None) if response else None
+            if not resolved_room_id:
+                logger.error(
+                    f"Failed to resolve room alias '{room_id_or_alias}': {getattr(response, 'message', str(response))}"
+                )
+                return
+
+            target_room_id = resolved_room_id
+
+            try:
+                if isinstance(matrix_rooms, list):
+                    for idx, entry in enumerate(matrix_rooms):
+                        if isinstance(entry, dict):
+                            if entry.get("id") == room_id_or_alias:
+                                matrix_rooms[idx]["id"] = resolved_room_id
+                        elif isinstance(entry, str) and entry == room_id_or_alias:
+                            matrix_rooms[idx] = resolved_room_id
+                elif isinstance(matrix_rooms, dict):
+                    for key, entry in list(matrix_rooms.items()):
+                        if isinstance(entry, dict):
+                            if entry.get("id") == room_id_or_alias:
+                                matrix_rooms[key]["id"] = resolved_room_id
+                        elif isinstance(entry, str) and entry == room_id_or_alias:
+                            matrix_rooms[key] = resolved_room_id
+            except Exception:
+                logger.exception(
+                    "Failed to update matrix_rooms mapping after resolving alias %s",
+                    room_id_or_alias,
+                )
+
+        if target_room_id not in matrix_client.rooms:
+            response = await matrix_client.join(target_room_id)
+            joined_room_id = getattr(response, "room_id", None) if response else None
+            if joined_room_id:
+                logger.info(f"Joined room '{joined_room_id}' successfully")
             else:
                 logger.error(
-                    f"Failed to join room '{room_id}': {getattr(response, 'message', str(response))}"
+                    f"Failed to join room '{room_id_or_alias}': {getattr(response, 'message', str(response))}"
                 )
         else:
-            logger.debug(f"Bot is already in room '{room_id}', no action needed.")
+            logger.debug(
+                f"Bot is already in room '{target_room_id}', no action needed."
+            )
     except (
         NioLocalProtocolError,
         NioRemoteProtocolError,
@@ -1728,16 +1777,16 @@ async def join_matrix_room(matrix_client, room_id: str) -> None:
         NioRemoteTransportError,
         asyncio.TimeoutError,
     ):
-        logger.exception(f"Error joining room '{room_id}'")
+        logger.exception(f"Error joining room '{room_id_or_alias}'")
 
 
 def _get_e2ee_error_message():
     """
     Return a user-facing string explaining why End-to-End Encryption (E2EE) is not enabled.
-    
+
     This queries the unified E2EE status (using the module-level config and config path)
     and converts that status into a concise error message suitable for logging or UI display.
-    
+
     Returns:
         str: A short, human-readable explanation of the current E2EE problem (empty or generic
         message if no specific issue is detected).
@@ -1768,9 +1817,9 @@ async def matrix_relay(
 ):
     """
     Relay a Meshtastic message into a Matrix room and optionally record a Meshtastic↔Matrix mapping.
-    
+
     Formats the provided Meshtastic text into plain and HTML-safe formatted Matrix content (supports basic Markdown/HTML when libraries are available), applies Matrix reply framing when reply_to_event_id is provided, enforces E2EE restrictions (will not send into an encrypted room if the Matrix client's E2EE support is not enabled), sends the event via the global Matrix client, and—when message-interactions are enabled and a meshtastic_id is given—persists a mapping for later cross-network replies/reactions. Errors and timeouts are logged; the function does not raise on send/storage failures.
-    
+
     Parameters that require extra context:
     - meshtastic_id: when provided and storage is enabled, used to persist a mapping from the Meshtastic message to the created Matrix event for future reply/reaction handling.
     - meshtastic_replyId: original Meshtastic message ID being replied to; included as metadata on the Matrix event.
@@ -1778,12 +1827,12 @@ async def matrix_relay(
     - emote: if True, the Matrix message is sent as an `m.emote` (emote) instead of `m.text`.
     - emoji: if True, a flag is added to the event to indicate emoji-like content.
     - reply_to_event_id: when provided, the outgoing Matrix event will include an `m.in_reply_to` relation and quoted/HTML reply content if the original mapping can be found.
-    
+
     Side effects:
     - Sends a message to Matrix using the global Matrix client.
     - May persist a message mapping (Meshtastic ID → Matrix event) when configured.
     - Logs operational and error information; does not propagate send/storage exceptions to callers.
-    
+
     Returns:
     - None
     """
@@ -2177,7 +2226,7 @@ async def send_reply_to_meshtastic(
 ):
     """
     Queue a Matrix reply for transmission over Meshtastic, optionally targeting a specific Meshtastic message.
-    
+
     Enqueues either a structured reply (when reply_id is provided) or a regular text broadcast. If storage_enabled is True the function will create mapping metadata (using event.event_id and room.room_id) and attach it to the queued item when possible. If Meshtastic broadcasting is disabled in configuration the function returns without action. The function performs its work asynchronously and does not raise on enqueue errors; failures are logged and the function returns.
     Parameters that add non-obvious context:
         room_config (dict): Room-specific configuration; must include "meshtastic_channel".
@@ -2290,15 +2339,15 @@ async def handle_matrix_reply(
 ):
     """
     Relay a Matrix reply back to Meshtastic when the replied-to Matrix event is mapped to a Meshtastic message.
-    
+
     Looks up a Meshtastic ↔ Matrix mapping for reply_to_event_id; if found, formats a Meshtastic reply that preserves sender attribution and queues it to be sent as a reply referencing the original Meshtastic message ID. If no mapping exists, the function does nothing and returns False so normal Matrix processing can continue.
-    
+
     Parameters:
         reply_to_event_id (str): The Matrix event ID being replied to; used to locate the corresponding Meshtastic message mapping.
         storage_enabled (bool): Controls whether message mappings should be created/updated when sending the reply (passed through to the sender).
         local_meshnet_name (str): The local meshnet name used to decide reply formatting for cross-meshnet messages.
         config (dict): Relay configuration needed by formatting routines.
-    
+
     Returns:
         bool: True if a mapping was found and the reply was queued to Meshtastic; False if no mapping existed and nothing was sent.
     """

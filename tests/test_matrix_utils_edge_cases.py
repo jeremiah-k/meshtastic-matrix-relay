@@ -214,7 +214,7 @@ class TestMatrixUtilsEdgeCases(unittest.TestCase):
     ):
         """
         Test that connect_matrix continues when SSL context creation fails.
-        
+
         Simulates _create_ssl_context returning None, mocks an AsyncClient, and verifies that
         connect_matrix still returns a client object and emits a warning about the SSL context failure.
         """
@@ -259,8 +259,8 @@ class TestMatrixUtilsEdgeCases(unittest.TestCase):
         mock_client.rooms = {}  # Bot is not in the room
         mock_client.join = AsyncMock()
         mock_response = MagicMock()
-        # Simulate a failed join response - no room_id but response exists
-        del mock_response.room_id  # Remove the room_id attribute entirely
+        # Simulate a failed join response - explicitly indicate missing room_id
+        mock_response.room_id = None
         mock_response.message = "Room not found"
 
         mock_client.join.return_value = mock_response

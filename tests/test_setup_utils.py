@@ -320,12 +320,12 @@ class TestSetupUtils(unittest.TestCase):
         def exists_side_effect(path):
             """
             Return True if the given path string contains "share".
-            
+
             Used as a helper side-effect function (e.g., for mocking os.path.exists) to simulate that only paths containing the substring "share" exist.
-            
+
             Parameters:
                 path (str): The path to test.
-            
+
             Returns:
                 bool: True when "share" is a substring of `path`, otherwise False.
             """
@@ -416,6 +416,7 @@ class TestSetupUtils(unittest.TestCase):
         mock_which.return_value = None
 
         from mmrelay.setup_utils import check_loginctl_available
+
         result = check_loginctl_available()
 
         self.assertFalse(result)
@@ -676,9 +677,13 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
     @patch("mmrelay.setup_utils.read_service_file")
     @patch("mmrelay.setup_utils.get_template_service_path")
     @patch("os.path.getmtime")
-    def test_service_needs_update_mtime(self, mock_getmtime, mock_get_template, mock_read_service):
+    def test_service_needs_update_mtime(
+        self, mock_getmtime, mock_get_template, mock_read_service
+    ):
         """Test that service_needs_update returns True when the template is newer."""
-        mock_read_service.return_value = f"ExecStart={sys.executable} -m mmrelay\nEnvironment=PATH=%h/.local/bin"
+        mock_read_service.return_value = (
+            f"ExecStart={sys.executable} -m mmrelay\nEnvironment=PATH=%h/.local/bin"
+        )
         mock_get_template.return_value = "/path/to/template"
         mock_getmtime.side_effect = [2, 1]  # template_mtime > service_mtime
 
@@ -686,7 +691,9 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
             needs_update, reason = service_needs_update()
 
         self.assertTrue(needs_update)
-        self.assertEqual(reason, "Template service file is newer than installed service file")
+        self.assertEqual(
+            reason, "Template service file is newer than installed service file"
+        )
 
     @patch("subprocess.run")
     def test_show_service_status_success(self, mock_run):
@@ -732,7 +739,7 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
             # This will be called multiple times, return False first, then True
             """
             Return False on the first four calls and True thereafter.
-            
+
             This side-effect function increments the outer `call_counter["count"]` each time it's invoked and returns True once the count reaches 5 (used to simulate a service becoming active after several checks).
             """
             call_counter["count"] += 1
@@ -755,7 +762,7 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         self,
         mock_get_exec_start,
         mock_get_template_path,
-        mock_open,
+        _mock_open,
         mock_resources,
         mock_get_helper_path,
     ):
@@ -797,6 +804,7 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         self.assertFalse(result)
         # write_text should not be called
         mock_write_text.assert_not_called()
+        assert mock_mkdir.called
 
     @patch("os.path.exists")
     @patch("mmrelay.setup_utils.read_service_file")
@@ -879,12 +887,12 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
                 def mock_import_side_effect(name, *args, **kwargs):
                     """
                     Import hook used in tests that returns a mocked getpass module.
-                    
+
                     When called with name == "getpass" this function returns the test's mock_getpass object; otherwise it delegates to Python's built-in __import__ with the same arguments.
                     Parameters:
                         name (str): The module name to import.
                         *args, **kwargs: Additional positional and keyword arguments forwarded to __import__.
-                    
+
                     Returns:
                         module: The imported module or the mock_getpass object when requesting "getpass".
                     """
@@ -1127,7 +1135,9 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
 
     @patch("os.path.exists")
     @patch("sys.stderr", new_callable=io.StringIO)
-    def test_get_template_service_path_not_found_prints_warning(self, mock_stderr, mock_exists):
+    def test_get_template_service_path_not_found_prints_warning(
+        self, mock_stderr, mock_exists
+    ):
         """Test that a warning is printed when the template service path is not found."""
         mock_exists.return_value = False
 
@@ -1139,7 +1149,9 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
     @patch("mmrelay.setup_utils.read_service_file", return_value=None)
     @patch("mmrelay.setup_utils.service_needs_update", return_value=(True, "reason"))
     @patch("mmrelay.setup_utils.create_service_file", return_value=False)
-    def test_install_service_create_fails(self, mock_create, mock_needs_update, mock_read):
+    def test_install_service_create_fails(
+        self, _mock_create, _mock_needs_update, _mock_read
+    ):
         """Test install_service when create_service_file fails."""
         result = install_service()
         self.assertFalse(result)
@@ -1149,22 +1161,27 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
     @patch("mmrelay.setup_utils.create_service_file", return_value=True)
     @patch("mmrelay.setup_utils.reload_daemon", return_value=False)
     @patch("builtins.print")
-    def test_install_service_reload_fails(self, mock_print, mock_reload, mock_create, mock_needs_update, mock_read):
+    def test_install_service_reload_fails(
+        self, mock_print, _mock_reload, _mock_create, _mock_needs_update, _mock_read
+    ):
         """Test install_service when reload_daemon fails."""
         with patch("builtins.input", return_value="y"):
             result = install_service()
-        self.assertTrue(result) # it should still succeed, but print a warning
-        mock_print.assert_any_call("Warning: Failed to reload systemd daemon. You may need to run 'systemctl --user daemon-reload' manually.", file=sys.stderr)
+        self.assertTrue(result)  # it should still succeed, but print a warning
+        mock_print.assert_any_call(
+            "Warning: Failed to reload systemd daemon. You may need to run 'systemctl --user daemon-reload' manually.",
+            file=sys.stderr,
+        )
 
     @patch("subprocess.run", side_effect=OSError("OS error"))
-    def test_check_lingering_enabled_os_error(self, mock_run):
+    def test_check_lingering_enabled_os_error(self, _mock_run):
         """Test check_lingering_enabled with OSError."""
         with patch.dict(os.environ, {"USER": "testuser"}):
             result = check_lingering_enabled()
         self.assertFalse(result)
 
     @patch("subprocess.run", side_effect=OSError("OS error"))
-    def test_enable_lingering_os_error(self, mock_run):
+    def test_enable_lingering_os_error(self, _mock_run):
         """Test enable_lingering with OSError."""
         with patch.dict(os.environ, {"USER": "testuser"}):
             result = enable_lingering()

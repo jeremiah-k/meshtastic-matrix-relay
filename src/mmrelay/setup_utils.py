@@ -102,7 +102,7 @@ def print_service_commands():
 def wait_for_service_start():
     """
     Wait up to ~10 seconds for the user mmrelay systemd service to become active.
-    
+
     Blocks while periodically checking is_service_active(). When running interactively (not as a service) a Rich spinner and elapsed-time display are shown; when running as a service the function performs the same timed checks without UI. The wait may finish early if the service becomes active (checks begin allowing early exit after ~5 seconds). This function does not return a value.
     """
     import time
@@ -111,7 +111,15 @@ def wait_for_service_start():
 
     running_as_service = is_running_as_service()
     if not running_as_service:
-        from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
+        try:
+            from rich.progress import (
+                Progress,
+                SpinnerColumn,
+                TextColumn,
+                TimeElapsedColumn,
+            )
+        except Exception:
+            running_as_service = True
 
     # Create a Rich progress display with spinner and elapsed time
     if not running_as_service:
@@ -435,7 +443,7 @@ def reload_daemon():
 def service_needs_update():
     """
     Return whether the user systemd unit for mmrelay should be updated.
-    
+
     Performs checks in this order and returns (needs_update, reason):
     - No installed unit file => update required.
     - Installed unit must contain an ExecStart= line that invokes mmrelay via an acceptable form:
@@ -445,7 +453,7 @@ def service_needs_update():
       If none match, an update is recommended.
     - Unit Environment= PATH lines must include common user bin locations (e.g. "%h/.local/pipx/venvs/mmrelay/bin" or "%h/.local/bin"); if missing, an update is recommended.
     - If a template service file is available on disk, its modification time is compared to the installed unit; if the template is newer, an update is recommended.
-    
+
     Returns:
         tuple: (needs_update: bool, reason: str) — True when an update is recommended or required; reason explains the decision or why the check failed (e.g., missing ExecStart, missing PATH entries, stat error).
     """
@@ -459,11 +467,12 @@ def service_needs_update():
 
     # Get the acceptable executable paths
     mmrelay_path = shutil.which("mmrelay")
-    acceptable_execs = [f"{_quote_if_needed(sys.executable)} -m mmrelay"]
+    acceptable_execs = [
+        f"{_quote_if_needed(sys.executable)} -m mmrelay",
+        "/usr/bin/env mmrelay",
+    ]
     if mmrelay_path:
-        acceptable_execs.extend(
-            [_quote_if_needed(mmrelay_path), "/usr/bin/env mmrelay"]
-        )
+        acceptable_execs.append(_quote_if_needed(mmrelay_path))
 
     # Check if the ExecStart line in the existing service file contains an acceptable executable form
     exec_start_line = next(
@@ -506,7 +515,7 @@ def service_needs_update():
             template_mtime = os.path.getmtime(template_path)
             service_mtime = os.path.getmtime(service_path)
         except OSError:
-            return False, "Unable to stat template or service file"
+            return True, "Unable to stat template or service file"
         if template_mtime > service_mtime:
             return True, "Template service file is newer than installed service file"
 
@@ -572,9 +581,9 @@ def check_lingering_enabled():
 def enable_lingering():
     """
     Enable systemd "lingering" for the current user.
-    
+
     Determines the current username from the USER or USERNAME environment variables, falling back to getpass.getuser(), and invokes `sudo loginctl enable-linger <user>`. Prints status messages to stdout/stderr.
-    
+
     Returns:
         bool: True if the command succeeded (exit code 0), False otherwise.
     """

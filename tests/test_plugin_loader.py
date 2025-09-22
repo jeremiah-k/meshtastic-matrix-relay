@@ -239,7 +239,7 @@ class Plugin:
         def fake_check_call(_cmd, *_args, **_kwargs):  # nosec B603
             """
             Test helper that simulates a successful subprocess call installing a dependency.
-            
+
             Creates a file named `mockdep.py` in the test `user_site` directory with a single
             constant (`VALUE = 1`) to make the dependency importable, then returns a
             subprocess.CompletedProcess with returncode 0. Parameters mimic subprocess.call/check_call
@@ -256,9 +256,9 @@ class Plugin:
         def fake_addsitedir(path):
             """
             Record a directory and ensure it's on the Python import path.
-            
+
             Adds `path` to the external `added_dirs` list and, if not already present, inserts it at the front of `sys.path` so it takes precedence during imports.
-            
+
             Parameters:
                 path (str): Filesystem path to register on the import search path.
             """
@@ -503,6 +503,7 @@ def test_clone_or_update_repo_new_repo_tag(tmp_path):
         mock_run.assert_called_with(
             ["git", "clone", "--branch", "v1.0.0", repo_url],
             cwd=str(plugins_dir),
+            timeout=120,
         )
 
 
@@ -520,6 +521,7 @@ def test_clone_or_update_repo_new_repo_branch(tmp_path):
         mock_run.assert_called_with(
             ["git", "clone", "--branch", "develop", repo_url],
             cwd=str(plugins_dir),
+            timeout=120,
         )
 
 
@@ -551,7 +553,9 @@ def test_clone_or_update_repo_existing_repo_same_branch(mock_run, tmp_path):
         ["git", "-C", str(repo_dir), "rev-parse", "--abbrev-ref", "HEAD"],
         capture_output=True,
     )
-    mock_run.assert_any_call(["git", "-C", str(repo_dir), "pull", "origin", "main"])
+    mock_run.assert_any_call(
+        ["git", "-C", str(repo_dir), "pull", "origin", "main"], timeout=120
+    )
 
 
 @patch("mmrelay.plugin_loader._run")
@@ -576,8 +580,12 @@ def test_clone_or_update_repo_existing_repo_different_branch(mock_run, tmp_path)
     mock_run.assert_any_call(
         ["git", "-C", str(repo_dir), "fetch", "origin"], timeout=120
     )
-    mock_run.assert_any_call(["git", "-C", str(repo_dir), "checkout", "develop"])
-    mock_run.assert_any_call(["git", "-C", str(repo_dir), "pull", "origin", "develop"])
+    mock_run.assert_any_call(
+        ["git", "-C", str(repo_dir), "checkout", "develop"], timeout=120
+    )
+    mock_run.assert_any_call(
+        ["git", "-C", str(repo_dir), "pull", "origin", "develop"], timeout=120
+    )
 
 
 def test_clone_or_update_repo_git_error(tmp_path):

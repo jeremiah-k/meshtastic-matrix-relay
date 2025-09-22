@@ -1,6 +1,7 @@
 import os
 import re
 import sys
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -104,7 +105,7 @@ async def test_on_room_message_simple_text(
     async def mock_get_user_display_name_func(*args, **kwargs):
         """
         Return the fixed display name "user".
-        
+
         Async helper intended for use in tests as a mock replacement for an async function that retrieves a Matrix user's display name. Accepts any args/kwargs and always returns the string "user".
         """
         return "user"
@@ -247,7 +248,7 @@ async def test_on_room_message_reply_disabled(
     async def mock_get_user_display_name_func(*args, **kwargs):
         """
         Return the fixed display name "user".
-        
+
         Async helper intended for use in tests as a mock replacement for an async function that retrieves a Matrix user's display name. Accepts any args/kwargs and always returns the string "user".
         """
         return "user"
@@ -305,7 +306,7 @@ async def test_on_room_message_reaction_enabled(
         def __init__(self, source, sender, server_timestamp):
             """
             Initialize an event-like object with raw payload, sender, and server timestamp.
-            
+
             Parameters:
                 source (dict): Original Matrix event JSON payload.
                 sender (str): Sender Matrix user ID (MXID).
@@ -382,7 +383,7 @@ async def test_on_room_message_reaction_disabled(
         def __init__(self, source, sender, server_timestamp):
             """
             Initialize an event-like object with raw payload, sender, and server timestamp.
-            
+
             Parameters:
                 source (dict): Original Matrix event JSON payload.
                 sender (str): Sender Matrix user ID (MXID).
@@ -1020,8 +1021,10 @@ async def test_join_matrix_room_by_id(_mock_logger, mock_matrix_client):
     """
     Test that joining a Matrix room by its room ID calls the client's join method with the correct argument.
     """
-    # Use MagicMock to prevent coroutine warnings
-    mock_matrix_client.join = AsyncMock()
+    mock_matrix_client.rooms = {}
+    mock_matrix_client.join = AsyncMock(
+        return_value=SimpleNamespace(room_id="!room:matrix.org")
+    )
 
     await join_matrix_room(mock_matrix_client, "!room:matrix.org")
 
@@ -1033,6 +1036,7 @@ async def test_join_matrix_room_by_id(_mock_logger, mock_matrix_client):
 async def test_join_matrix_room_already_joined(_mock_logger, mock_matrix_client):
     """Test that join_matrix_room does nothing if already in the room."""
     mock_matrix_client.rooms = {"!room:matrix.org": MagicMock()}
+    mock_matrix_client.join = AsyncMock()
 
     await join_matrix_room(mock_matrix_client, "!room:matrix.org")
 
@@ -1040,6 +1044,52 @@ async def test_join_matrix_room_already_joined(_mock_logger, mock_matrix_client)
     _mock_logger.debug.assert_called_with(
         "Bot is already in room '!room:matrix.org', no action needed."
     )
+
+
+@patch("mmrelay.matrix_utils.logger")
+async def test_join_matrix_room_resolves_alias_in_string_list(mock_logger):
+    mock_client = MagicMock()
+    mock_client.rooms = {}
+    mock_client.room_resolve_alias = AsyncMock(
+        return_value=SimpleNamespace(room_id="!resolved:matrix.org")
+    )
+    mock_client.join = AsyncMock(
+        return_value=SimpleNamespace(room_id="!resolved:matrix.org")
+    )
+
+    with patch("mmrelay.matrix_utils.matrix_rooms", ["#alias:matrix.org"]):
+        await join_matrix_room(mock_client, "#alias:matrix.org")
+        mock_client.room_resolve_alias.assert_called_once_with("#alias:matrix.org")
+        mock_client.join.assert_called_once_with("!resolved:matrix.org")
+        from mmrelay import matrix_utils
+
+        assert matrix_utils.matrix_rooms == ["!resolved:matrix.org"]
+        mock_logger.info.assert_called_with(
+            "Joined room '!resolved:matrix.org' successfully"
+        )
+
+
+@patch("mmrelay.matrix_utils.logger")
+async def test_join_matrix_room_resolves_alias_in_dict_mapping(mock_logger):
+    mock_client = MagicMock()
+    mock_client.rooms = {}
+    mock_client.room_resolve_alias = AsyncMock(
+        return_value=SimpleNamespace(room_id="!resolved:matrix.org")
+    )
+    mock_client.join = AsyncMock(
+        return_value=SimpleNamespace(room_id="!resolved:matrix.org")
+    )
+
+    with patch("mmrelay.matrix_utils.matrix_rooms", {"room": "#alias:matrix.org"}):
+        await join_matrix_room(mock_client, "#alias:matrix.org")
+        mock_client.room_resolve_alias.assert_called_once_with("#alias:matrix.org")
+        mock_client.join.assert_called_once_with("!resolved:matrix.org")
+        from mmrelay import matrix_utils
+
+        assert matrix_utils.matrix_rooms["room"] == "!resolved:matrix.org"
+        mock_logger.info.assert_called_with(
+            "Joined room '!resolved:matrix.org' successfully"
+        )
 
 
 @patch("mmrelay.matrix_utils.matrix_client", None)
@@ -1076,7 +1126,7 @@ async def test_connect_matrix_alias_resolution_success(
         async def mock_whoami():
             """
             Asynchronous test helper that simulates a Matrix client's whoami response.
-            
+
             Returns:
                 unittest.mock.MagicMock: A mock with a `device_id` attribute set to "test_device_id".
             """
@@ -1085,7 +1135,7 @@ async def test_connect_matrix_alias_resolution_success(
         async def mock_sync(*_args, **_kwargs):
             """
             Asynchronous test helper that returns a new MagicMock instance.
-            
+
             This coroutine can be awaited in place of an async client sync call during tests;
             it produces a fresh MagicMock to represent the sync result.
             """
@@ -1094,7 +1144,7 @@ async def test_connect_matrix_alias_resolution_success(
         async def mock_get_displayname(*_args, **_kwargs):
             """
             Async test helper that returns a MagicMock representing a user's display name.
-            
+
             Used to stub async calls (e.g., client.get_displayname) in tests. It ignores all arguments and returns a MagicMock with a `displayname` attribute set to "Test Bot".
             """
             return MagicMock(displayname="Test Bot")
@@ -1105,10 +1155,10 @@ async def test_connect_matrix_alias_resolution_success(
         async def mock_room_resolve_alias_impl(_alias):
             """
             Async test helper that simulates resolving a Matrix room alias.
-            
+
             Parameters:
                 _alias (str): The room alias to resolve (ignored by this mock).
-            
+
             Returns:
                 MagicMock: A mock response with `room_id` set to "!resolved:matrix.org" and an empty `message` attribute.
             """
@@ -1188,7 +1238,7 @@ async def test_connect_matrix_alias_resolution_failure(
         async def mock_whoami():
             """
             Asynchronous test helper that simulates a Matrix client's whoami response.
-            
+
             Returns:
                 unittest.mock.MagicMock: A mock with a `device_id` attribute set to "test_device_id".
             """
@@ -1197,7 +1247,7 @@ async def test_connect_matrix_alias_resolution_failure(
         async def mock_sync(*_args, **_kwargs):
             """
             Asynchronous test helper that returns a new MagicMock instance.
-            
+
             This coroutine can be awaited in place of an async client sync call during tests;
             it produces a fresh MagicMock to represent the sync result.
             """
@@ -1206,7 +1256,7 @@ async def test_connect_matrix_alias_resolution_failure(
         async def mock_get_displayname(*_args, **_kwargs):
             """
             Async test helper that returns a MagicMock representing a user's display name.
-            
+
             Used to stub async calls (e.g., client.get_displayname) in tests. It ignores all arguments and returns a MagicMock with a `displayname` attribute set to "Test Bot".
             """
             return MagicMock(displayname="Test Bot")
@@ -1292,7 +1342,7 @@ async def test_connect_matrix_alias_resolution_exception(
         async def mock_whoami():
             """
             Asynchronous test helper that simulates a Matrix client's whoami response.
-            
+
             Returns:
                 unittest.mock.MagicMock: A mock with a `device_id` attribute set to "test_device_id".
             """
@@ -1301,7 +1351,7 @@ async def test_connect_matrix_alias_resolution_exception(
         async def mock_sync(*_args, **_kwargs):
             """
             Asynchronous test helper that returns a new MagicMock instance.
-            
+
             This coroutine can be awaited in place of an async client sync call during tests;
             it produces a fresh MagicMock to represent the sync result.
             """
@@ -1310,7 +1360,7 @@ async def test_connect_matrix_alias_resolution_exception(
         async def mock_get_displayname(*_args, **_kwargs):
             """
             Async test helper that returns a MagicMock representing a user's display name.
-            
+
             Used to stub async calls (e.g., client.get_displayname) in tests. It ignores all arguments and returns a MagicMock with a `displayname` attribute set to "Test Bot".
             """
             return MagicMock(displayname="Test Bot")
@@ -1324,10 +1374,10 @@ async def test_connect_matrix_alias_resolution_exception(
         async def mock_room_resolve_alias_impl(_alias):
             """
             Mock async implementation that simulates a network failure when resolving a Matrix room alias.
-            
+
             Parameters:
                 _alias (str): The room alias to resolve (ignored by this mock).
-            
+
             Raises:
                 FakeNetworkError: Always raised to simulate a network error during alias resolution.
             """

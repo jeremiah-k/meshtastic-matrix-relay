@@ -5,9 +5,10 @@ import io
 import re
 import threading
 import time
-from concurrent.futures import Future
+from concurrent.futures import Future, TimeoutError
 from typing import List
 
+import meshtastic
 import meshtastic.ble_interface
 import meshtastic.serial_interface
 import meshtastic.tcp_interface
@@ -183,7 +184,7 @@ def _get_device_metadata(client):
         # Parse firmware version from the output using robust regex
         # Case-insensitive, handles quotes, whitespace, and various formats
         match = re.search(
-            r"(?i)\bfirmware_version\s*:\s*['\"]?\s*([^\s\r\n'\"]+)\s*['\"]?",
+            r"(?i)\bfirmware[\s_/-]*version\b\s*[:=]\s*['\"]?\s*([^\s\r\n'\"]+)",
             console_output,
         )
         if match:
@@ -829,13 +830,21 @@ def on_meshtastic_message(packet, interface):
         for plugin in plugins:
             if not found_matching_plugin:
                 try:
-                    result = _submit_coro(
+                    result_future = _submit_coro(
                         plugin.handle_meshtastic_message(
                             packet, formatted_message, longname, meshnet_name
                         ),
                         loop=loop,
                     )
-                    found_matching_plugin = result.result()
+                    try:
+                        found_matching_plugin = result_future.result(timeout=5)
+                    except TimeoutError as exc:
+                        logger.warning(
+                            "Plugin %s did not respond within 5s: %s",
+                            plugin.plugin_name,
+                            exc,
+                        )
+                        found_matching_plugin = False
                     if found_matching_plugin:
                         logger.debug(f"Processed by plugin {plugin.plugin_name}")
                 except Exception:
@@ -890,7 +899,7 @@ def on_meshtastic_message(packet, interface):
         for plugin in plugins:
             if not found_matching_plugin:
                 try:
-                    result = _submit_coro(
+                    result_future = _submit_coro(
                         plugin.handle_meshtastic_message(
                             packet,
                             formatted_message=None,
@@ -899,7 +908,15 @@ def on_meshtastic_message(packet, interface):
                         ),
                         loop=loop,
                     )
-                    found_matching_plugin = result.result()
+                    try:
+                        found_matching_plugin = result_future.result(timeout=5)
+                    except TimeoutError as exc:
+                        logger.warning(
+                            "Plugin %s did not respond within 5s: %s",
+                            plugin.plugin_name,
+                            exc,
+                        )
+                        found_matching_plugin = False
                     if found_matching_plugin:
                         logger.debug(
                             f"Processed {portnum} with plugin {plugin.plugin_name}"
@@ -1014,16 +1031,16 @@ def sendTextReply(
 ):
     """
     Send a Meshtastic text reply that references a previous Meshtastic message.
-    
+
     Builds a Data payload containing `text` and `reply_id`, wraps it in a MeshPacket on `channelIndex`, and sends it via the provided Meshtastic interface.
-    
+
     Parameters:
         text (str): UTF-8 text to send.
         reply_id (int): ID of the message being replied to.
         destinationId (int|str, optional): Recipient address (defaults to broadcast).
         wantAck (bool, optional): If True, request an acknowledgement for the packet.
         channelIndex (int, optional): Channel index to send the packet on.
-    
+
     Returns:
         The value returned by the interface's _sendPacket call (typically the sent MeshPacket) or None if the interface is unavailable or sending fails.
     """
