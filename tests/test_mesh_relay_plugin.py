@@ -500,7 +500,11 @@ class TestMeshRelayPlugin(unittest.TestCase):
     @patch("mmrelay.plugins.mesh_relay_plugin.config")
     def test_handle_room_message_invalid_json_packet(self, mock_config):
         """
-        Test that handle_room_message returns None and logs an error when the embedded packet contains invalid JSON.
+        Test that handle_room_message returns None and logs an exception when the embedded `meshtastic_packet` contains invalid JSON.
+        
+        This unit test sets plugin.matches to True and provides a mocked config mapping the room to a meshtastic channel. It calls plugin.handle_room_message with an event whose `source.content.meshtastic_packet` is an invalid JSON string and asserts that:
+        - the coroutine returns None (processing stops on parse error), and
+        - plugin.logger.exception was called with a message containing "Error processing embedded packet".
         """
         self.plugin.matches = MagicMock(return_value=True)
 

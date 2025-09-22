@@ -213,10 +213,10 @@ class TestMatrixUtilsEdgeCases(unittest.TestCase):
         self, mock_ssl_context, mock_async_client, mock_logger
     ):
         """
-        Test that connect_matrix handles SSL context creation failures gracefully.
-
-        Simulates an SSL context creation failure and verifies that connect_matrix continues
-        with None SSL context and logs appropriate warnings.
+        Test that connect_matrix continues when SSL context creation fails.
+        
+        Simulates _create_ssl_context returning None, mocks an AsyncClient, and verifies that
+        connect_matrix still returns a client object and emits a warning about the SSL context failure.
         """
         mock_ssl_context.return_value = None  # Simulate SSL context creation failure
 

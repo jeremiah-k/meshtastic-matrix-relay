@@ -237,12 +237,15 @@ def print_version():
 
 def _validate_e2ee_dependencies():
     """
-    Return True if the current platform supports E2EE and the required Python packages are importable.
-
-    Checks platform compatibility (Windows is considered unsupported) and tries to import the native and nio-backed E2EE components required by MMRelay (python-olm, nio.crypto.OlmDevice, nio.store.SqliteStore). Prints concise, user-facing status and guidance messages when support or dependencies are missing.
-
+    Check whether E2EE is supported on this platform and required Python packages are available.
+    
     Returns:
-        bool: True when the platform is supported and all imports succeed; False otherwise.
+        bool: True if the current platform supports E2EE (non-Windows) and the required modules
+        (python-olm, nio.crypto.OlmDevice, nio.store.SqliteStore) can be imported; False otherwise.
+    
+    Notes:
+        - Emits user-facing messages describing missing platform support or missing dependencies.
+        - Does not perform network I/O; only inspects platform and importability of packages.
     """
     if sys.platform == WINDOWS_PLATFORM:
         print("❌ Error: E2EE is not supported on Windows")

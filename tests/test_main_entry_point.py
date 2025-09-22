@@ -28,10 +28,10 @@ class TestMainEntryPoint(unittest.TestCase):
 
     def tearDown(self):
         """
-        Restore the original sys.argv saved in setUp.
-
-        Resets the global sys.argv to the value captured before the test ran to prevent
-        command-line arguments from leaking between tests.
+        Restore sys.argv to its pre-test value.
+        
+        Replaces the process-wide sys.argv with the copy saved in setUp to avoid leaking
+        test-specific command-line arguments between tests.
         """
         sys.argv = self.original_argv
 

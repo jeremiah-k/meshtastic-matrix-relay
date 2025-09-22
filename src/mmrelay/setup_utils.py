@@ -101,9 +101,9 @@ def print_service_commands():
 
 def wait_for_service_start():
     """
-    Wait up to ~10 seconds for the user mmrelay systemd service to become active, displaying a progress spinner when running interactively.
-
-    If the process is not running as a service, this shows a Rich spinner and elapsed time, sleeping in one-second intervals and checking service status; if the service becomes active after 5 seconds the wait ends early. When running as a service (non-interactive), the function performs the same timed checks but without the Rich UI. This function does not return a value; it blocks for up to ~10 seconds and calls is_service_active() to detect service readiness.
+    Wait up to ~10 seconds for the user mmrelay systemd service to become active.
+    
+    Blocks while periodically checking is_service_active(). When running interactively (not as a service) a Rich spinner and elapsed-time display are shown; when running as a service the function performs the same timed checks without UI. The wait may finish early if the service becomes active (checks begin allowing early exit after ~5 seconds). This function does not return a value.
     """
     import time
 
@@ -434,17 +434,20 @@ def reload_daemon():
 
 def service_needs_update():
     """
-    Determine whether the user systemd service file for mmrelay needs updating.
-
-    Performs these checks in order:
-    - If no installed service file exists, indicates an update is required.
-    - If the canonical service template cannot be located, reports that the update check cannot be performed (returns False).
-    - Verifies the ExecStart in the installed file uses an acceptable mmrelay invocation (either the mmrelay executable on PATH, `/usr/bin/env mmrelay`, or `python -m mmrelay` when mmrelay is not on PATH).
-    - Ensures the unit's PATH environment includes common user-bin locations (e.g. `%h/.local/pipx/venvs/mmrelay/bin` or `%h/.local/bin`).
-    - If a template file is found, compares modification times and marks an update required when the template is newer than the installed service file.
-
+    Return whether the user systemd unit for mmrelay should be updated.
+    
+    Performs checks in this order and returns (needs_update, reason):
+    - No installed unit file => update required.
+    - Installed unit must contain an ExecStart= line that invokes mmrelay via an acceptable form:
+      - an mmrelay executable found on PATH,
+      - "/usr/bin/env mmrelay",
+      - or the current Python interpreter with "-m mmrelay".
+      If none match, an update is recommended.
+    - Unit Environment= PATH lines must include common user bin locations (e.g. "%h/.local/pipx/venvs/mmrelay/bin" or "%h/.local/bin"); if missing, an update is recommended.
+    - If a template service file is available on disk, its modification time is compared to the installed unit; if the template is newer, an update is recommended.
+    
     Returns:
-        tuple: (needs_update: bool, reason: str) — needs_update is True when an update is recommended or required; reason explains the decision or why the check could not be completed.
+        tuple: (needs_update: bool, reason: str) — True when an update is recommended or required; reason explains the decision or why the check failed (e.g., missing ExecStart, missing PATH entries, stat error).
     """
     # Check if service already exists
     existing_service = read_service_file()
@@ -568,13 +571,12 @@ def check_lingering_enabled():
 
 def enable_lingering():
     """
-    Enable systemd "lingering" for the current user by invoking `sudo loginctl enable-linger <user>`.
-
-    The function determines the current username from the USER or USERNAME environment variables or falls back to getpass.getuser().
-    It runs `sudo loginctl enable-linger <username>` and prints success or error messages to stdout/stderr.
-
+    Enable systemd "lingering" for the current user.
+    
+    Determines the current username from the USER or USERNAME environment variables, falling back to getpass.getuser(), and invokes `sudo loginctl enable-linger <user>`. Prints status messages to stdout/stderr.
+    
     Returns:
-        bool: True if the subprocess exit code indicates success (lingering enabled), False otherwise.
+        bool: True if the command succeeded (exit code 0), False otherwise.
     """
     try:
         import getpass

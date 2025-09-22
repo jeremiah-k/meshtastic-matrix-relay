@@ -318,6 +318,17 @@ class TestSetupUtils(unittest.TestCase):
         """Test that get_template_service_path checks all fallback paths."""
 
         def exists_side_effect(path):
+            """
+            Return True if the given path string contains "share".
+            
+            Used as a helper side-effect function (e.g., for mocking os.path.exists) to simulate that only paths containing the substring "share" exist.
+            
+            Parameters:
+                path (str): The path to test.
+            
+            Returns:
+                bool: True when "share" is a substring of `path`, otherwise False.
+            """
             return "share" in path
 
         mock_exists.side_effect = exists_side_effect
@@ -719,6 +730,11 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
 
         def mock_service_active_side_effect():
             # This will be called multiple times, return False first, then True
+            """
+            Return False on the first four calls and True thereafter.
+            
+            This side-effect function increments the outer `call_counter["count"]` each time it's invoked and returns True once the count reaches 5 (used to simulate a service becoming active after several checks).
+            """
             call_counter["count"] += 1
             return call_counter["count"] >= 5
 
@@ -861,6 +877,17 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
             with patch("builtins.__import__") as mock_import:
 
                 def mock_import_side_effect(name, *args, **kwargs):
+                    """
+                    Import hook used in tests that returns a mocked getpass module.
+                    
+                    When called with name == "getpass" this function returns the test's mock_getpass object; otherwise it delegates to Python's built-in __import__ with the same arguments.
+                    Parameters:
+                        name (str): The module name to import.
+                        *args, **kwargs: Additional positional and keyword arguments forwarded to __import__.
+                    
+                    Returns:
+                        module: The imported module or the mock_getpass object when requesting "getpass".
+                    """
                     if name == "getpass":
                         return mock_getpass
                     return __import__(name, *args, **kwargs)
