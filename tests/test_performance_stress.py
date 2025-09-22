@@ -173,6 +173,7 @@ class TestPerformanceStress:
                 finally:
                     loop.close()
 
+    @pytest.mark.timeout(300)
     @pytest.mark.performance  # Changed from slow to performance
     def test_message_queue_performance_under_load(self):
         """
@@ -318,6 +319,7 @@ class TestPerformanceStress:
                 assert prune_time < 8.0, "Message map pruning too slow"
 
     @pytest.mark.asyncio
+    @pytest.mark.timeout(300)
     @pytest.mark.performance  # Changed from slow to performance
     async def test_plugin_processing_performance(self, meshtastic_loop_safety):
         """

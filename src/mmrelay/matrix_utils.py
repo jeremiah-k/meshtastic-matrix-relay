@@ -1082,8 +1082,6 @@ async def connect_matrix(passed_config=None):
                 return isinstance(s, str) and s.startswith("#")
 
             try:
-                from typing import Optional
-
                 async def _resolve_alias(alias: str) -> Optional[str]:
                     """Resolves a room alias to a room ID, with logging."""
                     logger.debug(f"Resolving alias from config: {alias}")
@@ -1676,7 +1674,6 @@ async def join_matrix_room(matrix_client, room_id: str) -> None:
         room_id (str): The ID of the room to join (e.g., "!room:server.com").
     """
     try:
-        # Accept aliases defensively
         if room_id.startswith("#"):
             try:
                 resolved = await matrix_client.room_resolve_alias(room_id)
@@ -1686,6 +1683,7 @@ async def join_matrix_room(matrix_client, room_id: str) -> None:
             except Exception:
                 logger.exception(f"Error resolving alias '{room_id}'")
                 return
+
         if room_id not in matrix_client.rooms:
             response = await matrix_client.join(room_id)
             if response and hasattr(response, "room_id"):

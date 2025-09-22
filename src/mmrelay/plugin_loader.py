@@ -131,6 +131,8 @@ def get_community_plugin_dirs():
 
 
 def _run(cmd, timeout=120, **kwargs):
+    # Add capture_output and text for consistency
+    kwargs.setdefault("text", True)
     return subprocess.run(cmd, check=True, timeout=timeout, **kwargs)
 
 
@@ -178,10 +180,10 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
             if is_default_branch:
                 try:
                     # Check if we're already on the right branch
-                    current_branch = subprocess.check_output(
+                    current_branch = _run(
                         ["git", "-C", repo_path, "rev-parse", "--abbrev-ref", "HEAD"],
-                        universal_newlines=True,
-                    ).strip()
+                        capture_output=True,
+                    ).stdout.strip()
 
                     if current_branch == ref_value:
                         # We're on the right branch, just pull
@@ -228,18 +230,18 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                 # Check if we're already on the correct tag/commit
                 try:
                     # Get the current commit hash
-                    current_commit = subprocess.check_output(
+                    current_commit = _run(
                         ["git", "-C", repo_path, "rev-parse", "HEAD"],
-                        universal_newlines=True,
-                    ).strip()
+                        capture_output=True,
+                    ).stdout.strip()
 
                     # Get the commit hash for the tag
                     tag_commit = None
                     try:
-                        tag_commit = subprocess.check_output(
+                        tag_commit = _run(
                             ["git", "-C", repo_path, "rev-parse", ref_value],
-                            universal_newlines=True,
-                        ).strip()
+                            capture_output=True,
+                        ).stdout.strip()
                     except subprocess.CalledProcessError:
                         # Tag doesn't exist locally, we'll need to fetch it
                         pass
@@ -531,48 +533,41 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
             # Check if we're running in a pipx environment
             in_pipx = "PIPX_HOME" in os.environ or "PIPX_LOCAL_VENVS" in os.environ
 
-            # Read requirements from file
-            with open(requirements_path, "r") as f:
-                requirements = [
-                    line.strip()
-                    for line in f
-                    if line.strip() and not line.startswith("#")
-                ]
-
-            if requirements:
-                if in_pipx:
-                    # Use pipx inject for each requirement
-                    logger.info(
-                        f"Installing requirements for plugin {repo_name} with pipx inject"
-                    )
-                    for req in requirements:
-                        logger.info(f"Installing {req}")
-                        subprocess.check_call(["pipx", "inject", "mmrelay", req])
-                else:
-                    in_venv = (sys.prefix != getattr(sys, "base_prefix", sys.prefix)) or ("VIRTUAL_ENV" in os.environ)
-                    # Use pip to install the requirements.txt
-                    logger.info(
-                        f"Installing requirements for plugin {repo_name} with pip"
-                    )
-                    cmd = [
-                        sys.executable,
-                        "-m",
-                        "pip",
-                        "install",
-                        "-r",
-                        requirements_path,
-                        "--disable-pip-version-check",
-                        "--no-input",
-                    ]
-                    if not in_venv:
-                        cmd += ["--user"]
-                    subprocess.run(cmd, check=True, timeout=600)
+            if in_pipx:
+                # Use pipx to install the requirements.txt
                 logger.info(
-                    f"Successfully installed requirements for plugin {repo_name}"
+                    f"Installing requirements for plugin {repo_name} with pipx"
                 )
-                # Make newly installed packages visible immediately
-                _refresh_dependency_paths()
-        except subprocess.CalledProcessError as e:
+                _run(
+                    ["pipx", "inject", "mmrelay", "-r", requirements_path],
+                    timeout=600,
+                )
+            else:
+                in_venv = (sys.prefix != getattr(sys, "base_prefix", sys.prefix)) or ("VIRTUAL_ENV" in os.environ)
+                # Use pip to install the requirements.txt
+                logger.info(
+                    f"Installing requirements for plugin {repo_name} with pip"
+                )
+                cmd = [
+                    sys.executable,
+                    "-m",
+                    "pip",
+                    "install",
+                    "-r",
+                    requirements_path,
+                    "--disable-pip-version-check",
+                    "--no-input",
+                ]
+                if not in_venv:
+                    cmd += ["--user"]
+                _run(cmd, timeout=600)
+
+            logger.info(
+                f"Successfully installed requirements for plugin {repo_name}"
+            )
+            # Make newly installed packages visible immediately
+            _refresh_dependency_paths()
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
             logger.error(f"Error installing requirements for plugin {repo_name}: {e}")
             logger.error(
                 f"Please manually install the requirements from {requirements_path}"
@@ -682,7 +677,7 @@ def load_plugins_from_directory(directory, recursive=False):
                                 pipx = shutil.which("pipx")
                                 if not pipx:
                                     raise FileNotFoundError("pipx not found on PATH")
-                                subprocess.run([pipx, "inject", "mmrelay", missing_pkg], check=True, timeout=300)
+                                _run([pipx, "inject", "mmrelay", missing_pkg], timeout=300)
                             else:
                                 in_venv = (sys.prefix != getattr(sys, "base_prefix", sys.prefix)) or ("VIRTUAL_ENV" in os.environ)
                                 logger.info(
@@ -699,7 +694,7 @@ def load_plugins_from_directory(directory, recursive=False):
                                 ]
                                 if not in_venv:
                                     cmd += ["--user"]
-                                subprocess.run(cmd, check=True, timeout=300)
+                                _run(cmd, timeout=300)
 
                             logger.info(
                                 f"Successfully installed {missing_pkg}, retrying plugin load"
@@ -711,9 +706,8 @@ def load_plugins_from_directory(directory, recursive=False):
 
                             # Try to load the module again
                             try:
-                                if plugin_dir not in sys.path:
-                                    sys.path.insert(0, plugin_dir)
-                                spec.loader.exec_module(plugin_module)
+                                with _temp_sys_path(plugin_dir):
+                                    spec.loader.exec_module(plugin_module)
 
                                 if hasattr(plugin_module, "Plugin"):
                                     plugins.append(plugin_module.Plugin())
@@ -739,12 +733,6 @@ def load_plugins_from_directory(directory, recursive=False):
                             logger.error(f"  pip install {missing_pkg}        # if using pip")
                     except Exception:
                         logger.exception(f"Error loading plugin {plugin_path}")
-                    finally:
-                        if plugin_dir in sys.path:
-                            try:
-                                sys.path.remove(plugin_dir)
-                            except ValueError:
-                                pass
             if not recursive:
                 break
     else:

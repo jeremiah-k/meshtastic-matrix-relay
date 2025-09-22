@@ -653,7 +653,8 @@ def install_service():
         # Reload daemon (continue even if this fails)
         if not reload_daemon():
             print(
-                "Warning: Failed to reload systemd daemon. You may need to run 'systemctl --user daemon-reload' manually."
+                "Warning: Failed to reload systemd daemon. You may need to run 'systemctl --user daemon-reload' manually.",
+                file=sys.stderr,
             )
 
         if existing_service:

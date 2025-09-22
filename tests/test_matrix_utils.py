@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -87,8 +88,8 @@ def test_config():
 async def test_on_room_message_simple_text(
     mock_get_user_display_name,
     mock_queue_message,
-    mock_connect_meshtastic,
-    mock_load_plugins,
+    _mock_connect_meshtastic,
+    _mock_load_plugins,
     mock_room,
     mock_event,
     test_config,
@@ -169,7 +170,7 @@ async def test_on_room_message_remote_prefers_meshtastic_text(
 @patch("mmrelay.matrix_utils.queue_message")
 @patch("mmrelay.matrix_utils.bot_start_time", 1234567880)
 async def test_on_room_message_ignore_bot(
-    mock_queue_message, mock_connect_meshtastic, mock_room, mock_event, test_config
+    mock_queue_message, _mock_connect_meshtastic, mock_room, mock_event, test_config
 ):
     """
     Test that messages sent by the bot user are ignored and not relayed to Meshtastic.
@@ -359,7 +360,7 @@ async def test_on_room_message_reaction_enabled(
 @patch("mmrelay.matrix_utils.bot_start_time", 1234567880)
 async def test_on_room_message_reaction_disabled(
     mock_queue_message,
-    mock_connect_meshtastic,
+    _mock_connect_meshtastic,
     mock_room,
     test_config,
 ):
@@ -408,7 +409,7 @@ async def test_on_room_message_reaction_disabled(
 @patch("mmrelay.matrix_utils.queue_message")
 @patch("mmrelay.matrix_utils.bot_start_time", 1234567880)
 async def test_on_room_message_unsupported_room(
-    mock_queue_message, mock_connect_meshtastic, mock_room, mock_event, test_config
+    mock_queue_message, _mock_connect_meshtastic, mock_room, mock_event, test_config
 ):
     """
     Test that messages from unsupported Matrix rooms are ignored.
@@ -897,7 +898,7 @@ async def test_connect_matrix_success(matrix_config):
     """
     with patch("mmrelay.matrix_utils.matrix_client", None), patch(
         "mmrelay.matrix_utils.AsyncClient"
-    ) as mock_async_client, patch("mmrelay.matrix_utils.logger"), patch(
+    ) as mock_async_client, patch("mmrelay.matrix_utils.logger") as _mock_logger, patch(
         "mmrelay.matrix_utils._create_ssl_context"
     ) as mock_ssl_context:
 
@@ -955,7 +956,7 @@ async def test_connect_matrix_without_credentials(matrix_config):
     """
     with patch("mmrelay.matrix_utils.matrix_client", None), patch(
         "mmrelay.matrix_utils.AsyncClient"
-    ) as mock_async_client, patch("mmrelay.matrix_utils.logger"), patch(
+    ) as mock_async_client, patch("mmrelay.matrix_utils.logger") as _mock_logger, patch(
         "mmrelay.matrix_utils._create_ssl_context"
     ) as mock_ssl_context:
 
@@ -1031,7 +1032,7 @@ async def test_join_matrix_room_already_joined(_mock_logger, mock_matrix_client)
 @patch("mmrelay.matrix_utils.login_matrix_bot")
 @patch("mmrelay.matrix_utils.load_credentials")
 async def test_connect_matrix_alias_resolution_success(
-    mock_load_credentials, mock_login_bot, mock_logger, mock_async_client
+    mock_load_credentials, mock_login_bot, _mock_logger, mock_async_client
 ):
     """
     Test that connect_matrix successfully resolves room aliases to room IDs.
@@ -1117,7 +1118,7 @@ async def test_connect_matrix_alias_resolution_success(
 @patch("mmrelay.matrix_utils.login_matrix_bot")
 @patch("mmrelay.matrix_utils.load_credentials")
 async def test_connect_matrix_alias_resolution_failure(
-    mock_load_credentials, mock_login_bot, mock_logger, mock_async_client
+    mock_load_credentials, mock_login_bot, _mock_logger, mock_async_client
 ):
     """
     Test that connect_matrix handles alias resolution failures gracefully.
@@ -1190,7 +1191,7 @@ async def test_connect_matrix_alias_resolution_failure(
         )
 
         # Verify warning was logged for failed resolution
-        mock_logger.warning.assert_called_with(
+        _mock_logger.warning.assert_called_with(
             "Could not resolve alias #invalid:matrix.org: Room not found"
         )
 
@@ -1204,7 +1205,7 @@ async def test_connect_matrix_alias_resolution_failure(
 @patch("mmrelay.matrix_utils.login_matrix_bot")
 @patch("mmrelay.matrix_utils.load_credentials")
 async def test_connect_matrix_alias_resolution_exception(
-    mock_load_credentials, mock_login_bot, mock_logger, mock_async_client
+    mock_load_credentials, mock_login_bot, _mock_logger, mock_async_client
 ):
     """
     Test that connect_matrix handles alias resolution exceptions gracefully.
@@ -1277,7 +1278,7 @@ async def test_connect_matrix_alias_resolution_exception(
         )
 
         # Verify exception was logged
-        mock_logger.exception.assert_called_with(
+        _mock_logger.exception.assert_called_with(
             "Error resolving alias #error:matrix.org"
         )
 
@@ -1401,7 +1402,7 @@ def test_normalize_bot_user_id_trailing_colon():
 @patch("mmrelay.matrix_utils.message_storage_enabled")
 @patch("mmrelay.matrix_utils.logger")
 async def test_matrix_relay_emote_message(
-    mock_logger, mock_storage_enabled, mock_get_interactions, mock_connect_matrix
+    _mock_logger, mock_storage_enabled, mock_get_interactions, mock_connect_matrix
 ):
     """
     Test that an emote message is relayed to Matrix with the correct message type.
@@ -1444,7 +1445,7 @@ async def test_matrix_relay_emote_message(
 @patch("mmrelay.matrix_utils.message_storage_enabled")
 @patch("mmrelay.matrix_utils.logger")
 async def test_matrix_relay_client_none(
-    mock_logger, mock_storage_enabled, mock_get_interactions, mock_connect_matrix
+    _mock_logger, mock_storage_enabled, mock_get_interactions, mock_connect_matrix
 ):
     """
     Test that `matrix_relay` returns early and logs an error if the Matrix client is None.
@@ -1466,7 +1467,7 @@ async def test_matrix_relay_client_none(
     )
 
     # Should log error about None client
-    mock_logger.error.assert_called_with("Matrix client is None. Cannot send message.")
+    _mock_logger.error.assert_called_with("Matrix client is None. Cannot send message.")
 
 
 def test_markdown_import_error_fallback_coverage():
@@ -1486,8 +1487,6 @@ def test_markdown_import_error_fallback_coverage():
         # This simulates the exact try/except block from matrix_relay
         if has_markdown or has_html:
             try:
-                import re
-
                 import markdown
 
                 formatted_body = markdown.markdown(message)
@@ -1511,7 +1510,7 @@ def test_markdown_import_error_fallback_coverage():
 
 @patch("mmrelay.matrix_utils.matrix_client")
 @patch("mmrelay.matrix_utils.logger")
-async def test_get_user_display_name_room_name(mock_logger, mock_matrix_client):
+async def test_get_user_display_name_room_name(_mock_logger, mock_matrix_client):
     """Test getting user display name from room."""
     mock_room = MagicMock()
     mock_room.user_name.return_value = "Room Display Name"
@@ -1527,7 +1526,7 @@ async def test_get_user_display_name_room_name(mock_logger, mock_matrix_client):
 
 @patch("mmrelay.matrix_utils.matrix_client")
 @patch("mmrelay.matrix_utils.logger")
-async def test_get_user_display_name_fallback(mock_logger, mock_matrix_client):
+async def test_get_user_display_name_fallback(_mock_logger, mock_matrix_client):
     """Test getting user display name with fallback to Matrix API."""
     mock_room = MagicMock()
     mock_room.user_name.return_value = None  # No room-specific name
@@ -1550,7 +1549,7 @@ async def test_get_user_display_name_fallback(mock_logger, mock_matrix_client):
 
 @patch("mmrelay.matrix_utils.matrix_client")
 @patch("mmrelay.matrix_utils.logger")
-async def test_get_user_display_name_no_displayname(mock_logger, mock_matrix_client):
+async def test_get_user_display_name_no_displayname(_mock_logger, mock_matrix_client):
     """Test getting user display name when no display name is set."""
     mock_room = MagicMock()
     mock_room.user_name.return_value = None
@@ -1576,7 +1575,7 @@ async def test_get_user_display_name_no_displayname(mock_logger, mock_matrix_cli
 @patch("mmrelay.matrix_utils.queue_message")
 @patch("mmrelay.matrix_utils.logger")
 async def test_send_reply_to_meshtastic_with_reply_id(
-    mock_logger, mock_queue, mock_connect
+    _mock_logger, mock_queue, _mock_connect
 ):
     """Test sending a reply to Meshtastic with reply_id."""
     mock_room_config = {"meshtastic_channel": 0}
@@ -1606,7 +1605,7 @@ async def test_send_reply_to_meshtastic_with_reply_id(
 @patch("mmrelay.matrix_utils.queue_message")
 @patch("mmrelay.matrix_utils.logger")
 async def test_send_reply_to_meshtastic_no_reply_id(
-    mock_logger, mock_queue, mock_connect
+    _mock_logger, mock_queue, _mock_connect
 ):
     """Test sending a reply to Meshtastic without reply_id."""
     mock_room_config = {"meshtastic_channel": 0}
@@ -1779,7 +1778,7 @@ def test_save_credentials(
 @patch("mmrelay.matrix_utils.AsyncClient")
 @patch("mmrelay.matrix_utils.logger")
 async def test_connect_matrix_with_e2ee_credentials(
-    mock_logger,
+    _mock_logger,
     mock_async_client,
     mock_ssl_context,
     mock_json_load,
@@ -1913,16 +1912,20 @@ async def test_connect_matrix_legacy_config(
 @patch("mmrelay.matrix_utils.input")
 @patch("mmrelay.cli_utils._create_ssl_context")
 async def test_login_matrix_bot_success(
-    mock_ssl_context, mock_input, mock_getpass, mock_async_client, mock_save_credentials
+    mock_ssl_context,
+    _mock_input,
+    _mock_getpass,
+    mock_async_client,
+    mock_save_credentials,
 ):
     """Test successful login_matrix_bot execution."""
     # Mock user inputs
-    mock_input.side_effect = [
+    _mock_input.side_effect = [
         "https://matrix.org",  # homeserver
         "testuser",  # username
         "y",  # logout_others
     ]
-    mock_getpass.return_value = "testpass"  # password
+    _mock_getpass.return_value = "testpass"  # password
 
     # Mock SSL context
     mock_ssl_context.return_value = None

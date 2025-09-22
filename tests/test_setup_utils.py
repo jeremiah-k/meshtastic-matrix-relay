@@ -11,6 +11,7 @@ Tests the service installation and management functionality including:
 - Service file update detection
 """
 
+import io
 import os
 import subprocess  # nosec B404 - Used for controlled test environment operations
 import sys
@@ -1095,6 +1096,51 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         result = show_service_status()
 
         # Should return False on OSError
+        self.assertFalse(result)
+
+    @patch("os.path.exists")
+    @patch("sys.stderr", new_callable=io.StringIO)
+    def test_get_template_service_path_not_found_prints_warning(self, mock_stderr, mock_exists):
+        """Test that a warning is printed when the template service path is not found."""
+        mock_exists.return_value = False
+
+        path = get_template_service_path()
+
+        self.assertIsNone(path)
+        self.assertIn("Warning: Could not find mmrelay.service", mock_stderr.getvalue())
+
+    @patch("mmrelay.setup_utils.read_service_file", return_value=None)
+    @patch("mmrelay.setup_utils.service_needs_update", return_value=(True, "reason"))
+    @patch("mmrelay.setup_utils.create_service_file", return_value=False)
+    def test_install_service_create_fails(self, mock_create, mock_needs_update, mock_read):
+        """Test install_service when create_service_file fails."""
+        result = install_service()
+        self.assertFalse(result)
+
+    @patch("mmrelay.setup_utils.read_service_file", return_value=None)
+    @patch("mmrelay.setup_utils.service_needs_update", return_value=(True, "reason"))
+    @patch("mmrelay.setup_utils.create_service_file", return_value=True)
+    @patch("mmrelay.setup_utils.reload_daemon", return_value=False)
+    @patch("builtins.print")
+    def test_install_service_reload_fails(self, mock_print, mock_reload, mock_create, mock_needs_update, mock_read):
+        """Test install_service when reload_daemon fails."""
+        with patch("builtins.input", return_value="y"):
+            result = install_service()
+        self.assertTrue(result) # it should still succeed, but print a warning
+        mock_print.assert_any_call("Warning: Failed to reload systemd daemon. You may need to run 'systemctl --user daemon-reload' manually.", file=sys.stderr)
+
+    @patch("subprocess.run", side_effect=OSError("OS error"))
+    def test_check_lingering_enabled_os_error(self, mock_run):
+        """Test check_lingering_enabled with OSError."""
+        with patch.dict(os.environ, {"USER": "testuser"}):
+            result = check_lingering_enabled()
+        self.assertFalse(result)
+
+    @patch("subprocess.run", side_effect=OSError("OS error"))
+    def test_enable_lingering_os_error(self, mock_run):
+        """Test enable_lingering with OSError."""
+        with patch.dict(os.environ, {"USER": "testuser"}):
+            result = enable_lingering()
         self.assertFalse(result)
 
 

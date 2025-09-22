@@ -505,31 +505,39 @@ def test_clone_or_update_repo_new_repo_branch(tmp_path):
             cwd=str(plugins_dir),
         )
 
-@patch("subprocess.check_output", return_value="main\n")
-def test_clone_or_update_repo_existing_repo_same_branch(mock_check_output, tmp_path):
+@patch("mmrelay.plugin_loader._run")
+def test_clone_or_update_repo_existing_repo_same_branch(mock_run, tmp_path):
     """Test updating an existing repository on the same branch."""
+    # Mock the return values for the _run calls
+    mock_run.side_effect = [
+        MagicMock(),  # for git fetch
+        MagicMock(stdout="main\n"),  # for git rev-parse
+        MagicMock(),  # for git pull
+    ]
+
     plugins_dir = tmp_path / "plugins"
     repo_dir = plugins_dir / "test-repo"
     repo_dir.mkdir(parents=True)
     repo_url = "https://github.com/user/test-repo.git"
     ref = {"type": "branch", "value": "main"}
 
-    with patch("mmrelay.plugin_loader._run") as mock_run:
-        result = clone_or_update_repo(repo_url, ref, str(plugins_dir))
+    result = clone_or_update_repo(repo_url, ref, str(plugins_dir))
 
-        assert result is True
-        # Should fetch and pull
-        assert mock_run.call_count == 2
-        mock_run.assert_any_call(["git", "-C", str(repo_dir), "fetch", "origin"], timeout=120)
-        mock_run.assert_any_call(["git", "-C", str(repo_dir), "pull", "origin", "main"])
+    assert result is True
+    # Should fetch, rev-parse and pull
+    assert mock_run.call_count == 3
+    mock_run.assert_any_call(["git", "-C", str(repo_dir), "fetch", "origin"], timeout=120)
+    mock_run.assert_any_call(["git", "-C", str(repo_dir), "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True)
+    mock_run.assert_any_call(["git", "-C", str(repo_dir), "pull", "origin", "main"])
 
-@patch("subprocess.check_output")
-def test_clone_or_update_repo_existing_repo_different_branch(mock_check_output, tmp_path):
+@patch("mmrelay.plugin_loader._run")
+def test_clone_or_update_repo_existing_repo_different_branch(mock_run, tmp_path):
     """Test updating an existing repository to a different branch."""
-    mock_check_output.side_effect = [
-        "main\n",  # current branch
-        "some_hash",  # current commit
-        "another_hash", # tag commit
+    mock_run.side_effect = [
+        MagicMock(),  # git fetch
+        MagicMock(stdout="main\n"),  # git rev-parse
+        MagicMock(),  # git checkout develop
+        MagicMock(),  # git pull
     ]
     plugins_dir = tmp_path / "plugins"
     repo_dir = plugins_dir / "test-repo"
@@ -537,15 +545,14 @@ def test_clone_or_update_repo_existing_repo_different_branch(mock_check_output, 
     repo_url = "https://github.com/user/test-repo.git"
     ref = {"type": "branch", "value": "develop"}
 
-    with patch("mmrelay.plugin_loader._run") as mock_run:
-        result = clone_or_update_repo(repo_url, ref, str(plugins_dir))
+    result = clone_or_update_repo(repo_url, ref, str(plugins_dir))
 
-        assert result is True
-        # Should fetch, checkout and pull
-        assert mock_run.call_count == 3
-        mock_run.assert_any_call(["git", "-C", str(repo_dir), "fetch", "origin"], timeout=120)
-        mock_run.assert_any_call(["git", "-C", str(repo_dir), "checkout", "develop"])
-        mock_run.assert_any_call(["git", "-C", str(repo_dir), "pull", "origin", "develop"])
+    assert result is True
+    # Should fetch, rev-parse, checkout and pull
+    assert mock_run.call_count == 4
+    mock_run.assert_any_call(["git", "-C", str(repo_dir), "fetch", "origin"], timeout=120)
+    mock_run.assert_any_call(["git", "-C", str(repo_dir), "checkout", "develop"])
+    mock_run.assert_any_call(["git", "-C", str(repo_dir), "pull", "origin", "develop"])
 
 def test_clone_or_update_repo_git_error(tmp_path):
     """Test handling Git command errors."""
