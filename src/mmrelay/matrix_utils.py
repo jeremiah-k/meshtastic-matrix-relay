@@ -241,8 +241,13 @@ def _normalize_bot_user_id(homeserver: str, bot_user_id: str) -> str:
     parsed = urlparse(homeserver)
     domain = parsed.hostname or urlparse(f"//{homeserver}").hostname
     if not domain:
-        # Last‑ditch fallback for malformed inputs
-        domain = homeserver.split("://")[-1].split("/", 1)[0]
+        # Last‑ditch fallback for malformed inputs; drop any trailing :port
+        host = homeserver.split("://")[-1].split("/", 1)[0]
+        domain = re.sub(r":\d+$", "", host)
+
+    # Strip brackets from IPv6 literals
+    if domain and domain.startswith("[") and domain.endswith("]"):
+        domain = domain[1:-1]
 
     # Normalize user ID
     localpart, *serverpart = bot_user_id.lstrip("@").split(":", 1)
