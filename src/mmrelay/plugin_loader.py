@@ -132,8 +132,14 @@ def get_community_plugin_dirs():
 
 def _run(cmd, timeout=120, **kwargs):
     # Validate command to prevent shell injection
-    if isinstance(cmd, str):
-        raise ValueError("Command must be a list, not a string")
+    if not isinstance(cmd, list):
+        raise ValueError("Command must be a list, not a string or other type")
+    if not cmd:
+        raise ValueError("Command list cannot be empty")
+    if not all(isinstance(arg, str) for arg in cmd):
+        raise ValueError("All command arguments must be strings")
+    if any(not arg.strip() for arg in cmd if arg.strip()):
+        raise ValueError("Command arguments cannot be empty strings")
     # Add capture_output and text for consistency
     kwargs.setdefault("text", True)
     return subprocess.run(cmd, check=True, timeout=timeout, **kwargs)
@@ -551,8 +557,11 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
             if in_pipx:
                 # Use pipx to install the requirements.txt
                 logger.info(f"Installing requirements for plugin {repo_name} with pipx")
+                pipx_path = shutil.which("pipx")
+                if not pipx_path:
+                    raise FileNotFoundError("pipx executable not found on PATH")
                 _run(
-                    ["pipx", "inject", "mmrelay", "-r", requirements_path],
+                    [pipx_path, "inject", "mmrelay", "-r", requirements_path],
                     timeout=600,
                 )
             else:
