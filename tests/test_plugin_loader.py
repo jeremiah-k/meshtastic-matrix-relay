@@ -241,7 +241,7 @@ class Plugin:
                 os.path.join(user_site, "mockdep.py"), "w", encoding="utf-8"
             ) as dep:
                 dep.write("VALUE = 1\n")
-            return 0
+            return subprocess.CompletedProcess(args=_cmd, returncode=0)
 
         added_dirs = []
 
