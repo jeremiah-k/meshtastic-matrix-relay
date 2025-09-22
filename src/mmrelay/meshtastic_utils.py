@@ -827,18 +827,17 @@ def on_meshtastic_message(packet, interface):
         plugins = load_plugins()
 
         default_plugin_timeout = 5.0
-        configured_timeout = None
+        configured_timeout = default_plugin_timeout
         if isinstance(config, dict):
-            configured_timeout = get_meshtastic_config_value(
-                config, "plugin_timeout", default=default_plugin_timeout
-            )
+            try:
+                configured_timeout = config.get("meshtastic", {}).get(
+                    "plugin_timeout", default_plugin_timeout
+                )
+            except AttributeError:
+                configured_timeout = default_plugin_timeout
 
         try:
-            plugin_timeout = float(
-                configured_timeout
-                if configured_timeout is not None
-                else default_plugin_timeout
-            )
+            plugin_timeout = float(configured_timeout)
             if plugin_timeout <= 0:
                 raise ValueError
         except (TypeError, ValueError):
