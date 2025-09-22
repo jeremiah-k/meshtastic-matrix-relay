@@ -133,13 +133,13 @@ def get_community_plugin_dirs():
 def _run(cmd, timeout=120, **kwargs):
     # Validate command to prevent shell injection
     if not isinstance(cmd, list):
-        raise ValueError("Command must be a list, not a string or other type")
+        raise TypeError("cmd must be a list of str")
     if not cmd:
         raise ValueError("Command list cannot be empty")
     if not all(isinstance(arg, str) for arg in cmd):
-        raise ValueError("All command arguments must be strings")
-    if any(not arg.strip() for arg in cmd if arg.strip()):
-        raise ValueError("Command arguments cannot be empty strings")
+        raise TypeError("all command arguments must be strings")
+    if any(not arg.strip() for arg in cmd):
+        raise ValueError("command arguments cannot be empty/whitespace")
     # Add capture_output and text for consistency
     kwargs.setdefault("text", True)
     return subprocess.run(cmd, check=True, timeout=timeout, **kwargs)
