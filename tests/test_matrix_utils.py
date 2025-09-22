@@ -130,8 +130,8 @@ async def test_on_room_message_simple_text(
 @patch("mmrelay.matrix_utils.bot_start_time", 1234567880)
 async def test_on_room_message_remote_prefers_meshtastic_text(
     mock_queue_message,
-    mock_connect_meshtastic,
-    mock_load_plugins,
+    _mock_connect_meshtastic,
+    _mock_load_plugins,
     mock_room,
     mock_event,
     test_config,
@@ -230,8 +230,8 @@ async def test_on_room_message_reply_enabled(
 async def test_on_room_message_reply_disabled(
     mock_get_user_display_name,
     mock_queue_message,
-    mock_connect_meshtastic,
-    mock_load_plugins,
+    _mock_connect_meshtastic,
+    _mock_load_plugins,
     mock_room,
     mock_event,
     test_config,
@@ -287,8 +287,8 @@ async def test_on_room_message_reaction_enabled(
     mock_get_user_display_name,
     mock_get_message_map,
     mock_queue_message,
-    mock_connect_meshtastic,
-    mock_load_plugins,
+    _mock_connect_meshtastic,
+    _mock_load_plugins,
     mock_room,
     test_config,
 ):
@@ -999,7 +999,7 @@ async def test_connect_matrix_without_credentials(matrix_config):
 
 @patch("mmrelay.matrix_utils.matrix_client")
 @patch("mmrelay.matrix_utils.logger")
-async def test_join_matrix_room_by_id(mock_logger, mock_matrix_client):
+async def test_join_matrix_room_by_id(_mock_logger, mock_matrix_client):
     """
     Test that joining a Matrix room by its room ID calls the client's join method with the correct argument.
     """
@@ -1013,14 +1013,14 @@ async def test_join_matrix_room_by_id(mock_logger, mock_matrix_client):
 
 @patch("mmrelay.matrix_utils.matrix_client")
 @patch("mmrelay.matrix_utils.logger")
-async def test_join_matrix_room_already_joined(mock_logger, mock_matrix_client):
+async def test_join_matrix_room_already_joined(_mock_logger, mock_matrix_client):
     """Test that join_matrix_room does nothing if already in the room."""
     mock_matrix_client.rooms = {"!room:matrix.org": MagicMock()}
 
     await join_matrix_room(mock_matrix_client, "!room:matrix.org")
 
     mock_matrix_client.join.assert_not_called()
-    mock_logger.debug.assert_called_with(
+    _mock_logger.debug.assert_called_with(
         "Bot is already in room '!room:matrix.org', no action needed."
     )
 
@@ -1068,7 +1068,7 @@ async def test_connect_matrix_alias_resolution_success(
         # Create a mock for room_resolve_alias that returns a proper response
         mock_room_resolve_alias = MagicMock()
 
-        async def mock_room_resolve_alias_impl(alias):
+        async def mock_room_resolve_alias_impl(_alias):
             response = MagicMock()
             response.room_id = "!resolved:matrix.org"
             response.message = ""
@@ -1154,7 +1154,7 @@ async def test_connect_matrix_alias_resolution_failure(
         # Create a mock for room_resolve_alias that returns failure response
         mock_room_resolve_alias = MagicMock()
 
-        async def mock_room_resolve_alias_impl(alias):
+        async def mock_room_resolve_alias_impl(_alias):
             response = MagicMock()
             response.room_id = None
             response.message = "Room not found"
@@ -1244,7 +1244,7 @@ async def test_connect_matrix_alias_resolution_exception(
         class FakeNetworkError(Exception):
             pass
 
-        async def mock_room_resolve_alias_impl(alias):
+        async def mock_room_resolve_alias_impl(_alias):
             raise FakeNetworkError("Network error")
 
         mock_room_resolve_alias.side_effect = mock_room_resolve_alias_impl
@@ -1294,6 +1294,28 @@ def test_normalize_bot_user_id_already_full_mxid():
 
     result = _normalize_bot_user_id(homeserver, bot_user_id)
     assert result == "@relaybot:example.com"
+
+
+def test_normalize_bot_user_id_ipv6_homeserver():
+    """Test that _normalize_bot_user_id handles IPv6 homeserver URLs correctly."""
+    from mmrelay.matrix_utils import _normalize_bot_user_id
+
+    homeserver = "https://[2001:db8::1]:8448"
+    bot_user_id = "relaybot"
+
+    result = _normalize_bot_user_id(homeserver, bot_user_id)
+    assert result == "@relaybot:2001:db8::1"
+
+
+def test_normalize_bot_user_id_full_mxid_with_port():
+    """Test that _normalize_bot_user_id strips the port from a full MXID."""
+    from mmrelay.matrix_utils import _normalize_bot_user_id
+
+    homeserver = "https://example.com:8448"
+    bot_user_id = "@bot:example.com:8448"
+
+    result = _normalize_bot_user_id(homeserver, bot_user_id)
+    assert result == "@bot:example.com"
 
 
 def test_normalize_bot_user_id_full_mxid_with_port_strips_port():

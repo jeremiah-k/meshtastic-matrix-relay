@@ -9,7 +9,7 @@ import re
 import ssl
 import sys
 import time
-from typing import Any, Dict, Union
+from typing import Any, Dict, Optional, Union
 from urllib.parse import urlparse
 
 import meshtastic.protobuf.portnums_pb2
@@ -230,21 +230,18 @@ def _normalize_bot_user_id(homeserver: str, bot_user_id: str) -> str:
     if not bot_user_id:
         return bot_user_id
 
-    # Derive domain from homeserver (tolerate missing scheme and strip paths/port)
+    # Derive domain from homeserver (tolerate missing scheme; drop brackets/port/paths)
     parsed = urlparse(homeserver)
-    domain = parsed.netloc
+    domain = parsed.hostname or urlparse(f"//{homeserver}").hostname
     if not domain:
-        # Handle cases like "example.com" without a scheme
-        parsed = urlparse(f"//{homeserver}")
-        domain = parsed.netloc
-    # Strip port if present
-    domain = domain.split(":", 1)[0]
+        # Last‑ditch fallback for malformed inputs
+        domain = homeserver.split("://")[-1].split("/", 1)[0]
 
     # Normalize user ID
     localpart, *serverpart = bot_user_id.lstrip("@").split(":", 1)
     if serverpart and serverpart[0]:
-        # Already has a server part, just ensure it starts with @
-        server = serverpart[0].split(":", 1)[0]
+        # Already has a server part; strip any trailing :port
+        server = re.sub(r":\d+$", "", serverpart[0])
         return f"@{localpart}:{server}"
 
     # No server part, add the derived domain
@@ -1679,6 +1676,16 @@ async def join_matrix_room(matrix_client, room_id: str) -> None:
         room_id (str): The ID of the room to join (e.g., "!room:server.com").
     """
     try:
+        # Accept aliases defensively
+        if room_id.startswith("#"):
+            try:
+                resolved = await matrix_client.room_resolve_alias(room_id)
+                if hasattr(resolved, "room_id") and resolved.room_id:
+                    logger.info(f"Resolved alias '{room_id}' to '{resolved.room_id}'")
+                    room_id = resolved.room_id
+            except Exception:
+                logger.exception(f"Error resolving alias '{room_id}'")
+                return
         if room_id not in matrix_client.rooms:
             response = await matrix_client.join(room_id)
             if response and hasattr(response, "room_id"):
@@ -1877,17 +1884,17 @@ async def matrix_relay(
                         r"([\\`*_{}[\]()#+.!-])", r"\\\1", original_sender_display
                     )
                     quoted_text = (
-                        f"> <@{bot_user_id}> [{safe_sender_display}]: {safe_original}"
+                        f"> <{bot_user_id}> [{safe_sender_display}]: {safe_original}"
                     )
                     content["body"] = f"{quoted_text}\n\n{plain_body}"
 
                     # Always use HTML formatting for replies since we need the mx-reply structure
                     content["format"] = "org.matrix.custom.html"
                     reply_link = f"https://matrix.to/#/{room_id}/{reply_to_event_id}"
-                    bot_link = f"https://matrix.to/#/@{bot_user_id}"
+                    bot_link = f"https://matrix.to/#/{bot_user_id}"
                     blockquote_content = (
                         f'<a href="{reply_link}">In reply to</a> '
-                        f'<a href="{bot_link}">@{bot_user_id}</a><br>'
+                        f'<a href="{bot_link}">{bot_user_id}</a><br>'
                         f"[{html.escape(original_sender_display)}]: {safe_original}"
                     )
                     content["formatted_body"] = (

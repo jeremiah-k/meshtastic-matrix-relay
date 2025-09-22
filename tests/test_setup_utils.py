@@ -312,6 +312,20 @@ class TestSetupUtils(unittest.TestCase):
 
         self.assertIsNone(path)
 
+    @patch("os.path.exists")
+    def test_get_template_service_path_fallback_paths(self, mock_exists):
+        """Test that get_template_service_path checks all fallback paths."""
+
+        def exists_side_effect(path):
+            return "share" in path
+
+        mock_exists.side_effect = exists_side_effect
+
+        path = get_template_service_path()
+
+        self.assertIsNotNone(path)
+        self.assertTrue(path.endswith("share/mmrelay/mmrelay.service"))
+
     @patch("mmrelay.setup_utils.get_service_template_path")
     @patch("os.path.exists")
     def test_get_template_service_content_from_file(
@@ -383,6 +397,16 @@ class TestSetupUtils(unittest.TestCase):
             capture_output=True,
             text=True,
         )
+
+    @patch("shutil.which")
+    def test_check_loginctl_not_available(self, mock_which):
+        """Test that check_loginctl_available returns False when loginctl is not on PATH."""
+        mock_which.return_value = None
+
+        from mmrelay.setup_utils import check_loginctl_available
+        result = check_loginctl_available()
+
+        self.assertFalse(result)
 
     @patch("subprocess.run")
     def test_is_service_active_false(self, mock_run):
@@ -636,6 +660,21 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
 
         self.assertTrue(needs_update)
         self.assertIn("does not use an acceptable executable", reason)
+
+    @patch("mmrelay.setup_utils.read_service_file")
+    @patch("mmrelay.setup_utils.get_template_service_path")
+    @patch("os.path.getmtime")
+    def test_service_needs_update_mtime(self, mock_getmtime, mock_get_template, mock_read_service):
+        """Test that service_needs_update returns True when the template is newer."""
+        mock_read_service.return_value = f"ExecStart={sys.executable} -m mmrelay\nEnvironment=PATH=%h/.local/bin"
+        mock_get_template.return_value = "/path/to/template"
+        mock_getmtime.side_effect = [2, 1]  # template_mtime > service_mtime
+
+        with patch("os.path.exists", return_value=True):
+            needs_update, reason = service_needs_update()
+
+        self.assertTrue(needs_update)
+        self.assertEqual(reason, "Template service file is newer than installed service file")
 
     @patch("subprocess.run")
     def test_show_service_status_success(self, mock_run):

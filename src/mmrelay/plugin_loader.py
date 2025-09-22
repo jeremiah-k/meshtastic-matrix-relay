@@ -4,9 +4,11 @@ import importlib
 import importlib.util
 import os
 import re
+import shutil
 import site
 import subprocess
 import sys
+from contextlib import contextmanager
 
 from mmrelay.config import get_app_path, get_base_dir
 from mmrelay.log_utils import get_logger
@@ -17,6 +19,18 @@ config = None
 logger = get_logger(name="Plugins")
 sorted_active_plugins = []
 plugins_loaded = False
+
+
+@contextmanager
+def _temp_sys_path(path: str):
+    sys.path.insert(0, path)
+    try:
+        yield
+    finally:
+        try:
+            sys.path.remove(path)
+        except ValueError:
+            pass
 
 
 def _reset_caches_for_tests():
@@ -116,6 +130,10 @@ def get_community_plugin_dirs():
     return _get_plugin_dirs("community")
 
 
+def _run(cmd, timeout=120, **kwargs):
+    return subprocess.run(cmd, check=True, timeout=timeout, **kwargs)
+
+
 def clone_or_update_repo(repo_url, ref, plugins_dir):
     """
     Clone or update a community plugin Git repository and ensure its Python dependencies are installed.
@@ -151,7 +169,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
         try:
             # Fetch all branches but don't fetch tags to avoid conflicts
             try:
-                subprocess.check_call(["git", "-C", repo_path, "fetch", "origin"])
+                _run(["git", "-C", repo_path, "fetch", "origin"], timeout=120)
             except subprocess.CalledProcessError as e:
                 logger.warning(f"Error fetching from remote: {e}")
                 # Continue anyway, we'll try to use what we have
@@ -168,9 +186,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                     if current_branch == ref_value:
                         # We're on the right branch, just pull
                         try:
-                            subprocess.check_call(
-                                ["git", "-C", repo_path, "pull", "origin", ref_value]
-                            )
+                            _run(["git", "-C", repo_path, "pull", "origin", ref_value])
                             logger.info(
                                 f"Updated repository {repo_name} branch {ref_value}"
                             )
@@ -181,12 +197,8 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                             return True
                     else:
                         # Switch to the right branch
-                        subprocess.check_call(
-                            ["git", "-C", repo_path, "checkout", ref_value]
-                        )
-                        subprocess.check_call(
-                            ["git", "-C", repo_path, "pull", "origin", ref_value]
-                        )
+                        _run(["git", "-C", repo_path, "checkout", ref_value])
+                        _run(["git", "-C", repo_path, "pull", "origin", ref_value])
                         if ref_type == "branch":
                             logger.info(f"Switched to and updated branch {ref_value}")
                         else:
@@ -199,12 +211,8 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                         logger.warning(
                             f"Branch {ref_value} not found, trying {other_default}"
                         )
-                        subprocess.check_call(
-                            ["git", "-C", repo_path, "checkout", other_default]
-                        )
-                        subprocess.check_call(
-                            ["git", "-C", repo_path, "pull", "origin", other_default]
-                        )
+                        _run(["git", "-C", repo_path, "checkout", other_default])
+                        _run(["git", "-C", repo_path, "pull", "origin", other_default])
                         logger.info(
                             f"Using {other_default} branch instead of {ref_value}"
                         )
@@ -243,15 +251,15 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                         )
                         return True
 
-                    # Otherwise, try to checkout the tag
-                    subprocess.check_call(
-                        ["git", "-C", repo_path, "checkout", ref_value]
-                    )
+                    # Otherwise, try to checkout the tag or branch
                     if ref_type == "branch":
+                        _run(["git", "-C", repo_path, "checkout", ref_value])
+                        _run(["git", "-C", repo_path, "pull", "origin", ref_value])
                         logger.info(
                             f"Updated repository {repo_name} to branch {ref_value}"
                         )
                     else:
+                        _run(["git", "-C", repo_path, "checkout", ref_value])
                         logger.info(
                             f"Updated repository {repo_name} to tag {ref_value}"
                         )
@@ -265,9 +273,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                         # Try to fetch the specific tag, but first remove any existing tag with the same name
                         try:
                             # Delete the local tag if it exists to avoid conflicts
-                            subprocess.check_call(
-                                ["git", "-C", repo_path, "tag", "-d", ref_value]
-                            )
+                            _run(["git", "-C", repo_path, "tag", "-d", ref_value])
                         except subprocess.CalledProcessError:
                             # Tag doesn't exist locally, which is fine
                             pass
@@ -275,7 +281,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                         # Now fetch the tag from remote
                         try:
                             # Try to fetch the tag
-                            subprocess.check_call(
+                            _run(
                                 [
                                     "git",
                                     "-C",
@@ -287,7 +293,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                             )
                         except subprocess.CalledProcessError:
                             # If that fails, try to fetch the tag without the refs/tags/ prefix
-                            subprocess.check_call(
+                            _run(
                                 [
                                     "git",
                                     "-C",
@@ -298,9 +304,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                                 ]
                             )
 
-                        subprocess.check_call(
-                            ["git", "-C", repo_path, "checkout", ref_value]
-                        )
+                        _run(["git", "-C", repo_path, "checkout", ref_value])
                         if ref_type == "branch":
                             logger.info(
                                 f"Successfully fetched and checked out branch {ref_value}"
@@ -316,13 +320,11 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                             f"Could not fetch tag {ref_value}, trying as a branch"
                         )
                         try:
-                            subprocess.check_call(
+                            _run(
                                 ["git", "-C", repo_path, "fetch", "origin", ref_value]
                             )
-                            subprocess.check_call(
-                                ["git", "-C", repo_path, "checkout", ref_value]
-                            )
-                            subprocess.check_call(
+                            _run(["git", "-C", repo_path, "checkout", ref_value])
+                            _run(
                                 ["git", "-C", repo_path, "pull", "origin", ref_value]
                             )
                             logger.info(
@@ -336,7 +338,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                             )
                             for default_branch in default_branches:
                                 try:
-                                    subprocess.check_call(
+                                    _run(
                                         [
                                             "git",
                                             "-C",
@@ -345,7 +347,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                                             default_branch,
                                         ]
                                     )
-                                    subprocess.check_call(
+                                    _run(
                                         [
                                             "git",
                                             "-C",
@@ -388,7 +390,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
             if is_default_branch:
                 try:
                     # Try to clone with the specified branch
-                    subprocess.check_call(
+                    _run(
                         ["git", "clone", "--branch", ref_value, repo_url],
                         cwd=plugins_dir,
                     )
@@ -408,7 +410,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                         logger.warning(
                             f"Could not clone with branch {ref_value}, trying {other_default}"
                         )
-                        subprocess.check_call(
+                        _run(
                             ["git", "clone", "--branch", other_default, repo_url],
                             cwd=plugins_dir,
                         )
@@ -421,9 +423,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                         logger.warning(
                             f"Could not clone with branch {other_default}, cloning default branch"
                         )
-                        subprocess.check_call(
-                            ["git", "clone", repo_url], cwd=plugins_dir
-                        )
+                        _run(["git", "clone", repo_url], cwd=plugins_dir)
                         logger.info(
                             f"Cloned repository {repo_name} from {repo_url} (default branch)"
                         )
@@ -432,7 +432,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                 # It's a tag, try to clone with the tag
                 try:
                     # Try to clone with the specified tag
-                    subprocess.check_call(
+                    _run(
                         ["git", "clone", "--branch", ref_value, repo_url],
                         cwd=plugins_dir,
                     )
@@ -450,13 +450,13 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                     logger.warning(
                         f"Could not clone with tag {ref_value}, cloning default branch"
                     )
-                    subprocess.check_call(["git", "clone", repo_url], cwd=plugins_dir)
+                    _run(["git", "clone", repo_url], cwd=plugins_dir)
 
                     # Then try to fetch and checkout the tag
                     try:
                         # Try to fetch the tag
                         try:
-                            subprocess.check_call(
+                            _run(
                                 [
                                     "git",
                                     "-C",
@@ -468,7 +468,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                             )
                         except subprocess.CalledProcessError:
                             # If that fails, try to fetch the tag without the refs/tags/ prefix
-                            subprocess.check_call(
+                            _run(
                                 [
                                     "git",
                                     "-C",
@@ -480,9 +480,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                             )
 
                         # Now checkout the tag
-                        subprocess.check_call(
-                            ["git", "-C", repo_path, "checkout", ref_value]
-                        )
+                        _run(["git", "-C", repo_path, "checkout", ref_value])
                         if ref_type == "branch":
                             logger.info(
                                 f"Cloned repository {repo_name} and checked out branch {ref_value}"
@@ -498,12 +496,10 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                             logger.warning(
                                 f"Could not checkout {ref_value} as a tag, trying as a branch"
                             )
-                            subprocess.check_call(
+                            _run(
                                 ["git", "-C", repo_path, "fetch", "origin", ref_value]
                             )
-                            subprocess.check_call(
-                                ["git", "-C", repo_path, "checkout", ref_value]
-                            )
+                            _run(["git", "-C", repo_path, "checkout", ref_value])
                             logger.info(
                                 f"Cloned repository {repo_name} and checked out branch {ref_value}"
                             )
@@ -525,6 +521,12 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
     # Install requirements if requirements.txt exists
     requirements_path = os.path.join(repo_path, "requirements.txt")
     if os.path.isfile(requirements_path):
+        auto_install = bool((config or {}).get("security", {}).get("auto_install_deps", True))
+        if not auto_install:
+            logger.warning(
+                f"Auto-install of requirements for {repo_name} disabled by config; skipping."
+            )
+            return True
         try:
             # Check if we're running in a pipx environment
             in_pipx = "PIPX_HOME" in os.environ or "PIPX_LOCAL_VENVS" in os.environ
@@ -547,32 +549,29 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                         logger.info(f"Installing {req}")
                         subprocess.check_call(["pipx", "inject", "mmrelay", req])
                 else:
+                    in_venv = (sys.prefix != getattr(sys, "base_prefix", sys.prefix)) or ("VIRTUAL_ENV" in os.environ)
                     # Use pip to install the requirements.txt
                     logger.info(
                         f"Installing requirements for plugin {repo_name} with pip"
                     )
-                    subprocess.run(
-                        [
-                            sys.executable,
-                            "-m",
-                            "pip",
-                            "install",
-                            "-r",
-                            requirements_path,
-                            "--disable-pip-version-check",
-                            "--no-input",
-                        ],
-                        check=True,
-                        timeout=600,
-                    )
+                    cmd = [
+                        sys.executable,
+                        "-m",
+                        "pip",
+                        "install",
+                        "-r",
+                        requirements_path,
+                        "--disable-pip-version-check",
+                        "--no-input",
+                    ]
+                    if not in_venv:
+                        cmd += ["--user"]
+                    subprocess.run(cmd, check=True, timeout=600)
                 logger.info(
                     f"Successfully installed requirements for plugin {repo_name}"
                 )
                 # Make newly installed packages visible immediately
-                try:
-                    _refresh_dependency_paths()
-                except Exception as e:
-                    logger.debug(f"Path refresh after requirements install failed: {e}")
+                _refresh_dependency_paths()
         except subprocess.CalledProcessError as e:
             logger.error(f"Error installing requirements for plugin {repo_name}: {e}")
             logger.error(
@@ -633,8 +632,8 @@ def load_plugins_from_directory(directory, recursive=False):
                     plugin_dir = os.path.dirname(plugin_path)
 
                     try:
-                        sys.path.insert(0, plugin_dir)
-                        spec.loader.exec_module(plugin_module)
+                        with _temp_sys_path(plugin_dir):
+                            spec.loader.exec_module(plugin_module)
                         if hasattr(plugin_module, "Plugin"):
                             plugins.append(plugin_module.Plugin())
                         else:
@@ -649,16 +648,27 @@ def load_plugins_from_directory(directory, recursive=False):
                             )
                             missing_module = m.group(1) if m else str(e)
                         # Prefer top-level distribution name for installation
-                        raw = missing_module or ""
+                        raw = (missing_module or "").strip()
                         top = raw.split(".", 1)[0]
-                        m = re.match(r"[A-Za-z0-9._-]+", top)
-                        missing_pkg = m.group(0) if m else top
+                        m = re.match(r"[A-Za-z0-9][A-Za-z0-9._-]*", top)
+                        if not m:
+                            logger.warning(
+                                f"Refusing to auto-install suspicious dependency name from {plugin_path!s}: {raw!r}"
+                            )
+                            raise
+                        missing_pkg = m.group(0)
                         logger.warning(
                             f"Missing dependency for plugin {plugin_path}: {missing_pkg}"
                         )
 
                         # Try to automatically install the missing dependency
                         try:
+                            auto_install = bool((config or {}).get("security", {}).get("auto_install_deps", True))
+                            if not auto_install:
+                                logger.warning(
+                                    f"Auto-install disabled; cannot install {missing_pkg}. See docs for enabling."
+                                )
+                                raise subprocess.CalledProcessError(1, "pip/pipx")
                             # Check if we're running in a pipx environment
                             in_pipx = (
                                 "PIPX_HOME" in os.environ
@@ -669,33 +679,35 @@ def load_plugins_from_directory(directory, recursive=False):
                                 logger.info(
                                     f"Attempting to install missing dependency with pipx inject: {missing_pkg}"
                                 )
-                                subprocess.run(
-                                    ["pipx", "inject", "mmrelay", missing_pkg],
-                                    check=True,
-                                    timeout=300,
-                                )
+                                pipx = shutil.which("pipx")
+                                if not pipx:
+                                    raise FileNotFoundError("pipx not found on PATH")
+                                subprocess.run([pipx, "inject", "mmrelay", missing_pkg], check=True, timeout=300)
                             else:
+                                in_venv = (sys.prefix != getattr(sys, "base_prefix", sys.prefix)) or ("VIRTUAL_ENV" in os.environ)
                                 logger.info(
                                     f"Attempting to install missing dependency with pip: {missing_pkg}"
                                 )
-                                subprocess.run(
-                                    [
-                                        sys.executable,
-                                        "-m",
-                                        "pip",
-                                        "install",
-                                        missing_pkg,
-                                        "--disable-pip-version-check",
-                                        "--no-input",
-                                    ],
-                                    check=True,
-                                    timeout=300,
-                                )
+                                cmd = [
+                                    sys.executable,
+                                    "-m",
+                                    "pip",
+                                    "install",
+                                    missing_pkg,
+                                    "--disable-pip-version-check",
+                                    "--no-input",
+                                ]
+                                if not in_venv:
+                                    cmd += ["--user"]
+                                subprocess.run(cmd, check=True, timeout=300)
 
                             logger.info(
                                 f"Successfully installed {missing_pkg}, retrying plugin load"
                             )
-                            _refresh_dependency_paths()
+                            try:
+                                _refresh_dependency_paths()
+                            except Exception as e:
+                                logger.debug(f"Path refresh after auto-install failed: {e}")
 
                             # Try to load the module again
                             try:
@@ -721,19 +733,10 @@ def load_plugins_from_directory(directory, recursive=False):
                                 )
 
                         except subprocess.CalledProcessError:
-                            logger.exception(
-                                f"Failed to automatically install {missing_pkg}"
-                            )
-                            logger.exception("Please install it manually:")
-                            logger.exception(
-                                f"pipx inject mmrelay {missing_pkg}  # if using pipx"
-                            )
-                            logger.exception(
-                                f"pip install {missing_pkg}  # if using pip"
-                            )
-                            logger.exception(
-                                f"Plugin directory: {os.path.dirname(plugin_path)}"
-                            )
+                            logger.exception(f"Failed to automatically install {missing_pkg}")
+                            logger.error("Please install it manually:")
+                            logger.error(f"  pipx inject mmrelay {missing_pkg}  # if using pipx")
+                            logger.error(f"  pip install {missing_pkg}        # if using pip")
                     except Exception:
                         logger.exception(f"Error loading plugin {plugin_path}")
                     finally:

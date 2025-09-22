@@ -473,148 +473,91 @@ class Plugin:
         self.assertEqual(plugins[0].plugin_name, "error_plugin")
 
 
-class TestGitRepositoryHandling(unittest.TestCase):
-    """Test cases for Git repository handling functions."""
+def test_clone_or_update_repo_new_repo_tag(tmp_path):
+    """Test cloning a new repository with a specific tag."""
+    plugins_dir = tmp_path / "plugins"
+    plugins_dir.mkdir()
+    repo_url = "https://github.com/user/test-repo.git"
+    ref = {"type": "tag", "value": "v1.0.0"}
 
-    def setUp(self):
-        """
-        Create a temporary directory and a subdirectory for plugins for use in test setup.
-        """
-        self.test_dir = tempfile.mkdtemp()
-        self.plugins_dir = os.path.join(self.test_dir, "plugins")
+    with patch("mmrelay.plugin_loader._run") as mock_run:
+        result = clone_or_update_repo(repo_url, ref, str(plugins_dir))
 
-    def tearDown(self):
-        """
-        Remove the temporary directory used for test fixtures after each test.
-        """
-        import shutil
+        assert result is True
+        mock_run.assert_called_with(
+            ["git", "clone", "--branch", "v1.0.0", repo_url],
+            cwd=str(plugins_dir),
+        )
 
-        shutil.rmtree(self.test_dir, ignore_errors=True)
+def test_clone_or_update_repo_new_repo_branch(tmp_path):
+    """Test cloning a new repository with a specified branch."""
+    plugins_dir = tmp_path / "plugins"
+    plugins_dir.mkdir()
+    repo_url = "https://github.com/user/test-repo.git"
+    ref = {"type": "branch", "value": "develop"}
 
-    @patch("os.makedirs")
-    @patch("subprocess.check_call")
-    @patch("subprocess.check_output")
-    @patch("os.path.isdir")
-    def test_clone_or_update_repo_new_repo_tag(
-        self, mock_isdir, mock_check_output, mock_check_call, mock_makedirs
-    ):
-        """
-        Verify that cloning a new Git repository with a specific tag invokes the correct git commands and returns success.
-        """
-        mock_isdir.return_value = False  # Repository doesn't exist
+    with patch("mmrelay.plugin_loader._run") as mock_run:
+        result = clone_or_update_repo(repo_url, ref, str(plugins_dir))
 
-        repo_url = "https://github.com/user/test-repo.git"
-        ref = {"type": "tag", "value": "v1.0.0"}
+        assert result is True
+        mock_run.assert_called_with(
+            ["git", "clone", "--branch", "develop", repo_url],
+            cwd=str(plugins_dir),
+        )
 
-        result = clone_or_update_repo(repo_url, ref, self.plugins_dir)
+@patch("subprocess.check_output", return_value="main\n")
+def test_clone_or_update_repo_existing_repo_same_branch(mock_check_output, tmp_path):
+    """Test updating an existing repository on the same branch."""
+    plugins_dir = tmp_path / "plugins"
+    repo_dir = plugins_dir / "test-repo"
+    repo_dir.mkdir(parents=True)
+    repo_url = "https://github.com/user/test-repo.git"
+    ref = {"type": "branch", "value": "main"}
 
-        self.assertTrue(result)
-        # Should call git clone with the tag
-        mock_check_call.assert_called()
-        clone_call = mock_check_call.call_args_list[0]
-        self.assertIn("clone", clone_call[0][0])
-        self.assertIn("--branch", clone_call[0][0])
-        self.assertIn("v1.0.0", clone_call[0][0])
+    with patch("mmrelay.plugin_loader._run") as mock_run:
+        result = clone_or_update_repo(repo_url, ref, str(plugins_dir))
 
-    @patch("os.makedirs")
-    @patch("subprocess.check_call")
-    @patch("subprocess.check_output")
-    @patch("os.path.isdir")
-    def test_clone_or_update_repo_new_repo_branch(
-        self, mock_isdir, mock_check_output, mock_check_call, mock_makedirs
-    ):
-        """
-        Test that cloning a new Git repository with a specified branch triggers the correct git commands.
-
-        Verifies that when the repository does not exist locally, `clone_or_update_repo` clones the repository using the provided branch name and returns True.
-        """
-        mock_isdir.return_value = False  # Repository doesn't exist
-
-        repo_url = "https://github.com/user/test-repo.git"
-        ref = {"type": "branch", "value": "develop"}
-
-        result = clone_or_update_repo(repo_url, ref, self.plugins_dir)
-
-        self.assertTrue(result)
-        # Should call git clone with the branch
-        mock_check_call.assert_called()
-        clone_call = mock_check_call.call_args_list[0]
-        self.assertIn("clone", clone_call[0][0])
-        self.assertIn("--branch", clone_call[0][0])
-        self.assertIn("develop", clone_call[0][0])
-
-    @patch("os.makedirs")
-    @patch("subprocess.check_call")
-    @patch("subprocess.check_output")
-    @patch("os.path.isdir")
-    def test_clone_or_update_repo_existing_repo_same_branch(
-        self, mock_isdir, mock_check_output, mock_check_call, mock_makedirs
-    ):
-        """
-        Test that updating an existing Git repository on the same branch triggers fetch and pull operations.
-
-        Verifies that when the repository directory exists and the current branch matches the requested branch, the `clone_or_update_repo` function performs a fetch and pull, and returns True.
-        """
-        mock_isdir.return_value = True  # Repository exists
-        mock_check_output.return_value = "main\n"  # Current branch is main
-
-        repo_url = "https://github.com/user/test-repo.git"
-        ref = {"type": "branch", "value": "main"}
-
-        result = clone_or_update_repo(repo_url, ref, self.plugins_dir)
-
-        self.assertTrue(result)
+        assert result is True
         # Should fetch and pull
-        fetch_called = any(
-            "fetch" in str(call) for call in mock_check_call.call_args_list
-        )
-        pull_called = any(
-            "pull" in str(call) for call in mock_check_call.call_args_list
-        )
-        self.assertTrue(fetch_called)
-        self.assertTrue(pull_called)
+        assert mock_run.call_count == 2
+        mock_run.assert_any_call(["git", "-C", str(repo_dir), "fetch", "origin"], timeout=120)
+        mock_run.assert_any_call(["git", "-C", str(repo_dir), "pull", "origin", "main"])
 
-    @patch("os.makedirs")
-    @patch("subprocess.check_call")
-    @patch("subprocess.check_output")
-    @patch("os.path.isdir")
-    def test_clone_or_update_repo_existing_repo_different_branch(
-        self, mock_isdir, mock_check_output, mock_check_call, mock_makedirs
-    ):
-        """
-        Test that updating an existing Git repository to a different branch triggers the appropriate Git commands.
+@patch("subprocess.check_output")
+def test_clone_or_update_repo_existing_repo_different_branch(mock_check_output, tmp_path):
+    """Test updating an existing repository to a different branch."""
+    mock_check_output.side_effect = [
+        "main\n",  # current branch
+        "some_hash",  # current commit
+        "another_hash", # tag commit
+    ]
+    plugins_dir = tmp_path / "plugins"
+    repo_dir = plugins_dir / "test-repo"
+    repo_dir.mkdir(parents=True)
+    repo_url = "https://github.com/user/test-repo.git"
+    ref = {"type": "branch", "value": "develop"}
 
-        Verifies that when the current branch differs from the target branch, the repository is updated by switching branches and pulling the latest changes.
-        """
-        mock_isdir.return_value = True  # Repository exists
-        mock_check_output.return_value = "main\n"  # Current branch is main
+    with patch("mmrelay.plugin_loader._run") as mock_run:
+        result = clone_or_update_repo(repo_url, ref, str(plugins_dir))
 
-        repo_url = "https://github.com/user/test-repo.git"
-        ref = {"type": "branch", "value": "develop"}
+        assert result is True
+        # Should fetch, checkout and pull
+        assert mock_run.call_count == 3
+        mock_run.assert_any_call(["git", "-C", str(repo_dir), "fetch", "origin"], timeout=120)
+        mock_run.assert_any_call(["git", "-C", str(repo_dir), "checkout", "develop"])
+        mock_run.assert_any_call(["git", "-C", str(repo_dir), "pull", "origin", "develop"])
 
-        result = clone_or_update_repo(repo_url, ref, self.plugins_dir)
+def test_clone_or_update_repo_git_error(tmp_path):
+    """Test handling Git command errors."""
+    plugins_dir = tmp_path / "plugins"
+    plugins_dir.mkdir()
+    repo_url = "https://github.com/user/test-repo.git"
+    ref = {"type": "branch", "value": "main"}
 
-        self.assertTrue(result)
-        # Should call git commands (fetch, checkout, etc.)
-        self.assertTrue(mock_check_call.called)
+    with patch("mmrelay.plugin_loader._run", side_effect=subprocess.CalledProcessError(1, "git")):
+        result = clone_or_update_repo(repo_url, ref, str(plugins_dir))
 
-    @patch("os.makedirs")
-    @patch("subprocess.check_call")
-    @patch("subprocess.check_output")
-    @patch("os.path.isdir")
-    def test_clone_or_update_repo_git_error(
-        self, mock_isdir, mock_check_output, mock_check_call, mock_makedirs
-    ):
-        """Test handling Git command errors."""
-        mock_isdir.return_value = False  # Repository doesn't exist
-        mock_check_call.side_effect = subprocess.CalledProcessError(1, "git")
-
-        repo_url = "https://github.com/user/test-repo.git"
-        ref = {"type": "branch", "value": "main"}
-
-        result = clone_or_update_repo(repo_url, ref, self.plugins_dir)
-
-        self.assertFalse(result)
+        assert result is False
 
 
 if __name__ == "__main__":
