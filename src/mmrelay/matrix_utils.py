@@ -230,39 +230,25 @@ def _normalize_bot_user_id(homeserver: str, bot_user_id: str) -> str:
     if not bot_user_id:
         return bot_user_id
 
-    # Derive domain from homeserver (tolerate missing scheme and strip paths)
-    try:
-        from urllib.parse import urlparse
+    # Derive domain from homeserver (tolerate missing scheme and strip paths/port)
+    parsed = urlparse(homeserver)
+    domain = parsed.netloc
+    if not domain:
+        # Handle cases like "example.com" without a scheme
+        parsed = urlparse(f"//{homeserver}")
+        domain = parsed.netloc
+    # Strip port if present
+    domain = domain.split(":", 1)[0]
 
-        parsed = urlparse(homeserver)
-        domain = parsed.netloc or parsed.path or homeserver
-    except Exception:
-        domain = homeserver
-    if domain.startswith("https://"):
-        domain = domain[len("https://") :]
-    elif domain.startswith("http://"):
-        domain = domain[len("http://") :]
-    domain = re.sub(
-        r":\d+$", "", domain.split("/", 1)[0]
-    )  # drop any trailing path and port
+    # Normalize user ID
+    localpart, *serverpart = bot_user_id.lstrip("@").split(":", 1)
+    if serverpart and serverpart[0]:
+        # Already has a server part, just ensure it starts with @
+        server = serverpart[0].split(":", 1)[0]
+        return f"@{localpart}:{server}"
 
-    # If already a full MXID like @user:server, keep as-is
-    if (
-        bot_user_id.startswith("@")
-        and ":" in bot_user_id
-        and bot_user_id.rsplit(":", 1)[1]
-    ):
-        return bot_user_id
-
-    # Normalize partials: strip leading '@' and any trailing colon, then build MXID
-    user_part = bot_user_id[1:] if bot_user_id.startswith("@") else bot_user_id
-    user_part = user_part.rstrip(":")
-    if ":" in user_part and user_part.rsplit(":", 1)[1]:
-        # Input like 'user:server' → ensure '@' prefix
-        if not user_part.startswith("@"):
-            return f"@{user_part}"
-        return user_part
-    return f"@{user_part}:{domain}"
+    # No server part, add the derived domain
+    return f"@{localpart.rstrip(':')}:{domain}"
 
 
 def _get_msgs_to_keep_config():
@@ -1321,16 +1307,7 @@ async def login_matrix_bot(
             username = input("Enter Matrix username (without @): ")
 
         # Format username correctly
-        if not username.startswith("@"):
-            username = f"@{username}"
-
-        server_name = urlparse(homeserver).netloc
-        logger.debug(f"Extracted server_name from homeserver: {server_name}")
-        logger.debug(f"Original username: {username}")
-
-        if ":" not in username:
-            username = f"{username}:{server_name}"
-            logger.debug(f"Added server to username: {username}")
+        username = _normalize_bot_user_id(homeserver, username)
 
         logger.info(f"Using username: {username}")
 
@@ -1716,6 +1693,8 @@ async def join_matrix_room(matrix_client, room_id: str) -> None:
         NioLocalProtocolError,
         NioRemoteProtocolError,
         NioErrorResponse,
+        NioLocalTransportError,
+        NioRemoteTransportError,
         asyncio.TimeoutError,
     ):
         logger.exception(f"Error joining room '{room_id}'")

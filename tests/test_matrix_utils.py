@@ -1296,6 +1296,17 @@ def test_normalize_bot_user_id_already_full_mxid():
     assert result == "@relaybot:example.com"
 
 
+def test_normalize_bot_user_id_full_mxid_with_port_strips_port():
+    """Test that _normalize_bot_user_id strips the port from a full MXID."""
+    from mmrelay.matrix_utils import _normalize_bot_user_id
+
+    homeserver = "https://example.com:8448"
+    bot_user_id = "@bot:example.com:8448"
+
+    result = _normalize_bot_user_id(homeserver, bot_user_id)
+    assert result == "@bot:example.com"
+
+
 def test_normalize_bot_user_id_with_at_prefix():
     """Test that _normalize_bot_user_id adds homeserver to @-prefixed username."""
     from mmrelay.matrix_utils import _normalize_bot_user_id

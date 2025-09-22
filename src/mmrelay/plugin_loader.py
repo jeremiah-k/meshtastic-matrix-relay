@@ -551,7 +551,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                     logger.info(
                         f"Installing requirements for plugin {repo_name} with pip"
                     )
-                    subprocess.check_call(
+                    subprocess.run(
                         [
                             sys.executable,
                             "-m",
@@ -559,11 +559,20 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                             "install",
                             "-r",
                             requirements_path,
-                        ]
+                            "--disable-pip-version-check",
+                            "--no-input",
+                        ],
+                        check=True,
+                        timeout=600,
                     )
                 logger.info(
                     f"Successfully installed requirements for plugin {repo_name}"
                 )
+                # Make newly installed packages visible immediately
+                try:
+                    _refresh_dependency_paths()
+                except Exception as e:
+                    logger.debug(f"Path refresh after requirements install failed: {e}")
         except subprocess.CalledProcessError as e:
             logger.error(f"Error installing requirements for plugin {repo_name}: {e}")
             logger.error(
@@ -640,9 +649,10 @@ def load_plugins_from_directory(directory, recursive=False):
                             )
                             missing_module = m.group(1) if m else str(e)
                         # Prefer top-level distribution name for installation
-                        missing_pkg = (missing_module or "").split(".")[
-                            0
-                        ] or missing_module
+                        raw = missing_module or ""
+                        top = raw.split(".", 1)[0]
+                        m = re.match(r"[A-Za-z0-9._-]+", top)
+                        missing_pkg = m.group(0) if m else top
                         logger.warning(
                             f"Missing dependency for plugin {plugin_path}: {missing_pkg}"
                         )
@@ -675,6 +685,8 @@ def load_plugins_from_directory(directory, recursive=False):
                                         "pip",
                                         "install",
                                         missing_pkg,
+                                        "--disable-pip-version-check",
+                                        "--no-input",
                                     ],
                                     check=True,
                                     timeout=300,
@@ -712,12 +724,12 @@ def load_plugins_from_directory(directory, recursive=False):
                             logger.exception(
                                 f"Failed to automatically install {missing_pkg}"
                             )
-                            logger.error("Please install it manually:")
-                            logger.error(
+                            logger.exception("Please install it manually:")
+                            logger.exception(
                                 f"pipx inject mmrelay {missing_pkg}  # if using pipx"
                             )
-                            logger.error(f"pip install {missing_pkg}  # if using pip")
-                            logger.error(
+                            logger.exception(f"pip install {missing_pkg}  # if using pip")
+                            logger.exception(
                                 f"Plugin directory: {os.path.dirname(plugin_path)}"
                             )
                     except Exception:
