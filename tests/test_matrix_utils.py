@@ -1,5 +1,7 @@
 import os
 import sys
+from dataclasses import dataclass
+from typing import Any, Dict
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -8,6 +10,8 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.matrix_utils import (
+    SelfVerificationManager,
+    VerificationContext,
     _add_truncated_vars,
     _create_mapping_info,
     _get_msgs_to_keep_config,
@@ -68,6 +72,111 @@ def test_config():
         "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
         "matrix": {"bot_user_id": "@bot:matrix.org"},
     }
+
+
+@pytest.fixture
+def verification_client():
+    """AsyncClient mock tailored for self-verification handling tests."""
+
+    client = MagicMock()
+    client.user_id = "@bot:matrix.org"
+    client.device_id = "DEVICE123"
+    client.key_verifications = {}
+    client.to_device = AsyncMock(return_value=MagicMock())
+    client.accept_key_verification = AsyncMock(return_value=MagicMock())
+    client.confirm_short_auth_string = AsyncMock(return_value=MagicMock())
+    client.cancel_key_verification = AsyncMock(return_value=MagicMock())
+    return client
+
+
+@pytest.fixture
+def verification_manager(verification_client):
+    """SelfVerificationManager backed by the mocked AsyncClient."""
+
+    return SelfVerificationManager(verification_client)
+
+
+@pytest.fixture
+def fake_to_device_message(monkeypatch):
+    """Replace ToDeviceMessage with a simple dataclass during tests."""
+
+    @dataclass
+    class FakeToDeviceMessage:
+        type: str
+        recipient: str
+        recipient_device: str
+        content: Dict[str, Any]
+
+    monkeypatch.setattr("mmrelay.matrix_utils.ToDeviceMessage", FakeToDeviceMessage)
+    return FakeToDeviceMessage
+
+
+def make_unknown_to_device_event(sender: str, event_type: str, content: dict):
+    """Create a minimal UnknownToDeviceEvent-compatible stub for tests."""
+
+    event_cls = type("UnknownToDeviceEvent", (), {})
+    event = event_cls()
+    event.sender = sender
+    event.source = {"type": event_type, "sender": sender, "content": content}
+    return event
+
+
+def make_key_verification_start(
+    sender: str,
+    transaction_id: str,
+    from_device: str,
+    method: str,
+    sas_methods: list[str],
+    key_agreement_protocols: list[str] | None = None,
+    hashes: list[str] | None = None,
+    message_authentication_codes: list[str] | None = None,
+):
+    """Create a minimal KeyVerificationStart stub for tests."""
+
+    event_cls = type("KeyVerificationStart", (), {})
+    event = event_cls()
+    event.sender = sender
+    event.transaction_id = transaction_id
+    event.from_device = from_device
+    event.method = method
+    event.short_authentication_string = sas_methods
+    event.key_agreement_protocols = key_agreement_protocols or []
+    event.hashes = hashes or []
+    event.message_authentication_codes = message_authentication_codes or []
+    return event
+
+
+def make_key_verification_key(sender: str, transaction_id: str, key: str):
+    event_cls = type("KeyVerificationKey", (), {})
+    event = event_cls()
+    event.sender = sender
+    event.transaction_id = transaction_id
+    event.key = key
+    return event
+
+
+def make_key_verification_mac(
+    sender: str, transaction_id: str, mac: Dict[str, str], keys: str
+):
+    event_cls = type("KeyVerificationMac", (), {})
+    event = event_cls()
+    event.sender = sender
+    event.transaction_id = transaction_id
+    event.mac = mac
+    event.keys = keys
+    return event
+
+
+def make_key_verification_cancel(
+    sender: str, transaction_id: str, code: str, reason: str
+):
+    event_cls = type("KeyVerificationCancel", (), {})
+    event = event_cls()
+    event.sender = sender
+    event.transaction_id = transaction_id
+    event.code = code
+    event.reason = reason
+    return event
 
 
 @patch("mmrelay.matrix_utils.connect_meshtastic")
@@ -1364,3 +1473,226 @@ def test_normalize_bot_user_id_none_input():
 
     result = _normalize_bot_user_id(homeserver, bot_user_id)
     assert result is None
+
+
+async def test_self_verification_request_sends_ready(
+    verification_manager, verification_client, fake_to_device_message
+):
+    """Self-verification request from our user sends a ready response."""
+
+    tx_id = "TX123"
+    event = make_unknown_to_device_event(
+        sender="@bot:matrix.org",
+        event_type="m.key.verification.request",
+        content={
+            "from_device": "ELEMENT123",
+            "transaction_id": tx_id,
+            "methods": ["m.sas.v1"],
+        },
+    )
+
+    await verification_manager.handle_to_device(event)
+    assert verification_client.user_id == "@bot:matrix.org"
+    assert verification_manager._is_self_sender(event.sender) is True
+    assert tx_id in verification_manager._transactions
+    assert verification_client.to_device.await_count == 1
+    await_call = verification_client.to_device.await_args_list[0]
+    message, tx_arg = await_call.args
+    assert tx_arg == tx_id
+    assert message.type == "m.key.verification.ready"
+    assert message.recipient_device == "ELEMENT123"
+
+    context = verification_manager._transactions[tx_id]
+    assert context.ready_sent is True
+    assert context.other_device_id == "ELEMENT123"
+
+
+async def test_self_verification_start_accepts_and_shares_key(
+    verification_manager, verification_client, fake_to_device_message
+):
+    """Verification start events trigger accept flow and key sharing."""
+
+    tx_id = "TX456"
+    verification_manager._transactions[tx_id] = VerificationContext(
+        user_id="@bot:matrix.org",
+        other_device_id="ELEMENT456",
+        method="m.sas.v1",
+        ready_sent=True,
+    )
+
+    share_message = fake_to_device_message(
+        type="m.key.verification.start",
+        recipient="@bot:matrix.org",
+        recipient_device="DEVICE123",
+        content={"transaction_id": tx_id},
+    )
+
+    sas = MagicMock()
+    sas.share_key.return_value = share_message
+    verification_client.key_verifications[tx_id] = sas
+
+    event = make_key_verification_start(
+        sender="@bot:matrix.org",
+        transaction_id=tx_id,
+        from_device="ELEMENT456",
+        method="m.sas.v1",
+        sas_methods=["emoji"],
+        key_agreement_protocols=["curve25519"],
+        hashes=["sha256"],
+        message_authentication_codes=["hkdf-hmac-sha256"],
+    )
+
+    await verification_manager.handle_to_device(event)
+
+    verification_client.accept_key_verification.assert_awaited_once_with(tx_id)
+    assert verification_client.to_device.await_count >= 1
+    assert verification_manager._transactions[tx_id].accepted is True
+
+
+async def test_self_verification_key_confirms_and_sends_done(
+    verification_manager, verification_client, fake_to_device_message
+):
+    """Key events confirm SAS and emit done message for our device."""
+
+    tx_id = "TX789"
+    verification_manager._transactions[tx_id] = VerificationContext(
+        user_id="@bot:matrix.org",
+        other_device_id="ELEMENT789",
+        method="m.sas.v1",
+        ready_sent=True,
+        accepted=True,
+    )
+
+    sas = MagicMock()
+    sas.get_emoji.return_value = [("🐍", "Snake")]
+    sas.other_olm_device = MagicMock(device_id="ELEMENT789")
+    verification_client.key_verifications[tx_id] = sas
+
+    event = make_key_verification_key(
+        sender="@bot:matrix.org", transaction_id=tx_id, key="abc"
+    )
+
+    await verification_manager.handle_to_device(event)
+
+    verification_client.confirm_short_auth_string.assert_awaited_once_with(tx_id)
+    assert verification_client.to_device.await_count == 1
+    await_call = verification_client.to_device.await_args_list[0]
+    message, tx_arg = await_call.args
+    assert message.type == "m.key.verification.done"
+    assert message.recipient_device == "ELEMENT789"
+    assert tx_arg == tx_id
+    assert verification_manager._transactions[tx_id].done_sent is True
+
+
+async def test_self_verification_request_from_other_user_ignored(
+    verification_manager, verification_client
+):
+    """Verification requests from other users are ignored."""
+
+    event = make_unknown_to_device_event(
+        sender="@other:matrix.org",
+        event_type="m.key.verification.request",
+        content={
+            "from_device": "OTHER",
+            "transaction_id": "TX_NOPE",
+            "methods": ["m.sas.v1"],
+        },
+    )
+
+    await verification_manager.handle_to_device(event)
+
+    assert verification_client.to_device.await_count == 0
+    assert "TX_NOPE" not in verification_manager._transactions
+
+
+async def test_self_verification_mac_sends_payload(
+    verification_manager, verification_client, fake_to_device_message
+):
+    """MAC events trigger payload sharing when SAS session exists."""
+
+    tx_id = "TXMAC"
+    verification_manager._transactions[tx_id] = VerificationContext(
+        user_id="@bot:matrix.org",
+        other_device_id="ELEMENTMAC",
+        method="m.sas.v1",
+        ready_sent=True,
+        accepted=True,
+    )
+
+    mac_message = fake_to_device_message(
+        type="m.key.verification.mac",
+        recipient="@bot:matrix.org",
+        recipient_device="DEVICE123",
+        content={"transaction_id": tx_id},
+    )
+
+    sas = MagicMock()
+    sas.get_mac.return_value = mac_message
+    verification_client.key_verifications[tx_id] = sas
+
+    event = make_key_verification_mac(
+        sender="@bot:matrix.org",
+        transaction_id=tx_id,
+        mac={"ed25519:DEVICE123": "test"},
+        keys="abc",
+    )
+
+    await verification_manager.handle_to_device(event)
+
+    assert verification_client.to_device.await_count == 1
+    await_call = verification_client.to_device.await_args_list[0]
+    message, tx_arg = await_call.args
+    assert message is mac_message
+    assert tx_arg == tx_id
+    sas.get_mac.assert_called_once()
+
+
+async def test_self_verification_cancel_clears_transaction(
+    verification_manager, verification_client
+):
+    """Cancel events clear tracked SAS transactions."""
+
+    tx_id = "TXCANCEL"
+    verification_manager._transactions[tx_id] = VerificationContext(
+        user_id="@bot:matrix.org",
+        other_device_id="ELEMENTCANCEL",
+        method="m.sas.v1",
+        ready_sent=True,
+    )
+
+    event = make_key_verification_cancel(
+        sender="@bot:matrix.org",
+        transaction_id=tx_id,
+        code="m.user",
+        reason="User cancelled",
+    )
+
+    await verification_manager.handle_to_device(event)
+
+    assert tx_id not in verification_manager._transactions
+
+
+async def test_self_verification_done_removes_transaction(
+    verification_manager, verification_client
+):
+    """Done events finalise and forget the verification session."""
+
+    tx_id = "TXDONE"
+    verification_manager._transactions[tx_id] = VerificationContext(
+        user_id="@bot:matrix.org",
+        other_device_id="ELEMENTDONE",
+        method="m.sas.v1",
+        ready_sent=True,
+        accepted=True,
+        done_sent=True,
+    )
+
+    event = make_unknown_to_device_event(
+        sender="@bot:matrix.org",
+        event_type="m.key.verification.done",
+        content={"transaction_id": tx_id},
+    )
+
+    await verification_manager.handle_to_device(event)
+
+    assert tx_id not in verification_manager._transactions
