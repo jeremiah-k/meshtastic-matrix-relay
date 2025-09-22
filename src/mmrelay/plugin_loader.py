@@ -17,6 +17,19 @@ logger = get_logger(name="Plugins")
 sorted_active_plugins = []
 plugins_loaded = False
 
+try:
+    _PLUGIN_DEPS_DIR = os.path.join(get_base_dir(), "plugins", "deps")
+except Exception:  # pragma: no cover - fallback when base dir unavailable early
+    _PLUGIN_DEPS_DIR = None
+else:
+    try:
+        os.makedirs(_PLUGIN_DEPS_DIR, exist_ok=True)
+    except OSError as exc:  # pragma: no cover - non-critical
+        logger.debug(f"Unable to create plugin dependency directory: {exc}")
+    else:
+        if _PLUGIN_DEPS_DIR not in sys.path:
+            sys.path.append(_PLUGIN_DEPS_DIR)
+
 
 def _reset_caches_for_tests():
     """
@@ -48,6 +61,9 @@ def _refresh_dependency_paths() -> None:
         candidate_paths.extend(site_packages)
     except AttributeError:
         pass
+
+    if _PLUGIN_DEPS_DIR:
+        candidate_paths.append(_PLUGIN_DEPS_DIR)
 
     for path in candidate_paths:
         if not path:
@@ -651,15 +667,35 @@ def load_plugins_from_directory(directory, recursive=False):
                                 logger.info(
                                     f"Attempting to install missing dependency with pip: {missing_module}"
                                 )
-                                subprocess.check_call(
-                                    [
+
+                                target_dir = _PLUGIN_DEPS_DIR
+                                if not target_dir:
+                                    target_dir = site.getusersitepackages()
+                                if isinstance(target_dir, list):
+                                    target_dir = target_dir[0]
+
+                                if target_dir:
+                                    os.makedirs(target_dir, exist_ok=True)
+                                    install_cmd = [
+                                        sys.executable,
+                                        "-m",
+                                        "pip",
+                                        "install",
+                                        missing_module,
+                                        "--upgrade",
+                                        "--target",
+                                        target_dir,
+                                    ]
+                                else:
+                                    install_cmd = [
                                         sys.executable,
                                         "-m",
                                         "pip",
                                         "install",
                                         missing_module,
                                     ]
-                                )
+
+                                subprocess.check_call(install_cmd)
 
                             logger.info(
                                 f"Successfully installed {missing_module}, retrying plugin load"

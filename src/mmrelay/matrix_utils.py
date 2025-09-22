@@ -19,6 +19,7 @@ from nio import (
     AsyncClientConfig,
     DiscoveryInfoError,
     DiscoveryInfoResponse,
+    KeyVerificationAccept,
     KeyVerificationCancel,
     KeyVerificationEvent,
     KeyVerificationKey,
@@ -134,6 +135,7 @@ class SelfVerificationManager:
         self.logger = get_logger(name="MatrixVerification")
         self._transactions: Dict[str, VerificationContext] = {}
         self._ignored_transactions: Set[str] = set()
+        self._requested_devices: Set[str] = set()
 
     async def handle_to_device(self, event: KeyVerificationEvent) -> None:
         """Dispatch Matrix verification events for automated self-verification."""
@@ -147,6 +149,8 @@ class SelfVerificationManager:
                 await self._handle_verification_key(event)
             elif self._is_event_type(event, KeyVerificationMac):
                 await self._handle_verification_mac(event)
+            elif self._is_event_type(event, KeyVerificationAccept):
+                await self._handle_verification_accept(event)
             elif self._is_event_type(event, KeyVerificationCancel):
                 self._handle_verification_cancel(event)
         except Exception:  # pragma: no cover - defensive logging
@@ -156,6 +160,8 @@ class SelfVerificationManager:
         event_type = event.source.get("type")
         if event_type == "m.key.verification.request":
             await self._handle_verification_request(event)
+        elif event_type == "m.key.verification.ready":
+            await self._handle_verification_ready(event)
         elif event_type == "m.key.verification.done":
             self._handle_verification_done(event)
 
@@ -218,6 +224,46 @@ class SelfVerificationManager:
                 method=self.SAS_METHOD,
                 ready_sent=True,
             )
+            if from_device:
+                self._requested_devices.add(from_device)
+
+    async def _handle_verification_ready(self, event: UnknownToDeviceEvent) -> None:
+        if not self._is_self_sender(event.sender):
+            return
+
+        content = event.source.get("content", {})
+        tx_id = content.get("transaction_id")
+        methods = content.get("methods", [])
+        from_device = content.get("from_device")
+
+        if not tx_id or self.SAS_METHOD not in methods:
+            self.logger.debug("Ready event missing transaction or SAS support")
+            return
+
+        try:
+            sas = self.client.key_verifications[tx_id]
+        except KeyError:
+            self.logger.debug("Received ready for unknown transaction %s", tx_id)
+            return
+
+        if from_device:
+            self._requested_devices.add(from_device)
+
+        start_message = sas.start_verification()
+        if await self._send_to_device(start_message, tx_id, "start"):
+            context = self._transactions.get(tx_id)
+            if context is None:
+                context = VerificationContext(
+                    user_id=event.sender,
+                    other_device_id=from_device,
+                    method=self.SAS_METHOD,
+                    ready_sent=True,
+                )
+                self._transactions[tx_id] = context
+            else:
+                context.ready_sent = True
+                if from_device:
+                    context.other_device_id = from_device
 
     async def _handle_verification_start(self, event: KeyVerificationStart) -> None:
         if not self._is_self_sender(event.sender):
@@ -272,6 +318,30 @@ class SelfVerificationManager:
         else:
             context.other_device_id = event.from_device
         context.accepted = True
+
+    async def _handle_verification_accept(self, event: KeyVerificationAccept) -> None:
+        if not self._is_self_sender(event.sender):
+            return
+
+        tx_id = event.transaction_id
+        try:
+            sas = self.client.key_verifications[tx_id]
+        except KeyError:
+            self.logger.debug("Accept event for unknown transaction %s", tx_id)
+            return
+
+        share_message = sas.share_key()
+        if await self._send_to_device(share_message, tx_id, "share_key"):
+            context = self._transactions.get(tx_id)
+            if context is None:
+                context = VerificationContext(
+                    user_id=event.sender,
+                    other_device_id=getattr(sas.other_olm_device, "device_id", None),
+                    method=self.SAS_METHOD,
+                    ready_sent=True,
+                )
+                self._transactions[tx_id] = context
+            context.accepted = True
 
     async def _handle_verification_key(self, event: KeyVerificationKey) -> None:
         if not self._is_self_sender(event.sender):
@@ -356,8 +426,10 @@ class SelfVerificationManager:
         await self._send_to_device(mac_message, tx_id, "mac")
 
     def _handle_verification_cancel(self, event: KeyVerificationCancel) -> None:
-        self._transactions.pop(event.transaction_id, None)
+        context = self._transactions.pop(event.transaction_id, None)
         self._ignored_transactions.discard(event.transaction_id)
+        if context and context.other_device_id:
+            self._requested_devices.discard(context.other_device_id)
         self.logger.warning(
             "Verification cancelled by %s (%s): %s",
             event.sender,
@@ -375,6 +447,8 @@ class SelfVerificationManager:
         self._ignored_transactions.discard(tx_id)
 
         if context:
+            if context.other_device_id:
+                self._requested_devices.discard(context.other_device_id)
             self.logger.info(
                 "Self-verification completed for device %s (tx=%s)",
                 context.other_device_id,
@@ -426,6 +500,76 @@ class SelfVerificationManager:
             if not isinstance(target_name, str):
                 return False
             return obj.__class__.__name__ == target_name
+
+    async def initiate_self_verification(self) -> None:
+        """Send SAS requests to our unverified devices so the owner can approve."""
+
+        if not self._is_self_sender(self.client.user_id):
+            # user_id must match client.user_id
+            return
+
+        device_store = getattr(self.client, "device_store", None)
+        if not device_store or not hasattr(device_store, "active_user_devices"):
+            self.logger.debug("Device store unavailable; skipping self-verification bootstrap")
+            return
+
+        try:
+            devices = device_store.active_user_devices(self.client.user_id)
+        except Exception as exc:  # pragma: no cover - defensive guard
+            self.logger.debug("Unable to enumerate devices for self-verification: %s", exc)
+            return
+
+        if not devices:
+            self.logger.debug("No other devices registered for %s", self.client.user_id)
+            return
+
+        for device_id, device in devices.items():
+            if device_id == getattr(self.client, "device_id", None):
+                continue
+            if getattr(device, "deleted", False):
+                continue
+            if getattr(device, "verified", False):
+                continue
+            if device_id in self._requested_devices:
+                continue
+            await self._initiate_verification_for_device(device)
+
+    async def _initiate_verification_for_device(self, device) -> None:
+        tx_id = f"mmrelay-{device.id}-{int(time.time() * 1000)}"
+        self.logger.info(
+            "Requesting SAS verification with device %s (%s)",
+            device.id,
+            device.display_name or "unknown",
+        )
+        try:
+            response = await self.client.start_key_verification(device, tx_id=tx_id)
+        except Exception as exc:
+            self.logger.error(
+                "Failed to start verification with %s: %s", device.id, exc
+            )
+            return
+
+        if self._matches_type(response, ToDeviceError):
+            self.logger.error(
+                "Homeserver rejected verification request for %s: %s",
+                device.id,
+                response,
+            )
+            return
+
+        self._requested_devices.add(device.id)
+        try:
+            sas = self.client.key_verifications[tx_id]
+        except KeyError:
+            sas = None
+
+        other_device = getattr(sas.other_olm_device, "device_id", None) if sas else device.id
+        self._transactions[tx_id] = VerificationContext(
+            user_id=device.user_id,
+            other_device_id=other_device,
+            method=self.SAS_METHOD,
+            ready_sent=False,
+        )
 
 
 def _display_room_channel_mappings(
@@ -1511,6 +1655,7 @@ async def connect_matrix(passed_config=None):
                 self_verification_manager.handle_to_device,
                 (KeyVerificationEvent, UnknownToDeviceEvent),
             )
+            await self_verification_manager.initiate_self_verification()
     else:
         self_verification_manager = None
 

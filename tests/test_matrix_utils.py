@@ -1,6 +1,7 @@
 import os
 import sys
 from dataclasses import dataclass
+from types import SimpleNamespace
 from typing import Any, Dict
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -118,6 +119,27 @@ def make_unknown_to_device_event(sender: str, event_type: str, content: dict):
     event = event_cls()
     event.sender = sender
     event.source = {"type": event_type, "sender": sender, "content": content}
+    return event
+
+
+def make_key_verification_accept(
+    sender: str,
+    transaction_id: str,
+    commitment: str = "commit",
+    key_agreement_protocol: str = "curve25519",
+    hash_algo: str = "sha256",
+    mac: str = "hkdf-hmac-sha256",
+    sas_methods: list[str] | None = None,
+):
+    event_cls = type("KeyVerificationAccept", (), {})
+    event = event_cls()
+    event.sender = sender
+    event.transaction_id = transaction_id
+    event.commitment = commitment
+    event.key_agreement_protocol = key_agreement_protocol
+    event.hash = hash_algo
+    event.message_authentication_code = mac
+    event.short_authentication_string = sas_methods or ["emoji"]
     return event
 
 
@@ -1549,6 +1571,44 @@ async def test_self_verification_start_accepts_and_shares_key(
     assert verification_manager._transactions[tx_id].accepted is True
 
 
+async def test_self_verification_ready_triggers_start(
+    verification_manager, verification_client, fake_to_device_message
+):
+    tx_id = "TXREADY"
+    start_message = fake_to_device_message(
+        type="m.key.verification.start",
+        recipient="@bot:matrix.org",
+        recipient_device="DEVICEB",
+        content={"transaction_id": tx_id},
+    )
+
+    sas = MagicMock()
+    sas.start_verification.return_value = start_message
+    sas.other_olm_device = SimpleNamespace(device_id="DEVICEB")
+    verification_client.key_verifications[tx_id] = sas
+
+    event = make_unknown_to_device_event(
+        sender="@bot:matrix.org",
+        event_type="m.key.verification.ready",
+        content={
+            "transaction_id": tx_id,
+            "methods": ["m.sas.v1"],
+            "from_device": "DEVICEB",
+        },
+    )
+
+    await verification_manager.handle_to_device(event)
+
+    sas.start_verification.assert_called_once()
+    assert verification_client.to_device.await_count == 1
+    message, tx_arg = verification_client.to_device.await_args_list[0].args
+    assert message == start_message
+    assert tx_arg == tx_id
+    context = verification_manager._transactions[tx_id]
+    assert context.ready_sent is True
+    assert context.other_device_id == "DEVICEB"
+
+
 async def test_self_verification_key_confirms_and_sends_done(
     verification_manager, verification_client, fake_to_device_message
 ):
@@ -1672,6 +1732,43 @@ async def test_self_verification_cancel_clears_transaction(
     assert tx_id not in verification_manager._transactions
 
 
+async def test_self_verification_accept_sends_share_key(
+    verification_manager, verification_client, fake_to_device_message
+):
+    tx_id = "TXACCEPT"
+    verification_manager._transactions[tx_id] = VerificationContext(
+        user_id="@bot:matrix.org",
+        other_device_id="ELEMENT123",
+    )
+
+    share_message = fake_to_device_message(
+        type="m.key.verification.key",
+        recipient="@bot:matrix.org",
+        recipient_device="ELEMENT123",
+        content={"transaction_id": tx_id},
+    )
+
+    sas = MagicMock()
+    sas.share_key.return_value = share_message
+    sas.other_olm_device = SimpleNamespace(device_id="ELEMENT123")
+    verification_client.key_verifications[tx_id] = sas
+
+    event = make_key_verification_accept(
+        sender="@bot:matrix.org",
+        transaction_id=tx_id,
+        sas_methods=["emoji"],
+    )
+
+    await verification_manager.handle_to_device(event)
+
+    sas.share_key.assert_called_once()
+    assert verification_client.to_device.await_count == 1
+    message, tx_arg = verification_client.to_device.await_args_list[0].args
+    assert message == share_message
+    assert tx_arg == tx_id
+    assert verification_manager._transactions[tx_id].accepted is True
+
+
 async def test_self_verification_done_removes_transaction(
     verification_manager, verification_client
 ):
@@ -1696,3 +1793,37 @@ async def test_self_verification_done_removes_transaction(
     await verification_manager.handle_to_device(event)
 
     assert tx_id not in verification_manager._transactions
+
+
+async def test_initiate_self_verification_requests_unverified_devices(
+    verification_manager, verification_client, fake_to_device_message
+):
+    other_device = SimpleNamespace(
+        id="DEVICEB",
+        device_id="DEVICEB",
+        user_id="@bot:matrix.org",
+        display_name="Element",
+        deleted=False,
+        verified=False,
+    )
+
+    device_store = MagicMock()
+    device_store.active_user_devices.return_value = {"DEVICEB": other_device}
+    verification_client.device_store = device_store
+    verification_client.start_key_verification = AsyncMock(
+        return_value=fake_to_device_message(
+            type="m.key.verification.request",
+            recipient="@bot:matrix.org",
+            recipient_device="DEVICEB",
+            content={"transaction_id": "stub"},
+        )
+    )
+
+    await verification_manager.initiate_self_verification()
+
+    verification_client.start_key_verification.assert_awaited_once()
+    assert "DEVICEB" in verification_manager._requested_devices
+    assert any(
+        context.other_device_id == "DEVICEB"
+        for context in verification_manager._transactions.values()
+    )
