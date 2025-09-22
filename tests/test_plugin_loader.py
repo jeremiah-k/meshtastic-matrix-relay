@@ -251,7 +251,7 @@ class Plugin:
                 sys.path.insert(0, path)
 
         with patch(
-            "mmrelay.plugin_loader.subprocess.check_call", side_effect=fake_check_call
+            "mmrelay.plugin_loader.subprocess.run", side_effect=fake_check_call
         ), patch(
             "mmrelay.plugin_loader.site.getusersitepackages", return_value=[user_site]
         ), patch(

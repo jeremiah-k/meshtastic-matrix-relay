@@ -138,9 +138,9 @@ class Plugin:
             with patch.dict(
                 "os.environ", {}, clear=True
             ):  # Clear pipx environment variables
-                with patch("subprocess.check_call") as mock_check_call:
+                with patch("subprocess.run") as mock_run:
                     # Mock successful installation
-                    mock_check_call.return_value = None
+                    mock_run.return_value = None
                     with patch("mmrelay.plugin_loader.logger") as mock_logger:
                         # The plugin loader will catch the ModuleNotFoundError and attempt installation
                         # but the second import will still fail, which should be handled gracefully
@@ -150,8 +150,8 @@ class Plugin:
                         self.assertEqual(plugins, [])
 
                         # Should have attempted to install the dependency
-                        mock_check_call.assert_called()
-                        install_call = mock_check_call.call_args_list[0]
+                        mock_run.assert_called()
+                        install_call = mock_run.call_args_list[0]
                         self.assertIn("nonexistent_module", str(install_call))
 
                         # Should have logged the missing dependency warning
