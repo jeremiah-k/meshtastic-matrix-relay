@@ -338,7 +338,7 @@ def _run(cmd, timeout=120, **kwargs):
         raise TypeError("all command arguments must be strings")
     if any(not arg.strip() for arg in cmd):
         raise ValueError("command arguments cannot be empty/whitespace")
-    # Add capture_output and text for consistency
+    # Ensure text mode by default
     kwargs.setdefault("text", True)
     return subprocess.run(cmd, check=True, timeout=timeout, **kwargs)
 

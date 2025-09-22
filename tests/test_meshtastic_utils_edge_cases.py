@@ -56,7 +56,10 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         """
         Test that serial_port_exists returns False when access to the serial port is denied due to a PermissionError.
         """
-        with patch("serial.Serial", side_effect=PermissionError("Permission denied")):
+        with patch(
+            "mmrelay.meshtastic_utils.serial.tools.list_ports.comports",
+            return_value=[],
+        ):
             result = serial_port_exists("/dev/ttyUSB0")
             self.assertFalse(result)
 
@@ -64,7 +67,10 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         """
         Test that serial_port_exists returns False when the specified device is not found.
         """
-        with patch("serial.Serial", side_effect=FileNotFoundError("Device not found")):
+        with patch(
+            "mmrelay.meshtastic_utils.serial.tools.list_ports.comports",
+            return_value=[],
+        ):
             result = serial_port_exists("/dev/nonexistent")
             self.assertFalse(result)
 
@@ -74,9 +80,10 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
 
         Simulates a busy device by patching serial.Serial to raise SerialException.
         """
-        import serial
-
-        with patch("serial.Serial", side_effect=serial.SerialException("Device busy")):
+        with patch(
+            "mmrelay.meshtastic_utils.serial.tools.list_ports.comports",
+            return_value=[],
+        ):
             result = serial_port_exists("/dev/ttyUSB0")
             self.assertFalse(result)
 
@@ -292,9 +299,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
 
         with patch("mmrelay.plugin_loader.load_plugins", return_value=[plugin]), patch(
             "mmrelay.meshtastic_utils._submit_coro", side_effect=[future, MagicMock()]
-        ) as mock_submit_coro, patch(
-            "mmrelay.meshtastic_utils.config", config
-        ), patch(
+        ) as mock_submit_coro, patch("mmrelay.meshtastic_utils.config", config), patch(
             "mmrelay.meshtastic_utils.matrix_rooms", rooms
         ), patch(
             "mmrelay.meshtastic_utils.get_longname", return_value="Long"

@@ -1363,7 +1363,7 @@ async def test_connect_matrix_alias_resolution_exception(
         mock_room_resolve_alias = MagicMock()
 
         class FakeNetworkError(Exception):
-            pass
+            """Simulated network failure for tests."""
 
         async def mock_room_resolve_alias_impl(_alias):
             """
@@ -1375,7 +1375,7 @@ async def test_connect_matrix_alias_resolution_exception(
             Raises:
                 FakeNetworkError: Always raised to simulate a network error during alias resolution.
             """
-            raise FakeNetworkError("Network error")
+            raise FakeNetworkError()
 
         mock_room_resolve_alias.side_effect = mock_room_resolve_alias_impl
 
@@ -1639,7 +1639,7 @@ def test_markdown_import_error_fallback_coverage():
 
 @patch("mmrelay.matrix_utils.matrix_client")
 @patch("mmrelay.matrix_utils.logger")
-async def test_get_user_display_name_room_name(_mock_logger, mock_matrix_client):
+async def test_get_user_display_name_room_name(_mock_logger, _mock_matrix_client):
     """Test getting user display name from room."""
     mock_room = MagicMock()
     mock_room.user_name.return_value = "Room Display Name"

@@ -252,8 +252,15 @@ def _normalize_bot_user_id(homeserver: str, bot_user_id: str) -> str:
     # Normalize user ID
     localpart, *serverpart = bot_user_id.lstrip("@").split(":", 1)
     if serverpart and serverpart[0]:
-        # Already has a server part; strip any trailing :port
-        server = re.sub(r":\d+$", "", serverpart[0])
+        # Already has a server part; drop any brackets/port consistently
+        raw_server = serverpart[0]
+        server = urlparse(f"//{raw_server}").hostname or re.sub(
+            r":\d+$",
+            "",
+            raw_server,
+        )
+        if server and server.startswith("[") and server.endswith("]"):
+            server = server[1:-1]
         return f"@{localpart}:{server}"
 
     # No server part, add the derived domain

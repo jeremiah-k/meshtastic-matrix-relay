@@ -144,6 +144,32 @@ def _submit_coro(coro, loop=None):
             return f
 
 
+def _resolve_plugin_timeout(cfg: dict | None, default: float = 5.0) -> float:
+    """Return a positive timeout from config, falling back to default when invalid."""
+
+    raw_value = default
+    if isinstance(cfg, dict):
+        try:
+            raw_value = cfg.get("meshtastic", {}).get("plugin_timeout", default)
+        except AttributeError:
+            raw_value = default
+
+    try:
+        timeout = float(raw_value)
+        if timeout > 0:
+            return timeout
+    except (TypeError, ValueError):
+        logger.warning(
+            "Invalid meshtastic.plugin_timeout value %r; using %ss fallback.",
+            raw_value,
+            default,
+        )
+    except Exception:
+        logger.debug("Unexpected error parsing plugin timeout", exc_info=True)
+
+    return default
+
+
 def _get_device_metadata(client):
     """
     Retrieve firmware metadata from a Meshtastic client.
@@ -831,29 +857,7 @@ def on_meshtastic_message(packet, interface):
         from mmrelay.plugin_loader import load_plugins
 
         plugins = load_plugins()
-
-        # Define plugin timeout for both text and non-text message processing
-        default_plugin_timeout = 5.0
-        configured_timeout = default_plugin_timeout
-        if isinstance(config, dict):
-            try:
-                configured_timeout = config.get("meshtastic", {}).get(
-                    "plugin_timeout", default_plugin_timeout
-                )
-            except AttributeError:
-                configured_timeout = default_plugin_timeout
-
-        try:
-            plugin_timeout = float(configured_timeout)
-            if plugin_timeout <= 0:
-                raise ValueError
-        except (TypeError, ValueError):
-            logger.warning(
-                "Invalid meshtastic.plugin_timeout value %r; using %ss fallback.",
-                configured_timeout,
-                default_plugin_timeout,
-            )
-            plugin_timeout = default_plugin_timeout
+        plugin_timeout = _resolve_plugin_timeout(config, default=5.0)
 
         found_matching_plugin = False
         for plugin in plugins:
@@ -865,6 +869,13 @@ def on_meshtastic_message(packet, interface):
                         ),
                         loop=loop,
                     )
+                    if result_future is None:
+                        logger.warning(
+                            "Plugin %s returned no awaitable; skipping.",
+                            plugin.plugin_name,
+                        )
+                        found_matching_plugin = False
+                        continue
                     try:
                         found_matching_plugin = result_future.result(
                             timeout=plugin_timeout
@@ -927,6 +938,7 @@ def on_meshtastic_message(packet, interface):
         from mmrelay.plugin_loader import load_plugins
 
         plugins = load_plugins()
+        plugin_timeout = _resolve_plugin_timeout(config, default=5.0)
         found_matching_plugin = False
         for plugin in plugins:
             if not found_matching_plugin:
@@ -940,12 +952,22 @@ def on_meshtastic_message(packet, interface):
                         ),
                         loop=loop,
                     )
+                    if result_future is None:
+                        logger.warning(
+                            "Plugin %s returned no awaitable; skipping.",
+                            plugin.plugin_name,
+                        )
+                        found_matching_plugin = False
+                        continue
                     try:
-                        found_matching_plugin = result_future.result(timeout=5)
+                        found_matching_plugin = result_future.result(
+                            timeout=plugin_timeout
+                        )
                     except FuturesTimeoutError as exc:
                         logger.warning(
-                            "Plugin %s did not respond within 5s: %s",
+                            "Plugin %s did not respond within %ss: %s",
                             plugin.plugin_name,
+                            plugin_timeout,
                             exc,
                         )
                         found_matching_plugin = False
