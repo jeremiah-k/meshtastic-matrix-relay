@@ -197,15 +197,15 @@ def get_log_dir():
 def get_e2ee_store_dir():
     """
     Return the absolute path to the E2EE data store directory, creating it if missing.
-
-    On Linux/macOS this is "<base_dir>/store" where base_dir is returned by get_base_dir().
-    On Windows the function uses the global custom_data_dir if set, otherwise falls back to the platform user data directory for the app.
-
+    
+    On Linux and macOS this is "<base_dir>/store" where base_dir is returned by get_base_dir().
+    On Windows the function uses the module-level custom_data_dir if set; otherwise it uses the platform-specific user data directory for the application (platformdirs.user_data_dir) and appends "store".
+    
     Returns:
         str: Absolute path to the ensured store directory.
-
+    
     Side effects:
-        Creates the directory (and parent directories) if it does not already exist.
+        Creates the directory (and any missing parent directories) if it does not already exist.
     """
     if sys.platform in ["linux", "darwin"]:
         # Use ~/.mmrelay/store/ for Linux and Mac
@@ -494,18 +494,15 @@ def load_credentials():
 
 def save_credentials(credentials):
     """
-    Save Matrix credentials to the application's credentials.json file.
-
-    Writes the provided JSON-serializable credentials mapping to
-    <base_dir>/credentials.json using UTF-8 encoding and attempts to restrict
-    file permissions to 0o600 on Unix-like systems. I/O and permission errors
-    are caught and logged; the function does not raise these exceptions.
-
+    Save JSON-serializable credentials to the application's credentials.json.
+    
+    Writes the provided credentials mapping to <base_dir>/credentials.json (creating
+    the base directory if needed) using UTF-8 encoding. On Unix-like systems the
+    function will attempt to set restrictive file permissions (0o600). I/O and
+    permission errors are caught and logged; the function does not raise them.
+    
     Parameters:
         credentials (dict): JSON-serializable mapping of credentials to persist.
-
-    Returns:
-        None
     """
     try:
         config_dir = get_base_dir()

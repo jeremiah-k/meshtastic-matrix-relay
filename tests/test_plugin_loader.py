@@ -237,6 +237,14 @@ class Plugin:
             handle.write(plugin_content)
 
         def fake_check_call(_cmd, *_args, **_kwargs):  # nosec B603
+            """
+            Test helper that simulates a successful subprocess call installing a dependency.
+            
+            Creates a file named `mockdep.py` in the test `user_site` directory with a single
+            constant (`VALUE = 1`) to make the dependency importable, then returns a
+            subprocess.CompletedProcess with returncode 0. Parameters mimic subprocess.call/check_call
+            arguments and are ignored except for `_cmd` which is recorded in the returned object.
+            """
             with open(
                 os.path.join(user_site, "mockdep.py"), "w", encoding="utf-8"
             ) as dep:
@@ -246,6 +254,14 @@ class Plugin:
         added_dirs = []
 
         def fake_addsitedir(path):
+            """
+            Record a directory and ensure it's on the Python import path.
+            
+            Adds `path` to the external `added_dirs` list and, if not already present, inserts it at the front of `sys.path` so it takes precedence during imports.
+            
+            Parameters:
+                path (str): Filesystem path to register on the import search path.
+            """
             added_dirs.append(path)
             if path not in sys.path:
                 sys.path.insert(0, path)

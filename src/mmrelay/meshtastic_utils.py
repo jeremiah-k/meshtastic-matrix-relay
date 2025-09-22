@@ -1013,16 +1013,19 @@ def sendTextReply(
     channelIndex: int = 0,
 ):
     """
-    Send a text reply referencing a previous Meshtastic message.
-
-    Creates a Data payload with the given text and reply_id, wraps it in a MeshPacket on the specified channel, and sends it via the provided Meshtastic interface. Returns the sent MeshPacket (as returned by the interface) or None if the interface is unavailable or sending fails.
-
+    Send a Meshtastic text reply that references a previous Meshtastic message.
+    
+    Builds a Data payload containing `text` and `reply_id`, wraps it in a MeshPacket on `channelIndex`, and sends it via the provided Meshtastic interface.
+    
     Parameters:
         text (str): UTF-8 text to send.
         reply_id (int): ID of the message being replied to.
-        destinationId (int|str, optional): Recipient address; defaults to broadcast.
+        destinationId (int|str, optional): Recipient address (defaults to broadcast).
         wantAck (bool, optional): If True, request an acknowledgement for the packet.
         channelIndex (int, optional): Channel index to send the packet on.
+    
+    Returns:
+        The value returned by the interface's _sendPacket call (typically the sent MeshPacket) or None if the interface is unavailable or sending fails.
     """
     logger.debug(f"Sending text reply: '{text}' replying to message ID {reply_id}")
 

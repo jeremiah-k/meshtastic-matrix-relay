@@ -23,6 +23,11 @@ plugins_loaded = False
 
 @contextmanager
 def _temp_sys_path(path: str):
+    """
+    Context manager that temporarily prepends a directory to Python's import search path.
+    
+    Use as: `with _temp_sys_path(path): ...` — the given `path` is inserted at the front of `sys.path` for the duration of the context. On exit the first occurrence of `path` is removed; if the path is already absent, removal is silently ignored.
+    """
     sys.path.insert(0, path)
     try:
         yield
@@ -45,7 +50,20 @@ def _reset_caches_for_tests():
 
 
 def _refresh_dependency_paths() -> None:
-    """Ensure newly installed packages are visible to the interpreter."""
+    """
+    Ensure packages installed into user or site directories become importable.
+    
+    This function collects candidate site paths from site.getusersitepackages() and
+    site.getsitepackages() (when available), and registers each directory with the
+    import system. It prefers site.addsitedir(path) but falls back to appending the
+    path to sys.path if addsitedir fails. After modifying the import paths it calls
+    importlib.invalidate_caches() so newly installed packages are discoverable.
+    
+    Side effects:
+    - May modify sys.path and the interpreter's site directories.
+    - Calls importlib.invalidate_caches() to refresh import machinery.
+    - Logs warnings if adding a directory via site.addsitedir fails.
+    """
 
     candidate_paths = []
 
@@ -132,6 +150,27 @@ def get_community_plugin_dirs():
 
 def _run(cmd, timeout=120, **kwargs):
     # Validate command to prevent shell injection
+    """
+    Run a subprocess command safely with validated arguments and a configurable timeout.
+    
+    Validates that `cmd` is a non-empty list of non-empty strings (to avoid shell-injection risks),
+    ensures text output by default, and executes the command via subprocess.run with check=True.
+    
+    Parameters:
+        cmd (list[str]): Command and arguments to execute; must be a non-empty list of non-empty strings.
+        timeout (int|float): Maximum seconds to allow the process to run before raising TimeoutExpired.
+        **kwargs: Additional keyword arguments forwarded to subprocess.run (e.g., cwd, env). `text=True`
+            is set by default if not provided.
+    
+    Returns:
+        subprocess.CompletedProcess: The completed process object returned by subprocess.run.
+    
+    Raises:
+        TypeError: If `cmd` is not a list or any element of `cmd` is not a string.
+        ValueError: If `cmd` is empty or contains empty/whitespace-only arguments.
+        subprocess.CalledProcessError: If the subprocess exits with a non-zero status (check=True).
+        subprocess.TimeoutExpired: If the process exceeds the specified timeout.
+    """
     if not isinstance(cmd, list):
         raise TypeError("cmd must be a list of str")
     if not cmd:
@@ -146,14 +185,27 @@ def _run(cmd, timeout=120, **kwargs):
 
 
 def _check_auto_install_enabled(config):
-    """Check if auto-install is enabled in config."""
+    """
+    Return whether automatic dependency installation is enabled.
+    
+    Reads the value at config["security"]["auto_install_deps"] and returns its truthiness.
+    If `config` is None or falsy, or the key is missing, this function returns True (auto-install enabled by default).
+    """
     if not config:
         return True
     return bool(config.get("security", {}).get("auto_install_deps", True))
 
 
 def _raise_install_error(pkg_name):
-    """Raise consistent CalledProcessError for installation failures."""
+    """
+    Log a warning about disabled auto-install and raise a CalledProcessError.
+    
+    Parameters:
+        pkg_name (str): Name of the package that could not be installed (used in the log message).
+    
+    Raises:
+        subprocess.CalledProcessError: Always raised to signal an installation failure when auto-install is disabled.
+    """
     logger.warning(
         f"Auto-install disabled; cannot install {pkg_name}. See docs for enabling."
     )
@@ -600,16 +652,20 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
 
 def load_plugins_from_directory(directory, recursive=False):
     """
-    Dynamically loads and instantiates plugin classes from Python files in a specified directory.
-
-    Scans the given directory (and subdirectories if `recursive` is True) for `.py` files, importing each as a module and instantiating its `Plugin` class if present. Automatically attempts to install missing dependencies when a `ModuleNotFoundError` occurs, supporting both pip and pipx environments. Provides compatibility for plugins importing from either `plugins` or `mmrelay.plugins`. Skips files without a `Plugin` class or with unresolved import errors.
-
+    Load and instantiate Plugin classes from Python files in a directory.
+    
+    Searches `directory` (optionally recursively) for .py files, imports each module in an isolated module name and, if the module defines a `Plugin` class, instantiates and collects it. If an import fails with ModuleNotFoundError, the function will (when auto-install is enabled in the global `config`) attempt to install the missing distribution with pip or pipx, refresh import paths, and retry importing the module. Files that do not define `Plugin` are skipped; unresolved import errors or other exceptions are logged and do not abort the whole scan.
+    
     Parameters:
-        directory (str): Path to the directory containing plugin files.
-        recursive (bool): If True, searches subdirectories recursively.
-
+        directory (str): Path to the directory containing plugin Python files.
+        recursive (bool): If True, scan subdirectories recursively; otherwise only the top-level directory.
+    
     Returns:
-        list: Instantiated plugin objects found in the directory.
+        list: Instances of found plugin classes (may be empty).
+    
+    Notes:
+    - The function mutates interpreter import state (may add entries to sys.modules) and can invoke external installers (pip/pipx) when auto-install is enabled.
+    - Only modules that define a top-level `Plugin` attribute are instantiated and returned.
     """
     plugins = []
     if os.path.isdir(directory):

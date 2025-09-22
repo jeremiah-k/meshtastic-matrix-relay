@@ -177,9 +177,16 @@ class TestPerformanceStress:
     @pytest.mark.performance  # Changed from slow to performance
     def test_message_queue_performance_under_load(self):
         """
-        Test the performance of MessageQueue under rapid enqueueing with enforced minimum delay.
-
-        Enqueues 50 messages into the MessageQueue with a minimal requested delay, verifies all messages are processed within 120 seconds, and asserts that the enforced minimum 2-second delay and a processing rate above 0.3 messages per second are achieved.
+        Test MessageQueue under rapid enqueue with enforced minimum delay.
+        
+        Starts a MessageQueue (patched meshtastic client), enqueues 50 messages rapidly, waits up to 120 seconds for processing, and verifies:
+        - All messages are processed.
+        - The enforced minimum delay of ~2.0 seconds per message is respected (with a small tolerance).
+        - Overall processing rate exceeds 0.3 messages/second.
+        
+        Side effects:
+        - Starts and stops a MessageQueue instance.
+        - Patches mmrelay.meshtastic_utils.meshtastic_client and mmrelay.meshtastic_utils.reconnecting for the duration of the test.
         """
         import asyncio
 
@@ -257,9 +264,15 @@ class TestPerformanceStress:
     @pytest.mark.performance  # Changed from slow to performance
     def test_database_performance_large_dataset(self):
         """
-        Test the performance of database bulk operations and pruning with large datasets.
-
-        Inserts and retrieves 1000 node longnames, stores 1000 message map entries, and prunes the message map to retain only the 100 most recent entries. Asserts that each operation completes within defined time limits to ensure database efficiency under high-volume conditions.
+        Measure database bulk insert/retrieve and message-map prune performance using a temporary SQLite database.
+        
+        Performs:
+        - Bulk insert of 1000 node longnames via save_longname.
+        - Bulk retrieval of those 1000 longnames via get_longname and validates values.
+        - Bulk insert of 1000 message-map entries via store_message_map.
+        - Pruning of the message map to retain only the 100 most recent entries via prune_message_map.
+        
+        Asserts that each operation completes within predefined time limits; failures raise AssertionError. Uses a temporary SQLite file (get_db_path is patched to the temp path) and mutates the on-disk database.
         """
         import tempfile
 
