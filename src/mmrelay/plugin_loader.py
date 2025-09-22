@@ -226,6 +226,23 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                         )
                         return True
             else:
+                if ref_type == "branch":
+                    try:
+                        _run(["git", "-C", repo_path, "checkout", ref_value])
+                        _run(["git", "-C", repo_path, "pull", "origin", ref_value])
+                        logger.info(
+                            f"Updated repository {repo_name} to branch {ref_value}"
+                        )
+                        return True
+                    except subprocess.CalledProcessError as exc:
+                        logger.warning(
+                            "Failed to update branch %s for %s: %s",
+                            ref_value,
+                            repo_name,
+                            exc,
+                        )
+                        return False
+
                 # Handle tag checkout
                 # Check if we're already on the correct tag/commit
                 try:
@@ -254,17 +271,8 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                         return True
 
                     # Otherwise, try to checkout the tag or branch
-                    if ref_type == "branch":
-                        _run(["git", "-C", repo_path, "checkout", ref_value])
-                        _run(["git", "-C", repo_path, "pull", "origin", ref_value])
-                        logger.info(
-                            f"Updated repository {repo_name} to branch {ref_value}"
-                        )
-                    else:
-                        _run(["git", "-C", repo_path, "checkout", ref_value])
-                        logger.info(
-                            f"Updated repository {repo_name} to tag {ref_value}"
-                        )
+                    _run(["git", "-C", repo_path, "checkout", ref_value])
+                    logger.info(f"Updated repository {repo_name} to tag {ref_value}")
                     return True
                 except subprocess.CalledProcessError:
                     # If tag checkout fails, try to fetch it specifically
@@ -307,14 +315,9 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                             )
 
                         _run(["git", "-C", repo_path, "checkout", ref_value])
-                        if ref_type == "branch":
-                            logger.info(
-                                f"Successfully fetched and checked out branch {ref_value}"
-                            )
-                        else:
-                            logger.info(
-                                f"Successfully fetched and checked out tag {ref_value}"
-                            )
+                        logger.info(
+                            f"Successfully fetched and checked out tag {ref_value}"
+                        )
                         return True
                     except subprocess.CalledProcessError:
                         # If that fails too, try as a branch
@@ -322,13 +325,9 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                             f"Could not fetch tag {ref_value}, trying as a branch"
                         )
                         try:
-                            _run(
-                                ["git", "-C", repo_path, "fetch", "origin", ref_value]
-                            )
+                            _run(["git", "-C", repo_path, "fetch", "origin", ref_value])
                             _run(["git", "-C", repo_path, "checkout", ref_value])
-                            _run(
-                                ["git", "-C", repo_path, "pull", "origin", ref_value]
-                            )
+                            _run(["git", "-C", repo_path, "pull", "origin", ref_value])
                             logger.info(
                                 f"Updated repository {repo_name} to branch {ref_value}"
                             )
@@ -498,9 +497,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                             logger.warning(
                                 f"Could not checkout {ref_value} as a tag, trying as a branch"
                             )
-                            _run(
-                                ["git", "-C", repo_path, "fetch", "origin", ref_value]
-                            )
+                            _run(["git", "-C", repo_path, "fetch", "origin", ref_value])
                             _run(["git", "-C", repo_path, "checkout", ref_value])
                             logger.info(
                                 f"Cloned repository {repo_name} and checked out branch {ref_value}"
@@ -523,7 +520,9 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
     # Install requirements if requirements.txt exists
     requirements_path = os.path.join(repo_path, "requirements.txt")
     if os.path.isfile(requirements_path):
-        auto_install = bool((config or {}).get("security", {}).get("auto_install_deps", True))
+        auto_install = bool(
+            (config or {}).get("security", {}).get("auto_install_deps", True)
+        )
         if not auto_install:
             logger.warning(
                 f"Auto-install of requirements for {repo_name} disabled by config; skipping."
@@ -535,19 +534,17 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
 
             if in_pipx:
                 # Use pipx to install the requirements.txt
-                logger.info(
-                    f"Installing requirements for plugin {repo_name} with pipx"
-                )
+                logger.info(f"Installing requirements for plugin {repo_name} with pipx")
                 _run(
                     ["pipx", "inject", "mmrelay", "-r", requirements_path],
                     timeout=600,
                 )
             else:
-                in_venv = (sys.prefix != getattr(sys, "base_prefix", sys.prefix)) or ("VIRTUAL_ENV" in os.environ)
-                # Use pip to install the requirements.txt
-                logger.info(
-                    f"Installing requirements for plugin {repo_name} with pip"
+                in_venv = (sys.prefix != getattr(sys, "base_prefix", sys.prefix)) or (
+                    "VIRTUAL_ENV" in os.environ
                 )
+                # Use pip to install the requirements.txt
+                logger.info(f"Installing requirements for plugin {repo_name} with pip")
                 cmd = [
                     sys.executable,
                     "-m",
@@ -562,9 +559,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                     cmd += ["--user"]
                 _run(cmd, timeout=600)
 
-            logger.info(
-                f"Successfully installed requirements for plugin {repo_name}"
-            )
+            logger.info(f"Successfully installed requirements for plugin {repo_name}")
             # Make newly installed packages visible immediately
             _refresh_dependency_paths()
         except (subprocess.CalledProcessError, FileNotFoundError) as e:
@@ -658,7 +653,11 @@ def load_plugins_from_directory(directory, recursive=False):
 
                         # Try to automatically install the missing dependency
                         try:
-                            auto_install = bool((config or {}).get("security", {}).get("auto_install_deps", True))
+                            auto_install = bool(
+                                (config or {})
+                                .get("security", {})
+                                .get("auto_install_deps", True)
+                            )
                             if not auto_install:
                                 logger.warning(
                                     f"Auto-install disabled; cannot install {missing_pkg}. See docs for enabling."
@@ -677,9 +676,15 @@ def load_plugins_from_directory(directory, recursive=False):
                                 pipx = shutil.which("pipx")
                                 if not pipx:
                                     raise FileNotFoundError("pipx not found on PATH")
-                                _run([pipx, "inject", "mmrelay", missing_pkg], timeout=300)
+                                _run(
+                                    [pipx, "inject", "mmrelay", missing_pkg],
+                                    timeout=300,
+                                )
                             else:
-                                in_venv = (sys.prefix != getattr(sys, "base_prefix", sys.prefix)) or ("VIRTUAL_ENV" in os.environ)
+                                in_venv = (
+                                    sys.prefix
+                                    != getattr(sys, "base_prefix", sys.prefix)
+                                ) or ("VIRTUAL_ENV" in os.environ)
                                 logger.info(
                                     f"Attempting to install missing dependency with pip: {missing_pkg}"
                                 )
@@ -702,7 +707,9 @@ def load_plugins_from_directory(directory, recursive=False):
                             try:
                                 _refresh_dependency_paths()
                             except Exception as e:
-                                logger.debug(f"Path refresh after auto-install failed: {e}")
+                                logger.debug(
+                                    f"Path refresh after auto-install failed: {e}"
+                                )
 
                             # Try to load the module again
                             try:
@@ -727,10 +734,16 @@ def load_plugins_from_directory(directory, recursive=False):
                                 )
 
                         except subprocess.CalledProcessError:
-                            logger.exception(f"Failed to automatically install {missing_pkg}")
+                            logger.exception(
+                                f"Failed to automatically install {missing_pkg}"
+                            )
                             logger.error("Please install it manually:")
-                            logger.error(f"  pipx inject mmrelay {missing_pkg}  # if using pipx")
-                            logger.error(f"  pip install {missing_pkg}        # if using pip")
+                            logger.error(
+                                f"  pipx inject mmrelay {missing_pkg}  # if using pipx"
+                            )
+                            logger.error(
+                                f"  pip install {missing_pkg}        # if using pip"
+                            )
                     except Exception:
                         logger.exception(f"Error loading plugin {plugin_path}")
             if not recursive:
