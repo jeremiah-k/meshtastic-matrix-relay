@@ -13,6 +13,7 @@ Tests the Meshtastic client functionality including:
 import os
 import sys
 import unittest
+from concurrent.futures import TimeoutError as ConcurrentTimeoutError
 from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 
 import pytest
@@ -856,7 +857,7 @@ def test_connect_meshtastic_retry_exhausted(
 ):
     """Test that connect_meshtastic returns None when retries are exhausted."""
     # Mock a critical error that should not be retried
-    mock_tcp.side_effect = TimeoutError("Connection timeout")
+    mock_tcp.side_effect = ConcurrentTimeoutError("Connection timeout")
 
     config = {"meshtastic": {"connection_type": "tcp", "host": "192.168.1.100"}}
 

@@ -826,6 +826,7 @@ def on_meshtastic_message(packet, interface):
 
         plugins = load_plugins()
 
+        # Define plugin timeout for both text and non-text message processing
         default_plugin_timeout = 5.0
         configured_timeout = default_plugin_timeout
         if isinstance(config, dict):
