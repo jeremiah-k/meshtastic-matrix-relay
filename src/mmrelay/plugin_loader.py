@@ -131,9 +131,27 @@ def get_community_plugin_dirs():
 
 
 def _run(cmd, timeout=120, **kwargs):
+    # Validate command to prevent shell injection
+    if isinstance(cmd, str):
+        raise ValueError("Command must be a list, not a string")
     # Add capture_output and text for consistency
     kwargs.setdefault("text", True)
     return subprocess.run(cmd, check=True, timeout=timeout, **kwargs)
+
+
+def _check_auto_install_enabled(config):
+    """Check if auto-install is enabled in config."""
+    if not config:
+        return True
+    return bool(config.get("security", {}).get("auto_install_deps", True))
+
+
+def _raise_install_error(pkg_name):
+    """Raise consistent CalledProcessError for installation failures."""
+    logger.warning(
+        f"Auto-install disabled; cannot install {pkg_name}. See docs for enabling."
+    )
+    raise subprocess.CalledProcessError(1, "pip/pipx")
 
 
 def clone_or_update_repo(repo_url, ref, plugins_dir):
@@ -520,9 +538,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
     # Install requirements if requirements.txt exists
     requirements_path = os.path.join(repo_path, "requirements.txt")
     if os.path.isfile(requirements_path):
-        auto_install = bool(
-            (config or {}).get("security", {}).get("auto_install_deps", True)
-        )
+        auto_install = _check_auto_install_enabled(config)
         if not auto_install:
             logger.warning(
                 f"Auto-install of requirements for {repo_name} disabled by config; skipping."
@@ -653,16 +669,8 @@ def load_plugins_from_directory(directory, recursive=False):
 
                         # Try to automatically install the missing dependency
                         try:
-                            auto_install = bool(
-                                (config or {})
-                                .get("security", {})
-                                .get("auto_install_deps", True)
-                            )
-                            if not auto_install:
-                                logger.warning(
-                                    f"Auto-install disabled; cannot install {missing_pkg}. See docs for enabling."
-                                )
-                                raise subprocess.CalledProcessError(1, "pip/pipx")
+                            if not _check_auto_install_enabled(config):
+                                _raise_install_error(missing_pkg)
                             # Check if we're running in a pipx environment
                             in_pipx = (
                                 "PIPX_HOME" in os.environ
@@ -673,11 +681,13 @@ def load_plugins_from_directory(directory, recursive=False):
                                 logger.info(
                                     f"Attempting to install missing dependency with pipx inject: {missing_pkg}"
                                 )
-                                pipx = shutil.which("pipx")
-                                if not pipx:
-                                    raise FileNotFoundError("pipx not found on PATH")
+                                pipx_path = shutil.which("pipx")
+                                if not pipx_path:
+                                    raise FileNotFoundError(
+                                        "pipx executable not found on PATH"
+                                    )
                                 _run(
-                                    [pipx, "inject", "mmrelay", missing_pkg],
+                                    [pipx_path, "inject", "mmrelay", missing_pkg],
                                     timeout=300,
                                 )
                             else:
@@ -706,7 +716,7 @@ def load_plugins_from_directory(directory, recursive=False):
                             )
                             try:
                                 _refresh_dependency_paths()
-                            except Exception as e:
+                            except (OSError, ImportError, AttributeError) as e:
                                 logger.debug(
                                     f"Path refresh after auto-install failed: {e}"
                                 )
@@ -735,16 +745,10 @@ def load_plugins_from_directory(directory, recursive=False):
 
                         except subprocess.CalledProcessError:
                             logger.exception(
-                                f"Failed to automatically install {missing_pkg}"
-                            )
-                            logger.error("Please install it manually:")
-                            logger.error(
-                                f"  pipx inject mmrelay {missing_pkg}  # if using pipx"
-                            )
-                            logger.error(
-                                f"  pip install {missing_pkg}        # if using pip"
-                            )
-                            logger.error(
+                                f"Failed to automatically install {missing_pkg}. "
+                                f"Please install manually:\n"
+                                f"  pipx inject mmrelay {missing_pkg}  # if using pipx\n"
+                                f"  pip install {missing_pkg}        # if using pip\n"
                                 f"  pip install --user {missing_pkg}  # if not in a venv"
                             )
                     except Exception:
