@@ -44,8 +44,17 @@ from mmrelay.constants.network import (
     CONNECTION_TYPE_TCP,
     DEFAULT_BACKOFF_TIME,
     ERRNO_BAD_FILE_DESCRIPTOR,
-INFINITE_RETRIES,
+    INFINITE_RETRIES,
 )
+from mmrelay.db_utils import (
+    get_longname,
+    get_message_map_by_meshtastic_id,
+    get_shortname,
+    save_longname,
+    save_shortname,
+)
+from mmrelay.log_utils import get_logger
+from mmrelay.runtime_utils import is_running_as_service
 
 # Maximum number of timeout retries when retries are configured as infinite.
 MAX_TIMEOUT_RETRIES_INFINITE = 5
@@ -61,16 +70,6 @@ except ImportError:
     class BleakError(Exception):
         pass
 
-
-from mmrelay.db_utils import (
-    get_longname,
-    get_message_map_by_meshtastic_id,
-    get_shortname,
-    save_longname,
-    save_shortname,
-)
-from mmrelay.log_utils import get_logger
-from mmrelay.runtime_utils import is_running_as_service
 
 # Global config variable that will be set from config.py
 config = None
@@ -153,15 +152,15 @@ def _submit_coro(coro, loop=None):
 def _resolve_plugin_timeout(cfg: dict | None, default: float = 5.0) -> float:
     """
     Resolve and return a positive plugin timeout value from the given configuration.
-    
+
     Attempts to read meshtastic.plugin_timeout from cfg and convert it to a positive float.
     If the value is missing, non-numeric, or not greater than 0, the provided default is returned.
     Invalid or non-positive values will cause a warning to be logged.
-    
+
     Parameters:
         cfg (dict | None): Configuration mapping that may contain a "meshtastic" section.
         default (float): Fallback timeout (seconds) used when cfg does not provide a valid value.
-    
+
     Returns:
         float: A positive timeout in seconds.
     """
@@ -270,13 +269,13 @@ def serial_port_exists(port_name):
 def connect_meshtastic(passed_config=None, force_connect=False):
     """
     Establish and return a Meshtastic client connection (serial, BLE, or TCP), with configurable retries, exponential backoff, and single-time event subscription.
-    
+
     Attempts to (re)connect using the module configuration and updates module-level state on success (meshtastic_client, matrix_rooms, and event subscriptions). Supports the legacy "network" alias for TCP, verifies serial port presence before connecting, and honors a retry limit (or infinite retries when unspecified). On successful connection the client's node info and firmware metadata are probed and message/connection-lost handlers are subscribed once for the process lifetime.
-    
+
     Parameters:
         passed_config (dict, optional): If provided, replaces the module-level configuration (and may update matrix_rooms).
         force_connect (bool, optional): When True, forces creating a new connection even if one already exists.
-    
+
     Returns:
         The connected Meshtastic client instance on success, or None if connection cannot be established or shutdown is in progress.
     """
@@ -464,7 +463,7 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                     subscribed_to_connection_lost = True
                     logger.debug("Subscribed to meshtastic.connection.lost")
 
-        except (ConnectionRefusedError, MemoryError) as e:
+        except (ConnectionRefusedError, MemoryError):
             # Handle critical errors that should not be retried
             logger.exception("Critical connection error")
             return None
@@ -1142,17 +1141,17 @@ def sendTextReply(
 ):
     """
     Send a Meshtastic text reply that references a previous Meshtastic message.
-    
+
     Builds a Data payload containing `text` and `reply_id`, wraps it in a MeshPacket on `channelIndex`,
     and sends it using the provided Meshtastic interface.
-    
+
     Parameters:
         text (str): UTF-8 text to send.
         reply_id (int): ID of the Meshtastic message being replied to.
         destinationId (int | str, optional): Recipient address or node ID (defaults to broadcast).
         wantAck (bool, optional): If True, request an acknowledgement for the packet.
         channelIndex (int, optional): Channel index to send the packet on.
-    
+
     Returns:
         The result returned by the interface's _sendPacket call (typically the sent MeshPacket), or
         None if the interface is not available or sending fails.

@@ -154,9 +154,9 @@ async def main(config):
 
     async def shutdown():
         """
-        Signal the application to shut down.
+        Signal the application to begin shutdown.
         
-        Sets the Meshtastic shutdown flag and triggers the local shutdown event so tasks waiting on that event can begin shutdown/cleanup. This coroutine only signals shutdown; it does not close clients or perform cleanup itself.
+        Sets the Meshtastic shutdown flag and triggers the local shutdown event so any coroutines waiting on that event can start their cleanup. This coroutine only signals shutdown; it does not perform client shutdown or resource cleanup itself.
         """
         matrix_logger.info("Shutdown signal received. Closing down...")
         meshtastic_utils.shutting_down = True  # Set the shutting_down flag

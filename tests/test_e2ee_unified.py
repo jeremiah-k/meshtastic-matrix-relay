@@ -147,15 +147,15 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
             def import_side_effect(name):
                 """
                 Mock import side effect used in tests.
-                
+
                 Simulates Python's import behavior for use with import mocking: if the requested module name is "olm" it raises ImportError to emulate the dependency being missing; for any other module name it returns a MagicMock instance that stands in for the imported module.
-                
+
                 Parameters:
                     name (str): Full module name passed to the import (e.g., "olm", "nio.crypto").
-                
+
                 Returns:
                     unittest.mock.MagicMock: A mock object representing the imported module when the module is not "olm".
-                
+
                 Raises:
                     ImportError: If `name` is exactly "olm".
                 """
@@ -211,17 +211,18 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
 
                 def import_side_effect(name):
                     """
-                    Side-effect function for mocking imports during tests.
+                    Side-effect for tests used with import mocking.
                     
-                    When called with the module name to import:
-                    - Returns a MagicMock for "olm" and for any other module not starting with "nio".
-                    - Raises AssertionError if the requested module name starts with "nio" (used to ensure nio modules are not imported in test mode).
+                    When used as a replacement for importlib.import_module, returns a MagicMock for "olm"
+                    and for any module whose name does not start with "nio". Raises AssertionError if the
+                    requested module name starts with "nio" (used to assert that nio modules are not imported
+                    in test mode).
                     
                     Parameters:
-                        name (str): The dotted module name passed to the import mechanism.
+                        name (str): The dotted module name being requested.
                     
                     Returns:
-                        MagicMock: A mock object to stand in for the requested module.
+                        MagicMock: A mock module object for allowed imports.
                     
                     Raises:
                         AssertionError: If `name` starts with "nio".
@@ -243,6 +244,147 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
         assert not any(
             call.args[0].startswith("nio") for call in mock_import.call_args_list
         )
+
+    @patch("sys.platform", "linux")
+    @patch("mmrelay.e2ee_utils.os.path.exists")
+    def test_e2ee_hasattr_checks_success(self, mock_exists):
+        """Test hasattr checks for nio.crypto.OlmDevice and nio.store.SqliteStore when available"""
+        mock_exists.return_value = True
+
+        with patch.dict(os.environ, {"MMRELAY_TESTING": "0"}, clear=False):
+            with patch("mmrelay.e2ee_utils.importlib.import_module") as mock_import:
+                # Create mock modules with the required attributes
+                mock_olm = MagicMock()
+                mock_nio_crypto = MagicMock()
+                mock_nio_crypto.OlmDevice = MagicMock()
+                mock_nio_store = MagicMock()
+                mock_nio_store.SqliteStore = MagicMock()
+
+                def import_side_effect(name):
+                    """
+                    Return a mocked module object for a given import name to simulate runtime imports during tests.
+                    
+                    Parameters:
+                        name (str): The module name being imported (e.g., "olm", "nio.crypto", "nio.store").
+                    
+                    Returns:
+                        object: A test double for the requested module:
+                            - mock_olm for "olm"
+                            - mock_nio_crypto for "nio.crypto"
+                            - mock_nio_store for "nio.store"
+                            - a new MagicMock() for any other name
+                    """
+                    if name == "olm":
+                        return mock_olm
+                    elif name == "nio.crypto":
+                        return mock_nio_crypto
+                    elif name == "nio.store":
+                        return mock_nio_store
+                    return MagicMock()
+
+                mock_import.side_effect = import_side_effect
+                status = get_e2ee_status(self.base_config, self.config_path)
+
+                self.assertTrue(status["dependencies_installed"])
+                self.assertEqual(status["overall_status"], "ready")
+                # Verify all modules were imported
+                expected_imports = {"olm", "nio.crypto", "nio.store"}
+                actual_imports = {call.args[0] for call in mock_import.call_args_list}
+                self.assertTrue(expected_imports.issubset(actual_imports))
+
+    @patch("sys.platform", "linux")
+    @patch("mmrelay.e2ee_utils.os.path.exists")
+    def test_e2ee_hasattr_checks_missing_olmdevice(self, mock_exists):
+        """Test hasattr check failure when nio.crypto.OlmDevice is missing"""
+        mock_exists.return_value = True
+
+        with patch.dict(os.environ, {"MMRELAY_TESTING": "0"}, clear=False):
+            with patch("mmrelay.e2ee_utils.importlib.import_module") as mock_import:
+                # Create mock modules where nio.crypto lacks OlmDevice
+                mock_olm = MagicMock()
+                mock_nio_crypto = MagicMock()
+                # Remove the OlmDevice attribute to simulate missing dependency
+                del mock_nio_crypto.OlmDevice
+                mock_nio_store = MagicMock()
+                mock_nio_store.SqliteStore = MagicMock()
+
+                def import_side_effect(name):
+                    """
+                    Return a mocked module object for a given import name to simulate runtime imports during tests.
+                    
+                    Parameters:
+                        name (str): The module name being imported (e.g., "olm", "nio.crypto", "nio.store").
+                    
+                    Returns:
+                        object: A test double for the requested module:
+                            - mock_olm for "olm"
+                            - mock_nio_crypto for "nio.crypto"
+                            - mock_nio_store for "nio.store"
+                            - a new MagicMock() for any other name
+                    """
+                    if name == "olm":
+                        return mock_olm
+                    elif name == "nio.crypto":
+                        return mock_nio_crypto
+                    elif name == "nio.store":
+                        return mock_nio_store
+                    return MagicMock()
+
+                mock_import.side_effect = import_side_effect
+                status = get_e2ee_status(self.base_config, self.config_path)
+
+                self.assertFalse(status["dependencies_installed"])
+                self.assertEqual(status["overall_status"], "incomplete")
+                self.assertIn(
+                    "E2EE dependencies not installed (python-olm)", status["issues"]
+                )
+
+    @patch("sys.platform", "linux")
+    @patch("mmrelay.e2ee_utils.os.path.exists")
+    def test_e2ee_hasattr_checks_missing_sqlitestore(self, mock_exists):
+        """Test hasattr check failure when nio.store.SqliteStore is missing"""
+        mock_exists.return_value = True
+
+        with patch.dict(os.environ, {"MMRELAY_TESTING": "0"}, clear=False):
+            with patch("mmrelay.e2ee_utils.importlib.import_module") as mock_import:
+                # Create mock modules where nio.store lacks SqliteStore
+                mock_olm = MagicMock()
+                mock_nio_crypto = MagicMock()
+                mock_nio_crypto.OlmDevice = MagicMock()
+                mock_nio_store = MagicMock()
+                # Remove the SqliteStore attribute to simulate missing dependency
+                del mock_nio_store.SqliteStore
+
+                def import_side_effect(name):
+                    """
+                    Return a mocked module object for a given import name to simulate runtime imports during tests.
+                    
+                    Parameters:
+                        name (str): The module name being imported (e.g., "olm", "nio.crypto", "nio.store").
+                    
+                    Returns:
+                        object: A test double for the requested module:
+                            - mock_olm for "olm"
+                            - mock_nio_crypto for "nio.crypto"
+                            - mock_nio_store for "nio.store"
+                            - a new MagicMock() for any other name
+                    """
+                    if name == "olm":
+                        return mock_olm
+                    elif name == "nio.crypto":
+                        return mock_nio_crypto
+                    elif name == "nio.store":
+                        return mock_nio_store
+                    return MagicMock()
+
+                mock_import.side_effect = import_side_effect
+                status = get_e2ee_status(self.base_config, self.config_path)
+
+                self.assertFalse(status["dependencies_installed"])
+                self.assertEqual(status["overall_status"], "incomplete")
+                self.assertIn(
+                    "E2EE dependencies not installed (python-olm)", status["issues"]
+                )
 
 
 class TestRoomListFormatting(unittest.TestCase):

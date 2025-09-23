@@ -80,8 +80,13 @@ def get_e2ee_status(
         importlib.import_module("olm")
 
         if os.getenv("MMRELAY_TESTING") != "1":
-            importlib.import_module("nio.crypto").OlmDevice
-            importlib.import_module("nio.store").SqliteStore
+            nio_crypto = importlib.import_module("nio.crypto")
+            if not hasattr(nio_crypto, "OlmDevice"):
+                raise ImportError("nio.crypto.OlmDevice is unavailable")
+
+            nio_store = importlib.import_module("nio.store")
+            if not hasattr(nio_store, "SqliteStore"):
+                raise ImportError("nio.store.SqliteStore is unavailable")
 
         status["dependencies_installed"] = True
     except ImportError:

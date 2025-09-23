@@ -238,11 +238,11 @@ def print_version():
 def _validate_e2ee_dependencies():
     """
     Check whether end-to-end encryption (E2EE) is usable on the current platform.
-    
+
     Returns:
         bool: True if the platform is supported and required E2EE libraries can be imported;
         False otherwise.
-    
+
     Notes:
         - This function performs only local checks (platform and importability) and does not perform
           network I/O.
@@ -1499,13 +1499,13 @@ def handle_auth_logout(args):
 def handle_service_command(args):
     """
     Dispatch service-related subcommands.
-    
+
     Currently supports the "install" subcommand which imports and runs mmrelay.setup_utils.install_service().
     Returns 0 on successful installation, 1 on failure or for unknown subcommands.
-    
+
     Parameters:
         args: argparse.Namespace with a `service_command` attribute indicating the requested action.
-    
+
     Returns:
         int: Exit code (0 on success, 1 on error).
     """
@@ -1526,13 +1526,13 @@ def _diagnose_config_paths(args):
     """
     Print a diagnostic summary of resolved configuration file search paths and their directory accessibility.
     
-    Uses get_config_paths(args) to compute the ordered list of candidate config file locations, then prints each path with a concise directory status icon:
+    Computes the ordered list of candidate config file locations via get_config_paths(args) and prints each path with a short directory status icon:
     - ✅ directory exists and is writable
     - ⚠️ directory exists but is not writable
     - ❌ directory does not exist
     
     Parameters:
-        args (argparse.Namespace): Parsed CLI arguments used to determine the config search order.
+        args (argparse.Namespace): CLI arguments used to determine the config search order (passed to get_config_paths).
     """
     print("1. Testing configuration paths...")
     from mmrelay.config import get_config_paths
@@ -1551,11 +1551,11 @@ def _diagnose_config_paths(args):
 def _diagnose_sample_config_accessibility():
     """
     Check availability of the bundled sample configuration and print a short diagnostic.
-    
+
     Performs two non-destructive checks and prints human-readable results:
     1) Verifies whether the sample config file exists at the path returned by mmrelay.tools.get_sample_config_path().
     2) Attempts to read the embedded resource "sample_config.yaml" from the mmrelay.tools package via importlib.resources and reports success and the content length.
-    
+
     Returns:
         bool: True if a filesystem sample config exists at the resolved path; False otherwise.
     """
@@ -1586,18 +1586,19 @@ def _diagnose_sample_config_accessibility():
 
 def _diagnose_platform_specific(args):
     """
-    Run platform-specific diagnostic checks.
+    Run platform-specific diagnostic checks and report results.
     
-    On Windows, imports and runs Windows-specific requirement checks and a configuration-generation
-    test from mmrelay.windows_utils, printing per-component results and any warnings. On non-Windows
-    platforms this reports that platform-specific tests are not required.
+    On Windows, attempts to import and run Windows-specific requirement checks and a
+    configuration-generation test, printing per-component statuses and any warnings.
+    On non-Windows platforms this reports that platform-specific tests are not
+    required.
     
     Parameters:
-        args (argparse.Namespace): Parsed CLI arguments; passed through to the Windows
-            config-generation test when running on Windows.
+        args (argparse.Namespace): CLI arguments passed through to the Windows
+            configuration-generation test (only used when running on Windows).
     
     Returns:
-        bool: True if the platform is Windows (Windows checks were executed), False otherwise.
+        bool: True if Windows checks were executed (running on Windows), False otherwise.
     """
     print("3. Platform-specific diagnostics...")
     import sys
@@ -1704,7 +1705,7 @@ logging:
 def _diagnose_minimal_config_template():
     """
     Validate the built-in minimal YAML configuration template and print a concise pass/fail status.
-    
+
     Attempts to parse the string returned by _get_minimal_config_template() using yaml.safe_load. Prints a single-line result showing a ✅ with the template character length when the template is valid YAML, or a ❌ with the YAML parsing error when invalid. This is a non-destructive diagnostic helper that prints output and does not return a value.
     """
     print("4. Testing minimal config template fallback...")
@@ -1722,13 +1723,13 @@ def handle_config_diagnose(args):
     """
     Run non-destructive diagnostics for the MMRelay configuration subsystem and print a human-readable report.
     
-    Performs four checks: resolves candidate config paths and reports directory accessibility; verifies packaged sample config availability (filesystem and importlib.resources fallback); runs platform-specific diagnostics (Windows-focused where applicable); and validates the built-in minimal YAML template. Prints findings and suggested next steps to stdout/stderr.
+    Performs four checks without modifying user files: (1) resolves and reports candidate configuration file paths and their directory accessibility, (2) verifies availability of the packaged sample configuration, (3) runs platform-specific diagnostics (Windows checks when applicable), and (4) validates the built-in minimal YAML configuration template. Results and actionable guidance are written to stdout/stderr.
     
     Parameters:
-        args (argparse.Namespace): Parsed CLI arguments used to resolve config search paths and to control platform-specific checks.
+        args (argparse.Namespace): Parsed CLI arguments used to resolve configuration search paths and to control platform-specific checks.
     
     Returns:
-        int: Exit code (0 on success, 1 on failure).
+        int: Exit code (0 on success, 1 on failure). On failure an error summary is printed to stderr.
     """
     print("MMRelay Configuration System Diagnostics")
     print("=" * 40)
