@@ -244,6 +244,108 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
             call.args[0].startswith("nio") for call in mock_import.call_args_list
         )
 
+    @patch("sys.platform", "linux")
+    @patch("mmrelay.e2ee_utils.os.path.exists")
+    def test_e2ee_hasattr_checks_success(self, mock_exists):
+        """Test hasattr checks for nio.crypto.OlmDevice and nio.store.SqliteStore when available"""
+        mock_exists.return_value = True
+
+        with patch.dict(os.environ, {"MMRELAY_TESTING": "0"}, clear=False):
+            with patch("mmrelay.e2ee_utils.importlib.import_module") as mock_import:
+                # Create mock modules with the required attributes
+                mock_olm = MagicMock()
+                mock_nio_crypto = MagicMock()
+                mock_nio_crypto.OlmDevice = MagicMock()
+                mock_nio_store = MagicMock()
+                mock_nio_store.SqliteStore = MagicMock()
+
+                def import_side_effect(name):
+                    if name == "olm":
+                        return mock_olm
+                    elif name == "nio.crypto":
+                        return mock_nio_crypto
+                    elif name == "nio.store":
+                        return mock_nio_store
+                    return MagicMock()
+
+                mock_import.side_effect = import_side_effect
+                status = get_e2ee_status(self.base_config, self.config_path)
+
+                self.assertTrue(status["dependencies_installed"])
+                self.assertEqual(status["overall_status"], "ready")
+                # Verify all modules were imported
+                expected_imports = {"olm", "nio.crypto", "nio.store"}
+                actual_imports = {call.args[0] for call in mock_import.call_args_list}
+                self.assertTrue(expected_imports.issubset(actual_imports))
+
+    @patch("sys.platform", "linux")
+    @patch("mmrelay.e2ee_utils.os.path.exists")
+    def test_e2ee_hasattr_checks_missing_olmdevice(self, mock_exists):
+        """Test hasattr check failure when nio.crypto.OlmDevice is missing"""
+        mock_exists.return_value = True
+
+        with patch.dict(os.environ, {"MMRELAY_TESTING": "0"}, clear=False):
+            with patch("mmrelay.e2ee_utils.importlib.import_module") as mock_import:
+                # Create mock modules where nio.crypto lacks OlmDevice
+                mock_olm = MagicMock()
+                mock_nio_crypto = MagicMock()
+                # Remove the OlmDevice attribute to simulate missing dependency
+                del mock_nio_crypto.OlmDevice
+                mock_nio_store = MagicMock()
+                mock_nio_store.SqliteStore = MagicMock()
+
+                def import_side_effect(name):
+                    if name == "olm":
+                        return mock_olm
+                    elif name == "nio.crypto":
+                        return mock_nio_crypto
+                    elif name == "nio.store":
+                        return mock_nio_store
+                    return MagicMock()
+
+                mock_import.side_effect = import_side_effect
+                status = get_e2ee_status(self.base_config, self.config_path)
+
+                self.assertFalse(status["dependencies_installed"])
+                self.assertEqual(status["overall_status"], "incomplete")
+                self.assertIn(
+                    "E2EE dependencies not installed (python-olm)", status["issues"]
+                )
+
+    @patch("sys.platform", "linux")
+    @patch("mmrelay.e2ee_utils.os.path.exists")
+    def test_e2ee_hasattr_checks_missing_sqlitestore(self, mock_exists):
+        """Test hasattr check failure when nio.store.SqliteStore is missing"""
+        mock_exists.return_value = True
+
+        with patch.dict(os.environ, {"MMRELAY_TESTING": "0"}, clear=False):
+            with patch("mmrelay.e2ee_utils.importlib.import_module") as mock_import:
+                # Create mock modules where nio.store lacks SqliteStore
+                mock_olm = MagicMock()
+                mock_nio_crypto = MagicMock()
+                mock_nio_crypto.OlmDevice = MagicMock()
+                mock_nio_store = MagicMock()
+                # Remove the SqliteStore attribute to simulate missing dependency
+                del mock_nio_store.SqliteStore
+
+                def import_side_effect(name):
+                    if name == "olm":
+                        return mock_olm
+                    elif name == "nio.crypto":
+                        return mock_nio_crypto
+                    elif name == "nio.store":
+                        return mock_nio_store
+                    return MagicMock()
+
+                mock_import.side_effect = import_side_effect
+                status = get_e2ee_status(self.base_config, self.config_path)
+
+                self.assertFalse(status["dependencies_installed"])
+                self.assertEqual(status["overall_status"], "incomplete")
+                self.assertIn(
+                    "E2EE dependencies not installed (python-olm)", status["issues"]
+                )
+
 
 class TestRoomListFormatting(unittest.TestCase):
     """Test room list formatting with E2EE status"""
