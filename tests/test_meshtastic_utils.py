@@ -838,7 +838,7 @@ def test_connect_meshtastic_retry_on_serial_exception(
         "meshtastic": {
             "connection_type": "serial",
             "serial_port": "/dev/ttyUSB0",
-            "retry_limit": 2,
+            "retries": 2,
         }
     }
 

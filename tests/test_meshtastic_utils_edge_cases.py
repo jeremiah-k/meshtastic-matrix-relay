@@ -16,7 +16,7 @@ import asyncio
 import os
 import sys
 import unittest
-from concurrent.futures import TimeoutError
+from concurrent.futures import TimeoutError as ConcurrentTimeoutError
 from unittest.mock import AsyncMock, MagicMock, patch
 
 # Add src to path for imports
@@ -98,7 +98,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         with patch("mmrelay.meshtastic_utils.serial_port_exists", return_value=True):
             with patch(
                 "mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface",
-                side_effect=TimeoutError("Connection timeout"),
+                side_effect=ConcurrentTimeoutError("Connection timeout"),
             ):
                 with patch("mmrelay.meshtastic_utils.logger") as mock_logger, patch(
                     "mmrelay.meshtastic_utils.is_running_as_service", return_value=True
@@ -155,7 +155,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
             result = connect_meshtastic(config)
             self.assertIsNone(result)
-            mock_logger.exception.assert_called()
+            mock_logger.error.assert_called()
 
     def test_connect_meshtastic_exponential_backoff_max_retries(self):
         """
@@ -281,7 +281,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
                 self.calls.append(timeout)
                 raise self.exc
 
-        timeout_exc = TimeoutError("Plugin timeout")
+        timeout_exc = ConcurrentTimeoutError("Plugin timeout")
         future = DummyFuture(timeout_exc)
 
         plugin = MagicMock()
@@ -345,7 +345,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
                 self.calls.append(timeout)
                 raise self.exc
 
-        timeout_exc = TimeoutError("Plugin timeout")
+        timeout_exc = ConcurrentTimeoutError("Plugin timeout")
         future = DummyFuture(timeout_exc)
 
         plugin = MagicMock()

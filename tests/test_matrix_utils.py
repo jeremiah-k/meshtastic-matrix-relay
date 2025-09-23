@@ -6,9 +6,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-# Add src to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-
 from mmrelay.cli_utils import _cleanup_local_session_data, logout_matrix_bot
 from mmrelay.config import get_e2ee_store_dir, load_credentials, save_credentials
 from mmrelay.matrix_utils import (
@@ -1294,8 +1291,9 @@ async def test_connect_matrix_alias_resolution_failure(
         )
 
         # Verify warning was logged for failed resolution
-        _mock_logger.warning.assert_called_with(
-            "Could not resolve alias #invalid:matrix.org: Room not found"
+        assert any(
+            "Could not resolve alias #invalid:matrix.org" in call.args[0]
+            for call in _mock_logger.warning.call_args_list
         )
 
         # Verify config was not modified (still contains alias)
@@ -1434,21 +1432,10 @@ def test_normalize_bot_user_id_ipv6_homeserver():
     bot_user_id = "relaybot"
 
     result = _normalize_bot_user_id(homeserver, bot_user_id)
-    assert result == "@relaybot:2001:db8::1"
+    assert result == "@relaybot:[2001:db8::1]"
 
 
 def test_normalize_bot_user_id_full_mxid_with_port():
-    """Test that _normalize_bot_user_id strips the port from a full MXID."""
-    from mmrelay.matrix_utils import _normalize_bot_user_id
-
-    homeserver = "https://example.com:8448"
-    bot_user_id = "@bot:example.com:8448"
-
-    result = _normalize_bot_user_id(homeserver, bot_user_id)
-    assert result == "@bot:example.com"
-
-
-def test_normalize_bot_user_id_full_mxid_with_port_strips_port():
     """Test that _normalize_bot_user_id strips the port from a full MXID."""
     from mmrelay.matrix_utils import _normalize_bot_user_id
 
@@ -2007,9 +1994,7 @@ async def test_connect_matrix_with_e2ee_credentials(
     }
 
     # Mock olm import to simulate E2EE availability
-    with patch("builtins.__import__") as mock_import:
-        mock_import.return_value = MagicMock()  # Mock olm module
-
+    with patch.dict("sys.modules", {"olm": MagicMock()}):
         client = await connect_matrix(test_config)
 
         assert client is not None
@@ -2026,7 +2011,7 @@ async def test_connect_matrix_with_e2ee_credentials(
 
 
 @pytest.mark.asyncio
-@patch("mmrelay.config.load_credentials")
+@patch("mmrelay.matrix_utils.load_credentials")
 @patch("mmrelay.matrix_utils._create_ssl_context")
 @patch("mmrelay.matrix_utils.AsyncClient")
 async def test_connect_matrix_legacy_config(

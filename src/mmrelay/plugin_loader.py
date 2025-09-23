@@ -25,7 +25,10 @@ plugins_loaded = False
 
 try:
     _PLUGIN_DEPS_DIR = os.path.join(get_base_dir(), "plugins", "deps")
-except Exception:  # pragma: no cover - base dir may not be resolvable during import
+except (
+    Exception
+) as exc:  # pragma: no cover - base dir may not be resolvable during import  # noqa: BLE001
+    logger.debug("Unable to resolve base dir for plugin deps at import time: %s", exc)
     _PLUGIN_DEPS_DIR = None
 else:
     try:
@@ -59,7 +62,13 @@ def _collect_requirements(
     requirements: List[str] = []
     base_dir = os.path.dirname(normalized_path)
 
-    with open(normalized_path, encoding="utf-8") as handle:
+    try:
+        handle = open(normalized_path, encoding="utf-8")
+    except FileNotFoundError:
+        logger.warning("Requirements file not found: %s", normalized_path)
+        return []
+
+    with handle:
         for raw_line in handle:
             line = raw_line.strip()
             if not line or line.startswith("#"):
@@ -71,6 +80,14 @@ def _collect_requirements(
 
             lower_line = line.lower()
             if lower_line.startswith("--requirement="):
+                nested = line.split("=", 1)[1].strip()
+                nested_path = (
+                    nested if os.path.isabs(nested) else os.path.join(base_dir, nested)
+                )
+                requirements.extend(_collect_requirements(nested_path, visited=visited))
+                continue
+
+            if lower_line.startswith("--constraint="):
                 nested = line.split("=", 1)[1].strip()
                 nested_path = (
                     nested if os.path.isabs(nested) else os.path.join(base_dir, nested)
@@ -93,6 +110,26 @@ def _collect_requirements(
                 else:
                     logger.warning(
                         "Ignoring malformed requirement include directive in %s: %s",
+                        normalized_path,
+                        raw_line.rstrip(),
+                    )
+                continue
+
+            if lower_line.startswith("-c ") or lower_line.startswith("--constraint "):
+                parts = line.split(None, 1)
+                if len(parts) == 2:
+                    nested = parts[1].strip()
+                    nested_path = (
+                        nested
+                        if os.path.isabs(nested)
+                        else os.path.join(base_dir, nested)
+                    )
+                    requirements.extend(
+                        _collect_requirements(nested_path, visited=visited)
+                    )
+                else:
+                    logger.warning(
+                        "Ignoring malformed constraint directive in %s: %s",
                         normalized_path,
                         raw_line.rstrip(),
                     )
@@ -241,14 +278,10 @@ def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
 
         logger.info("Successfully installed requirements for plugin %s", repo_name)
         _refresh_dependency_paths()
-    except (subprocess.CalledProcessError, FileNotFoundError) as exc:
-        logger.error(
-            "Error installing requirements for plugin %s: %s",
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        logger.exception(
+            "Error installing requirements for plugin %s (requirements: %s)",
             repo_name,
-            exc,
-        )
-        logger.error(
-            "Please manually install the requirements from %s",
             requirements_path,
         )
         logger.warning(
@@ -338,6 +371,8 @@ def _run(cmd, timeout=120, **kwargs):
         raise TypeError("all command arguments must be strings")
     if any(not arg.strip() for arg in cmd):
         raise ValueError("command arguments cannot be empty/whitespace")
+    if kwargs.get("shell"):
+        raise ValueError("shell=True is not allowed in _run")
     # Ensure text mode by default
     kwargs.setdefault("text", True)
     return subprocess.run(cmd, check=True, timeout=timeout, **kwargs)
@@ -388,25 +423,32 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
             - value: the tag or branch name to check out.
 
     Returns:
-        bool: True if the repository was successfully cloned/updated and dependency handling completed (or non-fatal errors occurred); False if a fatal git or filesystem error prevented cloning or updating.
+        bool: True if the repository was successfully cloned/updated; False if a fatal git or filesystem error prevented cloning or updating.
     """
     repo_url = (repo_url or "").strip()
-    ref_type = ref.get("type")  # "tag" or "branch"
+    ref_type = ref.get("type")  # expected: "tag" or "branch"
     ref_value = (ref.get("value") or "").strip()
 
     if not repo_url or repo_url.startswith("-"):
         logger.error("Repository URL looks invalid or dangerous: %r", repo_url)
         return False
-    if not ref_type:
-        logger.error("Missing ref type for community plugin %r", repo_url)
+    allowed_ref_types = {"tag", "branch"}
+    if ref_type not in allowed_ref_types:
+        logger.error(
+            "Invalid ref type %r (expected 'tag' or 'branch') for %r",
+            ref_type,
+            repo_url,
+        )
+        return False
+    if not ref_value:
+        logger.error("Missing ref value for %s on %r", ref_type, repo_url)
         return False
     if ref_value.startswith("-"):
         logger.error("Ref value looks invalid (starts with '-'): %r", ref_value)
         return False
-    if ref_type in {"tag", "branch"} and ref_value:
-        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]*", ref_value):
-            logger.error("Invalid %s name supplied: %r", ref_type, ref_value)
-            return False
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]*", ref_value):
+        logger.error("Invalid %s name supplied: %r", ref_type, ref_value)
+        return False
 
     # Extract the repository name from the URL
     repo_name = os.path.splitext(os.path.basename(repo_url.rstrip("/")))[0]
@@ -666,7 +708,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                                 "Could not checkout any branch, using current state"
                             )
                             return True
-        except subprocess.CalledProcessError as e:
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
             logger.error(f"Error updating repository {repo_name}: {e}")
             logger.error(
                 f"Please manually git clone the repository {repo_url} into {repo_path}"
@@ -827,7 +869,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                                 f"Cloned repository {repo_name} from {repo_url} (default branch)"
                             )
                             return True
-        except subprocess.CalledProcessError as e:
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
             logger.error(f"Error cloning repository {repo_name}: {e}")
             logger.error(
                 f"Please manually git clone the repository {repo_url} into {repo_path}"

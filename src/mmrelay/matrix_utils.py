@@ -237,6 +237,16 @@ def _normalize_bot_user_id(homeserver: str, bot_user_id: str) -> str:
     if not bot_user_id:
         return bot_user_id
 
+    def _canonical_server(value: str | None) -> str | None:
+        if not value:
+            return value
+        value = value.strip()
+        if value.startswith("[") and value.endswith("]"):
+            value = value[1:-1]
+        if ":" in value and not value.startswith("["):
+            return f"[{value}]"
+        return value
+
     # Derive domain from homeserver (tolerate missing scheme; drop brackets/port/paths)
     parsed = urlparse(homeserver)
     domain = parsed.hostname or urlparse(f"//{homeserver}").hostname
@@ -245,9 +255,7 @@ def _normalize_bot_user_id(homeserver: str, bot_user_id: str) -> str:
         host = homeserver.split("://")[-1].split("/", 1)[0]
         domain = re.sub(r":\d+$", "", host)
 
-    # Strip brackets from IPv6 literals
-    if domain and domain.startswith("[") and domain.endswith("]"):
-        domain = domain[1:-1]
+    domain = _canonical_server(domain)
 
     # Normalize user ID
     localpart, *serverpart = bot_user_id.lstrip("@").split(":", 1)
@@ -259,8 +267,7 @@ def _normalize_bot_user_id(homeserver: str, bot_user_id: str) -> str:
             "",
             raw_server,
         )
-        if server and server.startswith("[") and server.endswith("]"):
-            server = server[1:-1]
+        server = _canonical_server(server)
         return f"@{localpart}:{server}"
 
     # No server part, add the derived domain

@@ -164,8 +164,6 @@ def _resolve_plugin_timeout(cfg: dict | None, default: float = 5.0) -> float:
             raw_value,
             default,
         )
-    except Exception:
-        logger.debug("Unexpected error parsing plugin timeout", exc_info=True)
 
     return default
 
@@ -324,9 +322,11 @@ def connect_meshtastic(passed_config=None, force_connect=False):
 
     # Move retry loop outside the lock to prevent blocking other threads
     meshtastic_settings = config.get("meshtastic", {}) if config else {}
-    retry_limit = meshtastic_settings.get("retries", INFINITE_RETRIES)
+    retry_limit_raw = meshtastic_settings.get(
+        "retries", meshtastic_settings.get("retry_limit", INFINITE_RETRIES)
+    )
     try:
-        retry_limit = int(retry_limit)
+        retry_limit = int(retry_limit_raw)
     except (TypeError, ValueError):
         retry_limit = INFINITE_RETRIES
     attempts = 0
@@ -392,7 +392,7 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                 # Connect without progress indicator
                 client = meshtastic.tcp_interface.TCPInterface(hostname=target_host)
             else:
-                logger.exception(f"Unknown connection type: {connection_type}")
+                logger.error(f"Unknown connection type: {connection_type}")
                 return None
 
             successful = True
@@ -635,11 +635,10 @@ def on_meshtastic_message(packet, interface):
         return
 
     # Import the configuration helpers
-    from mmrelay.matrix_utils import get_interaction_settings, message_storage_enabled
+    from mmrelay.matrix_utils import get_interaction_settings
 
     # Get interaction settings
     interactions = get_interaction_settings(config)
-    message_storage_enabled(interactions)
 
     # Filter packets based on interaction settings
     if packet.get("decoded", {}).get("portnum") == TEXT_MESSAGE_APP:
@@ -798,8 +797,11 @@ def on_meshtastic_message(packet, interface):
 
         # Check if channel is mapped to a Matrix room
         channel_mapped = False
-        for room in matrix_rooms:
-            if room["meshtastic_channel"] == channel:
+        iterable_rooms = (
+            matrix_rooms.values() if isinstance(matrix_rooms, dict) else matrix_rooms
+        )
+        for room in iterable_rooms:
+            if isinstance(room, dict) and room.get("meshtastic_channel") == channel:
                 channel_mapped = True
                 break
 
@@ -912,8 +914,13 @@ def on_meshtastic_message(packet, interface):
             logger.error("matrix_rooms is empty. Cannot relay message to Matrix.")
             return
 
-        for room in matrix_rooms:
-            if room["meshtastic_channel"] == channel:
+        iterable_rooms = (
+            matrix_rooms.values() if isinstance(matrix_rooms, dict) else matrix_rooms
+        )
+        for room in iterable_rooms:
+            if not isinstance(room, dict):
+                continue
+            if room.get("meshtastic_channel") == channel:
                 # Storing the message_map (if enabled) occurs inside matrix_relay() now,
                 # controlled by relay_reactions.
                 try:
