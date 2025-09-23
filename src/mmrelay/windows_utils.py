@@ -28,11 +28,10 @@ def is_windows() -> bool:
 def setup_windows_console() -> None:
     """
     Configure the Windows console for UTF-8 output and ANSI (VT100) color support.
-
-    Best-effort: on Windows this attempts to set sys.stdout/sys.stderr encoding to UTF-8
-    (if supported) and enable Virtual Terminal Processing so ANSI colors and Unicode
-    render correctly. The function is a no-op on non-Windows platforms and silently
-    returns if the platform or environment does not support these operations.
+    
+    Best-effort operation: on Windows this attempts to set stdout/stderr encoding to UTF-8
+    (if supported) and enable Virtual Terminal Processing so ANSI color sequences and
+    Unicode render correctly. No-op on non-Windows platforms; failures are silently ignored.
     """
     if not is_windows():
         return

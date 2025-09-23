@@ -216,9 +216,9 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
 
         def _submit_coro_mock(coro, loop=None):
             """
-            Run the given coroutine synchronously (using asyncio.run) and return a concurrent.futures.Future that is completed with its result or exception.
-
-            This test helper executes the coroutine immediately to surface any exceptions and wraps the outcome in a Future. The optional `loop` parameter is accepted for API compatibility but is ignored.
+            Run a coroutine synchronously and return a concurrent.futures.Future completed with its outcome.
+            
+            This test helper executes `coro` immediately via `asyncio.run` so any exceptions are raised and captured; the returned Future will be set with the coroutine's result or its exception. The optional `loop` parameter is accepted for API compatibility but is ignored.
             """
             f = Future()
             try:
@@ -274,10 +274,25 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
 
         class DummyFuture:
             def __init__(self, exc):
+                """
+                Initialize the object with an exception and an empty call history.
+                
+                Parameters:
+                    exc (BaseException): The exception instance to store for later inspection or re-raising.
+                """
                 self.exc = exc
                 self.calls = []
 
             def result(self, timeout=None):
+                """
+                Record the provided timeout value and raise the stored exception.
+                
+                Parameters:
+                    timeout (float | None): Timeout passed in; appended to self.calls for later inspection.
+                
+                Raises:
+                    Any: Re-raises the exception stored in self.exc.
+                """
                 self.calls.append(timeout)
                 raise self.exc
 
@@ -338,10 +353,25 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
 
         class DummyFuture:
             def __init__(self, exc):
+                """
+                Initialize the object with an exception and an empty call history.
+                
+                Parameters:
+                    exc (BaseException): The exception instance to store for later inspection or re-raising.
+                """
                 self.exc = exc
                 self.calls = []
 
             def result(self, timeout=None):
+                """
+                Record the provided timeout value and raise the stored exception.
+                
+                Parameters:
+                    timeout (float | None): Timeout passed in; appended to self.calls for later inspection.
+                
+                Raises:
+                    Any: Re-raises the exception stored in self.exc.
+                """
                 self.calls.append(timeout)
                 raise self.exc
 

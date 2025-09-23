@@ -53,9 +53,10 @@ class TestMainEntryPoint(unittest.TestCase):
     @patch("builtins.print")
     @patch("sys.exit")
     def test_main_entry_point_import_error(self, mock_exit, mock_print, mock_main):
-        """Verify that when mmrelay.cli.main raises ImportError the __main__ entrypoint prints two specific error messages to stderr and exits with status 1.
-
-        Executes src/mmrelay/__main__.py as a script (setting __name__ == "__main__") and asserts that:
+        """
+        Verify that when mmrelay.cli.main raises ImportError, the package entry point prints two specific error messages to stderr and exits with status 1.
+        
+        The test executes src/mmrelay/__main__.py with __name__ == "__main__" while mmrelay.cli.main is patched to raise ImportError("Module not found"), then asserts:
         - "Error importing MMRelay CLI: Module not found" is printed to stderr.
         - "Please ensure MMRelay is properly installed." is printed to stderr.
         - sys.exit is called with code 1.

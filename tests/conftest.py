@@ -253,25 +253,67 @@ sys.modules["s2sphere"] = MockS2Module()
 
 class MockStaticmapsObject:
     def __init__(self):
+        """
+        Initialize the object and create an empty `data` dictionary for storing arbitrary key/value pairs.
+        """
         self.data = {}
 
 
 class MockStaticmapsContext:
     def __init__(self):
+        """
+        Initialize a MockStaticmapsContext.
+        
+        Creates instance attributes used by the test double:
+        - objects (list): container for map objects added via add_object.
+        - tile_provider: placeholder for the configured tile provider (or None).
+        - zoom: placeholder for the current zoom level (or None).
+        """
         self.objects = []
         self.tile_provider = None
         self.zoom = None
 
     def set_tile_provider(self, provider):
+        """
+        Set the tile provider used to fetch map tiles for rendering.
+        
+        Parameters:
+            provider: Tile provider object or callable compatible with the renderer (e.g., a provider returned by `tile_provider_OSM` or a custom provider).
+        """
         self.tile_provider = provider
 
     def set_zoom(self, zoom):
+        """
+        Set the rendering zoom level for the context.
+        
+        Parameters:
+            zoom (int|float): Zoom level to apply; stored on the context as the `zoom` attribute.
+        """
         self.zoom = zoom
 
     def add_object(self, obj):
+        """
+        Add an object to the context's collection.
+        
+        Parameters:
+            obj: The renderable object to add to this context's internal `objects` list.
+        
+        Notes:
+            This method appends `obj` without validation or modification.
+        """
         self.objects.append(obj)
 
     def render_pillow(self, width, height):
+        """
+        Render the map into a Pillow-compatible image (mock) for testing.
+        
+        Parameters:
+            width (int): Output image width in pixels.
+            height (int): Output image height in pixels.
+        
+        Returns:
+            PIL.Image.Image (MagicMock): A MagicMock that mimics a Pillow Image object (suitable for tests that call image methods like `save`).
+        """
         return MagicMock()
 
 
@@ -286,6 +328,16 @@ class MockStaticmapsModule:
 
     @staticmethod
     def create_latlng(lat, lon):
+        """
+        Create a MockLatLng from latitude and longitude expressed in decimal degrees.
+        
+        Parameters:
+            lat (float): Latitude in decimal degrees.
+            lon (float): Longitude in decimal degrees.
+        
+        Returns:
+            MockLatLng: A mock LatLng object created via MockLatLng.from_degrees.
+        """
         return MockLatLng.from_degrees(lat, lon)
 
 
@@ -295,12 +347,12 @@ sys.modules["staticmaps"] = MockStaticmapsModule()
 @pytest.fixture(autouse=True)
 def meshtastic_loop_safety(monkeypatch):
     """
-    Create and provide a dedicated asyncio event loop for tests that interact with meshtastic_utils, and ensure it is fully cleaned up after the test module.
-
-    This module-scoped pytest fixture creates a fresh event loop, assigns it to mmrelay.meshtastic_utils.event_loop for use during tests, yields the loop, then cancels any remaining tasks, waits for them to finish, closes the loop, and clears the global event loop reference on teardown.
-
+    Module-scoped pytest fixture that provides a dedicated asyncio event loop for tests that interact with mmrelay.meshtastic_utils.
+    
+    Creates a fresh event loop, assigns it to mmrelay.meshtastic_utils.event_loop for the duration of the test module, yields the loop to tests, and on teardown cancels any remaining tasks, awaits their completion, closes the loop, and clears the global event loop reference.
+    
     Yields:
-        asyncio.AbstractEventLoop: the newly created event loop for the test module.
+        asyncio.AbstractEventLoop: a new event loop isolated to the test module.
     """
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
@@ -481,11 +533,16 @@ def reset_banner_flag():
 @pytest.fixture
 def comprehensive_cleanup():
     """
-    Comprehensive resource cleanup fixture for tests that create async resources.
-
-    This fixture ensures all system resources are properly cleaned up after tests,
-    preventing resource warnings about unclosed sockets and event loops.
-    Particularly important for Python 3.10 compatibility in CI environments.
+    Pytest fixture that performs a thorough cleanup of async resources, event loops, executors, and non-daemon threads after a test.
+    
+    When used as an autouse fixture, it yields to the test and on teardown:
+    - cancels pending asyncio tasks and waits for their completion,
+    - shuts down the loop's default executor (if any) and closes the event loop,
+    - clears the global event loop reference,
+    - runs garbage collection before and after thread cleanup,
+    - joins any remaining non-daemon threads for a short timeout.
+    
+    This prevents resource warnings about unclosed sockets, executors, or event loops and reduces flaky CI failures related to lingering async resources.
     """
     yield
 
@@ -545,25 +602,46 @@ def comprehensive_cleanup():
 @pytest.fixture
 def mock_event_loop(monkeypatch):
     """
-    Patch asyncio loop helpers so `run_in_executor` executes synchronously for the active event loop.
-
-    The fixture intercepts calls to ``asyncio.get_running_loop`` (and ``get_event_loop`` for
-    backwards-compat) so the returned loop has its ``run_in_executor`` method replaced with a
-    synchronous implementation. The replacement executes the callable immediately on the current
-    thread and returns a ``Future`` completed with the result, mirroring the contract expected by
-    callers while avoiding background thread creation that can prolong test teardown.
+    Patch asyncio loop helpers so `run_in_executor` executes synchronously during tests.
+    
+    This pytest fixture replaces asyncio.get_running_loop (and get_event_loop for
+    backwards compatibility) with wrappers that ensure the returned event loop has
+    its run_in_executor method replaced by a synchronous implementation. The
+    replacement runs the provided callable immediately on the current thread and
+    returns a Future already completed with the result (or with the raised
+    exception). The loop is marked as patched to avoid repeated replacements. This
+    prevents background thread creation from run_in_executor calls and speeds test
+    teardown while preserving the Future-based API callers expect.
     """
 
     original_get_running_loop = asyncio.get_running_loop
     original_get_event_loop = asyncio.get_event_loop
 
     def _patch_loop(loop: asyncio.AbstractEventLoop) -> asyncio.AbstractEventLoop:
+        """
+        Return the given event loop with its `run_in_executor` replaced by a synchronous implementation.
+        
+        If `loop` is None or already patched (has `_mmrelay_run_in_executor_patched`), it is returned unchanged.
+        The patched `run_in_executor` executes the callable immediately on the loop's thread and returns a Future with the result
+        or exception. The function also marks the loop with `_mmrelay_run_in_executor_patched = True` to avoid double-patching.
+        
+        Parameters:
+            loop (asyncio.AbstractEventLoop | None): The event loop to patch.
+        
+        Returns:
+            asyncio.AbstractEventLoop | None: The same loop instance (patched) or None if input was None.
+        """
         if loop is None:
             return loop
         if getattr(loop, "_mmrelay_run_in_executor_patched", False):
             return loop
 
         def run_in_executor_sync(_executor, func, *args, **kwargs):
+            """
+            Execute a callable synchronously and return an asyncio Future representing its outcome.
+            
+            Runs `func(*args, **kwargs)` on the current thread (the provided `_executor` is ignored), captures its return value or exception, and sets that value/exception on a newly created Future which is returned. The Future is created on the active/patched event loop so callers can await it like the real `run_in_executor`.
+            """
             future = loop.create_future()
             try:
                 result = func(*args, **kwargs)
@@ -578,10 +656,20 @@ def mock_event_loop(monkeypatch):
         return loop
 
     def patched_get_running_loop():
+        """
+        Return the currently running asyncio event loop, after applying module-specific patching.
+        
+        This calls the original get_running_loop implementation to obtain the active loop and then passes it to _patch_loop, which replaces the loop's run_in_executor with a synchronous implementation if needed. The returned object is the (possibly patched) event loop.
+        """
         loop = original_get_running_loop()
         return _patch_loop(loop)
 
     def patched_get_event_loop():
+        """
+        Return the current asyncio event loop after applying test-specific patches.
+        
+        Calls the original event loop getter to obtain the active loop, then passes it to _patch_loop and returns the patched loop. The patched loop exposes a run_in_executor that executes callables synchronously and returns a completed Future with the callable's result or exception, preventing background thread creation during tests.
+        """
         loop = original_get_event_loop()
         return _patch_loop(loop)
 
