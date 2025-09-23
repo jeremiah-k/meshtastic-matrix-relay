@@ -145,6 +145,21 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
         with patch("mmrelay.e2ee_utils.importlib.import_module") as mock_import:
 
             def import_side_effect(name):
+                """
+                Mock side-effect for import calls used in tests.
+                
+                When called with the module name "olm" this function simulates a missing dependency by raising ImportError;
+                for any other module name it returns a MagicMock instance to emulate a successfully imported module.
+                
+                Parameters:
+                    name (str): The fully qualified name of the module being imported.
+                
+                Returns:
+                    unittest.mock.MagicMock: A mock object representing the imported module (when name != "olm").
+                
+                Raises:
+                    ImportError: If name == "olm", to simulate the olm package not being installed.
+                """
                 if name == "olm":
                     raise ImportError("No module named 'olm'")
                 return MagicMock()
@@ -196,6 +211,22 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
             with patch("mmrelay.e2ee_utils.importlib.import_module") as mock_import:
 
                 def import_side_effect(name):
+                    """
+                    Side-effect function used by tests to simulate imports when MMRELAY_TESTING=1.
+                    
+                    Returns a MagicMock for allowed module names and asserts if any `nio` submodule is requested.
+                    Intended for use as a replacement for import_module in test mode:
+                    
+                    - If name == "olm": returns a MagicMock to simulate the olm library.
+                    - If name starts with "nio": raises AssertionError to fail the test if any nio module is imported.
+                    - Otherwise: returns a generic MagicMock for other module names.
+                    
+                    Parameters:
+                        name (str): The fully qualified module name being imported.
+                    
+                    Returns:
+                        unittest.mock.MagicMock: A mock object representing the requested module (except for `nio` names, which raise).
+                    """
                     if name == "olm":
                         return MagicMock()
                     if name.startswith("nio"):

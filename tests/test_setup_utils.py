@@ -886,15 +886,9 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
 
                 def mock_import_side_effect(name, *args, **kwargs):
                     """
-                    Import hook used in tests that returns a mocked getpass module.
-
-                    When called with name == "getpass" this function returns the test's mock_getpass object; otherwise it delegates to Python's built-in __import__ with the same arguments.
-                    Parameters:
-                        name (str): The module name to import.
-                        *args, **kwargs: Additional positional and keyword arguments forwarded to __import__.
-
-                    Returns:
-                        module: The imported module or the mock_getpass object when requesting "getpass".
+                    Import hook for tests that returns a mocked getpass module.
+                    
+                    If called with name == "getpass", returns the test's mock_getpass object; otherwise delegates to the built-in __import__, forwarding all positional and keyword arguments.
                     """
                     if name == "getpass":
                         return mock_getpass
@@ -919,7 +913,9 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         self, mock_get_path, mock_read_service, mock_needs_update
     ):
         """
-        Test install_service when no update needed but service exists (lines 643-649).
+        Verify install_service returns True and prints a message when an existing user service file is present and no update is required.
+        
+        Mocks get_user_service_path to an existing service path, read_service_file to return current service content, and service_needs_update to (False, "Service is up to date"). Confirms install_service completes successfully and prints "No update needed for the service file: Service is up to date".
         """
         # Mock existing service with no update needed
         mock_get_path.return_value = Path(

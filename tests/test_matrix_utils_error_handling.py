@@ -37,21 +37,19 @@ class FakeNioErrorResponseWithException:
 
     def __init__(self, status_code=None):
         """
-        Initialize the fake error-response.
-
+        Initialize the fake error-response used in tests.
+        
         Parameters:
-            status_code (int | None): Optional HTTP status code for the simulated response (e.g., 404). If None, no status code is set.
+            status_code (int | None): Optional HTTP status code to simulate (e.g., 404). If None, no status code is set on the instance.
         """
         self.status_code = status_code
 
     @property
     def message(self):
         """
-        Simulate a failing `.message` attribute by raising AttributeError when accessed.
-
-        Used in tests as a test double that mimics an object whose `message` attribute access raises
-        AttributeError("Test exception"), allowing verification of error-handling paths that must
-        gracefully handle attribute access errors.
+        Raise AttributeError("Test exception") to simulate an object whose `.message` attribute access fails.
+        
+        Used in tests as a test double to exercise error-handling paths that must gracefully handle attribute-access exceptions.
         """
         raise AttributeError("Test exception")
 

@@ -120,11 +120,12 @@ def get_config_paths(args=None):
 
 def get_data_dir():
     """
-    Return the directory for application data, creating it if it does not exist.
-
-    On Linux and macOS this is <base_dir>/data (where base_dir is returned by get_base_dir()).
-    On Windows, if a global custom_data_dir is set it returns <custom_data_dir>/data; otherwise it falls back to platformdirs.user_data_dir(APP_NAME, APP_AUTHOR).
-
+    Return the absolute path to the application's data directory, creating it if missing.
+    
+    On Linux and macOS this is "<base_dir>/data" where base_dir is returned by get_base_dir().
+    On Windows, if the module-level custom_data_dir is set this returns "<custom_data_dir>/data"; otherwise it uses platformdirs.user_data_dir(APP_NAME, APP_AUTHOR).
+    The directory is created with os.makedirs(..., exist_ok=True) before being returned.
+    
     Returns:
         str: Absolute path to the data directory.
     """
@@ -196,14 +197,14 @@ def get_log_dir():
 
 def get_e2ee_store_dir():
     """
-    Return the absolute path to the E2EE data store directory, creating it if missing.
-
+    Return the absolute path to the application's E2EE store directory, creating it if missing.
+    
     On Linux and macOS this is "<base_dir>/store" where base_dir is returned by get_base_dir().
-    On Windows the function uses the module-level custom_data_dir if set; otherwise it uses the platform-specific user data directory for the application (platformdirs.user_data_dir) and appends "store".
-
+    On Windows the path is "<custom_data_dir>/store" when the module-level custom_data_dir is set; otherwise it uses platformdirs.user_data_dir(APP_NAME, APP_AUTHOR) and appends "store".
+    
     Returns:
         str: Absolute path to the ensured store directory.
-
+    
     Side effects:
         Creates the directory (and any missing parent directories) if it does not already exist.
     """
@@ -819,19 +820,19 @@ def load_config(config_file=None, args=None):
 
 def validate_yaml_syntax(config_content, config_path):
     """
-    Validate YAML text for syntax and common style issues, parse it with PyYAML, and return results.
-
-    Performs lightweight line checks for common mistakes (use of '=' instead of ':', and non-standard boolean words like 'yes'/'no' or 'on'/'off') and then attempts to parse the content with yaml.safe_load. If only style warnings are found, returns parsed data with warnings; if syntax errors are detected or parsing fails, returns a detailed error message referencing config_path.
-
+    Validate YAML text for syntax and common style issues, parse it with PyYAML, and return the result.
+    
+    Performs lightweight line checks for common mistakes (e.g., use of '=' instead of ':' in mappings and non‑standard boolean words like "yes"/"no" or "on"/"off") and then attempts to parse the content with yaml.safe_load. If parsing succeeds but style warnings were detected, the function returns success with those warnings; if syntax errors are detected or parsing fails, it returns a detailed error message that references config_path.
+    
     Parameters:
         config_content (str): Raw YAML text to validate.
-        config_path (str): Path or label used in error messages to identify the source.
-
+        config_path (str): Path or label included in error messages to identify the YAML source.
+    
     Returns:
         tuple:
             is_valid (bool): True when YAML was parsed successfully (warnings allowed), False on syntax/parsing error.
             message (str|None): Human-readable warnings or a detailed error description (includes config_path). None when parsing succeeded without issues.
-            parsed_config (object|None): The structure produced by yaml.safe_load on success; None when parsing failed.
+            parsed_config (object|None): The Python object produced by yaml.safe_load on success; None when parsing failed.
     """
     lines = config_content.split("\n")
 

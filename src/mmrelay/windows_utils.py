@@ -132,16 +132,15 @@ def get_windows_error_message(error: Exception) -> str:
 
 def check_windows_requirements() -> Optional[str]:
     """
-    Return a multi-line warning string when common Windows environment issues are detected; otherwise None.
-
-    Performs Windows-only checks:
-    - Python version: warns if running on Python < 3.9.
-    - Virtual environment: warns if the process does not appear to be inside a venv/pipx.
-    - Current working directory length: warns if the cwd path length exceeds 200 characters.
-
+    Return a multi-line warning string describing detected Windows-specific environment issues, or None.
+    
+    Performs Windows-only checks and, if any issues are found, returns a human-readable multi-line string containing:
+    - A recommendation to use Python 3.9+ when the running interpreter is older.
+    - A suggestion to use a virtual environment (venv or pipx) when the process does not appear to be inside one.
+    - A warning when the current working directory path length exceeds ~200 characters.
+    
     Returns:
-        Optional[str]: A human-readable, multi-line warning message when one or more checks trigger;
-        returns None if running on a non-Windows platform or no issues are found.
+        Optional[str]: Multi-line warning text when running on Windows and one or more checks trigger; otherwise None.
     """
     if not is_windows():
         return None

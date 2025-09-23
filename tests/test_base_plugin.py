@@ -44,15 +44,17 @@ class MockPlugin(BasePlugin):
 
     async def handle_room_message(self, room, event, full_message):
         """
-        Handle a Matrix room message event.
-
+        Handle an incoming Matrix room message event.
+        
+        This mock implementation is called when a message is received in a Matrix room. It does not process the message and always indicates the plugin did not handle it.
+        
         Parameters:
-            room: The Matrix room where the event occurred.
-            event: The Matrix event object.
-            full_message: The full message content.
-
+            room: The Matrix room object where the event occurred.
+            event: The Matrix event object (raw event data).
+            full_message: The full message content (string).
+        
         Returns:
-            bool: Always returns False, indicating the message was not handled.
+            bool: Always False — the message is not handled by this plugin.
         """
         return False
 

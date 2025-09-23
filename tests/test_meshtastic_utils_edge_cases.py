@@ -216,9 +216,9 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
 
         def _submit_coro_mock(coro, loop=None):
             """
-            Run the given coroutine synchronously (using asyncio.run) and return a concurrent.futures.Future that is completed with its result or exception.
-
-            This test helper executes the coroutine immediately to surface any exceptions and wraps the outcome in a Future. The optional `loop` parameter is accepted for API compatibility but is ignored.
+            Run a coroutine synchronously and return a completed concurrent.futures.Future.
+            
+            Runs the provided coroutine via asyncio.run and returns a Future already completed with the coroutine's result or with the raised exception. The optional `loop` parameter is accepted for API compatibility but ignored.
             """
             f = Future()
             try:
@@ -274,10 +274,25 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
 
         class DummyFuture:
             def __init__(self, exc):
+                """
+                Initialize the object with an exception and an empty call history.
+                
+                Parameters:
+                    exc (Exception): The exception instance associated with this object; stored for later inspection or re-raising.
+                """
                 self.exc = exc
                 self.calls = []
 
             def result(self, timeout=None):
+                """
+                Return the result of the future, recording the provided timeout and then raising the stored exception.
+                
+                Parameters:
+                    timeout (float | None): Timeout value passed by caller; recorded in self.calls.
+                
+                Raises:
+                    Exception: The stored exception held in self.exc is raised every time this method is called.
+                """
                 self.calls.append(timeout)
                 raise self.exc
 
@@ -338,10 +353,25 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
 
         class DummyFuture:
             def __init__(self, exc):
+                """
+                Initialize the object with an exception and an empty call history.
+                
+                Parameters:
+                    exc (Exception): The exception instance associated with this object; stored for later inspection or re-raising.
+                """
                 self.exc = exc
                 self.calls = []
 
             def result(self, timeout=None):
+                """
+                Return the result of the future, recording the provided timeout and then raising the stored exception.
+                
+                Parameters:
+                    timeout (float | None): Timeout value passed by caller; recorded in self.calls.
+                
+                Raises:
+                    Exception: The stored exception held in self.exc is raised every time this method is called.
+                """
                 self.calls.append(timeout)
                 raise self.exc
 

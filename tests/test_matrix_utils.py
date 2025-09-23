@@ -91,9 +91,9 @@ async def test_on_room_message_simple_text(
     # Create a proper async mock function
     async def mock_get_user_display_name_func(*args, **kwargs):
         """
-        Return the fixed display name "user".
-
-        Async helper intended for use in tests as a mock replacement for an async function that retrieves a Matrix user's display name. Accepts any args/kwargs and always returns the string "user".
+        Return a constant display name for testing.
+        
+        Asynchronous test helper that accepts any arguments and always returns the string "user".
         """
         return "user"
 
@@ -104,15 +104,54 @@ async def test_on_room_message_simple_text(
 
     class DummyLoop:
         def __init__(self, loop):
+            """
+            Initialize the instance with an asyncio event loop.
+            
+            Parameters:
+                loop (asyncio.AbstractEventLoop): Event loop used to schedule and run asynchronous tasks for this object.
+            """
             self._loop = loop
 
         def is_running(self):
+            """
+            Return whether the component is running.
+            
+            This implementation always reports the component as running.
+            
+            Returns:
+                bool: True
+            """
             return True
 
         def create_task(self, coro):
+            """
+            Schedule execution of a coroutine on the underlying event loop and return its Task.
+            
+            Parameters:
+                coro: A coroutine or awaitable to be scheduled.
+            
+            Returns:
+                asyncio.Task: The created Task object scheduled on the instance's event loop.
+            """
             return self._loop.create_task(coro)
 
         async def run_in_executor(self, _executor, func, *args):
+            """
+            Execute a callable and return its result; does not offload to a thread/process.
+            
+            This async helper invokes `func(*args)` synchronously and returns its value. The `_executor`
+            parameter is accepted for API compatibility but is ignored—no work is scheduled on a
+            concurrent executor. Use this when an awaitable wrapper around a regular callable is
+            convenient (for example in tests or in environments without a real executor).
+            
+            Parameters:
+                _executor: Ignored. Present only for API compatibility with executor-based callers.
+                func: Callable to invoke.
+                *args: Positional arguments forwarded to `func`.
+            
+            Returns:
+                The value returned by `func(*args)`.
+            """
             return func(*args)
 
     with patch("mmrelay.plugin_loader.load_plugins", return_value=[]), patch(
@@ -172,15 +211,54 @@ async def test_on_room_message_remote_prefers_meshtastic_text(
 
     class DummyLoop:
         def __init__(self, loop):
+            """
+            Initialize the instance with an asyncio event loop.
+            
+            Parameters:
+                loop (asyncio.AbstractEventLoop): Event loop used to schedule and run asynchronous tasks for this object.
+            """
             self._loop = loop
 
         def is_running(self):
+            """
+            Return whether the component is running.
+            
+            This implementation always reports the component as running.
+            
+            Returns:
+                bool: True
+            """
             return True
 
         def create_task(self, coro):
+            """
+            Schedule execution of a coroutine on the underlying event loop and return its Task.
+            
+            Parameters:
+                coro: A coroutine or awaitable to be scheduled.
+            
+            Returns:
+                asyncio.Task: The created Task object scheduled on the instance's event loop.
+            """
             return self._loop.create_task(coro)
 
         async def run_in_executor(self, _executor, func, *args):
+            """
+            Execute a callable and return its result; does not offload to a thread/process.
+            
+            This async helper invokes `func(*args)` synchronously and returns its value. The `_executor`
+            parameter is accepted for API compatibility but is ignored—no work is scheduled on a
+            concurrent executor. Use this when an awaitable wrapper around a regular callable is
+            convenient (for example in tests or in environments without a real executor).
+            
+            Parameters:
+                _executor: Ignored. Present only for API compatibility with executor-based callers.
+                func: Callable to invoke.
+                *args: Positional arguments forwarded to `func`.
+            
+            Returns:
+                The value returned by `func(*args)`.
+            """
             return func(*args)
 
     with patch("mmrelay.plugin_loader.load_plugins", return_value=[]), patch(
@@ -289,9 +367,9 @@ async def test_on_room_message_reply_disabled(
     # Create a proper async mock function
     async def mock_get_user_display_name_func(*args, **kwargs):
         """
-        Return the fixed display name "user".
-
-        Async helper intended for use in tests as a mock replacement for an async function that retrieves a Matrix user's display name. Accepts any args/kwargs and always returns the string "user".
+        Return a constant display name for testing.
+        
+        Asynchronous test helper that accepts any arguments and always returns the string "user".
         """
         return "user"
 
@@ -333,12 +411,12 @@ async def test_on_room_message_reaction_enabled(mock_room, test_config):
     class MockReactionEvent(ReactionEvent):
         def __init__(self, source, sender, server_timestamp):
             """
-            Initialize an event-like object with raw payload, sender, and server timestamp.
-
+            Create a lightweight event-like container for a raw Matrix event.
+            
             Parameters:
-                source (dict): Original Matrix event JSON payload.
+                source (dict): The original Matrix event JSON payload.
                 sender (str): Sender Matrix user ID (MXID).
-                server_timestamp (int | float): Event timestamp (milliseconds since epoch).
+                server_timestamp (int | float): Event timestamp in milliseconds since the UNIX epoch.
             """
             self.source = source
             self.sender = sender
@@ -364,15 +442,54 @@ async def test_on_room_message_reaction_enabled(mock_room, test_config):
 
     class DummyLoop:
         def __init__(self, loop):
+            """
+            Initialize the instance with an asyncio event loop.
+            
+            Parameters:
+                loop (asyncio.AbstractEventLoop): Event loop used to schedule and run asynchronous tasks for this object.
+            """
             self._loop = loop
 
         def is_running(self):
+            """
+            Return whether the component is running.
+            
+            This implementation always reports the component as running.
+            
+            Returns:
+                bool: True
+            """
             return True
 
         def create_task(self, coro):
+            """
+            Schedule execution of a coroutine on the underlying event loop and return its Task.
+            
+            Parameters:
+                coro: A coroutine or awaitable to be scheduled.
+            
+            Returns:
+                asyncio.Task: The created Task object scheduled on the instance's event loop.
+            """
             return self._loop.create_task(coro)
 
         async def run_in_executor(self, _executor, func, *args):
+            """
+            Execute a callable and return its result; does not offload to a thread/process.
+            
+            This async helper invokes `func(*args)` synchronously and returns its value. The `_executor`
+            parameter is accepted for API compatibility but is ignored—no work is scheduled on a
+            concurrent executor. Use this when an awaitable wrapper around a regular callable is
+            convenient (for example in tests or in environments without a real executor).
+            
+            Parameters:
+                _executor: Ignored. Present only for API compatibility with executor-based callers.
+                func: Callable to invoke.
+                *args: Positional arguments forwarded to `func`.
+            
+            Returns:
+                The value returned by `func(*args)`.
+            """
             return func(*args)
 
     dummy_queue = MagicMock()
@@ -431,12 +548,12 @@ async def test_on_room_message_reaction_disabled(
     class MockReactionEvent(ReactionEvent):
         def __init__(self, source, sender, server_timestamp):
             """
-            Initialize an event-like object with raw payload, sender, and server timestamp.
-
+            Create a lightweight event-like container for a raw Matrix event.
+            
             Parameters:
-                source (dict): Original Matrix event JSON payload.
+                source (dict): The original Matrix event JSON payload.
                 sender (str): Sender Matrix user ID (MXID).
-                server_timestamp (int | float): Event timestamp (milliseconds since epoch).
+                server_timestamp (int | float): Event timestamp in milliseconds since the UNIX epoch.
             """
             self.source = source
             self.sender = sender
@@ -1168,10 +1285,10 @@ async def test_connect_matrix_alias_resolution_success(
         # Create proper async mock methods
         async def mock_whoami():
             """
-            Asynchronous test helper that simulates a Matrix client's whoami response.
-
+            Create a fake async Matrix "whoami" response for tests.
+            
             Returns:
-                unittest.mock.MagicMock: A mock with a `device_id` attribute set to "test_device_id".
+                MagicMock: Mock object with a `device_id` attribute set to "test_device_id".
             """
             return MagicMock(device_id="test_device_id")
 
@@ -1197,13 +1314,18 @@ async def test_connect_matrix_alias_resolution_success(
 
         async def mock_room_resolve_alias_impl(_alias):
             """
-            Async test helper that simulates resolving a Matrix room alias.
-
+            Asynchronous test helper that simulates resolving a Matrix room alias.
+            
+            This mock ignores the provided alias and returns a MagicMock shaped like a
+            successful alias-resolution response: `room_id` set to "!resolved:matrix.org"
+            and an empty `message` attribute. Intended for use in tests that patch
+            alias-resolution calls.
+            
             Parameters:
-                _alias (str): The room alias to resolve (ignored by this mock).
-
+                _alias (str): Ignored alias value.
+            
             Returns:
-                MagicMock: A mock response with `room_id` set to "!resolved:matrix.org" and an empty `message` attribute.
+                MagicMock: Mock response with `room_id` and `message` attributes.
             """
             response = MagicMock()
             response.room_id = "!resolved:matrix.org"
@@ -1280,10 +1402,10 @@ async def test_connect_matrix_alias_resolution_failure(
         # Create proper async mock methods
         async def mock_whoami():
             """
-            Asynchronous test helper that simulates a Matrix client's whoami response.
-
+            Create a fake async Matrix "whoami" response for tests.
+            
             Returns:
-                unittest.mock.MagicMock: A mock with a `device_id` attribute set to "test_device_id".
+                MagicMock: Mock object with a `device_id` attribute set to "test_device_id".
             """
             return MagicMock(device_id="test_device_id")
 
@@ -1308,6 +1430,19 @@ async def test_connect_matrix_alias_resolution_failure(
         mock_room_resolve_alias = MagicMock()
 
         async def mock_room_resolve_alias_impl(_alias):
+            """
+            Mock implementation of alias resolution that always indicates the alias was not found.
+            
+            This async helper returns a MagicMock-like response with attributes:
+            - room_id: None
+            - message: "Room not found"
+            
+            Parameters:
+                _alias (str): The room alias to resolve (ignored by this mock).
+            
+            Returns:
+                MagicMock: Object with `room_id` set to None and `message` explaining the failure.
+            """
             response = MagicMock()
             response.room_id = None
             response.message = "Room not found"
@@ -1385,10 +1520,10 @@ async def test_connect_matrix_alias_resolution_exception(
         # Create proper async mock methods
         async def mock_whoami():
             """
-            Asynchronous test helper that simulates a Matrix client's whoami response.
-
+            Create a fake async Matrix "whoami" response for tests.
+            
             Returns:
-                unittest.mock.MagicMock: A mock with a `device_id` attribute set to "test_device_id".
+                MagicMock: Mock object with a `device_id` attribute set to "test_device_id".
             """
             return MagicMock(device_id="test_device_id")
 
@@ -1417,13 +1552,11 @@ async def test_connect_matrix_alias_resolution_exception(
 
         async def mock_room_resolve_alias_impl(_alias):
             """
-            Mock async implementation that simulates a network failure when resolving a Matrix room alias.
-
-            Parameters:
-                _alias (str): The room alias to resolve (ignored by this mock).
-
+            Simulate a network failure when resolving a Matrix room alias.
+            
+            This async mock always raises FakeNetworkError to emulate a network error during alias resolution.
             Raises:
-                FakeNetworkError: Always raised to simulate a network error during alias resolution.
+                FakeNetworkError: Always raised to simulate the failure.
             """
             raise FakeNetworkError()
 
@@ -1790,15 +1923,54 @@ async def test_send_reply_to_meshtastic_with_reply_id():
 
     class DummyLoop:
         def __init__(self, loop):
+            """
+            Initialize the instance with an asyncio event loop.
+            
+            Parameters:
+                loop (asyncio.AbstractEventLoop): Event loop used to schedule and run asynchronous tasks for this object.
+            """
             self._loop = loop
 
         def is_running(self):
+            """
+            Return whether the component is running.
+            
+            This implementation always reports the component as running.
+            
+            Returns:
+                bool: True
+            """
             return True
 
         def create_task(self, coro):
+            """
+            Schedule execution of a coroutine on the underlying event loop and return its Task.
+            
+            Parameters:
+                coro: A coroutine or awaitable to be scheduled.
+            
+            Returns:
+                asyncio.Task: The created Task object scheduled on the instance's event loop.
+            """
             return self._loop.create_task(coro)
 
         async def run_in_executor(self, _executor, func, *args):
+            """
+            Execute a callable and return its result; does not offload to a thread/process.
+            
+            This async helper invokes `func(*args)` synchronously and returns its value. The `_executor`
+            parameter is accepted for API compatibility but is ignored—no work is scheduled on a
+            concurrent executor. Use this when an awaitable wrapper around a regular callable is
+            convenient (for example in tests or in environments without a real executor).
+            
+            Parameters:
+                _executor: Ignored. Present only for API compatibility with executor-based callers.
+                func: Callable to invoke.
+                *args: Positional arguments forwarded to `func`.
+            
+            Returns:
+                The value returned by `func(*args)`.
+            """
             return func(*args)
 
     with patch(
@@ -1838,15 +2010,54 @@ async def test_send_reply_to_meshtastic_no_reply_id():
 
     class DummyLoop:
         def __init__(self, loop):
+            """
+            Initialize the instance with an asyncio event loop.
+            
+            Parameters:
+                loop (asyncio.AbstractEventLoop): Event loop used to schedule and run asynchronous tasks for this object.
+            """
             self._loop = loop
 
         def is_running(self):
+            """
+            Return whether the component is running.
+            
+            This implementation always reports the component as running.
+            
+            Returns:
+                bool: True
+            """
             return True
 
         def create_task(self, coro):
+            """
+            Schedule execution of a coroutine on the underlying event loop and return its Task.
+            
+            Parameters:
+                coro: A coroutine or awaitable to be scheduled.
+            
+            Returns:
+                asyncio.Task: The created Task object scheduled on the instance's event loop.
+            """
             return self._loop.create_task(coro)
 
         async def run_in_executor(self, _executor, func, *args):
+            """
+            Execute a callable and return its result; does not offload to a thread/process.
+            
+            This async helper invokes `func(*args)` synchronously and returns its value. The `_executor`
+            parameter is accepted for API compatibility but is ignored—no work is scheduled on a
+            concurrent executor. Use this when an awaitable wrapper around a regular callable is
+            convenient (for example in tests or in environments without a real executor).
+            
+            Parameters:
+                _executor: Ignored. Present only for API compatibility with executor-based callers.
+                func: Callable to invoke.
+                *args: Positional arguments forwarded to `func`.
+            
+            Returns:
+                The value returned by `func(*args)`.
+            """
             return func(*args)
 
     with patch(

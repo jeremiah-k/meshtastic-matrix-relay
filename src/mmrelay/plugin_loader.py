@@ -45,7 +45,27 @@ else:
 def _collect_requirements(
     requirements_file: str, visited: Set[str] | None = None
 ) -> List[str]:
-    """Return a flattened list of pip install arguments contained in a requirements file."""
+    """
+    Return a flattened list of installable requirement tokens parsed from a requirements file.
+    
+    Parses the given requirements file and returns a list of pip-style install arguments (individual package specifiers
+    or option tokens). The function:
+    - Ignores blank lines and comments.
+    - Strips inline comments that begin with " #".
+    - Recursively resolves nested includes specified with -r/--requirement and -c/--constraint (paths relative to the
+      containing requirements file are resolved against that file's directory).
+    - Expands option-style lines (lines starting with "-") using shell-like splitting.
+    - Detects and avoids recursive includes via the optional `visited` set.
+    
+    Parameters:
+        requirements_file (str): Path to the requirements file to parse.
+        visited (set[str] | None): Internal set of already-visited absolute paths used to prevent recursive includes.
+            Callers normally omit this.
+    
+    Returns:
+        list[str]: A flattened list of requirement tokens suitable for passing to pip (or further processing). If the file
+        is missing or a recursive include is detected, returns an empty list and logs a warning.
+    """
     normalized_path = os.path.abspath(requirements_file)
     visited = visited or set()
 
@@ -144,9 +164,9 @@ def _collect_requirements(
 @contextmanager
 def _temp_sys_path(path: str):
     """
-    Context manager that temporarily prepends a directory to Python's import search path.
-
-    Use as: `with _temp_sys_path(path): ...` — the given `path` is inserted at the front of `sys.path` for the duration of the context. On exit the first occurrence of `path` is removed; if the path is already absent, removal is silently ignored.
+    Temporarily prepend a directory to sys.path for the lifetime of a context.
+    
+    When used as a context manager (e.g., `with _temp_sys_path(path): ...`) the given `path` (converted with `os.fspath`) is inserted at the front of `sys.path` on enter. On exit the first occurrence of that `path` is removed; if it is not present removal is silently ignored. This may create and later remove a duplicate entry if `path` was already on `sys.path`.
     """
     path = os.fspath(path)
     sys.path.insert(0, path)
@@ -223,7 +243,18 @@ def _refresh_dependency_paths() -> None:
 
 
 def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
-    """Install Python dependencies for a community plugin repository if requirements.txt exists."""
+    """
+    Install Python dependencies for a community plugin repository if a requirements.txt is present.
+    
+    This function:
+    - Looks for a requirements.txt file in the given repo_path and does nothing if it is absent.
+    - Respects the global plugin auto-install configuration; if auto-install is disabled the function logs and returns without installing.
+    - In pipx-managed environments attempts `pipx inject mmrelay <requirements...>` (expanding nested requirements).
+    - Otherwise invokes pip (`python -m pip install -r requirements.txt`) and adds `--user` when not running inside a virtual environment.
+    - On successful install refreshes interpreter import/search paths so newly installed packages are importable.
+    
+    Errors from the installer (e.g., subprocess.CalledProcessError or missing pipx executable) are caught, logged, and result in a warning that the plugin may not work without its dependencies; exceptions are not propagated.
+    """
 
     requirements_path = os.path.join(repo_path, "requirements.txt")
     if not os.path.isfile(requirements_path):
@@ -290,13 +321,18 @@ def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
 
 def _get_plugin_dirs(plugin_type):
     """
-    Return a prioritized list of directories for the specified plugin type, including user and local plugin directories if accessible.
-
+    Return a prioritized list of filesystem directories to search for plugins of the given type.
+    
+    The returned list prefers a user-specific plugins directory (base_dir/plugins/{plugin_type}) first,
+    followed by an application-local directory (app_path/plugins/{plugin_type}) for backward compatibility.
+    This function will attempt to create these directories if they do not exist; directories that cannot be
+    created (due to permissions or other OS errors) are skipped and a warning or debug message is logged.
+    
     Parameters:
-        plugin_type (str): Either "custom" or "community", specifying the type of plugins.
-
+        plugin_type (str): Plugin category, expected to be "custom" or "community".
+    
     Returns:
-        list: List of plugin directories to search, with the user directory first if available, followed by the local directory for backward compatibility.
+        list[str]: Ordered list of plugin directories that exist (either pre-existing or successfully created).
     """
     dirs = []
 
@@ -331,9 +367,9 @@ def get_custom_plugin_dirs():
 
 def get_community_plugin_dirs():
     """
-    Return the list of directories to search for community plugins, ordered by priority.
-
-    The directories include the user-specific community plugins directory and a local directory for backward compatibility.
+    Return a prioritized list of directories to search for community plugins.
+    
+    The first entry is the user-specific community plugins directory (base_dir/plugins/community) followed by a local/app-compatible directory (app_path/plugins/community) for backward compatibility. Each path is returned only if it exists or could be created; permission or creation errors are handled by the caller via logging.
     """
     return _get_plugin_dirs("community")
 
@@ -390,13 +426,15 @@ def _check_auto_install_enabled(config):
 
 def _raise_install_error(pkg_name):
     """
-    Log a warning about disabled auto-install and raise a CalledProcessError.
-
+    Raise a CalledProcessError indicating automatic dependency installation is disabled.
+    
+    Logs a warning that `pkg_name` cannot be installed because auto-install is disabled, then raises subprocess.CalledProcessError to signal the installation failure.
+    
     Parameters:
-        pkg_name (str): Name of the package that could not be installed (used in the log message).
-
+        pkg_name (str): Package name referenced in the warning message.
+    
     Raises:
-        subprocess.CalledProcessError: Always raised to signal an installation failure when auto-install is disabled.
+        subprocess.CalledProcessError: Always raised to indicate the install was not performed due to disabled auto-install.
     """
     logger.warning(
         f"Auto-install disabled; cannot install {pkg_name}. See docs for enabling."
@@ -877,20 +915,20 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
 
 def load_plugins_from_directory(directory, recursive=False):
     """
-    Load and instantiate Plugin classes from Python files in a directory.
-
-    Searches `directory` (optionally recursively) for .py files, imports each module in an isolated module name and, if the module defines a `Plugin` class, instantiates and collects it. If an import fails with ModuleNotFoundError, the function will (when auto-install is enabled in the global `config`) attempt to install the missing distribution with pip or pipx, refresh import paths, and retry importing the module. Files that do not define `Plugin` are skipped; unresolved import errors or other exceptions are logged and do not abort the whole scan.
-
+    Discover, import, and instantiate top-level `Plugin` classes from Python files in a directory.
+    
+    Scans `directory` (optionally recursively) for `.py` files, imports each file as an isolated module, and instantiates the module-level `Plugin` class when present. Non-plugin files, import failures, and errors loading individual modules are handled per-file and do not abort the overall scan.
+    
+    Important side effects:
+    - May modify interpreter import state (adds entries to sys.modules).
+    - When a ModuleNotFoundError is raised for a missing dependency, this function may attempt to auto-install the missing distribution (pip or pipx) and refresh import paths before retrying the import, depending on global configuration.
+    
     Parameters:
         directory (str): Path to the directory containing plugin Python files.
         recursive (bool): If True, scan subdirectories recursively; otherwise only the top-level directory.
-
+    
     Returns:
-        list: Instances of found plugin classes (may be empty).
-
-    Notes:
-    - The function mutates interpreter import state (may add entries to sys.modules) and can invoke external installers (pip/pipx) when auto-install is enabled.
-    - Only modules that define a top-level `Plugin` attribute are instantiated and returned.
+        list: Instantiated plugin objects found in the directory (may be empty).
     """
     plugins = []
     if os.path.isdir(directory):

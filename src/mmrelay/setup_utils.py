@@ -239,17 +239,17 @@ def get_template_service_path():
 
 def get_template_service_content():
     """
-    Return the systemd service unit content to install for the user-level mmrelay service.
-
-    Attempts to load a template in this order:
-    1. The external path returned by get_service_template_path() (UTF-8).
-    2. The embedded package resource "mmrelay.service" from mmrelay.tools via importlib.resources.
-    3. A second filesystem probe using get_template_service_path() (UTF-8).
-
-    If none of the above can be read, returns a built-in default service unit that includes a resolved ExecStart (from get_resolved_exec_start()), sensible Environment settings (including PYTHONUNBUFFERED and a PATH containing common user-local locations), and standard Unit/Service/Install sections.
-
+    Return the systemd unit text to install for the user-level mmrelay service.
+    
+    Searches for a template in this order and returns the first readable UTF-8 source:
+    1. Path from get_service_template_path().
+    2. Embedded package resource "mmrelay.service" in mmrelay.tools via importlib.resources.
+    3. A secondary filesystem probe via get_template_service_path().
+    
+    If none are available or readable, returns a built-in default unit that embeds a resolved ExecStart (from get_resolved_exec_start()) and reasonable Environment/Install sections.
+    
     Returns:
-        str: Complete service file content to write. Read/access errors are reported to stderr.
+        str: Complete service unit content to write. Read/access errors are written to stderr.
     """
     # Use the helper function to get the service template path
     template_path = get_service_template_path()
@@ -359,9 +359,9 @@ def is_service_active():
 def create_service_file():
     """
     Create or update the user's systemd service unit for MMRelay.
-
-    Ensures the user service directory and the MMRelay logs directory exist, obtains a service template (with multiple fallbacks), normalizes the unit's ExecStart to the resolved MMRelay invocation (either an mmrelay executable on PATH or a Python `-m mmrelay` fallback), and writes the resulting unit to ~/.config/systemd/user/mmrelay.service.
-
+    
+    Reads or constructs a service unit template, ensures the user systemd service directory and MMRelay logs directory exist, normalizes the unit's ExecStart to the resolved MMRelay invocation (either an mmrelay executable on PATH or a Python `-m mmrelay` fallback), performs a few template substitutions (working directory, config path), and writes the final unit to ~/.config/systemd/user/mmrelay.service.
+    
     Returns:
         bool: True if the service file was written successfully; False if a template could not be obtained or writing the file failed.
     """
@@ -424,8 +424,8 @@ def create_service_file():
 def reload_daemon():
     """
     Reload the current user's systemd daemon to apply unit file changes.
-
-    Attempts to run the resolved `SYSTEMCTL` command with `--user daemon-reload`. Returns True if the subprocess exits successfully; returns False on failure (subprocess error or OSError). Side effects: prints a success message to stdout or an error message to stderr.
+    
+    Runs `systemctl --user daemon-reload` (using the resolved SYSTEMCTL executable). Returns True when the command succeeds, False on failure. As a side effect, prints a confirmation on success and an error message to stderr on failure.
     """
     try:
         # Using resolved systemctl path
@@ -442,20 +442,21 @@ def reload_daemon():
 
 def service_needs_update():
     """
-    Return whether the user systemd unit for mmrelay should be updated.
-
-    Performs checks in this order and returns (needs_update, reason):
-    - No installed unit file => update required.
-    - Installed unit must contain an ExecStart= line that invokes mmrelay via an acceptable form:
-      - an mmrelay executable found on PATH,
+    Determine whether the user-level systemd unit for mmrelay should be updated.
+    
+    Performs the following checks (in order) and returns (needs_update, reason):
+    - If no installed service unit exists, returns True.
+    - Validates that the unit contains an ExecStart= line that invokes mmrelay in an acceptable form:
+      - the mmrelay executable on PATH,
       - "/usr/bin/env mmrelay",
-      - or the current Python interpreter with "-m mmrelay".
-      If none match, an update is recommended.
-    - Unit Environment= PATH lines must include common user bin locations (e.g. "%h/.local/pipx/venvs/mmrelay/bin" or "%h/.local/bin"); if missing, an update is recommended.
-    - If a template service file is available on disk, its modification time is compared to the installed unit; if the template is newer, an update is recommended.
-
+      - or the current Python interpreter invoked as "`<python> -m mmrelay`".
+      If none of these are present, returns True.
+    - Ensures Environment= lines that affect PATH include common user bin locations (e.g. "%h/.local/pipx/venvs/mmrelay/bin" or "%h/.local/bin"); if missing, returns True.
+    - If a template service file is located on disk, compares its modification time with the installed unit and returns True if the template is newer.
+    
     Returns:
-        tuple: (needs_update: bool, reason: str) — True when an update is recommended or required; reason explains the decision or why the check failed (e.g., missing ExecStart, missing PATH entries, stat error).
+        tuple[bool, str]: (needs_update, reason). `needs_update` is True when an update is recommended or required;
+        `reason` is a short explanation for the decision or for any failure encountered during checks.
     """
     # Check if service already exists
     existing_service = read_service_file()
@@ -581,11 +582,11 @@ def check_lingering_enabled():
 def enable_lingering():
     """
     Enable systemd "lingering" for the current user.
-
-    Determines the current username from the USER or USERNAME environment variables, falling back to getpass.getuser(), and invokes `sudo loginctl enable-linger <user>`. Prints status messages to stdout/stderr.
-
+    
+    Determines the target username from the USER or USERNAME environment variables, falling back to getpass.getuser(). Invokes `sudo loginctl enable-linger <user>` and prints progress and error messages to stdout/stderr.
+    
     Returns:
-        bool: True if the command succeeded (exit code 0), False otherwise.
+        bool: True if the command exited with code 0 (lingering enabled), False on failure or if the username could not be determined.
     """
     try:
         import getpass

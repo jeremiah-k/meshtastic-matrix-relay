@@ -415,9 +415,9 @@ class TestErrorBoundaries(unittest.TestCase):
 
     def test_transient_failure_recovery(self):
         """
-        Verify MessageQueue recovers from transient failures and eventually processes all queued tasks.
-
-        Enqueues multiple calls to a function that raises on its first two invocations and succeeds thereafter, then waits until every queued call has been attempted. Asserts that the total number of attempted calls equals the number of enqueued messages, demonstrating the queue continues processing after transient errors.
+        Verify that MessageQueue recovers from transient failures and eventually attempts all queued tasks.
+        
+        Enqueues multiple calls to a function that raises on its first two invocations and succeeds thereafter, starts the queue, and waits until every enqueued call has been attempted. Asserts the total number of attempted calls equals the number of enqueued messages, demonstrating the queue continues processing after transient errors. The test starts and stops a MessageQueue instance as part of its operation.
         """
         import asyncio
 

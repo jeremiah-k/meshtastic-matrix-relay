@@ -112,11 +112,19 @@ def _is_room_alias(value: Any) -> bool:
 
 def _iter_room_alias_entries(mapping):
     """
-    Yield ``(alias, setter)`` pairs for entries inside Matrix room configuration structures.
-
-    Supports both ``list`` and ``dict`` configurations where entries are either strings (room id/alias)
-    or dicts containing an ``id`` key. The returned setter updates the underlying collection when
-    invoked with a resolved room id.
+    Yield (alias, setter) pairs for entries in a Matrix room configuration mapping.
+    
+    Supports two mapping shapes commonly found in configuration:
+    - list of entries, where each entry is either a string (room id or alias) or a dict containing an "id" key; or
+    - dict mapping keys to either a string (room id/alias) or a dict containing an "id" key.
+    
+    For each entry this yields a tuple (value, setter) where:
+    - value is the current alias or id (or the empty string if an entry dict has no "id" key), and
+    - setter is a callable accepting a single argument new_id (str) that will update the underlying collection
+      to replace the entry with the resolved canonical room id.
+    
+    The setter updates the original mapping in-place (list index or dict key / dict["id"]) so callers can
+    invoke it after resolving an alias to persist the resolved room id back into the configuration.
     """
 
     if isinstance(mapping, list):
@@ -142,7 +150,13 @@ def _iter_room_alias_entries(mapping):
 
 
 async def _resolve_aliases_in_mapping(mapping, resolver):
-    """Resolve alias entries in *mapping* using the provided async *resolver* coroutine."""
+    """
+    Resolve Matrix room aliases found in a list or dict mapping by calling the provided asynchronous resolver and update the mapping in-place with resolved room IDs.
+    
+    mapping may be either a list or dict representing configured rooms; entries that look like room aliases (strings beginning with '#') will be passed to resolver(alias). resolver is an async callable that accepts an alias and returns a resolved room ID (or a falsey value on failure). When a resolver result is truthy, the corresponding entry in mapping is replaced with the resolved ID via an internal setter.
+    
+    If mapping is not a list or dict, the function logs a warning and returns without modifying anything. The function performs its work in-place and returns None.
+    """
 
     if not isinstance(mapping, (list, dict)):
         logger.warning(
@@ -159,7 +173,11 @@ async def _resolve_aliases_in_mapping(mapping, resolver):
 
 
 def _update_room_id_in_mapping(mapping, alias, resolved_id) -> bool:
-    """Replace *alias* with *resolved_id* inside list/dict mappings, returning True on update."""
+    """
+    Replace a room alias with its resolved room ID inside a list or dict mapping.
+    
+    If mapping is a list or dict of room entries (see _iter_room_alias_entries), find an entry equal to alias and replace it in-place with resolved_id. Returns True if an update occurred, False if no matching alias was found or mapping is not a list/dict.
+    """
 
     if not isinstance(mapping, (list, dict)):
         return False
@@ -306,6 +324,15 @@ def _normalize_bot_user_id(homeserver: str, bot_user_id: str) -> str:
         return bot_user_id
 
     def _canonical_server(value: str | None) -> str | None:
+        """
+        Normalize a Matrix server identifier by stripping surrounding IPv6 brackets and any trailing port.
+        
+        Parameters:
+            value (str | None): A server host string (hostname, IPv4, or IPv6 possibly enclosed in `[]` and/or followed by `:port`).
+        
+        Returns:
+            str | None: The canonical server host without surrounding `[]` or a `:port` suffix, or None if input was None or empty.
+        """
         if not value:
             return value
         value = value.strip()
@@ -1287,18 +1314,18 @@ async def login_matrix_bot(
     homeserver=None, username=None, password=None, logout_others=False
 ):
     """
-    Perform an interactive Matrix login for the bot and persist credentials for later use.
-
-    This coroutine attempts server discovery for the provided homeserver, logs in as the given username, optionally initializes an encrypted client store (if E2EE is enabled in configuration), and saves resulting credentials (homeserver, user_id, access_token, device_id) to credentials.json so the relay can restore the session non-interactively. If an existing credentials.json contains a matching user_id, the device_id will be reused when available.
-
+    Perform an interactive login for the bridge bot, persist credentials, and return whether login succeeded.
+    
+    This coroutine optionally performs server discovery for the provided homeserver, normalizes the supplied username to a canonical Matrix user ID, logs in using the given password, and saves credentials (homeserver, user_id, access_token, device_id) to credentials.json so subsequent runs can restore the session non-interactively. If an existing credentials.json contains a matching user_id, an existing device_id will be reused when available. If End-to-End Encryption (E2EE) is enabled in configuration, an encrypted store path will be created and the AsyncClient is initialized with encryption enabled; otherwise the client is created without a store.
+    
     Parameters:
-        homeserver (str | None): Homeserver URL to use. If None, the user is prompted.
-        username (str | None): Matrix username (without or with leading "@"). If None, the user is prompted.
-        password (str | None): Password for the account. If None, the user is prompted securely.
-        logout_others (bool | None): If True, attempts to log out other sessions after login. If None, the user is prompted. (Note: full "logout others" behavior may be limited.)
-
+        homeserver (str | None): Optional homeserver URL (e.g., "https://matrix.org"). If omitted, the user is prompted. A missing scheme will be prefixed with "https://".
+        username (str | None): Optional Matrix username (localpart or full MXID). When provided it will be normalized to a canonical MXID. If omitted, the user is prompted.
+        password (str | None): Optional account password. If omitted, the user is prompted securely.
+        logout_others (bool | None): If True, attempts to log out other sessions after login. If None, the user is prompted. Note: full "logout others" behavior is not implemented.
+    
     Returns:
-        bool: True on successful login and credentials persisted; False on failure. The function handles errors internally and returns False rather than raising.
+        bool: True if login completed and credentials were persisted; False on any failure. The function handles errors internally and returns False rather than raising.
     """
     try:
         # Optionally enable verbose nio/aiohttp debug logging
@@ -1745,13 +1772,9 @@ async def login_matrix_bot(
 
 async def join_matrix_room(matrix_client, room_id_or_alias: str) -> None:
     """
-    Join the bot to a Matrix room by ID or alias, resolving aliases as needed.
-
-    This is a no-op if the client is already joined. When given a room alias
-    (e.g. `#room:server`), the alias is resolved to its canonical room ID and
-    the in-memory `matrix_rooms` mapping is updated so subsequent joins reuse
-    the resolved ID. Successes and failures are logged; errors are caught and
-    logged rather than propagated.
+    Join the bot to a Matrix room given either a room ID or a room alias.
+    
+    If a room alias (string starting with '#') is supplied, the alias is resolved to its canonical room ID and the global in-memory `matrix_rooms` mapping is updated so future operations use the resolved ID. This is a no-op when the client is already in the room. Errors from the Matrix client are caught and logged; the function does not raise.
     """
 
     if not isinstance(room_id_or_alias, str):
@@ -2170,9 +2193,9 @@ def truncate_message(text, max_bytes=DEFAULT_MESSAGE_TRUNCATE_BYTES):
 
 def strip_quoted_lines(text: str) -> str:
     """
-    Removes lines starting with '>' from the input text.
-
-    This is typically used to exclude quoted content from Matrix replies, such as when processing reaction text.
+    Remove lines that begin with a Markdown/Matrix quote marker ('>') and return the remaining text.
+    
+    Leading/trailing whitespace is ignored when checking for the quote marker; lines that are empty after stripping are omitted. Remaining lines are joined with single spaces and the final result is trimmed.
     """
     lines = text.splitlines()
     filtered = [line.strip() for line in lines if not line.strip().startswith(">")]
@@ -2181,10 +2204,16 @@ def strip_quoted_lines(text: str) -> str:
 
 async def get_user_display_name(room, event):
     """
-    Retrieve the display name of a Matrix user, preferring the room-specific name if available.
-
+    Return the display name for the sender of a Matrix event, preferring the room-specific display name and falling back to the user's global display name or the sender MXID.
+    
+    If the room provides a display name for the sender (via room.user_name), that value is returned immediately. Otherwise the function performs an asynchronous query to the Matrix homeserver (via the shared matrix_client) to fetch the user's global display name; if none is set, the sender MXID (event.sender) is returned.
+    
+    Parameters:
+        room: Room-like object providing room.user_name(sender) (prefer room-specific display name).
+        event: Event-like object with a sender attribute containing the sender MXID.
+    
     Returns:
-        str: The user's display name, or their Matrix ID if no display name is set.
+        str: The resolved display name or the sender MXID.
     """
     room_display_name = room.user_name(event.sender)
     if room_display_name:
@@ -2276,15 +2305,16 @@ async def send_reply_to_meshtastic(
     reply_id=None,
 ):
     """
-    Queue a Matrix reply for transmission over Meshtastic, optionally targeting a specific Meshtastic message.
-
-    Enqueues either a structured reply (when reply_id is provided) or a regular text broadcast. If storage_enabled is True the function will create mapping metadata (using event.event_id and room.room_id) and attach it to the queued item when possible. If Meshtastic broadcasting is disabled in configuration the function returns without action. The function performs its work asynchronously and does not raise on enqueue errors; failures are logged and the function returns.
-    Parameters that add non-obvious context:
+    Queue a Matrix reply for transmission over Meshtastic (structured reply or regular broadcast).
+    
+    If storage_enabled is True the function will create mapping metadata (using event.event_id and room.room_id) and attach it to the queued item when possible. Sends a structured reply when reply_id is provided, otherwise falls back to a regular text send. The function performs work asynchronously, logs failures, and does not raise on enqueue errors.
+    
+    Parameters:
         room_config (dict): Room-specific configuration; must include "meshtastic_channel".
         room: Matrix room object — room.room_id is used for mapping metadata.
         event: Matrix event object — event.event_id is used for mapping metadata.
         storage_enabled (bool): When True, attempt to create and attach a message-mapping record.
-        reply_id (int | None): When provided, sends a structured reply targeting this Meshtastic message ID; otherwise sends a regular broadcast.
+        reply_id (int | None): When provided, send a structured reply targeting this Meshtastic message ID; otherwise send a regular broadcast.
     """
     loop = asyncio.get_running_loop()
     meshtastic_interface = await loop.run_in_executor(None, connect_meshtastic)
@@ -2389,16 +2419,24 @@ async def handle_matrix_reply(
     meshnet_name=None,
 ):
     """
-    Relay a Matrix reply back to Meshtastic when the replied-to Matrix event is mapped to a Meshtastic message.
-
-    Looks up a Meshtastic ↔ Matrix mapping for reply_to_event_id; if found, formats a Meshtastic reply that preserves sender attribution and queues it to be sent as a reply referencing the original Meshtastic message ID. If no mapping exists, the function does nothing and returns False so normal Matrix processing can continue.
-
+    Relay a Matrix reply back to Meshtastic when the replied-to Matrix event maps to a Meshtastic message.
+    
+    Looks up the Meshtastic↔Matrix mapping for reply_to_event_id; if a mapping is found, formats a Meshtastic reply that preserves sender attribution and queues it as a reply referencing the original Meshtastic message ID. If no mapping exists, no Meshtastic message is sent and the function returns False so normal Matrix processing can continue.
+    
     Parameters:
-        reply_to_event_id (str): The Matrix event ID being replied to; used to locate the corresponding Meshtastic message mapping.
-        storage_enabled (bool): Controls whether message mappings should be created/updated when sending the reply (passed through to the sender).
-        local_meshnet_name (str): The local meshnet name used to decide reply formatting for cross-meshnet messages.
-        config (dict): Relay configuration needed by formatting routines.
-
+        room: Matrix room object containing context for the event (used to resolve room-specific display names).
+        event: Matrix event object representing the incoming reply.
+        reply_to_event_id (str): Matrix event ID being replied to; used to locate the corresponding Meshtastic message mapping.
+        text (str): The textual content of the Matrix reply.
+        room_config (dict): Per-room relay configuration (used when queuing the Meshtastic message).
+        storage_enabled (bool): If True, mapping storage behavior (when sending) is enabled/preserved.
+        local_meshnet_name (str): Local meshnet identifier used to choose reply formatting for cross-meshnet scenarios.
+        config (dict): Global relay configuration used by formatting routines.
+        mesh_text_override (str | None): Optional override text to use instead of the Matrix event body when building the Meshtastic message.
+        longname (str | None): Optional long display name provided with the Matrix event (used for remote→local formatting).
+        shortname (str | None): Optional short display name provided with the Matrix event.
+        meshnet_name (str | None): Optional remote meshnet name associated with the incoming event.
+    
     Returns:
         bool: True if a mapping was found and the reply was queued to Meshtastic; False if no mapping existed and nothing was sent.
     """

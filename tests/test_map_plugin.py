@@ -340,9 +340,9 @@ class TestImageUploadAndSend(unittest.TestCase):
     @patch("mmrelay.plugins.map_plugin.send_room_image")
     def test_send_image(self, mock_send_room_image, mock_upload_image):
         """
-        Test that the image sending workflow uploads an image and sends it to a room.
-
-        Verifies that `upload_image` is awaited with the correct client and image, and that `send_room_image` is awaited with the resulting upload response.
+        Test that send_image uploads an image and then sends the uploaded image to the specified room.
+        
+        Asserts upload_image is awaited with the provided client and image, and send_room_image is awaited with the same client, room_id, and the upload response returned by upload_image.
         """
 
         async def run_test():

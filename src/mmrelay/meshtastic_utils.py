@@ -100,14 +100,18 @@ subscribed_to_connection_lost = False
 
 def _submit_coro(coro, loop=None):
     """
-    Submit an asyncio coroutine for execution on the appropriate event loop and return a Future representing its result.
-
-    If `loop` (or the module-level `event_loop`) is an open asyncio event loop, the coroutine is scheduled thread-safely via `asyncio.run_coroutine_threadsafe`. If there is a currently running loop in the calling thread, the coroutine is scheduled with that loop's `create_task`. If no running loop exists, the coroutine is executed synchronously with `asyncio.run` and its result (or raised exception) is wrapped in a completed Future. If `coro` is not a coroutine, returns None.
-
+    Schedule and run an asyncio coroutine on an appropriate event loop and return a Future-like handle.
+    
+    Attempts, in order:
+    - If `loop` (or module-level `event_loop`) is an open asyncio loop, schedule the coroutine thread-safely with asyncio.run_coroutine_threadsafe.
+    - If a running loop exists in the current thread, schedule with that loop's create_task.
+    - If no running loop exists, create a temporary loop to run the coroutine to completion and return a completed Future with the result (or exception).
+    If `coro` is not a coroutine object, returns None.
+    
     Parameters:
         coro: The coroutine object to execute.
-        loop: Optional asyncio event loop to target. If omitted, the module-level `event_loop` is used.
-
+        loop: Optional asyncio event loop to target; falls back to the module-level `event_loop` when omitted.
+    
     Returns:
         A Future-like object representing the coroutine's eventual result, or None if `coro` is not a coroutine.
     """
@@ -145,7 +149,18 @@ def _submit_coro(coro, loop=None):
 
 
 def _resolve_plugin_timeout(cfg: dict | None, default: float = 5.0) -> float:
-    """Return a positive timeout from config, falling back to default when invalid."""
+    """
+    Return a positive plugin timeout value extracted from the given config, or the provided default if the config value is missing, invalid, or non-positive.
+    
+    If cfg is a dict, this reads cfg["meshtastic"]["plugin_timeout"] (if present) and attempts to coerce it to float. Valid positive floats are returned unchanged. If the value is missing, cannot be converted to float, or is non-positive, the function logs a warning and returns the supplied default.
+    
+    Parameters:
+        cfg (dict | None): Configuration mapping that may contain a "meshtastic" section.
+        default (float): Fallback timeout to use when the configured value is absent or invalid.
+    
+    Returns:
+        float: A positive timeout in seconds (either the configured value or the default).
+    """
 
     raw_value = default
     if isinstance(cfg, dict):

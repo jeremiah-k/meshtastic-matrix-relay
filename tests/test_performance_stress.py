@@ -32,7 +32,9 @@ from mmrelay.message_queue import MessageQueue
 @pytest.fixture(autouse=True)
 def reset_global_state():
     """
-    Pytest fixture that resets global state in mmrelay.meshtastic_utils and forces garbage collection before and after each test to ensure test isolation.
+    Reset mmrelay.meshtastic_utils global state and force garbage collection before and after a test.
+    
+    This pytest fixture clears commonly used global variables on mmrelay.meshtastic_utils (client, reconnect flags, config, rooms, loop/task handles and subscription flags) to ensure test isolation, calls gc.collect() before yielding to the test, and again after the test completes.
     """
     # Reset global state before the test
     import mmrelay.meshtastic_utils
@@ -178,16 +180,20 @@ class TestPerformanceStress:
     @pytest.mark.performance  # Changed from slow to performance
     def test_message_queue_performance_under_load(self):
         """
-        Test MessageQueue under rapid enqueue with enforced minimum delay.
-
-        Starts a MessageQueue (patched meshtastic client), enqueues 50 messages rapidly, waits up to 120 seconds for processing, and verifies:
+        Test MessageQueue behavior under rapid enqueueing with an enforced minimum delay.
+        
+        Starts a MessageQueue (with mmrelay.meshtastic_utils.meshtastic_client patched and
+        mmrelay.meshtastic_utils.reconnecting disabled), enqueues 50 messages as fast as
+        possible, waits up to 120 seconds for processing, and asserts that:
         - All messages are processed.
-        - The enforced minimum delay of ~2.0 seconds per message is respected (with a small tolerance).
-        - Overall processing rate exceeds 0.3 messages/second.
-
+        - The queue enforces an approximate 2.0-second minimum delay between messages
+          (allowing a small timing tolerance).
+        - The observed processing rate exceeds 0.3 messages/second.
+        
         Side effects:
         - Starts and stops a MessageQueue instance.
-        - Patches mmrelay.meshtastic_utils.meshtastic_client and mmrelay.meshtastic_utils.reconnecting for the duration of the test.
+        - Patches mmrelay.meshtastic_utils.meshtastic_client and
+          mmrelay.meshtastic_utils.reconnecting for the duration of the test.
         """
         import asyncio
 

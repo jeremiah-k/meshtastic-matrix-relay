@@ -237,15 +237,15 @@ def print_version():
 
 def _validate_e2ee_dependencies():
     """
-    Check whether E2EE is supported on this platform and required Python packages are available.
-
+    Check whether E2EE is supported on this platform and the required Python packages are importable.
+    
     Returns:
         bool: True if the current platform supports E2EE (non-Windows) and the required modules
         (python-olm, nio.crypto.OlmDevice, nio.store.SqliteStore) can be imported; False otherwise.
-
+    
     Notes:
-        - Emits user-facing messages describing missing platform support or missing dependencies.
-        - Does not perform network I/O; only inspects platform and importability of packages.
+        - Emits user-facing messages explaining missing platform support or missing dependencies.
+        - Performs only local checks (platform and importability); no network I/O.
     """
     if sys.platform == WINDOWS_PLATFORM:
         print("❌ Error: E2EE is not supported on Windows")
@@ -1497,16 +1497,16 @@ def handle_auth_logout(args):
 
 def handle_service_command(args):
     """
-    Dispatch service-related subcommands.
-
-    Currently recognizes args.service_command == "install": calls the package's install_service routine and returns 0 on success or 1 on failure.
-    For any other service_command the function prints an error and returns 1.
-
+    Handle the 'service' subcommand dispatch (currently supports only "install").
+    
+    If args.service_command == "install" this will attempt to import and invoke mmrelay.setup_utils.install_service().
+    Returns 0 when installation succeeds, 1 on failure or import errors. For any other service_command an error is printed and 1 is returned.
+    
     Parameters:
-        args: argparse.Namespace containing at least the `service_command` attribute.
-
+        args (argparse.Namespace): Must provide a string attribute `service_command` indicating the requested subcommand.
+    
     Returns:
-        int: Exit code (0 on success, 1 on error). The function may print error messages for unknown commands or import failures.
+        int: Exit code (0 on success, 1 on error).
     """
     if args.service_command == "install":
         try:
@@ -1550,16 +1550,17 @@ def _diagnose_config_paths(args):
 def _diagnose_sample_config_accessibility():
     """
     Check accessibility of the bundled sample configuration file.
-
-    Performs two checks and prints human-facing diagnostic lines:
-    1. Resolves the sample config path via mmrelay.tools.get_sample_config_path() and reports whether that filesystem path exists.
-    2. Attempts to read the embedded resource "sample_config.yaml" using importlib.resources as a fallback and reports success and content length.
-
+    
+    Performs two non-destructive checks and prints user-facing diagnostic lines:
+    1) Resolves the filesystem path returned by mmrelay.tools.get_sample_config_path()
+       and reports whether a file exists at that path.
+    2) Attempts to read the embedded package resource "sample_config.yaml" via
+       importlib.resources and reports success and the content length; failures are
+       caught and reported rather than raised.
+    
     Returns:
-        bool: True if the filesystem sample config exists at the resolved path; False otherwise.
-
-    Notes:
-        - Resource read failures are handled and reported; this function does not raise for importlib.resources-related errors.
+        bool: True if the sample config file exists at the resolved filesystem path;
+              False otherwise.
     """
     print("2. Testing sample config accessibility...")
     from mmrelay.tools import get_sample_config_path
@@ -1588,19 +1589,20 @@ def _diagnose_sample_config_accessibility():
 
 def _diagnose_platform_specific(args):
     """
-    Run platform-specific diagnostic checks.
-
-    On Windows, run Windows-specific requirement checks and a configuration-generation
-    test (via mmrelay.windows_utils) and print per-component results and warnings.
-    On non-Windows systems, report that platform-specific tests are not required.
-
+    Run platform-specific diagnostics and report results.
+    
+    On Windows, imports mmrelay.windows_utils and executes check_windows_requirements()
+    and test_config_generation_windows(args), printing per-component warnings and a
+    final overall status. On non-Windows systems this prints a note that platform-
+    specific tests are not required.
+    
     Parameters:
-        args: Parsed CLI arguments namespace; only used when invoking the Windows
-            config-generation test.
-
+        args: argparse.Namespace of parsed CLI arguments; forwarded to the Windows
+            config-generation test when running on Windows.
+    
     Returns:
-        bool: True when running on Windows (Windows checks were executed), False
-        for non-Windows platforms.
+        bool: True if Windows-specific checks were executed (running on Windows),
+        False for non-Windows platforms.
     """
     print("3. Platform-specific diagnostics...")
     import sys

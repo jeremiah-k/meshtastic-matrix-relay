@@ -212,7 +212,14 @@ def some_function():
         self.assertEqual(plugins, [])
 
     def test_load_plugins_dependency_install_refreshes_path(self):
-        """Ensure dependency installs on user site become importable for plugins."""
+        """
+        Ensure a dependency installed into the user's site-packages becomes importable for a plugin.
+        
+        Simulates installation of a missing plugin dependency into the user site directory (by patching subprocess.run and site operations), loads plugins from the custom plugin directory, and verifies:
+        - the plugin that required the dependency is loaded,
+        - the user site directory was added to the import search path,
+        - and the original custom plugin directory was not inserted into sys.path.
+        """
 
         for var in ("PIPX_HOME", "PIPX_LOCAL_VENVS"):
             os.environ.pop(var, None)
@@ -238,12 +245,12 @@ class Plugin:
 
         def fake_check_call(_cmd, *_args, **_kwargs):  # nosec B603
             """
-            Test helper that simulates a successful subprocess call installing a dependency.
-
-            Creates a file named `mockdep.py` in the test `user_site` directory with a single
-            constant (`VALUE = 1`) to make the dependency importable, then returns a
-            subprocess.CompletedProcess with returncode 0. Parameters mimic subprocess.call/check_call
-            arguments and are ignored except for `_cmd` which is recorded in the returned object.
+            Simulate a successful subprocess call that "installs" a test dependency.
+            
+            Creates a file named `mockdep.py` inside the test `user_site` directory (containing `VALUE = 1`)
+            so the dependency becomes importable, and returns a subprocess.CompletedProcess with returncode 0.
+            All positional and keyword arguments are ignored except `_cmd`, which is recorded in the returned
+            CompletedProcess.args.
             """
             with open(
                 os.path.join(user_site, "mockdep.py"), "w", encoding="utf-8"

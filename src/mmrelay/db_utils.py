@@ -32,13 +32,16 @@ def clear_db_path_cache():
 def get_db_path():
     """
     Return the resolved filesystem path to the SQLite database.
-
+    
     Resolution precedence:
     1. config["database"]["path"] (preferred)
     2. config["db"]["path"] (legacy)
     3. Default: "meshtastic.sqlite" inside the application data directory returned by get_data_dir().
-
-    The chosen path is cached and returned quickly on subsequent calls. The cache is invalidated automatically when the relevant parts of `config` change. When a configured path is used, this function will attempt to create the parent directory (and will attempt to create the standard data directory for the default path). Directory creation failures are logged as warnings but do not raise here; actual database connection errors may surface later.
+    
+    The result is cached and returned quickly on subsequent calls; the cache is invalidated when the relevant parts of `config` change. When a configured path is chosen this function will attempt to create the parent directory (and will attempt to create the standard data directory for the default path). Directory creation failures are logged as warnings and do not raise here; filesystem errors may surface later when opening the database.
+    
+    Returns:
+        str: Filesystem path to the SQLite database file.
     """
     global config, _cached_db_path, _db_path_logged, _cached_config_hash
 
