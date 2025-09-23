@@ -32,11 +32,12 @@ from mmrelay.message_queue import MessageQueue
 @pytest.fixture(autouse=True)
 def reset_global_state():
     """
-    Reset mmrelay global state before and after a test and force garbage collection to ensure isolation.
-
-    This pytest fixture clears key globals in mmrelay.meshtastic_utils (including meshtastic_client, reconnecting,
-    config, matrix_rooms, shutting_down, event_loop, reconnect_task, subscribed flags) and runs gc.collect()
-    both before the test runs and after it yields, preventing state leakage between tests.
+    pytest fixture that resets mmrelay global state and forces garbage collection before and after each test.
+    
+    This generator fixture clears key globals in mmrelay.meshtastic_utils (for example: meshtastic_client,
+    reconnecting, config, matrix_rooms, shutting_down, event_loop, reconnect_task, and subscription flags)
+    to guarantee test isolation, calls gc.collect() before yielding and again after the test completes.
+    Use as an autouse fixture to prevent state leakage between tests.
     """
     # Reset global state before the test
     import mmrelay.meshtastic_utils
@@ -182,14 +183,11 @@ class TestPerformanceStress:
     @pytest.mark.performance  # Changed from slow to performance
     def test_message_queue_performance_under_load(self):
         """
-        Test MessageQueue under rapid enqueueing with an enforced minimum per-message delay.
-
-        Starts a MessageQueue with a requested short delay (0.01s), enqueues 50 messages quickly using a mock send function, waits up to 120 seconds for all messages to be processed, and asserts:
-        - all messages are processed;
-        - the queue respects an enforced minimum delay of ~2.0 seconds per message (with a small tolerance);
-        - overall processing throughput exceeds 0.3 messages/second.
-
-        Side effects: patches mmrelay.meshtastic_utils.meshtastic_client and mmrelay.meshtastic_utils.reconnecting, starts and stops a MessageQueue instance.
+        Test that MessageQueue enforces a minimum per-message delay and maintains acceptable throughput under rapid enqueueing.
+        
+        Starts a MessageQueue with a small requested delay (0.01s) which is internally enforced to a longer minimum, enqueues 50 messages rapidly using a mock send function, and waits (up to 120s) for all messages to be processed. Asserts that all messages are sent, that the total processing time respects the enforced minimum per-message delay (approximately 2.0s per message, allowing small tolerance), and that the observed throughput exceeds 0.3 messages/second.
+        
+        Side effects: patches mmrelay.meshtastic_utils.meshtastic_client and mmrelay.meshtastic_utils.reconnecting, and starts/stops a MessageQueue instance.
         """
         import asyncio
 
