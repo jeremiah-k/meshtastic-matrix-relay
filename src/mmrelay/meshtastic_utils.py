@@ -327,9 +327,13 @@ def connect_meshtastic(passed_config=None, force_connect=False):
 
     # Move retry loop outside the lock to prevent blocking other threads
     meshtastic_settings = config.get("meshtastic", {}) if config else {}
-    retry_limit_raw = meshtastic_settings.get(
-        "retries", meshtastic_settings.get("retry_limit", INFINITE_RETRIES)
-    )
+    retry_limit_raw = meshtastic_settings.get("retries")
+    if retry_limit_raw is None:
+        retry_limit_raw = meshtastic_settings.get("retry_limit", INFINITE_RETRIES)
+        if "retry_limit" in meshtastic_settings:
+            logger.warning(
+                "'retry_limit' is deprecated in meshtastic config; use 'retries' instead"
+            )
     try:
         retry_limit = int(retry_limit_raw)
     except (TypeError, ValueError):

@@ -514,7 +514,9 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
             result = sendTextReply(None, "test message", 12345)
             self.assertIsNone(result)
-            mock_logger.exception.assert_called()
+            mock_logger.error.assert_called_with(
+                "No Meshtastic interface available for sending reply"
+            )
 
     def test_sendTextReply_client_send_failure(self):
         """

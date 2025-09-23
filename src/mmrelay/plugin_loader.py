@@ -214,9 +214,9 @@ def _refresh_dependency_paths() -> None:
                 site.addsitedir(path)
             except OSError as e:
                 logger.warning(
-                    f"site.addsitedir failed for '{path}': {e}. Falling back to sys.path.append."
+                    f"site.addsitedir failed for '{path}': {e}. Falling back to sys.path.insert(0, ...)."
                 )
-                sys.path.append(path)
+                sys.path.insert(0, path)
 
     # Ensure import machinery notices new packages
     importlib.invalidate_caches()

@@ -76,8 +76,6 @@ sys.modules["haversine"] = MagicMock()
 sys.modules["schedule"] = MagicMock()
 sys.modules["platformdirs"] = MagicMock()
 sys.modules["py_staticmaps"] = MagicMock()
-sys.modules["staticmaps"] = MagicMock()
-sys.modules["s2sphere"] = MagicMock()
 
 
 # Now that mocks are in place, we can import the application code
@@ -251,6 +249,47 @@ class MockS2Module:
 
 
 sys.modules["s2sphere"] = MockS2Module()
+
+
+class MockStaticmapsObject:
+    def __init__(self):
+        self.data = {}
+
+
+class MockStaticmapsContext:
+    def __init__(self):
+        self.objects = []
+        self.tile_provider = None
+        self.zoom = None
+
+    def set_tile_provider(self, provider):
+        self.tile_provider = provider
+
+    def set_zoom(self, zoom):
+        self.zoom = zoom
+
+    def add_object(self, obj):
+        self.objects.append(obj)
+
+    def render_pillow(self, width, height):
+        return MagicMock()
+
+
+class MockStaticmapsModule:
+    Object = MockStaticmapsObject
+    Context = MockStaticmapsContext
+    PillowRenderer = MagicMock
+    CairoRenderer = MagicMock
+    SvgRenderer = MagicMock
+    PixelBoundsT = tuple
+    tile_provider_OSM = object()
+
+    @staticmethod
+    def create_latlng(lat, lon):
+        return MockLatLng.from_degrees(lat, lon)
+
+
+sys.modules["staticmaps"] = MockStaticmapsModule()
 
 
 @pytest.fixture(autouse=True)
@@ -524,11 +563,11 @@ def mock_event_loop(monkeypatch):
         if getattr(loop, "_mmrelay_run_in_executor_patched", False):
             return loop
 
-        def run_in_executor_sync(_executor, func, *args, **kwargs):  # noqa: ARG001
+        def run_in_executor_sync(_executor, func, *args, **kwargs):
             future = loop.create_future()
             try:
                 result = func(*args, **kwargs)
-            except Exception as exc:  # pragma: no cover - exercised in tests
+            except Exception as exc:
                 future.set_exception(exc)
             else:
                 future.set_result(result)

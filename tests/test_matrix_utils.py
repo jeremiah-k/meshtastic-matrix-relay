@@ -2473,8 +2473,30 @@ async def test_logout_matrix_bot_timeout():
 
         result = await logout_matrix_bot(password="test_password")
 
-        assert result is False
-        mock_temp_client.close.assert_called_once()
+    assert result is False
+    mock_temp_client.close.assert_called_once()
+
+
+class TestMatrixUtilityFunctions:
+    def test_truncate_message_respects_utf8_boundaries(self):
+        text = "hello😊"
+        truncated = truncate_message(text, max_bytes=6)
+        assert truncated == "hello"
+
+    def test_strip_quoted_lines_removes_quoted_content(self):
+        text = "Line one\n> quoted line\n Line two"
+        result = strip_quoted_lines(text)
+        assert result == "Line one Line two"
+
+    def test_validate_prefix_format_success(self):
+        is_valid, error = validate_prefix_format("{display}", {"display": "Alice"})
+        assert is_valid is True
+        assert error is None
+
+    def test_validate_prefix_format_missing_key(self):
+        is_valid, error = validate_prefix_format("{missing}", {"display": "Alice"})
+        assert is_valid is False
+        assert "missing" in error
 
 
 @pytest.mark.asyncio

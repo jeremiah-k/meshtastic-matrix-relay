@@ -97,7 +97,7 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
 
         with patch.dict(os.environ, {"MMRELAY_TESTING": "0"}, clear=False):
             with patch("mmrelay.e2ee_utils.importlib.import_module") as mock_import:
-                mock_import.side_effect = lambda name: MagicMock()
+                mock_import.side_effect = lambda _: MagicMock()
                 status = get_e2ee_status(self.base_config, self.config_path)
 
             self.assertEqual(status["overall_status"], "ready")
@@ -172,7 +172,7 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
 
         with patch.dict(os.environ, {"MMRELAY_TESTING": "0"}, clear=False):
             with patch("mmrelay.e2ee_utils.importlib.import_module") as mock_import:
-                mock_import.side_effect = lambda name: MagicMock()
+                mock_import.side_effect = lambda _: MagicMock()
                 status = get_e2ee_status(self.base_config, self.config_path)
 
             self.assertEqual(status["overall_status"], "incomplete")
