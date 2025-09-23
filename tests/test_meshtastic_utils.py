@@ -13,6 +13,7 @@ Tests the Meshtastic client functionality including:
 import os
 import sys
 import unittest
+from concurrent.futures import TimeoutError as ConcurrentTimeoutError
 from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 
 import pytest
@@ -837,7 +838,7 @@ def test_connect_meshtastic_retry_on_serial_exception(
         "meshtastic": {
             "connection_type": "serial",
             "serial_port": "/dev/ttyUSB0",
-            "retry_limit": 2,
+            "retries": 2,
         }
     }
 
@@ -856,16 +857,18 @@ def test_connect_meshtastic_retry_exhausted(
 ):
     """Test that connect_meshtastic returns None when retries are exhausted."""
     # Mock a critical error that should not be retried
-    mock_tcp.side_effect = TimeoutError("Connection timeout")
+    mock_tcp.side_effect = ConcurrentTimeoutError("Connection timeout")
 
     config = {"meshtastic": {"connection_type": "tcp", "host": "192.168.1.100"}}
 
     result = connect_meshtastic(passed_config=config)
 
-    # Should fail immediately on critical error
+    # Should ultimately fail after limited timeout retries even when retries are infinite
     assert result is None
-    assert mock_tcp.call_count == 1
-    mock_sleep.assert_not_called()  # No retries for critical errors
+    from mmrelay.meshtastic_utils import MAX_TIMEOUT_RETRIES_INFINITE
+
+    assert mock_tcp.call_count == MAX_TIMEOUT_RETRIES_INFINITE + 1
+    assert mock_sleep.call_count == MAX_TIMEOUT_RETRIES_INFINITE
 
 
 @patch("mmrelay.meshtastic_utils.connect_meshtastic")

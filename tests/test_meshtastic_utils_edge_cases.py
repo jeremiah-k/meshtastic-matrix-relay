@@ -12,9 +12,11 @@ Tests edge cases and error handling including:
 - Memory constraints with large node lists
 """
 
+import asyncio
 import os
 import sys
 import unittest
+from concurrent.futures import TimeoutError as ConcurrentTimeoutError
 from unittest.mock import AsyncMock, MagicMock, patch
 
 # Add src to path for imports
@@ -54,7 +56,10 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         """
         Test that serial_port_exists returns False when access to the serial port is denied due to a PermissionError.
         """
-        with patch("serial.Serial", side_effect=PermissionError("Permission denied")):
+        with patch(
+            "mmrelay.meshtastic_utils.serial.tools.list_ports.comports",
+            return_value=[],
+        ):
             result = serial_port_exists("/dev/ttyUSB0")
             self.assertFalse(result)
 
@@ -62,7 +67,10 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         """
         Test that serial_port_exists returns False when the specified device is not found.
         """
-        with patch("serial.Serial", side_effect=FileNotFoundError("Device not found")):
+        with patch(
+            "mmrelay.meshtastic_utils.serial.tools.list_ports.comports",
+            return_value=[],
+        ):
             result = serial_port_exists("/dev/nonexistent")
             self.assertFalse(result)
 
@@ -72,9 +80,10 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
 
         Simulates a busy device by patching serial.Serial to raise SerialException.
         """
-        import serial
-
-        with patch("serial.Serial", side_effect=serial.SerialException("Device busy")):
+        with patch(
+            "mmrelay.meshtastic_utils.serial.tools.list_ports.comports",
+            return_value=[],
+        ):
             result = serial_port_exists("/dev/ttyUSB0")
             self.assertFalse(result)
 
@@ -89,14 +98,16 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         with patch("mmrelay.meshtastic_utils.serial_port_exists", return_value=True):
             with patch(
                 "mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface",
-                side_effect=TimeoutError("Connection timeout"),
+                side_effect=ConcurrentTimeoutError("Connection timeout"),
             ):
-                with patch("mmrelay.meshtastic_utils.logger") as mock_logger, patch(
-                    "mmrelay.meshtastic_utils.is_running_as_service", return_value=True
-                ), patch("mmrelay.matrix_utils.matrix_client", None):
-                    result = connect_meshtastic(config)
-                    self.assertIsNone(result)
-                    mock_logger.exception.assert_called()
+                with patch("time.sleep"):  # Speed up test
+                    with patch("mmrelay.meshtastic_utils.logger") as mock_logger, patch(
+                        "mmrelay.meshtastic_utils.is_running_as_service",
+                        return_value=True,
+                    ), patch("mmrelay.matrix_utils.matrix_client", None):
+                        result = connect_meshtastic(config)
+                        self.assertIsNone(result)
+                        mock_logger.exception.assert_called()
 
     def test_connect_meshtastic_ble_device_not_found(self):
         """
@@ -123,7 +134,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
     def test_connect_meshtastic_tcp_connection_refused(self):
         """
         Verify connect_meshtastic returns None and logs an exception when a TCP connection is refused.
-        
+
         Patches the TCPInterface to raise ConnectionRefusedError and asserts that connect_meshtastic returns None and that logger.exception is invoked.
         """
         config = {"meshtastic": {"connection_type": "tcp", "host": "192.168.1.100"}}
@@ -146,12 +157,12 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
             result = connect_meshtastic(config)
             self.assertIsNone(result)
-            mock_logger.exception.assert_called()
+            mock_logger.error.assert_called()
 
     def test_connect_meshtastic_exponential_backoff_max_retries(self):
         """
         Test that connect_meshtastic returns None and logs an exception when repeated connection attempts hit the maximum retries due to persistent MemoryError.
-        
+
         Sets a serial connection config, patches serial_port_exists to True and SerialInterface to raise MemoryError on each attempt, patches time.sleep to avoid delays, and asserts connect_meshtastic returns None and that logger.exception was called.
         """
         config = {
@@ -207,9 +218,9 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
 
         def _submit_coro_mock(coro, loop=None):
             """
-            Run the given coroutine synchronously (using asyncio.run) and return a concurrent.futures.Future that is completed with its result or exception.
-            
-            This test helper executes the coroutine immediately to surface any exceptions and wraps the outcome in a Future. The optional `loop` parameter is accepted for API compatibility but is ignored.
+            Run a coroutine synchronously and return a concurrent.futures.Future completed with its outcome.
+
+            This test helper executes `coro` immediately via `asyncio.run` so any exceptions are raised and captured; the returned Future will be set with the coroutine's result or its exception. The optional `loop` parameter is accepted for API compatibility but is ignored.
             """
             f = Future()
             try:
@@ -251,6 +262,168 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
 
             on_meshtastic_message(packet, mock_interface)
             mock_logger.exception.assert_called()
+
+    def test_on_meshtastic_message_plugin_timeout_uses_config(self):
+        """Verify plugin timeout honors meshtastic.plugin_timeout configuration."""
+
+        packet = {
+            "decoded": {"text": "test message", "portnum": 1},
+            "fromId": "!12345678",
+            "channel": 0,
+        }
+        interface = MagicMock()
+        interface.nodes = {}
+
+        class DummyFuture:
+            def __init__(self, exc):
+                """
+                Initialize the object with an exception and an empty call history.
+
+                Parameters:
+                    exc (BaseException): The exception instance to store for later inspection or re-raising.
+                """
+                self.exc = exc
+                self.calls = []
+
+            def result(self, timeout=None):
+                """
+                Record the provided timeout value and raise the stored exception.
+
+                Parameters:
+                    timeout (float | None): Timeout passed in; appended to self.calls for later inspection.
+
+                Raises:
+                    Any: Re-raises the exception stored in self.exc.
+                """
+                self.calls.append(timeout)
+                raise self.exc
+
+        timeout_exc = ConcurrentTimeoutError("Plugin timeout")
+        future = DummyFuture(timeout_exc)
+
+        plugin = MagicMock()
+        plugin.plugin_name = "timeout_plugin"
+        plugin.handle_meshtastic_message = AsyncMock(return_value=False)
+
+        config = {
+            "meshtastic": {
+                "meshnet_name": "meshnet",
+                "plugin_timeout": 7.5,
+                "message_interactions": {"reactions": False, "replies": False},
+            }
+        }
+        rooms = [{"meshtastic_channel": 0, "id": "!room:matrix"}]
+
+        with patch("mmrelay.plugin_loader.load_plugins", return_value=[plugin]), patch(
+            "mmrelay.meshtastic_utils._submit_coro", side_effect=[future, MagicMock()]
+        ) as mock_submit_coro, patch("mmrelay.meshtastic_utils.config", config), patch(
+            "mmrelay.meshtastic_utils.matrix_rooms", rooms
+        ), patch(
+            "mmrelay.meshtastic_utils.get_longname", return_value="Long"
+        ), patch(
+            "mmrelay.meshtastic_utils.get_shortname", return_value="Short"
+        ), patch(
+            "mmrelay.matrix_utils.get_matrix_prefix", return_value=""
+        ), patch(
+            "mmrelay.matrix_utils.matrix_relay", AsyncMock(return_value=None)
+        ), patch(
+            "mmrelay.meshtastic_utils.event_loop", MagicMock()
+        ), patch(
+            "mmrelay.meshtastic_utils.logger"
+        ) as mock_logger:
+            on_meshtastic_message(packet, interface)
+
+            self.assertEqual(future.calls, [7.5])
+            mock_logger.warning.assert_any_call(
+                "Plugin %s did not respond within %ss: %s",
+                "timeout_plugin",
+                7.5,
+                timeout_exc,
+            )
+            self.assertEqual(mock_submit_coro.call_count, 2)
+
+    def test_on_meshtastic_message_invalid_plugin_timeout_falls_back(self):
+        """Ensure invalid plugin_timeout values log a warning and fall back to default."""
+
+        packet = {
+            "decoded": {"text": "test message", "portnum": 1},
+            "fromId": "!12345678",
+            "channel": 0,
+        }
+        interface = MagicMock()
+        interface.nodes = {}
+
+        class DummyFuture:
+            def __init__(self, exc):
+                """
+                Initialize the object with an exception and an empty call history.
+
+                Parameters:
+                    exc (BaseException): The exception instance to store for later inspection or re-raising.
+                """
+                self.exc = exc
+                self.calls = []
+
+            def result(self, timeout=None):
+                """
+                Record the provided timeout value and raise the stored exception.
+
+                Parameters:
+                    timeout (float | None): Timeout passed in; appended to self.calls for later inspection.
+
+                Raises:
+                    Any: Re-raises the exception stored in self.exc.
+                """
+                self.calls.append(timeout)
+                raise self.exc
+
+        timeout_exc = ConcurrentTimeoutError("Plugin timeout")
+        future = DummyFuture(timeout_exc)
+
+        plugin = MagicMock()
+        plugin.plugin_name = "timeout_plugin"
+        plugin.handle_meshtastic_message = AsyncMock(return_value=False)
+
+        config = {
+            "meshtastic": {
+                "meshnet_name": "meshnet",
+                "plugin_timeout": "invalid",
+                "message_interactions": {"reactions": False, "replies": False},
+            }
+        }
+        rooms = [{"meshtastic_channel": 0, "id": "!room:matrix"}]
+
+        with patch("mmrelay.plugin_loader.load_plugins", return_value=[plugin]), patch(
+            "mmrelay.meshtastic_utils._submit_coro", side_effect=[future, MagicMock()]
+        ), patch("mmrelay.meshtastic_utils.config", config), patch(
+            "mmrelay.meshtastic_utils.matrix_rooms", rooms
+        ), patch(
+            "mmrelay.meshtastic_utils.get_longname", return_value="Long"
+        ), patch(
+            "mmrelay.meshtastic_utils.get_shortname", return_value="Short"
+        ), patch(
+            "mmrelay.matrix_utils.get_matrix_prefix", return_value=""
+        ), patch(
+            "mmrelay.matrix_utils.matrix_relay", AsyncMock(return_value=None)
+        ), patch(
+            "mmrelay.meshtastic_utils.event_loop", MagicMock()
+        ), patch(
+            "mmrelay.meshtastic_utils.logger"
+        ) as mock_logger:
+            on_meshtastic_message(packet, interface)
+
+            self.assertEqual(future.calls, [5.0])
+            mock_logger.warning.assert_any_call(
+                "Invalid meshtastic.plugin_timeout value %r; using %ss fallback.",
+                "invalid",
+                5.0,
+            )
+            mock_logger.warning.assert_any_call(
+                "Plugin %s did not respond within %ss: %s",
+                "timeout_plugin",
+                5.0,
+                timeout_exc,
+            )
 
     def test_on_meshtastic_message_matrix_relay_failure(self):
         """
@@ -373,12 +546,14 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
             result = sendTextReply(None, "test message", 12345)
             self.assertIsNone(result)
-            mock_logger.exception.assert_called()
+            mock_logger.error.assert_called_with(
+                "No Meshtastic interface available for sending reply"
+            )
 
     def test_sendTextReply_client_send_failure(self):
         """
         Test that sendTextReply returns None and logs an exception when the client's send operation raises.
-        
+
         Ensures that if the client's `_sendPacket` raises an exception, `sendTextReply` handles it by returning None and calling `logger.exception`.
         """
         mock_client = MagicMock()

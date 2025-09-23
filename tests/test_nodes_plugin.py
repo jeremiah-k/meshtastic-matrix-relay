@@ -16,6 +16,8 @@ import unittest
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
@@ -143,6 +145,7 @@ class TestGetRelativeTime(unittest.TestCase):
         self.assertEqual(result, expected_format)
 
 
+@pytest.mark.usefixtures("mock_event_loop")
 class TestNodesPlugin(unittest.TestCase):
     """Test cases for the nodes plugin."""
 

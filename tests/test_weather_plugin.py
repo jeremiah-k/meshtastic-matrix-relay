@@ -18,6 +18,8 @@ import sys
 import unittest
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
@@ -62,6 +64,7 @@ def _make_ok_response(payload):
     return r
 
 
+@pytest.mark.usefixtures("mock_event_loop")
 class TestWeatherPlugin(unittest.TestCase):
     """Test cases for the weather plugin."""
 

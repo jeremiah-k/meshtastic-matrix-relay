@@ -22,7 +22,7 @@ class TestHandleConfigDiagnose(unittest.TestCase):
     def setUp(self):
         """
         Set up test fixtures for each test case.
-        
+
         Creates self.mock_args as a MagicMock that simulates the CLI argument object used by the tested CLI diagnose and config template functions.
         """
         self.mock_args = MagicMock()
@@ -133,7 +133,7 @@ class TestWindowsErrorHandling(unittest.TestCase):
     def setUp(self):
         """
         Set up test fixtures for each test case.
-        
+
         Creates self.mock_args as a MagicMock that simulates the CLI argument object used by the tested CLI diagnose and config template functions.
         """
         self.mock_args = MagicMock()
@@ -267,7 +267,7 @@ class TestConfigDiagnoseIntegration(unittest.TestCase):
     def setUp(self):
         """
         Set up test fixtures for each test case.
-        
+
         Creates self.mock_args as a MagicMock that simulates the CLI argument object used by the tested CLI diagnose and config template functions.
         """
         self.mock_args = MagicMock()

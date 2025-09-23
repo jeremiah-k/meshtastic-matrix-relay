@@ -18,6 +18,8 @@ import sys
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
@@ -55,6 +57,7 @@ class MockPlugin(BasePlugin):
         return False
 
 
+@pytest.mark.usefixtures("mock_event_loop")
 class TestBasePlugin(unittest.TestCase):
     """Test cases for the BasePlugin class."""
 

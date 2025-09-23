@@ -1048,7 +1048,7 @@ class TestConfigChecker(unittest.TestCase):
     ):
         """
         Ensure check_config handles unexpected exceptions by returning False and printing the error to stderr.
-        
+
         Simulates validate_yaml raising Exception("General error") and verifies that check_config() returns False and that the message
         "Error checking configuration: General error" is printed to sys.stderr.
         """

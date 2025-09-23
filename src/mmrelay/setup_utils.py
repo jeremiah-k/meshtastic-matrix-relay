@@ -30,7 +30,7 @@ def _quote_if_needed(path: str) -> str:
 def get_resolved_exec_cmd() -> str:
     """
     Return the resolved command used to invoke MMRelay.
-    
+
     Prefers an mmrelay executable found on PATH; if found returns its filesystem path (quoted if it contains spaces). If not found, returns an invocation that runs the current Python interpreter with `-m mmrelay` (the interpreter path will be quoted if it contains spaces). The returned string is suitable for use as an ExecStart value in a systemd unit.
     """
     mmrelay_path = shutil.which("mmrelay")
@@ -101,19 +101,28 @@ def print_service_commands():
 
 def wait_for_service_start():
     """
-    Wait up to ~10 seconds for the user mmrelay systemd service to become active, displaying a progress spinner when running interactively.
-    
-    If the process is not running as a service, this shows a Rich spinner and elapsed time, sleeping in one-second intervals and checking service status; if the service becomes active after 5 seconds the wait ends early. When running as a service (non-interactive), the function performs the same timed checks but without the Rich UI. This function does not return a value; it blocks for up to ~10 seconds and calls is_service_active() to detect service readiness.
+    Wait up to ~10 seconds for the user mmrelay systemd service to become active.
+
+    Blocks while periodically checking is_service_active(). When running interactively (not as a service) a Rich spinner and elapsed-time display are shown; when running as a service the function performs the same timed checks without UI. The wait may finish early if the service becomes active (checks begin allowing early exit after ~5 seconds). This function does not return a value.
     """
     import time
 
     from mmrelay.runtime_utils import is_running_as_service
 
-    if not is_running_as_service():
-        from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
+    running_as_service = is_running_as_service()
+    if not running_as_service:
+        try:
+            from rich.progress import (
+                Progress,
+                SpinnerColumn,
+                TextColumn,
+                TimeElapsedColumn,
+            )
+        except Exception:
+            running_as_service = True
 
     # Create a Rich progress display with spinner and elapsed time
-    if not is_running_as_service():
+    if not running_as_service:
         with Progress(
             SpinnerColumn(),
             TextColumn("[bold green]Starting mmrelay service..."),
@@ -123,10 +132,13 @@ def wait_for_service_start():
             # Add a task that will run for approximately 10 seconds
             task = progress.add_task("Starting", total=PROGRESS_TOTAL_STEPS)
 
-            # Update progress over 10 seconds
+            # Update progress over ~10 seconds
+            step = max(1, PROGRESS_TOTAL_STEPS // 10)
             for i in range(10):
                 time.sleep(1)
-                progress.update(task, completed=10 * (i + 1))
+                progress.update(
+                    task, completed=min(PROGRESS_TOTAL_STEPS, step * (i + 1))
+                )
 
                 # Check if service is active after 5 seconds to potentially finish early
                 if i >= 5 and is_service_active():
@@ -228,14 +240,14 @@ def get_template_service_path():
 def get_template_service_content():
     """
     Return the systemd service unit content to install for the user-level mmrelay service.
-    
+
     Attempts to load a template in this order:
     1. The external path returned by get_service_template_path() (UTF-8).
     2. The embedded package resource "mmrelay.service" from mmrelay.tools via importlib.resources.
     3. A second filesystem probe using get_template_service_path() (UTF-8).
-    
+
     If none of the above can be read, returns a built-in default service unit that includes a resolved ExecStart (from get_resolved_exec_start()), sensible Environment settings (including PYTHONUNBUFFERED and a PATH containing common user-local locations), and standard Unit/Service/Install sections.
-    
+
     Returns:
         str: Complete service file content to write. Read/access errors are reported to stderr.
     """
@@ -346,16 +358,15 @@ def is_service_active():
 
 def create_service_file():
     """
-    Create or update the user's systemd service unit for MMRelay.
+    Create or update the per-user systemd unit file for MMRelay.
     
-    Ensures the user service directory and the MMRelay logs directory exist, obtains a service template (with multiple fallbacks), normalizes the unit's ExecStart to the resolved MMRelay invocation (either an mmrelay executable on PATH or a Python `-m mmrelay` fallback), and writes the resulting unit to ~/.config/systemd/user/mmrelay.service.
+    Ensures the user systemd directory (~/.config/systemd/user) and the MMRelay logs directory (~/.mmrelay/logs) exist, obtains a service unit template (using the module's template-loading fallbacks), substitutes known placeholders (working directory, packaged launcher, and config path), and normalizes the Unit's ExecStart to the resolved MMRelay invocation (an mmrelay executable on PATH or a Python `-m mmrelay` fallback) while preserving any trailing arguments. The final unit is written to ~/.config/systemd/user/mmrelay.service.
     
     Returns:
-        bool: True if the service file was written successfully; False if a template could not be obtained or writing the file failed.
+        bool: True if the service file was written successfully; False if no template could be obtained or writing the file failed.
     """
     # Get executable paths once to avoid duplicate calls and output
     executable_path = get_executable_path()
-    resolved_exec_cmd = executable_path
 
     # Create service directory if it doesn't exist
     service_dir = get_user_service_path().parent
@@ -388,9 +399,15 @@ def create_service_file():
     )
 
     # Normalize ExecStart: replace any mmrelay launcher with resolved command, preserving args
-    service_content = re.sub(
-        r'(?m)^(ExecStart=)"?(?:/usr/bin/env\s+mmrelay|[\S/]*mmrelay|.+\bpython(?:\d+(?:\.\d+)*)?\b\s+-m\s+mmrelay)"?(\s.*)?$',
-        rf"\1{resolved_exec_cmd}\2",
+    pattern = re.compile(
+        r'(?m)^\s*(ExecStart=)"?(?:'
+        r"/usr/bin/env\s+mmrelay"
+        r"|(?:\S*?[\\/])?mmrelay\b"
+        r"|\S*\bpython(?:\d+(?:\.\d+)*)?(?:\.exe)?\b\s+-m\s+mmrelay"
+        r')"?(\s.*)?$'
+    )
+    service_content = pattern.sub(
+        lambda m: f"{m.group(1)}{executable_path}{m.group(2) or ''}",
         service_content,
     )
 
@@ -407,7 +424,7 @@ def create_service_file():
 def reload_daemon():
     """
     Reload the current user's systemd daemon to apply unit file changes.
-    
+
     Attempts to run the resolved `SYSTEMCTL` command with `--user daemon-reload`. Returns True if the subprocess exits successfully; returns False on failure (subprocess error or OSError). Side effects: prints a success message to stdout or an error message to stderr.
     """
     try:
@@ -425,17 +442,20 @@ def reload_daemon():
 
 def service_needs_update():
     """
-    Determine whether the user systemd service file for mmrelay needs updating.
+    Return whether the user systemd unit for mmrelay should be updated.
 
-    Performs these checks in order:
-    - If no installed service file exists, indicates an update is required.
-    - If the canonical service template cannot be located, reports that the update check cannot be performed (returns False).
-    - Verifies the ExecStart in the installed file uses an acceptable mmrelay invocation (either the mmrelay executable on PATH, `/usr/bin/env mmrelay`, or `python -m mmrelay` when mmrelay is not on PATH).
-    - Ensures the unit's PATH environment includes common user-bin locations (e.g. `%h/.local/pipx/venvs/mmrelay/bin` or `%h/.local/bin`).
-    - If a template file is found, compares modification times and marks an update required when the template is newer than the installed service file.
+    Performs checks in this order and returns (needs_update, reason):
+    - No installed unit file => update required.
+    - Installed unit must contain an ExecStart= line that invokes mmrelay via an acceptable form:
+      - an mmrelay executable found on PATH,
+      - "/usr/bin/env mmrelay",
+      - or the current Python interpreter with "-m mmrelay".
+      If none match, an update is recommended.
+    - Unit Environment= PATH lines must include common user bin locations (e.g. "%h/.local/pipx/venvs/mmrelay/bin" or "%h/.local/bin"); if missing, an update is recommended.
+    - If a template service file is available on disk, its modification time is compared to the installed unit; if the template is newer, an update is recommended.
 
     Returns:
-        tuple: (needs_update: bool, reason: str) — needs_update is True when an update is recommended or required; reason explains the decision or why the check could not be completed.
+        tuple: (needs_update: bool, reason: str) — True when an update is recommended or required; reason explains the decision or why the check failed (e.g., missing ExecStart, missing PATH entries, stat error).
     """
     # Check if service already exists
     existing_service = read_service_file()
@@ -444,16 +464,15 @@ def service_needs_update():
 
     # Get the template service path
     template_path = get_template_service_path()
-    if not template_path:
-        return False, "Could not find template service file"
 
     # Get the acceptable executable paths
     mmrelay_path = shutil.which("mmrelay")
-    acceptable_execs = [f"{_quote_if_needed(sys.executable)} -m mmrelay"]
+    acceptable_execs = [
+        f"{_quote_if_needed(sys.executable)} -m mmrelay",
+        "/usr/bin/env mmrelay",
+    ]
     if mmrelay_path:
-        acceptable_execs.extend(
-            [_quote_if_needed(mmrelay_path), "/usr/bin/env mmrelay"]
-        )
+        acceptable_execs.append(_quote_if_needed(mmrelay_path))
 
     # Check if the ExecStart line in the existing service file contains an acceptable executable form
     exec_start_line = next(
@@ -490,10 +509,13 @@ def service_needs_update():
         return True, "Service PATH does not include common user-bin locations"
 
     # Check if the service file has been modified recently
-    template_mtime = os.path.getmtime(template_path)
     service_path = get_user_service_path()
-    if os.path.exists(service_path):
-        service_mtime = os.path.getmtime(service_path)
+    if template_path and os.path.exists(template_path) and os.path.exists(service_path):
+        try:
+            template_mtime = os.path.getmtime(template_path)
+            service_mtime = os.path.getmtime(service_path)
+        except OSError:
+            return True, "Unable to stat template or service file"
         if template_mtime > service_mtime:
             return True, "Template service file is newer than installed service file"
 
@@ -558,13 +580,9 @@ def check_lingering_enabled():
 
 def enable_lingering():
     """
-    Enable systemd "lingering" for the current user by invoking `sudo loginctl enable-linger <user>`.
+    Enable systemd "lingering" for the current user by running `sudo loginctl enable-linger <user>`.
     
-    The function determines the current username from the USER or USERNAME environment variables or falls back to getpass.getuser().
-    It runs `sudo loginctl enable-linger <username>` and prints success or error messages to stdout/stderr.
-    
-    Returns:
-        bool: True if the subprocess exit code indicates success (lingering enabled), False otherwise.
+    Determines the username from environment variables or getpass.getuser(), invokes the privileged `loginctl` command to enable lingering, and returns True if the command exits successfully. On failure (non-zero exit, missing username, or subprocess/OSError), returns False and prints an error message to stderr.
     """
     try:
         import getpass
@@ -643,7 +661,8 @@ def install_service():
         # Reload daemon (continue even if this fails)
         if not reload_daemon():
             print(
-                "Warning: Failed to reload systemd daemon. You may need to run 'systemctl --user daemon-reload' manually."
+                "Warning: Failed to reload systemd daemon. You may need to run 'systemctl --user daemon-reload' manually.",
+                file=sys.stderr,
             )
 
         if existing_service:
@@ -766,10 +785,10 @@ def install_service():
 def start_service():
     """
     Start the user-level systemd service for MMRelay.
-    
+
     Attempts to run `SYSTEMCTL --user start mmrelay.service`. Returns True if the command exits successfully.
     On failure the function prints an error message to stderr and returns False.
-    
+
     Returns:
         bool: True when the service was started successfully; False on error.
     """

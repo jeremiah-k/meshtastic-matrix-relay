@@ -14,12 +14,15 @@ import sys
 import unittest
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.plugins.debug_plugin import Plugin
 
 
+@pytest.mark.usefixtures("mock_event_loop")
 class TestDebugPlugin(unittest.TestCase):
     """Test cases for the debug plugin functionality."""
 

@@ -6,8 +6,10 @@ import re
 import threading
 import time
 from concurrent.futures import Future
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from typing import List
 
+import meshtastic
 import meshtastic.ble_interface
 import meshtastic.serial_interface
 import meshtastic.tcp_interface
@@ -42,8 +44,11 @@ from mmrelay.constants.network import (
     CONNECTION_TYPE_TCP,
     DEFAULT_BACKOFF_TIME,
     ERRNO_BAD_FILE_DESCRIPTOR,
-    INFINITE_RETRIES,
+INFINITE_RETRIES,
 )
+
+# Maximum number of timeout retries when retries are configured as infinite.
+MAX_TIMEOUT_RETRIES_INFINITE = 5
 
 # Import BLE exceptions conditionally
 try:
@@ -125,6 +130,9 @@ def _submit_coro(coro, loop=None):
             # Try to get the current event loop policy and create a new loop
             # This is safer than asyncio.run() which can cause deadlocks
             policy = asyncio.get_event_loop_policy()
+            logger.debug(
+                "No running event loop detected; creating a temporary loop to execute coroutine"
+            )
             new_loop = policy.new_event_loop()
             asyncio.set_event_loop(new_loop)
             try:
@@ -142,15 +150,57 @@ def _submit_coro(coro, loop=None):
             return f
 
 
+def _resolve_plugin_timeout(cfg: dict | None, default: float = 5.0) -> float:
+    """
+    Resolve and return a positive plugin timeout value from the given configuration.
+    
+    Attempts to read meshtastic.plugin_timeout from cfg and convert it to a positive float.
+    If the value is missing, non-numeric, or not greater than 0, the provided default is returned.
+    Invalid or non-positive values will cause a warning to be logged.
+    
+    Parameters:
+        cfg (dict | None): Configuration mapping that may contain a "meshtastic" section.
+        default (float): Fallback timeout (seconds) used when cfg does not provide a valid value.
+    
+    Returns:
+        float: A positive timeout in seconds.
+    """
+
+    raw_value = default
+    if isinstance(cfg, dict):
+        try:
+            raw_value = cfg.get("meshtastic", {}).get("plugin_timeout", default)
+        except AttributeError:
+            raw_value = default
+
+    try:
+        timeout = float(raw_value)
+        if timeout > 0:
+            return timeout
+        logger.warning(
+            "Non-positive meshtastic.plugin_timeout value %r; using %ss fallback.",
+            raw_value,
+            default,
+        )
+    except (TypeError, ValueError):
+        logger.warning(
+            "Invalid meshtastic.plugin_timeout value %r; using %ss fallback.",
+            raw_value,
+            default,
+        )
+
+    return default
+
+
 def _get_device_metadata(client):
     """
     Retrieve firmware metadata from a Meshtastic client.
-    
+
     Calls client.localNode.getMetadata() (if present) and captures its stdout/stderr to extract a firmware version and raw output. Returns a dict with:
     - firmware_version: parsed version string or "unknown" when not found,
     - raw_output: captured output (truncated to 4096 characters with a trailing ellipsis if longer),
     - success: True when a firmware_version was successfully parsed.
-    
+
     If the client lacks localNode.getMetadata or parsing fails, returns defaults without raising.
     """
     result = {"firmware_version": "unknown", "raw_output": "", "success": False}
@@ -183,7 +233,7 @@ def _get_device_metadata(client):
         # Parse firmware version from the output using robust regex
         # Case-insensitive, handles quotes, whitespace, and various formats
         match = re.search(
-            r"(?i)\bfirmware_version\s*:\s*['\"]?\s*([^\s\r\n'\"]+)\s*['\"]?",
+            r"(?i)\bfirmware[\s_/-]*version\b\s*[:=]\s*['\"]?\s*([^\s\r\n'\"]+)",
             console_output,
         )
         if match:
@@ -203,13 +253,13 @@ def _get_device_metadata(client):
 def serial_port_exists(port_name):
     """
     Return True if a serial port with the given device name is present on the system.
-    
+
     Checks available serial ports via pyserial's list_ports and compares their `.device`
     strings to the provided port_name.
-    
+
     Parameters:
         port_name (str): Device name to check (e.g., '/dev/ttyUSB0' on Unix or 'COM3' on Windows).
-    
+
     Returns:
         bool: True if the port is found, False otherwise.
     """
@@ -219,14 +269,14 @@ def serial_port_exists(port_name):
 
 def connect_meshtastic(passed_config=None, force_connect=False):
     """
-    Establish and return a Meshtastic client connection (serial, BLE, or TCP), with configurable retries and event subscription.
-
-    Attempts to (re)connect using the module configuration and updates module-level state on success (meshtastic_client, matrix_rooms, and event subscriptions). Validates required configuration keys, supports the legacy "network" alias for TCP, verifies serial port presence before connecting, and performs exponential backoff on connection failures. Subscribes once to message and connection-lost events when a connection is established.
-
+    Establish and return a Meshtastic client connection (serial, BLE, or TCP), with configurable retries, exponential backoff, and single-time event subscription.
+    
+    Attempts to (re)connect using the module configuration and updates module-level state on success (meshtastic_client, matrix_rooms, and event subscriptions). Supports the legacy "network" alias for TCP, verifies serial port presence before connecting, and honors a retry limit (or infinite retries when unspecified). On successful connection the client's node info and firmware metadata are probed and message/connection-lost handlers are subscribed once for the process lifetime.
+    
     Parameters:
-        passed_config (dict, optional): Configuration to use for the connection; if provided, replaces the module-level config and may update matrix_rooms.
-        force_connect (bool, optional): If True, forces creating a new connection even if one already exists.
-
+        passed_config (dict, optional): If provided, replaces the module-level configuration (and may update matrix_rooms).
+        force_connect (bool, optional): When True, forces creating a new connection even if one already exists.
+    
     Returns:
         The connected Meshtastic client instance on success, or None if connection cannot be established or shutdown is in progress.
     """
@@ -296,12 +346,19 @@ def connect_meshtastic(passed_config=None, force_connect=False):
 
     # Move retry loop outside the lock to prevent blocking other threads
     meshtastic_settings = config.get("meshtastic", {}) if config else {}
-    retry_limit = meshtastic_settings.get("retries", INFINITE_RETRIES)
+    retry_limit_raw = meshtastic_settings.get("retries")
+    if retry_limit_raw is None:
+        retry_limit_raw = meshtastic_settings.get("retry_limit", INFINITE_RETRIES)
+        if "retry_limit" in meshtastic_settings:
+            logger.warning(
+                "'retry_limit' is deprecated in meshtastic config; use 'retries' instead"
+            )
     try:
-        retry_limit = int(retry_limit)
+        retry_limit = int(retry_limit_raw)
     except (TypeError, ValueError):
         retry_limit = INFINITE_RETRIES
     attempts = 0
+    timeout_attempts = 0
     successful = False
 
     while (
@@ -364,7 +421,7 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                 # Connect without progress indicator
                 client = meshtastic.tcp_interface.TCPInterface(hostname=target_host)
             else:
-                logger.exception(f"Unknown connection type: {connection_type}")
+                logger.error(f"Unknown connection type: {connection_type}")
                 return None
 
             successful = True
@@ -407,10 +464,34 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                     subscribed_to_connection_lost = True
                     logger.debug("Subscribed to meshtastic.connection.lost")
 
-        except (TimeoutError, ConnectionRefusedError, MemoryError) as e:
+        except (ConnectionRefusedError, MemoryError) as e:
             # Handle critical errors that should not be retried
-            logger.exception(f"Critical connection error: {e}")
+            logger.exception("Critical connection error")
             return None
+        except (FuturesTimeoutError, TimeoutError) as e:
+            if shutting_down:
+                break
+            attempts += 1
+            if retry_limit == INFINITE_RETRIES:
+                timeout_attempts += 1
+                if timeout_attempts > MAX_TIMEOUT_RETRIES_INFINITE:
+                    logger.exception(
+                        "Connection timed out after %s attempts (unlimited retries); aborting",
+                        attempts,
+                    )
+                    return None
+            elif attempts > retry_limit:
+                logger.exception("Connection failed after %s attempts", attempts)
+                return None
+
+            wait_time = min(2**attempts, 60)
+            logger.warning(
+                "Connection attempt %s timed out (%s). Retrying in %s seconds...",
+                attempts,
+                e,
+                wait_time,
+            )
+            time.sleep(wait_time)
         except (serial.SerialException, BleakDBusError, BleakError) as e:
             # Handle specific connection errors
             if shutting_down:
@@ -418,15 +499,16 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                 break
             attempts += 1
             if retry_limit == 0 or attempts <= retry_limit:
-                wait_time = min(
-                    2**attempts, 60
-                )  # Consistent exponential backoff, capped at 60s
+                wait_time = min(2**attempts, 60)  # Consistent exponential backoff
                 logger.warning(
-                    f"Connection attempt {attempts} failed: {e}. Retrying in {wait_time} seconds..."
+                    "Connection attempt %s failed: %s. Retrying in %s seconds...",
+                    attempts,
+                    e,
+                    wait_time,
                 )
                 time.sleep(wait_time)
             else:
-                logger.exception(f"Connection failed after {attempts} attempts: {e}")
+                logger.exception("Connection failed after %s attempts", attempts)
                 return None
         except Exception as e:
             if shutting_down:
@@ -434,15 +516,16 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                 break
             attempts += 1
             if retry_limit == 0 or attempts <= retry_limit:
-                wait_time = min(
-                    2**attempts, 60
-                )  # Consistent exponential backoff, capped at 60s
+                wait_time = min(2**attempts, 60)
                 logger.warning(
-                    f"An unexpected error occurred on attempt {attempts}: {e}. Retrying in {wait_time} seconds..."
+                    "An unexpected error occurred on attempt %s: %s. Retrying in %s seconds...",
+                    attempts,
+                    e,
+                    wait_time,
                 )
                 time.sleep(wait_time)
             else:
-                logger.exception(f"Connection failed after {attempts} attempts: {e}")
+                logger.exception("Connection failed after %s attempts", attempts)
                 return None
 
     return meshtastic_client
@@ -602,11 +685,10 @@ def on_meshtastic_message(packet, interface):
         return
 
     # Import the configuration helpers
-    from mmrelay.matrix_utils import get_interaction_settings, message_storage_enabled
+    from mmrelay.matrix_utils import get_interaction_settings
 
     # Get interaction settings
     interactions = get_interaction_settings(config)
-    message_storage_enabled(interactions)
 
     # Filter packets based on interaction settings
     if packet.get("decoded", {}).get("portnum") == TEXT_MESSAGE_APP:
@@ -765,8 +847,11 @@ def on_meshtastic_message(packet, interface):
 
         # Check if channel is mapped to a Matrix room
         channel_mapped = False
-        for room in matrix_rooms:
-            if room["meshtastic_channel"] == channel:
+        iterable_rooms = (
+            matrix_rooms.values() if isinstance(matrix_rooms, dict) else matrix_rooms
+        )
+        for room in iterable_rooms:
+            if isinstance(room, dict) and room.get("meshtastic_channel") == channel:
                 channel_mapped = True
                 break
 
@@ -824,18 +909,37 @@ def on_meshtastic_message(packet, interface):
         from mmrelay.plugin_loader import load_plugins
 
         plugins = load_plugins()
+        plugin_timeout = _resolve_plugin_timeout(config, default=5.0)
 
         found_matching_plugin = False
         for plugin in plugins:
             if not found_matching_plugin:
                 try:
-                    result = _submit_coro(
+                    result_future = _submit_coro(
                         plugin.handle_meshtastic_message(
                             packet, formatted_message, longname, meshnet_name
                         ),
                         loop=loop,
                     )
-                    found_matching_plugin = result.result()
+                    if result_future is None:
+                        logger.warning(
+                            "Plugin %s returned no awaitable; skipping.",
+                            plugin.plugin_name,
+                        )
+                        found_matching_plugin = False
+                        continue
+                    try:
+                        found_matching_plugin = result_future.result(
+                            timeout=plugin_timeout
+                        )
+                    except FuturesTimeoutError as exc:
+                        logger.warning(
+                            "Plugin %s did not respond within %ss: %s",
+                            plugin.plugin_name,
+                            plugin_timeout,
+                            exc,
+                        )
+                        found_matching_plugin = False
                     if found_matching_plugin:
                         logger.debug(f"Processed by plugin {plugin.plugin_name}")
                 except Exception:
@@ -860,8 +964,13 @@ def on_meshtastic_message(packet, interface):
             logger.error("matrix_rooms is empty. Cannot relay message to Matrix.")
             return
 
-        for room in matrix_rooms:
-            if room["meshtastic_channel"] == channel:
+        iterable_rooms = (
+            matrix_rooms.values() if isinstance(matrix_rooms, dict) else matrix_rooms
+        )
+        for room in iterable_rooms:
+            if not isinstance(room, dict):
+                continue
+            if room.get("meshtastic_channel") == channel:
                 # Storing the message_map (if enabled) occurs inside matrix_relay() now,
                 # controlled by relay_reactions.
                 try:
@@ -886,11 +995,12 @@ def on_meshtastic_message(packet, interface):
         from mmrelay.plugin_loader import load_plugins
 
         plugins = load_plugins()
+        plugin_timeout = _resolve_plugin_timeout(config, default=5.0)
         found_matching_plugin = False
         for plugin in plugins:
             if not found_matching_plugin:
                 try:
-                    result = _submit_coro(
+                    result_future = _submit_coro(
                         plugin.handle_meshtastic_message(
                             packet,
                             formatted_message=None,
@@ -899,7 +1009,25 @@ def on_meshtastic_message(packet, interface):
                         ),
                         loop=loop,
                     )
-                    found_matching_plugin = result.result()
+                    if result_future is None:
+                        logger.warning(
+                            "Plugin %s returned no awaitable; skipping.",
+                            plugin.plugin_name,
+                        )
+                        found_matching_plugin = False
+                        continue
+                    try:
+                        found_matching_plugin = result_future.result(
+                            timeout=plugin_timeout
+                        )
+                    except FuturesTimeoutError as exc:
+                        logger.warning(
+                            "Plugin %s did not respond within %ss: %s",
+                            plugin.plugin_name,
+                            plugin_timeout,
+                            exc,
+                        )
+                        found_matching_plugin = False
                     if found_matching_plugin:
                         logger.debug(
                             f"Processed {portnum} with plugin {plugin.plugin_name}"
@@ -912,7 +1040,7 @@ def on_meshtastic_message(packet, interface):
 async def check_connection():
     """
     Periodically verify the Meshtastic connection and initiate a reconnect when the device appears unresponsive.
-    
+
     Runs until the module-level shutting_down flag becomes True. Behavior:
     - Controlled by config["meshtastic"]["health_check"]:
       - "enabled" (bool, default True) — enable/disable periodic checks.
@@ -1013,22 +1141,27 @@ def sendTextReply(
     channelIndex: int = 0,
 ):
     """
-    Send a text reply referencing a previous Meshtastic message.
+    Send a Meshtastic text reply that references a previous Meshtastic message.
     
-    Creates a Data payload with the given text and reply_id, wraps it in a MeshPacket on the specified channel, and sends it via the provided Meshtastic interface. Returns the sent MeshPacket (as returned by the interface) or None if the interface is unavailable or sending fails.
+    Builds a Data payload containing `text` and `reply_id`, wraps it in a MeshPacket on `channelIndex`,
+    and sends it using the provided Meshtastic interface.
     
     Parameters:
         text (str): UTF-8 text to send.
-        reply_id (int): ID of the message being replied to.
-        destinationId (int|str, optional): Recipient address; defaults to broadcast.
+        reply_id (int): ID of the Meshtastic message being replied to.
+        destinationId (int | str, optional): Recipient address or node ID (defaults to broadcast).
         wantAck (bool, optional): If True, request an acknowledgement for the packet.
         channelIndex (int, optional): Channel index to send the packet on.
+    
+    Returns:
+        The result returned by the interface's _sendPacket call (typically the sent MeshPacket), or
+        None if the interface is not available or sending fails.
     """
     logger.debug(f"Sending text reply: '{text}' replying to message ID {reply_id}")
 
     # Check if interface is available
     if interface is None:
-        logger.exception("No Meshtastic interface available for sending reply")
+        logger.error("No Meshtastic interface available for sending reply")
         return None
 
     # Create the Data protobuf message with reply_id set

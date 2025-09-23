@@ -255,6 +255,24 @@ Common issues:
 - Mock applied in wrong order (decorators apply bottom-to-top)
 - Function not actually calling the mocked dependency
 
+### Hanging Tests Due to `run_in_executor`
+
+Some tests may hang due to the use of `asyncio.run_in_executor` in the application code. This is because the default executor uses a thread pool that may not be properly shut down during test teardown.
+
+To resolve this, a pytest fixture called `mock_event_loop` is available in `tests/conftest.py`. This fixture patches `asyncio.get_running_loop` to return a mock event loop that runs tasks synchronously in the same thread, avoiding the use of a thread pool.
+
+To use this fixture, add the `@pytest.mark.usefixtures("mock_event_loop")` decorator to your test class:
+
+```python
+import pytest
+
+@pytest.mark.usefixtures("mock_event_loop")
+class TestMyPlugin(unittest.TestCase):
+    ...
+```
+
+This will apply the fixture to all test methods in the class, preventing them from hanging.
+
 ## References
 
 - [unittest.mock documentation](https://docs.python.org/3/library/unittest.mock.html)

@@ -15,10 +15,10 @@ from mmrelay.constants.app import WINDOWS_PLATFORM
 def is_windows() -> bool:
     """
     Return True if the current process is running on a Windows platform.
-    
+
     Checks common platform indicators (os.name == "nt" or sys.platform == WINDOWS_PLATFORM)
     and returns a boolean accordingly.
-    
+
     Returns:
         bool: True when running on Windows, otherwise False.
     """
@@ -29,10 +29,9 @@ def setup_windows_console() -> None:
     """
     Configure the Windows console for UTF-8 output and ANSI (VT100) color support.
     
-    Best-effort: on Windows this attempts to set sys.stdout/sys.stderr encoding to UTF-8
-    (if supported) and enable Virtual Terminal Processing so ANSI colors and Unicode
-    render correctly. The function is a no-op on non-Windows platforms and silently
-    returns if the platform or environment does not support these operations.
+    Best-effort operation: on Windows this attempts to set stdout/stderr encoding to UTF-8
+    (if supported) and enable Virtual Terminal Processing so ANSI color sequences and
+    Unicode render correctly. No-op on non-Windows platforms; failures are silently ignored.
     """
     if not is_windows():
         return
@@ -133,12 +132,12 @@ def get_windows_error_message(error: Exception) -> str:
 def check_windows_requirements() -> Optional[str]:
     """
     Return a multi-line warning string when common Windows environment issues are detected; otherwise None.
-    
+
     Performs Windows-only checks:
     - Python version: warns if running on Python < 3.9.
     - Virtual environment: warns if the process does not appear to be inside a venv/pipx.
     - Current working directory length: warns if the cwd path length exceeds 200 characters.
-    
+
     Returns:
         Optional[str]: A human-readable, multi-line warning message when one or more checks trigger;
         returns None if running on a non-Windows platform or no issues are found.

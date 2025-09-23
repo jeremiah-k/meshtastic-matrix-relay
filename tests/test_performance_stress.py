@@ -32,7 +32,11 @@ from mmrelay.message_queue import MessageQueue
 @pytest.fixture(autouse=True)
 def reset_global_state():
     """
-    Pytest fixture that resets global state in mmrelay.meshtastic_utils and forces garbage collection before and after each test to ensure test isolation.
+    Reset mmrelay global state before and after a test and force garbage collection to ensure isolation.
+    
+    This pytest fixture clears key globals in mmrelay.meshtastic_utils (including meshtastic_client, reconnecting,
+    config, matrix_rooms, shutting_down, event_loop, reconnect_task, subscribed flags) and runs gc.collect()
+    both before the test runs and after it yields, preventing state leakage between tests.
     """
     # Reset global state before the test
     import mmrelay.meshtastic_utils
@@ -66,6 +70,7 @@ def reset_global_state():
     gc.collect()
 
 
+@pytest.mark.usefixtures("mock_event_loop")
 class TestPerformanceStress:
     """Test cases for performance and stress scenarios."""
 
@@ -173,12 +178,18 @@ class TestPerformanceStress:
                 finally:
                     loop.close()
 
+    @pytest.mark.timeout(300)
     @pytest.mark.performance  # Changed from slow to performance
     def test_message_queue_performance_under_load(self):
         """
-        Test the performance of MessageQueue under rapid enqueueing with enforced minimum delay.
-
-        Enqueues 50 messages into the MessageQueue with a minimal requested delay, verifies all messages are processed within 120 seconds, and asserts that the enforced minimum 2-second delay and a processing rate above 0.3 messages per second are achieved.
+        Test MessageQueue under rapid enqueueing with an enforced minimum per-message delay.
+        
+        Starts a MessageQueue with a requested short delay (0.01s), enqueues 50 messages quickly using a mock send function, waits up to 120 seconds for all messages to be processed, and asserts:
+        - all messages are processed;
+        - the queue respects an enforced minimum delay of ~2.0 seconds per message (with a small tolerance);
+        - overall processing throughput exceeds 0.3 messages/second.
+        
+        Side effects: patches mmrelay.meshtastic_utils.meshtastic_client and mmrelay.meshtastic_utils.reconnecting, starts and stops a MessageQueue instance.
         """
         import asyncio
 
@@ -256,9 +267,17 @@ class TestPerformanceStress:
     @pytest.mark.performance  # Changed from slow to performance
     def test_database_performance_large_dataset(self):
         """
-        Test the performance of database bulk operations and pruning with large datasets.
-
-        Inserts and retrieves 1000 node longnames, stores 1000 message map entries, and prunes the message map to retain only the 100 most recent entries. Asserts that each operation completes within defined time limits to ensure database efficiency under high-volume conditions.
+        Measure performance of bulk database operations and message-map pruning using a temporary SQLite database.
+        
+        Performs the following end-to-end operations against a temporary on-disk DB (get_db_path is patched to point at the temp file):
+        - Inserts 1000 longname records via save_longname and asserts total insert time is < 20s.
+        - Retrieves those 1000 longnames via get_longname and validates values; asserts retrieval time is < 8s.
+        - Inserts 1000 message-map entries via store_message_map; asserts insert time is < 20s.
+        - Prunes the message map to retain the 100 most recent entries via prune_message_map; asserts prune time is < 8s.
+        
+        Side effects:
+        - Mutates a temporary SQLite file on disk for the duration of the test.
+        - Patches mmrelay.db_utils.get_db_path to point at the temporary database path.
         """
         import tempfile
 
@@ -318,6 +337,7 @@ class TestPerformanceStress:
                 assert prune_time < 8.0, "Message map pruning too slow"
 
     @pytest.mark.asyncio
+    @pytest.mark.timeout(300)
     @pytest.mark.performance  # Changed from slow to performance
     async def test_plugin_processing_performance(self, meshtastic_loop_safety):
         """

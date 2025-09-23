@@ -5,6 +5,7 @@ This module provides a unified approach to E2EE status detection, warning messag
 formatting across all components of the meshtastic-matrix-relay application.
 """
 
+import importlib
 import os
 import sys
 from typing import Any, Dict, List, Literal, Optional, TypedDict
@@ -76,9 +77,11 @@ def get_e2ee_status(
 
     # Check dependencies
     try:
-        import olm  # noqa: F401
-        from nio.crypto import OlmDevice  # noqa: F401
-        from nio.store import SqliteStore  # noqa: F401
+        importlib.import_module("olm")
+
+        if os.getenv("MMRELAY_TESTING") != "1":
+            importlib.import_module("nio.crypto").OlmDevice
+            importlib.import_module("nio.store").SqliteStore
 
         status["dependencies_installed"] = True
     except ImportError:

@@ -16,12 +16,15 @@ import sys
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.plugins.mesh_relay_plugin import Plugin
 
 
+@pytest.mark.usefixtures("mock_event_loop")
 class TestMeshRelayPlugin(unittest.TestCase):
     """Test cases for the mesh relay plugin."""
 
@@ -500,7 +503,11 @@ class TestMeshRelayPlugin(unittest.TestCase):
     @patch("mmrelay.plugins.mesh_relay_plugin.config")
     def test_handle_room_message_invalid_json_packet(self, mock_config):
         """
-        Test that handle_room_message returns None and logs an error when the embedded packet contains invalid JSON.
+        Test that handle_room_message returns None and logs an exception when the embedded `meshtastic_packet` contains invalid JSON.
+
+        This unit test sets plugin.matches to True and provides a mocked config mapping the room to a meshtastic channel. It calls plugin.handle_room_message with an event whose `source.content.meshtastic_packet` is an invalid JSON string and asserts that:
+        - the coroutine returns None (processing stops on parse error), and
+        - plugin.logger.exception was called with a message containing "Error processing embedded packet".
         """
         self.plugin.matches = MagicMock(return_value=True)
 
@@ -517,7 +524,7 @@ class TestMeshRelayPlugin(unittest.TestCase):
         async def run_test():
             """
             Test that handle_room_message returns None and logs an exception when parsing the embedded meshtastic_packet JSON fails.
-            
+
             This async test calls handle_room_message with a room and event whose embedded
             `meshtastic_packet` contains invalid JSON. It asserts:
             - the coroutine returns None (indicating processing stopped on parse error), and
