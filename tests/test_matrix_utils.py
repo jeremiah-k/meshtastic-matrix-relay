@@ -114,7 +114,7 @@ async def test_on_room_message_simple_text(
         def create_task(self, coro):
             return self._loop.create_task(coro)
 
-        async def run_in_executor(self, executor, func, *args):
+        async def run_in_executor(self, _executor, func, *args):
             return func(*args)
 
     with patch("mmrelay.plugin_loader.load_plugins", return_value=[]), patch(
@@ -182,7 +182,7 @@ async def test_on_room_message_remote_prefers_meshtastic_text(
         def create_task(self, coro):
             return self._loop.create_task(coro)
 
-        async def run_in_executor(self, executor, func, *args):
+        async def run_in_executor(self, _executor, func, *args):
             return func(*args)
 
     with patch("mmrelay.plugin_loader.load_plugins", return_value=[]), patch(
@@ -374,7 +374,7 @@ async def test_on_room_message_reaction_enabled(mock_room, test_config):
         def create_task(self, coro):
             return self._loop.create_task(coro)
 
-        async def run_in_executor(self, executor, func, *args):
+        async def run_in_executor(self, _executor, func, *args):
             return func(*args)
 
     dummy_queue = MagicMock()
@@ -1567,7 +1567,6 @@ def test_normalize_bot_user_id_trailing_colon():
 
 
 @patch("mmrelay.matrix_utils.config", {"meshtastic": {"meshnet_name": "TestMesh"}})
-@patch("mmrelay.matrix_utils.config", {"meshtastic": {"meshnet_name": "TestMesh"}})
 @patch("mmrelay.matrix_utils.connect_matrix")
 @patch("mmrelay.matrix_utils.get_interaction_settings")
 @patch("mmrelay.matrix_utils.message_storage_enabled")
@@ -1801,7 +1800,7 @@ async def test_send_reply_to_meshtastic_with_reply_id():
         def create_task(self, coro):
             return self._loop.create_task(coro)
 
-        async def run_in_executor(self, executor, func, *args):
+        async def run_in_executor(self, _executor, func, *args):
             return func(*args)
 
     with patch(
@@ -1849,7 +1848,7 @@ async def test_send_reply_to_meshtastic_no_reply_id():
         def create_task(self, coro):
             return self._loop.create_task(coro)
 
-        async def run_in_executor(self, executor, func, *args):
+        async def run_in_executor(self, _executor, func, *args):
             return func(*args)
 
     with patch(
@@ -2472,8 +2471,6 @@ async def test_logout_matrix_bot_timeout():
         mock_async_client.return_value = mock_temp_client
 
         # Mock timeout
-        import asyncio
-
         mock_wait_for.side_effect = asyncio.TimeoutError()
 
         result = await logout_matrix_bot(password="test_password")

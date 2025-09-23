@@ -1,6 +1,7 @@
 import asyncio
 import getpass
 import html
+import importlib
 import io
 import json
 import logging
@@ -974,13 +975,13 @@ async def connect_matrix(passed_config=None):
             else:
                 # Check if python-olm is installed
                 try:
-                    import olm  # noqa: F401
+                    importlib.import_module("olm")
 
                     # Also check for other required E2EE dependencies unless tests skip them
                     if os.getenv("MMRELAY_TESTING") != "1":
                         try:
-                            from nio.crypto import OlmDevice  # noqa: F401
-                            from nio.store import SqliteStore  # noqa: F401
+                            importlib.import_module("nio.crypto").OlmDevice
+                            importlib.import_module("nio.store").SqliteStore
 
                             logger.debug("All E2EE dependencies are available")
                         except ImportError as e:

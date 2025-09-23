@@ -76,6 +76,7 @@ sys.modules["haversine"] = MagicMock()
 sys.modules["schedule"] = MagicMock()
 sys.modules["platformdirs"] = MagicMock()
 sys.modules["py_staticmaps"] = MagicMock()
+sys.modules["staticmaps"] = MagicMock()
 sys.modules["s2sphere"] = MagicMock()
 
 
@@ -523,7 +524,7 @@ def mock_event_loop(monkeypatch):
         if getattr(loop, "_mmrelay_run_in_executor_patched", False):
             return loop
 
-        def run_in_executor_sync(executor, func, *args, **kwargs):
+        def run_in_executor_sync(_executor, func, *args, **kwargs):  # noqa: ARG001
             future = loop.create_future()
             try:
                 result = func(*args, **kwargs)
@@ -533,8 +534,8 @@ def mock_event_loop(monkeypatch):
                 future.set_result(result)
             return future
 
-        setattr(loop, "run_in_executor", run_in_executor_sync)
-        setattr(loop, "_mmrelay_run_in_executor_patched", True)
+        loop.run_in_executor = run_in_executor_sync  # type: ignore[assignment]
+        loop._mmrelay_run_in_executor_patched = True  # type: ignore[attr-defined]
         return loop
 
     def patched_get_running_loop():

@@ -25,9 +25,7 @@ plugins_loaded = False
 
 try:
     _PLUGIN_DEPS_DIR = os.path.join(get_base_dir(), "plugins", "deps")
-except (
-    Exception
-) as exc:  # pragma: no cover - base dir may not be resolvable during import  # noqa: BLE001
+except (OSError, RuntimeError, ValueError) as exc:  # pragma: no cover
     logger.debug("Unable to resolve base dir for plugin deps at import time: %s", exc)
     _PLUGIN_DEPS_DIR = None
 else:
@@ -869,8 +867,8 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                                 f"Cloned repository {repo_name} from {repo_url} (default branch)"
                             )
                             return True
-        except (subprocess.CalledProcessError, FileNotFoundError) as e:
-            logger.error(f"Error cloning repository {repo_name}: {e}")
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            logger.exception(f"Error cloning repository {repo_name}")
             logger.error(
                 f"Please manually git clone the repository {repo_url} into {repo_path}"
             )

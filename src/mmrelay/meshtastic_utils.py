@@ -158,6 +158,11 @@ def _resolve_plugin_timeout(cfg: dict | None, default: float = 5.0) -> float:
         timeout = float(raw_value)
         if timeout > 0:
             return timeout
+        logger.warning(
+            "Non-positive meshtastic.plugin_timeout value %r; using %ss fallback.",
+            raw_value,
+            default,
+        )
     except (TypeError, ValueError):
         logger.warning(
             "Invalid meshtastic.plugin_timeout value %r; using %ss fallback.",
@@ -435,16 +440,17 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                     subscribed_to_connection_lost = True
                     logger.debug("Subscribed to meshtastic.connection.lost")
 
-        except (
-            FuturesTimeoutError,
-            TimeoutError,
-            ConnectionRefusedError,
-            MemoryError,
-        ) as e:
+        except (ConnectionRefusedError, MemoryError) as e:
             # Handle critical errors that should not be retried
             logger.exception(f"Critical connection error: {e}")
             return None
-        except (serial.SerialException, BleakDBusError, BleakError) as e:
+        except (
+            FuturesTimeoutError,
+            TimeoutError,
+            serial.SerialException,
+            BleakDBusError,
+            BleakError,
+        ) as e:
             # Handle specific connection errors
             if shutting_down:
                 logger.debug("Shutdown in progress. Aborting connection attempts.")
@@ -1109,7 +1115,7 @@ def sendTextReply(
 
     # Check if interface is available
     if interface is None:
-        logger.exception("No Meshtastic interface available for sending reply")
+        logger.error("No Meshtastic interface available for sending reply")
         return None
 
     # Create the Data protobuf message with reply_id set
