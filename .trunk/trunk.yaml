@@ -18,7 +18,7 @@ runtimes:
 lint:
   enabled:
     - dotenv-linter@3.3.0
-    - hadolint@2.13.1
+    - hadolint@2.14.0
     - taplo@0.10.0
     - actionlint@1.7.7
     - bandit@1.8.6

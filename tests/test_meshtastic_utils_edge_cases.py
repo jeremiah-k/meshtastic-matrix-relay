@@ -100,12 +100,14 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
                 "mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface",
                 side_effect=ConcurrentTimeoutError("Connection timeout"),
             ):
-                with patch("mmrelay.meshtastic_utils.logger") as mock_logger, patch(
-                    "mmrelay.meshtastic_utils.is_running_as_service", return_value=True
-                ), patch("mmrelay.matrix_utils.matrix_client", None):
-                    result = connect_meshtastic(config)
-                    self.assertIsNone(result)
-                    mock_logger.exception.assert_called()
+                with patch("time.sleep"):  # Speed up test
+                    with patch("mmrelay.meshtastic_utils.logger") as mock_logger, patch(
+                        "mmrelay.meshtastic_utils.is_running_as_service",
+                        return_value=True,
+                    ), patch("mmrelay.matrix_utils.matrix_client", None):
+                        result = connect_meshtastic(config)
+                        self.assertIsNone(result)
+                        mock_logger.exception.assert_called()
 
     def test_connect_meshtastic_ble_device_not_found(self):
         """
@@ -217,7 +219,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         def _submit_coro_mock(coro, loop=None):
             """
             Run a coroutine synchronously and return a concurrent.futures.Future completed with its outcome.
-            
+
             This test helper executes `coro` immediately via `asyncio.run` so any exceptions are raised and captured; the returned Future will be set with the coroutine's result or its exception. The optional `loop` parameter is accepted for API compatibility but is ignored.
             """
             f = Future()
@@ -276,7 +278,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             def __init__(self, exc):
                 """
                 Initialize the object with an exception and an empty call history.
-                
+
                 Parameters:
                     exc (BaseException): The exception instance to store for later inspection or re-raising.
                 """
@@ -286,10 +288,10 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             def result(self, timeout=None):
                 """
                 Record the provided timeout value and raise the stored exception.
-                
+
                 Parameters:
                     timeout (float | None): Timeout passed in; appended to self.calls for later inspection.
-                
+
                 Raises:
                     Any: Re-raises the exception stored in self.exc.
                 """
@@ -355,7 +357,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             def __init__(self, exc):
                 """
                 Initialize the object with an exception and an empty call history.
-                
+
                 Parameters:
                     exc (BaseException): The exception instance to store for later inspection or re-raising.
                 """
@@ -365,10 +367,10 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             def result(self, timeout=None):
                 """
                 Record the provided timeout value and raise the stored exception.
-                
+
                 Parameters:
                     timeout (float | None): Timeout passed in; appended to self.calls for later inspection.
-                
+
                 Raises:
                     Any: Re-raises the exception stored in self.exc.
                 """
