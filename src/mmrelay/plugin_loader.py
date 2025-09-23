@@ -47,24 +47,24 @@ def _collect_requirements(
 ) -> List[str]:
     """
     Parse a requirements.txt file and return a flattened list of installable requirement tokens.
-    
+
     The function reads the given requirements file, ignores blank lines and comments (including inline
     comments after " #"), and resolves nested includes and constraint files. Supported include forms:
       - "-r <file>" or "--requirement <file>"
       - "-c <file>" or "--constraint <file>"
       - "--requirement=<file>" and "--constraint=<file>"
-    
+
     Lines beginning with "-" are tokenized with shlex.split (posix mode) so flags and compound entries
     are preserved; other non-directive lines are returned verbatim.
-    
+
     Parameters:
         requirements_file (str): Path to a requirements file. Relative includes are resolved
             relative to this file's directory.
-    
+
     Returns:
         List[str]: A flattened list of requirement tokens suitable for passing to pip.
         Returns an empty list if the file does not exist or if recursion is detected for a nested include.
-    
+
     Notes:
         - The optional `visited` parameter (used internally) tracks normalized file paths to detect
           and prevent recursive includes; recursion results in a logged warning and the include is skipped.
@@ -108,36 +108,28 @@ def _collect_requirements(
                         _collect_requirements(nested_path, visited=visited)
                     )
 
-                if lower_line.startswith("--requirement=") or lower_line.startswith(
-                    "--constraint="
-                ):
+                is_req_eq = lower_line.startswith("--requirement=")
+                is_con_eq = lower_line.startswith("--constraint=")
+
+                if is_req_eq or is_con_eq:
                     nested = line.split("=", 1)[1].strip()
                     _resolve_nested(nested)
                     continue
 
-                if lower_line.startswith("-r ") or lower_line.startswith(
-                    "--requirement "
-                ):
-                    parts = line.split(None, 1)
-                    if len(parts) == 2:
-                        _resolve_nested(parts[1].strip())
-                    else:
-                        logger.warning(
-                            "Ignoring malformed requirement include directive in %s: %s",
-                            normalized_path,
-                            raw_line.rstrip(),
-                        )
-                    continue
+                is_req = lower_line.startswith(("-r ", "--requirement "))
+                is_con = lower_line.startswith(("-c ", "--constraint "))
 
-                if lower_line.startswith("-c ") or lower_line.startswith(
-                    "--constraint "
-                ):
+                if is_req or is_con:
                     parts = line.split(None, 1)
                     if len(parts) == 2:
                         _resolve_nested(parts[1].strip())
                     else:
+                        directive_type = (
+                            "requirement include" if is_req else "constraint"
+                        )
                         logger.warning(
-                            "Ignoring malformed constraint directive in %s: %s",
+                            "Ignoring malformed %s directive in %s: %s",
+                            directive_type,
                             normalized_path,
                             raw_line.rstrip(),
                         )
@@ -238,10 +230,10 @@ def _refresh_dependency_paths() -> None:
 def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
     """
     Install Python dependencies for a community plugin repository from a requirements.txt file.
-    
+
     If a requirements.txt file exists at repo_path, this function will attempt to install the listed
     dependencies and then refresh interpreter import paths so newly installed packages become importable.
-    
+
     Behavior highlights:
     - No-op if requirements.txt is missing or empty.
     - Respects the global auto-install configuration; if auto-install is disabled, the function logs and returns.
@@ -251,12 +243,12 @@ def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
       inside a virtual environment.
     - After a successful install it calls the path refresh routine so the interpreter can import newly
       installed packages.
-    
+
     Parameters that need extra context:
     - repo_path: filesystem path to the plugin repository directory (the function looks for
       repo_path/requirements.txt).
     - repo_name: human-readable repository name used in log messages.
-    
+
     Side effects:
     - Installs packages (via pipx or pip) and updates interpreter import paths.
     - Logs on success or failure; on installation failure it logs an exception and a warning that the
@@ -340,12 +332,12 @@ def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
 def _get_plugin_dirs(plugin_type):
     """
     Return a prioritized list of existing plugin directories for the given plugin type.
-    
+
     Attempts to ensure and prefer a per-user plugins directory (base_dir/plugins/<type>) and also includes a local application plugins directory (app_path/plugins/<type>) for backward compatibility. Each directory is created if possible; directories that cannot be created or accessed are omitted from the result.
-    
+
     Parameters:
         plugin_type (str): Plugin category, e.g. "custom" or "community".
-    
+
     Returns:
         list[str]: Ordered list of plugin directories to search (user directory first when available, then local directory).
     """
