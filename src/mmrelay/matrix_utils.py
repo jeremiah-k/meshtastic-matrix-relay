@@ -103,6 +103,73 @@ from mmrelay.message_queue import get_message_queue, queue_message
 logger = get_logger(name="Matrix")
 
 
+def _is_room_alias(value: Any) -> bool:
+    """Return True when value looks like a Matrix room alias (string starting with '#')."""
+
+    return isinstance(value, str) and value.startswith("#")
+
+
+def _iter_room_alias_entries(mapping):
+    """
+    Yield ``(alias, setter)`` pairs for entries inside Matrix room configuration structures.
+
+    Supports both ``list`` and ``dict`` configurations where entries are either strings (room id/alias)
+    or dicts containing an ``id`` key. The returned setter updates the underlying collection when
+    invoked with a resolved room id.
+    """
+
+    if isinstance(mapping, list):
+        for index, entry in enumerate(mapping):
+            if isinstance(entry, dict):
+                yield entry.get(
+                    "id", ""
+                ), lambda new_id, target=entry: target.__setitem__("id", new_id)
+            else:
+                yield entry, lambda new_id, idx=index, collection=mapping: collection.__setitem__(
+                    idx, new_id
+                )
+    elif isinstance(mapping, dict):
+        for key, entry in list(mapping.items()):
+            if isinstance(entry, dict):
+                yield entry.get(
+                    "id", ""
+                ), lambda new_id, target=entry: target.__setitem__("id", new_id)
+            else:
+                yield entry, lambda new_id, target_key=key, collection=mapping: collection.__setitem__(
+                    target_key, new_id
+                )
+
+
+async def _resolve_aliases_in_mapping(mapping, resolver):
+    """Resolve alias entries in *mapping* using the provided async *resolver* coroutine."""
+
+    if not isinstance(mapping, (list, dict)):
+        logger.warning(
+            "matrix_rooms is expected to be a list or dict, got %s",
+            type(mapping).__name__,
+        )
+        return
+
+    for alias, setter in _iter_room_alias_entries(mapping):
+        if _is_room_alias(alias):
+            resolved_id = await resolver(alias)
+            if resolved_id:
+                setter(resolved_id)
+
+
+def _update_room_id_in_mapping(mapping, alias, resolved_id) -> bool:
+    """Replace *alias* with *resolved_id* inside list/dict mappings, returning True on update."""
+
+    if not isinstance(mapping, (list, dict)):
+        return False
+
+    for existing_alias, setter in _iter_room_alias_entries(mapping):
+        if existing_alias == alias:
+            setter(resolved_id)
+            return True
+    return False
+
+
 def _display_room_channel_mappings(
     rooms: Dict[str, Any], config: Dict[str, Any], e2ee_status: Dict[str, Any]
 ) -> None:
@@ -1114,18 +1181,6 @@ async def connect_matrix(passed_config=None):
             e2ee_status = get_e2ee_status(config, config_path)
 
             # Resolve room aliases in config (supports list[str|dict] and dict[str->str|dict])
-            def _is_alias(s: Any) -> bool:
-                """
-                Return True if the given value is a Matrix room alias string (a str starting with '#').
-
-                Parameters:
-                    s (Any): Value to test.
-
-                Returns:
-                    bool: True when s is a string that begins with '#', otherwise False.
-                """
-                return isinstance(s, str) and s.startswith("#")
-
             async def _resolve_alias(alias: str) -> Optional[str]:
                 """
                 Resolve a Matrix room alias to its canonical room ID.
@@ -1152,35 +1207,7 @@ async def connect_matrix(passed_config=None):
                     logger.exception(f"Error resolving alias {alias}")
                 return None
 
-            if isinstance(matrix_rooms, list):
-                for idx, entry in enumerate(matrix_rooms):
-                    if isinstance(entry, dict):
-                        alias = entry.get("id", "")
-                        if _is_alias(alias):
-                            resolved_id = await _resolve_alias(alias)
-                            if resolved_id:
-                                matrix_rooms[idx]["id"] = resolved_id
-                    elif _is_alias(entry):
-                        resolved_id = await _resolve_alias(entry)
-                        if resolved_id:
-                            matrix_rooms[idx] = resolved_id
-            elif isinstance(matrix_rooms, dict):
-                for key, entry in list(matrix_rooms.items()):
-                    if isinstance(entry, dict):
-                        alias = entry.get("id", "")
-                        if _is_alias(alias):
-                            resolved_id = await _resolve_alias(alias)
-                            if resolved_id:
-                                matrix_rooms[key]["id"] = resolved_id
-                    elif _is_alias(entry):
-                        resolved_id = await _resolve_alias(entry)
-                        if resolved_id:
-                            matrix_rooms[key] = resolved_id
-            else:
-                logger.warning(
-                    "matrix_rooms is expected to be a list or dict, got %s",
-                    type(matrix_rooms).__name__,
-                )
+            await _resolve_aliases_in_mapping(matrix_rooms, _resolve_alias)
 
             # Display rooms with channel mappings
             _display_room_channel_mappings(matrix_client.rooms, config, e2ee_status)
@@ -1767,28 +1794,7 @@ async def join_matrix_room(matrix_client, room_id_or_alias: str) -> None:
 
         if mapping:
             try:
-                if isinstance(mapping, list):
-                    for index, entry in enumerate(mapping):
-                        if (
-                            isinstance(entry, dict)
-                            and entry.get("id") == room_id_or_alias
-                        ):
-                            mapping[index]["id"] = room_id
-                            break
-                        if isinstance(entry, str) and entry == room_id_or_alias:
-                            mapping[index] = room_id
-                            break
-                elif isinstance(mapping, dict):
-                    for key, entry in list(mapping.items()):
-                        if (
-                            isinstance(entry, dict)
-                            and entry.get("id") == room_id_or_alias
-                        ):
-                            mapping[key]["id"] = room_id
-                            break
-                        if isinstance(entry, str) and entry == room_id_or_alias:
-                            mapping[key] = room_id
-                            break
+                _update_room_id_in_mapping(mapping, room_id_or_alias, room_id)
             except Exception:
                 logger.debug(
                     "Non-fatal error updating matrix_rooms for alias '%s'",

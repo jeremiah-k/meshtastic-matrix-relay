@@ -196,6 +196,31 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
             self.assertFalse(status["credentials_available"])
             self.assertIn("Matrix authentication not configured", status["issues"])
 
+    @patch("sys.platform", "linux")
+    @patch("mmrelay.e2ee_utils.os.path.exists")
+    def test_e2ee_dependencies_skipped_in_test_mode(self, mock_exists):
+        """Ensure optional nio imports are skipped when MMRELAY_TESTING=1."""
+
+        mock_exists.return_value = True
+
+        import builtins
+
+        real_import = builtins.__import__
+
+        def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+            if name == "olm":
+                return MagicMock()
+            if name.startswith("nio"):
+                raise AssertionError("nio modules should not be imported in test mode")
+            return real_import(name, globals, locals, fromlist, level)
+
+        with patch.dict(os.environ, {"MMRELAY_TESTING": "1"}, clear=False):
+            with patch("builtins.__import__", side_effect=fake_import):
+                status = get_e2ee_status(self.base_config, self.config_path)
+
+        self.assertTrue(status["dependencies_installed"])
+        self.assertEqual(status["overall_status"], "ready")
+
 
 class TestRoomListFormatting(unittest.TestCase):
     """Test room list formatting with E2EE status"""
