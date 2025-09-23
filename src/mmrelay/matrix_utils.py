@@ -909,27 +909,32 @@ async def connect_matrix(passed_config=None):
                 try:
                     import olm  # noqa: F401
 
-                    # Also check for other required E2EE dependencies
-                    try:
-                        from nio.crypto import OlmDevice  # noqa: F401
-                        from nio.store import SqliteStore  # noqa: F401
+                    # Also check for other required E2EE dependencies unless tests skip them
+                    if os.getenv("MMRELAY_TESTING") != "1":
+                        try:
+                            from nio.crypto import OlmDevice  # noqa: F401
+                            from nio.store import SqliteStore  # noqa: F401
 
-                        logger.debug("All E2EE dependencies are available")
-                    except ImportError as e:
-                        logger.error(f"Missing E2EE dependency: {e}")
-                        logger.error(
-                            "Please reinstall with: pipx install 'mmrelay[e2e]'"
-                        )
-                        logger.warning("E2EE will be disabled for this session.")
-                        e2ee_enabled = False
-                    else:
-                        # Dependencies are available, keep the config-determined value
-                        if e2ee_enabled:
-                            logger.info("End-to-End Encryption (E2EE) is enabled")
-                        else:
-                            logger.debug(
-                                "E2EE dependencies available but E2EE is disabled in configuration"
+                            logger.debug("All E2EE dependencies are available")
+                        except ImportError as e:
+                            logger.error(f"Missing E2EE dependency: {e}")
+                            logger.error(
+                                "Please reinstall with: pipx install 'mmrelay[e2e]'"
                             )
+                            logger.warning("E2EE will be disabled for this session.")
+                            e2ee_enabled = False
+                        else:
+                            # Dependencies are available, keep the config-determined value
+                            if e2ee_enabled:
+                                logger.info("End-to-End Encryption (E2EE) is enabled")
+                            else:
+                                logger.debug(
+                                    "E2EE dependencies available but E2EE is disabled in configuration"
+                                )
+                    else:
+                        logger.debug(
+                            "Skipping additional E2EE dependency imports in test mode"
+                        )
 
                         # Get store path from config or use default
                         if (

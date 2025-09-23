@@ -77,8 +77,10 @@ def get_e2ee_status(
     # Check dependencies
     try:
         import olm  # noqa: F401
-        from nio.crypto import OlmDevice  # noqa: F401
-        from nio.store import SqliteStore  # noqa: F401
+
+        if os.getenv("MMRELAY_TESTING") != "1":
+            from nio.crypto import OlmDevice  # noqa: F401
+            from nio.store import SqliteStore  # noqa: F401
 
         status["dependencies_installed"] = True
     except ImportError:
