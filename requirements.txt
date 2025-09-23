@@ -14,7 +14,7 @@ rich==14.1.0
 setuptools>=80.9.0  # Required for console script entry points and Windows compatibility
 
 # Testing and coverage
-coverage==7.10.6
+coverage==7.10.7
 pytest==8.4.2
 pytest-cov==6.3.0
 pytest-asyncio==1.2.0
