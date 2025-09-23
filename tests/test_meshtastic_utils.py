@@ -863,10 +863,12 @@ def test_connect_meshtastic_retry_exhausted(
 
     result = connect_meshtastic(passed_config=config)
 
-    # Should fail immediately on critical error
+    # Should ultimately fail after limited timeout retries even when retries are infinite
     assert result is None
-    assert mock_tcp.call_count == 1
-    mock_sleep.assert_not_called()  # No retries for critical errors
+    from mmrelay.meshtastic_utils import MAX_TIMEOUT_RETRIES_INFINITE
+
+    assert mock_tcp.call_count == MAX_TIMEOUT_RETRIES_INFINITE + 1
+    assert mock_sleep.call_count == MAX_TIMEOUT_RETRIES_INFINITE
 
 
 @patch("mmrelay.meshtastic_utils.connect_meshtastic")

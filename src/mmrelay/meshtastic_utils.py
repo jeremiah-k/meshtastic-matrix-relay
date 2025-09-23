@@ -44,8 +44,11 @@ from mmrelay.constants.network import (
     CONNECTION_TYPE_TCP,
     DEFAULT_BACKOFF_TIME,
     ERRNO_BAD_FILE_DESCRIPTOR,
-    INFINITE_RETRIES,
+INFINITE_RETRIES,
 )
+
+# Maximum number of timeout retries when retries are configured as infinite.
+MAX_TIMEOUT_RETRIES_INFINITE = 5
 
 # Import BLE exceptions conditionally
 try:
@@ -355,6 +358,7 @@ def connect_meshtastic(passed_config=None, force_connect=False):
     except (TypeError, ValueError):
         retry_limit = INFINITE_RETRIES
     attempts = 0
+    timeout_attempts = 0
     successful = False
 
     while (
@@ -468,12 +472,18 @@ def connect_meshtastic(passed_config=None, force_connect=False):
             if shutting_down:
                 break
             attempts += 1
-            max_attempts_reached = (
-                retry_limit != INFINITE_RETRIES and attempts > retry_limit
-            )
-            if max_attempts_reached:
+            if retry_limit == INFINITE_RETRIES:
+                timeout_attempts += 1
+                if timeout_attempts > MAX_TIMEOUT_RETRIES_INFINITE:
+                    logger.exception(
+                        "Connection timed out after %s attempts (unlimited retries); aborting",
+                        attempts,
+                    )
+                    return None
+            elif attempts > retry_limit:
                 logger.exception("Connection failed after %s attempts", attempts)
                 return None
+
             wait_time = min(2**attempts, 60)
             logger.warning(
                 "Connection attempt %s timed out (%s). Retrying in %s seconds...",
