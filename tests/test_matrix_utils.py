@@ -1,3 +1,4 @@
+import asyncio
 import os
 import re
 import sys
@@ -78,16 +79,7 @@ def test_config():
     }
 
 
-@patch("mmrelay.plugin_loader.load_plugins", return_value=[])
-@patch("mmrelay.matrix_utils.connect_meshtastic")
-@patch("mmrelay.matrix_utils.queue_message")
-@patch("mmrelay.matrix_utils.bot_start_time", 1234567880)
-@patch("mmrelay.matrix_utils.get_user_display_name")
 async def test_on_room_message_simple_text(
-    mock_get_user_display_name,
-    mock_queue_message,
-    _mock_connect_meshtastic,
-    _mock_load_plugins,
     mock_room,
     mock_event,
     test_config,
@@ -107,30 +99,53 @@ async def test_on_room_message_simple_text(
         """
         return "user"
 
-    mock_get_user_display_name.side_effect = mock_get_user_display_name_func
-    with patch("mmrelay.matrix_utils.config", test_config), patch(
+    dummy_queue = MagicMock()
+    dummy_queue.get_queue_size.return_value = 0
+
+    real_loop = asyncio.get_running_loop()
+
+    class DummyLoop:
+        def __init__(self, loop):
+            self._loop = loop
+
+        def is_running(self):
+            return True
+
+        def create_task(self, coro):
+            return self._loop.create_task(coro)
+
+        async def run_in_executor(self, executor, func, *args):
+            return func(*args)
+
+    with patch("mmrelay.plugin_loader.load_plugins", return_value=[]), patch(
+        "mmrelay.matrix_utils.asyncio.get_running_loop",
+        return_value=DummyLoop(real_loop),
+    ), patch(
+        "mmrelay.matrix_utils.get_user_display_name",
+        side_effect=mock_get_user_display_name_func,
+    ), patch(
+        "mmrelay.matrix_utils.get_message_queue", return_value=dummy_queue
+    ), patch(
+        "mmrelay.matrix_utils.queue_message", return_value=True
+    ) as mock_queue_message, patch(
+        "mmrelay.matrix_utils.connect_meshtastic", return_value=MagicMock()
+    ), patch(
+        "mmrelay.matrix_utils.bot_start_time", 1234567880
+    ), patch(
+        "mmrelay.matrix_utils.config", test_config
+    ), patch(
         "mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]
-    ), patch("mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]):
-        # Mock the matrix client - use MagicMock to prevent coroutine warnings
-        mock_matrix_client = MagicMock()
-        with patch("mmrelay.matrix_utils.matrix_client", mock_matrix_client):
-            # Run the function
-            await on_room_message(mock_room, mock_event)
+    ), patch(
+        "mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]
+    ):
+        await on_room_message(mock_room, mock_event)
 
-            # Assert that the message was queued
-            mock_queue_message.assert_called_once()
-            call_args = mock_queue_message.call_args[1]
-            assert "Hello, world!" in call_args["text"]
+        mock_queue_message.assert_called_once()
+        queued_kwargs = mock_queue_message.call_args.kwargs
+        assert "Hello, world!" in queued_kwargs["text"]
 
 
-@patch("mmrelay.plugin_loader.load_plugins", return_value=[])
-@patch("mmrelay.matrix_utils.connect_meshtastic")
-@patch("mmrelay.matrix_utils.queue_message")
-@patch("mmrelay.matrix_utils.bot_start_time", 1234567880)
 async def test_on_room_message_remote_prefers_meshtastic_text(
-    mock_queue_message,
-    _mock_connect_meshtastic,
-    _mock_load_plugins,
     mock_room,
     mock_event,
     test_config,
@@ -152,23 +167,51 @@ async def test_on_room_message_remote_prefers_meshtastic_text(
     test_config["meshtastic"]["meshnet_name"] = "local_mesh"
 
     matrix_rooms = test_config["matrix_rooms"]
-    with patch("mmrelay.matrix_utils.config", test_config), patch(
+    dummy_queue = MagicMock()
+    dummy_queue.get_queue_size.return_value = 0
+
+    real_loop = asyncio.get_running_loop()
+
+    class DummyLoop:
+        def __init__(self, loop):
+            self._loop = loop
+
+        def is_running(self):
+            return True
+
+        def create_task(self, coro):
+            return self._loop.create_task(coro)
+
+        async def run_in_executor(self, executor, func, *args):
+            return func(*args)
+
+    with patch("mmrelay.plugin_loader.load_plugins", return_value=[]), patch(
+        "mmrelay.matrix_utils.asyncio.get_running_loop",
+        return_value=DummyLoop(real_loop),
+    ), patch("mmrelay.matrix_utils.get_message_queue", return_value=dummy_queue), patch(
+        "mmrelay.matrix_utils.queue_message", return_value=True
+    ) as mock_queue_message, patch(
+        "mmrelay.matrix_utils.connect_meshtastic", return_value=MagicMock()
+    ), patch(
+        "mmrelay.matrix_utils.bot_start_time", 1234567880
+    ), patch(
+        "mmrelay.matrix_utils.config", test_config
+    ), patch(
         "mmrelay.matrix_utils.matrix_rooms", matrix_rooms
-    ), patch("mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]):
-        mock_matrix_client = MagicMock()
-        with patch("mmrelay.matrix_utils.matrix_client", mock_matrix_client):
-            await on_room_message(mock_room, mock_event)
+    ), patch(
+        "mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]
+    ):
+        await on_room_message(mock_room, mock_event)
 
-    mock_queue_message.assert_called_once()
-    queued_kwargs = mock_queue_message.call_args.kwargs
-    assert "Hello from remote mesh" in queued_kwargs["text"]
+        mock_queue_message.assert_called_once()
+        queued_kwargs = mock_queue_message.call_args.kwargs
+        assert "Hello from remote mesh" in queued_kwargs["text"]
 
 
-@patch("mmrelay.matrix_utils.connect_meshtastic")
-@patch("mmrelay.matrix_utils.queue_message")
-@patch("mmrelay.matrix_utils.bot_start_time", 1234567880)
 async def test_on_room_message_ignore_bot(
-    mock_queue_message, _mock_connect_meshtastic, mock_room, mock_event, test_config
+    mock_room,
+    mock_event,
+    test_config,
 ):
     """
     Test that messages sent by the bot user are ignored and not relayed to Meshtastic.
@@ -176,17 +219,21 @@ async def test_on_room_message_ignore_bot(
     Ensures that when the event sender matches the configured bot user ID, the message is not queued for relay.
     """
     mock_event.sender = test_config["matrix"]["bot_user_id"]
-    with patch("mmrelay.matrix_utils.config", test_config), patch(
+    with patch("mmrelay.matrix_utils.queue_message") as mock_queue_message, patch(
+        "mmrelay.matrix_utils.connect_meshtastic"
+    ) as mock_connect_meshtastic, patch(
+        "mmrelay.matrix_utils.bot_start_time", 1234567880
+    ), patch(
+        "mmrelay.matrix_utils.config", test_config
+    ), patch(
         "mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]
-    ), patch("mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]):
-        # Mock the matrix client - use MagicMock to prevent coroutine warnings
-        mock_matrix_client = MagicMock()
-        with patch("mmrelay.matrix_utils.matrix_client", mock_matrix_client):
-            # Run the function
-            await on_room_message(mock_room, mock_event)
+    ), patch(
+        "mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]
+    ):
+        await on_room_message(mock_room, mock_event)
 
-            # Assert that the message was not queued
-            mock_queue_message.assert_not_called()
+        mock_queue_message.assert_not_called()
+        mock_connect_meshtastic.assert_not_called()
 
 
 @patch("mmrelay.matrix_utils.bot_start_time", 1234567880)
@@ -276,21 +323,7 @@ async def test_on_room_message_reply_disabled(
             assert mock_event.body in call_args["text"]
 
 
-@patch("mmrelay.plugin_loader.load_plugins", return_value=[])
-@patch("mmrelay.matrix_utils.connect_meshtastic")
-@patch("mmrelay.matrix_utils.queue_message")
-@patch("mmrelay.matrix_utils.bot_start_time", 1234567880)
-@patch("mmrelay.matrix_utils.get_message_map_by_matrix_event_id")
-@patch("mmrelay.matrix_utils.get_user_display_name")
-async def test_on_room_message_reaction_enabled(
-    mock_get_user_display_name,
-    mock_get_message_map,
-    mock_queue_message,
-    _mock_connect_meshtastic,
-    _mock_load_plugins,
-    mock_room,
-    test_config,
-):
+async def test_on_room_message_reaction_enabled(mock_room, test_config):
     # This is a reaction event
     """
     Test that a Matrix reaction event is processed and queued for Meshtastic relay when reaction interactions are enabled.
@@ -328,37 +361,58 @@ async def test_on_room_message_reaction_enabled(
     )
 
     test_config["meshtastic"]["message_interactions"]["reactions"] = True
-    mock_get_message_map.return_value = (
-        "meshtastic_id",
-        "!room:matrix.org",
-        "original_text",
-        "test_mesh",
-    )
 
-    # Create a proper async mock function
-    async def mock_get_user_display_name_func(*args, **kwargs):
-        """
-        Asynchronously returns a fixed user display name string "user".
+    real_loop = asyncio.get_running_loop()
 
-        Intended for use as a mock replacement in tests requiring an async display name retrieval function.
-        """
-        return "user"
+    class DummyLoop:
+        def __init__(self, loop):
+            self._loop = loop
 
-    mock_get_user_display_name.side_effect = mock_get_user_display_name_func
+        def is_running(self):
+            return True
 
-    with patch("mmrelay.matrix_utils.config", test_config), patch(
+        def create_task(self, coro):
+            return self._loop.create_task(coro)
+
+        async def run_in_executor(self, executor, func, *args):
+            return func(*args)
+
+    dummy_queue = MagicMock()
+    dummy_queue.get_queue_size.return_value = 0
+
+    with patch("mmrelay.plugin_loader.load_plugins", return_value=[]), patch(
+        "mmrelay.matrix_utils.get_user_display_name", return_value="MockUser"
+    ), patch(
+        "mmrelay.matrix_utils.get_message_map_by_matrix_event_id",
+        return_value=(
+            "meshtastic_id",
+            "!room:matrix.org",
+            "original_text",
+            "test_mesh",
+        ),
+    ), patch(
+        "mmrelay.matrix_utils.asyncio.get_running_loop",
+        return_value=DummyLoop(real_loop),
+    ), patch(
+        "mmrelay.matrix_utils.get_message_queue", return_value=dummy_queue
+    ), patch(
+        "mmrelay.matrix_utils.queue_message", return_value=True
+    ) as mock_queue_message, patch(
+        "mmrelay.matrix_utils.connect_meshtastic", return_value=MagicMock()
+    ), patch(
+        "mmrelay.matrix_utils.bot_start_time", 1234567880
+    ), patch(
+        "mmrelay.matrix_utils.config", test_config
+    ), patch(
         "mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]
-    ), patch("mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]):
-        # Mock the matrix client - use MagicMock to prevent coroutine warnings
-        mock_matrix_client = MagicMock()
-        with patch("mmrelay.matrix_utils.matrix_client", mock_matrix_client):
-            # Run the function
-            await on_room_message(mock_room, mock_event)
+    ), patch(
+        "mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]
+    ):
+        await on_room_message(mock_room, mock_event)
 
-            # Assert that the message was queued
-            mock_queue_message.assert_called_once()
-            call_args = mock_queue_message.call_args[1]
-            assert "reacted 👍 to" in call_args["text"]
+        mock_queue_message.assert_called_once()
+        queued_kwargs = mock_queue_message.call_args.kwargs
+        assert queued_kwargs["description"].startswith("Local reaction")
 
 
 @patch("mmrelay.matrix_utils.connect_meshtastic")
@@ -1729,64 +1783,100 @@ async def test_get_user_display_name_no_displayname(_mock_logger, mock_matrix_cl
     assert result == "@user:matrix.org"
 
 
-@patch("mmrelay.matrix_utils.config", {"meshtastic": {"broadcast_enabled": True}})
-@patch("mmrelay.matrix_utils.connect_meshtastic")
-@patch("mmrelay.matrix_utils.queue_message")
-@patch("mmrelay.matrix_utils.logger")
-async def test_send_reply_to_meshtastic_with_reply_id(
-    _mock_logger, mock_queue, _mock_connect
-):
+async def test_send_reply_to_meshtastic_with_reply_id():
     """Test sending a reply to Meshtastic with reply_id."""
     mock_room_config = {"meshtastic_channel": 0}
     mock_room = MagicMock()
     mock_event = MagicMock()
 
-    await send_reply_to_meshtastic(
-        reply_message="Test reply",
-        full_display_name="Alice",
-        room_config=mock_room_config,
-        room=mock_room,
-        event=mock_event,
-        text="Original text",
-        storage_enabled=True,
-        local_meshnet_name="TestMesh",
-        reply_id=12345,
-    )
+    real_loop = asyncio.get_running_loop()
 
-    # Should queue message with reply_id
-    mock_queue.assert_called_once()
-    call_kwargs = mock_queue.call_args[1]
-    assert call_kwargs["reply_id"] == 12345
+    class DummyLoop:
+        def __init__(self, loop):
+            self._loop = loop
+
+        def is_running(self):
+            return True
+
+        def create_task(self, coro):
+            return self._loop.create_task(coro)
+
+        async def run_in_executor(self, executor, func, *args):
+            return func(*args)
+
+    with patch(
+        "mmrelay.matrix_utils.config", {"meshtastic": {"broadcast_enabled": True}}
+    ), patch(
+        "mmrelay.matrix_utils.asyncio.get_running_loop",
+        return_value=DummyLoop(real_loop),
+    ), patch(
+        "mmrelay.matrix_utils.connect_meshtastic", return_value=MagicMock()
+    ), patch(
+        "mmrelay.matrix_utils.queue_message", return_value=True
+    ) as mock_queue:
+        await send_reply_to_meshtastic(
+            reply_message="Test reply",
+            full_display_name="Alice",
+            room_config=mock_room_config,
+            room=mock_room,
+            event=mock_event,
+            text="Original text",
+            storage_enabled=True,
+            local_meshnet_name="TestMesh",
+            reply_id=12345,
+        )
+
+        mock_queue.assert_called_once()
+        call_kwargs = mock_queue.call_args.kwargs
+        assert call_kwargs["reply_id"] == 12345
 
 
-@patch("mmrelay.matrix_utils.config", {"meshtastic": {"broadcast_enabled": True}})
-@patch("mmrelay.matrix_utils.connect_meshtastic")
-@patch("mmrelay.matrix_utils.queue_message")
-@patch("mmrelay.matrix_utils.logger")
-async def test_send_reply_to_meshtastic_no_reply_id(
-    _mock_logger, mock_queue, _mock_connect
-):
+async def test_send_reply_to_meshtastic_no_reply_id():
     """Test sending a reply to Meshtastic without reply_id."""
     mock_room_config = {"meshtastic_channel": 0}
     mock_room = MagicMock()
     mock_event = MagicMock()
 
-    await send_reply_to_meshtastic(
-        reply_message="Test reply",
-        full_display_name="Alice",
-        room_config=mock_room_config,
-        room=mock_room,
-        event=mock_event,
-        text="Original text",
-        storage_enabled=False,
-        local_meshnet_name="TestMesh",
-        reply_id=None,
-    )
+    real_loop = asyncio.get_running_loop()
 
-    # Should queue message without reply_id
-    mock_queue.assert_called_once()
-    call_kwargs = mock_queue.call_args[1]
-    assert call_kwargs.get("reply_id") is None
+    class DummyLoop:
+        def __init__(self, loop):
+            self._loop = loop
+
+        def is_running(self):
+            return True
+
+        def create_task(self, coro):
+            return self._loop.create_task(coro)
+
+        async def run_in_executor(self, executor, func, *args):
+            return func(*args)
+
+    with patch(
+        "mmrelay.matrix_utils.config", {"meshtastic": {"broadcast_enabled": True}}
+    ), patch(
+        "mmrelay.matrix_utils.asyncio.get_running_loop",
+        return_value=DummyLoop(real_loop),
+    ), patch(
+        "mmrelay.matrix_utils.connect_meshtastic", return_value=MagicMock()
+    ), patch(
+        "mmrelay.matrix_utils.queue_message", return_value=True
+    ) as mock_queue:
+        await send_reply_to_meshtastic(
+            reply_message="Test reply",
+            full_display_name="Alice",
+            room_config=mock_room_config,
+            room=mock_room,
+            event=mock_event,
+            text="Original text",
+            storage_enabled=False,
+            local_meshnet_name="TestMesh",
+            reply_id=None,
+        )
+
+        mock_queue.assert_called_once()
+        call_kwargs = mock_queue.call_args.kwargs
+        assert call_kwargs.get("reply_id") is None
 
 
 # Image upload function tests - converted from unittest.TestCase to standalone pytest functions
