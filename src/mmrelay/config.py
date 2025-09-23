@@ -197,11 +197,11 @@ def get_log_dir():
 def get_e2ee_store_dir():
     """
     Return the absolute path to the E2EE data store directory, creating it if missing.
-    
+
     On Linux and macOS this is "<base_dir>/store" where base_dir is returned by get_base_dir().
     On Windows this is "<custom_data_dir>/store" when module-level custom_data_dir is set; otherwise it uses
     platformdirs.user_data_dir(APP_NAME, APP_AUTHOR)/store.
-    
+
     Returns:
         str: Absolute path to the ensured store directory. The directory is created if it does not exist.
     """
@@ -388,12 +388,12 @@ def is_e2ee_enabled(config):
 def check_e2ee_enabled_silently(args=None):
     """
     Check silently whether End-to-End Encryption (E2EE) is enabled in the first readable configuration file.
-    
+
     Searches candidate configuration paths returned by get_config_paths(args) in priority order, loads the first readable YAML file, and returns True if that configuration enables E2EE (via is_e2ee_enabled). I/O and YAML parsing errors are ignored and the function continues to the next candidate. On Windows this always returns False.
-    
+
     Parameters:
         args (optional): Parsed command-line arguments that can influence config search order.
-    
+
     Returns:
         bool: True if E2EE is enabled in the first valid configuration file found; otherwise False.
     """
@@ -493,16 +493,16 @@ def load_credentials():
 def save_credentials(credentials):
     """
     Persist a JSON-serializable credentials mapping to <base_dir>/credentials.json.
-    
+
     Writes the provided credentials (a JSON-serializable mapping) to the application's
     base configuration directory as credentials.json, creating the base directory if
     necessary. On Unix-like systems the file permissions are adjusted to be
     restrictive (0o600) when possible. I/O and permission errors are caught and
     logged; the function does not raise them.
-    
+
     Parameters:
         credentials (dict): JSON-serializable mapping of credentials to persist.
-    
+
     Returns:
         None
     """
@@ -822,18 +822,18 @@ def load_config(config_file=None, args=None):
 def validate_yaml_syntax(config_content, config_path):
     """
     Validate YAML text for syntax and common style issues, parse it with PyYAML, and return results.
-    
+
     Performs lightweight line-based checks for frequent mistakes (using '=' instead of ':'
     for mappings and non-standard boolean words like 'yes'/'no' or 'on'/'off') and then
     attempts to parse the content with yaml.safe_load. If only style warnings are found,
     parsing is considered successful and warnings are returned; if parsing fails or true
     syntax errors are detected, a detailed error message is returned that references
     config_path to identify the source.
-    
+
     Parameters:
         config_content (str): Raw YAML text to validate.
         config_path (str): Path or label used in error messages to identify the source of the content.
-    
+
     Returns:
         tuple:
             is_valid (bool): True if YAML parsed successfully (style warnings allowed), False on syntax/parsing error.

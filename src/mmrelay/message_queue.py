@@ -474,9 +474,9 @@ class MessageQueue:
     def _should_send_message(self) -> bool:
         """
         Return True if it is currently safe to send a message via Meshtastic.
-        
+
         Performs runtime checks: ensures the global reconnecting flag is not set, a Meshtastic client object is available, and — if the client exposes `is_connected` (callable or boolean) — that it reports connected. Returns False if any check fails.
-        
+
         If importing the Meshtastic utilities raises ImportError, the method will asynchronously stop this MessageQueue and return False.
         """
         # Import here to avoid circular imports
@@ -518,9 +518,9 @@ class MessageQueue:
     def _handle_message_mapping(self, result, mapping_info):
         """
         Persist a sent message mapping (mesh message id → Matrix event) and optionally prune old mappings.
-        
+
         If mapping_info contains 'matrix_event_id', 'room_id', and 'text', stores a mapping using result.id as the mesh message id. If 'msgs_to_keep' is present and > 0 it prunes older mappings to retain that many entries; otherwise DEFAULT_MSGS_TO_KEEP is used.
-        
+
         Parameters:
             result: Send function result object with an `id` attribute (the mesh message id).
             mapping_info (dict): Mapping details. Relevant keys:

@@ -869,7 +869,7 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
     def test_enable_lingering_no_username(self, mock_subprocess):
         """
         Verify enable_lingering returns False and prints an error when the current username cannot be determined.
-        
+
         This test stubs getpass to return an empty username and ensures enable_lingering:
         - does not attempt to enable lingering for a user,
         - returns False,
@@ -892,7 +892,7 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
                 def mock_import_side_effect(name, *args, **kwargs):
                     """
                     Import hook used by tests to substitute a mocked getpass module.
-                    
+
                     If `name` is "getpass" returns the test's `mock_getpass` object; otherwise delegates to Python's built-in `__import__`, forwarding any additional positional and keyword arguments.
                     """
                     if name == "getpass":

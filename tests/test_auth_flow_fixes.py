@@ -112,13 +112,13 @@ class TestAuthFlowFixes(unittest.TestCase):
                 def mock_exists(path):
                     """
                     Mock os.path.exists for tests.
-                    
+
                     Return False for the credentials file path, True for the configuration directory path, and False for all other paths.
                     Relies on the outer-scope variables `credentials_path` and `config_dir` (closure) to decide which paths exist.
-                    
+
                     Parameters:
                         path (str): Filesystem path to check.
-                    
+
                     Returns:
                         bool: True if the mock treats the path as present, otherwise False.
                     """

@@ -147,15 +147,15 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
             def import_side_effect(name):
                 """
                 Mock import side effect used in tests.
-                
+
                 Simulates Python's import behavior for use with import mocking: if the requested module name is "olm" it raises ImportError to emulate the dependency being missing; for any other module name it returns a MagicMock instance that stands in for the imported module.
-                
+
                 Parameters:
                     name (str): Full module name passed to the import (e.g., "olm", "nio.crypto").
-                
+
                 Returns:
                     unittest.mock.MagicMock: A mock object representing the imported module when the module is not "olm".
-                
+
                 Raises:
                     ImportError: If `name` is exactly "olm".
                 """
@@ -212,17 +212,17 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
                 def import_side_effect(name):
                     """
                     Side-effect function for mocking imports during tests.
-                    
+
                     When called with the module name to import:
                     - Returns a MagicMock for "olm" and for any other module not starting with "nio".
                     - Raises AssertionError if the requested module name starts with "nio" (used to ensure nio modules are not imported in test mode).
-                    
+
                     Parameters:
                         name (str): The dotted module name passed to the import mechanism.
-                    
+
                     Returns:
                         MagicMock: A mock object to stand in for the requested module.
-                    
+
                     Raises:
                         AssertionError: If `name` starts with "nio".
                     """

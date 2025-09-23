@@ -65,7 +65,7 @@ def mock_event():
 def test_config():
     """
     Fixture providing a sample configuration for Meshtastic ↔ Matrix integration used by tests.
-    
+
     Returns:
         dict: Configuration with keys:
           - meshtastic: dict with
@@ -108,7 +108,7 @@ async def test_on_room_message_simple_text(
     async def mock_get_user_display_name_func(*args, **kwargs):
         """
         Return the fixed display name "user".
-        
+
         Async test helper that can replace an async Matrix display-name getter. Accepts any positional and keyword arguments and always returns the string "user".
         """
         return "user"
@@ -122,7 +122,7 @@ async def test_on_room_message_simple_text(
         def __init__(self, loop):
             """
             Initialize the instance with an asyncio event loop.
-            
+
             Parameters:
                 loop (asyncio.AbstractEventLoop): Event loop used for scheduling asynchronous tasks.
             """
@@ -131,7 +131,7 @@ async def test_on_room_message_simple_text(
         def is_running(self):
             """
             Return whether the component is currently running.
-            
+
             This implementation always reports the component as running and returns True.
             Returns:
                 bool: Always True.
@@ -141,10 +141,10 @@ async def test_on_room_message_simple_text(
         def create_task(self, coro):
             """
             Schedule the given coroutine on this object's event loop and return the created Task.
-            
+
             Parameters:
                 coro: An awaitable/coroutine to be scheduled.
-            
+
             Returns:
                 asyncio.Task: A Task wrapping the scheduled coroutine, associated with this instance's loop.
             """
@@ -153,14 +153,14 @@ async def test_on_room_message_simple_text(
         async def run_in_executor(self, _executor, func, *args):
             """
             Call `func(*args)` synchronously and return its result.
-            
+
             This async-compatible shim preserves the (executor, func, *args) signature but does not offload work to a thread/process executor — it invokes `func` directly in the current event loop thread. Use only for very quick, non-blocking callables; long-running or blocking `func` implementations will block the event loop.
-            
+
             Parameters:
                 _executor: Ignored. Present for API compatibility.
                 func: Callable to invoke.
                 *args: Positional arguments forwarded to `func`.
-            
+
             Returns:
                 The value returned by `func(*args)`.
             """
@@ -225,7 +225,7 @@ async def test_on_room_message_remote_prefers_meshtastic_text(
         def __init__(self, loop):
             """
             Initialize the instance with an asyncio event loop.
-            
+
             Parameters:
                 loop (asyncio.AbstractEventLoop): Event loop used for scheduling asynchronous tasks.
             """
@@ -234,7 +234,7 @@ async def test_on_room_message_remote_prefers_meshtastic_text(
         def is_running(self):
             """
             Return whether the component is currently running.
-            
+
             This implementation always reports the component as running and returns True.
             Returns:
                 bool: Always True.
@@ -244,10 +244,10 @@ async def test_on_room_message_remote_prefers_meshtastic_text(
         def create_task(self, coro):
             """
             Schedule the given coroutine on this object's event loop and return the created Task.
-            
+
             Parameters:
                 coro: An awaitable/coroutine to be scheduled.
-            
+
             Returns:
                 asyncio.Task: A Task wrapping the scheduled coroutine, associated with this instance's loop.
             """
@@ -256,14 +256,14 @@ async def test_on_room_message_remote_prefers_meshtastic_text(
         async def run_in_executor(self, _executor, func, *args):
             """
             Call `func(*args)` synchronously and return its result.
-            
+
             This async-compatible shim preserves the (executor, func, *args) signature but does not offload work to a thread/process executor — it invokes `func` directly in the current event loop thread. Use only for very quick, non-blocking callables; long-running or blocking `func` implementations will block the event loop.
-            
+
             Parameters:
                 _executor: Ignored. Present for API compatibility.
                 func: Callable to invoke.
                 *args: Positional arguments forwarded to `func`.
-            
+
             Returns:
                 The value returned by `func(*args)`.
             """
@@ -376,7 +376,7 @@ async def test_on_room_message_reply_disabled(
     async def mock_get_user_display_name_func(*args, **kwargs):
         """
         Return the fixed display name "user".
-        
+
         Async test helper that can replace an async Matrix display-name getter. Accepts any positional and keyword arguments and always returns the string "user".
         """
         return "user"
@@ -420,7 +420,7 @@ async def test_on_room_message_reaction_enabled(mock_room, test_config):
         def __init__(self, source, sender, server_timestamp):
             """
             Create an event-like wrapper holding the raw Matrix event payload, the sender MXID, and the server timestamp.
-            
+
             Parameters:
                 source (dict): The original Matrix event JSON payload as received from the client/server.
                 sender (str): Sender Matrix user ID (MXID), e.g. "@alice:example.org".
@@ -452,7 +452,7 @@ async def test_on_room_message_reaction_enabled(mock_room, test_config):
         def __init__(self, loop):
             """
             Initialize the instance with an asyncio event loop.
-            
+
             Parameters:
                 loop (asyncio.AbstractEventLoop): Event loop used for scheduling asynchronous tasks.
             """
@@ -461,7 +461,7 @@ async def test_on_room_message_reaction_enabled(mock_room, test_config):
         def is_running(self):
             """
             Return whether the component is currently running.
-            
+
             This implementation always reports the component as running and returns True.
             Returns:
                 bool: Always True.
@@ -471,10 +471,10 @@ async def test_on_room_message_reaction_enabled(mock_room, test_config):
         def create_task(self, coro):
             """
             Schedule the given coroutine on this object's event loop and return the created Task.
-            
+
             Parameters:
                 coro: An awaitable/coroutine to be scheduled.
-            
+
             Returns:
                 asyncio.Task: A Task wrapping the scheduled coroutine, associated with this instance's loop.
             """
@@ -483,14 +483,14 @@ async def test_on_room_message_reaction_enabled(mock_room, test_config):
         async def run_in_executor(self, _executor, func, *args):
             """
             Call `func(*args)` synchronously and return its result.
-            
+
             This async-compatible shim preserves the (executor, func, *args) signature but does not offload work to a thread/process executor — it invokes `func` directly in the current event loop thread. Use only for very quick, non-blocking callables; long-running or blocking `func` implementations will block the event loop.
-            
+
             Parameters:
                 _executor: Ignored. Present for API compatibility.
                 func: Callable to invoke.
                 *args: Positional arguments forwarded to `func`.
-            
+
             Returns:
                 The value returned by `func(*args)`.
             """
@@ -554,7 +554,7 @@ async def test_on_room_message_reaction_disabled(
         def __init__(self, source, sender, server_timestamp):
             """
             Create an event-like wrapper holding the raw Matrix event payload, the sender MXID, and the server timestamp.
-            
+
             Parameters:
                 source (dict): The original Matrix event JSON payload as received from the client/server.
                 sender (str): Sender Matrix user ID (MXID), e.g. "@alice:example.org".
@@ -1291,7 +1291,7 @@ async def test_connect_matrix_alias_resolution_success(
         async def mock_whoami():
             """
             Asynchronous test helper that simulates a Matrix client's whoami() response.
-            
+
             Returns:
                 unittest.mock.MagicMock: Mock object with a `device_id` attribute set to "test_device_id".
             """
@@ -1300,7 +1300,7 @@ async def test_connect_matrix_alias_resolution_success(
         async def mock_sync(*_args, **_kwargs):
             """
             Awaitable test helper that returns a fresh MagicMock.
-            
+
             Use in async tests as a stand-in for an async client `sync` (or similar) call; awaiting this coroutine yields a new MagicMock instance representing the mocked result.
             """
             return MagicMock()
@@ -1308,7 +1308,7 @@ async def test_connect_matrix_alias_resolution_success(
         async def mock_get_displayname(*_args, **_kwargs):
             """
             Return a MagicMock simulating an async user displayname lookup.
-            
+
             This async test helper ignores all args and kwargs and returns a MagicMock with a `displayname` attribute set to "Test Bot",
             suitable for stubbing client.get_displayname or similar async calls in tests.
             """
@@ -1403,7 +1403,7 @@ async def test_connect_matrix_alias_resolution_failure(
         async def mock_whoami():
             """
             Asynchronous test helper that simulates a Matrix client's whoami() response.
-            
+
             Returns:
                 unittest.mock.MagicMock: Mock object with a `device_id` attribute set to "test_device_id".
             """
@@ -1412,7 +1412,7 @@ async def test_connect_matrix_alias_resolution_failure(
         async def mock_sync(*_args, **_kwargs):
             """
             Awaitable test helper that returns a fresh MagicMock.
-            
+
             Use in async tests as a stand-in for an async client `sync` (or similar) call; awaiting this coroutine yields a new MagicMock instance representing the mocked result.
             """
             return MagicMock()
@@ -1420,7 +1420,7 @@ async def test_connect_matrix_alias_resolution_failure(
         async def mock_get_displayname(*_args, **_kwargs):
             """
             Return a MagicMock simulating an async user displayname lookup.
-            
+
             This async test helper ignores all args and kwargs and returns a MagicMock with a `displayname` attribute set to "Test Bot",
             suitable for stubbing client.get_displayname or similar async calls in tests.
             """
@@ -1432,10 +1432,10 @@ async def test_connect_matrix_alias_resolution_failure(
         async def mock_room_resolve_alias_impl(_alias):
             """
             Mock async implementation of room alias resolution that simulates a "not found" response.
-            
+
             Parameters:
                 _alias (str): Alias to resolve (ignored).
-            
+
             Returns:
                 MagicMock: A mock response object with attributes:
                     - room_id: None indicating the alias was not resolved.
@@ -1519,7 +1519,7 @@ async def test_connect_matrix_alias_resolution_exception(
         async def mock_whoami():
             """
             Asynchronous test helper that simulates a Matrix client's whoami() response.
-            
+
             Returns:
                 unittest.mock.MagicMock: Mock object with a `device_id` attribute set to "test_device_id".
             """
@@ -1528,7 +1528,7 @@ async def test_connect_matrix_alias_resolution_exception(
         async def mock_sync(*_args, **_kwargs):
             """
             Awaitable test helper that returns a fresh MagicMock.
-            
+
             Use in async tests as a stand-in for an async client `sync` (or similar) call; awaiting this coroutine yields a new MagicMock instance representing the mocked result.
             """
             return MagicMock()
@@ -1536,7 +1536,7 @@ async def test_connect_matrix_alias_resolution_exception(
         async def mock_get_displayname(*_args, **_kwargs):
             """
             Return a MagicMock simulating an async user displayname lookup.
-            
+
             This async test helper ignores all args and kwargs and returns a MagicMock with a `displayname` attribute set to "Test Bot",
             suitable for stubbing client.get_displayname or similar async calls in tests.
             """
@@ -1925,7 +1925,7 @@ async def test_send_reply_to_meshtastic_with_reply_id():
         def __init__(self, loop):
             """
             Initialize the instance with an asyncio event loop.
-            
+
             Parameters:
                 loop (asyncio.AbstractEventLoop): Event loop used for scheduling asynchronous tasks.
             """
@@ -1934,7 +1934,7 @@ async def test_send_reply_to_meshtastic_with_reply_id():
         def is_running(self):
             """
             Return whether the component is currently running.
-            
+
             This implementation always reports the component as running and returns True.
             Returns:
                 bool: Always True.
@@ -1944,10 +1944,10 @@ async def test_send_reply_to_meshtastic_with_reply_id():
         def create_task(self, coro):
             """
             Schedule the given coroutine on this object's event loop and return the created Task.
-            
+
             Parameters:
                 coro: An awaitable/coroutine to be scheduled.
-            
+
             Returns:
                 asyncio.Task: A Task wrapping the scheduled coroutine, associated with this instance's loop.
             """
@@ -1956,14 +1956,14 @@ async def test_send_reply_to_meshtastic_with_reply_id():
         async def run_in_executor(self, _executor, func, *args):
             """
             Call `func(*args)` synchronously and return its result.
-            
+
             This async-compatible shim preserves the (executor, func, *args) signature but does not offload work to a thread/process executor — it invokes `func` directly in the current event loop thread. Use only for very quick, non-blocking callables; long-running or blocking `func` implementations will block the event loop.
-            
+
             Parameters:
                 _executor: Ignored. Present for API compatibility.
                 func: Callable to invoke.
                 *args: Positional arguments forwarded to `func`.
-            
+
             Returns:
                 The value returned by `func(*args)`.
             """
@@ -2008,7 +2008,7 @@ async def test_send_reply_to_meshtastic_no_reply_id():
         def __init__(self, loop):
             """
             Initialize the instance with an asyncio event loop.
-            
+
             Parameters:
                 loop (asyncio.AbstractEventLoop): Event loop used for scheduling asynchronous tasks.
             """
@@ -2017,7 +2017,7 @@ async def test_send_reply_to_meshtastic_no_reply_id():
         def is_running(self):
             """
             Return whether the component is currently running.
-            
+
             This implementation always reports the component as running and returns True.
             Returns:
                 bool: Always True.
@@ -2027,10 +2027,10 @@ async def test_send_reply_to_meshtastic_no_reply_id():
         def create_task(self, coro):
             """
             Schedule the given coroutine on this object's event loop and return the created Task.
-            
+
             Parameters:
                 coro: An awaitable/coroutine to be scheduled.
-            
+
             Returns:
                 asyncio.Task: A Task wrapping the scheduled coroutine, associated with this instance's loop.
             """
@@ -2039,14 +2039,14 @@ async def test_send_reply_to_meshtastic_no_reply_id():
         async def run_in_executor(self, _executor, func, *args):
             """
             Call `func(*args)` synchronously and return its result.
-            
+
             This async-compatible shim preserves the (executor, func, *args) signature but does not offload work to a thread/process executor — it invokes `func` directly in the current event loop thread. Use only for very quick, non-blocking callables; long-running or blocking `func` implementations will block the event loop.
-            
+
             Parameters:
                 _executor: Ignored. Present for API compatibility.
                 func: Callable to invoke.
                 *args: Positional arguments forwarded to `func`.
-            
+
             Returns:
                 The value returned by `func(*args)`.
             """

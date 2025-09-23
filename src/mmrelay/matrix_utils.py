@@ -1010,8 +1010,15 @@ async def connect_matrix(passed_config=None):
                     # Also check for other required E2EE dependencies unless tests skip them
                     if os.getenv("MMRELAY_TESTING") != "1":
                         try:
-                            from nio.crypto import OlmDevice as _OlmDevice
-                            from nio.store import SqliteStore as _SqliteStore
+                            nio_crypto = importlib.import_module("nio.crypto")
+                            if not hasattr(nio_crypto, "OlmDevice"):
+                                raise ImportError("nio.crypto.OlmDevice is unavailable")
+
+                            nio_store = importlib.import_module("nio.store")
+                            if not hasattr(nio_store, "SqliteStore"):
+                                raise ImportError(
+                                    "nio.store.SqliteStore is unavailable"
+                                )
 
                             logger.debug("All E2EE dependencies are available")
                         except ImportError:
