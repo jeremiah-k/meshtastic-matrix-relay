@@ -17,6 +17,6 @@ setuptools>=80.9.0  # Required for console script entry points and Windows compa
 coverage==7.10.6
 pytest==8.4.2
 pytest-cov==6.3.0
-pytest-asyncio==1.1.0
+pytest-asyncio==1.2.0
 pytest-env==1.1.5
 pytest-timeout==2.4.0
