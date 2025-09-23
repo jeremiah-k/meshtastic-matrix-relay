@@ -162,20 +162,20 @@ class Plugin(BasePlugin):
     async def handle_room_message(self, room, event, full_message):
         """
         Relay an embedded Meshtastic packet from a Matrix room message to the Meshtastic mesh.
-        
+
         If the Matrix event contains an embedded meshtastic packet (detected via self.matches),
         this function looks up the Meshtastic channel mapped to the Matrix room, parses the
         embedded JSON packet from the event content, reconstructs a MeshPacket (decoding the
         base64-encoded payload), and sends it on the radio via the Meshtastic client.
-        
+
         Parameters:
             room: Matrix room object where the message was received (used to find room→channel mapping).
             event: Matrix event containing the message; the embedded packet is read from event.source["content"].
             full_message: Unused — matching and extraction are performed against `event`.
-        
+
         Returns:
             None
-        
+
         Side effects:
             Sends a packet onto the Meshtastic radio network when a valid embedded packet and room→channel mapping exist.
         """

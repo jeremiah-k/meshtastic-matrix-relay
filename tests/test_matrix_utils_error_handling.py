@@ -10,7 +10,6 @@ import sys
 import types
 import unittest
 from unittest.mock import MagicMock, patch
-import pytest
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -39,7 +38,7 @@ class FakeNioErrorResponseWithException:
     def __init__(self, status_code=None):
         """
         Initialize the fake error-response.
-        
+
         Parameters:
             status_code (int | None): Optional HTTP status code for the simulated response (e.g., 404). If None, no status code is set.
         """
@@ -49,7 +48,7 @@ class FakeNioErrorResponseWithException:
     def message(self):
         """
         Simulate a failing `.message` attribute by raising AttributeError when accessed.
-        
+
         Used in tests as a test double that mimics an object whose `message` attribute access raises
         AttributeError("Test exception"), allowing verification of error-handling paths that must
         gracefully handle attribute access errors.

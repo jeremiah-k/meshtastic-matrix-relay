@@ -179,12 +179,12 @@ class TestPerformanceStress:
     def test_message_queue_performance_under_load(self):
         """
         Test MessageQueue under rapid enqueue with enforced minimum delay.
-        
+
         Starts a MessageQueue (patched meshtastic client), enqueues 50 messages rapidly, waits up to 120 seconds for processing, and verifies:
         - All messages are processed.
         - The enforced minimum delay of ~2.0 seconds per message is respected (with a small tolerance).
         - Overall processing rate exceeds 0.3 messages/second.
-        
+
         Side effects:
         - Starts and stops a MessageQueue instance.
         - Patches mmrelay.meshtastic_utils.meshtastic_client and mmrelay.meshtastic_utils.reconnecting for the duration of the test.
@@ -266,13 +266,13 @@ class TestPerformanceStress:
     def test_database_performance_large_dataset(self):
         """
         Measure database bulk insert/retrieve and message-map prune performance using a temporary SQLite database.
-        
+
         Performs:
         - Bulk insert of 1000 node longnames via save_longname.
         - Bulk retrieval of those 1000 longnames via get_longname and validates values.
         - Bulk insert of 1000 message-map entries via store_message_map.
         - Pruning of the message map to retain only the 100 most recent entries via prune_message_map.
-        
+
         Asserts that each operation completes within predefined time limits; failures raise AssertionError. Uses a temporary SQLite file (get_db_path is patched to the temp path) and mutates the on-disk database.
         """
         import tempfile
