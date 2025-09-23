@@ -15,6 +15,7 @@ import os
 import sys
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
+import pytest
 
 import s2sphere
 
@@ -257,6 +258,7 @@ class TestGetMap(unittest.TestCase):
         mock_anonymize.assert_any_call(lat=37.7749, lon=-122.4194, radius=5000)
 
 
+@pytest.mark.usefixtures("mock_event_loop")
 class TestImageUploadAndSend(unittest.TestCase):
     """Test cases for image upload and sending functionality."""
 
@@ -361,6 +363,7 @@ class TestImageUploadAndSend(unittest.TestCase):
         asyncio.run(run_test())
 
 
+@pytest.mark.usefixtures("mock_event_loop")
 class TestMapPlugin(unittest.TestCase):
     """Test cases for the map Plugin class."""
 

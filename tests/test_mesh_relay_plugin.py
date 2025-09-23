@@ -15,6 +15,7 @@ import os
 import sys
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
+import pytest
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -22,6 +23,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from mmrelay.plugins.mesh_relay_plugin import Plugin
 
 
+@pytest.mark.usefixtures("mock_event_loop")
 class TestMeshRelayPlugin(unittest.TestCase):
     """Test cases for the mesh relay plugin."""
 

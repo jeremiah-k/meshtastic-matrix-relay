@@ -500,3 +500,24 @@ def comprehensive_cleanup():
 
     # Force another garbage collection after thread cleanup
     gc.collect()
+
+
+@pytest.fixture
+def mock_event_loop(monkeypatch):
+    """
+    Provides a mock event loop that runs executor tasks synchronously.
+    """
+    loop = asyncio.get_event_loop()
+
+    def run_in_executor_sync(executor, func, *args):
+        future = asyncio.Future()
+        try:
+            result = func(*args)
+            future.set_result(result)
+        except Exception as e:
+            future.set_exception(e)
+        return future
+
+    monkeypatch.setattr(loop, "run_in_executor", run_in_executor_sync)
+    monkeypatch.setattr(asyncio, "get_running_loop", lambda: loop)
+    yield loop

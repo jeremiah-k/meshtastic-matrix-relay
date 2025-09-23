@@ -15,6 +15,7 @@ import os
 import sys
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
+import pytest
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -66,6 +67,7 @@ class TestMatchCase(unittest.TestCase):
         self.assertEqual(result, "")
 
 
+@pytest.mark.usefixtures("mock_event_loop")
 class TestPingPlugin(unittest.TestCase):
     """Test cases for the ping plugin."""
 

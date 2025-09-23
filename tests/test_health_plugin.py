@@ -16,6 +16,7 @@ import sys
 import unittest
 from statistics import StatisticsError
 from unittest.mock import AsyncMock, MagicMock, patch
+import pytest
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -23,6 +24,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from mmrelay.plugins.health_plugin import Plugin
 
 
+@pytest.mark.usefixtures("mock_event_loop")
 class TestHealthPlugin(unittest.TestCase):
     """Test cases for the health plugin."""
 
