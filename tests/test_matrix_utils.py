@@ -1526,6 +1526,49 @@ def test_normalize_bot_user_id_trailing_colon():
 
 
 @patch("mmrelay.matrix_utils.config", {"meshtastic": {"meshnet_name": "TestMesh"}})
+@patch("mmrelay.matrix_utils.config", {"meshtastic": {"meshnet_name": "TestMesh"}})
+@patch("mmrelay.matrix_utils.connect_matrix")
+@patch("mmrelay.matrix_utils.get_interaction_settings")
+@patch("mmrelay.matrix_utils.message_storage_enabled")
+@patch("mmrelay.matrix_utils.logger")
+async def test_matrix_relay_simple_message(
+    _mock_logger, mock_storage_enabled, mock_get_interactions, mock_connect_matrix
+):
+    """Test that a plain text message is relayed with m.text semantics and metadata."""
+
+    # Arrange: disable interactions that would trigger storage or reactions
+    mock_get_interactions.return_value = {"reactions": False, "replies": False}
+    mock_storage_enabled.return_value = False
+
+    mock_matrix_client = MagicMock()
+    mock_matrix_client.room_send = AsyncMock(
+        return_value=MagicMock(event_id="$event123")
+    )
+    mock_connect_matrix.return_value = mock_matrix_client
+
+    # Act
+    await matrix_relay(
+        room_id="!room:matrix.org",
+        message="Hello Matrix",
+        longname="Alice",
+        shortname="A",
+        meshnet_name="TestMesh",
+        portnum=1,
+    )
+
+    # Assert
+    mock_matrix_client.room_send.assert_called_once()
+    kwargs = mock_matrix_client.room_send.call_args.kwargs
+    assert kwargs["room_id"] == "!room:matrix.org"
+    content = kwargs["content"]
+    assert content["msgtype"] == "m.text"
+    assert content["body"] == "Hello Matrix"
+    assert content["formatted_body"] == "Hello Matrix"
+    assert content["meshtastic_meshnet"] == "TestMesh"
+    assert content["meshtastic_portnum"] == 1
+
+
+@patch("mmrelay.matrix_utils.config", {"meshtastic": {"meshnet_name": "TestMesh"}})
 @patch("mmrelay.matrix_utils.connect_matrix")
 @patch("mmrelay.matrix_utils.get_interaction_settings")
 @patch("mmrelay.matrix_utils.message_storage_enabled")
