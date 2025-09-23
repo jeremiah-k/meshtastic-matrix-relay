@@ -505,19 +505,47 @@ def comprehensive_cleanup():
 @pytest.fixture
 def mock_event_loop(monkeypatch):
     """
-    Provides a mock event loop that runs executor tasks synchronously.
+    Patch asyncio loop helpers so `run_in_executor` executes synchronously for the active event loop.
+
+    The fixture intercepts calls to ``asyncio.get_running_loop`` (and ``get_event_loop`` for
+    backwards-compat) so the returned loop has its ``run_in_executor`` method replaced with a
+    synchronous implementation. The replacement executes the callable immediately on the current
+    thread and returns a ``Future`` completed with the result, mirroring the contract expected by
+    callers while avoiding background thread creation that can prolong test teardown.
     """
-    loop = asyncio.get_event_loop()
 
-    def run_in_executor_sync(executor, func, *args):
-        future = asyncio.Future()
-        try:
-            result = func(*args)
-            future.set_result(result)
-        except Exception as e:
-            future.set_exception(e)
-        return future
+    original_get_running_loop = asyncio.get_running_loop
+    original_get_event_loop = asyncio.get_event_loop
 
-    monkeypatch.setattr(loop, "run_in_executor", run_in_executor_sync)
-    monkeypatch.setattr(asyncio, "get_running_loop", lambda: loop)
-    yield loop
+    def _patch_loop(loop: asyncio.AbstractEventLoop) -> asyncio.AbstractEventLoop:
+        if loop is None:
+            return loop
+        if getattr(loop, "_mmrelay_run_in_executor_patched", False):
+            return loop
+
+        def run_in_executor_sync(executor, func, *args, **kwargs):
+            future = loop.create_future()
+            try:
+                result = func(*args, **kwargs)
+            except Exception as exc:  # pragma: no cover - exercised in tests
+                future.set_exception(exc)
+            else:
+                future.set_result(result)
+            return future
+
+        setattr(loop, "run_in_executor", run_in_executor_sync)
+        setattr(loop, "_mmrelay_run_in_executor_patched", True)
+        return loop
+
+    def patched_get_running_loop():
+        loop = original_get_running_loop()
+        return _patch_loop(loop)
+
+    def patched_get_event_loop():
+        loop = original_get_event_loop()
+        return _patch_loop(loop)
+
+    monkeypatch.setattr(asyncio, "get_running_loop", patched_get_running_loop)
+    monkeypatch.setattr(asyncio, "get_event_loop", patched_get_event_loop)
+
+    yield
