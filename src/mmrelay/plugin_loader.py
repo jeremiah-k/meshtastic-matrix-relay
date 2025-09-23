@@ -45,7 +45,32 @@ else:
 def _collect_requirements(
     requirements_file: str, visited: Set[str] | None = None
 ) -> List[str]:
-    """Return a flattened list of pip install arguments contained in a requirements file."""
+    """
+    Parse a requirements.txt file and return a flattened list of installable requirement tokens.
+    
+    The function reads the given requirements file, ignores blank lines and comments (including inline
+    comments after " #"), and resolves nested includes and constraint files. Supported include forms:
+      - "-r <file>" or "--requirement <file>"
+      - "-c <file>" or "--constraint <file>"
+      - "--requirement=<file>" and "--constraint=<file>"
+    
+    Lines beginning with "-" are tokenized with shlex.split (posix mode) so flags and compound entries
+    are preserved; other non-directive lines are returned verbatim.
+    
+    Parameters:
+        requirements_file (str): Path to a requirements file. Relative includes are resolved
+            relative to this file's directory.
+    
+    Returns:
+        List[str]: A flattened list of requirement tokens suitable for passing to pip.
+        Returns an empty list if the file does not exist or if recursion is detected for a nested include.
+    
+    Notes:
+        - The optional `visited` parameter (used internally) tracks normalized file paths to detect
+          and prevent recursive includes; recursion results in a logged warning and the include is skipped.
+        - The function logs warnings for missing files and malformed include/constraint directives but
+          does not raise exceptions for those conditions.
+    """
     normalized_path = os.path.abspath(requirements_file)
     visited = visited or set()
 
@@ -223,7 +248,32 @@ def _refresh_dependency_paths() -> None:
 
 
 def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
-    """Install Python dependencies for a community plugin repository if requirements.txt exists."""
+    """
+    Install Python dependencies for a community plugin repository from a requirements.txt file.
+    
+    If a requirements.txt file exists at repo_path, this function will attempt to install the listed
+    dependencies and then refresh interpreter import paths so newly installed packages become importable.
+    
+    Behavior highlights:
+    - No-op if requirements.txt is missing or empty.
+    - Respects the global auto-install configuration; if auto-install is disabled, the function logs and returns.
+    - In a pipx-managed environment (detected via PIPX_* env vars) it uses `pipx inject mmrelay ...` to
+      add dependencies to the application's pipx venv.
+    - Otherwise it uses `python -m pip install -r requirements.txt` and adds `--user` when not running
+      inside a virtual environment.
+    - After a successful install it calls the path refresh routine so the interpreter can import newly
+      installed packages.
+    
+    Parameters that need extra context:
+    - repo_path: filesystem path to the plugin repository directory (the function looks for
+      repo_path/requirements.txt).
+    - repo_name: human-readable repository name used in log messages.
+    
+    Side effects:
+    - Installs packages (via pipx or pip) and updates interpreter import paths.
+    - Logs on success or failure; on installation failure it logs an exception and a warning that the
+      plugin may not work correctly without its dependencies.
+    """
 
     requirements_path = os.path.join(repo_path, "requirements.txt")
     if not os.path.isfile(requirements_path):
@@ -290,13 +340,15 @@ def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
 
 def _get_plugin_dirs(plugin_type):
     """
-    Return a prioritized list of directories for the specified plugin type, including user and local plugin directories if accessible.
-
+    Return a prioritized list of existing plugin directories for the given plugin type.
+    
+    Attempts to ensure and prefer a per-user plugins directory (base_dir/plugins/<type>) and also includes a local application plugins directory (app_path/plugins/<type>) for backward compatibility. Each directory is created if possible; directories that cannot be created or accessed are omitted from the result.
+    
     Parameters:
-        plugin_type (str): Either "custom" or "community", specifying the type of plugins.
-
+        plugin_type (str): Plugin category, e.g. "custom" or "community".
+    
     Returns:
-        list: List of plugin directories to search, with the user directory first if available, followed by the local directory for backward compatibility.
+        list[str]: Ordered list of plugin directories to search (user directory first when available, then local directory).
     """
     dirs = []
 

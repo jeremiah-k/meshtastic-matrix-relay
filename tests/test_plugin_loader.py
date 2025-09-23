@@ -238,12 +238,9 @@ class Plugin:
 
         def fake_check_call(_cmd, *_args, **_kwargs):  # nosec B603
             """
-            Test helper that simulates a successful subprocess call installing a dependency.
-
-            Creates a file named `mockdep.py` in the test `user_site` directory with a single
-            constant (`VALUE = 1`) to make the dependency importable, then returns a
-            subprocess.CompletedProcess with returncode 0. Parameters mimic subprocess.call/check_call
-            arguments and are ignored except for `_cmd` which is recorded in the returned object.
+            Simulate a successful subprocess installation by creating a minimal importable dependency and returning a successful CompletedProcess.
+            
+            Writes a file named `mockdep.py` into the test `user_site` directory containing `VALUE = 1` so the module becomes importable, then returns subprocess.CompletedProcess(args=_cmd, returncode=0). All positional and keyword arguments are ignored except that `_cmd` is preserved in the returned CompletedProcess.args.
             """
             with open(
                 os.path.join(user_site, "mockdep.py"), "w", encoding="utf-8"

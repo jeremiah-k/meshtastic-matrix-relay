@@ -868,7 +868,12 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
     @patch("subprocess.run")
     def test_enable_lingering_no_username(self, mock_subprocess):
         """
-        Test enable_lingering when username cannot be determined (lines 586-590).
+        Verify enable_lingering returns False and prints an error when the current username cannot be determined.
+        
+        This test stubs getpass to return an empty username and ensures enable_lingering:
+        - does not attempt to enable lingering for a user,
+        - returns False,
+        - prints an error message to stderr indicating the username could not be determined.
         """
         # Mock subprocess to prevent actual execution
         mock_subprocess.return_value = subprocess.CompletedProcess(
@@ -886,15 +891,9 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
 
                 def mock_import_side_effect(name, *args, **kwargs):
                     """
-                    Import hook used in tests that returns a mocked getpass module.
-
-                    When called with name == "getpass" this function returns the test's mock_getpass object; otherwise it delegates to Python's built-in __import__ with the same arguments.
-                    Parameters:
-                        name (str): The module name to import.
-                        *args, **kwargs: Additional positional and keyword arguments forwarded to __import__.
-
-                    Returns:
-                        module: The imported module or the mock_getpass object when requesting "getpass".
+                    Import hook used by tests to substitute a mocked getpass module.
+                    
+                    If `name` is "getpass" returns the test's `mock_getpass` object; otherwise delegates to Python's built-in `__import__`, forwarding any additional positional and keyword arguments.
                     """
                     if name == "getpass":
                         return mock_getpass
@@ -919,7 +918,7 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         self, mock_get_path, mock_read_service, mock_needs_update
     ):
         """
-        Test install_service when no update needed but service exists (lines 643-649).
+        Verify install_service returns True and prints a "no update needed" message when a user service file already exists and service_needs_update reports no update required.
         """
         # Mock existing service with no update needed
         mock_get_path.return_value = Path(

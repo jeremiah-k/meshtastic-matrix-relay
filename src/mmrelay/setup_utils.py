@@ -358,12 +358,12 @@ def is_service_active():
 
 def create_service_file():
     """
-    Create or update the user's systemd service unit for MMRelay.
-
-    Ensures the user service directory and the MMRelay logs directory exist, obtains a service template (with multiple fallbacks), normalizes the unit's ExecStart to the resolved MMRelay invocation (either an mmrelay executable on PATH or a Python `-m mmrelay` fallback), and writes the resulting unit to ~/.config/systemd/user/mmrelay.service.
-
+    Create or update the per-user systemd unit file for MMRelay.
+    
+    Ensures the user systemd directory (~/.config/systemd/user) and the MMRelay logs directory (~/.mmrelay/logs) exist, obtains a service unit template (using the module's template-loading fallbacks), substitutes known placeholders (working directory, packaged launcher, and config path), and normalizes the Unit's ExecStart to the resolved MMRelay invocation (an mmrelay executable on PATH or a Python `-m mmrelay` fallback) while preserving any trailing arguments. The final unit is written to ~/.config/systemd/user/mmrelay.service.
+    
     Returns:
-        bool: True if the service file was written successfully; False if a template could not be obtained or writing the file failed.
+        bool: True if the service file was written successfully; False if no template could be obtained or writing the file failed.
     """
     # Get executable paths once to avoid duplicate calls and output
     executable_path = get_executable_path()
@@ -580,12 +580,9 @@ def check_lingering_enabled():
 
 def enable_lingering():
     """
-    Enable systemd "lingering" for the current user.
-
-    Determines the current username from the USER or USERNAME environment variables, falling back to getpass.getuser(), and invokes `sudo loginctl enable-linger <user>`. Prints status messages to stdout/stderr.
-
-    Returns:
-        bool: True if the command succeeded (exit code 0), False otherwise.
+    Enable systemd "lingering" for the current user by running `sudo loginctl enable-linger <user>`.
+    
+    Determines the username from environment variables or getpass.getuser(), invokes the privileged `loginctl` command to enable lingering, and returns True if the command exits successfully. On failure (non-zero exit, missing username, or subprocess/OSError), returns False and prints an error message to stderr.
     """
     try:
         import getpass

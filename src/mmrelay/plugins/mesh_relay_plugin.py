@@ -139,16 +139,16 @@ class Plugin(BasePlugin):
 
     def matches(self, event):
         """
-        Return True if the Matrix event contains an embedded Meshtastic packet marker.
-
-        Checks event.source["content"]["body"] for the exact pattern
-        "Processed <something> radio packet" and returns True when it matches.
-
+        Return True if the Matrix event's content body exactly matches the relayed-packet marker.
+        
+        Checks event.source["content"]["body"] (when a string) against the anchored pattern
+        "Processed <anything> radio packet" and returns True on match, otherwise False.
+        
         Parameters:
-            event: Matrix event object whose source is expected to contain a "content" dict with a "body" string.
-
+            event: Matrix event object with a .source mapping expected to contain a "content" dict.
+        
         Returns:
-            bool: True when the event body matches the relayed-packet format, otherwise False.
+            bool: True if the body matches the relayed-packet pattern, False otherwise.
         """
         # Check for the presence of necessary keys in the event
         content = event.source.get("content", {})
