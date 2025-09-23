@@ -303,14 +303,14 @@ class MockStaticmapsContext:
         """
         self.objects.append(obj)
 
-    def render_pillow(self, width, height):
+    def render_pillow(self, _width, _height):
         """
         Render the map into a Pillow-compatible image (mock) for testing.
-        
+
         Parameters:
-            width (int): Output image width in pixels.
-            height (int): Output image height in pixels.
-        
+            _width (int): Output image width in pixels (unused in mock).
+            _height (int): Output image height in pixels (unused in mock).
+
         Returns:
             PIL.Image.Image (MagicMock): A MagicMock that mimics a Pillow Image object (suitable for tests that call image methods like `save`).
         """

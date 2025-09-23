@@ -333,17 +333,17 @@ def _normalize_bot_user_id(homeserver: str, bot_user_id: str) -> str:
         return bot_user_id
 
     def _canonical_server(value: str | None) -> str | None:
-        """
-        Return a canonical server/host string by stripping surrounding square brackets and any trailing port.
-        
-        If value is falsy (None or empty), it is returned unchanged. Leading/trailing whitespace is trimmed; an IPv6-style host enclosed in [...] will have the brackets removed; a trailing numeric port suffix (":<digits>") is removed from the result.
-        """
         if not value:
             return value
         value = value.strip()
-        if value.startswith("[") and value.endswith("]"):
-            value = value[1:-1]
-        return re.sub(r":\d+$", "", value)
+        if value.startswith("[") and "]" in value:
+            closing_index = value.find("]")
+            value = value[1:closing_index]
+        if value.count(":") == 1 and re.search(r":\d+$", value):
+            value = value.rsplit(":", 1)[0]
+        if ":" in value and not value.startswith("["):
+            value = f"[{value}]"
+        return value
 
     # Derive domain from homeserver (tolerate missing scheme; drop brackets/port/paths)
     parsed = urlparse(homeserver)
@@ -1010,12 +1010,12 @@ async def connect_matrix(passed_config=None):
                     # Also check for other required E2EE dependencies unless tests skip them
                     if os.getenv("MMRELAY_TESTING") != "1":
                         try:
-                            from nio.crypto import OlmDevice as _OlmDevice  # noqa: F401
-                            from nio.store import SqliteStore as _SqliteStore  # noqa: F401
+                            from nio.crypto import OlmDevice as _OlmDevice
+                            from nio.store import SqliteStore as _SqliteStore
 
                             logger.debug("All E2EE dependencies are available")
-                        except ImportError as e:
-                            logger.error(f"Missing E2EE dependency: {e}")
+                        except ImportError:
+                            logger.exception("Missing E2EE dependency")
                             logger.error(
                                 "Please reinstall with: pipx install 'mmrelay[e2e]'"
                             )

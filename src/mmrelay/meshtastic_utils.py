@@ -127,6 +127,9 @@ def _submit_coro(coro, loop=None):
             # Try to get the current event loop policy and create a new loop
             # This is safer than asyncio.run() which can cause deadlocks
             policy = asyncio.get_event_loop_policy()
+            logger.debug(
+                "No running event loop detected; creating a temporary loop to execute coroutine"
+            )
             new_loop = policy.new_event_loop()
             asyncio.set_event_loop(new_loop)
             try:
@@ -459,30 +462,26 @@ def connect_meshtastic(passed_config=None, force_connect=False):
 
         except (ConnectionRefusedError, MemoryError) as e:
             # Handle critical errors that should not be retried
-            logger.exception(f"Critical connection error: {e}")
+            logger.exception("Critical connection error")
             return None
         except (FuturesTimeoutError, TimeoutError) as e:
             if shutting_down:
                 break
             attempts += 1
-            if retry_limit == INFINITE_RETRIES:
-                logger.exception(
-                    "Connection timed out after %s attempt(s); no retry limit configured.",
-                    attempts,
-                )
+            max_attempts_reached = (
+                retry_limit != INFINITE_RETRIES and attempts > retry_limit
+            )
+            if max_attempts_reached:
+                logger.exception("Connection failed after %s attempts", attempts)
                 return None
-            if attempts <= retry_limit:
-                wait_time = min(2**attempts, 60)
-                logger.warning(
-                    "Connection attempt %s timed out: %s. Retrying in %s seconds...",
-                    attempts,
-                    e,
-                    wait_time,
-                )
-                time.sleep(wait_time)
-            else:
-                logger.exception(f"Connection failed after {attempts} attempts: {e}")
-                return None
+            wait_time = min(2**attempts, 60)
+            logger.warning(
+                "Connection attempt %s timed out (%s). Retrying in %s seconds...",
+                attempts,
+                e,
+                wait_time,
+            )
+            time.sleep(wait_time)
         except (serial.SerialException, BleakDBusError, BleakError) as e:
             # Handle specific connection errors
             if shutting_down:
@@ -499,7 +498,7 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                 )
                 time.sleep(wait_time)
             else:
-                logger.exception(f"Connection failed after {attempts} attempts: {e}")
+                logger.exception("Connection failed after %s attempts", attempts)
                 return None
         except Exception as e:
             if shutting_down:
@@ -507,15 +506,16 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                 break
             attempts += 1
             if retry_limit == 0 or attempts <= retry_limit:
-                wait_time = min(
-                    2**attempts, 60
-                )  # Consistent exponential backoff, capped at 60s
+                wait_time = min(2**attempts, 60)
                 logger.warning(
-                    f"An unexpected error occurred on attempt {attempts}: {e}. Retrying in {wait_time} seconds..."
+                    "An unexpected error occurred on attempt %s: %s. Retrying in %s seconds...",
+                    attempts,
+                    e,
+                    wait_time,
                 )
                 time.sleep(wait_time)
             else:
-                logger.exception(f"Connection failed after {attempts} attempts: {e}")
+                logger.exception("Connection failed after %s attempts", attempts)
                 return None
 
     return meshtastic_client

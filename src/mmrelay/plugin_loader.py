@@ -86,82 +86,70 @@ def _collect_requirements(
     base_dir = os.path.dirname(normalized_path)
 
     try:
-        handle = open(normalized_path, encoding="utf-8")
+        with open(normalized_path, encoding="utf-8") as handle:
+            for raw_line in handle:
+                line = raw_line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if " #" in line:
+                    line = line.split(" #", 1)[0].strip()
+                    if not line:
+                        continue
+
+                lower_line = line.lower()
+
+                def _resolve_nested(path_str: str) -> None:
+                    nested_path = (
+                        path_str
+                        if os.path.isabs(path_str)
+                        else os.path.join(base_dir, path_str)
+                    )
+                    requirements.extend(
+                        _collect_requirements(nested_path, visited=visited)
+                    )
+
+                if lower_line.startswith("--requirement=") or lower_line.startswith(
+                    "--constraint="
+                ):
+                    nested = line.split("=", 1)[1].strip()
+                    _resolve_nested(nested)
+                    continue
+
+                if lower_line.startswith("-r ") or lower_line.startswith(
+                    "--requirement "
+                ):
+                    parts = line.split(None, 1)
+                    if len(parts) == 2:
+                        _resolve_nested(parts[1].strip())
+                    else:
+                        logger.warning(
+                            "Ignoring malformed requirement include directive in %s: %s",
+                            normalized_path,
+                            raw_line.rstrip(),
+                        )
+                    continue
+
+                if lower_line.startswith("-c ") or lower_line.startswith(
+                    "--constraint "
+                ):
+                    parts = line.split(None, 1)
+                    if len(parts) == 2:
+                        _resolve_nested(parts[1].strip())
+                    else:
+                        logger.warning(
+                            "Ignoring malformed constraint directive in %s: %s",
+                            normalized_path,
+                            raw_line.rstrip(),
+                        )
+                    continue
+
+                if line.startswith("-"):
+                    requirements.extend(shlex.split(line, posix=True))
+                else:
+                    requirements.append(line)
     except FileNotFoundError:
         logger.warning("Requirements file not found: %s", normalized_path)
         return []
-
-    with handle:
-        for raw_line in handle:
-            line = raw_line.strip()
-            if not line or line.startswith("#"):
-                continue
-            if " #" in line:
-                line = line.split(" #", 1)[0].strip()
-                if not line:
-                    continue
-
-            lower_line = line.lower()
-            if lower_line.startswith("--requirement="):
-                nested = line.split("=", 1)[1].strip()
-                nested_path = (
-                    nested if os.path.isabs(nested) else os.path.join(base_dir, nested)
-                )
-                requirements.extend(_collect_requirements(nested_path, visited=visited))
-                continue
-
-            if lower_line.startswith("--constraint="):
-                nested = line.split("=", 1)[1].strip()
-                nested_path = (
-                    nested if os.path.isabs(nested) else os.path.join(base_dir, nested)
-                )
-                requirements.extend(_collect_requirements(nested_path, visited=visited))
-                continue
-
-            if lower_line.startswith("-r ") or lower_line.startswith("--requirement "):
-                parts = line.split(None, 1)
-                if len(parts) == 2:
-                    nested = parts[1].strip()
-                    nested_path = (
-                        nested
-                        if os.path.isabs(nested)
-                        else os.path.join(base_dir, nested)
-                    )
-                    requirements.extend(
-                        _collect_requirements(nested_path, visited=visited)
-                    )
-                else:
-                    logger.warning(
-                        "Ignoring malformed requirement include directive in %s: %s",
-                        normalized_path,
-                        raw_line.rstrip(),
-                    )
-                continue
-
-            if lower_line.startswith("-c ") or lower_line.startswith("--constraint "):
-                parts = line.split(None, 1)
-                if len(parts) == 2:
-                    nested = parts[1].strip()
-                    nested_path = (
-                        nested
-                        if os.path.isabs(nested)
-                        else os.path.join(base_dir, nested)
-                    )
-                    requirements.extend(
-                        _collect_requirements(nested_path, visited=visited)
-                    )
-                else:
-                    logger.warning(
-                        "Ignoring malformed constraint directive in %s: %s",
-                        normalized_path,
-                        raw_line.rstrip(),
-                    )
-                continue
-
-            if line.startswith("-"):
-                requirements.extend(shlex.split(line, posix=True))
-            else:
-                requirements.append(line)
 
     return requirements
 
@@ -299,7 +287,18 @@ def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
                 raise FileNotFoundError("pipx executable not found on PATH")
             requirements = _collect_requirements(requirements_path)
             if requirements:
-                _run([pipx_path, "inject", "mmrelay", *requirements], timeout=600)
+                packages = [r for r in requirements if not r.startswith("-")]
+                pip_args = [r for r in requirements if r.startswith("-")]
+                if not packages:
+                    logger.info(
+                        "Requirements in %s only contained pip flags; skipping pipx injection.",
+                        requirements_path,
+                    )
+                else:
+                    cmd = [pipx_path, "inject", "mmrelay", *packages]
+                    if pip_args:
+                        cmd += ["--pip-args", " ".join(pip_args)]
+                    _run(cmd, timeout=600)
             else:
                 logger.info(
                     "No dependencies listed in %s; skipping pipx injection.",
@@ -744,7 +743,8 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                                             "pull",
                                             "origin",
                                             default_branch,
-                                        ]
+                                        ],
+                                        timeout=120,
                                     )
                                     logger.info(
                                         f"Using {default_branch} instead of {ref_value}"

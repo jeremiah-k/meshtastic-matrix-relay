@@ -532,6 +532,7 @@ async def test_on_room_message_reaction_enabled(mock_room, test_config):
         mock_queue_message.assert_called_once()
         queued_kwargs = mock_queue_message.call_args.kwargs
         assert queued_kwargs["description"].startswith("Local reaction")
+        assert "reacted" in queued_kwargs["text"]
 
 
 @patch("mmrelay.matrix_utils.connect_meshtastic")
