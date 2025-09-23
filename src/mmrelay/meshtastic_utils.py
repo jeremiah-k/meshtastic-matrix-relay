@@ -444,24 +444,41 @@ def connect_meshtastic(passed_config=None, force_connect=False):
             # Handle critical errors that should not be retried
             logger.exception(f"Critical connection error: {e}")
             return None
-        except (
-            FuturesTimeoutError,
-            TimeoutError,
-            serial.SerialException,
-            BleakDBusError,
-            BleakError,
-        ) as e:
+        except (FuturesTimeoutError, TimeoutError) as e:
+            if shutting_down:
+                break
+            attempts += 1
+            if retry_limit == INFINITE_RETRIES:
+                logger.exception(
+                    "Connection timed out after %s attempt(s); no retry limit configured.",
+                    attempts,
+                )
+                return None
+            if attempts <= retry_limit:
+                wait_time = min(2**attempts, 60)
+                logger.warning(
+                    "Connection attempt %s timed out: %s. Retrying in %s seconds...",
+                    attempts,
+                    e,
+                    wait_time,
+                )
+                time.sleep(wait_time)
+            else:
+                logger.exception(f"Connection failed after {attempts} attempts: {e}")
+                return None
+        except (serial.SerialException, BleakDBusError, BleakError) as e:
             # Handle specific connection errors
             if shutting_down:
                 logger.debug("Shutdown in progress. Aborting connection attempts.")
                 break
             attempts += 1
             if retry_limit == 0 or attempts <= retry_limit:
-                wait_time = min(
-                    2**attempts, 60
-                )  # Consistent exponential backoff, capped at 60s
+                wait_time = min(2**attempts, 60)  # Consistent exponential backoff
                 logger.warning(
-                    f"Connection attempt {attempts} failed: {e}. Retrying in {wait_time} seconds..."
+                    "Connection attempt %s failed: %s. Retrying in %s seconds...",
+                    attempts,
+                    e,
+                    wait_time,
                 )
                 time.sleep(wait_time)
             else:
