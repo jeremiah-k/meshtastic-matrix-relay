@@ -2177,8 +2177,8 @@ def strip_quoted_lines(text: str) -> str:
     This is typically used to exclude quoted content from Matrix replies, such as when processing reaction text.
     """
     lines = text.splitlines()
-    filtered = [line for line in lines if not line.strip().startswith(">")]
-    return " ".join(filtered).strip()
+    filtered = [line.strip() for line in lines if not line.strip().startswith(">")]
+    return " ".join(line for line in filtered if line).strip()
 
 
 async def get_user_display_name(room, event):
