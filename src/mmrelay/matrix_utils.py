@@ -311,9 +311,7 @@ def _normalize_bot_user_id(homeserver: str, bot_user_id: str) -> str:
         value = value.strip()
         if value.startswith("[") and value.endswith("]"):
             value = value[1:-1]
-        if ":" in value and not value.startswith("["):
-            return f"[{value}]"
-        return value
+        return re.sub(r":\d+$", "", value)
 
     # Derive domain from homeserver (tolerate missing scheme; drop brackets/port/paths)
     parsed = urlparse(homeserver)
