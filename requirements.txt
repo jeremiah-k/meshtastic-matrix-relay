@@ -1,4 +1,4 @@
-meshtastic @ git+https://github.com/jeremiah-k/meshtastic-python.git@fix-ble-refactor
+meshtastic @ git+https://github.com/jeremiah-k/meshtastic-python.git@390120fca52547a04ed26da1e35b49b1df1e980b
 Pillow==11.3.0
 matrix-nio==0.25.2
 matplotlib==3.10.1
