@@ -25,7 +25,7 @@ services:
     # Option 1: Simple approach
     # network_mode: host
 
-    # Option 2: More secure (if option 1 doesn't work)
+    # Option 2: With specific capabilities (less secure than option 1, but more secure than privileged mode)
     # network_mode: host
     # cap_add:
     #   - NET_ADMIN
