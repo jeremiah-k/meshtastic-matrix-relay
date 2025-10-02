@@ -473,11 +473,12 @@ class MessageQueue:
 
     def _should_send_message(self) -> bool:
         """
-        Return True when it is safe to send a Meshtastic message; otherwise False.
-
-        Performs runtime checks: verifies the module-level `reconnecting` flag is False, a Meshtastic client object exists, and — if the client exposes `is_connected` (callable or boolean) — that it reports connected. If any check fails the method returns False.
-
-        If importing the Meshtastic utilities raises ImportError, the queue will be stopped asynchronously and the method returns False.
+        Determine whether conditions are met to send a Meshtastic message.
+        
+        Checks the reconnection flag, that a Meshtastic client object exists, and — if the client exposes `is_connected` — that it reports connected. If importing Meshtastic utilities fails, the message queue is stopped.
+        
+        Returns:
+            `True` if all checks indicate it is safe to send, `False` otherwise. If an ImportError occurs while importing Meshtastic utilities, the queue is stopped and `False` is returned.
         """
         # Import here to avoid circular imports
         try:
@@ -517,17 +518,17 @@ class MessageQueue:
 
     def _handle_message_mapping(self, result, mapping_info):
         """
-        Persist a sent mesh-to-Matrix message mapping and optionally prune old mappings.
-
-        If mapping_info contains 'matrix_event_id', 'room_id', and 'text', this stores a mapping using result.id as the mesh message id. If 'msgs_to_keep' is present and > 0 it prunes older mappings to retain that many entries; otherwise DEFAULT_MSGS_TO_KEEP is used.
-
+        Persist a mapping from a sent Meshtastic message to a Matrix event and optionally prune old mappings.
+        
+        Stores a mapping when `mapping_info` contains `matrix_event_id`, `room_id`, and `text`, using `result.id` as the Meshtastic message id. If `mapping_info["msgs_to_keep"]` is present and greater than 0, prunes older mappings to retain that many entries; otherwise uses DEFAULT_MSGS_TO_KEEP.
+        
         Parameters:
-            result: An object returned by the send function with an `id` attribute (the mesh message id).
+            result: An object returned by the send function with an `id` attribute representing the Meshtastic message id.
             mapping_info (dict): Mapping details. Relevant keys:
                 - matrix_event_id (str): Matrix event ID to map to.
                 - room_id (str): Matrix room ID where the event was sent.
                 - text (str): Message text to associate with the mapping.
-                - meshnet (optional): Mesh network identifier passed through to storage.
+                - meshnet (optional): Mesh network identifier to pass to storage.
                 - msgs_to_keep (optional, int): Number of mappings to retain when pruning.
         """
         try:

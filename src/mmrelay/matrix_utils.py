@@ -2318,17 +2318,20 @@ async def send_reply_to_meshtastic(
     reply_id=None,
 ):
     """
-    Enqueue a Matrix reply to be sent over Meshtastic, either as a structured reply targeting an existing Meshtastic message or as a regular broadcast.
-
-    If Meshtastic broadcasting is disabled this is a no-op. When storage_enabled is True the function will create a mapping entry (using event.event_id and room.room_id) and attach it to the queued message for later reply/reaction correlation. Failures are logged; the function does not raise exceptions.
-
+    Enqueue a Matrix reply to be sent over Meshtastic as either a structured reply or a regular broadcast.
+    
+    If Meshtastic broadcasting is disabled this is a no-op. When storage_enabled is True, a mapping entry linking the Matrix event to the Meshtastic message is created and attached to the queued message for later reply/reaction correlation. Failures are logged; the function does not raise exceptions.
+    
     Parameters:
-        room_config (dict): Room-specific configuration — must include "meshtastic_channel" (integer channel index).
-        room: Matrix room object; room.room_id is used to build mapping metadata.
-        event: Matrix event object; event.event_id is used to build mapping metadata.
+        reply_message (str): The text to send to Meshtastic (already formatted for Meshtastic).
+        full_display_name (str): Display name to include in queue descriptions and logs.
+        room_config (dict): Room-specific configuration; must include "meshtastic_channel" (integer channel index).
+        room: Matrix room object; room.room_id is used for mapping metadata.
+        event: Matrix event object; event.event_id is used for mapping metadata.
+        text (str): Original Matrix message text (used when building mapping metadata).
         storage_enabled (bool): If True, create and attach a message-mapping record to the queued Meshtastic message.
-        reply_id (int | None): If provided, send as a structured Meshtastic reply targeting this message ID; otherwise send a regular text broadcast.
         local_meshnet_name (str | None): Name of the local meshnet used in mapping metadata.
+        reply_id (int | None): If provided, send as a structured Meshtastic reply targeting this Meshtastic message ID; otherwise send a regular broadcast.
     """
     loop = asyncio.get_running_loop()
     meshtastic_interface = await loop.run_in_executor(None, connect_meshtastic)
@@ -2433,22 +2436,26 @@ async def handle_matrix_reply(
     meshnet_name=None,
 ):
     """
-    Handle a Matrix reply by forwarding it to Meshtastic when the replied-to Matrix event maps to a Meshtastic message.
-
-    If the Matrix event identified by reply_to_event_id has an associated Meshtastic mapping, this function formats a Meshtastic reply that preserves sender attribution and enqueues it referencing the original Meshtastic message ID. If no mapping exists, it returns False so normal Matrix processing can continue.
-
+    Forward a Matrix reply to Meshtastic when the replied-to Matrix event maps to a Meshtastic message.
+    
+    If the Matrix event identified by reply_to_event_id has an associated Meshtastic mapping, format a Meshtastic reply that preserves sender attribution and enqueue it referencing the original Meshtastic message ID. If no mapping exists, do nothing.
+    
     Parameters:
+        room: Matrix room object where the reply originated.
+        event: Matrix event object representing the reply.
         reply_to_event_id (str): Matrix event ID being replied to; used to locate the Meshtastic mapping.
-        storage_enabled (bool): Whether message mappings/storage are enabled (affects created mapping behavior when sending).
-        local_meshnet_name (str): Local meshnet name used to determine formatting when replying across meshnets.
-        config (dict): Relay configuration passed to formatting routines.
-        mesh_text_override (str | None): Optional text to send instead of derived text.
+        text (str): The reply text from Matrix.
+        room_config (dict): Per-room relay configuration used when sending to Meshtastic.
+        storage_enabled (bool): Whether message mapping/storage is enabled.
+        local_meshnet_name (str): Local meshnet name used to determine cross-meshnet formatting.
+        config (dict): Global relay configuration passed to formatting routines.
+        mesh_text_override (str | None): Optional override text to send instead of the derived text.
         longname (str | None): Sender long display name used for prefixing.
         shortname (str | None): Sender short display name used for prefixing.
         meshnet_name (str | None): Remote meshnet name associated with the original mapping, if any.
-
+    
     Returns:
-        bool: True if a mapping was found and the reply was queued to Meshtastic; False if no mapping existed and nothing was sent.
+        bool: `True` if a mapping was found and the reply was queued to Meshtastic, `False` otherwise.
     """
     # Look up the original message in the message map
     loop = asyncio.get_running_loop()
