@@ -319,99 +319,34 @@ For BLE connections, add to docker-compose.yaml:
 ```yaml
 services:
   mmrelay:
-    network_mode: host # Required for BLE/D-Bus (Linux only - not supported on Docker Desktop for macOS/Windows)
-    privileged: true # Required for BLE access
+    network_mode: host # Required for BLE (Linux only)
     volumes:
-      - /var/run/dbus:/var/run/dbus:ro
-      - /sys/class/bluetooth:/sys/class/bluetooth:ro
-      - /sys/devices:/sys/devices:ro
-      # Optional: Add this if using USB Bluetooth dongles
-      # - /sys/bus/usb:/sys/bus/usb:ro
+      - /var/run/dbus:/var/run/dbus:ro # D-Bus for BlueZ
 ```
 
-### BLE Configuration Technical Details
-
-Each component in the BLE configuration serves a specific purpose:
-
-**Required Components:**
-
-- **`privileged: true`** - Provides essential Linux capabilities:
-  - `CAP_NET_ADMIN` for network interface management
-  - `CAP_NET_RAW` for raw socket access (required for BLE)
-  - `CAP_SYS_ADMIN` for system administration tasks
-  - Access to Bluetooth devices and kernel subsystems
-
-- **`network_mode: host`** - Enables BLE protocol integration:
-  - Required for L2CAP and HCI protocol access
-  - Bypasses Docker network isolation for Bluetooth packet processing
-  - Only supported on Linux hosts
-
-- **`/var/run/dbus:/var/run/dbus:ro`** - BlueZ communication layer:
-  - D-Bus system bus socket for BlueZ daemon operations
-  - Essential for modern Bluetooth management (bluetoothctl, pairing, etc.)
-  - Required for BLE GATT operations and device discovery
-
-- **`/sys/class/bluetooth:/sys/class/bluetooth:ro`** - Core Bluetooth interfaces:
-  - Provides access to Bluetooth controller devices (hci0, hci1, etc.)
-  - Primary interface for BlueZ daemon to control adapters
-  - Device state management (powered, discoverable, pairable)
-
-- **`/sys/devices:/sys/devices:ro`** - Device hierarchy and context:
-  - Complete system device topology
-  - Hardware-specific attributes and power management
-  - Required for proper device initialization
-
-**Optional Components:**
-
-- **`/sys/bus/usb:/sys/bus/usb:ro`** - USB adapter support:
-  - Required only for USB Bluetooth dongles
-  - Enables USB device enumeration and driver binding
-  - Not needed for built-in PCI/PCIe Bluetooth adapters
-
-### Security Considerations
-
-**More Secure Alternative:**
-
-For production environments, consider using specific capabilities instead of `privileged: true`:
+**Alternative approaches if the above doesn't work:**
 
 ```yaml
+# Option 2: With specific capabilities (more secure)
 services:
   mmrelay:
+    network_mode: host
     cap_add:
       - NET_ADMIN
       - NET_RAW
-      - SYS_ADMIN
-    devices:
-      - /dev/vhci:/dev/vhci
-    network_mode: host
     volumes:
       - /var/run/dbus:/var/run/dbus:ro
-      - /sys/class/bluetooth:/sys/class/bluetooth:ro
-      - /sys/devices:/sys/devices:ro
+
+# Option 3: With privileged mode (if all else fails)
+services:
+  mmrelay:
+    network_mode: host
+    privileged: true
+    volumes:
+      - /var/run/dbus:/var/run/dbus:ro
 ```
 
-**Security Notes:**
-
-- `privileged: true` grants extensive container access to the host system
-- The read-only mounts (`:ro`) are appropriate and recommended
-- Consider your security requirements when choosing between `privileged` and specific capabilities
-- BLE requires raw socket access, which inherently has security implications
-
-### Platform Limitations
-
-**Linux Only:** BLE in Docker containers is only supported on Linux hosts due to:
-
-- `network_mode: host` requirement
-- Direct hardware access needs
-- BlueZ daemon integration
-
-**Not Supported:**
-
-- Docker Desktop for macOS (no host networking)
-- Docker Desktop for Windows (no host networking)
-- Alternative: Use WSL2 on Windows or native Linux installation
-
-**Note:** `network_mode: host` is only supported on Linux. Docker Desktop on macOS and Windows does not support host networking. For Windows users, consider using WSL2 or a native installation instead.
+**Important:** BLE in Docker only works on Linux hosts. Not supported on Docker Desktop for macOS/Windows.
 
 ## Data Persistence
 
@@ -486,13 +421,6 @@ MMRELAY_HOME=/path/to/your/data
 
 ### BLE-Specific Troubleshooting
 
-**Container won't start with BLE configuration:**
-
-- Verify you're running on Linux (BLE not supported on Docker Desktop for macOS/Windows)
-- Check that all required volume mounts are present in docker-compose.yaml
-- Ensure `privileged: true` or proper capabilities are set
-- Verify host system has Bluetooth hardware: `hciconfig` or `bluetoothctl list`
-
 **BLE device not found:**
 
 ```bash
@@ -500,63 +428,29 @@ MMRELAY_HOME=/path/to/your/data
 sudo systemctl status bluetooth
 bluetoothctl list
 
-# Check if device is discoverable
-bluetoothctl scan on
-
 # Verify container can access Bluetooth
 docker compose exec mmrelay bluetoothctl list
 ```
 
-**Permission denied errors with BLE:**
+**Permission denied errors:**
 
-- Ensure container has proper capabilities (`privileged: true` or `cap_add`)
-- Check that `/sys/class/bluetooth` is mounted correctly
-- Verify D-Bus socket is accessible: `docker compose exec mmrelay ls -la /var/run/dbus`
-- On SELinux systems, add `:Z` flags to volume mounts
+- Try the alternative configurations above (capabilities or privileged mode)
+- Check D-Bus socket: `docker compose exec mmrelay ls -la /var/run/dbus`
+- On SELinux systems, add `:Z` to volume mounts
 
 **D-Bus connection failures:**
 
 ```bash
-# Check D-Bus socket in container
-docker compose exec mmrelay ls -la /var/run/dbus
-
 # Test D-Bus connectivity
 docker compose exec mmrelay dbus-send --system --dest=org.bluez --print-reply / org.freedesktop.DBus.Introspectable.Introspect
 ```
 
-**USB Bluetooth dongle not detected:**
-
-- Ensure `/sys/bus/usb` is mounted (required for USB adapters)
-- Check if dongle is recognized on host: `lsusb | grep -i bluetooth`
-- Verify kernel module is loaded: `lsmod | grep btusb`
-- Try reloading Bluetooth subsystem: `sudo systemctl restart bluetooth`
-
-**BLE adapter shows as blocked:**
+**Adapter blocked:**
 
 ```bash
-# Check rfkill status on host
-rfkill list bluetooth
-
-# Unblock if needed
+# Check and unblock if needed
 sudo rfkill unblock bluetooth
-
-# Check in container
-docker compose exec mmrelay rfkill list bluetooth
 ```
-
-**Pairing failures with BLE devices:**
-
-- Ensure device is in pairing mode
-- Check BlueZ daemon is running: `docker compose exec mmrelay ps aux | grep bluetoothd`
-- Verify experimental features are enabled if needed (see Advanced Configuration)
-- Try manual pairing: `docker compose exec mmrelay bluetoothctl pair AA:BB:CC:DD:EE:FF`
-
-**Performance issues with BLE:**
-
-- Reduce BLE scan interval in configuration if applicable
-- Check for signal interference (other 2.4GHz devices)
-- Ensure adapter firmware is up to date on host system
-- Consider using a USB extension cable for better antenna placement
 
 ## Complete Docker Example
 
@@ -638,125 +532,6 @@ Look for messages like:
 ```bash
 git pull
 make rebuild    # Stop, rebuild with fresh code, and restart
-```
-
-## BLE Best Practices
-
-### Hardware Recommendations
-
-**Built-in vs USB Adapters:**
-
-- **Built-in adapters**: Generally more reliable, no USB overhead
-- **USB dongles**: More flexible, can be positioned for better signal
-- **Quality matters**: Avoid cheap clone adapters, use reputable brands (Intel, Broadcom, Realtek)
-
-**USB Adapter Placement:**
-
-- Use USB extension cables to position adapters away from interference sources
-- Avoid placing near Wi-Fi routers, microwaves, or other 2.4GHz devices
-- Ensure adequate ventilation for thermal stability
-
-### Performance Optimization
-
-**Reduce Interference:**
-
-- Keep Bluetooth devices away from Wi-Fi routers and other 2.4GHz sources
-- Use BLE 5.0+ devices for better range and interference resistance
-- Consider changing Wi-Fi channels to reduce overlap
-
-**Connection Stability:**
-
-- Configure appropriate BLE connection intervals in device firmware
-- Use trusted device pairing to avoid re-pairing issues
-- Monitor signal strength and adjust placement accordingly
-
-### Security Best Practices
-
-**Container Security:**
-
-```yaml
-# Production-ready BLE configuration
-services:
-  mmrelay:
-    cap_add:
-      - NET_ADMIN # Required for BLE
-      - NET_RAW # Required for BLE
-      - SYS_ADMIN # Required for Bluetooth management
-    devices:
-      - /dev/vhci:/dev/vhci # Virtual HCI device
-    network_mode: host
-    volumes:
-      - /var/run/dbus:/var/run/dbus:ro
-      - /sys/class/bluetooth:/sys/class/bluetooth:ro
-      - /sys/devices:/sys/devices:ro
-      # Add USB support only if needed
-      # - /sys/bus/usb:/sys/bus/usb:ro
-    # Drop all other capabilities for better security
-    cap_drop:
-      - ALL
-    # Read-only filesystem where possible
-    read_only: true
-    tmpfs:
-      - /tmp
-      - /var/tmp
-```
-
-**Network Security:**
-
-- Use encrypted BLE connections when available
-- Implement device whitelisting in BlueZ configuration
-- Regularly update Bluetooth firmware and drivers
-- Monitor for unauthorized connection attempts
-
-### Monitoring and Maintenance
-
-**Health Monitoring:**
-
-```bash
-# Check Bluetooth adapter status
-docker compose exec mmrelay bluetoothctl show
-
-# Monitor connection quality
-docker compose exec mmrelay btmgmt info
-
-# Check for errors in logs
-docker compose logs mmrelay | grep -i bluetooth
-```
-
-**Regular Maintenance:**
-
-- Restart Bluetooth service if issues persist: `sudo systemctl restart bluetooth`
-- Update container image regularly: `docker compose pull && docker compose up -d`
-- Monitor system logs for Bluetooth-related errors
-- Keep backup of working configurations
-
-### Development and Testing
-
-**Testing BLE Connectivity:**
-
-```bash
-# Enter container for testing
-docker compose exec mmrelay bash
-
-# Test basic Bluetooth functionality
-bluetoothctl power on
-bluetoothctl scan on
-
-# Test specific device connection
-bluetoothctl connect AA:BB:CC:DD:EE:FF
-```
-
-**Debug Mode:**
-
-Enable detailed logging for troubleshooting:
-
-```yaml
-services:
-  mmrelay:
-    environment:
-      - PYTHONUNBUFFERED=1
-      - BLEAK_DEBUG=1 # Enable BLE debug logging
-    # ... other configuration
 ```
 
 ## Advanced Configuration

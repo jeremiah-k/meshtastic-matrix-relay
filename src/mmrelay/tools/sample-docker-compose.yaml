@@ -8,10 +8,6 @@ services:
     environment:
       - TZ=UTC # Set timezone (PYTHONUNBUFFERED and MPLCONFIGDIR are set in Dockerfile)
 
-    # For BLE connections, uncomment the following lines (Linux only - not supported on Docker Desktop for macOS/Windows)
-    # network_mode: host
-    # privileged: true
-
     volumes:
       # Mount your config directory - create ~/.mmrelay/config.yaml first
       # Run 'make config' to set up the files
@@ -22,24 +18,21 @@ services:
       # - ${MMRELAY_HOME:-$HOME}/.mmrelay/config.yaml:/app/config.yaml:ro
       # - ${MMRELAY_HOME:-$HOME}/.mmrelay:/app/data
 
-      # For BLE connections, uncomment the following lines (Linux only):
-      # - /var/run/dbus:/var/run/dbus:ro                    # D-Bus for BlueZ communication
-      # - /sys/class/bluetooth:/sys/class/bluetooth:ro     # Core Bluetooth device interfaces
-      # - /sys/devices:/sys/devices:ro                     # Device hierarchy and hardware context
-      # - /sys/bus/usb:/sys/bus/usb:ro                     # USB adapter support (only if using USB dongles)
+      # For BLE connections, uncomment these lines (Linux only):
+      # - /var/run/dbus:/var/run/dbus:ro
 
-    # Alternative BLE configuration with better security (production recommended):
+    # For BLE connections, uncomment one of these options (Linux only):
+    # Option 1: Simple approach
+    # network_mode: host
+
+    # Option 2: More secure (if option 1 doesn't work)
+    # network_mode: host
     # cap_add:
-    #   - NET_ADMIN    # Required for BLE network management
-    #   - NET_RAW      # Required for raw socket access
-    #   - SYS_ADMIN    # Required for Bluetooth device management
-    # devices:
-    #   - /dev/vhci:/dev/vhci  # Virtual HCI device access
-    # cap_drop:
-    #   - ALL          # Drop all other capabilities for security
-    # read_only: true  # Read-only filesystem where possible
-    # tmpfs:
-    #   - /tmp
-    #   - /var/tmp
+    #   - NET_ADMIN
+    #   - NET_RAW
+
+    # Option 3: Privileged mode (if all else fails)
+    # network_mode: host
+    # privileged: true
 
     # Tip: For correct permissions and paths, ensure UID, GID, and MMRELAY_HOME are set in a .env file or exported
