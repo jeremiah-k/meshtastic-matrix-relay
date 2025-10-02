@@ -211,19 +211,14 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
 
                 def import_side_effect(name):
                     """
-                    Side-effect for tests used with import mocking.
-
-                    When used as a replacement for importlib.import_module, returns a MagicMock for "olm"
-                    and for any module whose name does not start with "nio". Raises AssertionError if the
-                    requested module name starts with "nio" (used to assert that nio modules are not imported
-                    in test mode).
-
+                    Block `nio` imports and provide mock modules for test-time import mocking.
+                    
                     Parameters:
-                        name (str): The dotted module name being requested.
-
+                        name (str): Dotted module name being requested.
+                    
                     Returns:
-                        MagicMock: A mock module object for allowed imports.
-
+                        MagicMock: A mock module object for allowed imports (including "olm").
+                    
                     Raises:
                         AssertionError: If `name` starts with "nio".
                     """
@@ -248,7 +243,11 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
     @patch("sys.platform", "linux")
     @patch("mmrelay.e2ee_utils.os.path.exists")
     def test_e2ee_hasattr_checks_success(self, mock_exists):
-        """Test hasattr checks for nio.crypto.OlmDevice and nio.store.SqliteStore when available"""
+        """
+        Verify that E2EE dependency attribute checks succeed when required attributes are present.
+        
+        Asserts that the status reports dependencies_installed and overall_status "ready", and that the expected modules ("olm", "nio.crypto", "nio.store") were attempted to be imported.
+        """
         mock_exists.return_value = True
 
         with patch.dict(os.environ, {"MMRELAY_TESTING": "0"}, clear=False):
@@ -262,17 +261,13 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
 
                 def import_side_effect(name):
                     """
-                    Return a mocked module object for a given import name to simulate runtime imports during tests.
-
+                    Return a mocked module object to simulate runtime imports during tests.
+                    
                     Parameters:
-                        name (str): The module name being imported (e.g., "olm", "nio.crypto", "nio.store").
-
+                        name (str): Module name being imported (e.g., "olm", "nio.crypto", "nio.store").
+                    
                     Returns:
-                        object: A test double for the requested module:
-                            - mock_olm for "olm"
-                            - mock_nio_crypto for "nio.crypto"
-                            - mock_nio_store for "nio.store"
-                            - a new MagicMock() for any other name
+                        object: A test double for the requested module: `mock_olm` for "olm", `mock_nio_crypto` for "nio.crypto", `mock_nio_store` for "nio.store", or a new `MagicMock` for any other name.
                     """
                     if name == "olm":
                         return mock_olm
@@ -310,17 +305,13 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
 
                 def import_side_effect(name):
                     """
-                    Return a mocked module object for a given import name to simulate runtime imports during tests.
-
+                    Return a mocked module object to simulate runtime imports during tests.
+                    
                     Parameters:
-                        name (str): The module name being imported (e.g., "olm", "nio.crypto", "nio.store").
-
+                        name (str): Module name being imported (e.g., "olm", "nio.crypto", "nio.store").
+                    
                     Returns:
-                        object: A test double for the requested module:
-                            - mock_olm for "olm"
-                            - mock_nio_crypto for "nio.crypto"
-                            - mock_nio_store for "nio.store"
-                            - a new MagicMock() for any other name
+                        object: A test double for the requested module: `mock_olm` for "olm", `mock_nio_crypto` for "nio.crypto", `mock_nio_store` for "nio.store", or a new `MagicMock` for any other name.
                     """
                     if name == "olm":
                         return mock_olm
@@ -357,17 +348,13 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
 
                 def import_side_effect(name):
                     """
-                    Return a mocked module object for a given import name to simulate runtime imports during tests.
-
+                    Return a mocked module object to simulate runtime imports during tests.
+                    
                     Parameters:
-                        name (str): The module name being imported (e.g., "olm", "nio.crypto", "nio.store").
-
+                        name (str): Module name being imported (e.g., "olm", "nio.crypto", "nio.store").
+                    
                     Returns:
-                        object: A test double for the requested module:
-                            - mock_olm for "olm"
-                            - mock_nio_crypto for "nio.crypto"
-                            - mock_nio_store for "nio.store"
-                            - a new MagicMock() for any other name
+                        object: A test double for the requested module: `mock_olm` for "olm", `mock_nio_crypto` for "nio.crypto", `mock_nio_store` for "nio.store", or a new `MagicMock` for any other name.
                     """
                     if name == "olm":
                         return mock_olm

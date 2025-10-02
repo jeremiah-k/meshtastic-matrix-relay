@@ -1524,15 +1524,15 @@ def handle_service_command(args):
 
 def _diagnose_config_paths(args):
     """
-    Print a diagnostic summary of resolved configuration file search paths and their directory accessibility.
-
-    Computes the ordered list of candidate config file locations via get_config_paths(args) and prints each path with a short directory status icon:
+    Prints a diagnostic summary of resolved configuration file search paths and their directory accessibility.
+    
+    Each candidate config path is printed with a status icon:
     - ✅ directory exists and is writable
     - ⚠️ directory exists but is not writable
     - ❌ directory does not exist
-
+    
     Parameters:
-        args (argparse.Namespace): CLI arguments used to determine the config search order (passed to get_config_paths).
+        args (argparse.Namespace): CLI arguments used to determine the ordered list of candidate config paths (passed to get_config_paths).
     """
     print("1. Testing configuration paths...")
     from mmrelay.config import get_config_paths
