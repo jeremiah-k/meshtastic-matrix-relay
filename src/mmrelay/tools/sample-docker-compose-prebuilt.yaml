@@ -19,19 +19,9 @@ services:
       # - ${MMRELAY_HOME:-$HOME}/.mmrelay:/app/data
 
       # For BLE connections, uncomment these lines (Linux only):
-      # - /var/run/dbus:/var/run/dbus:ro
+      - /var/run/dbus:/var/run/dbus:ro
 
-    # For BLE connections, uncomment one of these options (Linux only):
-    # Option 1: Simple approach
-    # network_mode: host
-
-    # Option 2: With specific capabilities (less secure than option 1, but more secure than privileged mode)
-    # network_mode: host
-    # cap_add:
-    #   - NET_ADMIN
-    #   - NET_RAW
-
-    # Option 3: Privileged mode (if all else fails)
+    # For BLE connections, uncomment this option (Linux only):
     # network_mode: host
     # privileged: true
 
