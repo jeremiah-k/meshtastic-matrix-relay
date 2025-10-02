@@ -22,7 +22,24 @@ services:
       # - ${MMRELAY_HOME:-$HOME}/.mmrelay/config.yaml:/app/config.yaml:ro
       # - ${MMRELAY_HOME:-$HOME}/.mmrelay:/app/data
 
-      # For BLE connections, uncomment the following line (Linux only)
-      # - /var/run/dbus:/var/run/dbus:ro
+      # For BLE connections, uncomment the following lines (Linux only):
+      # - /var/run/dbus:/var/run/dbus:ro                    # D-Bus for BlueZ communication
+      # - /sys/class/bluetooth:/sys/class/bluetooth:ro     # Core Bluetooth device interfaces
+      # - /sys/devices:/sys/devices:ro                     # Device hierarchy and hardware context
+      # - /sys/bus/usb:/sys/bus/usb:ro                     # USB adapter support (only if using USB dongles)
 
-      # Tip: For correct permissions and paths, ensure UID, GID, and MMRELAY_HOME are set in a .env file or exported
+    # Alternative BLE configuration with better security (production recommended):
+    # cap_add:
+    #   - NET_ADMIN    # Required for BLE network management
+    #   - NET_RAW      # Required for raw socket access
+    #   - SYS_ADMIN    # Required for Bluetooth device management
+    # devices:
+    #   - /dev/vhci:/dev/vhci  # Virtual HCI device access
+    # cap_drop:
+    #   - ALL          # Drop all other capabilities for security
+    # read_only: true  # Read-only filesystem where possible
+    # tmpfs:
+    #   - /tmp
+    #   - /var/tmp
+
+    # Tip: For correct permissions and paths, ensure UID, GID, and MMRELAY_HOME are set in a .env file or exported
