@@ -790,15 +790,15 @@ def bot_command(command, event):
 async def connect_matrix(passed_config=None):
     """
     Create and initialize a matrix-nio AsyncClient connected to the configured Matrix homeserver.
-    
+
     Attempts credential selection in this order: credentials.json (preferred), automatic login using username/password from config (saved to credentials.json), then direct token values from config. Optionally enables End-to-End Encryption (E2EE) when configured and dependencies are available. Performs an initial full-state sync, resolves configured room aliases to room IDs, sets module-level connection state (matrix_client, bot_user_name, matrix_homeserver, matrix_rooms, matrix_access_token, bot_user_id) and returns the ready AsyncClient.
-    
+
     Parameters:
         passed_config (dict | None): Optional configuration to use for this connection attempt; if provided, it overrides the module-level config for this call.
-    
+
     Returns:
         AsyncClient | None: An initialized matrix-nio AsyncClient on success, or None if connection/credentials are unavailable.
-    
+
     Raises:
         ValueError: If the required top-level "matrix_rooms" configuration is missing.
         ConnectionError: If the initial Matrix sync fails or times out.
@@ -2319,9 +2319,9 @@ async def send_reply_to_meshtastic(
 ):
     """
     Enqueue a Matrix reply to be sent over Meshtastic, either as a structured reply targeting an existing Meshtastic message or as a regular broadcast.
-    
+
     If Meshtastic broadcasting is disabled this is a no-op. When storage_enabled is True the function will create a mapping entry (using event.event_id and room.room_id) and attach it to the queued message for later reply/reaction correlation. Failures are logged; the function does not raise exceptions.
-    
+
     Parameters:
         room_config (dict): Room-specific configuration — must include "meshtastic_channel" (integer channel index).
         room: Matrix room object; room.room_id is used to build mapping metadata.
@@ -2434,9 +2434,9 @@ async def handle_matrix_reply(
 ):
     """
     Handle a Matrix reply by forwarding it to Meshtastic when the replied-to Matrix event maps to a Meshtastic message.
-    
+
     If the Matrix event identified by reply_to_event_id has an associated Meshtastic mapping, this function formats a Meshtastic reply that preserves sender attribution and enqueues it referencing the original Meshtastic message ID. If no mapping exists, it returns False so normal Matrix processing can continue.
-    
+
     Parameters:
         reply_to_event_id (str): Matrix event ID being replied to; used to locate the Meshtastic mapping.
         storage_enabled (bool): Whether message mappings/storage are enabled (affects created mapping behavior when sending).
@@ -2446,7 +2446,7 @@ async def handle_matrix_reply(
         longname (str | None): Sender long display name used for prefixing.
         shortname (str | None): Sender short display name used for prefixing.
         meshnet_name (str | None): Remote meshnet name associated with the original mapping, if any.
-    
+
     Returns:
         bool: True if a mapping was found and the reply was queued to Meshtastic; False if no mapping existed and nothing was sent.
     """

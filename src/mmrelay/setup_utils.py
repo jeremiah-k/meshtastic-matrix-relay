@@ -359,9 +359,9 @@ def is_service_active():
 def create_service_file():
     """
     Create or update the per-user systemd unit file for MMRelay.
-    
+
     Ensures the user systemd directory (~/.config/systemd/user) and the MMRelay logs directory (~/.mmrelay/logs) exist, obtains a service unit template using the module's template-loading fallbacks, substitutes known placeholders (working directory, packaged launcher, and config path), normalizes the Unit's ExecStart to the resolved MMRelay invocation (an mmrelay executable on PATH or a Python `-m mmrelay` fallback) while preserving any trailing arguments, and writes the resulting unit to ~/.config/systemd/user/mmrelay.service.
-    
+
     Returns:
         bool: True if the service file was written successfully; False if a template could not be obtained or writing the file failed.
     """

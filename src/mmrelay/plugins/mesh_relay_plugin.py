@@ -140,14 +140,14 @@ class Plugin(BasePlugin):
     def matches(self, event):
         """
         Return True if the Matrix event's content body matches the bridged-packet marker.
-        
+
         Checks event.source["content"]["body"] (when it is a string) against the anchored
         pattern "^Processed (.+) radio packet$". Returns True when the body matches this
         pattern, otherwise False.
-        
+
         Parameters:
             event: Matrix event object whose .source mapping is expected to contain a "content" dict.
-        
+
         Returns:
             bool: True if the content body matches the relayed-packet pattern, False otherwise.
         """

@@ -7,6 +7,11 @@ services:
     user: "${UID:-1000}:${GID:-1000}"
     environment:
       - TZ=UTC # Set timezone (PYTHONUNBUFFERED and MPLCONFIGDIR are set in Dockerfile)
+
+    # For BLE connections, uncomment the following lines (Linux only - not supported on Docker Desktop for macOS/Windows)
+    # network_mode: host
+    # privileged: true
+
     volumes:
       # Mount your config directory - create ~/.mmrelay/config.yaml first
       # See docs/DOCKER.md for setup instructions
@@ -16,4 +21,8 @@ services:
       # For non-SELinux systems, you can use:
       # - ${MMRELAY_HOME:-$HOME}/.mmrelay/config.yaml:/app/config.yaml:ro
       # - ${MMRELAY_HOME:-$HOME}/.mmrelay:/app/data
+
+      # For BLE connections, uncomment the following line (Linux only)
+      # - /var/run/dbus:/var/run/dbus:ro
+
       # Tip: For correct permissions and paths, ensure UID, GID, and MMRELAY_HOME are set in a .env file or exported

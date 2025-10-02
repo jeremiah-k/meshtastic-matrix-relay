@@ -69,14 +69,13 @@ _COMPONENT_LOGGERS = {
 
 def configure_component_debug_logging():
     """
-    Configure log levels for external component loggers based on config["logging"]["debug"].
+    Configure log levels and handlers for external component loggers based on config.
 
-    Reads per-component entries under `config["logging"]["debug"]` and applies one of:
-    - falsy or missing: silence the component by setting its loggers to CRITICAL+1
-    - boolean True: enable DEBUG for the component's loggers
-    - string: interpret as a logging level name (case-insensitive); invalid names fall back to DEBUG
+    Reads `config["logging"]["debug"]` and for each component:
+    - If enabled (True or a valid log level string), sets the component's loggers to the specified level and attaches the main application's handlers to them. This makes component logs appear in the console and log file.
+    - If disabled (falsy or missing), silences the component by setting its loggers to a level higher than CRITICAL.
 
-    This function mutates the levels of loggers listed in _COMPONENT_LOGGERS and runs only once per process; no-op if called again or if global `config` is None.
+    This function runs only once. It is not thread-safe and should be called early in the application startup, after the main logger is configured but before other modules are imported.
     """
     global _component_debug_configured, config
 
@@ -84,6 +83,9 @@ def configure_component_debug_logging():
     if _component_debug_configured or config is None:
         return
 
+    # Get the main application logger and its handlers to attach to component loggers
+    main_logger = logging.getLogger(APP_DISPLAY_NAME)
+    main_handlers = main_logger.handlers
     debug_config = config.get("logging", {}).get("debug", {})
 
     for component, loggers in _COMPONENT_LOGGERS.items():
@@ -105,8 +107,15 @@ def configure_component_debug_logging():
                 # Invalid config, fall back to DEBUG
                 log_level = logging.DEBUG
 
+            # Configure all loggers for this component
             for logger_name in loggers:
-                logging.getLogger(logger_name).setLevel(log_level)
+                component_logger = logging.getLogger(logger_name)
+                component_logger.setLevel(log_level)
+                component_logger.propagate = False  # Prevent duplicate logging
+                # Attach main handlers to the component logger
+                for handler in main_handlers:
+                    if handler not in component_logger.handlers:
+                        component_logger.addHandler(handler)
         else:
             # Component debug is disabled - completely suppress external library logging
             # Use a level higher than CRITICAL to effectively disable all messages

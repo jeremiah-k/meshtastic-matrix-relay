@@ -1525,12 +1525,12 @@ def handle_service_command(args):
 def _diagnose_config_paths(args):
     """
     Print a diagnostic summary of resolved configuration file search paths and their directory accessibility.
-    
+
     Computes the ordered list of candidate config file locations via get_config_paths(args) and prints each path with a short directory status icon:
     - ✅ directory exists and is writable
     - ⚠️ directory exists but is not writable
     - ❌ directory does not exist
-    
+
     Parameters:
         args (argparse.Namespace): CLI arguments used to determine the config search order (passed to get_config_paths).
     """
@@ -1587,16 +1587,16 @@ def _diagnose_sample_config_accessibility():
 def _diagnose_platform_specific(args):
     """
     Run platform-specific diagnostic checks and report results.
-    
+
     On Windows, attempts to import and run Windows-specific requirement checks and a
     configuration-generation test, printing per-component statuses and any warnings.
     On non-Windows platforms this reports that platform-specific tests are not
     required.
-    
+
     Parameters:
         args (argparse.Namespace): CLI arguments passed through to the Windows
             configuration-generation test (only used when running on Windows).
-    
+
     Returns:
         bool: True if Windows checks were executed (running on Windows), False otherwise.
     """
@@ -1722,12 +1722,12 @@ def _diagnose_minimal_config_template():
 def handle_config_diagnose(args):
     """
     Run non-destructive diagnostics for the MMRelay configuration subsystem and print a human-readable report.
-    
+
     Performs four checks without modifying user files: (1) resolves and reports candidate configuration file paths and their directory accessibility, (2) verifies availability of the packaged sample configuration, (3) runs platform-specific diagnostics (Windows checks when applicable), and (4) validates the built-in minimal YAML configuration template. Results and actionable guidance are written to stdout/stderr.
-    
+
     Parameters:
         args (argparse.Namespace): Parsed CLI arguments used to resolve configuration search paths and to control platform-specific checks.
-    
+
     Returns:
         int: Exit code (0 on success, 1 on failure). On failure an error summary is printed to stderr.
     """
