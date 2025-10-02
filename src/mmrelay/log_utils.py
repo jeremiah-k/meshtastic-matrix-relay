@@ -86,7 +86,15 @@ def configure_component_debug_logging():
     # Get the main application logger and its handlers to attach to component loggers
     main_logger = logging.getLogger(APP_DISPLAY_NAME)
     main_handlers = main_logger.handlers
-    debug_config = config.get("logging", {}).get("debug", {})
+    debug_config = config.get("logging", {}).get("debug", {}) or {}
+
+    # Warn if debug section exists but is None/empty (malformed YAML)
+    if config.get("logging", {}).get("debug") is None:
+        main_logger.warning(
+            "Debug logging section is empty or malformed. "
+            "All component debug logging will be disabled. "
+            "Check your config.yaml debug section formatting."
+        )
 
     for component, loggers in _COMPONENT_LOGGERS.items():
         component_config = debug_config.get(component)

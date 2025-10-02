@@ -457,6 +457,31 @@ class TestLogUtils(unittest.TestCase):
         self.assertEqual(logging.getLogger("nio").level, logging.DEBUG)
         self.assertEqual(logging.getLogger("bleak").level, logging.DEBUG)
 
+    def test_configure_component_debug_logging_none_debug_config(self):
+        """
+        Test that configuring component debug logging with None debug config (malformed YAML)
+        doesn't crash and disables all component debug logging with a warning.
+        """
+        config = {
+            "logging": {"debug": None}
+        }  # This happens when debug section is empty/commented
+
+        import mmrelay.log_utils
+
+        mmrelay.log_utils.config = config
+        mmrelay.log_utils._component_debug_configured = False
+
+        # Should not raise exception
+        configure_component_debug_logging()
+
+        # Should have configured debug logging
+        self.assertTrue(mmrelay.log_utils._component_debug_configured)
+
+        # All component loggers should be suppressed (CRITICAL + 1)
+        self.assertEqual(logging.getLogger("nio").level, logging.CRITICAL + 1)
+        self.assertEqual(logging.getLogger("bleak").level, logging.CRITICAL + 1)
+        self.assertEqual(logging.getLogger("meshtastic").level, logging.CRITICAL + 1)
+
     def test_get_logger_file_creation_error(self):
         """
         Test that `get_logger` handles file creation errors gracefully when given an invalid log file path.
