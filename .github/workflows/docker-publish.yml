@@ -42,7 +42,9 @@ jobs:
             echo "is_release=true" >> $GITHUB_OUTPUT
             echo "should_tag_latest=true" >> $GITHUB_OUTPUT
           else
-            echo "docker_tag=$VERSION-dev-$GIT_SHA" >> $GITHUB_OUTPUT
+            # Sanitize branch name for Docker tag (replace slashes and special chars)
+            BRANCH_NAME=$(echo "${{ github.ref_name }}" | sed 's/[^a-zA-Z0-9._-]/-/g')
+            echo "docker_tag=$VERSION-dev-$BRANCH_NAME-$GIT_SHA" >> $GITHUB_OUTPUT
             echo "is_release=false" >> $GITHUB_OUTPUT
             echo "should_tag_latest=false" >> $GITHUB_OUTPUT
           fi
