@@ -12,6 +12,7 @@ from mmrelay.matrix_utils import (
     _add_truncated_vars,
     _can_auto_create_credentials,
     _create_mapping_info,
+    _get_detailed_sync_error_message,
     _get_msgs_to_keep_config,
     bot_command,
     connect_matrix,
@@ -3223,3 +3224,108 @@ class TestMatrixE2EEHasAttrChecks:
             mock_logger.warning.assert_called_with(
                 "E2EE will be disabled for this session."
             )
+
+
+#!/usr/bin/env python3
+"""
+Fixed tests for _get_detailed_sync_error_message function.
+"""
+
+
+class TestGetDetailedSyncErrorMessage:
+    """Test cases for _get_detailed_sync_error_message function."""
+
+    def test_sync_error_with_message_string(self):
+        """Test error response with string message."""
+        mock_response = MagicMock()
+        mock_response.message = "Connection failed"
+
+        result = _get_detailed_sync_error_message(mock_response)
+        assert result == "Connection failed"
+
+    def test_sync_error_with_status_code_401(self):
+        """Test error response with 401 status code."""
+        mock_response = MagicMock()
+        # Configure without message attribute to test status code path
+        mock_response.configure_mock(**{"message.__bool__": False})
+        del mock_response.message
+        mock_response.status_code = 401
+
+        result = _get_detailed_sync_error_message(mock_response)
+        assert result == "Authentication failed - invalid or expired credentials"
+
+    def test_sync_error_with_status_code_403(self):
+        """Test error response with 403 status code."""
+        mock_response = MagicMock()
+        del mock_response.message
+        mock_response.status_code = 403
+
+        result = _get_detailed_sync_error_message(mock_response)
+        assert result == "Access forbidden - check user permissions"
+
+    def test_sync_error_with_status_code_404(self):
+        """Test error response with 404 status code."""
+        mock_response = MagicMock()
+        del mock_response.message
+        mock_response.status_code = 404
+
+        result = _get_detailed_sync_error_message(mock_response)
+        assert result == "Server not found - check homeserver URL"
+
+    def test_sync_error_with_status_code_429(self):
+        """Test error response with 429 status code."""
+        mock_response = MagicMock()
+        del mock_response.message
+        mock_response.status_code = 429
+
+        result = _get_detailed_sync_error_message(mock_response)
+        assert result == "Rate limited - too many requests"
+
+    def test_sync_error_with_status_code_500(self):
+        """Test error response with 500 status code."""
+        mock_response = MagicMock()
+        del mock_response.message
+        mock_response.status_code = 500
+
+        result = _get_detailed_sync_error_message(mock_response)
+        assert (
+            result
+            == "Server error (HTTP 500) - the Matrix server is experiencing issues"
+        )
+
+    def test_sync_error_with_bytes_response(self):
+        """Test error response as raw bytes."""
+        response_bytes = b"Server error"
+
+        result = _get_detailed_sync_error_message(response_bytes)
+        assert result == "Server error"
+
+    def test_sync_error_with_bytes_invalid_utf8(self):
+        """Test error response as invalid UTF-8 bytes."""
+        response_bytes = b"\xff\xfe\xfd"
+
+        result = _get_detailed_sync_error_message(response_bytes)
+        assert (
+            result == "Network connectivity issue or server unreachable (binary data)"
+        )
+
+    def test_sync_error_with_bytearray_response(self):
+        """Test error response as bytearray."""
+        response_bytes = bytearray(b"Server error")
+
+        result = _get_detailed_sync_error_message(response_bytes)
+        assert result == "Server error"
+
+    def test_sync_error_fallback_generic(self):
+        """Test generic fallback when no specific info can be extracted."""
+        mock_response = MagicMock()
+        # Remove all attributes and make string representation fail
+        del mock_response.message
+        del mock_response.status_code
+        del mock_response.transport_response
+        mock_response.__str__ = MagicMock(
+            side_effect=Exception("String conversion failed")
+        )
+
+        result = _get_detailed_sync_error_message(mock_response)
+        assert result == "Network connectivity issue or server unreachable"

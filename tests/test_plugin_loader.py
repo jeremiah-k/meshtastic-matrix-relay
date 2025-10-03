@@ -12,6 +12,7 @@ Tests the plugin discovery, loading, and management functionality including:
 """
 
 import os
+import shutil
 import subprocess  # nosec B404 - Used for controlled test environment operations
 import sys
 import tempfile
@@ -22,6 +23,7 @@ from unittest.mock import MagicMock, patch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.plugin_loader import (
+    _collect_requirements,
     clone_or_update_repo,
     get_community_plugin_dirs,
     get_custom_plugin_dirs,
@@ -602,6 +604,134 @@ def test_clone_or_update_repo_git_error(tmp_path):
         result = clone_or_update_repo(repo_url, ref, str(plugins_dir))
 
         assert result is False
+
+
+class TestCollectRequirements(unittest.TestCase):
+    """Test cases for _collect_requirements function."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.temp_dir = tempfile.mkdtemp()
+        self.addCleanup(lambda: shutil.rmtree(self.temp_dir, ignore_errors=True))
+
+    def test_collect_requirements_basic(self):
+        """Test collecting basic requirements from a simple file."""
+        req_file = os.path.join(self.temp_dir, "requirements.txt")
+        with open(req_file, "w") as f:
+            f.write("requests==2.28.0\n")
+            f.write("numpy>=1.20.0\n")
+            f.write("# This is a comment\n")
+            f.write("\n")  # Blank line
+
+        result = _collect_requirements(req_file)
+        expected = ["requests==2.28.0", "numpy>=1.20.0"]
+        self.assertEqual(result, expected)
+
+    def test_collect_requirements_with_inline_comments(self):
+        """Test handling inline comments."""
+        req_file = os.path.join(self.temp_dir, "requirements.txt")
+        with open(req_file, "w") as f:
+            f.write("requests==2.28.0  # HTTP library\n")
+            f.write("numpy>=1.20.0    # Numerical computing\n")
+
+        result = _collect_requirements(req_file)
+        expected = ["requests==2.28.0", "numpy>=1.20.0"]
+        self.assertEqual(result, expected)
+
+    def test_collect_requirements_with_include(self):
+        """Test handling -r include directive."""
+        # Create main requirements file
+        main_req = os.path.join(self.temp_dir, "requirements.txt")
+        included_req = os.path.join(self.temp_dir, "base.txt")
+
+        with open(included_req, "w") as f:
+            f.write("requests==2.28.0\n")
+            f.write("numpy>=1.20.0\n")
+
+        with open(main_req, "w") as f:
+            f.write("-r base.txt\n")
+            f.write("scipy>=1.7.0\n")
+
+        result = _collect_requirements(main_req)
+        expected = ["requests==2.28.0", "numpy>=1.20.0", "scipy>=1.7.0"]
+        self.assertEqual(result, expected)
+
+    def test_collect_requirements_with_constraint(self):
+        """Test handling -c constraint directive."""
+        req_file = os.path.join(self.temp_dir, "requirements.txt")
+        constraint_file = os.path.join(self.temp_dir, "constraints.txt")
+
+        with open(constraint_file, "w") as f:
+            f.write("requests<=2.30.0\n")
+
+        with open(req_file, "w") as f:
+            f.write("-c constraints.txt\n")
+            f.write("requests>=2.25.0\n")
+
+        result = _collect_requirements(req_file)
+        # The function appears to include constraints in the output
+        expected = ["requests<=2.30.0", "requests>=2.25.0"]
+        self.assertEqual(result, expected)
+
+    def test_collect_requirements_with_complex_flags(self):
+        """Test handling complex requirement flags."""
+        req_file = os.path.join(self.temp_dir, "requirements.txt")
+        with open(req_file, "w") as f:
+            f.write("--requirement=requirements-dev.txt\n")
+            f.write("--constraint=constraints.txt\n")
+            f.write("package>=1.0.0 --extra-index-url https://pypi.org/simple\n")
+
+        # Create the referenced files
+        dev_req = os.path.join(self.temp_dir, "requirements-dev.txt")
+        constraint_file = os.path.join(self.temp_dir, "constraints.txt")
+
+        with open(dev_req, "w") as f:
+            f.write("pytest>=6.0.0\n")
+
+        with open(constraint_file, "w") as f:
+            f.write("pytest<=7.0.0\n")
+
+        result = _collect_requirements(req_file)
+        # The function appears to include both requirements and constraints
+        expected = [
+            "pytest>=6.0.0",
+            "pytest<=7.0.0",
+            "package>=1.0.0 --extra-index-url https://pypi.org/simple",
+        ]
+        self.assertEqual(result, expected)
+
+    def test_collect_requirements_nonexistent_file(self):
+        """Test handling nonexistent requirements file."""
+        nonexistent_file = os.path.join(self.temp_dir, "nonexistent.txt")
+
+        result = _collect_requirements(nonexistent_file)
+        self.assertEqual(result, [])
+
+    def test_collect_requirements_recursive_include_detection(self):
+        """Test detection of recursive includes."""
+        req1 = os.path.join(self.temp_dir, "req1.txt")
+        req2 = os.path.join(self.temp_dir, "req2.txt")
+
+        with open(req1, "w") as f:
+            f.write("-r req2.txt\n")
+            f.write("package1>=1.0.0\n")
+
+        with open(req2, "w") as f:
+            f.write("-r req1.txt\n")  # Recursive include
+            f.write("package2>=1.0.0\n")
+
+        result = _collect_requirements(req1)
+        # Should handle recursion gracefully and not crash
+        self.assertIsInstance(result, list)
+
+    def test_collect_requirements_empty_file(self):
+        """Test handling empty requirements file."""
+        req_file = os.path.join(self.temp_dir, "empty.txt")
+        with open(req_file, "w"):
+            pass  # Create empty file
+
+        result = _collect_requirements(req_file)
+        self.assertEqual(result, [])
 
 
 if __name__ == "__main__":
