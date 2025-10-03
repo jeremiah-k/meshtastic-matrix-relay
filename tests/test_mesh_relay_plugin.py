@@ -206,7 +206,7 @@ class TestMeshRelayPlugin(unittest.TestCase):
     @patch("mmrelay.matrix_utils.connect_matrix")
     def test_handle_meshtastic_message_no_config(self, mock_connect):
         """
-        Test that handle_meshtastic_message returns None and does not send a Matrix message when no configuration is present.
+        Test that handle_meshtastic_message returns False and does not send a Matrix message when no configuration is present.
         """
         # Use MagicMock instead of AsyncMock to prevent coroutine warnings
         mock_matrix_client = MagicMock()
@@ -220,14 +220,14 @@ class TestMeshRelayPlugin(unittest.TestCase):
 
         async def run_test():
             """
-            Asynchronously tests that `handle_meshtastic_message` returns None and does not send a Matrix message when no configuration is present.
+            Asynchronously tests that `handle_meshtastic_message` returns False and does not send a Matrix message when no configuration is present.
             """
             result = await self.plugin.handle_meshtastic_message(
                 packet, "formatted_message", "longname", "meshnet_name"
             )
 
-            # Should return None when no config
-            self.assertIsNone(result)
+            # Should return False when no config
+            self.assertFalse(result)
 
             # Should not send any Matrix messages
             mock_matrix_client.room_send.assert_not_called()
@@ -242,7 +242,7 @@ class TestMeshRelayPlugin(unittest.TestCase):
         self, mock_connect, mock_config
     ):
         """
-        Test that handle_meshtastic_message returns None and does not send a Matrix message when the packet's channel is not mapped in the configuration.
+        Test that handle_meshtastic_message returns False and does not send a Matrix message when the packet's channel is not mapped in the configuration.
 
         Verifies that the plugin skips sending a Matrix message and logs a debug message when the Meshtastic packet's channel is not present in the configuration mapping.
         """
@@ -263,14 +263,14 @@ class TestMeshRelayPlugin(unittest.TestCase):
 
         async def run_test():
             """
-            Asynchronously tests that handle_meshtastic_message returns None and skips sending a Matrix message when the channel is not mapped in the configuration.
+            Asynchronously tests that handle_meshtastic_message returns False and skips sending a Matrix message when the channel is not mapped in the configuration.
             """
             result = await self.plugin.handle_meshtastic_message(
                 packet, "formatted_message", "longname", "meshnet_name"
             )
 
-            # Should return None for unmapped channel
-            self.assertIsNone(result)
+            # Should return False for unmapped channel
+            self.assertFalse(result)
 
             # Should log debug message
             self.plugin.logger.debug.assert_called_with(
@@ -290,7 +290,7 @@ class TestMeshRelayPlugin(unittest.TestCase):
         """
         Test that handle_meshtastic_message sends a Matrix message when the packet's channel is mapped in the configuration.
 
-        Ensures the plugin sends a Matrix message to the correct room with the appropriate message type and content, and returns False to allow further processing by other plugins.
+        Ensures the plugin sends a Matrix message to the correct room with the appropriate message type and content, and returns True to indicate the message was handled.
         """
         # Use MagicMock instead of AsyncMock to prevent coroutine warnings
         mock_matrix_client = MagicMock()
@@ -311,14 +311,14 @@ class TestMeshRelayPlugin(unittest.TestCase):
             """
             Asynchronously tests that a Meshtastic message on a mapped channel triggers correct Matrix message sending.
 
-            Verifies that the plugin returns False to allow further processing, sends a Matrix message to the expected room with the correct message type and content, and includes the processed Meshtastic packet in the message body.
+            Verifies that the plugin returns True to indicate handling, sends a Matrix message to the expected room with the correct message type and content, and includes the processed Meshtastic packet in the message body.
             """
             result = await self.plugin.handle_meshtastic_message(
                 packet, "formatted_message", "longname", "meshnet_name"
             )
 
-            # Should return False (allows other plugins to process)
-            self.assertFalse(result)
+            # Should return True (message was handled)
+            self.assertTrue(result)
 
             # Should send Matrix message
             mock_matrix_client.room_send.assert_called_once()
@@ -345,7 +345,7 @@ class TestMeshRelayPlugin(unittest.TestCase):
         """
         Test that handle_meshtastic_message defaults to channel 0 when the packet lacks a channel field.
 
-        Verifies that a Matrix message is sent to the room mapped to channel 0 and that the method returns False.
+        Verifies that a Matrix message is sent to the room mapped to channel 0 and that the method returns True.
         """
         # Use MagicMock instead of AsyncMock to prevent coroutine warnings
         mock_matrix_client = MagicMock()
@@ -373,8 +373,8 @@ class TestMeshRelayPlugin(unittest.TestCase):
                 packet, "formatted_message", "longname", "meshnet_name"
             )
 
-            # Should return False and send message (channel defaults to 0)
-            self.assertFalse(result)
+            # Should return True and send message (channel defaults to 0)
+            self.assertTrue(result)
             mock_matrix_client.room_send.assert_called_once()
 
         import asyncio
@@ -503,10 +503,10 @@ class TestMeshRelayPlugin(unittest.TestCase):
     @patch("mmrelay.plugins.mesh_relay_plugin.config")
     def test_handle_room_message_invalid_json_packet(self, mock_config):
         """
-        Test that handle_room_message returns None and logs an exception when the embedded `meshtastic_packet` contains invalid JSON.
+        Test that handle_room_message returns False and logs an exception when the embedded `meshtastic_packet` contains invalid JSON.
 
         This unit test sets plugin.matches to True and provides a mocked config mapping the room to a meshtastic channel. It calls plugin.handle_room_message with an event whose `source.content.meshtastic_packet` is an invalid JSON string and asserts that:
-        - the coroutine returns None (processing stops on parse error), and
+        - the coroutine returns False (processing stops on parse error), and
         - plugin.logger.exception was called with a message containing "Error processing embedded packet".
         """
         self.plugin.matches = MagicMock(return_value=True)
@@ -527,18 +527,84 @@ class TestMeshRelayPlugin(unittest.TestCase):
 
             This async test calls handle_room_message with a room and event whose embedded
             `meshtastic_packet` contains invalid JSON. It asserts:
-            - the coroutine returns None (indicating processing stopped on parse error), and
+            - the coroutine returns False (indicating processing stopped on parse error), and
             - plugin.logger.exception was called with a message containing "Error processing embedded packet".
             """
             result = await self.plugin.handle_room_message(room, event, "full_message")
 
-            # Should return None when JSON parsing fails
-            self.assertIsNone(result)
+            # Should return False when JSON parsing fails
+            self.assertFalse(result)
 
             # Should log error message
             self.plugin.logger.exception.assert_called()
             error_call = self.plugin.logger.exception.call_args[0][0]
             self.assertIn("Error processing embedded packet", error_call)
+
+        import asyncio
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.plugins.mesh_relay_plugin.config")
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    def test_handle_room_message_successful_relay(
+        self, mock_connect_meshtastic, mock_config
+    ):
+        """
+        Test that handle_room_message successfully relays a valid packet to Meshtastic.
+
+        Verifies that when a valid embedded packet is provided, the plugin:
+        - Parses the JSON packet
+        - Creates a Meshtastic packet with correct channel and payload
+        - Sends the packet to the destination
+        - Returns True
+        """
+        self.plugin.matches = MagicMock(return_value=True)
+
+        # Mock config with matching room
+        mock_config.get.return_value = [
+            {"id": "!test:matrix.org", "meshtastic_channel": 1}
+        ]
+
+        # Mock Meshtastic client
+        mock_client = MagicMock()
+        mock_client._generatePacketId.return_value = 12345
+        mock_connect_meshtastic.return_value = mock_client
+
+        room = MagicMock()
+        room.room_id = "!test:matrix.org"
+        event = MagicMock()
+        # Valid packet JSON
+        packet_json = '{"decoded": {"portnum": "TEXT_MESSAGE_APP", "payload": "SGVsbG8gV29ybGQ="}, "toId": "!1234567890"}'
+        event.source = {"content": {"meshtastic_packet": packet_json}}
+
+        async def run_test():
+            """
+            Test successful packet relay from Matrix to Meshtastic.
+            """
+            result = await self.plugin.handle_room_message(room, event, "full_message")
+
+            # Should return True (successful processing)
+            self.assertTrue(result)
+
+            # Should connect to Meshtastic
+            mock_connect_meshtastic.assert_called_once()
+
+            # Should send packet
+            mock_client._sendPacket.assert_called_once()
+            call_args = mock_client._sendPacket.call_args
+            mesh_packet = call_args.kwargs["meshPacket"]
+
+            # Verify packet properties
+            self.assertEqual(mesh_packet.channel, 1)
+            self.assertEqual(mesh_packet.decoded.portnum, "TEXT_MESSAGE_APP")
+            self.assertEqual(
+                mesh_packet.decoded.payload, b"Hello World"
+            )  # base64 decoded
+            self.assertFalse(mesh_packet.decoded.want_response)
+            self.assertEqual(mesh_packet.id, 12345)
+
+            # Verify destination
+            self.assertEqual(call_args.kwargs["destinationId"], "!1234567890")
 
         import asyncio
 

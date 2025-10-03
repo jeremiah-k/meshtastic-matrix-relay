@@ -316,16 +316,39 @@ meshtastic:
 
 For BLE connections, add to docker-compose.yaml:
 
+**Recommended approach (secure and functional):**
+
 ```yaml
 services:
   mmrelay:
-    network_mode: host # Required for BLE/D-Bus (Linux only - not supported on Docker Desktop for macOS/Windows)
-    privileged: true # Required for BLE access
+    network_mode: host # Required for BLE (Linux only)
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    volumes:
+      - /var/run/dbus:/var/run/dbus:ro # D-Bus for BlueZ
+```
+
+**Alternative approaches:**
+
+```yaml
+# Option 2: Minimal configuration (may not work for all BLE devices)
+services:
+  mmrelay:
+    network_mode: host # Required for BLE (Linux only)
+    volumes:
+      - /var/run/dbus:/var/run/dbus:ro # D-Bus for BlueZ
+
+# Option 3: With privileged mode (if all else fails)
+services:
+  mmrelay:
+    network_mode: host
+    privileged: true
     volumes:
       - /var/run/dbus:/var/run/dbus:ro
 ```
 
-**Note:** `network_mode: host` is only supported on Linux. Docker Desktop on macOS and Windows does not support host networking. For Windows users, consider using WSL2 or a native installation instead.
+**Important:** BLE in Docker only works on Linux hosts. Not supported on Docker Desktop for macOS/Windows.
 
 ## Data Persistence
 
@@ -396,7 +419,40 @@ MMRELAY_HOME=/path/to/your/data
 
 - For TCP: Verify Meshtastic device IP and port 4403
 - For Serial: Check device permissions and path
-- For BLE: Ensure privileged mode and host networking are enabled
+- For BLE: Ensure host networking is enabled and add the Bluetooth capabilities (`NET_ADMIN`, `NET_RAW`). Use privileged mode only if the capability approach fails.
+
+### BLE-Specific Troubleshooting
+
+**BLE device not found:**
+
+```bash
+# Check if Bluetooth is available on host
+sudo systemctl status bluetooth
+bluetoothctl list
+
+# Verify container can access Bluetooth
+docker compose exec mmrelay bluetoothctl list
+```
+
+**Permission denied errors:**
+
+- Try the alternative configurations above (capabilities or privileged mode)
+- Check D-Bus socket: `docker compose exec mmrelay ls -la /var/run/dbus`
+- On SELinux systems, add `:Z` to volume mounts
+
+**D-Bus connection failures:**
+
+```bash
+# Test D-Bus connectivity
+docker compose exec mmrelay dbus-send --system --dest=org.bluez --print-reply / org.freedesktop.DBus.Introspectable.Introspect
+```
+
+**Adapter blocked:**
+
+```bash
+# Check and unblock if needed
+sudo rfkill unblock bluetooth
+```
 
 ## Complete Docker Example
 

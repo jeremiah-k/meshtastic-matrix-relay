@@ -111,15 +111,13 @@ class TestAuthFlowFixes(unittest.TestCase):
                 # Mock os.path.exists to return False for credentials.json but True for the directory
                 def mock_exists(path):
                     """
-                    Mock os.path.exists for tests.
-                    
-                    Return True only when the checked path equals the test configuration directory (config_dir), return False for the credentials file path (credentials_path) and for any other path. This function relies on the closure variables `credentials_path` and `config_dir` to decide which paths exist; it's intended to simulate a missing credentials.json while the config directory is present.
-                    
+                    Simulate filesystem existence for tests by returning True only when the checked path equals the test configuration directory.
+
                     Parameters:
-                        path (str): Filesystem path to check.
-                    
+                        path (str): Path to check; compared against the outer-scope test variables `credentials_path` and `config_dir`.
+
                     Returns:
-                        bool: True if the mock treats the path as present, otherwise False.
+                        bool: `True` if `path` equals `config_dir`, `False` otherwise.
                     """
                     if path == credentials_path:
                         return False  # credentials.json doesn't exist

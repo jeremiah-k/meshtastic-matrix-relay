@@ -457,6 +457,32 @@ class TestLogUtils(unittest.TestCase):
         self.assertEqual(logging.getLogger("nio").level, logging.DEBUG)
         self.assertEqual(logging.getLogger("bleak").level, logging.DEBUG)
 
+    def test_configure_component_debug_logging_none_debug_config(self):
+        """
+        Ensure configuring component debug logging when the debug config is None does not raise and suppresses all component loggers.
+
+        Verifies that calling configure_component_debug_logging with a logging.debug value of None marks component debug as configured and sets known component loggers (nio, bleak, meshtastic) to a suppressed level (CRITICAL + 1).
+        """
+        config = {
+            "logging": {"debug": None}
+        }  # This happens when debug section is empty/commented
+
+        import mmrelay.log_utils
+
+        mmrelay.log_utils.config = config
+        mmrelay.log_utils._component_debug_configured = False
+
+        # Should not raise exception
+        configure_component_debug_logging()
+
+        # Should have configured debug logging
+        self.assertTrue(mmrelay.log_utils._component_debug_configured)
+
+        # All component loggers should be suppressed (CRITICAL + 1)
+        self.assertEqual(logging.getLogger("nio").level, logging.CRITICAL + 1)
+        self.assertEqual(logging.getLogger("bleak").level, logging.CRITICAL + 1)
+        self.assertEqual(logging.getLogger("meshtastic").level, logging.CRITICAL + 1)
+
     def test_get_logger_file_creation_error(self):
         """
         Test that `get_logger` handles file creation errors gracefully when given an invalid log file path.
@@ -488,6 +514,48 @@ class TestLogUtils(unittest.TestCase):
             except PermissionError:
                 # This is expected behavior - the test passes if we get a permission error
                 pass
+
+    def test_component_logging_with_handlers(self):
+        """Verify that component loggers receive handlers from the main logger."""
+        import io
+
+        import mmrelay.log_utils
+        from mmrelay.constants.app import APP_DISPLAY_NAME
+
+        # Setup main logger and config for component logging
+        config = {
+            "logging": {
+                "level": "INFO",
+                "debug": {"bleak": "DEBUG"},
+                "color_enabled": False,  # Use standard handler for easier capture
+            }
+        }
+
+        mmrelay.log_utils.config = config
+        mmrelay.log_utils._component_debug_configured = False  # Reset for this test
+
+        # Clear handlers from previous tests to ensure isolation
+        logging.getLogger(APP_DISPLAY_NAME).handlers.clear()
+        logging.getLogger("bleak").handlers.clear()
+
+        # Capture stderr to check for output
+        with patch("sys.stderr", new_callable=io.StringIO) as mock_stderr:
+            # Initialize main logger to ensure it has handlers
+            main_logger = get_logger(APP_DISPLAY_NAME)
+            self.assertTrue(main_logger.handlers, "Main logger should have handlers")
+
+            # Configure component logging
+            configure_component_debug_logging()
+
+            # Get a component logger and emit a message
+            bleak_logger = logging.getLogger("bleak")
+            test_message = "This is a bleak debug message."
+            bleak_logger.debug(test_message)
+
+            # Verify output
+            captured_output = mock_stderr.getvalue()
+            self.assertIn("bleak", captured_output)
+            self.assertIn(test_message, captured_output)
 
 
 if __name__ == "__main__":

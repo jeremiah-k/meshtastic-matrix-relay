@@ -196,14 +196,12 @@ def get_log_dir():
 
 def get_e2ee_store_dir():
     """
-    Return the absolute path to the application's end-to-end-encryption (E2EE) data store directory, creating it if missing.
-    
-    On Linux and macOS this is "<base_dir>/store" where base_dir is returned by get_base_dir().
-    On Windows this is "<custom_data_dir>/store" when module-level custom_data_dir is set; otherwise it is
-    platformdirs.user_data_dir(APP_NAME, APP_AUTHOR)/store.
-    
+    Get the absolute path to the application's end-to-end encryption (E2EE) data store directory, creating it if necessary.
+
+    On Linux and macOS the directory is located under the application base directory; on Windows it uses the configured custom data directory when set, otherwise the platform-specific user data directory. The directory will be created if it does not exist.
+
     Returns:
-        str: Absolute path to the ensured store directory.
+        store_dir (str): Absolute path to the ensured E2EE store directory.
     """
     if sys.platform in ["linux", "darwin"]:
         # Use ~/.mmrelay/store/ for Linux and Mac

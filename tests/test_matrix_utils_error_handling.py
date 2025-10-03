@@ -37,10 +37,10 @@ class FakeNioErrorResponseWithException:
 
     def __init__(self, status_code=None):
         """
-        Initialize a fake nio.ErrorResponse used in tests.
-        
+        Initialize the fake nio.ErrorResponse used in tests.
+
         Parameters:
-            status_code (int | None): Optional HTTP status code to simulate (e.g., 401, 404). Defaults to None.
+            status_code (int | None): Optional HTTP status code to simulate (for example, 401, 404). Stored as the instance's `status_code` attribute.
         """
         self.status_code = status_code
 

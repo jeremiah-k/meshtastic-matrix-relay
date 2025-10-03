@@ -1524,15 +1524,15 @@ def handle_service_command(args):
 
 def _diagnose_config_paths(args):
     """
-    Print a diagnostic summary of resolved configuration file search paths and their directory accessibility.
-    
-    Computes the ordered list of candidate config file locations via get_config_paths(args) and prints each path with a short directory status icon:
+    Prints a diagnostic summary of resolved configuration file search paths and their directory accessibility.
+
+    Each candidate config path is printed with a status icon:
     - ✅ directory exists and is writable
     - ⚠️ directory exists but is not writable
     - ❌ directory does not exist
-    
+
     Parameters:
-        args (argparse.Namespace): CLI arguments used to determine the config search order (passed to get_config_paths).
+        args (argparse.Namespace): CLI arguments used to determine the ordered list of candidate config paths (passed to get_config_paths).
     """
     print("1. Testing configuration paths...")
     from mmrelay.config import get_config_paths
@@ -1586,19 +1586,15 @@ def _diagnose_sample_config_accessibility():
 
 def _diagnose_platform_specific(args):
     """
-    Run platform-specific diagnostic checks and report results.
-    
-    On Windows, attempts to import and run Windows-specific requirement checks and a
-    configuration-generation test, printing per-component statuses and any warnings.
-    On non-Windows platforms this reports that platform-specific tests are not
-    required.
-    
+    Run platform-specific diagnostic checks and print a concise report.
+
+    On Windows, executes Windows-specific requirement checks and a configuration-generation test using the provided CLI arguments; on non-Windows platforms, reports that platform-specific tests are not required.
+
     Parameters:
-        args (argparse.Namespace): CLI arguments passed through to the Windows
-            configuration-generation test (only used when running on Windows).
-    
+        args (argparse.Namespace): CLI arguments forwarded to the Windows configuration-generation test (used only when running on Windows).
+
     Returns:
-        bool: True if Windows checks were executed (running on Windows), False otherwise.
+        bool: `True` if Windows checks were executed (running on Windows), `False` otherwise.
     """
     print("3. Platform-specific diagnostics...")
     import sys
@@ -1721,15 +1717,15 @@ def _diagnose_minimal_config_template():
 
 def handle_config_diagnose(args):
     """
-    Run non-destructive diagnostics for the MMRelay configuration subsystem and print a human-readable report.
-    
-    Performs four checks without modifying user files: (1) resolves and reports candidate configuration file paths and their directory accessibility, (2) verifies availability of the packaged sample configuration, (3) runs platform-specific diagnostics (Windows checks when applicable), and (4) validates the built-in minimal YAML configuration template. Results and actionable guidance are written to stdout/stderr.
-    
+    Run a set of non-destructive diagnostics for the MMRelay configuration subsystem and print a concise, human-readable report.
+
+    Performs four checks without modifying user files: (1) resolves and reports candidate configuration file paths and their directory accessibility, (2) verifies availability and readability of the packaged sample configuration, (3) executes platform-specific diagnostics (Windows checks when applicable), and (4) validates the built-in minimal YAML configuration template. Results and actionable guidance are written to stdout/stderr; additional Windows-specific guidance may be printed to stderr on unexpected failures.
+
     Parameters:
-        args (argparse.Namespace): Parsed CLI arguments used to resolve configuration search paths and to control platform-specific checks.
-    
+        args (argparse.Namespace): Parsed CLI arguments used to determine configuration search paths and to control platform-specific diagnostic behavior.
+
     Returns:
-        int: Exit code (0 on success, 1 on failure). On failure an error summary is printed to stderr.
+        int: Exit code where `0` indicates diagnostics completed successfully and `1` indicates a failure occurred (an error summary is printed to stderr).
     """
     print("MMRelay Configuration System Diagnostics")
     print("=" * 40)

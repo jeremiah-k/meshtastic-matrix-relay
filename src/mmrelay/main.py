@@ -73,9 +73,18 @@ def print_banner():
 
 async def main(config):
     """
-    Coordinates the main asynchronous relay loop between Meshtastic and Matrix clients.
+    Coordinate the asynchronous relay loop between Meshtastic and Matrix clients.
 
-    Initializes the database, loads plugins, starts the message queue, and establishes connections to both Meshtastic and Matrix. Joins configured Matrix rooms, registers event callbacks for message and membership events, and periodically updates node names from the Meshtastic network. Monitors connection health, manages the Matrix sync loop with reconnection and shutdown handling, and ensures graceful shutdown of all components. Optionally wipes the message map on startup and shutdown if configured.
+    Initializes the database and plugins, starts the message queue, connects to Meshtastic and Matrix, joins configured Matrix rooms, registers event callbacks, monitors connection health, runs the Matrix sync loop with automatic retries, and ensures an orderly shutdown of all components (including optional message map wiping on startup and shutdown).
+
+    Parameters:
+        config (dict): Application configuration mapping. Expected keys used by this function include:
+            - "matrix_rooms": list of room dicts with at least an "id" entry,
+            - "meshtastic": optional dict with "message_delay",
+            - "database" (preferred) or legacy "db": optional dict containing "msg_map" with "wipe_on_restart" boolean.
+
+    Raises:
+        ConnectionError: If connecting to Matrix fails and no Matrix client can be obtained.
     """
     # Extract Matrix configuration
     from typing import List
@@ -155,8 +164,8 @@ async def main(config):
     async def shutdown():
         """
         Signal the application to begin shutdown.
-        
-        Sets the Meshtastic shutdown flag and triggers the local shutdown event so any coroutines waiting on that event can start their cleanup. This coroutine only signals shutdown; it does not perform client shutdown or resource cleanup itself.
+
+        Set the Meshtastic shutdown flag and set the local shutdown event so any coroutines waiting on that event can start cleanup.
         """
         matrix_logger.info("Shutdown signal received. Closing down...")
         meshtastic_utils.shutting_down = True  # Set the shutting_down flag

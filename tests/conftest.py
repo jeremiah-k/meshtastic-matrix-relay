@@ -263,9 +263,9 @@ class MockStaticmapsContext:
     def __init__(self):
         """
         Create a lightweight test double for a Staticmaps rendering context.
-        
-        This initializes container attributes used by tests:
-        - objects: list that collects objects added with add_object.
+
+        Sets attributes used by tests:
+        - objects: list collecting objects added with add_object.
         - tile_provider: configured tile provider or None.
         - zoom: current zoom level or None.
         """
@@ -275,9 +275,10 @@ class MockStaticmapsContext:
 
     def set_tile_provider(self, provider):
         """
-        Set the tile provider used by the context for fetching map tiles.
-        
-        The provider may be a tile-provider object or a callable compatible with the renderer (for example, the value returned by `tile_provider_OSM`), and should accept the tile coordinates and zoom (commonly as (x, y, z)) or otherwise implement the provider interface used by the renderer.
+        Assigns the map tile provider used by the rendering context.
+
+        Parameters:
+            provider: A tile-provider callable or an object implementing the renderer's provider interface. If a callable, it is expected to accept tile coordinates and zoom (commonly `x, y, z`) and return the tile data (for example image bytes or an image-like object).
         """
         self.tile_provider = provider
 
@@ -292,12 +293,10 @@ class MockStaticmapsContext:
 
     def add_object(self, obj):
         """
-        Add a renderable object to the context.
-        
-        Appends the provided object to the context's internal `objects` list without validation or modification.
-        
+        Add a renderable object to the rendering context.
+
         Parameters:
-            obj: A renderable object to be stored in the context's `objects`.
+            obj: A renderable object compatible with the context's rendering API; it will be appended to the context's internal `objects` list for later rendering.
         """
         self.objects.append(obj)
 
@@ -600,16 +599,9 @@ def comprehensive_cleanup():
 @pytest.fixture
 def mock_event_loop(monkeypatch):
     """
-    Patch asyncio loop helpers so `run_in_executor` executes synchronously during tests.
+    Patch asyncio loop helpers so run_in_executor executes callables synchronously during tests.
 
-    This pytest fixture replaces asyncio.get_running_loop (and get_event_loop for
-    backwards compatibility) with wrappers that ensure the returned event loop has
-    its run_in_executor method replaced by a synchronous implementation. The
-    replacement runs the provided callable immediately on the current thread and
-    returns a Future already completed with the result (or with the raised
-    exception). The loop is marked as patched to avoid repeated replacements. This
-    prevents background thread creation from run_in_executor calls and speeds test
-    teardown while preserving the Future-based API callers expect.
+    Replace asyncio.get_running_loop and asyncio.get_event_loop with wrappers that ensure the returned event loop's run_in_executor invokes the callable immediately on the current thread and returns an already-completed Future with the callable's result or exception. This prevents background thread creation from run_in_executor calls and makes test behavior and teardown deterministic.
     """
 
     original_get_running_loop = asyncio.get_running_loop
@@ -617,23 +609,15 @@ def mock_event_loop(monkeypatch):
 
     def _patch_loop(loop: asyncio.AbstractEventLoop) -> asyncio.AbstractEventLoop:
         """
-        Patch an asyncio event loop so its run_in_executor runs callables synchronously on the loop's thread.
-        
-        If `loop` is None the function returns None. If the loop is already patched (has
-        `_mmrelay_run_in_executor_patched` truthy), it is returned unchanged. The patched
-        `run_in_executor` ignores the executor argument, invokes the callable immediately
-        on the current thread, and returns an asyncio Future already resolved with the
-        callable's result or exception.
-        
+        Patch an event loop so its `run_in_executor` executes callables immediately on the loop's thread.
+
+        Replaces `loop.run_in_executor` with a synchronous implementation that ignores the executor argument and returns an `asyncio.Future` already resolved with the callable's return value or exception. Also sets `loop._mmrelay_run_in_executor_patched = True` to mark the loop as patched. If `loop` is None or already patched, the input is returned unchanged.
+
         Parameters:
-            loop (asyncio.AbstractEventLoop | None): Event loop to patch.
-        
+            loop (asyncio.AbstractEventLoop | None): Event loop to patch; may be None.
+
         Returns:
             asyncio.AbstractEventLoop | None: The same loop instance (patched) or None if input was None.
-        
-        Side effects:
-            - Replaces `loop.run_in_executor` with a synchronous implementation.
-            - Sets `loop._mmrelay_run_in_executor_patched = True` to prevent double-patching.
         """
         if loop is None:
             return loop
@@ -642,17 +626,16 @@ def mock_event_loop(monkeypatch):
 
         def run_in_executor_sync(_executor, func, *args, **kwargs):
             """
-            Create an asyncio Future that runs func(*args, **kwargs) synchronously on the current thread and captures its outcome.
-            
-            This function ignores the provided `_executor` and executes `func` directly on the calling thread. It creates and returns a Future on the currently active event loop (the patched loop used in tests) and sets the Future's result or exception based on the synchronous call, allowing callers to await it like an asyncio executor-backed task.
-            
+            Invoke a callable immediately on the current thread.
+
             Parameters:
-                _executor: Ignored. Present for API compatibility with run_in_executor.
-                func: Callable to invoke synchronously.
-                *args, **kwargs: Arguments passed to `func`.
-            
+                _executor: Ignored; present for API compatibility with executor-style APIs.
+                func (Callable): Callable to invoke.
+                *args: Positional arguments forwarded to `func`.
+                **kwargs: Keyword arguments forwarded to `func`.
+
             Returns:
-                asyncio.Future whose result is the value returned by `func` or whose exception is the exception raised by `func`.
+                asyncio.Future: Future whose result is the value returned by `func`, or whose exception is the exception raised by `func`.
             """
             future = loop.create_future()
             try:
@@ -669,13 +652,12 @@ def mock_event_loop(monkeypatch):
 
     def patched_get_running_loop():
         """
-        Return the currently running asyncio event loop, potentially patched for test compatibility.
-        
-        Calls the original asyncio.get_running_loop() and applies module-specific adjustments via _patch_loop
-        (e.g., replacing run_in_executor with a synchronous implementation when tests require it).
-        
+        Get the currently running asyncio event loop patched for test compatibility.
+
+        The returned loop has its `run_in_executor` implementation replaced so executor callables run synchronously, enabling deterministic behavior in tests.
+
         Returns:
-            asyncio.AbstractEventLoop: The active event loop, possibly patched.
+            asyncio.AbstractEventLoop: The active event loop whose `run_in_executor` executes callables synchronously.
         """
         loop = original_get_running_loop()
         return _patch_loop(loop)
