@@ -503,10 +503,10 @@ class TestMeshRelayPlugin(unittest.TestCase):
     @patch("mmrelay.plugins.mesh_relay_plugin.config")
     def test_handle_room_message_invalid_json_packet(self, mock_config):
         """
-        Test that handle_room_message returns None and logs an exception when the embedded `meshtastic_packet` contains invalid JSON.
+        Test that handle_room_message returns False and logs an exception when the embedded `meshtastic_packet` contains invalid JSON.
 
         This unit test sets plugin.matches to True and provides a mocked config mapping the room to a meshtastic channel. It calls plugin.handle_room_message with an event whose `source.content.meshtastic_packet` is an invalid JSON string and asserts that:
-        - the coroutine returns None (processing stops on parse error), and
+        - the coroutine returns False (processing stops on parse error), and
         - plugin.logger.exception was called with a message containing "Error processing embedded packet".
         """
         self.plugin.matches = MagicMock(return_value=True)
@@ -527,13 +527,13 @@ class TestMeshRelayPlugin(unittest.TestCase):
 
             This async test calls handle_room_message with a room and event whose embedded
             `meshtastic_packet` contains invalid JSON. It asserts:
-            - the coroutine returns None (indicating processing stopped on parse error), and
+            - the coroutine returns False (indicating processing stopped on parse error), and
             - plugin.logger.exception was called with a message containing "Error processing embedded packet".
             """
             result = await self.plugin.handle_room_message(room, event, "full_message")
 
-            # Should return None when JSON parsing fails
-            self.assertIsNone(result)
+            # Should return False when JSON parsing fails
+            self.assertFalse(result)
 
             # Should log error message
             self.plugin.logger.exception.assert_called()
