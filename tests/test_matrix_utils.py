@@ -649,15 +649,49 @@ async def test_on_room_message_detection_sensor_enabled(
 
     class DummyLoop:
         def __init__(self, loop):
+            """
+            Initialize the instance with a specific asyncio event loop.
+
+            Parameters:
+                loop (asyncio.AbstractEventLoop): Event loop the instance will use to schedule and run its asynchronous tasks.
+            """
             self._loop = loop
 
         def is_running(self):
+            """
+            Indicate whether the component is running.
+
+            This implementation always reports the component as running.
+
+            Returns:
+                `True` if the component is running (this implementation always returns `True`).
+            """
             return True
 
         def create_task(self, coro):
+            """
+            Schedule the given awaitable on this instance's event loop and return the created Task.
+
+            Parameters:
+                coro: An awaitable or coroutine to schedule on this object's event loop.
+
+            Returns:
+                asyncio.Task: Task wrapping the scheduled coroutine, bound to this instance's event loop.
+            """
             return self._loop.create_task(coro)
 
         async def run_in_executor(self, _executor, func, *args):
+            """
+            Invoke a callable synchronously and return its result.
+
+            Parameters:
+                _executor: Ignored; present for API compatibility.
+                func: Callable to invoke.
+                *args: Positional arguments forwarded to `func`.
+
+            Returns:
+                The value returned by `func(*args)`.
+            """
             return func(*args)
 
     # Act - Process the detection sensor message
@@ -3024,7 +3058,7 @@ class TestMatrixE2EEHasAttrChecks:
             "matrix_rooms": {"!room:matrix.org": {"meshtastic_channel": 0}},
         }
 
-    def test_connect_matrix_hasattr_checks_success(self, e2ee_config):
+    async def test_connect_matrix_hasattr_checks_success(self, e2ee_config):
         """Test hasattr checks for nio.crypto.OlmDevice and nio.store.SqliteStore when available"""
         with patch("mmrelay.matrix_utils.matrix_client", None), patch(
             "mmrelay.matrix_utils.AsyncClient"
@@ -3079,7 +3113,7 @@ class TestMatrixE2EEHasAttrChecks:
             mock_import.side_effect = import_side_effect
 
             # Run the async function
-            asyncio.run(connect_matrix(e2ee_config))
+            await connect_matrix(e2ee_config)
 
             # Verify client was created and E2EE dependencies were checked
             mock_async_client.assert_called_once()
@@ -3087,7 +3121,7 @@ class TestMatrixE2EEHasAttrChecks:
             actual_imports = {call.args[0] for call in mock_import.call_args_list}
             assert expected_imports.issubset(actual_imports)
 
-    def test_connect_matrix_hasattr_checks_missing_olmdevice(self, e2ee_config):
+    async def test_connect_matrix_hasattr_checks_missing_olmdevice(self, e2ee_config):
         """Test hasattr check failure when nio.crypto.OlmDevice is missing"""
         with patch("mmrelay.matrix_utils.matrix_client", None), patch(
             "mmrelay.matrix_utils.AsyncClient"
@@ -3145,7 +3179,7 @@ class TestMatrixE2EEHasAttrChecks:
             mock_import.side_effect = import_side_effect
 
             # Run the async function
-            asyncio.run(connect_matrix(e2ee_config))
+            await connect_matrix(e2ee_config)
 
             # Verify ImportError was logged and E2EE was disabled
             mock_logger.exception.assert_called_with("Missing E2EE dependency")
@@ -3156,7 +3190,7 @@ class TestMatrixE2EEHasAttrChecks:
                 "E2EE will be disabled for this session."
             )
 
-    def test_connect_matrix_hasattr_checks_missing_sqlitestore(self, e2ee_config):
+    async def test_connect_matrix_hasattr_checks_missing_sqlitestore(self, e2ee_config):
         """Test hasattr check failure when nio.store.SqliteStore is missing"""
         with patch("mmrelay.matrix_utils.matrix_client", None), patch(
             "mmrelay.matrix_utils.AsyncClient"
@@ -3214,7 +3248,7 @@ class TestMatrixE2EEHasAttrChecks:
             mock_import.side_effect = import_side_effect
 
             # Run the async function
-            asyncio.run(connect_matrix(e2ee_config))
+            await connect_matrix(e2ee_config)
 
             # Verify ImportError was logged and E2EE was disabled
             mock_logger.exception.assert_called_with("Missing E2EE dependency")
@@ -3224,12 +3258,6 @@ class TestMatrixE2EEHasAttrChecks:
             mock_logger.warning.assert_called_with(
                 "E2EE will be disabled for this session."
             )
-
-
-#!/usr/bin/env python3
-"""
-Fixed tests for _get_detailed_sync_error_message function.
-"""
 
 
 class TestGetDetailedSyncErrorMessage:
