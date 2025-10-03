@@ -1525,12 +1525,12 @@ def handle_service_command(args):
 def _diagnose_config_paths(args):
     """
     Prints a diagnostic summary of resolved configuration file search paths and their directory accessibility.
-
+    
     Each candidate config path is printed with a status icon:
     - ✅ directory exists and is writable
     - ⚠️ directory exists but is not writable
     - ❌ directory does not exist
-
+    
     Parameters:
         args (argparse.Namespace): CLI arguments used to determine the ordered list of candidate config paths (passed to get_config_paths).
     """
