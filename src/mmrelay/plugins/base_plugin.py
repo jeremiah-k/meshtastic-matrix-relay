@@ -77,7 +77,7 @@ class BasePlugin(ABC):
         Raises:
             ValueError: If the plugin name is not set via parameter or class attribute.
 
-        Loads plugin-specific configuration from the global config, validates assigned channels, and determines the response delay, enforcing a minimum of 2.0 seconds. Logs a warning if deprecated configuration options are used or if channels are not mapped.
+        Loads plugin-specific configuration from the global config, validates assigned channels, and determines the response delay, enforcing a minimum of 2.1 seconds. Logs a warning if deprecated configuration options are used or if channels are not mapped.
         """
         # Allow plugin_name to be passed as a parameter for simpler initialization
         # This maintains backward compatibility while providing a cleaner API
@@ -261,7 +261,7 @@ class BasePlugin(ABC):
         """
         Return the configured delay in seconds before sending a Meshtastic response.
 
-        The delay is determined by the `meshtastic.message_delay` configuration option, defaulting to 2.2 seconds with a minimum of 2.0 seconds. The deprecated `plugin_response_delay` option is also supported for backward compatibility.
+        The delay is determined by the `meshtastic.message_delay` configuration option, defaulting to 2.5 seconds with a minimum of 2.1 seconds. The deprecated `plugin_response_delay` option is also supported for backward compatibility.
 
         Returns:
             float: The response delay in seconds.

@@ -556,7 +556,7 @@ class TestMeshRelayPlugin(unittest.TestCase):
         - Parses the JSON packet
         - Creates a Meshtastic packet with correct channel and payload
         - Sends the packet to the destination
-        - Returns None
+        - Returns True
         """
         self.plugin.matches = MagicMock(return_value=True)
 

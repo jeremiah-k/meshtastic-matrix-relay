@@ -201,7 +201,7 @@ class Plugin(BasePlugin):
         try:
             packet = json.loads(packet_json)
         except (json.JSONDecodeError, TypeError) as e:
-            self.logger.exception(f"Error processing embedded packet: {e}")
+            self.logger.exception("Error processing embedded packet")
             return False
 
         from mmrelay.meshtastic_utils import connect_meshtastic
