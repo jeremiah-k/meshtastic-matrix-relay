@@ -622,6 +622,114 @@ async def test_on_room_message_unsupported_room(
             mock_queue_message.assert_not_called()
 
 
+async def test_on_room_message_detection_sensor_enabled(
+    mock_room, mock_event, test_config
+):
+    """
+    Test that a detection sensor message is processed and queued with the correct port number when detection_sensor is enabled.
+
+    This test specifically covers the code path where meshtastic.protobuf.portnums_pb2
+    is imported locally to delay logger creation for component logging timing.
+    """
+    # Arrange - Set up event as detection sensor message
+    mock_event.body = "Detection data"
+    mock_event.source = {
+        "content": {
+            "body": "Detection data",
+            "meshtastic_portnum": "DETECTION_SENSOR_APP",
+        }
+    }
+
+    # Enable detection sensor and broadcast in config
+    test_config["meshtastic"]["detection_sensor"] = True
+    test_config["meshtastic"]["broadcast_enabled"] = True
+
+    real_loop = asyncio.get_running_loop()
+
+    class DummyLoop:
+        def __init__(self, loop):
+            self._loop = loop
+
+        def is_running(self):
+            return True
+
+        def create_task(self, coro):
+            return self._loop.create_task(coro)
+
+        async def run_in_executor(self, _executor, func, *args):
+            return func(*args)
+
+    # Act - Process the detection sensor message
+    with patch(
+        "mmrelay.matrix_utils.queue_message", return_value=True
+    ) as mock_queue_message, patch(
+        "mmrelay.matrix_utils.connect_meshtastic", return_value=MagicMock()
+    ), patch(
+        "mmrelay.matrix_utils.bot_start_time", 1234567880
+    ), patch(
+        "mmrelay.matrix_utils.config", test_config
+    ), patch(
+        "mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]
+    ), patch(
+        "mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]
+    ), patch(
+        "mmrelay.matrix_utils.asyncio.get_running_loop",
+        return_value=DummyLoop(real_loop),
+    ):
+        # Mock the room.user_name method to return our test display name
+        mock_room.user_name.return_value = "TestUser"
+        await on_room_message(mock_room, mock_event)
+
+    # Assert - Verify the message was queued with correct detection sensor parameters
+    mock_queue_message.assert_called_once()
+    call_args = mock_queue_message.call_args
+
+    # Verify the port number is set to DETECTION_SENSOR_APP (it will be a Mock object due to import)
+    assert "portNum" in call_args.kwargs
+    # The portNum should be the DETECTION_SENSOR_APP enum value from protobuf
+    assert call_args.kwargs["description"] == "Detection sensor data from TestUser"
+    # The data should be the full_message with prefix (as per current implementation)
+    assert call_args.kwargs["data"] == b"TestU[M]: Detection data"
+
+
+async def test_on_room_message_detection_sensor_disabled(
+    mock_room, mock_event, test_config
+):
+    """
+    Test that a detection sensor message is ignored when detection_sensor is disabled in config.
+    """
+    # Arrange - Set up event as detection sensor message but disable detection sensor
+    mock_event.source = {
+        "content": {
+            "body": "Detection data",
+            "meshtastic_portnum": "DETECTION_SENSOR_APP",
+        }
+    }
+
+    # Disable detection sensor in config
+    test_config["meshtastic"]["detection_sensor"] = False
+    test_config["meshtastic"]["broadcast_enabled"] = True
+
+    # Act - Process the detection sensor message
+    with patch(
+        "mmrelay.matrix_utils.queue_message", return_value=True
+    ) as mock_queue_message, patch(
+        "mmrelay.matrix_utils.connect_meshtastic", return_value=MagicMock()
+    ), patch(
+        "mmrelay.matrix_utils.bot_start_time", 1234567880
+    ), patch(
+        "mmrelay.matrix_utils.config", test_config
+    ), patch(
+        "mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]
+    ), patch(
+        "mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]
+    ):
+        await on_room_message(mock_room, mock_event)
+
+    # Assert - Verify the message was not queued since detection sensor is disabled
+    mock_queue_message.assert_not_called()
+
+
 # Matrix utility function tests - converted from unittest.TestCase to standalone pytest functions
 
 
