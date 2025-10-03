@@ -9,14 +9,8 @@ from concurrent.futures import Future
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from typing import List
 
-import meshtastic
-import meshtastic.ble_interface
-import meshtastic.serial_interface
-import meshtastic.tcp_interface
 import serial  # For serial port exceptions
 import serial.tools.list_ports  # Import serial tools for port listing
-from meshtastic.protobuf import mesh_pb2, portnums_pb2
-from pubsub import pub
 
 from mmrelay.config import get_meshtastic_config_value
 from mmrelay.constants.config import (
@@ -387,6 +381,9 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                     attempts += 1
                     continue
 
+                # Import meshtastic serial interface only when needed
+                import meshtastic.serial_interface
+
                 client = meshtastic.serial_interface.SerialInterface(serial_port)
 
             elif connection_type == CONNECTION_TYPE_BLE:
@@ -394,6 +391,9 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                 ble_address = config["meshtastic"].get(CONFIG_KEY_BLE_ADDRESS)
                 if ble_address:
                     logger.info(f"Connecting to BLE address {ble_address}")
+
+                    # Import meshtastic BLE interface only when needed
+                    import meshtastic.ble_interface
 
                     # Connect without progress indicator
                     client = meshtastic.ble_interface.BLEInterface(
@@ -416,6 +416,9 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                     return None
 
                 logger.info(f"Connecting to host {target_host}")
+
+                # Import meshtastic TCP interface only when needed
+                import meshtastic.tcp_interface
 
                 # Connect without progress indicator
                 client = meshtastic.tcp_interface.TCPInterface(hostname=target_host)
@@ -448,6 +451,9 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                     logger.debug(
                         "Device firmware version unavailable from getMetadata()"
                     )
+
+                # Import meshtastic protobuf and pubsub only when needed
+                from pubsub import pub
 
                 # Subscribe to message and connection lost events (only once per application run)
                 global subscribed_to_messages, subscribed_to_connection_lost
@@ -1135,10 +1141,15 @@ def sendTextReply(
     interface,
     text: str,
     reply_id: int,
-    destinationId=meshtastic.BROADCAST_ADDR,
+    destinationId=None,  # Will be set to meshtastic.BROADCAST_ADDR inside
     wantAck: bool = False,
     channelIndex: int = 0,
 ):
+    # Import meshtastic only when needed to delay logger creation
+    import meshtastic
+
+    if destinationId is None:
+        destinationId = meshtastic.BROADCAST_ADDR
     """
     Send a Meshtastic text reply that references a previous Meshtastic message.
 
@@ -1162,6 +1173,9 @@ def sendTextReply(
     if interface is None:
         logger.error("No Meshtastic interface available for sending reply")
         return None
+
+    # Import protobuf modules only when needed
+    from meshtastic.protobuf import mesh_pb2, portnums_pb2
 
     # Create the Data protobuf message with reply_id set
     data_msg = mesh_pb2.Data()
