@@ -212,13 +212,13 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
                 def import_side_effect(name):
                     """
                     Prevent importing `nio` modules during tests and return a mock module for other imports.
-                    
+
                     Parameters:
                         name (str): Dotted module name being requested.
-                    
+
                     Returns:
                         MagicMock: A mock module object to satisfy imports (e.g., for "olm" or other non-`nio` modules).
-                    
+
                     Raises:
                         AssertionError: If `name` starts with "nio", indicating `nio` imports must be blocked in test mode.
                     """
@@ -262,10 +262,10 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
                 def import_side_effect(name):
                     """
                     Provide a test-double module object corresponding to a requested import name.
-                    
+
                     Parameters:
                         name (str): Module name being imported (e.g., "olm", "nio.crypto", "nio.store").
-                    
+
                     Returns:
                         object: The corresponding mock module: `mock_olm` for "olm", `mock_nio_crypto` for "nio.crypto", `mock_nio_store` for "nio.store", or a new `MagicMock` for any other name.
                     """
@@ -292,11 +292,11 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
     def test_e2ee_hasattr_checks_missing_olmdevice(self, mock_exists):
         """
         Verify that get_e2ee_status reports missing dependencies when nio.crypto.OlmDevice is absent.
-        
+
         Sets up mocked imports where the `nio.crypto` module lacks the `OlmDevice` attribute and asserts that
         the returned status marks dependencies as not installed, sets overall status to "incomplete", and
         includes an issue mentioning `python-olm`.
-        
+
         Parameters:
             mock_exists (unittest.mock.Mock): Patch for os.path.exists controlling presence of credentials file.
         """
@@ -315,10 +315,10 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
                 def import_side_effect(name):
                     """
                     Provide a test-double module object corresponding to a requested import name.
-                    
+
                     Parameters:
                         name (str): Module name being imported (e.g., "olm", "nio.crypto", "nio.store").
-                    
+
                     Returns:
                         object: The corresponding mock module: `mock_olm` for "olm", `mock_nio_crypto` for "nio.crypto", `mock_nio_store` for "nio.store", or a new `MagicMock` for any other name.
                     """
@@ -358,10 +358,10 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
                 def import_side_effect(name):
                     """
                     Provide a test-double module object corresponding to a requested import name.
-                    
+
                     Parameters:
                         name (str): Module name being imported (e.g., "olm", "nio.crypto", "nio.store").
-                    
+
                     Returns:
                         object: The corresponding mock module: `mock_olm` for "olm", `mock_nio_crypto` for "nio.crypto", `mock_nio_store` for "nio.store", or a new `MagicMock` for any other name.
                     """

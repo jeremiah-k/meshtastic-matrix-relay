@@ -197,9 +197,9 @@ def get_log_dir():
 def get_e2ee_store_dir():
     """
     Get the absolute path to the application's end-to-end encryption (E2EE) data store directory, creating it if necessary.
-    
+
     On Linux and macOS the directory is located under the application base directory; on Windows it uses the configured custom data directory when set, otherwise the platform-specific user data directory. The directory will be created if it does not exist.
-    
+
     Returns:
         store_dir (str): Absolute path to the ensured E2EE store directory.
     """

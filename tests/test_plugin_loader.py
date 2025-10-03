@@ -241,9 +241,9 @@ class Plugin:
         def fake_check_call(_cmd, *_args, **_kwargs):  # nosec B603
             """
             Simulate subprocess.check_call and install a minimal importable dependency into the test user site directory.
-            
+
             Writes a file named "mockdep.py" containing `VALUE = 1` into the test `user_site` directory so the module can be imported. All additional positional and keyword arguments are ignored.
-            
+
             Returns:
                 subprocess.CompletedProcess: A CompletedProcess with `args` set to the provided `_cmd` and `returncode` 0.
             """
@@ -612,7 +612,7 @@ class TestCollectRequirements(unittest.TestCase):
     def setUp(self):
         """
         Create a temporary directory for the test and register its removal as cleanup.
-        
+
         The directory path is stored on self.temp_dir and will be removed after the test
         via shutil.rmtree(self.temp_dir, ignore_errors=True).
         """

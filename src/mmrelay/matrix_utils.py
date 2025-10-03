@@ -789,15 +789,15 @@ def bot_command(command, event):
 async def connect_matrix(passed_config=None):
     """
     Initialize and return a configured matrix-nio AsyncClient connected to the configured Matrix homeserver.
-    
+
     Creates or restores client credentials (prefers credentials.json, falls back to automatic login using username/password from config, then to direct tokens in config), optionally enables End-to-End Encryption when configured and dependencies are available, performs an initial full-state sync to populate rooms, resolves room aliases found in configuration, and sets module-level connection state used by other functions.
-    
+
     Parameters:
         passed_config (dict | None): Optional configuration to use for this connection attempt; when provided it overrides the module-level config for this call.
-    
+
     Returns:
         AsyncClient | None: A ready-to-use matrix-nio AsyncClient on success, or `None` if connection or credentials are unavailable.
-    
+
     Raises:
         ValueError: If the required top-level "matrix_rooms" configuration is missing.
         ConnectionError: If the initial Matrix sync fails or times out.
@@ -2318,9 +2318,9 @@ async def send_reply_to_meshtastic(
 ):
     """
     Enqueue a Matrix reply to be delivered over Meshtastic as either a structured reply or a regular broadcast.
-    
+
     If broadcasting is disabled this function does nothing. When storage_enabled is True, it constructs a mapping record that links the originating Matrix event to the Meshtastic message and attaches it to the queued message so replies and reactions can be correlated later. Errors are logged; the function does not raise.
-    
+
     Parameters:
         reply_message (str): Text payload already formatted for Meshtastic.
         full_display_name (str): Sender display name used in queue descriptions and logs.
@@ -2552,9 +2552,9 @@ async def on_room_message(
 ) -> None:
     """
     Handle an incoming Matrix room event and relay it to Meshtastic when applicable.
-    
+
     Processes text, notice, emote, and reaction events for configured rooms: ignores events from before the bot started and events sent by the bot itself; respects per-room configuration and global interaction settings; routes reactions back to the originating Meshtastic message when a mapping exists (including forwarding remote-meshnet emote reactions as radio text); bridges Matrix replies to Meshtastic replies when a corresponding mapping is found and replies are enabled; relays regular Matrix messages to Meshtastic using configured prefix and truncation rules; and honours detection-sensor forwarding when enabled. Integrates with the plugin system and treats recognized bot commands as non-relayed.
-    
+
     Side effects:
     - May enqueue Meshtastic send operations (text or data) via the internal queue.
     - May read and write persistent message mappings to support reply/reaction bridging.

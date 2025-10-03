@@ -200,7 +200,7 @@ class Plugin(BasePlugin):
 
         try:
             packet = json.loads(packet_json)
-        except (json.JSONDecodeError, TypeError) as e:
+        except (json.JSONDecodeError, TypeError):
             self.logger.exception("Error processing embedded packet")
             return False
 

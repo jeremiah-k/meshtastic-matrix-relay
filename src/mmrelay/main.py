@@ -74,15 +74,15 @@ def print_banner():
 async def main(config):
     """
     Coordinate the asynchronous relay loop between Meshtastic and Matrix clients.
-    
+
     Initializes the database and plugins, starts the message queue, connects to Meshtastic and Matrix, joins configured Matrix rooms, registers event callbacks, monitors connection health, runs the Matrix sync loop with automatic retries, and ensures an orderly shutdown of all components (including optional message map wiping on startup and shutdown).
-    
+
     Parameters:
         config (dict): Application configuration mapping. Expected keys used by this function include:
             - "matrix_rooms": list of room dicts with at least an "id" entry,
             - "meshtastic": optional dict with "message_delay",
             - "database" (preferred) or legacy "db": optional dict containing "msg_map" with "wipe_on_restart" boolean.
-    
+
     Raises:
         ConnectionError: If connecting to Matrix fails and no Matrix client can be obtained.
     """
@@ -164,7 +164,7 @@ async def main(config):
     async def shutdown():
         """
         Signal the application to begin shutdown.
-        
+
         Set the Meshtastic shutdown flag and set the local shutdown event so any coroutines waiting on that event can start cleanup.
         """
         matrix_logger.info("Shutdown signal received. Closing down...")

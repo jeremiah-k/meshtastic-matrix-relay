@@ -460,7 +460,7 @@ class TestLogUtils(unittest.TestCase):
     def test_configure_component_debug_logging_none_debug_config(self):
         """
         Ensure configuring component debug logging when the debug config is None does not raise and suppresses all component loggers.
-        
+
         Verifies that calling configure_component_debug_logging with a logging.debug value of None marks component debug as configured and sets known component loggers (nio, bleak, meshtastic) to a suppressed level (CRITICAL + 1).
         """
         config = {
