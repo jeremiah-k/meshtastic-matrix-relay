@@ -544,6 +544,72 @@ class TestMeshRelayPlugin(unittest.TestCase):
 
         asyncio.run(run_test())
 
+    @patch("mmrelay.plugins.mesh_relay_plugin.config")
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    def test_handle_room_message_successful_relay(
+        self, mock_connect_meshtastic, mock_config
+    ):
+        """
+        Test that handle_room_message successfully relays a valid packet to Meshtastic.
+
+        Verifies that when a valid embedded packet is provided, the plugin:
+        - Parses the JSON packet
+        - Creates a Meshtastic packet with correct channel and payload
+        - Sends the packet to the destination
+        - Returns None
+        """
+        self.plugin.matches = MagicMock(return_value=True)
+
+        # Mock config with matching room
+        mock_config.get.return_value = [
+            {"id": "!test:matrix.org", "meshtastic_channel": 1}
+        ]
+
+        # Mock Meshtastic client
+        mock_client = MagicMock()
+        mock_client._generatePacketId.return_value = 12345
+        mock_connect_meshtastic.return_value = mock_client
+
+        room = MagicMock()
+        room.room_id = "!test:matrix.org"
+        event = MagicMock()
+        # Valid packet JSON
+        packet_json = '{"decoded": {"portnum": "TEXT_MESSAGE_APP", "payload": "SGVsbG8gV29ybGQ="}, "toId": "!1234567890"}'
+        event.source = {"content": {"meshtastic_packet": packet_json}}
+
+        async def run_test():
+            """
+            Test successful packet relay from Matrix to Meshtastic.
+            """
+            result = await self.plugin.handle_room_message(room, event, "full_message")
+
+            # Should return None (successful processing)
+            self.assertIsNone(result)
+
+            # Should connect to Meshtastic
+            mock_connect_meshtastic.assert_called_once()
+
+            # Should send packet
+            mock_client._sendPacket.assert_called_once()
+            call_args = mock_client._sendPacket.call_args
+            mesh_packet = call_args.kwargs["meshPacket"]
+
+            # Verify packet properties
+            self.assertEqual(mesh_packet.channel, 1)
+            self.assertEqual(mesh_packet.decoded.portnum, "TEXT_MESSAGE_APP")
+            self.assertEqual(
+                mesh_packet.decoded.payload, b"Hello World"
+            )  # base64 decoded
+            self.assertFalse(mesh_packet.decoded.want_response)
+            self.assertEqual(mesh_packet.id, 12345)
+
+            # Verify destination
+            self.assertEqual(call_args.kwargs["destinationId"], "!1234567890")
+
+        import asyncio
+
+        asyncio.run(run_test())
+
 
 if __name__ == "__main__":
     unittest.main()
