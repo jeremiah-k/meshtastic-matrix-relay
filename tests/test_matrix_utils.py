@@ -3246,9 +3246,8 @@ class TestGetDetailedSyncErrorMessage:
     def test_sync_error_with_status_code_401(self):
         """Test error response with 401 status code."""
         mock_response = MagicMock()
-        # Configure without message attribute to test status code path
-        mock_response.configure_mock(**{"message.__bool__": False})
-        del mock_response.message
+        # Configure without a usable message attribute to test status code path
+        mock_response.message = None
         mock_response.status_code = 401
 
         result = _get_detailed_sync_error_message(mock_response)
@@ -3257,7 +3256,7 @@ class TestGetDetailedSyncErrorMessage:
     def test_sync_error_with_status_code_403(self):
         """Test error response with 403 status code."""
         mock_response = MagicMock()
-        del mock_response.message
+        mock_response.message = None
         mock_response.status_code = 403
 
         result = _get_detailed_sync_error_message(mock_response)
@@ -3266,7 +3265,7 @@ class TestGetDetailedSyncErrorMessage:
     def test_sync_error_with_status_code_404(self):
         """Test error response with 404 status code."""
         mock_response = MagicMock()
-        del mock_response.message
+        mock_response.message = None
         mock_response.status_code = 404
 
         result = _get_detailed_sync_error_message(mock_response)
@@ -3275,7 +3274,7 @@ class TestGetDetailedSyncErrorMessage:
     def test_sync_error_with_status_code_429(self):
         """Test error response with 429 status code."""
         mock_response = MagicMock()
-        del mock_response.message
+        mock_response.message = None
         mock_response.status_code = 429
 
         result = _get_detailed_sync_error_message(mock_response)
@@ -3284,7 +3283,7 @@ class TestGetDetailedSyncErrorMessage:
     def test_sync_error_with_status_code_500(self):
         """Test error response with 500 status code."""
         mock_response = MagicMock()
-        del mock_response.message
+        mock_response.message = None
         mock_response.status_code = 500
 
         result = _get_detailed_sync_error_message(mock_response)
@@ -3320,9 +3319,9 @@ class TestGetDetailedSyncErrorMessage:
         """Test generic fallback when no specific info can be extracted."""
         mock_response = MagicMock()
         # Remove all attributes and make string representation fail
-        del mock_response.message
-        del mock_response.status_code
-        del mock_response.transport_response
+        mock_response.message = None
+        mock_response.status_code = None
+        mock_response.transport_response = None
         mock_response.__str__ = MagicMock(
             side_effect=Exception("String conversion failed")
         )
