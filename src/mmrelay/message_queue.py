@@ -473,12 +473,12 @@ class MessageQueue:
 
     def _should_send_message(self) -> bool:
         """
-        Determine whether conditions are met to send a Meshtastic message.
-
-        Checks the reconnection flag, that a Meshtastic client object exists, and — if the client exposes `is_connected` — that it reports connected. If importing Meshtastic utilities fails, the message queue is stopped.
-
+        Check whether the queue may send a Meshtastic message.
+        
+        Performs runtime checks: returns True only if the reconnection flag is not set, a Meshtastic client object exists, and—if the client exposes `is_connected`—that check indicates the client is connected. If importing Meshtastic utilities raises ImportError, a critical log is emitted and the queue is stopped asynchronously.
+        
         Returns:
-            `True` if all checks indicate it is safe to send, `False` otherwise. If an ImportError occurs while importing Meshtastic utilities, the queue is stopped and `False` is returned.
+            `True` if not reconnecting, a Meshtastic client exists, and the client is connected when checkable; `False` otherwise.
         """
         # Import here to avoid circular imports
         try:

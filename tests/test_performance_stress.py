@@ -32,9 +32,9 @@ from mmrelay.message_queue import MessageQueue
 @pytest.fixture(autouse=True)
 def reset_global_state():
     """
-    Pytest autouse fixture that resets mmrelay.meshtastic_utils global state and forces garbage collection before and after each test.
-
-    This generator fixture clears key globals in mmrelay.meshtastic_utils (including meshtastic_client, reconnecting, config, matrix_rooms, shutting_down, event_loop, reconnect_task, and subscription flags) to ensure test isolation, calls gc.collect() before yielding to the test, and calls gc.collect() again after the test completes.
+    Reset mmrelay.meshtastic_utils global state and force garbage collection before and after a test.
+    
+    This pytest generator fixture clears key globals in mmrelay.meshtastic_utils — including meshtastic_client, reconnecting, config, matrix_rooms, shutting_down, event_loop, reconnect_task, subscribed_to_messages, and subscribed_to_connection_lost — to ensure test isolation, calls gc.collect() before yielding to the test, and calls gc.collect() again after the test completes.
     """
     # Reset global state before the test
     import mmrelay.meshtastic_utils
@@ -180,14 +180,11 @@ class TestPerformanceStress:
     @pytest.mark.performance  # Changed from slow to performance
     def test_message_queue_performance_under_load(self):
         """
-        Verify MessageQueue enforces a minimum per-message delay and sustains acceptable throughput when messages are enqueued rapidly.
-
-        Enqueues 50 messages into a started MessageQueue (requested delay 0.01s, internally enforced to ~2.0s per message), waits up to 120 seconds for processing to complete, and asserts that:
-        - all messages are processed,
-        - total processing time respects the ~2.0s per-message minimum (with a small tolerance),
-        - observed throughput exceeds 0.3 messages/second.
-
-        Side effects: patches mmrelay.meshtastic_utils.meshtastic_client and mmrelay.meshtastic_utils.reconnecting, and starts/stops a MessageQueue instance.
+        Verify MessageQueue enforces a minimum inter-message delay and maintains acceptable throughput when messages are enqueued rapidly.
+        
+        Enqueues 50 messages into a started MessageQueue (requested delay 0.01s, internally enforced to ~2.0s per message), waits up to 120 seconds for processing to complete, and asserts that all messages are processed, the total processing time respects the ~2.0s per-message minimum (with a small tolerance), and the observed throughput exceeds 0.3 messages/second.
+        
+        Side effects: starts and stops a MessageQueue instance.
         """
         import asyncio
 
