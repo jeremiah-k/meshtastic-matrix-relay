@@ -419,7 +419,7 @@ MMRELAY_HOME=/path/to/your/data
 
 - For TCP: Verify Meshtastic device IP and port 4403
 - For Serial: Check device permissions and path
-- For BLE: Ensure privileged mode and host networking are enabled
+- For BLE: Ensure host networking is enabled and add the Bluetooth capabilities (`NET_ADMIN`, `NET_RAW`). Use privileged mode only if the capability approach fails.
 
 ### BLE-Specific Troubleshooting
 
