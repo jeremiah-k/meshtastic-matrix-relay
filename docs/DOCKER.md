@@ -327,7 +327,7 @@ services:
 **Alternative approaches if the above doesn't work:**
 
 ```yaml
-# Option 2: With specific capabilities (more secure)
+# Option 2: With specific capabilities (more secure than privileged mode)
 services:
   mmrelay:
     network_mode: host

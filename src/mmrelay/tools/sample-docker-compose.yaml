@@ -19,7 +19,7 @@ services:
       # - ${MMRELAY_HOME:-$HOME}/.mmrelay:/app/data
 
       # For BLE connections, uncomment these lines (Linux only):
-      - /var/run/dbus:/var/run/dbus:ro
+      # - /var/run/dbus:/var/run/dbus:ro
 
     # For BLE connections, uncomment this option (Linux only):
     # network_mode: host
