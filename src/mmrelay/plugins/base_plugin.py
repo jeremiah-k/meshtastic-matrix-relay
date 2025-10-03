@@ -174,12 +174,12 @@ class BasePlugin(ABC):
 
             if delay is not None:
                 self.response_delay = delay
-                # Enforce minimum delay of 2 seconds due to firmware constraints
-                if self.response_delay < 2.0:
+                # Enforce minimum delay above firmware limit to prevent message dropping
+                if self.response_delay < 2.5:
                     self.logger.warning(
-                        f"{delay_key} of {self.response_delay}s is below minimum of 2.0s (firmware constraint). Using 2.0s."
+                        f"{delay_key} of {self.response_delay}s is below minimum of 2.5s (above firmware limit). Using 2.5s."
                     )
-                    self.response_delay = 2.0
+                    self.response_delay = 2.5
 
     def start(self):
         """
