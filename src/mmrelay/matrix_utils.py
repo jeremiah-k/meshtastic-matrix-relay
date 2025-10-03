@@ -2319,9 +2319,9 @@ async def send_reply_to_meshtastic(
 ):
     """
     Enqueue a Matrix reply to be sent over Meshtastic as either a structured reply or a regular broadcast.
-
+    
     If Meshtastic broadcasting is disabled this is a no-op. When storage_enabled is True, a mapping entry linking the Matrix event to the Meshtastic message is created and attached to the queued message for later reply/reaction correlation. Failures are logged; the function does not raise exceptions.
-
+    
     Parameters:
         reply_message (str): The text to send to Meshtastic (already formatted for Meshtastic).
         full_display_name (str): Display name to include in queue descriptions and logs.
@@ -2437,9 +2437,9 @@ async def handle_matrix_reply(
 ):
     """
     Forward a Matrix reply to Meshtastic when the replied-to Matrix event maps to a Meshtastic message.
-
+    
     If the Matrix event identified by reply_to_event_id has an associated Meshtastic mapping, format a Meshtastic reply that preserves sender attribution and enqueue it referencing the original Meshtastic message ID. If no mapping exists, do nothing.
-
+    
     Parameters:
         room: Matrix room object where the reply originated.
         event: Matrix event object representing the reply.
@@ -2453,7 +2453,7 @@ async def handle_matrix_reply(
         longname (str | None): Sender long display name used for prefixing.
         shortname (str | None): Sender short display name used for prefixing.
         meshnet_name (str | None): Remote meshnet name associated with the original mapping, if any.
-
+    
     Returns:
         bool: `True` if a mapping was found and the reply was queued to Meshtastic, `False` otherwise.
     """
