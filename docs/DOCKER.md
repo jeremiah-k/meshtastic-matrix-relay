@@ -322,9 +322,8 @@ For BLE connections, add to docker-compose.yaml:
 services:
   mmrelay:
     network_mode: host # Required for BLE (Linux only)
-    cap_add:
-      - NET_ADMIN
-      - NET_RAW
+    security_opt:
+      - apparmor=unconfined # Required to allow DBus communication for BLE
     volumes:
       - /var/run/dbus:/var/run/dbus:ro # D-Bus for BlueZ
 ```
@@ -332,18 +331,21 @@ services:
 **Alternative approaches:**
 
 ```yaml
-# Option 2: Minimal configuration (may not work for all BLE devices)
-services:
-  mmrelay:
-    network_mode: host # Required for BLE (Linux only)
-    volumes:
-      - /var/run/dbus:/var/run/dbus:ro # D-Bus for BlueZ
-
-# Option 3: With privileged mode (if all else fails)
+# Option 2: With privileged mode (if apparmor=unconfined is not acceptable)
 services:
   mmrelay:
     network_mode: host
     privileged: true
+    volumes:
+      - /var/run/dbus:/var/run/dbus:ro
+
+# Option 3: With capabilities (may not work due to AppArmor restrictions)
+services:
+  mmrelay:
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
     volumes:
       - /var/run/dbus:/var/run/dbus:ro
 ```
@@ -419,7 +421,7 @@ MMRELAY_HOME=/path/to/your/data
 
 - For TCP: Verify Meshtastic device IP and port 4403
 - For Serial: Check device permissions and path
-- For BLE: Ensure host networking is enabled and add the Bluetooth capabilities (`NET_ADMIN`, `NET_RAW`). Use privileged mode only if the capability approach fails.
+- For BLE: Ensure host networking is enabled and AppArmor is disabled (`apparmor=unconfined`). Use privileged mode only if apparmor unconfined is not acceptable.
 
 ### BLE-Specific Troubleshooting
 
