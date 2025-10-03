@@ -8,9 +8,6 @@ on:
         required: false
         default: true
         type: boolean
-  schedule:
-    # Rebuild monthly to keep dependencies fresh
-    - cron: 0 2 1 * *
 
 env:
   REGISTRY: ghcr.io
