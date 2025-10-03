@@ -122,7 +122,7 @@ class Plugin(BasePlugin):
 
         if not channel_mapped:
             self.logger.debug(f"Skipping message from unmapped channel {channel}")
-            return None
+            return False
 
         await matrix_client.room_send(
             room_id=room["id"],
@@ -135,17 +135,17 @@ class Plugin(BasePlugin):
             },
         )
 
-        return None
+        return True
 
     def matches(self, event):
         """
         Determine whether a Matrix event's message body contains the bridged-packet marker.
-        
+
         Checks event.source["content"]["body"] (when it is a string) against the anchored pattern `^Processed (.+) radio packet$`.
-        
+
         Parameters:
             event: Matrix event object whose `.source` mapping is expected to contain a `"content"` dict with a `"body"` string.
-        
+
         Returns:
             True if the content body matches `^Processed (.+) radio packet$`, False otherwise.
         """
@@ -180,7 +180,7 @@ class Plugin(BasePlugin):
         """
         # Use the event for matching instead of full_message
         if not self.matches(event):
-            return None
+            return False
 
         channel = None
         if config is not None:
@@ -191,18 +191,18 @@ class Plugin(BasePlugin):
 
         if channel is None:
             self.logger.debug(f"Skipping message from unmapped channel {channel}")
-            return None
+            return False
 
         packet_json = event.source["content"].get("meshtastic_packet")
         if not packet_json:
             self.logger.debug("Missing embedded packet")
-            return None
+            return False
 
         try:
             packet = json.loads(packet_json)
         except (json.JSONDecodeError, TypeError) as e:
             self.logger.exception(f"Error processing embedded packet: {e}")
-            return None
+            return False
 
         from mmrelay.meshtastic_utils import connect_meshtastic
 
@@ -219,4 +219,4 @@ class Plugin(BasePlugin):
         meshtastic_client._sendPacket(
             meshPacket=meshPacket, destinationId=packet["toId"]
         )
-        return None
+        return True

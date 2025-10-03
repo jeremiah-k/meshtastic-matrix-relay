@@ -9,6 +9,7 @@ delays, size limits, and water marks for queue management.
 DEFAULT_MESSAGE_DELAY = (
     2.5  # Set above the 2.0s firmware limit to prevent message dropping
 )
+MINIMUM_MESSAGE_DELAY = 2.5  # Minimum delay enforced to stay above firmware limit
 
 # Queue size management
 MAX_QUEUE_SIZE = 500
