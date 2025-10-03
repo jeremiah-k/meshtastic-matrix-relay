@@ -21,8 +21,8 @@ services:
       # For BLE connections, uncomment these lines (Linux only):
       # - /var/run/dbus:/var/run/dbus:ro
 
-    # For BLE connections, uncomment this option (Linux only):
+    # For BLE connections, uncomment this option (Linux only). See DOCKER.md for alternatives.
     # network_mode: host
-    # privileged: true
+    # privileged: true # Or use 'cap_add' for better security
 
     # Tip: For correct permissions and paths, ensure UID, GID, and MMRELAY_HOME are set in a .env file or exported

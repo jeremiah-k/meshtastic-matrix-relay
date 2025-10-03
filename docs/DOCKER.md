@@ -316,26 +316,28 @@ meshtastic:
 
 For BLE connections, add to docker-compose.yaml:
 
+**Recommended approach (secure and functional):**
+
 ```yaml
+services:
+  mmrelay:
+    network_mode: host # Required for BLE (Linux only)
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    volumes:
+      - /var/run/dbus:/var/run/dbus:ro # D-Bus for BlueZ
+```
+
+**Alternative approaches:**
+
+```yaml
+# Option 2: Minimal configuration (may not work for all BLE devices)
 services:
   mmrelay:
     network_mode: host # Required for BLE (Linux only)
     volumes:
       - /var/run/dbus:/var/run/dbus:ro # D-Bus for BlueZ
-```
-
-**Alternative approaches if the above doesn't work:**
-
-```yaml
-# Option 2: With specific capabilities (more secure than privileged mode)
-services:
-  mmrelay:
-    network_mode: host
-    cap_add:
-      - NET_ADMIN
-      - NET_RAW
-    volumes:
-      - /var/run/dbus:/var/run/dbus:ro
 
 # Option 3: With privileged mode (if all else fails)
 services:
