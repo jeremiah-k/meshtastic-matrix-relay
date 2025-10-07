@@ -374,8 +374,6 @@ class TestBasePlugin(unittest.TestCase):
             self.assertEqual(call_args.kwargs["room_id"], "!room:matrix.org")
             self.assertEqual(call_args.kwargs["message_type"], "m.room.message")
 
-        import asyncio
-
         asyncio.run(run_test())
 
     def test_strip_raw_method(self):
@@ -596,20 +594,23 @@ class TestBasePlugin(unittest.TestCase):
 
         self.assertFalse(result)
 
-    @patch("mmrelay.db_utils.get_db_path")
-    @patch("mmrelay.db_utils.sqlite3.connect")
-    def test_delete_node_data_database_error(self, mock_connect, mock_get_db_path):
-        """Test delete_node_data handles database connection errors gracefully."""
+    @patch("mmrelay.plugins.base_plugin.delete_plugin_data")
+    def test_delete_node_data_database_error(self, mock_delete_plugin_data):
+        """Test delete_node_data propagates database connection errors."""
         plugin = MockPlugin()
-        mock_get_db_path.return_value = "/fake/db.sqlite"
-        mock_connect.side_effect = sqlite3.Error("Database connection failed")
+        mock_delete_plugin_data.side_effect = sqlite3.Error(
+            "Database connection failed"
+        )
 
-        # Should not raise an exception, just log the error
-        plugin.delete_node_data(123456789)
+        # Should raise the database error
+        with pytest.raises(sqlite3.Error, match="Database connection failed"):
+            plugin.delete_node_data(123456789)
+        # Ensure it attempted the delete
+        mock_delete_plugin_data.assert_called_once_with("test_plugin", 123456789)
 
     @patch("mmrelay.plugins.base_plugin.store_plugin_data")
     def test_store_plugin_data_database_error(self, mock_store):
-        """Test store_plugin_data handles database connection errors gracefully."""
+        """Test set_node_data propagates database errors from store_plugin_data."""
         plugin = MockPlugin()
         mock_store.side_effect = sqlite3.Error("Database connection failed")
 
@@ -627,7 +628,7 @@ class TestBasePlugin(unittest.TestCase):
 
     @patch("mmrelay.plugins.base_plugin.get_plugin_data_for_node")
     def test_get_plugin_data_for_node_database_error(self, mock_get):
-        """Test get_plugin_data_for_node handles database connection errors gracefully."""
+        """Test get_node_data propagates database errors from get_plugin_data_for_node."""
         plugin = MockPlugin()
         mock_get.side_effect = sqlite3.Error("Database connection failed")
 

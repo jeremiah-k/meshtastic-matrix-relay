@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+import tempfile
 import unittest
 from unittest.mock import MagicMock, mock_open, patch
 
@@ -806,8 +807,9 @@ class TestFilePermissions(unittest.TestCase):
     @patch("mmrelay.config.os.chmod")
     def test_set_secure_file_permissions_unix(self, mock_chmod):
         """Test secure file permission setting on Unix systems."""
-        set_secure_file_permissions("/tmp/test_file")
-        mock_chmod.assert_called_once_with("/tmp/test_file", 0o600)
+        tmp_path = os.path.join(tempfile.gettempdir(), "test_file")
+        set_secure_file_permissions(tmp_path)
+        mock_chmod.assert_called_once_with(tmp_path, 0o600)
 
     @patch("sys.platform", "win32")
     @patch("mmrelay.config.os.chmod")
@@ -823,7 +825,7 @@ class TestAppPath(unittest.TestCase):
 
     def test_get_app_path_unfrozen(self):
         """Test application path resolution for unfrozen applications."""
-        with patch("sys.frozen", False, create=True), patch(
+        with patch("mmrelay.config.sys.frozen", False, create=True), patch(
             "mmrelay.config.os.path.dirname", return_value="/app"
         ):
             result = get_app_path()
@@ -831,7 +833,7 @@ class TestAppPath(unittest.TestCase):
 
     def test_get_app_path_frozen(self):
         """Test application path resolution for frozen applications."""
-        with patch.dict(sys.__dict__, {"frozen": True}):
+        with patch("mmrelay.config.sys.frozen", True, create=True):
             with patch("mmrelay.config.sys.executable", "/app/mmrelay.exe"):
                 result = get_app_path()
                 self.assertEqual(result, "/app")
@@ -867,27 +869,30 @@ class TestE2EESupport(unittest.TestCase):
 class TestCredentials(unittest.TestCase):
     """Test credential loading and saving functionality."""
 
-    @patch("os.path.exists", return_value=True)
+    @patch("mmrelay.config.os.path.exists", return_value=True)
     @patch("builtins.open", new_callable=mock_open)
-    @patch("json.load", side_effect=json.JSONDecodeError("Invalid JSON", "", 0))
+    @patch(
+        "mmrelay.config.json.load",
+        side_effect=json.JSONDecodeError("Invalid JSON", "", 0),
+    )
     def test_load_credentials_invalid_json(
-        self, mock_json_load, mock_open, mock_exists
+        self, _mock_json_load, _mock_open, _mock_exists
     ):
         """Test credential loading with invalid JSON."""
         result = load_credentials()
         self.assertIsNone(result)
 
-    @patch("os.path.exists", return_value=True)
+    @patch("mmrelay.config.os.path.exists", return_value=True)
     @patch("builtins.open", new_callable=mock_open)
-    @patch("json.load")
-    def test_load_credentials_success(self, mock_json_load, mock_open, mock_exists):
+    @patch("mmrelay.config.json.load")
+    def test_load_credentials_success(self, mock_json_load, _mock_open, _mock_exists):
         """Test successful credential loading from JSON file."""
         mock_json_load.return_value = {"user_id": "test", "access_token": "token"}
         result = load_credentials()
         self.assertEqual(result, {"user_id": "test", "access_token": "token"})
 
-    @patch("os.makedirs", side_effect=OSError("Permission denied"))
-    def test_save_credentials_directory_creation_failure(self, mock_makedirs):
+    @patch("mmrelay.config.os.makedirs", side_effect=OSError("Permission denied"))
+    def test_save_credentials_directory_creation_failure(self, _mock_makedirs):
         """Test credential saving when directory creation fails."""
         credentials = {"user_id": "test"}
         result = save_credentials(credentials)
@@ -928,12 +933,16 @@ class TestE2EEStoreDir(unittest.TestCase):
         self.assertEqual(result, expected_path)
         mock_makedirs.assert_called_once_with(expected_path, exist_ok=True)
 
-    @patch("mmrelay.config.get_base_dir", return_value="/tmp/.mmrelay")
+    @patch(
+        "mmrelay.config.get_base_dir",
+        return_value=os.path.join(tempfile.gettempdir(), ".mmrelay"),
+    )
     def test_get_e2ee_store_dir_existing_directory(self, mock_base_dir):
         """Test E2EE store directory when it already exists."""
         result = get_e2ee_store_dir()
-        expected_path = "/tmp/.mmrelay/store"
+        expected_path = os.path.join(tempfile.gettempdir(), ".mmrelay", "store")
         self.assertEqual(result, expected_path)
+        mock_base_dir.assert_called_once()
 
 
 if __name__ == "__main__":
