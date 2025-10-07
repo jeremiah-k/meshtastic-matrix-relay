@@ -606,7 +606,7 @@ class TestBasePlugin(unittest.TestCase):
         # Should not raise an exception, just log the error
         plugin.delete_node_data(123456789)
 
-    @patch("mmrelay.db_utils.store_plugin_data")
+    @patch("mmrelay.plugins.base_plugin.store_plugin_data")
     def test_store_plugin_data_database_error(self, mock_store):
         """Test store_plugin_data handles database connection errors gracefully."""
         plugin = MockPlugin()
@@ -615,7 +615,7 @@ class TestBasePlugin(unittest.TestCase):
         with self.assertRaises(sqlite3.Error):
             plugin.set_node_data(123, "test_value")
 
-    @patch("mmrelay.db_utils.get_plugin_data")
+    @patch("mmrelay.plugins.base_plugin.get_plugin_data")
     def test_get_plugin_data_database_error(self, mock_get):
         """Test get_plugin_data raises exception on database connection errors."""
         plugin = MockPlugin()
@@ -624,7 +624,7 @@ class TestBasePlugin(unittest.TestCase):
         with self.assertRaises(sqlite3.Error):
             plugin.get_data()
 
-    @patch("mmrelay.db_utils.get_plugin_data_for_node")
+    @patch("mmrelay.plugins.base_plugin.get_plugin_data_for_node")
     def test_get_plugin_data_for_node_database_error(self, mock_get):
         """Test get_plugin_data_for_node handles database connection errors gracefully."""
         plugin = MockPlugin()

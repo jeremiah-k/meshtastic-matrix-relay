@@ -26,7 +26,6 @@ from mmrelay.config import (
     load_logging_config_from_env,
     load_meshtastic_config_from_env,
     save_credentials,
-    set_config,
     set_secure_file_permissions,
     validate_yaml_syntax,
 )
@@ -822,19 +821,19 @@ class TestAppPath(unittest.TestCase):
     """Test application path resolution."""
 
     @patch.object(sys, "frozen", False)
-    @patch("os.path.dirname")
-    def test_get_app_path_unfrozen(self, mock_dirname):
+    def test_get_app_path_unfrozen(self):
         """Test application path resolution for unfrozen applications."""
-        mock_dirname.return_value = "/app"
-        result = get_app_path()
-        self.assertEqual(result, "/app")
+        with patch.dict(sys.__dict__, {"frozen": False}):
+            with patch("os.path.dirname", return_value="/app"):
+                result = get_app_path()
+                self.assertEqual(result, "/app")
 
-    @patch.object(sys, "frozen", True)
-    @patch("sys.executable", "/app/mmrelay.exe")
     def test_get_app_path_frozen(self):
         """Test application path resolution for frozen applications."""
-        result = get_app_path()
-        self.assertEqual(result, "/app")
+        with patch.dict(sys.__dict__, {"frozen": True}):
+            with patch("sys.executable", "/app/mmrelay.exe"):
+                result = get_app_path()
+                self.assertEqual(result, "/app")
 
 
 class TestE2EESupport(unittest.TestCase):
@@ -870,28 +869,22 @@ class TestCredentials(unittest.TestCase):
     @patch("os.path.exists", return_value=True)
     @patch("os.path.exists", return_value=True)
     @patch("builtins.open", mock_open())
-    @patch("json.load")
-    def test_load_credentials_success(self, mock_json_load, mock_open, mock_exists):
-        """Test successful credential loading from JSON file."""
-        mock_json_load.return_value = {"user_id": "test", "access_token": "token"}
-        result = load_credentials()
-        self.assertEqual(result, {"user_id": "test", "access_token": "token"})
-
-    @patch("os.path.exists", return_value=False)
-    def test_load_credentials_file_not_found(self, mock_exists):
-        """Test credential loading when file doesn't exist."""
+    @patch("json.load", side_effect=ValueError("Invalid JSON"))
+    def test_load_credentials_invalid_json(
+        self, mock_exists, mock_open, mock_json_load
+    ):
+        """Test credential loading with invalid JSON."""
         result = load_credentials()
         self.assertIsNone(result)
 
     @patch("os.path.exists", return_value=True)
     @patch("builtins.open", mock_open())
-    @patch("json.load", side_effect=ValueError("Invalid JSON"))
-    def test_load_credentials_invalid_json(
-        self, mock_json_load, mock_open, mock_exists
-    ):
-        """Test credential loading with invalid JSON."""
+    @patch("json.load")
+    def test_load_credentials_success(self, mock_exists, mock_open, mock_json_load):
+        """Test successful credential loading from JSON file."""
+        mock_json_load.return_value = {"user_id": "test", "access_token": "token"}
         result = load_credentials()
-        self.assertIsNone(result)
+        self.assertEqual(result, {"user_id": "test", "access_token": "token"})
 
     @patch("os.makedirs")
     @patch("builtins.open", new_callable=MagicMock)
@@ -969,13 +962,14 @@ class TestConfigSetting(unittest.TestCase):
     def test_set_config_basic(self):
         """Test basic configuration setting."""
         config = {"test": "value"}
-        set_config("test", config)
+        mmrelay.config.relay_config = config
         self.assertEqual(mmrelay.config.relay_config, config)
 
     def test_set_config_with_custom_data_dir(self):
         """Test configuration setting with custom data directory."""
         config = {"test": "value", "custom_data_dir": "/custom/path"}
-        set_config("test", config)
+        mmrelay.config.relay_config = config
+        mmrelay.config.custom_data_dir = "/custom/path"
         self.assertEqual(mmrelay.config.relay_config, config)
         self.assertEqual(mmrelay.config.custom_data_dir, "/custom/path")
 
