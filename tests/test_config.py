@@ -896,7 +896,7 @@ class TestCredentials(unittest.TestCase):
         """Test credential saving when directory creation fails."""
         credentials = {"user_id": "test"}
         result = save_credentials(credentials)
-        self.assertFalse(result)
+        self.assertIsNone(result)
 
 
 class TestYAMLValidation(unittest.TestCase):

@@ -614,7 +614,7 @@ class TestBasePlugin(unittest.TestCase):
         plugin = MockPlugin()
         mock_store.side_effect = sqlite3.Error("Database connection failed")
 
-        with self.assertRaises(sqlite3.Error):
+        with pytest.raises(sqlite3.Error, match="Database connection failed"):
             plugin.set_node_data(123, "test_value")
 
     @patch("mmrelay.plugins.base_plugin.get_plugin_data")
@@ -623,7 +623,7 @@ class TestBasePlugin(unittest.TestCase):
         plugin = MockPlugin()
         mock_get.side_effect = sqlite3.Error("Database connection failed")
 
-        with self.assertRaises(sqlite3.Error):
+        with pytest.raises(sqlite3.Error, match="Database connection failed"):
             plugin.get_data()
 
     @patch("mmrelay.plugins.base_plugin.get_plugin_data_for_node")
@@ -632,7 +632,7 @@ class TestBasePlugin(unittest.TestCase):
         plugin = MockPlugin()
         mock_get.side_effect = sqlite3.Error("Database connection failed")
 
-        with self.assertRaises(sqlite3.Error):
+        with pytest.raises(sqlite3.Error, match="Database connection failed"):
             plugin.get_node_data(123456789)
 
     @patch("mmrelay.matrix_utils.connect_matrix")
