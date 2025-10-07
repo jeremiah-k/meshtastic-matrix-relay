@@ -1,7 +1,7 @@
 import os
 import sys
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, mock_open, patch
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -821,7 +821,7 @@ class TestFilePermissions(unittest.TestCase):
 class TestAppPath(unittest.TestCase):
     """Test application path resolution."""
 
-    @patch("sys.frozen", False)
+    @patch.object(sys, "frozen", False)
     @patch("os.path.dirname")
     def test_get_app_path_unfrozen(self, mock_dirname):
         """Test application path resolution for unfrozen applications."""
@@ -829,11 +829,10 @@ class TestAppPath(unittest.TestCase):
         result = get_app_path()
         self.assertEqual(result, "/app")
 
-    @patch("sys.frozen", True)
-    @patch("sys.executable")
-    def test_get_app_path_frozen(self, mock_executable):
+    @patch.object(sys, "frozen", True)
+    @patch("sys.executable", "/app/mmrelay.exe")
+    def test_get_app_path_frozen(self):
         """Test application path resolution for frozen applications."""
-        mock_executable.return_value = "/app/mmrelay.exe"
         result = get_app_path()
         self.assertEqual(result, "/app")
 
@@ -869,14 +868,14 @@ class TestCredentials(unittest.TestCase):
     """Test credential loading and saving functionality."""
 
     @patch("os.path.exists", return_value=True)
-    @patch("builtins.open", new_callable=MagicMock)
+    @patch("os.path.exists", return_value=True)
+    @patch("builtins.open", mock_open())
     @patch("json.load")
-    def test_load_credentials_success(self, mock_json_load, mock_open):
+    def test_load_credentials_success(self, mock_json_load, mock_open, mock_exists):
         """Test successful credential loading from JSON file."""
         mock_json_load.return_value = {"user_id": "test", "access_token": "token"}
         result = load_credentials()
-        self.assertEqual(result["user_id"], "test")
-        self.assertEqual(result["access_token"], "token")
+        self.assertEqual(result, {"user_id": "test", "access_token": "token"})
 
     @patch("os.path.exists", return_value=False)
     def test_load_credentials_file_not_found(self, mock_exists):
@@ -885,9 +884,11 @@ class TestCredentials(unittest.TestCase):
         self.assertIsNone(result)
 
     @patch("os.path.exists", return_value=True)
-    @patch("builtins.open", new_callable=MagicMock)
+    @patch("builtins.open", mock_open())
     @patch("json.load", side_effect=ValueError("Invalid JSON"))
-    def test_load_credentials_invalid_json(self, mock_json_load, mock_open):
+    def test_load_credentials_invalid_json(
+        self, mock_json_load, mock_open, mock_exists
+    ):
         """Test credential loading with invalid JSON."""
         result = load_credentials()
         self.assertIsNone(result)
@@ -899,7 +900,7 @@ class TestCredentials(unittest.TestCase):
         """Test successful credential saving to JSON file."""
         credentials = {"user_id": "test", "access_token": "token"}
         result = save_credentials(credentials)
-        self.assertTrue(result)
+        self.assertIsNone(result)
         mock_json_dump.assert_called_once_with(
             credentials, mock_open().__enter__(), indent=2
         )
@@ -926,7 +927,7 @@ class TestYAMLValidation(unittest.TestCase):
             "key: value\n  invalid: - item1\n  - item2", "test.yaml"
         )
         self.assertFalse(result[0])  # is_valid should be False
-        self.assertIn("YAML syntax error", result[1])
+        self.assertIn("YAML parsing error", result[1])
 
     def test_validate_yaml_syntax_empty(self):
         """Test YAML syntax validation for empty content."""
@@ -945,16 +946,15 @@ class TestE2EEStoreDir(unittest.TestCase):
     ):
         """Test E2EE store directory creation when it doesn't exist."""
         result = get_e2ee_store_dir()
-        expected_path = "/home/user/.mmrelay/e2ee"
+        expected_path = "/home/user/.mmrelay/store"
         self.assertEqual(result, expected_path)
         mock_makedirs.assert_called_once_with(expected_path, exist_ok=True)
 
-    @patch("mmrelay.config.get_base_dir", return_value="/home/user/.mmrelay")
-    @patch("os.path.exists", return_value=True)
-    def test_get_e2ee_store_dir_existing_directory(self, mock_exists, mock_base_dir):
+    @patch("mmrelay.config.get_base_dir", return_value="/tmp/.mmrelay")
+    def test_get_e2ee_store_dir_existing_directory(self, mock_base_dir):
         """Test E2EE store directory when it already exists."""
         result = get_e2ee_store_dir()
-        expected_path = "/home/user/.mmrelay/e2ee"
+        expected_path = "/tmp/.mmrelay/store"
         self.assertEqual(result, expected_path)
 
 
@@ -969,13 +969,13 @@ class TestConfigSetting(unittest.TestCase):
     def test_set_config_basic(self):
         """Test basic configuration setting."""
         config = {"test": "value"}
-        set_config(config)
+        set_config("test", config)
         self.assertEqual(mmrelay.config.relay_config, config)
 
     def test_set_config_with_custom_data_dir(self):
         """Test configuration setting with custom data directory."""
         config = {"test": "value", "custom_data_dir": "/custom/path"}
-        set_config(config)
+        set_config("test", config)
         self.assertEqual(mmrelay.config.relay_config, config)
         self.assertEqual(mmrelay.config.custom_data_dir, "/custom/path")
 

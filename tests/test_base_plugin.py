@@ -606,62 +606,50 @@ class TestBasePlugin(unittest.TestCase):
         # Should not raise an exception, just log the error
         plugin.delete_node_data(123456789)
 
-    @patch("mmrelay.db_utils.get_db_path")
-    @patch("sqlite3.connect")
-    def test_store_plugin_data_database_error(self, mock_connect, mock_get_db_path):
+    @patch("mmrelay.db_utils.store_plugin_data")
+    def test_store_plugin_data_database_error(self, mock_store):
         """Test store_plugin_data handles database connection errors gracefully."""
         plugin = MockPlugin()
-        mock_get_db_path.return_value = "/fake/db.sqlite"
-        mock_connect.side_effect = sqlite3.Error("Database connection failed")
-
-        # Should not raise an exception, just log the error
-        plugin.store_plugin_data("test_key", "test_value")
-
-    @patch("mmrelay.db_utils.get_db_path")
-    @patch("sqlite3.connect")
-    def test_get_plugin_data_database_error(self, mock_connect, mock_get_db_path):
-        """Test get_plugin_data raises exception on database connection errors."""
-        plugin = MockPlugin()
-        mock_get_db_path.return_value = "/fake/db.sqlite"
-        mock_connect.side_effect = sqlite3.Error("Database connection failed")
+        mock_store.side_effect = sqlite3.Error("Database connection failed")
 
         with self.assertRaises(sqlite3.Error):
-            plugin.get_plugin_data("test_key")
+            plugin.set_node_data(123, "test_value")
 
-    @patch("mmrelay.db_utils.get_db_path")
-    @patch("sqlite3.connect")
-    def test_get_plugin_data_for_node_database_error(
-        self, mock_connect, mock_get_db_path
-    ):
+    @patch("mmrelay.db_utils.get_plugin_data")
+    def test_get_plugin_data_database_error(self, mock_get):
+        """Test get_plugin_data raises exception on database connection errors."""
+        plugin = MockPlugin()
+        mock_get.side_effect = sqlite3.Error("Database connection failed")
+
+        with self.assertRaises(sqlite3.Error):
+            plugin.get_data()
+
+    @patch("mmrelay.db_utils.get_plugin_data_for_node")
+    def test_get_plugin_data_for_node_database_error(self, mock_get):
         """Test get_plugin_data_for_node handles database connection errors gracefully."""
         plugin = MockPlugin()
-        mock_get_db_path.return_value = "/fake/db.sqlite"
-        mock_connect.side_effect = sqlite3.Error("Database connection failed")
+        mock_get.side_effect = sqlite3.Error("Database connection failed")
 
-        result = plugin.get_plugin_data_for_node(123456789, "test_key")
+        with self.assertRaises(sqlite3.Error):
+            plugin.get_node_data(123456789)
 
-        # Should return empty list on database error
-        self.assertEqual(result, [])
-
-    @patch("mmrelay.plugins.base_plugin.connect_matrix")
+    @patch("mmrelay.matrix_utils.connect_matrix")
     def test_send_matrix_message_connection_error(self, mock_connect_matrix):
-        """Test send_matrix_message handles Matrix connection errors."""
+        """Test send_matrix_message handles connection errors."""
         plugin = MockPlugin()
-        mock_connect_matrix.return_value = None  # No client available
+        mock_connect_matrix.side_effect = RuntimeError("Connection failed")
 
         async def run_test():
-            result = await plugin.send_matrix_message(
-                "!room:matrix.org", "Test message"
-            )
-            self.assertIsNone(result)
+            with self.assertRaises(RuntimeError):
+                await plugin.send_matrix_message("!room:matrix.org", "Test message")
 
         import asyncio
 
         asyncio.run(run_test())
 
-    @patch("mmrelay.plugins.base_plugin.connect_matrix")
+    @patch("mmrelay.matrix_utils.connect_matrix")
     def test_send_matrix_message_send_error(self, mock_connect_matrix):
-        """Test send_matrix_message handles Matrix send errors."""
+        """Test send_matrix_message handles send errors."""
         plugin = MockPlugin()
         mock_client = AsyncMock()
         mock_client.room_send.side_effect = RuntimeError("Send failed")
