@@ -12,15 +12,23 @@ from mmrelay.config import (
     _convert_env_float,
     _convert_env_int,
     apply_env_config_overrides,
+    get_app_path,
     get_base_dir,
     get_config_paths,
     get_data_dir,
+    get_e2ee_store_dir,
     get_log_dir,
     get_plugin_data_dir,
+    is_e2ee_enabled,
     load_config,
+    load_credentials,
     load_database_config_from_env,
     load_logging_config_from_env,
     load_meshtastic_config_from_env,
+    save_credentials,
+    set_config,
+    set_secure_file_permissions,
+    validate_yaml_syntax,
 )
 
 
@@ -789,6 +797,187 @@ class TestEnvironmentVariableIntegration(unittest.TestCase):
         """Test that no environment variables returns empty dict."""
         config = apply_env_config_overrides({})
         self.assertEqual(config, {})
+
+
+class TestFilePermissions(unittest.TestCase):
+    """Test file permission setting functionality."""
+
+    @patch("sys.platform", "linux")
+    @patch("os.chmod")
+    def test_set_secure_file_permissions_unix(self, mock_chmod):
+        """Test secure file permission setting on Unix systems."""
+        set_secure_file_permissions("/tmp/test_file")
+        mock_chmod.assert_called_once_with("/tmp/test_file", 0o600)
+
+    @patch("sys.platform", "win32")
+    @patch("os.chmod")
+    def test_set_secure_file_permissions_windows(self, mock_chmod):
+        """Test secure file permission setting on Windows systems."""
+        set_secure_file_permissions("C:\\temp\\test_file")
+        # Windows should not call chmod
+        mock_chmod.assert_not_called()
+
+
+class TestAppPath(unittest.TestCase):
+    """Test application path resolution."""
+
+    @patch("sys.frozen", False)
+    @patch("os.path.dirname")
+    def test_get_app_path_unfrozen(self, mock_dirname):
+        """Test application path resolution for unfrozen applications."""
+        mock_dirname.return_value = "/app"
+        result = get_app_path()
+        self.assertEqual(result, "/app")
+
+    @patch("sys.frozen", True)
+    @patch("sys.executable")
+    def test_get_app_path_frozen(self, mock_executable):
+        """Test application path resolution for frozen applications."""
+        mock_executable.return_value = "/app/mmrelay.exe"
+        result = get_app_path()
+        self.assertEqual(result, "/app")
+
+
+class TestE2EESupport(unittest.TestCase):
+    """Test E2EE enablement detection."""
+
+    def test_is_e2ee_enabled_true(self):
+        """Test E2EE enablement detection when enabled."""
+        config = {"matrix": {"encryption": {"enabled": True}}}
+        result = is_e2ee_enabled(config)
+        self.assertTrue(result)
+
+    def test_is_e2ee_enabled_false(self):
+        """Test E2EE enablement detection when disabled."""
+        config = {"matrix": {"encryption": {"enabled": False}}}
+        result = is_e2ee_enabled(config)
+        self.assertFalse(result)
+
+    def test_is_e2ee_enabled_no_config(self):
+        """Test E2EE enablement detection with no config."""
+        result = is_e2ee_enabled({})
+        self.assertFalse(result)
+
+    def test_is_e2ee_enabled_no_matrix_section(self):
+        """Test E2EE enablement detection with no matrix section."""
+        config = {"meshtastic": {}}
+        result = is_e2ee_enabled(config)
+        self.assertFalse(result)
+
+
+class TestCredentials(unittest.TestCase):
+    """Test credential loading and saving functionality."""
+
+    @patch("os.path.exists", return_value=True)
+    @patch("builtins.open", new_callable=MagicMock)
+    @patch("json.load")
+    def test_load_credentials_success(self, mock_json_load, mock_open):
+        """Test successful credential loading from JSON file."""
+        mock_json_load.return_value = {"user_id": "test", "access_token": "token"}
+        result = load_credentials()
+        self.assertEqual(result["user_id"], "test")
+        self.assertEqual(result["access_token"], "token")
+
+    @patch("os.path.exists", return_value=False)
+    def test_load_credentials_file_not_found(self, mock_exists):
+        """Test credential loading when file doesn't exist."""
+        result = load_credentials()
+        self.assertIsNone(result)
+
+    @patch("os.path.exists", return_value=True)
+    @patch("builtins.open", new_callable=MagicMock)
+    @patch("json.load", side_effect=ValueError("Invalid JSON"))
+    def test_load_credentials_invalid_json(self, mock_json_load, mock_open):
+        """Test credential loading with invalid JSON."""
+        result = load_credentials()
+        self.assertIsNone(result)
+
+    @patch("os.makedirs")
+    @patch("builtins.open", new_callable=MagicMock)
+    @patch("json.dump")
+    def test_save_credentials_success(self, mock_json_dump, mock_open, mock_makedirs):
+        """Test successful credential saving to JSON file."""
+        credentials = {"user_id": "test", "access_token": "token"}
+        result = save_credentials(credentials)
+        self.assertTrue(result)
+        mock_json_dump.assert_called_once_with(
+            credentials, mock_open().__enter__(), indent=2
+        )
+
+    @patch("os.makedirs", side_effect=OSError("Permission denied"))
+    def test_save_credentials_directory_creation_failure(self, mock_makedirs):
+        """Test credential saving when directory creation fails."""
+        credentials = {"user_id": "test"}
+        result = save_credentials(credentials)
+        self.assertFalse(result)
+
+
+class TestYAMLValidation(unittest.TestCase):
+    """Test YAML syntax validation."""
+
+    def test_validate_yaml_syntax_valid(self):
+        """Test YAML syntax validation for valid YAML."""
+        result = validate_yaml_syntax("key: value\nother: 123", "test.yaml")
+        self.assertTrue(result[0])  # is_valid should be True
+
+    def test_validate_yaml_syntax_invalid(self):
+        """Test YAML syntax validation for invalid YAML."""
+        result = validate_yaml_syntax(
+            "key: value\n  invalid: - item1\n  - item2", "test.yaml"
+        )
+        self.assertFalse(result[0])  # is_valid should be False
+        self.assertIn("YAML syntax error", result[1])
+
+    def test_validate_yaml_syntax_empty(self):
+        """Test YAML syntax validation for empty content."""
+        result = validate_yaml_syntax("", "test.yaml")
+        self.assertTrue(result[0])  # Empty content is technically valid
+
+
+class TestE2EEStoreDir(unittest.TestCase):
+    """Test E2EE store directory creation."""
+
+    @patch("mmrelay.config.get_base_dir", return_value="/home/user/.mmrelay")
+    @patch("os.makedirs")
+    @patch("os.path.exists", return_value=False)
+    def test_get_e2ee_store_dir_creates_directory(
+        self, mock_exists, mock_makedirs, mock_base_dir
+    ):
+        """Test E2EE store directory creation when it doesn't exist."""
+        result = get_e2ee_store_dir()
+        expected_path = "/home/user/.mmrelay/e2ee"
+        self.assertEqual(result, expected_path)
+        mock_makedirs.assert_called_once_with(expected_path, exist_ok=True)
+
+    @patch("mmrelay.config.get_base_dir", return_value="/home/user/.mmrelay")
+    @patch("os.path.exists", return_value=True)
+    def test_get_e2ee_store_dir_existing_directory(self, mock_exists, mock_base_dir):
+        """Test E2EE store directory when it already exists."""
+        result = get_e2ee_store_dir()
+        expected_path = "/home/user/.mmrelay/e2ee"
+        self.assertEqual(result, expected_path)
+
+
+class TestConfigSetting(unittest.TestCase):
+    """Test configuration setting functionality."""
+
+    def setUp(self):
+        """Reset config before each test."""
+        mmrelay.config.relay_config = {}
+        mmrelay.config.custom_data_dir = None
+
+    def test_set_config_basic(self):
+        """Test basic configuration setting."""
+        config = {"test": "value"}
+        set_config(config)
+        self.assertEqual(mmrelay.config.relay_config, config)
+
+    def test_set_config_with_custom_data_dir(self):
+        """Test configuration setting with custom data directory."""
+        config = {"test": "value", "custom_data_dir": "/custom/path"}
+        set_config(config)
+        self.assertEqual(mmrelay.config.relay_config, config)
+        self.assertEqual(mmrelay.config.custom_data_dir, "/custom/path")
 
 
 if __name__ == "__main__":

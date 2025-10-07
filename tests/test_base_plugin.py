@@ -14,6 +14,7 @@ Tests the core plugin functionality including:
 """
 
 import os
+import sqlite3
 import sys
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -593,6 +594,87 @@ class TestBasePlugin(unittest.TestCase):
         result = plugin.is_direct_message(packet)
 
         self.assertFalse(result)
+
+    @patch("mmrelay.db_utils.get_db_path")
+    @patch("sqlite3.connect")
+    def test_delete_node_data_database_error(self, mock_connect, mock_get_db_path):
+        """Test delete_node_data handles database connection errors gracefully."""
+        plugin = MockPlugin()
+        mock_get_db_path.return_value = "/fake/db.sqlite"
+        mock_connect.side_effect = sqlite3.Error("Database connection failed")
+
+        # Should not raise an exception, just log the error
+        plugin.delete_node_data(123456789)
+
+    @patch("mmrelay.db_utils.get_db_path")
+    @patch("sqlite3.connect")
+    def test_store_plugin_data_database_error(self, mock_connect, mock_get_db_path):
+        """Test store_plugin_data handles database connection errors gracefully."""
+        plugin = MockPlugin()
+        mock_get_db_path.return_value = "/fake/db.sqlite"
+        mock_connect.side_effect = sqlite3.Error("Database connection failed")
+
+        # Should not raise an exception, just log the error
+        plugin.store_plugin_data("test_key", "test_value")
+
+    @patch("mmrelay.db_utils.get_db_path")
+    @patch("sqlite3.connect")
+    def test_get_plugin_data_database_error(self, mock_connect, mock_get_db_path):
+        """Test get_plugin_data raises exception on database connection errors."""
+        plugin = MockPlugin()
+        mock_get_db_path.return_value = "/fake/db.sqlite"
+        mock_connect.side_effect = sqlite3.Error("Database connection failed")
+
+        with self.assertRaises(sqlite3.Error):
+            plugin.get_plugin_data("test_key")
+
+    @patch("mmrelay.db_utils.get_db_path")
+    @patch("sqlite3.connect")
+    def test_get_plugin_data_for_node_database_error(
+        self, mock_connect, mock_get_db_path
+    ):
+        """Test get_plugin_data_for_node handles database connection errors gracefully."""
+        plugin = MockPlugin()
+        mock_get_db_path.return_value = "/fake/db.sqlite"
+        mock_connect.side_effect = sqlite3.Error("Database connection failed")
+
+        result = plugin.get_plugin_data_for_node(123456789, "test_key")
+
+        # Should return empty list on database error
+        self.assertEqual(result, [])
+
+    @patch("mmrelay.plugins.base_plugin.connect_matrix")
+    def test_send_matrix_message_connection_error(self, mock_connect_matrix):
+        """Test send_matrix_message handles Matrix connection errors."""
+        plugin = MockPlugin()
+        mock_connect_matrix.return_value = None  # No client available
+
+        async def run_test():
+            result = await plugin.send_matrix_message(
+                "!room:matrix.org", "Test message"
+            )
+            self.assertIsNone(result)
+
+        import asyncio
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.plugins.base_plugin.connect_matrix")
+    def test_send_matrix_message_send_error(self, mock_connect_matrix):
+        """Test send_matrix_message handles Matrix send errors."""
+        plugin = MockPlugin()
+        mock_client = AsyncMock()
+        mock_client.room_send.side_effect = Exception("Send failed")
+        mock_connect_matrix.return_value = mock_client
+
+        async def run_test():
+            # Should raise an exception due to send failure
+            with self.assertRaises(Exception):
+                await plugin.send_matrix_message("!room:matrix.org", "Test message")
+
+        import asyncio
+
+        asyncio.run(run_test())
 
 
 if __name__ == "__main__":
