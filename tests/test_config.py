@@ -821,10 +821,11 @@ class TestFilePermissions(unittest.TestCase):
 class TestAppPath(unittest.TestCase):
     """Test application path resolution."""
 
-    @patch.object(sys, "frozen", False)
     def test_get_app_path_unfrozen(self):
         """Test application path resolution for unfrozen applications."""
-        with patch("os.path.dirname", return_value="/app"):
+        with patch("sys.frozen", False, create=True), patch(
+            "os.path.dirname", return_value="/app"
+        ):
             result = get_app_path()
             self.assertEqual(result, "/app")
 
@@ -867,12 +868,10 @@ class TestCredentials(unittest.TestCase):
     """Test credential loading and saving functionality."""
 
     @patch("os.path.exists", return_value=True)
-    @patch("os.path.exists", return_value=True)
-    @patch("os.path.exists", return_value=True)
     @patch("builtins.open", new_callable=mock_open)
     @patch("json.load", side_effect=json.JSONDecodeError("Invalid JSON", "", 0))
     def test_load_credentials_invalid_json(
-        self, mock_exists, mock_open, mock_json_load
+        self, mock_json_load, mock_open, mock_exists
     ):
         """Test credential loading with invalid JSON."""
         result = load_credentials()
@@ -881,7 +880,7 @@ class TestCredentials(unittest.TestCase):
     @patch("os.path.exists", return_value=True)
     @patch("builtins.open", new_callable=mock_open)
     @patch("json.load")
-    def test_load_credentials_success(self, mock_exists, mock_open, mock_json_load):
+    def test_load_credentials_success(self, mock_json_load, mock_open, mock_exists):
         """Test successful credential loading from JSON file."""
         mock_json_load.return_value = {"user_id": "test", "access_token": "token"}
         result = load_credentials()
