@@ -803,14 +803,14 @@ class TestFilePermissions(unittest.TestCase):
     """Test file permission setting functionality."""
 
     @patch("sys.platform", "linux")
-    @patch("os.chmod")
+    @patch("mmrelay.config.os.chmod")
     def test_set_secure_file_permissions_unix(self, mock_chmod):
         """Test secure file permission setting on Unix systems."""
         set_secure_file_permissions("/tmp/test_file")
         mock_chmod.assert_called_once_with("/tmp/test_file", 0o600)
 
     @patch("sys.platform", "win32")
-    @patch("os.chmod")
+    @patch("mmrelay.config.os.chmod")
     def test_set_secure_file_permissions_windows(self, mock_chmod):
         """Test secure file permission setting on Windows systems."""
         set_secure_file_permissions("C:\\temp\\test_file")
@@ -824,7 +824,7 @@ class TestAppPath(unittest.TestCase):
     def test_get_app_path_unfrozen(self):
         """Test application path resolution for unfrozen applications."""
         with patch("sys.frozen", False, create=True), patch(
-            "os.path.dirname", return_value="/app"
+            "mmrelay.config.os.path.dirname", return_value="/app"
         ):
             result = get_app_path()
             self.assertEqual(result, "/app")
@@ -832,7 +832,7 @@ class TestAppPath(unittest.TestCase):
     def test_get_app_path_frozen(self):
         """Test application path resolution for frozen applications."""
         with patch.dict(sys.__dict__, {"frozen": True}):
-            with patch("sys.executable", "/app/mmrelay.exe"):
+            with patch("mmrelay.config.sys.executable", "/app/mmrelay.exe"):
                 result = get_app_path()
                 self.assertEqual(result, "/app")
 
@@ -920,8 +920,8 @@ class TestE2EEStoreDir(unittest.TestCase):
     """Test E2EE store directory creation."""
 
     @patch("mmrelay.config.get_base_dir", return_value="/home/user/.mmrelay")
-    @patch("os.makedirs")
-    @patch("os.path.exists", return_value=False)
+    @patch("mmrelay.config.os.makedirs")
+    @patch("mmrelay.config.os.path.exists", return_value=False)
     def test_get_e2ee_store_dir_creates_directory(
         self, mock_exists, mock_makedirs, mock_base_dir
     ):

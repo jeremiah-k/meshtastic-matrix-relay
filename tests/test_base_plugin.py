@@ -597,7 +597,7 @@ class TestBasePlugin(unittest.TestCase):
         self.assertFalse(result)
 
     @patch("mmrelay.db_utils.get_db_path")
-    @patch("sqlite3.connect")
+    @patch("mmrelay.db_utils.sqlite3.connect")
     def test_delete_node_data_database_error(self, mock_connect, mock_get_db_path):
         """Test delete_node_data handles database connection errors gracefully."""
         plugin = MockPlugin()
