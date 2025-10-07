@@ -25,6 +25,7 @@ try:
         get_e2ee_error_message,
         get_e2ee_fix_instructions,
         get_e2ee_status,
+        get_e2ee_warning_messages,
         get_room_encryption_warnings,
     )
 
@@ -578,8 +579,6 @@ class TestE2EEErrorMessages(unittest.TestCase):
 
     def test_get_e2ee_warning_messages(self):
         """Test that get_e2ee_warning_messages returns expected warning messages."""
-        from mmrelay.e2ee_utils import get_e2ee_warning_messages
-
         warnings = get_e2ee_warning_messages()
 
         # Verify it's a dictionary
@@ -743,38 +742,6 @@ class TestActualEncryptionVerification(unittest.TestCase):
         self.assertEqual(mock_event_data["type"], success_indicators[3])
         self.assertEqual(mock_event_data["content"]["algorithm"], success_indicators[4])
         self.assertIn(success_indicators[5], mock_event_data["content"])
-
-    @unittest.skipUnless(IMPORTS_AVAILABLE, "E2EE dependencies not available")
-    def test_get_e2ee_warning_messages(self):
-        """Test that get_e2ee_warning_messages returns expected warning messages."""
-        from mmrelay.e2ee_utils import get_e2ee_warning_messages
-
-        warnings = get_e2ee_warning_messages()
-
-        # Verify it's a dictionary
-        self.assertIsInstance(warnings, dict)
-
-        # Verify expected keys are present
-        expected_keys = [
-            "unavailable",
-            "disabled",
-            "incomplete",
-            "missing_deps",
-            "missing_auth",
-            "missing_config",
-        ]
-        for key in expected_keys:
-            self.assertIn(key, warnings)
-            self.assertIsInstance(warnings[key], str)
-            self.assertGreater(len(warnings[key]), 0)
-
-        # Verify specific message content
-        self.assertIn("Windows", warnings["unavailable"])
-        self.assertIn("disabled", warnings["disabled"])
-        self.assertIn("incomplete", warnings["incomplete"])
-        self.assertIn("dependencies", warnings["missing_deps"])
-        self.assertIn("authentication", warnings["missing_auth"])
-        self.assertIn("configuration", warnings["missing_config"])
 
 
 if __name__ == "__main__":

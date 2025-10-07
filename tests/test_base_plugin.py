@@ -13,6 +13,7 @@ Tests the core plugin functionality including:
 - Scheduling support
 """
 
+import asyncio
 import os
 import sqlite3
 import sys
@@ -643,8 +644,6 @@ class TestBasePlugin(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 await plugin.send_matrix_message("!room:matrix.org", "Test message")
 
-        import asyncio
-
         asyncio.run(run_test())
 
     @patch("mmrelay.matrix_utils.connect_matrix")
@@ -659,8 +658,6 @@ class TestBasePlugin(unittest.TestCase):
             # Should raise an exception due to send failure
             with self.assertRaises(RuntimeError):
                 await plugin.send_matrix_message("!room:matrix.org", "Test message")
-
-        import asyncio
 
         asyncio.run(run_test())
 
