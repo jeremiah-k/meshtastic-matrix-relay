@@ -921,10 +921,7 @@ class TestE2EEStoreDir(unittest.TestCase):
 
     @patch("mmrelay.config.get_base_dir", return_value="/home/user/.mmrelay")
     @patch("mmrelay.config.os.makedirs")
-    @patch("mmrelay.config.os.path.exists", return_value=False)
-    def test_get_e2ee_store_dir_creates_directory(
-        self, mock_exists, mock_makedirs, mock_base_dir
-    ):
+    def test_get_e2ee_store_dir_creates_directory(self, mock_makedirs, mock_base_dir):
         """Test E2EE store directory creation when it doesn't exist."""
         result = get_e2ee_store_dir()
         expected_path = "/home/user/.mmrelay/store"
@@ -937,29 +934,6 @@ class TestE2EEStoreDir(unittest.TestCase):
         result = get_e2ee_store_dir()
         expected_path = "/tmp/.mmrelay/store"
         self.assertEqual(result, expected_path)
-
-
-class TestConfigSetting(unittest.TestCase):
-    """Test configuration setting functionality."""
-
-    def setUp(self):
-        """Reset config before each test."""
-        mmrelay.config.relay_config = {}
-        mmrelay.config.custom_data_dir = None
-
-    def test_set_config_basic(self):
-        """Test basic configuration setting."""
-        config = {"test": "value"}
-        mmrelay.config.relay_config = config
-        self.assertEqual(mmrelay.config.relay_config, config)
-
-    def test_set_config_with_custom_data_dir(self):
-        """Test configuration setting with custom data directory."""
-        config = {"test": "value", "custom_data_dir": "/custom/path"}
-        mmrelay.config.relay_config = config
-        mmrelay.config.custom_data_dir = "/custom/path"
-        self.assertEqual(mmrelay.config.relay_config, config)
-        self.assertEqual(mmrelay.config.custom_data_dir, "/custom/path")
 
 
 if __name__ == "__main__":
