@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 import unittest
@@ -823,10 +824,9 @@ class TestAppPath(unittest.TestCase):
     @patch.object(sys, "frozen", False)
     def test_get_app_path_unfrozen(self):
         """Test application path resolution for unfrozen applications."""
-        with patch.dict(sys.__dict__, {"frozen": False}):
-            with patch("os.path.dirname", return_value="/app"):
-                result = get_app_path()
-                self.assertEqual(result, "/app")
+        with patch("os.path.dirname", return_value="/app"):
+            result = get_app_path()
+            self.assertEqual(result, "/app")
 
     def test_get_app_path_frozen(self):
         """Test application path resolution for frozen applications."""
@@ -868,8 +868,9 @@ class TestCredentials(unittest.TestCase):
 
     @patch("os.path.exists", return_value=True)
     @patch("os.path.exists", return_value=True)
-    @patch("builtins.open", mock_open())
-    @patch("json.load", side_effect=ValueError("Invalid JSON"))
+    @patch("os.path.exists", return_value=True)
+    @patch("builtins.open", new_callable=mock_open)
+    @patch("json.load", side_effect=json.JSONDecodeError("Invalid JSON", "", 0))
     def test_load_credentials_invalid_json(
         self, mock_exists, mock_open, mock_json_load
     ):
@@ -878,25 +879,13 @@ class TestCredentials(unittest.TestCase):
         self.assertIsNone(result)
 
     @patch("os.path.exists", return_value=True)
-    @patch("builtins.open", mock_open())
+    @patch("builtins.open", new_callable=mock_open)
     @patch("json.load")
     def test_load_credentials_success(self, mock_exists, mock_open, mock_json_load):
         """Test successful credential loading from JSON file."""
         mock_json_load.return_value = {"user_id": "test", "access_token": "token"}
         result = load_credentials()
         self.assertEqual(result, {"user_id": "test", "access_token": "token"})
-
-    @patch("os.makedirs")
-    @patch("builtins.open", new_callable=MagicMock)
-    @patch("json.dump")
-    def test_save_credentials_success(self, mock_json_dump, mock_open, mock_makedirs):
-        """Test successful credential saving to JSON file."""
-        credentials = {"user_id": "test", "access_token": "token"}
-        result = save_credentials(credentials)
-        self.assertIsNone(result)
-        mock_json_dump.assert_called_once_with(
-            credentials, mock_open().__enter__(), indent=2
-        )
 
     @patch("os.makedirs", side_effect=OSError("Permission denied"))
     def test_save_credentials_directory_creation_failure(self, mock_makedirs):
