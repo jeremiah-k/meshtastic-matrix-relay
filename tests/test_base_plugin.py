@@ -664,12 +664,12 @@ class TestBasePlugin(unittest.TestCase):
         """Test send_matrix_message handles Matrix send errors."""
         plugin = MockPlugin()
         mock_client = AsyncMock()
-        mock_client.room_send.side_effect = Exception("Send failed")
+        mock_client.room_send.side_effect = RuntimeError("Send failed")
         mock_connect_matrix.return_value = mock_client
 
         async def run_test():
             # Should raise an exception due to send failure
-            with self.assertRaises(Exception):
+            with self.assertRaises(RuntimeError):
                 await plugin.send_matrix_message("!room:matrix.org", "Test message")
 
         import asyncio
