@@ -965,16 +965,16 @@ class TestYAMLValidation(unittest.TestCase):
 
     def test_validate_yaml_syntax_equals_instead_of_colon(self):
         """Test YAML validation for content using '=' instead of ':'"""
-        is_valid, message, _ = validate_yaml_syntax("key = value", "test.yaml")
-        self.assertFalse(is_valid)
-        self.assertIn("Use ':' instead of '='", message)
+        result = validate_yaml_syntax("key = value", "test.yaml")
+        self.assertFalse(result[0])
+        self.assertIn("Use ':' instead of '='", result[1])
 
     def test_validate_yaml_syntax_non_standard_bool(self):
         """Test YAML validation for non-standard boolean values."""
-        is_valid, message, _ = validate_yaml_syntax("key: yes", "test.yaml")
-        self.assertTrue(is_valid)  # Should be valid but with a warning
-        self.assertIn("Style warning", message)
-        self.assertIn("Consider using 'true' or 'false'", message)
+        result = validate_yaml_syntax("key: yes", "test.yaml")
+        self.assertTrue(result[0])  # Should be valid but with a warning
+        self.assertIn("Style warning", result[1])
+        self.assertIn("Consider using 'true' or 'false'", result[1])
 
 
 class TestE2EEStoreDir(unittest.TestCase):
