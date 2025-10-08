@@ -937,12 +937,14 @@ class TestE2EEStoreDir(unittest.TestCase):
         "mmrelay.config.get_base_dir",
         return_value=os.path.join(tempfile.gettempdir(), ".mmrelay"),
     )
-    def test_get_e2ee_store_dir_existing_directory(self, mock_base_dir):
+    @patch("mmrelay.config.os.makedirs")
+    def test_get_e2ee_store_dir_existing_directory(self, mock_makedirs, mock_base_dir):
         """Test E2EE store directory when it already exists."""
         result = get_e2ee_store_dir()
         expected_path = os.path.join(tempfile.gettempdir(), ".mmrelay", "store")
         self.assertEqual(result, expected_path)
         mock_base_dir.assert_called_once()
+        mock_makedirs.assert_called_once_with(expected_path, exist_ok=True)
 
 
 if __name__ == "__main__":
