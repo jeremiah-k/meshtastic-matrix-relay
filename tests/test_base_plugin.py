@@ -596,7 +596,13 @@ class TestBasePlugin(unittest.TestCase):
 
     @patch("mmrelay.plugins.base_plugin.delete_plugin_data")
     def test_delete_node_data_database_error(self, mock_delete_plugin_data):
-        """Test delete_node_data wrapper behavior - unit test for exception propagation from db_utils function. Note: db_utils.delete_plugin_data actually handles errors gracefully, but this test verifies wrapper behavior."""
+        """Test that the `delete_node_data` wrapper propagates exceptions from `db_utils`.
+
+        This test ensures that if the underlying `db_utils.delete_plugin_data`
+        function were to raise an exception, the `BasePlugin` wrapper would not
+        suppress it. This is a test of the wrapper's behavior, not the current
+        implementation of the `db_utils` function.
+        """
         plugin = MockPlugin()
         mock_delete_plugin_data.side_effect = sqlite3.Error(
             "Database connection failed"
@@ -610,7 +616,13 @@ class TestBasePlugin(unittest.TestCase):
 
     @patch("mmrelay.plugins.base_plugin.store_plugin_data")
     def test_set_node_data_database_error(self, mock_store):
-        """Test set_node_data wrapper behavior - unit test for exception propagation from db_utils function. Note: db_utils.store_plugin_data actually handles errors gracefully, but this test verifies wrapper behavior."""
+        """Test that the `set_node_data` wrapper propagates exceptions from `db_utils`.
+
+        This test ensures that if the underlying `db_utils.store_plugin_data`
+        function were to raise an exception, the `BasePlugin` wrapper would not
+        suppress it. This is a test of the wrapper's behavior, not the current
+        implementation of the `db_utils` function.
+        """
         plugin = MockPlugin()
         mock_store.side_effect = sqlite3.Error("Database connection failed")
 
@@ -629,7 +641,13 @@ class TestBasePlugin(unittest.TestCase):
 
     @patch("mmrelay.plugins.base_plugin.get_plugin_data_for_node")
     def test_get_node_data_database_error(self, mock_get):
-        """Test get_node_data wrapper behavior - unit test for exception propagation from db_utils function. Note: db_utils.get_plugin_data_for_node actually handles errors gracefully and returns [], but this test verifies wrapper behavior."""
+        """Test that the `get_node_data` wrapper propagates exceptions from `db_utils`.
+
+        This test ensures that if the underlying `db_utils.get_plugin_data_for_node`
+        function were to raise an exception, the `BasePlugin` wrapper would not
+        suppress it. This is a test of the wrapper's behavior, not the current
+        implementation of the `db_utils` function.
+        """
         plugin = MockPlugin()
         mock_get.side_effect = sqlite3.Error("Database connection failed")
 
