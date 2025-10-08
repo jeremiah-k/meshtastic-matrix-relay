@@ -3663,9 +3663,7 @@ async def test_handle_matrix_reply_success():
         "mmrelay.matrix_utils.format_reply_message"
     ) as mock_format_reply, patch(
         "mmrelay.matrix_utils.get_user_display_name"
-    ) as mock_get_display_name, patch(
-        "mmrelay.matrix_utils.logger"
-    ) as mock_logger:
+    ) as mock_get_display_name:
 
         # Set up successful database lookup
         mock_db_lookup.return_value = (
@@ -3698,6 +3696,22 @@ async def test_handle_matrix_reply_success():
         mock_format_reply.assert_called_once()
         mock_send_reply.assert_called_once()
 
+
+@pytest.mark.asyncio
+async def test_handle_matrix_reply_original_not_found():
+    """Test handle_matrix_reply when original message is not found."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    # Create mock objects
+    mock_room = MagicMock()
+    mock_event = MagicMock()
+    mock_room_config = {"meshtastic_channel": 0}
+    mock_config = {"matrix_rooms": []}
+
+    with patch(
+        "mmrelay.matrix_utils.get_message_map_by_matrix_event_id"
+    ) as mock_db_lookup, patch("mmrelay.matrix_utils.logger") as mock_logger:
+
         # Test when no original message found
         mock_db_lookup.return_value = None
         result = await handle_matrix_reply(
@@ -3711,6 +3725,7 @@ async def test_handle_matrix_reply_success():
             mock_config,
         )
         assert result is False
+        mock_db_lookup.assert_called_once_with("reply_to_event_id")
         mock_logger.debug.assert_called_once()
 
 
