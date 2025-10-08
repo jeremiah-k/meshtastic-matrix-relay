@@ -3391,11 +3391,21 @@ def test_iter_room_alias_entries_list_with_dicts():
     entries = list(_iter_room_alias_entries(mapping))
     assert len(entries) == 3
 
+    # Assert all expected alias_or_id values are present
+    aliases_or_ids = {entry[0] for entry in entries}
+    assert aliases_or_ids == {"#room1:matrix.org", "!room2:matrix.org", ""}
+
     # Check first entry (dict with id)
     alias_or_id, setter = entries[0]
     assert alias_or_id == "#room1:matrix.org"
     setter("!resolved1:matrix.org")
     assert mapping[0]["id"] == "!resolved1:matrix.org"
+
+    # Check second entry
+    alias_or_id, setter = entries[1]
+    assert alias_or_id == "!room2:matrix.org"
+    setter("!new-room2:matrix.org")
+    assert mapping[1]["id"] == "!new-room2:matrix.org"
 
     # Check third entry (dict without id)
     alias_or_id, setter = entries[2]
@@ -3417,9 +3427,11 @@ def test_iter_room_alias_entries_dict_with_strings():
 
     # Check entries (order may vary due to dict iteration)
     aliases_or_ids = [entry[0] for entry in entries]
-    assert "#alias1:matrix.org" in aliases_or_ids
-    assert "!room2:matrix.org" in aliases_or_ids
-    assert "#alias3:matrix.org" in aliases_or_ids
+    assert set(aliases_or_ids) == {
+        "#alias1:matrix.org",
+        "!room2:matrix.org",
+        "#alias3:matrix.org",
+    }
 
     # Test setters for all entries
     for alias_or_id, setter in entries:
@@ -3571,7 +3583,6 @@ def test_update_room_id_in_mapping_not_found():
 
 def test_display_room_channel_mappings():
     """Test _display_room_channel_mappings logs room-channel mappings."""
-    from unittest.mock import patch
 
     rooms = {
         "!room1:matrix.org": MagicMock(display_name="Room 1", encrypted=True),
@@ -3646,7 +3657,6 @@ def test_get_e2ee_error_message():
 @pytest.mark.asyncio
 async def test_handle_matrix_reply_success():
     """Test handle_matrix_reply processes reply successfully."""
-    from unittest.mock import AsyncMock, MagicMock, patch
 
     # Create mock objects
     mock_room = MagicMock()
@@ -3700,7 +3710,7 @@ async def test_handle_matrix_reply_success():
 @pytest.mark.asyncio
 async def test_handle_matrix_reply_original_not_found():
     """Test handle_matrix_reply when original message is not found."""
-    from unittest.mock import AsyncMock, MagicMock, patch
+    from unittest.mock import MagicMock, patch
 
     # Create mock objects
     mock_room = MagicMock()
@@ -3732,7 +3742,6 @@ async def test_handle_matrix_reply_original_not_found():
 @pytest.mark.asyncio
 async def test_on_decryption_failure():
     """Test on_decryption_failure handles decryption failures."""
-    from unittest.mock import AsyncMock, MagicMock, patch
 
     # Create mock room and event
     mock_room = MagicMock()

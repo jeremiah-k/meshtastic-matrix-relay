@@ -1366,6 +1366,10 @@ class TestGetDeviceMetadata(unittest.TestCase):
             self.assertTrue(result["success"])
             self.assertEqual(result["firmware_version"], "2.3.15.abc123")
 
+
+class TestResolvePluginTimeout(unittest.TestCase):
+    """Test cases for _resolve_plugin_timeout helper function."""
+
     def test_resolve_plugin_timeout_with_config(self):
         """Test _resolve_plugin_timeout returns configured timeout value."""
         cfg = {"meshtastic": {"plugin_timeout": 10.5}}
