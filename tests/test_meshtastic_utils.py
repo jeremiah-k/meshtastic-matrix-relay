@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.meshtastic_utils import (
     _get_device_metadata,
+    _resolve_plugin_timeout,
     check_connection,
     connect_meshtastic,
     is_running_as_service,
@@ -1364,6 +1365,33 @@ class TestGetDeviceMetadata(unittest.TestCase):
             # Verify whitespace is handled correctly
             self.assertTrue(result["success"])
             self.assertEqual(result["firmware_version"], "2.3.15.abc123")
+
+
+@pytest.mark.parametrize(
+    "cfg, default, expected",
+    [
+        ({"meshtastic": {"plugin_timeout": 10.5}}, 5.0, 10.5),
+        ({}, 5.0, 5.0),
+        (None, 5.0, 5.0),
+        ({"meshtastic": {"plugin_timeout": "invalid"}}, 5.0, 5.0),
+        ({"meshtastic": {"plugin_timeout": -1.0}}, 5.0, 5.0),
+        ({"meshtastic": {"plugin_timeout": 0.0}}, 5.0, 5.0),
+        ({"meshtastic": {}}, 5.0, 5.0),
+    ],
+    ids=[
+        "with_config",
+        "without_config",
+        "none_config",
+        "invalid_timeout",
+        "negative_timeout",
+        "zero_timeout",
+        "missing_plugin_timeout_key",
+    ],
+)
+def test_resolve_plugin_timeout(cfg, default, expected):
+    """Test _resolve_plugin_timeout with various configurations."""
+    result = _resolve_plugin_timeout(cfg, default)
+    assert result == expected
 
 
 if __name__ == "__main__":

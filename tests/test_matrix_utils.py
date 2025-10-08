@@ -2,7 +2,7 @@ import asyncio
 import os
 import re
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
@@ -12,8 +12,15 @@ from mmrelay.matrix_utils import (
     _add_truncated_vars,
     _can_auto_create_credentials,
     _create_mapping_info,
+    _display_room_channel_mappings,
     _get_detailed_sync_error_message,
+    _get_e2ee_error_message,
     _get_msgs_to_keep_config,
+    _is_room_alias,
+    _iter_room_alias_entries,
+    _normalize_bot_user_id,
+    _resolve_aliases_in_mapping,
+    _update_room_id_in_mapping,
     bot_command,
     connect_matrix,
     format_reply_message,
@@ -21,10 +28,13 @@ from mmrelay.matrix_utils import (
     get_matrix_prefix,
     get_meshtastic_prefix,
     get_user_display_name,
+    handle_matrix_reply,
     join_matrix_room,
     login_matrix_bot,
     matrix_relay,
     message_storage_enabled,
+    on_decryption_failure,
+    on_room_member,
     on_room_message,
     send_reply_to_meshtastic,
     send_room_image,
@@ -1738,7 +1748,6 @@ async def test_connect_matrix_alias_resolution_exception(
 
 def test_normalize_bot_user_id_already_full_mxid():
     """Test that _normalize_bot_user_id returns full MXID as-is."""
-    from mmrelay.matrix_utils import _normalize_bot_user_id
 
     homeserver = "https://example.com"
     bot_user_id = "@relaybot:example.com"
@@ -1749,7 +1758,6 @@ def test_normalize_bot_user_id_already_full_mxid():
 
 def test_normalize_bot_user_id_ipv6_homeserver():
     """Test that _normalize_bot_user_id handles IPv6 homeserver URLs correctly."""
-    from mmrelay.matrix_utils import _normalize_bot_user_id
 
     homeserver = "https://[2001:db8::1]:8448"
     bot_user_id = "relaybot"
@@ -1760,7 +1768,6 @@ def test_normalize_bot_user_id_ipv6_homeserver():
 
 def test_normalize_bot_user_id_full_mxid_with_port():
     """Test that _normalize_bot_user_id strips the port from a full MXID."""
-    from mmrelay.matrix_utils import _normalize_bot_user_id
 
     homeserver = "https://example.com:8448"
     bot_user_id = "@bot:example.com:8448"
@@ -1771,7 +1778,6 @@ def test_normalize_bot_user_id_full_mxid_with_port():
 
 def test_normalize_bot_user_id_with_at_prefix():
     """Test that _normalize_bot_user_id adds homeserver to @-prefixed username."""
-    from mmrelay.matrix_utils import _normalize_bot_user_id
 
     homeserver = "https://example.com"
     bot_user_id = "@relaybot"
@@ -1782,7 +1788,6 @@ def test_normalize_bot_user_id_with_at_prefix():
 
 def test_normalize_bot_user_id_without_at_prefix():
     """Test that _normalize_bot_user_id adds @ and homeserver to plain username."""
-    from mmrelay.matrix_utils import _normalize_bot_user_id
 
     homeserver = "https://example.com"
     bot_user_id = "relaybot"
@@ -1793,7 +1798,6 @@ def test_normalize_bot_user_id_without_at_prefix():
 
 def test_normalize_bot_user_id_with_complex_homeserver():
     """Test that _normalize_bot_user_id handles complex homeserver URLs."""
-    from mmrelay.matrix_utils import _normalize_bot_user_id
 
     homeserver = "https://matrix.example.com:8448"
     bot_user_id = "relaybot"
@@ -1804,7 +1808,6 @@ def test_normalize_bot_user_id_with_complex_homeserver():
 
 def test_normalize_bot_user_id_empty_input():
     """Test that _normalize_bot_user_id handles empty input gracefully."""
-    from mmrelay.matrix_utils import _normalize_bot_user_id
 
     homeserver = "https://example.com"
     bot_user_id = ""
@@ -1815,7 +1818,6 @@ def test_normalize_bot_user_id_empty_input():
 
 def test_normalize_bot_user_id_none_input():
     """Test that _normalize_bot_user_id handles None input gracefully."""
-    from mmrelay.matrix_utils import _normalize_bot_user_id
 
     homeserver = "https://example.com"
     bot_user_id = None
@@ -1826,7 +1828,6 @@ def test_normalize_bot_user_id_none_input():
 
 def test_normalize_bot_user_id_trailing_colon():
     """Test that _normalize_bot_user_id handles trailing colons gracefully."""
-    from mmrelay.matrix_utils import _normalize_bot_user_id
 
     homeserver = "https://example.com"
     bot_user_id = "@relaybot:"
@@ -3332,3 +3333,498 @@ class TestGetDetailedSyncErrorMessage:
 
         result = _get_detailed_sync_error_message(mock_response)
         assert result == "Network connectivity issue or server unreachable"
+
+
+def test_is_room_alias_with_alias():
+    """Test _is_room_alias returns True for room aliases starting with '#'."""
+    assert _is_room_alias("#room:matrix.org") is True
+    assert _is_room_alias("#alias") is True
+
+
+def test_is_room_alias_with_room_id():
+    """Test _is_room_alias returns False for room IDs."""
+    assert _is_room_alias("!room:matrix.org") is False
+    assert _is_room_alias("room_id") is False
+
+
+def test_is_room_alias_with_non_string():
+    """Test _is_room_alias returns False for non-string inputs."""
+    assert _is_room_alias(123) is False
+    assert _is_room_alias(None) is False
+    assert _is_room_alias([]) is False
+
+
+def test_iter_room_alias_entries_list_with_strings():
+    """Test _iter_room_alias_entries yields string entries from a list."""
+    mapping = ["#room1:matrix.org", "!room2:matrix.org", "#room3:matrix.org"]
+
+    entries = list(_iter_room_alias_entries(mapping))
+    assert len(entries) == 3
+
+    # Assert all expected alias_or_id values are present
+    aliases_or_ids = {entry[0] for entry in entries}
+    assert aliases_or_ids == {
+        "#room1:matrix.org",
+        "!room2:matrix.org",
+        "#room3:matrix.org",
+    }
+
+    # Test setters for all entries.
+    # A loop is more robust than creating a dictionary in case of non-unique aliases.
+    for alias, setter in entries:
+        if alias == "#room1:matrix.org":
+            setter("!resolved1:matrix.org")
+        elif alias == "!room2:matrix.org":
+            setter("!resolved2:matrix.org")
+        elif alias == "#room3:matrix.org":
+            setter("!resolved3:matrix.org")
+    assert mapping[0] == "!resolved1:matrix.org"
+    assert mapping[1] == "!resolved2:matrix.org"
+    assert mapping[2] == "!resolved3:matrix.org"
+
+
+def test_iter_room_alias_entries_list_with_dicts():
+    """Test _iter_room_alias_entries yields dict entries from a list."""
+    mapping = [
+        {"id": "#room1:matrix.org", "channel": 0},
+        {"id": "!room2:matrix.org", "channel": 1},
+        {"channel": 2},  # No id key
+    ]
+
+    entries = list(_iter_room_alias_entries(mapping))
+    assert len(entries) == 3
+
+    # Assert all expected alias_or_id values are present
+    aliases_or_ids = {entry[0] for entry in entries}
+    assert aliases_or_ids == {"#room1:matrix.org", "!room2:matrix.org", ""}
+
+    # Test setters for all entries.
+    # A loop is more robust than creating a dictionary in case of non-unique aliases.
+    for alias, setter in entries:
+        if alias == "#room1:matrix.org":
+            setter("!resolved1:matrix.org")
+        elif alias == "!room2:matrix.org":
+            setter("!new-room2:matrix.org")
+        elif alias == "":
+            setter("!resolved3:matrix.org")
+    assert mapping[0]["id"] == "!resolved1:matrix.org"
+    assert mapping[1]["id"] == "!new-room2:matrix.org"
+    assert mapping[2]["id"] == "!resolved3:matrix.org"
+
+
+def test_iter_room_alias_entries_dict_with_strings():
+    """Test _iter_room_alias_entries yields string values from a dict."""
+    mapping = {
+        "room1": "#alias1:matrix.org",
+        "room2": "!room2:matrix.org",
+        "room3": "#alias3:matrix.org",
+    }
+
+    entries = list(_iter_room_alias_entries(mapping))
+    assert len(entries) == 3
+
+    # Check entries (order may vary due to dict iteration)
+    aliases_or_ids = [entry[0] for entry in entries]
+    assert set(aliases_or_ids) == {
+        "#alias1:matrix.org",
+        "!room2:matrix.org",
+        "#alias3:matrix.org",
+    }
+
+    # Test setters for all entries.
+    # A loop is more robust than creating a dictionary in case of non-unique aliases.
+    for alias, setter in entries:
+        if alias == "#alias1:matrix.org":
+            setter("!resolved1:matrix.org")
+        elif alias == "!room2:matrix.org":
+            setter("!new-room2:matrix.org")
+        elif alias == "#alias3:matrix.org":
+            setter("!resolved3:matrix.org")
+    assert mapping["room1"] == "!resolved1:matrix.org"
+    assert mapping["room2"] == "!new-room2:matrix.org"
+    assert mapping["room3"] == "!resolved3:matrix.org"
+
+
+def test_iter_room_alias_entries_dict_with_dicts():
+    """Test _iter_room_alias_entries yields dict values from a dict."""
+    mapping = {
+        "room1": {"id": "#alias1:matrix.org", "channel": 0},
+        "room2": {"id": "!room2:matrix.org", "channel": 1},
+        "room3": {"channel": 2},  # No id key
+    }
+
+    entries = list(_iter_room_alias_entries(mapping))
+    assert len(entries) == 3
+
+    # Check entries.
+    # A loop is more robust than creating a dictionary in case of non-unique aliases.
+    for alias, setter in entries:
+        if alias == "#alias1:matrix.org":
+            setter("!resolved1:matrix.org")
+        elif alias == "!room2:matrix.org":
+            setter("!resolved2:matrix.org")
+        elif alias == "":
+            setter("!resolved3:matrix.org")
+    assert mapping["room1"]["id"] == "!resolved1:matrix.org"
+    assert mapping["room2"]["id"] == "!resolved2:matrix.org"
+    assert mapping["room3"]["id"] == "!resolved3:matrix.org"
+
+
+@pytest.mark.asyncio
+async def test_resolve_aliases_in_mapping_list():
+    """Test _resolve_aliases_in_mapping resolves aliases in a list."""
+    mapping = [
+        "#room1:matrix.org",
+        "!room2:matrix.org",
+        {"id": "#room3:matrix.org", "channel": 2},
+    ]
+
+    async def mock_resolver(alias):
+        """
+        Resolve a room alias to a room ID for testing.
+        
+        Parameters:
+            alias (str): Room alias to resolve.
+        
+        Returns:
+            A room ID string for known aliases (`#room1:matrix.org` -> `!resolved1:matrix.org`, `#room3:matrix.org` -> `!resolved3:matrix.org`); otherwise returns the original input string.
+        """
+        if alias == "#room1:matrix.org":
+            return "!resolved1:matrix.org"
+        elif alias == "#room3:matrix.org":
+            return "!resolved3:matrix.org"
+        return alias
+
+    await _resolve_aliases_in_mapping(mapping, mock_resolver)
+
+    assert mapping[0] == "!resolved1:matrix.org"
+    assert mapping[1] == "!room2:matrix.org"  # Already resolved
+    assert mapping[2]["id"] == "!resolved3:matrix.org"
+
+
+@pytest.mark.asyncio
+async def test_resolve_aliases_in_mapping_dict():
+    """Test _resolve_aliases_in_mapping resolves aliases in a dict."""
+    mapping = {
+        "room1": "#alias1:matrix.org",
+        "room2": "!room2:matrix.org",
+        "room3": {"id": "#alias3:matrix.org", "channel": 2},
+    }
+
+    async def mock_resolver(alias):
+        """
+        Resolve a Matrix room alias to a room ID (test helper).
+        
+        Parameters:
+            alias (str): A Matrix room alias to resolve, e.g. "#alias:matrix.org".
+        
+        Returns:
+            str: The resolved room ID for known aliases, otherwise the original `alias`.
+        """
+        if alias == "#alias1:matrix.org":
+            return "!resolved1:matrix.org"
+        elif alias == "#alias3:matrix.org":
+            return "!resolved3:matrix.org"
+        return alias
+
+    await _resolve_aliases_in_mapping(mapping, mock_resolver)
+
+    assert mapping["room1"] == "!resolved1:matrix.org"
+    assert mapping["room2"] == "!room2:matrix.org"  # Already resolved
+    assert mapping["room3"]["id"] == "!resolved3:matrix.org"
+
+
+def test_update_room_id_in_mapping_list():
+    """Test _update_room_id_in_mapping updates room ID in a list."""
+    mapping = ["!old_room:matrix.org", "!other_room:matrix.org"]
+
+    result = _update_room_id_in_mapping(
+        mapping, "!old_room:matrix.org", "!new_room:matrix.org"
+    )
+    assert result is True
+    assert mapping[0] == "!new_room:matrix.org"
+    assert mapping[1] == "!other_room:matrix.org"
+
+
+def test_update_room_id_in_mapping_list_dict():
+    """Test _update_room_id_in_mapping updates room ID in a list of dicts."""
+    mapping = [
+        {"id": "!old_room:matrix.org", "channel": 0},
+        {"id": "!other_room:matrix.org", "channel": 1},
+    ]
+
+    result = _update_room_id_in_mapping(
+        mapping, "!old_room:matrix.org", "!new_room:matrix.org"
+    )
+    assert result is True
+    assert mapping[0]["id"] == "!new_room:matrix.org"
+    assert mapping[1]["id"] == "!other_room:matrix.org"
+
+
+def test_update_room_id_in_mapping_dict():
+    """Test _update_room_id_in_mapping updates room ID in a dict."""
+    mapping = {"room1": "!old_room:matrix.org", "room2": "!other_room:matrix.org"}
+
+    result = _update_room_id_in_mapping(
+        mapping, "!old_room:matrix.org", "!new_room:matrix.org"
+    )
+    assert result is True
+    assert mapping["room1"] == "!new_room:matrix.org"
+    assert mapping["room2"] == "!other_room:matrix.org"
+
+
+def test_update_room_id_in_mapping_dict_dicts():
+    """Test _update_room_id_in_mapping updates room ID in a dict of dicts."""
+    mapping = {
+        "room1": {"id": "!old_room:matrix.org", "channel": 0},
+        "room2": {"id": "!other_room:matrix.org", "channel": 1},
+    }
+
+    result = _update_room_id_in_mapping(
+        mapping, "!old_room:matrix.org", "!new_room:matrix.org"
+    )
+    assert result is True
+    assert mapping["room1"]["id"] == "!new_room:matrix.org"
+    assert mapping["room2"]["id"] == "!other_room:matrix.org"
+
+
+def test_update_room_id_in_mapping_not_found():
+    """Test _update_room_id_in_mapping returns False when alias not found."""
+    mapping = ["!room1:matrix.org", "!room2:matrix.org"]
+
+    result = _update_room_id_in_mapping(
+        mapping, "!nonexistent:matrix.org", "!new:matrix.org"
+    )
+    assert result is False
+    assert mapping == ["!room1:matrix.org", "!room2:matrix.org"]
+
+
+@pytest.mark.parametrize(
+    "e2ee_status, expected_log_for_room1",
+    [
+        ({"overall_status": "ready"}, "    🔒 Room 1"),
+        (
+            {"overall_status": "unavailable"},
+            "    ⚠️ Room 1 (E2EE not supported - messages blocked)",
+        ),
+        (
+            {"overall_status": "disabled"},
+            "    ⚠️ Room 1 (E2EE disabled - messages blocked)",
+        ),
+        (
+            {"overall_status": "incomplete"},
+            "    ⚠️ Room 1 (E2EE incomplete - messages may be blocked)",
+        ),
+    ],
+    ids=["e2ee_ready", "e2ee_unavailable", "e2ee_disabled", "e2ee_incomplete"],
+)
+def test_display_room_channel_mappings(e2ee_status, expected_log_for_room1):
+    """Test _display_room_channel_mappings logs room-channel mappings for various E2EE statuses."""
+
+    rooms = {
+        "!room1:matrix.org": MagicMock(display_name="Room 1", encrypted=True),
+        "!room2:matrix.org": MagicMock(display_name="Room 2", encrypted=False),
+    }
+    config = {
+        "matrix_rooms": [
+            {"id": "!room1:matrix.org", "meshtastic_channel": 0},
+            {"id": "!room2:matrix.org", "meshtastic_channel": 1},
+        ]
+    }
+
+    with patch("mmrelay.matrix_utils.logger") as mock_logger:
+        _display_room_channel_mappings(rooms, config, e2ee_status)
+
+        # Should have logged room mappings in order
+        expected_calls = [
+            call("Matrix Rooms → Meshtastic Channels (2 configured):"),
+            call("  Channel 0:"),
+            call(expected_log_for_room1),
+            call("  Channel 1:"),
+            call("    ✅ Room 2"),
+        ]
+        mock_logger.info.assert_has_calls(expected_calls)
+
+
+def test_display_room_channel_mappings_empty():
+    """Test _display_room_channel_mappings with no rooms."""
+
+    rooms = {}
+    config = {"matrix_rooms": []}
+    e2ee_status = {"overall_status": "ready"}
+
+    with patch("mmrelay.matrix_utils.logger") as mock_logger:
+        _display_room_channel_mappings(rooms, config, e2ee_status)
+
+        mock_logger.info.assert_called_with("Bot is not in any Matrix rooms")
+
+
+def test_display_room_channel_mappings_no_config():
+    """Test _display_room_channel_mappings with missing config."""
+
+    rooms = {"!room1:matrix.org": MagicMock()}
+    config = {}
+    e2ee_status = {"overall_status": "ready"}
+
+    with patch("mmrelay.matrix_utils.logger") as mock_logger:
+        _display_room_channel_mappings(rooms, config, e2ee_status)
+
+        mock_logger.info.assert_called_with("No matrix_rooms configuration found")
+
+
+def test_get_e2ee_error_message():
+    """Test _get_e2ee_error_message returns appropriate error message."""
+    with patch("mmrelay.matrix_utils.config", {"test": "config"}), patch(
+        "mmrelay.config.config_path", "/test/path"
+    ), patch("mmrelay.e2ee_utils.get_e2ee_status") as mock_get_status, patch(
+        "mmrelay.e2ee_utils.get_e2ee_error_message"
+    ) as mock_get_error:
+
+        mock_get_status.return_value = {"status": "test"}
+        mock_get_error.return_value = "Test E2EE error message"
+
+        result = _get_e2ee_error_message()
+
+        assert result == "Test E2EE error message"
+        mock_get_status.assert_called_once_with({"test": "config"}, "/test/path")
+        mock_get_error.assert_called_once_with({"status": "test"})
+
+
+@pytest.mark.asyncio
+async def test_handle_matrix_reply_success():
+    """Test handle_matrix_reply processes reply successfully."""
+
+    # Create mock objects
+    mock_room = MagicMock()
+    mock_event = MagicMock()
+    mock_room_config = {"meshtastic_channel": 0}
+    mock_config = {"matrix_rooms": []}
+
+    # Mock database lookup to return original message
+    with patch(
+        "mmrelay.matrix_utils.get_message_map_by_matrix_event_id"
+    ) as mock_db_lookup, patch(
+        "mmrelay.matrix_utils.send_reply_to_meshtastic"
+    ) as mock_send_reply, patch(
+        "mmrelay.matrix_utils.format_reply_message"
+    ) as mock_format_reply, patch(
+        "mmrelay.matrix_utils.get_user_display_name"
+    ) as mock_get_display_name:
+
+        # Set up successful database lookup
+        mock_db_lookup.return_value = (
+            "orig_mesh_id",
+            "!room123",
+            "original text",
+            "local",
+        )
+        mock_format_reply.return_value = "formatted reply"
+        mock_get_display_name.return_value = "Test User"
+        mock_send_reply.return_value = True
+
+        # Test successful reply handling
+        result = await handle_matrix_reply(
+            mock_room,
+            mock_event,
+            "reply_to_event_id",
+            "reply text",
+            mock_room_config,
+            True,  # storage_enabled
+            "local_meshnet",
+            mock_config,
+        )
+
+        # Verify result
+        assert result is True
+        # Verify database was queried
+        mock_db_lookup.assert_called_once_with("reply_to_event_id")
+        # Verify reply was formatted and sent
+        mock_format_reply.assert_called_once()
+        mock_send_reply.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_handle_matrix_reply_original_not_found():
+    """Test handle_matrix_reply when original message is not found."""
+
+    # Create mock objects
+    mock_room = MagicMock()
+    mock_event = MagicMock()
+    mock_room_config = {"meshtastic_channel": 0}
+    mock_config = {"matrix_rooms": []}
+
+    with patch(
+        "mmrelay.matrix_utils.get_message_map_by_matrix_event_id"
+    ) as mock_db_lookup, patch("mmrelay.matrix_utils.logger") as mock_logger:
+
+        # Test when no original message found
+        mock_db_lookup.return_value = None
+        result = await handle_matrix_reply(
+            mock_room,
+            mock_event,
+            "reply_to_event_id",
+            "reply text",
+            mock_room_config,
+            True,
+            "local_meshnet",
+            mock_config,
+        )
+        assert result is False
+        mock_db_lookup.assert_called_once_with("reply_to_event_id")
+        mock_logger.debug.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_on_decryption_failure():
+    """Test on_decryption_failure handles decryption failures."""
+
+    # Create mock room and event
+    mock_room = MagicMock()
+    mock_room.room_id = "!room123:matrix.org"
+    mock_event = MagicMock()
+    mock_event.event_id = "$event123"
+    mock_event.as_key_request.return_value = {"type": "m.room_key_request"}
+
+    with patch("mmrelay.matrix_utils.matrix_client") as mock_client, patch(
+        "mmrelay.matrix_utils.logger"
+    ) as mock_logger:
+        mock_client.user_id = "@bot:matrix.org"
+        mock_client.device_id = "DEVICE123"
+        mock_client.to_device = AsyncMock()  # Make it async
+
+        # Test successful key request
+        await on_decryption_failure(mock_room, mock_event)
+
+        # Verify the event was patched with room_id
+        assert mock_event.room_id == "!room123:matrix.org"
+        # Verify key request was created and sent
+        mock_event.as_key_request.assert_called_once_with(
+            "@bot:matrix.org", "DEVICE123"
+        )
+        mock_client.to_device.assert_called_once_with({"type": "m.room_key_request"})
+        # Verify logging
+        mock_logger.error.assert_called_once()  # Error about decryption failure
+        mock_logger.info.assert_called_once()  # Success message
+
+        # Reset mocks for error case
+        mock_client.reset_mock()
+        mock_logger.reset_mock()
+
+        # Test when matrix client is None
+        with patch("mmrelay.matrix_utils.matrix_client", None):
+            await on_decryption_failure(mock_room, mock_event)
+            # Should have logged the initial error plus the client unavailable error
+            assert mock_logger.error.call_count == 2
+            mock_client.to_device.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_on_room_member():
+    """Test on_room_member handles room member events."""
+
+    # Create mock room and event
+    mock_room = MagicMock()
+    mock_event = MagicMock()
+
+    # The function just passes, so we just test it can be called
+    await on_room_member(mock_room, mock_event)
