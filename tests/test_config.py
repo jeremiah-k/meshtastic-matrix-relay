@@ -845,10 +845,45 @@ class TestE2EESupport(unittest.TestCase):
     def test_is_e2ee_enabled_various_configs(self):
         """Test E2EE enablement detection across various configurations."""
         test_cases = [
-            ({"matrix": {"encryption": {"enabled": True}}}, True, "enabled"),
-            ({"matrix": {"encryption": {"enabled": False}}}, False, "disabled"),
-            ({}, False, "no config"),
+            # Legacy key
+            (
+                {"matrix": {"encryption": {"enabled": True}}},
+                True,
+                "legacy e2ee enabled",
+            ),
+            (
+                {"matrix": {"encryption": {"enabled": False}}},
+                False,
+                "legacy e2ee disabled",
+            ),
+            # New key
+            ({"matrix": {"e2ee": {"enabled": True}}}, True, "new e2ee enabled"),
+            ({"matrix": {"e2ee": {"enabled": False}}}, False, "new e2ee disabled"),
+            # Mixed keys (OR logic)
+            (
+                {
+                    "matrix": {
+                        "encryption": {"enabled": False},
+                        "e2ee": {"enabled": True},
+                    }
+                },
+                True,
+                "mixed legacy false, new true",
+            ),
+            (
+                {
+                    "matrix": {
+                        "encryption": {"enabled": True},
+                        "e2ee": {"enabled": False},
+                    }
+                },
+                True,
+                "mixed legacy true, new false",
+            ),
+            # Edge cases
+            ({}, False, "empty config"),
             ({"meshtastic": {}}, False, "no matrix section"),
+            ({"matrix": {}}, False, "empty matrix section"),
         ]
         for config, expected, description in test_cases:
             with self.subTest(description=description):

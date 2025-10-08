@@ -584,19 +584,22 @@ class TestE2EEErrorMessages(unittest.TestCase):
         # Verify it's a dictionary
         self.assertIsInstance(warnings, dict)
 
-        # Verify expected keys are present
-        expected_keys = [
+        # Verify all expected keys are present and no extra keys exist
+        expected_keys = {
             "unavailable",
             "disabled",
             "incomplete",
             "missing_deps",
             "missing_auth",
             "missing_config",
-        ]
-        for key in expected_keys:
-            self.assertIn(key, warnings)
-            self.assertIsInstance(warnings[key], str)
-            self.assertGreater(len(warnings[key]), 0)
+        }
+        self.assertCountEqual(warnings.keys(), expected_keys)
+        # Verify value types are non-empty strings
+        for key, value in warnings.items():
+            self.assertIsInstance(value, str)
+            self.assertTrue(
+                value, f"Warning message for key '{key}' should not be empty."
+            )
 
         # Verify specific message content
         self.assertIn("Windows", warnings["unavailable"])
