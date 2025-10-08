@@ -2,7 +2,7 @@ import asyncio
 import os
 import re
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
@@ -3434,16 +3434,13 @@ def test_iter_room_alias_entries_dict_with_strings():
     }
 
     # Test setters for all entries
-    for alias_or_id, setter in entries:
-        if alias_or_id == "#alias1:matrix.org":
-            setter("!resolved1:matrix.org")
-            assert mapping["room1"] == "!resolved1:matrix.org"
-        elif alias_or_id == "!room2:matrix.org":
-            setter("!new-room2:matrix.org")
-            assert mapping["room2"] == "!new-room2:matrix.org"
-        elif alias_or_id == "#alias3:matrix.org":
-            setter("!resolved3:matrix.org")
-            assert mapping["room3"] == "!resolved3:matrix.org"
+    setters_by_alias = {alias: setter for alias, setter in entries}
+    setters_by_alias["#alias1:matrix.org"]("!resolved1:matrix.org")
+    assert mapping["room1"] == "!resolved1:matrix.org"
+    setters_by_alias["!room2:matrix.org"]("!new-room2:matrix.org")
+    assert mapping["room2"] == "!new-room2:matrix.org"
+    setters_by_alias["#alias3:matrix.org"]("!resolved3:matrix.org")
+    assert mapping["room3"] == "!resolved3:matrix.org"
 
 
 def test_iter_room_alias_entries_dict_with_dicts():
@@ -3458,16 +3455,13 @@ def test_iter_room_alias_entries_dict_with_dicts():
     assert len(entries) == 3
 
     # Check entries
-    for alias_or_id, setter in entries:
-        if alias_or_id == "#alias1:matrix.org":
-            setter("!resolved1:matrix.org")
-            assert mapping["room1"]["id"] == "!resolved1:matrix.org"
-        elif alias_or_id == "!room2:matrix.org":
-            setter("!resolved2:matrix.org")
-            assert mapping["room2"]["id"] == "!resolved2:matrix.org"
-        elif alias_or_id == "":  # No id key
-            setter("!resolved3:matrix.org")
-            assert mapping["room3"]["id"] == "!resolved3:matrix.org"
+    setters_by_alias = {alias: setter for alias, setter in entries}
+    setters_by_alias["#alias1:matrix.org"]("!resolved1:matrix.org")
+    assert mapping["room1"]["id"] == "!resolved1:matrix.org"
+    setters_by_alias["!room2:matrix.org"]("!resolved2:matrix.org")
+    assert mapping["room2"]["id"] == "!resolved2:matrix.org"
+    setters_by_alias[""]("!resolved3:matrix.org")
+    assert mapping["room3"]["id"] == "!resolved3:matrix.org"
 
 
 @pytest.mark.asyncio
@@ -3599,13 +3593,15 @@ def test_display_room_channel_mappings():
     with patch("mmrelay.matrix_utils.logger") as mock_logger:
         _display_room_channel_mappings(rooms, config, e2ee_status)
 
-        # Should have logged room mappings
-        mock_logger.info.assert_any_call(
-            "Matrix Rooms → Meshtastic Channels (2 configured):"
-        )
-        mock_logger.info.assert_any_call("    🔒 Room 1")
-        mock_logger.info.assert_any_call("    ✅ Room 2")
-        assert mock_logger.info.call_count >= 3
+        # Should have logged room mappings in order
+        expected_calls = [
+            call("Matrix Rooms → Meshtastic Channels (2 configured):"),
+            call("  Channel 0:"),
+            call("    🔒 Room 1"),
+            call("  Channel 1:"),
+            call("    ✅ Room 2"),
+        ]
+        mock_logger.info.assert_has_calls(expected_calls)
 
 
 def test_display_room_channel_mappings_empty():

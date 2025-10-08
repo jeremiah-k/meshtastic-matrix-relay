@@ -9,7 +9,8 @@ from mmrelay.plugins.base_plugin import BasePlugin
 
 def match_case(source, target):
     return "".join(
-        c.upper() if s.isupper() else c.lower() for s, c in zip(source, target)
+        c.upper() if s.isupper() else c.lower()
+        for s, c in zip(source, target, strict=False)
     )
 
 
