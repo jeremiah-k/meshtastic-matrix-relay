@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.meshtastic_utils import (
     _get_device_metadata,
+    _resolve_plugin_timeout,
     check_connection,
     connect_meshtastic,
     is_running_as_service,
@@ -1364,6 +1365,36 @@ class TestGetDeviceMetadata(unittest.TestCase):
             # Verify whitespace is handled correctly
             self.assertTrue(result["success"])
             self.assertEqual(result["firmware_version"], "2.3.15.abc123")
+
+    def test_resolve_plugin_timeout_with_config(self):
+        """Test _resolve_plugin_timeout returns configured timeout value."""
+        cfg = {"meshtastic": {"plugin_timeout": 10.5}}
+        result = _resolve_plugin_timeout(cfg, 5.0)
+        self.assertEqual(result, 10.5)
+
+    def test_resolve_plugin_timeout_without_config(self):
+        """Test _resolve_plugin_timeout returns default when no config."""
+        cfg = {}
+        result = _resolve_plugin_timeout(cfg, 5.0)
+        self.assertEqual(result, 5.0)
+
+    def test_resolve_plugin_timeout_none_config(self):
+        """Test _resolve_plugin_timeout returns default when config is None."""
+        cfg = None
+        result = _resolve_plugin_timeout(cfg, 5.0)
+        self.assertEqual(result, 5.0)
+
+    def test_resolve_plugin_timeout_invalid_timeout(self):
+        """Test _resolve_plugin_timeout handles invalid timeout values."""
+        cfg = {"timeout": "invalid"}
+        result = _resolve_plugin_timeout(cfg, 5.0)
+        self.assertEqual(result, 5.0)  # Should return default for invalid values
+
+    def test_resolve_plugin_timeout_negative_timeout(self):
+        """Test _resolve_plugin_timeout handles negative timeout values."""
+        cfg = {"timeout": -1.0}
+        result = _resolve_plugin_timeout(cfg, 5.0)
+        self.assertEqual(result, 5.0)  # Should return default for negative values
 
 
 if __name__ == "__main__":
