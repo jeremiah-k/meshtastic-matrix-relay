@@ -1386,13 +1386,13 @@ class TestGetDeviceMetadata(unittest.TestCase):
 
     def test_resolve_plugin_timeout_invalid_timeout(self):
         """Test _resolve_plugin_timeout handles invalid timeout values."""
-        cfg = {"timeout": "invalid"}
+        cfg = {"meshtastic": {"plugin_timeout": "invalid"}}
         result = _resolve_plugin_timeout(cfg, 5.0)
         self.assertEqual(result, 5.0)  # Should return default for invalid values
 
     def test_resolve_plugin_timeout_negative_timeout(self):
         """Test _resolve_plugin_timeout handles negative timeout values."""
-        cfg = {"timeout": -1.0}
+        cfg = {"meshtastic": {"plugin_timeout": -1.0}}
         result = _resolve_plugin_timeout(cfg, 5.0)
         self.assertEqual(result, 5.0)  # Should return default for negative values
 

@@ -3370,6 +3370,12 @@ def test_iter_room_alias_entries_list_with_strings():
     setter("!resolved2:matrix.org")
     assert mapping[1] == "!resolved2:matrix.org"
 
+    # Check third entry
+    alias_or_id, setter = entries[2]
+    assert alias_or_id == "#room3:matrix.org"
+    setter("!resolved3:matrix.org")
+    assert mapping[2] == "!resolved3:matrix.org"
+
 
 def test_iter_room_alias_entries_list_with_dicts():
     """Test _iter_room_alias_entries yields dict entries from a list."""
@@ -3412,12 +3418,17 @@ def test_iter_room_alias_entries_dict_with_strings():
     assert "!room2:matrix.org" in aliases_or_ids
     assert "#alias3:matrix.org" in aliases_or_ids
 
-    # Test setter for one entry
+    # Test setters for all entries
     for alias_or_id, setter in entries:
         if alias_or_id == "#alias1:matrix.org":
             setter("!resolved1:matrix.org")
             assert mapping["room1"] == "!resolved1:matrix.org"
-            break
+        elif alias_or_id == "!room2:matrix.org":
+            setter("!new-room2:matrix.org")
+            assert mapping["room2"] == "!new-room2:matrix.org"
+        elif alias_or_id == "#alias3:matrix.org":
+            setter("!resolved3:matrix.org")
+            assert mapping["room3"] == "!resolved3:matrix.org"
 
 
 def test_iter_room_alias_entries_dict_with_dicts():
@@ -3575,7 +3586,12 @@ def test_display_room_channel_mappings():
         _display_room_channel_mappings(rooms, config, e2ee_status)
 
         # Should have logged room mappings
-        mock_logger.info.assert_called()
+        mock_logger.info.assert_any_call(
+            "Matrix Rooms → Meshtastic Channels (2 configured):"
+        )
+        mock_logger.info.assert_any_call("    🔒 Room 1")
+        mock_logger.info.assert_any_call("    ✅ Room 2")
+        assert mock_logger.info.call_count >= 3
 
 
 def test_display_room_channel_mappings_empty():
