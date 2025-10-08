@@ -28,10 +28,13 @@ from mmrelay.matrix_utils import (
     get_matrix_prefix,
     get_meshtastic_prefix,
     get_user_display_name,
+    handle_matrix_reply,
     join_matrix_room,
     login_matrix_bot,
     matrix_relay,
     message_storage_enabled,
+    on_decryption_failure,
+    on_room_member,
     on_room_message,
     send_reply_to_meshtastic,
     send_room_image,
@@ -3643,25 +3646,127 @@ def test_get_e2ee_error_message():
 @pytest.mark.asyncio
 async def test_handle_matrix_reply_success():
     """Test handle_matrix_reply processes reply successfully."""
-    # This function is complex and likely needs extensive mocking
-    # For now, test that it exists and can be called
-    # TODO: Add comprehensive test when time permits
-    pass
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    # Create mock objects
+    mock_room = MagicMock()
+    mock_event = MagicMock()
+    mock_room_config = {"meshtastic_channel": 0}
+    mock_config = {"matrix_rooms": []}
+
+    # Mock database lookup to return original message
+    with patch(
+        "mmrelay.matrix_utils.get_message_map_by_matrix_event_id"
+    ) as mock_db_lookup, patch(
+        "mmrelay.matrix_utils.send_reply_to_meshtastic"
+    ) as mock_send_reply, patch(
+        "mmrelay.matrix_utils.format_reply_message"
+    ) as mock_format_reply, patch(
+        "mmrelay.matrix_utils.get_user_display_name"
+    ) as mock_get_display_name, patch(
+        "mmrelay.matrix_utils.logger"
+    ) as mock_logger:
+
+        # Set up successful database lookup
+        mock_db_lookup.return_value = (
+            "orig_mesh_id",
+            "!room123",
+            "original text",
+            "local",
+        )
+        mock_format_reply.return_value = "formatted reply"
+        mock_get_display_name.return_value = "Test User"
+        mock_send_reply.return_value = True
+
+        # Test successful reply handling
+        result = await handle_matrix_reply(
+            mock_room,
+            mock_event,
+            "reply_to_event_id",
+            "reply text",
+            mock_room_config,
+            True,  # storage_enabled
+            "local_meshnet",
+            mock_config,
+        )
+
+        # Verify result
+        assert result is True
+        # Verify database was queried
+        mock_db_lookup.assert_called_once_with("reply_to_event_id")
+        # Verify reply was formatted and sent
+        mock_format_reply.assert_called_once()
+        mock_send_reply.assert_called_once()
+
+        # Test when no original message found
+        mock_db_lookup.return_value = None
+        result = await handle_matrix_reply(
+            mock_room,
+            mock_event,
+            "reply_to_event_id",
+            "reply text",
+            mock_room_config,
+            True,
+            "local_meshnet",
+            mock_config,
+        )
+        assert result is False
+        mock_logger.debug.assert_called_once()
 
 
 @pytest.mark.asyncio
 async def test_on_decryption_failure():
     """Test on_decryption_failure handles decryption failures."""
-    # This function is complex and likely needs extensive mocking
-    # For now, test that it exists and can be called
-    # TODO: Add comprehensive test when time permits
-    pass
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    # Create mock room and event
+    mock_room = MagicMock()
+    mock_room.room_id = "!room123:matrix.org"
+    mock_event = MagicMock()
+    mock_event.event_id = "$event123"
+    mock_event.as_key_request.return_value = {"type": "m.room_key_request"}
+
+    with patch("mmrelay.matrix_utils.matrix_client") as mock_client, patch(
+        "mmrelay.matrix_utils.logger"
+    ) as mock_logger:
+        mock_client.user_id = "@bot:matrix.org"
+        mock_client.device_id = "DEVICE123"
+        mock_client.to_device = AsyncMock()  # Make it async
+
+        # Test successful key request
+        await on_decryption_failure(mock_room, mock_event)
+
+        # Verify the event was patched with room_id
+        assert mock_event.room_id == "!room123:matrix.org"
+        # Verify key request was created and sent
+        mock_event.as_key_request.assert_called_once_with(
+            "@bot:matrix.org", "DEVICE123"
+        )
+        mock_client.to_device.assert_called_once_with({"type": "m.room_key_request"})
+        # Verify logging
+        mock_logger.error.assert_called_once()  # Error about decryption failure
+        mock_logger.info.assert_called_once()  # Success message
+
+        # Reset mocks for error case
+        mock_client.reset_mock()
+        mock_logger.reset_mock()
+
+        # Test when matrix client is None
+        with patch("mmrelay.matrix_utils.matrix_client", None):
+            await on_decryption_failure(mock_room, mock_event)
+            # Should have logged the initial error plus the client unavailable error
+            assert mock_logger.error.call_count == 2
+            mock_client.to_device.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_on_room_member():
     """Test on_room_member handles room member events."""
-    # This function is complex and likely needs extensive mocking
-    # For now, test that it exists and can be called
-    # TODO: Add comprehensive test when time permits
-    pass
+    from unittest.mock import MagicMock
+
+    # Create mock room and event
+    mock_room = MagicMock()
+    mock_event = MagicMock()
+
+    # The function just passes, so we just test it can be called
+    await on_room_member(mock_room, mock_event)
