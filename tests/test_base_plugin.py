@@ -13,7 +13,9 @@ Tests the core plugin functionality including:
 - Scheduling support
 """
 
+import asyncio
 import os
+import sqlite3
 import sys
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -372,8 +374,6 @@ class TestBasePlugin(unittest.TestCase):
             self.assertEqual(call_args.kwargs["room_id"], "!room:matrix.org")
             self.assertEqual(call_args.kwargs["message_type"], "m.room.message")
 
-        import asyncio
-
         asyncio.run(run_test())
 
     def test_strip_raw_method(self):
@@ -593,6 +593,94 @@ class TestBasePlugin(unittest.TestCase):
         result = plugin.is_direct_message(packet)
 
         self.assertFalse(result)
+
+    @patch("mmrelay.plugins.base_plugin.delete_plugin_data")
+    def test_delete_node_data_database_error(self, mock_delete_plugin_data):
+        """Test that the `delete_node_data` wrapper propagates exceptions from `db_utils`.
+
+        This test ensures that if the underlying `db_utils.delete_plugin_data`
+        function were to raise an exception, the `BasePlugin` wrapper would not
+        suppress it. This is a test of the wrapper's behavior, not the current
+        implementation of the `db_utils` function.
+        """
+        plugin = MockPlugin()
+        mock_delete_plugin_data.side_effect = sqlite3.Error(
+            "Database connection failed"
+        )
+
+        # Should raise the database error from the mocked db_utils function
+        with self.assertRaisesRegex(sqlite3.Error, "Database connection failed"):
+            plugin.delete_node_data(123456789)
+        # Ensure it attempted the delete
+        mock_delete_plugin_data.assert_called_once_with("test_plugin", 123456789)
+
+    @patch("mmrelay.plugins.base_plugin.store_plugin_data")
+    def test_set_node_data_database_error(self, mock_store):
+        """Test that the `set_node_data` wrapper propagates exceptions from `db_utils`.
+
+        This test ensures that if the underlying `db_utils.store_plugin_data`
+        function were to raise an exception, the `BasePlugin` wrapper would not
+        suppress it. This is a test of the wrapper's behavior, not the current
+        implementation of the `db_utils` function.
+        """
+        plugin = MockPlugin()
+        mock_store.side_effect = sqlite3.Error("Database connection failed")
+
+        # Should raise the database error from the mocked db_utils function
+        with self.assertRaisesRegex(sqlite3.Error, "Database connection failed"):
+            plugin.set_node_data(123, "test_value")
+
+    @patch("mmrelay.plugins.base_plugin.get_plugin_data")
+    def test_get_plugin_data_database_error(self, mock_get):
+        """Test get_data propagates database errors from get_plugin_data (actual behavior - get_plugin_data doesn't catch exceptions)."""
+        plugin = MockPlugin()
+        mock_get.side_effect = sqlite3.Error("Database connection failed")
+
+        with self.assertRaisesRegex(sqlite3.Error, "Database connection failed"):
+            plugin.get_data()
+
+    @patch("mmrelay.plugins.base_plugin.get_plugin_data_for_node")
+    def test_get_node_data_database_error(self, mock_get):
+        """Test that the `get_node_data` wrapper propagates exceptions from `db_utils`.
+
+        This test ensures that if the underlying `db_utils.get_plugin_data_for_node`
+        function were to raise an exception, the `BasePlugin` wrapper would not
+        suppress it. This is a test of the wrapper's behavior, not the current
+        implementation of the `db_utils` function.
+        """
+        plugin = MockPlugin()
+        mock_get.side_effect = sqlite3.Error("Database connection failed")
+
+        # Should raise the database error from the mocked db_utils function
+        with self.assertRaisesRegex(sqlite3.Error, "Database connection failed"):
+            plugin.get_node_data(123456789)
+
+    @patch("mmrelay.matrix_utils.connect_matrix")
+    def test_send_matrix_message_connection_error(self, mock_connect_matrix):
+        """Test send_matrix_message handles connection errors."""
+        plugin = MockPlugin()
+        mock_connect_matrix.side_effect = RuntimeError("Connection failed")
+
+        async def run_test():
+            with self.assertRaises(RuntimeError):
+                await plugin.send_matrix_message("!room:matrix.org", "Test message")
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.matrix_utils.connect_matrix")
+    def test_send_matrix_message_send_error(self, mock_connect_matrix):
+        """Test send_matrix_message handles send errors."""
+        plugin = MockPlugin()
+        mock_client = AsyncMock()
+        mock_client.room_send.side_effect = RuntimeError("Send failed")
+        mock_connect_matrix.return_value = mock_client
+
+        async def run_test():
+            # Should raise an exception due to send failure
+            with self.assertRaises(RuntimeError):
+                await plugin.send_matrix_message("!room:matrix.org", "Test message")
+
+        asyncio.run(run_test())
 
 
 if __name__ == "__main__":

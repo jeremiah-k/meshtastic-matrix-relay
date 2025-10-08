@@ -25,6 +25,7 @@ try:
         get_e2ee_error_message,
         get_e2ee_fix_instructions,
         get_e2ee_status,
+        get_e2ee_warning_messages,
         get_room_encryption_warnings,
     )
 
@@ -575,6 +576,38 @@ class TestE2EEErrorMessages(unittest.TestCase):
         self.assertIn("Set up Matrix authentication", instruction_text)
         self.assertIn("Enable E2EE in configuration", instruction_text)
         self.assertIn("Verify configuration", instruction_text)
+
+    def test_get_e2ee_warning_messages(self):
+        """Test that get_e2ee_warning_messages returns expected warning messages."""
+        warnings = get_e2ee_warning_messages()
+
+        # Verify it's a dictionary
+        self.assertIsInstance(warnings, dict)
+
+        # Verify all expected keys are present and no extra keys exist
+        expected_keys = {
+            "unavailable",
+            "disabled",
+            "incomplete",
+            "missing_deps",
+            "missing_auth",
+            "missing_config",
+        }
+        self.assertCountEqual(warnings.keys(), expected_keys)
+        # Verify value types are non-empty strings
+        for key, value in warnings.items():
+            self.assertIsInstance(value, str)
+            self.assertTrue(
+                value, f"Warning message for key '{key}' should not be empty."
+            )
+
+        # Verify specific message content
+        self.assertIn("Windows", warnings["unavailable"])
+        self.assertIn("disabled", warnings["disabled"])
+        self.assertIn("incomplete", warnings["incomplete"])
+        self.assertIn("dependencies", warnings["missing_deps"])
+        self.assertIn("authentication", warnings["missing_auth"])
+        self.assertIn("configuration", warnings["missing_config"])
 
 
 class TestActualEncryptionVerification(unittest.TestCase):

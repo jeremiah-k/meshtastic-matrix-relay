@@ -1,7 +1,9 @@
+import json
 import os
 import sys
+import tempfile
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, mock_open, patch
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -12,15 +14,22 @@ from mmrelay.config import (
     _convert_env_float,
     _convert_env_int,
     apply_env_config_overrides,
+    get_app_path,
     get_base_dir,
     get_config_paths,
     get_data_dir,
+    get_e2ee_store_dir,
     get_log_dir,
     get_plugin_data_dir,
+    is_e2ee_enabled,
     load_config,
+    load_credentials,
     load_database_config_from_env,
     load_logging_config_from_env,
     load_meshtastic_config_from_env,
+    save_credentials,
+    set_secure_file_permissions,
+    validate_yaml_syntax,
 )
 
 
@@ -789,6 +798,209 @@ class TestEnvironmentVariableIntegration(unittest.TestCase):
         """Test that no environment variables returns empty dict."""
         config = apply_env_config_overrides({})
         self.assertEqual(config, {})
+
+
+class TestFilePermissions(unittest.TestCase):
+    """Test file permission setting functionality."""
+
+    @patch("sys.platform", "linux")
+    @patch("mmrelay.config.os.chmod")
+    def test_set_secure_file_permissions_unix(self, mock_chmod):
+        """Test secure file permission setting on Unix systems."""
+        tmp_path = os.path.join(tempfile.gettempdir(), "test_file")
+        set_secure_file_permissions(tmp_path)
+        mock_chmod.assert_called_once_with(tmp_path, 0o600)
+
+    @patch("sys.platform", "win32")
+    @patch("mmrelay.config.os.chmod")
+    def test_set_secure_file_permissions_windows(self, mock_chmod):
+        """Test secure file permission setting on Windows systems."""
+        set_secure_file_permissions("C:\\temp\\test_file")
+        # Windows should not call chmod
+        mock_chmod.assert_not_called()
+
+
+class TestAppPath(unittest.TestCase):
+    """Test application path resolution."""
+
+    def test_get_app_path_unfrozen(self):
+        """Test application path resolution for unfrozen applications."""
+        with patch("mmrelay.config.sys.frozen", False, create=True), patch(
+            "mmrelay.config.os.path.dirname", return_value="/app"
+        ):
+            result = get_app_path()
+            self.assertEqual(result, "/app")
+
+    def test_get_app_path_frozen(self):
+        """Test application path resolution for frozen applications."""
+        with patch("mmrelay.config.sys.frozen", True, create=True):
+            with patch("mmrelay.config.sys.executable", "/app/mmrelay.exe"):
+                result = get_app_path()
+                self.assertEqual(result, "/app")
+
+
+class TestE2EESupport(unittest.TestCase):
+    """Test E2EE enablement detection."""
+
+    def test_is_e2ee_enabled_various_configs(self):
+        """Test E2EE enablement detection across various configurations."""
+        test_cases = [
+            # Legacy key
+            (
+                {"matrix": {"encryption": {"enabled": True}}},
+                True,
+                "legacy e2ee enabled",
+            ),
+            (
+                {"matrix": {"encryption": {"enabled": False}}},
+                False,
+                "legacy e2ee disabled",
+            ),
+            # New key
+            ({"matrix": {"e2ee": {"enabled": True}}}, True, "new e2ee enabled"),
+            ({"matrix": {"e2ee": {"enabled": False}}}, False, "new e2ee disabled"),
+            # Mixed keys (OR logic)
+            (
+                {
+                    "matrix": {
+                        "encryption": {"enabled": False},
+                        "e2ee": {"enabled": True},
+                    }
+                },
+                True,
+                "mixed legacy false, new true",
+            ),
+            (
+                {
+                    "matrix": {
+                        "encryption": {"enabled": True},
+                        "e2ee": {"enabled": False},
+                    }
+                },
+                True,
+                "mixed legacy true, new false",
+            ),
+            # Edge cases
+            ({}, False, "empty config"),
+            ({"meshtastic": {}}, False, "no matrix section"),
+            ({"matrix": {}}, False, "empty matrix section"),
+        ]
+        for config, expected, description in test_cases:
+            with self.subTest(description=description):
+                result = is_e2ee_enabled(config)
+                self.assertEqual(result, expected)
+
+
+class TestCredentials(unittest.TestCase):
+    """Test credential loading and saving functionality."""
+
+    @patch("mmrelay.config.os.path.exists", return_value=True)
+    @patch("builtins.open", new_callable=mock_open)
+    @patch(
+        "mmrelay.config.json.load",
+        side_effect=json.JSONDecodeError("Invalid JSON", "", 0),
+    )
+    def test_load_credentials_invalid_json(
+        self, _mock_json_load, _mock_open, _mock_exists
+    ):
+        """Test credential loading with invalid JSON."""
+        result = load_credentials()
+        self.assertIsNone(result)
+
+    @patch("mmrelay.config.os.path.exists", return_value=True)
+    @patch("builtins.open", new_callable=mock_open)
+    @patch("mmrelay.config.json.load")
+    def test_load_credentials_success(self, mock_json_load, _mock_open, _mock_exists):
+        """Test successful credential loading from JSON file."""
+        mock_json_load.return_value = {"user_id": "test", "access_token": "token"}
+        result = load_credentials()
+        self.assertEqual(result, {"user_id": "test", "access_token": "token"})
+
+    @patch("mmrelay.config.os.path.exists", return_value=True)
+    @patch("builtins.open", side_effect=OSError("Permission denied"))
+    def test_load_credentials_os_error(self, _mock_open, _mock_exists):
+        """Test credential loading with an OSError."""
+        result = load_credentials()
+        self.assertIsNone(result)
+
+    @patch("mmrelay.config.os.makedirs", side_effect=OSError("Permission denied"))
+    def test_save_credentials_directory_creation_failure(self, _mock_makedirs):
+        """Test credential saving when directory creation fails."""
+        credentials = {"user_id": "test"}
+        result = save_credentials(credentials)
+        self.assertIsNone(result)
+
+    @patch("mmrelay.config.get_base_dir", return_value="/fake/dir")
+    @patch("mmrelay.config.os.makedirs")
+    @patch("builtins.open", side_effect=OSError("Permission denied"))
+    def test_save_credentials_file_open_failure(
+        self, _mock_open, _mock_makedirs, _mock_get_base_dir
+    ):
+        """Test credential saving when opening the file fails."""
+        credentials = {"user_id": "test"}
+        result = save_credentials(credentials)
+        self.assertIsNone(result)
+
+
+class TestYAMLValidation(unittest.TestCase):
+    """Test YAML syntax validation."""
+
+    def test_validate_yaml_syntax_valid(self):
+        """Test YAML syntax validation for valid YAML."""
+        result = validate_yaml_syntax("key: value\nother: 123", "test.yaml")
+        self.assertTrue(result[0])  # is_valid should be True
+
+    def test_validate_yaml_syntax_invalid(self):
+        """Test YAML syntax validation for invalid YAML."""
+        result = validate_yaml_syntax(
+            "key: value\n  invalid: - item1\n  - item2", "test.yaml"
+        )
+        self.assertFalse(result[0])  # is_valid should be False
+        self.assertIn("YAML parsing error", result[1])
+
+    def test_validate_yaml_syntax_empty(self):
+        """Test YAML syntax validation for empty content."""
+        result = validate_yaml_syntax("", "test.yaml")
+        self.assertTrue(result[0])  # Empty content is technically valid
+
+    def test_validate_yaml_syntax_equals_instead_of_colon(self):
+        """Test YAML validation for content using '=' instead of ':'"""
+        result = validate_yaml_syntax("key = value", "test.yaml")
+        self.assertFalse(result[0])
+        self.assertIn("Use ':' instead of '='", result[1])
+
+    def test_validate_yaml_syntax_non_standard_bool(self):
+        """Test YAML validation for non-standard boolean values."""
+        result = validate_yaml_syntax("key: yes", "test.yaml")
+        self.assertTrue(result[0])  # Should be valid but with a warning
+        self.assertIn("Style warning", result[1])
+        self.assertIn("Consider using 'true' or 'false'", result[1])
+
+
+class TestE2EEStoreDir(unittest.TestCase):
+    """Test E2EE store directory creation."""
+
+    @patch("mmrelay.config.get_base_dir", return_value="/home/user/.mmrelay")
+    @patch("mmrelay.config.os.makedirs")
+    def test_get_e2ee_store_dir_creates_directory(self, mock_makedirs, _mock_base_dir):
+        """Test E2EE store directory creation when it doesn't exist."""
+        result = get_e2ee_store_dir()
+        expected_path = "/home/user/.mmrelay/store"
+        self.assertEqual(result, expected_path)
+        mock_makedirs.assert_called_once_with(expected_path, exist_ok=True)
+
+    @patch(
+        "mmrelay.config.get_base_dir",
+        return_value=os.path.join(tempfile.gettempdir(), ".mmrelay"),
+    )
+    @patch("mmrelay.config.os.makedirs")
+    def test_get_e2ee_store_dir_existing_directory(self, mock_makedirs, mock_base_dir):
+        """Test E2EE store directory when it already exists."""
+        result = get_e2ee_store_dir()
+        expected_path = os.path.join(tempfile.gettempdir(), ".mmrelay", "store")
+        self.assertEqual(result, expected_path)
+        mock_base_dir.assert_called_once()
+        mock_makedirs.assert_called_once_with(expected_path, exist_ok=True)
 
 
 if __name__ == "__main__":
