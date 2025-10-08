@@ -3610,7 +3610,6 @@ def test_display_room_channel_mappings():
 
 def test_display_room_channel_mappings_empty():
     """Test _display_room_channel_mappings with no rooms."""
-    from unittest.mock import patch
 
     rooms = {}
     config = {"matrix_rooms": []}
@@ -3624,7 +3623,6 @@ def test_display_room_channel_mappings_empty():
 
 def test_display_room_channel_mappings_no_config():
     """Test _display_room_channel_mappings with missing config."""
-    from unittest.mock import patch
 
     rooms = {"!room1:matrix.org": MagicMock()}
     config = {}
@@ -3710,7 +3708,6 @@ async def test_handle_matrix_reply_success():
 @pytest.mark.asyncio
 async def test_handle_matrix_reply_original_not_found():
     """Test handle_matrix_reply when original message is not found."""
-    from unittest.mock import MagicMock, patch
 
     # Create mock objects
     mock_room = MagicMock()
@@ -3786,7 +3783,6 @@ async def test_on_decryption_failure():
 @pytest.mark.asyncio
 async def test_on_room_member():
     """Test on_room_member handles room member events."""
-    from unittest.mock import MagicMock
 
     # Create mock room and event
     mock_room = MagicMock()

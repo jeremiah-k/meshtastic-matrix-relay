@@ -1400,6 +1400,18 @@ class TestResolvePluginTimeout(unittest.TestCase):
         result = _resolve_plugin_timeout(cfg, 5.0)
         self.assertEqual(result, 5.0)  # Should return default for negative values
 
+    def test_resolve_plugin_timeout_zero_timeout(self):
+        """Test _resolve_plugin_timeout handles zero timeout value."""
+        cfg = {"meshtastic": {"plugin_timeout": 0.0}}
+        result = _resolve_plugin_timeout(cfg, 5.0)
+        self.assertEqual(result, 5.0)  # Should return default for zero values
+
+    def test_resolve_plugin_timeout_missing_plugin_timeout_key(self):
+        """Test _resolve_plugin_timeout when meshtastic exists but plugin_timeout key is missing."""
+        cfg = {"meshtastic": {}}
+        result = _resolve_plugin_timeout(cfg, 5.0)
+        self.assertEqual(result, 5.0)
+
 
 if __name__ == "__main__":
     unittest.main()
