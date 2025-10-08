@@ -8,6 +8,16 @@ from mmrelay.plugins.base_plugin import BasePlugin
 
 
 def match_case(source, target):
+    """
+    Apply the letter-case pattern of `source` onto `target`.
+    
+    Parameters:
+        source (str): String whose uppercase/lowercase pattern will be used.
+        target (str): String whose characters will be converted to match `source`'s case.
+    
+    Returns:
+        str: A new string where each character from `target` is uppercased if the corresponding character in `source` is uppercase, otherwise lowercased. The result length is the minimum of the two input lengths.
+    """
     return "".join(
         c.upper() if s.isupper() else c.lower()
         for s, c in zip(source, target, strict=False)

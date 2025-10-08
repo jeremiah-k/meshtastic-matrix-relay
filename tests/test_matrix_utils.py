@@ -3480,6 +3480,15 @@ async def test_resolve_aliases_in_mapping_list():
     ]
 
     async def mock_resolver(alias):
+        """
+        Resolve a room alias to a room ID for testing.
+        
+        Parameters:
+            alias (str): Room alias to resolve.
+        
+        Returns:
+            A room ID string for known aliases (`#room1:matrix.org` -> `!resolved1:matrix.org`, `#room3:matrix.org` -> `!resolved3:matrix.org`); otherwise returns the original input string.
+        """
         if alias == "#room1:matrix.org":
             return "!resolved1:matrix.org"
         elif alias == "#room3:matrix.org":
@@ -3503,6 +3512,15 @@ async def test_resolve_aliases_in_mapping_dict():
     }
 
     async def mock_resolver(alias):
+        """
+        Resolve a Matrix room alias to a room ID (test helper).
+        
+        Parameters:
+            alias (str): A Matrix room alias to resolve, e.g. "#alias:matrix.org".
+        
+        Returns:
+            str: The resolved room ID for known aliases, otherwise the original `alias`.
+        """
         if alias == "#alias1:matrix.org":
             return "!resolved1:matrix.org"
         elif alias == "#alias3:matrix.org":
