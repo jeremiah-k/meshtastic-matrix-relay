@@ -1367,50 +1367,31 @@ class TestGetDeviceMetadata(unittest.TestCase):
             self.assertEqual(result["firmware_version"], "2.3.15.abc123")
 
 
-class TestResolvePluginTimeout(unittest.TestCase):
-    """Test cases for _resolve_plugin_timeout helper function."""
-
-    def test_resolve_plugin_timeout_with_config(self):
-        """Test _resolve_plugin_timeout returns configured timeout value."""
-        cfg = {"meshtastic": {"plugin_timeout": 10.5}}
-        result = _resolve_plugin_timeout(cfg, 5.0)
-        self.assertEqual(result, 10.5)
-
-    def test_resolve_plugin_timeout_without_config(self):
-        """Test _resolve_plugin_timeout returns default when no config."""
-        cfg = {}
-        result = _resolve_plugin_timeout(cfg, 5.0)
-        self.assertEqual(result, 5.0)
-
-    def test_resolve_plugin_timeout_none_config(self):
-        """Test _resolve_plugin_timeout returns default when config is None."""
-        cfg = None
-        result = _resolve_plugin_timeout(cfg, 5.0)
-        self.assertEqual(result, 5.0)
-
-    def test_resolve_plugin_timeout_invalid_timeout(self):
-        """Test _resolve_plugin_timeout handles invalid timeout values."""
-        cfg = {"meshtastic": {"plugin_timeout": "invalid"}}
-        result = _resolve_plugin_timeout(cfg, 5.0)
-        self.assertEqual(result, 5.0)  # Should return default for invalid values
-
-    def test_resolve_plugin_timeout_negative_timeout(self):
-        """Test _resolve_plugin_timeout handles negative timeout values."""
-        cfg = {"meshtastic": {"plugin_timeout": -1.0}}
-        result = _resolve_plugin_timeout(cfg, 5.0)
-        self.assertEqual(result, 5.0)  # Should return default for negative values
-
-    def test_resolve_plugin_timeout_zero_timeout(self):
-        """Test _resolve_plugin_timeout handles zero timeout value."""
-        cfg = {"meshtastic": {"plugin_timeout": 0.0}}
-        result = _resolve_plugin_timeout(cfg, 5.0)
-        self.assertEqual(result, 5.0)  # Should return default for zero values
-
-    def test_resolve_plugin_timeout_missing_plugin_timeout_key(self):
-        """Test _resolve_plugin_timeout when meshtastic exists but plugin_timeout key is missing."""
-        cfg = {"meshtastic": {}}
-        result = _resolve_plugin_timeout(cfg, 5.0)
-        self.assertEqual(result, 5.0)
+@pytest.mark.parametrize(
+    "cfg, default, expected",
+    [
+        ({"meshtastic": {"plugin_timeout": 10.5}}, 5.0, 10.5),
+        ({}, 5.0, 5.0),
+        (None, 5.0, 5.0),
+        ({"meshtastic": {"plugin_timeout": "invalid"}}, 5.0, 5.0),
+        ({"meshtastic": {"plugin_timeout": -1.0}}, 5.0, 5.0),
+        ({"meshtastic": {"plugin_timeout": 0.0}}, 5.0, 5.0),
+        ({"meshtastic": {}}, 5.0, 5.0),
+    ],
+    ids=[
+        "with_config",
+        "without_config",
+        "none_config",
+        "invalid_timeout",
+        "negative_timeout",
+        "zero_timeout",
+        "missing_plugin_timeout_key",
+    ],
+)
+def test_resolve_plugin_timeout(cfg, default, expected):
+    """Test _resolve_plugin_timeout with various configurations."""
+    result = _resolve_plugin_timeout(cfg, default)
+    assert result == expected
 
 
 if __name__ == "__main__":

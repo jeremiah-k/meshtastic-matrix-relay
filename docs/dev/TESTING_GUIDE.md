@@ -68,6 +68,33 @@ def test_handle_auth_logout_keyboard_interrupt(self, mock_print, mock_logout):
 
 ### Test File Structure
 
+For new tests, prefer pytest functions for better parametrization and fixture support:
+
+```python
+import pytest
+from unittest.mock import MagicMock, patch
+
+@pytest.mark.parametrize(
+    "input_value, expected",
+    [
+        (1, 2),
+        (2, 4),
+    ],
+)
+def test_function_parametrized(input_value, expected):
+    """Test function with parametrized inputs."""
+    result = function_under_test(input_value)
+    assert result == expected
+
+def test_specific_behavior():
+    """Test specific behavior with descriptive name."""
+    # Arrange
+    # Act
+    # Assert
+```
+
+Legacy tests may use unittest.TestCase:
+
 ```python
 import unittest
 from unittest.mock import MagicMock, mock_open, patch
