@@ -3369,15 +3369,17 @@ def test_iter_room_alias_entries_list_with_strings():
         "#room3:matrix.org",
     }
 
-    # Test setters for all entries
-    setters_by_alias = {alias: setter for alias, setter in entries}
-    setters_by_alias["#room1:matrix.org"]("!resolved1:matrix.org")
+    # Test setters for all entries.
+    # A loop is more robust than creating a dictionary in case of non-unique aliases.
+    for alias, setter in entries:
+        if alias == "#room1:matrix.org":
+            setter("!resolved1:matrix.org")
+        elif alias == "!room2:matrix.org":
+            setter("!resolved2:matrix.org")
+        elif alias == "#room3:matrix.org":
+            setter("!resolved3:matrix.org")
     assert mapping[0] == "!resolved1:matrix.org"
-
-    setters_by_alias["!room2:matrix.org"]("!resolved2:matrix.org")
     assert mapping[1] == "!resolved2:matrix.org"
-
-    setters_by_alias["#room3:matrix.org"]("!resolved3:matrix.org")
     assert mapping[2] == "!resolved3:matrix.org"
 
 
@@ -3396,19 +3398,17 @@ def test_iter_room_alias_entries_list_with_dicts():
     aliases_or_ids = {entry[0] for entry in entries}
     assert aliases_or_ids == {"#room1:matrix.org", "!room2:matrix.org", ""}
 
-    # Test setters for all entries
-    setters_by_alias = {entry[0]: entry[1] for entry in entries}
-
-    # Test setting for #room1:matrix.org
-    setters_by_alias["#room1:matrix.org"]("!resolved1:matrix.org")
+    # Test setters for all entries.
+    # A loop is more robust than creating a dictionary in case of non-unique aliases.
+    for alias, setter in entries:
+        if alias == "#room1:matrix.org":
+            setter("!resolved1:matrix.org")
+        elif alias == "!room2:matrix.org":
+            setter("!new-room2:matrix.org")
+        elif alias == "":
+            setter("!resolved3:matrix.org")
     assert mapping[0]["id"] == "!resolved1:matrix.org"
-
-    # Test setting for !room2:matrix.org
-    setters_by_alias["!room2:matrix.org"]("!new-room2:matrix.org")
     assert mapping[1]["id"] == "!new-room2:matrix.org"
-
-    # Test setting for entry with no id
-    setters_by_alias[""]("!resolved3:matrix.org")
     assert mapping[2]["id"] == "!resolved3:matrix.org"
 
 
@@ -3431,13 +3431,17 @@ def test_iter_room_alias_entries_dict_with_strings():
         "#alias3:matrix.org",
     }
 
-    # Test setters for all entries
-    setters_by_alias = {alias: setter for alias, setter in entries}
-    setters_by_alias["#alias1:matrix.org"]("!resolved1:matrix.org")
+    # Test setters for all entries.
+    # A loop is more robust than creating a dictionary in case of non-unique aliases.
+    for alias, setter in entries:
+        if alias == "#alias1:matrix.org":
+            setter("!resolved1:matrix.org")
+        elif alias == "!room2:matrix.org":
+            setter("!new-room2:matrix.org")
+        elif alias == "#alias3:matrix.org":
+            setter("!resolved3:matrix.org")
     assert mapping["room1"] == "!resolved1:matrix.org"
-    setters_by_alias["!room2:matrix.org"]("!new-room2:matrix.org")
     assert mapping["room2"] == "!new-room2:matrix.org"
-    setters_by_alias["#alias3:matrix.org"]("!resolved3:matrix.org")
     assert mapping["room3"] == "!resolved3:matrix.org"
 
 
@@ -3452,13 +3456,17 @@ def test_iter_room_alias_entries_dict_with_dicts():
     entries = list(_iter_room_alias_entries(mapping))
     assert len(entries) == 3
 
-    # Check entries
-    setters_by_alias = {alias: setter for alias, setter in entries}
-    setters_by_alias["#alias1:matrix.org"]("!resolved1:matrix.org")
+    # Check entries.
+    # A loop is more robust than creating a dictionary in case of non-unique aliases.
+    for alias, setter in entries:
+        if alias == "#alias1:matrix.org":
+            setter("!resolved1:matrix.org")
+        elif alias == "!room2:matrix.org":
+            setter("!resolved2:matrix.org")
+        elif alias == "":
+            setter("!resolved3:matrix.org")
     assert mapping["room1"]["id"] == "!resolved1:matrix.org"
-    setters_by_alias["!room2:matrix.org"]("!resolved2:matrix.org")
     assert mapping["room2"]["id"] == "!resolved2:matrix.org"
-    setters_by_alias[""]("!resolved3:matrix.org")
     assert mapping["room3"]["id"] == "!resolved3:matrix.org"
 
 
