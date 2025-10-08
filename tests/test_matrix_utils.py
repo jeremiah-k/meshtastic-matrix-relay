@@ -3581,8 +3581,27 @@ def test_update_room_id_in_mapping_not_found():
     assert mapping == ["!room1:matrix.org", "!room2:matrix.org"]
 
 
-def test_display_room_channel_mappings():
-    """Test _display_room_channel_mappings logs room-channel mappings."""
+@pytest.mark.parametrize(
+    "e2ee_status, expected_log_for_room1",
+    [
+        ({"overall_status": "ready"}, "    🔒 Room 1"),
+        (
+            {"overall_status": "unavailable"},
+            "    ⚠️ Room 1 (E2EE not supported - messages blocked)",
+        ),
+        (
+            {"overall_status": "disabled"},
+            "    ⚠️ Room 1 (E2EE disabled - messages blocked)",
+        ),
+        (
+            {"overall_status": "incomplete"},
+            "    ⚠️ Room 1 (E2EE incomplete - messages may be blocked)",
+        ),
+    ],
+    ids=["e2ee_ready", "e2ee_unavailable", "e2ee_disabled", "e2ee_incomplete"],
+)
+def test_display_room_channel_mappings(e2ee_status, expected_log_for_room1):
+    """Test _display_room_channel_mappings logs room-channel mappings for various E2EE statuses."""
 
     rooms = {
         "!room1:matrix.org": MagicMock(display_name="Room 1", encrypted=True),
@@ -3594,7 +3613,6 @@ def test_display_room_channel_mappings():
             {"id": "!room2:matrix.org", "meshtastic_channel": 1},
         ]
     }
-    e2ee_status = {"overall_status": "ready"}
 
     with patch("mmrelay.matrix_utils.logger") as mock_logger:
         _display_room_channel_mappings(rooms, config, e2ee_status)
@@ -3603,7 +3621,7 @@ def test_display_room_channel_mappings():
         expected_calls = [
             call("Matrix Rooms → Meshtastic Channels (2 configured):"),
             call("  Channel 0:"),
-            call("    🔒 Room 1"),
+            call(expected_log_for_room1),
             call("  Channel 1:"),
             call("    ✅ Room 2"),
         ]
