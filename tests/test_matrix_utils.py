@@ -3361,22 +3361,23 @@ def test_iter_room_alias_entries_list_with_strings():
     entries = list(_iter_room_alias_entries(mapping))
     assert len(entries) == 3
 
-    # Check first entry
-    alias_or_id, setter = entries[0]
-    assert alias_or_id == "#room1:matrix.org"
-    setter("!resolved1:matrix.org")
+    # Assert all expected alias_or_id values are present
+    aliases_or_ids = {entry[0] for entry in entries}
+    assert aliases_or_ids == {
+        "#room1:matrix.org",
+        "!room2:matrix.org",
+        "#room3:matrix.org",
+    }
+
+    # Test setters for all entries
+    setters_by_alias = {alias: setter for alias, setter in entries}
+    setters_by_alias["#room1:matrix.org"]("!resolved1:matrix.org")
     assert mapping[0] == "!resolved1:matrix.org"
 
-    # Check second entry
-    alias_or_id, setter = entries[1]
-    assert alias_or_id == "!room2:matrix.org"
-    setter("!resolved2:matrix.org")
+    setters_by_alias["!room2:matrix.org"]("!resolved2:matrix.org")
     assert mapping[1] == "!resolved2:matrix.org"
 
-    # Check third entry
-    alias_or_id, setter = entries[2]
-    assert alias_or_id == "#room3:matrix.org"
-    setter("!resolved3:matrix.org")
+    setters_by_alias["#room3:matrix.org"]("!resolved3:matrix.org")
     assert mapping[2] == "!resolved3:matrix.org"
 
 
@@ -3395,22 +3396,19 @@ def test_iter_room_alias_entries_list_with_dicts():
     aliases_or_ids = {entry[0] for entry in entries}
     assert aliases_or_ids == {"#room1:matrix.org", "!room2:matrix.org", ""}
 
-    # Check first entry (dict with id)
-    alias_or_id, setter = entries[0]
-    assert alias_or_id == "#room1:matrix.org"
-    setter("!resolved1:matrix.org")
+    # Test setters for all entries
+    setters_by_alias = {entry[0]: entry[1] for entry in entries}
+
+    # Test setting for #room1:matrix.org
+    setters_by_alias["#room1:matrix.org"]("!resolved1:matrix.org")
     assert mapping[0]["id"] == "!resolved1:matrix.org"
 
-    # Check second entry
-    alias_or_id, setter = entries[1]
-    assert alias_or_id == "!room2:matrix.org"
-    setter("!new-room2:matrix.org")
+    # Test setting for !room2:matrix.org
+    setters_by_alias["!room2:matrix.org"]("!new-room2:matrix.org")
     assert mapping[1]["id"] == "!new-room2:matrix.org"
 
-    # Check third entry (dict without id)
-    alias_or_id, setter = entries[2]
-    assert alias_or_id == ""  # Empty string when no id key
-    setter("!resolved3:matrix.org")
+    # Test setting for entry with no id
+    setters_by_alias[""]("!resolved3:matrix.org")
     assert mapping[2]["id"] == "!resolved3:matrix.org"
 
 
