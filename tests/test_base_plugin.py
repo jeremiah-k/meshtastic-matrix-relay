@@ -596,30 +596,31 @@ class TestBasePlugin(unittest.TestCase):
 
     @patch("mmrelay.plugins.base_plugin.delete_plugin_data")
     def test_delete_node_data_database_error(self, mock_delete_plugin_data):
-        """Test delete_node_data propagates database connection errors."""
+        """Test delete_node_data wrapper behavior - unit test for exception propagation from db_utils function. Note: db_utils.delete_plugin_data actually handles errors gracefully, but this test verifies wrapper behavior."""
         plugin = MockPlugin()
         mock_delete_plugin_data.side_effect = sqlite3.Error(
             "Database connection failed"
         )
 
-        # Should raise the database error
+        # Should raise the database error from the mocked db_utils function
         with self.assertRaisesRegex(sqlite3.Error, "Database connection failed"):
             plugin.delete_node_data(123456789)
         # Ensure it attempted the delete
         mock_delete_plugin_data.assert_called_once_with("test_plugin", 123456789)
 
     @patch("mmrelay.plugins.base_plugin.store_plugin_data")
-    def test_store_plugin_data_database_error(self, mock_store):
-        """Test set_node_data propagates database errors from store_plugin_data."""
+    def test_set_node_data_database_error(self, mock_store):
+        """Test set_node_data wrapper behavior - unit test for exception propagation from db_utils function. Note: db_utils.store_plugin_data actually handles errors gracefully, but this test verifies wrapper behavior."""
         plugin = MockPlugin()
         mock_store.side_effect = sqlite3.Error("Database connection failed")
 
+        # Should raise the database error from the mocked db_utils function
         with self.assertRaisesRegex(sqlite3.Error, "Database connection failed"):
             plugin.set_node_data(123, "test_value")
 
     @patch("mmrelay.plugins.base_plugin.get_plugin_data")
     def test_get_plugin_data_database_error(self, mock_get):
-        """Test get_plugin_data raises exception on database connection errors."""
+        """Test get_data propagates database errors from get_plugin_data (actual behavior - get_plugin_data doesn't catch exceptions)."""
         plugin = MockPlugin()
         mock_get.side_effect = sqlite3.Error("Database connection failed")
 
@@ -627,11 +628,12 @@ class TestBasePlugin(unittest.TestCase):
             plugin.get_data()
 
     @patch("mmrelay.plugins.base_plugin.get_plugin_data_for_node")
-    def test_get_plugin_data_for_node_database_error(self, mock_get):
-        """Test get_node_data propagates database errors from get_plugin_data_for_node."""
+    def test_get_node_data_database_error(self, mock_get):
+        """Test get_node_data wrapper behavior - unit test for exception propagation from db_utils function. Note: db_utils.get_plugin_data_for_node actually handles errors gracefully and returns [], but this test verifies wrapper behavior."""
         plugin = MockPlugin()
         mock_get.side_effect = sqlite3.Error("Database connection failed")
 
+        # Should raise the database error from the mocked db_utils function
         with self.assertRaisesRegex(sqlite3.Error, "Database connection failed"):
             plugin.get_node_data(123456789)
 

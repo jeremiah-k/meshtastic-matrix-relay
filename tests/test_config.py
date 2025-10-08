@@ -842,28 +842,18 @@ class TestAppPath(unittest.TestCase):
 class TestE2EESupport(unittest.TestCase):
     """Test E2EE enablement detection."""
 
-    def test_is_e2ee_enabled_true(self):
-        """Test E2EE enablement detection when enabled."""
-        config = {"matrix": {"encryption": {"enabled": True}}}
-        result = is_e2ee_enabled(config)
-        self.assertTrue(result)
-
-    def test_is_e2ee_enabled_false(self):
-        """Test E2EE enablement detection when disabled."""
-        config = {"matrix": {"encryption": {"enabled": False}}}
-        result = is_e2ee_enabled(config)
-        self.assertFalse(result)
-
-    def test_is_e2ee_enabled_no_config(self):
-        """Test E2EE enablement detection with no config."""
-        result = is_e2ee_enabled({})
-        self.assertFalse(result)
-
-    def test_is_e2ee_enabled_no_matrix_section(self):
-        """Test E2EE enablement detection with no matrix section."""
-        config = {"meshtastic": {}}
-        result = is_e2ee_enabled(config)
-        self.assertFalse(result)
+    def test_is_e2ee_enabled_various_configs(self):
+        """Test E2EE enablement detection across various configurations."""
+        test_cases = [
+            ({"matrix": {"encryption": {"enabled": True}}}, True, "enabled"),
+            ({"matrix": {"encryption": {"enabled": False}}}, False, "disabled"),
+            ({}, False, "no config"),
+            ({"meshtastic": {}}, False, "no matrix section"),
+        ]
+        for config, expected, description in test_cases:
+            with self.subTest(description=description):
+                result = is_e2ee_enabled(config)
+                self.assertEqual(result, expected)
 
 
 class TestCredentials(unittest.TestCase):
@@ -891,9 +881,27 @@ class TestCredentials(unittest.TestCase):
         result = load_credentials()
         self.assertEqual(result, {"user_id": "test", "access_token": "token"})
 
+    @patch("mmrelay.config.os.path.exists", return_value=True)
+    @patch("builtins.open", side_effect=OSError("Permission denied"))
+    def test_load_credentials_os_error(self, _mock_open, _mock_exists):
+        """Test credential loading with an OSError."""
+        result = load_credentials()
+        self.assertIsNone(result)
+
     @patch("mmrelay.config.os.makedirs", side_effect=OSError("Permission denied"))
     def test_save_credentials_directory_creation_failure(self, _mock_makedirs):
         """Test credential saving when directory creation fails."""
+        credentials = {"user_id": "test"}
+        result = save_credentials(credentials)
+        self.assertIsNone(result)
+
+    @patch("mmrelay.config.get_base_dir", return_value="/fake/dir")
+    @patch("mmrelay.config.os.makedirs")
+    @patch("builtins.open", side_effect=OSError("Permission denied"))
+    def test_save_credentials_file_open_failure(
+        self, _mock_open, _mock_makedirs, _mock_get_base_dir
+    ):
+        """Test credential saving when opening the file fails."""
         credentials = {"user_id": "test"}
         result = save_credentials(credentials)
         self.assertIsNone(result)
@@ -919,6 +927,19 @@ class TestYAMLValidation(unittest.TestCase):
         """Test YAML syntax validation for empty content."""
         result = validate_yaml_syntax("", "test.yaml")
         self.assertTrue(result[0])  # Empty content is technically valid
+
+    def test_validate_yaml_syntax_equals_instead_of_colon(self):
+        """Test YAML validation for content using '=' instead of ':'"""
+        is_valid, message, _ = validate_yaml_syntax("key = value", "test.yaml")
+        self.assertFalse(is_valid)
+        self.assertIn("Use ':' instead of '='", message)
+
+    def test_validate_yaml_syntax_non_standard_bool(self):
+        """Test YAML validation for non-standard boolean values."""
+        is_valid, message, _ = validate_yaml_syntax("key: yes", "test.yaml")
+        self.assertTrue(is_valid)  # Should be valid but with a warning
+        self.assertIn("Style warning", message)
+        self.assertIn("Consider using 'true' or 'false'", message)
 
 
 class TestE2EEStoreDir(unittest.TestCase):
