@@ -68,12 +68,11 @@ class TestBasePlugin(unittest.TestCase):
         """
         Prepare the test environment by mocking configuration and database functions for plugin tests.
         """
-        # Reset global warning state for clean test isolation
-        from mmrelay.plugins.base_plugin import (
-            _plugins_low_delay_warned,
-            _warned_delay_values,
-        )
+        # Reset global warning state for clean test isolation between test cases
+        import mmrelay.plugins.base_plugin as base_plugin_module
+        from mmrelay.plugins.base_plugin import _warned_delay_values
 
+        base_plugin_module._plugins_low_delay_warned = False
         _warned_delay_values.clear()
         _plugins_low_delay_warned = False
 
