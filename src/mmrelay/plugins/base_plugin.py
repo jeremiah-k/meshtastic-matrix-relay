@@ -20,12 +20,17 @@ from mmrelay.db_utils import (
 )
 from mmrelay.log_utils import get_logger
 from mmrelay.message_queue import queue_message
+from mmrelay.plugin_loader import logger as plugins_logger
 
 # Global config variable that will be set from main.py
 config = None
 
 # Track if we've already shown the deprecated warning
 _deprecated_warning_shown = False
+
+# Track delay values we've already warned about to prevent spam
+_warned_delay_values = set()
+_plugins_low_delay_warned = False
 
 
 class BasePlugin(ABC):
@@ -69,15 +74,18 @@ class BasePlugin(ABC):
 
     def __init__(self, plugin_name=None) -> None:
         """
-        Initialize the plugin instance, setting its name, logger, configuration, mapped channels, and response delay.
+        Initialize plugin state including its name, logger, configuration, mapped channels, and response delay.
 
         Parameters:
-            plugin_name (str, optional): Overrides the plugin's name. If not provided, uses the class-level `plugin_name` attribute.
+            plugin_name (str, optional): Overrides the class-level plugin_name attribute when provided.
 
         Raises:
-            ValueError: If the plugin name is not set via parameter or class attribute.
+            ValueError: If no plugin name is available from the parameter or the class attribute.
 
-        Loads plugin-specific configuration from the global config, validates assigned channels, and determines the response delay, enforcing a minimum of 2.1 seconds. Logs a warning if deprecated configuration options are used or if channels are not mapped.
+        Notes:
+            - Loads plugin configuration from the global `config` under "plugins", "community-plugins", or "custom-plugins".
+            - Maps Matrix rooms to Meshtastic channels and validates the plugin's configured channels, logging a warning for unmapped channels.
+            - Reads `meshtastic.message_delay` (or the deprecated `meshtastic.plugin_response_delay`) and enforces a minimum delay of MINIMUM_MESSAGE_DELAY; deprecated option emits a one-time warning and delays below the minimum are clamped.
         """
         # Allow plugin_name to be passed as a parameter for simpler initialization
         # This maintains backward compatibility while providing a cleaner API
@@ -166,7 +174,7 @@ class BasePlugin(ABC):
                 # Show deprecated warning only once globally
                 global _deprecated_warning_shown
                 if not _deprecated_warning_shown:
-                    self.logger.warning(
+                    plugins_logger.warning(
                         "Configuration option 'plugin_response_delay' is deprecated. "
                         "Please use 'message_delay' instead. Support for 'plugin_response_delay' will be removed in a future version."
                     )
@@ -176,9 +184,26 @@ class BasePlugin(ABC):
                 self.response_delay = delay
                 # Enforce minimum delay above firmware limit to prevent message dropping
                 if self.response_delay < MINIMUM_MESSAGE_DELAY:
-                    self.logger.warning(
-                        f"{delay_key} of {self.response_delay}s is below minimum of {MINIMUM_MESSAGE_DELAY}s (above firmware limit). Using {MINIMUM_MESSAGE_DELAY}s."
-                    )
+                    # Only warn once per unique delay value to prevent spam
+                    global _warned_delay_values, _plugins_low_delay_warned  # Track warning status across plugin instances
+                    warning_message = f"{delay_key} of {self.response_delay}s is below minimum of {MINIMUM_MESSAGE_DELAY}s (above firmware limit). Using {MINIMUM_MESSAGE_DELAY}s."
+
+                    if self.response_delay not in _warned_delay_values:
+                        # Show generic plugins warning on first occurrence
+                        if not _plugins_low_delay_warned:
+                            plugins_logger.warning(
+                                f"One or more plugins have message_delay below {MINIMUM_MESSAGE_DELAY}s. "
+                                f"This may affect multiple plugins. Check individual plugin logs for details."
+                            )
+                            _plugins_low_delay_warned = True
+
+                        # Show specific delay warning (global configuration issue)
+                        plugins_logger.warning(warning_message)
+                        _warned_delay_values.add(self.response_delay)
+                    else:
+                        # Log additional instances at debug level to avoid spam
+                        # This ensures we only warn once per plugin while still providing visibility
+                        self.logger.debug(warning_message)
                     self.response_delay = MINIMUM_MESSAGE_DELAY
 
     def start(self):

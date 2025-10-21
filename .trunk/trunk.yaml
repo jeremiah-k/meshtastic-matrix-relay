@@ -23,7 +23,7 @@ lint:
     - actionlint@1.7.8
     - bandit@1.8.6
     - black@25.9.0
-    - checkov@3.2.484
+    - checkov@3.2.485
     - git-diff-check
     - isort@7.0.0
     - markdownlint@0.45.0
