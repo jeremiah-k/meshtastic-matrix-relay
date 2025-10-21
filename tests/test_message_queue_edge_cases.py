@@ -484,8 +484,7 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
             else:
                 raise
 
-    @patch("mmrelay.message_queue.logger")
-    def test_runtime_warning_for_fast_messages(self, mock_logger):
+    def test_runtime_warning_for_fast_messages(self):
         """
         Verify that runtime warnings are logged when messages are sent less than MINIMUM_MESSAGE_DELAY seconds apart.
         """
@@ -496,8 +495,20 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
             """
             Asynchronously tests that warnings are logged when messages are sent too quickly.
             """
-            # Start queue with delay less than MINIMUM_MESSAGE_DELAY to trigger runtime warnings
-            self.queue.start(message_delay=0.5)
+            # Set up mock meshtastic client to allow message sending
+            from unittest.mock import MagicMock
+
+            import mmrelay.meshtastic_utils
+
+            mmrelay.meshtastic_utils.meshtastic_client = MagicMock()
+            mmrelay.meshtastic_utils.reconnecting = False
+
+            # Start queue with a delay that allows messages to be sent but still triggers runtime warnings
+            # The message_delay needs to be: actual_time_between_sends >= message_delay < MINIMUM_MESSAGE_DELAY
+            # This allows messages to be sent (no rate limiting wait) but still triggers the runtime warning
+            self.queue.start(
+                message_delay=1.0
+            )  # 1.0s delay, less than MINIMUM_MESSAGE_DELAY (2.0s)
             self.queue.ensure_processor_started()
 
             # Mock send function
@@ -507,31 +518,27 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
                 calls.append(text)
                 return {"id": len(calls)}
 
-            # Queue two messages quickly
-            success1 = self.queue.enqueue(
-                mock_send, text="First", description="First message"
-            )
-            success2 = self.queue.enqueue(
-                mock_send, text="Second", description="Second message"
-            )
+            # Use assertLogs to capture log messages as recommended in testing guide
+            # Use the correct logger name "MessageQueue" as defined in message_queue.py
+            with self.assertLogs("MessageQueue", level="WARNING") as cm:
+                # Queue two messages quickly
+                success1 = self.queue.enqueue(
+                    mock_send, text="First", description="First message"
+                )
+                success2 = self.queue.enqueue(
+                    mock_send, text="Second", description="Second message"
+                )
 
-            self.assertTrue(success1)
-            self.assertTrue(success2)
+                self.assertTrue(success1)
+                self.assertTrue(success2)
 
-            # Wait for both messages to be processed
-            await self.queue.drain(timeout=5.0)
+                # Wait for both messages to be processed
+                await self.queue.drain(timeout=5.0)
 
-            # Should have logged a runtime warning about fast sending
-            # Look for the specific warning message pattern
-            warning_calls = [
-                call
-                for call in mock_logger.warning.call_args_list
-                if f"below {MINIMUM_MESSAGE_DELAY}s" in str(call)
-                and "messages may be dropped" in str(call)
-            ]
-            self.assertGreater(
-                len(warning_calls), 0, "Should log runtime warning for fast messages"
-            )
+            # Check that we got the expected runtime warning
+            warning_messages = "\n".join(cm.output)
+            self.assertIn(f"below {MINIMUM_MESSAGE_DELAY}s", warning_messages)
+            self.assertIn("may be dropped", warning_messages)
 
         # Run the async test with proper event loop handling
         try:
