@@ -176,7 +176,7 @@ class BasePlugin(ABC):
                 self.response_delay = delay
                 # Enforce minimum delay above firmware limit to prevent message dropping
                 if self.response_delay < MINIMUM_MESSAGE_DELAY:
-                    self.logger.warning(
+                    self.logger.debug(
                         f"{delay_key} of {self.response_delay}s is below minimum of {MINIMUM_MESSAGE_DELAY}s (above firmware limit). Using {MINIMUM_MESSAGE_DELAY}s."
                     )
                     self.response_delay = MINIMUM_MESSAGE_DELAY

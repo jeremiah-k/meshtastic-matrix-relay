@@ -63,7 +63,7 @@ That's it! MMRelay will automatically encrypt messages for encrypted rooms and d
 
 ## Requirements
 
-- **Python 3.9 or higher**
+- **Python 3.10 or higher**
 - **Linux or macOS** (E2EE is not supported on Windows due to library limitations)
 - **MMRelay v1.2+** with E2EE support: `pipx install 'mmrelay[e2e]'`
 
