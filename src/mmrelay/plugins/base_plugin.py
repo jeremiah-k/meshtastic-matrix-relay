@@ -29,6 +29,7 @@ _deprecated_warning_shown = False
 
 # Track delay values we've already warned about to prevent spam
 _warned_delay_values = set()
+_plugins_low_delay_warned = False
 
 
 class BasePlugin(ABC):
@@ -73,13 +74,13 @@ class BasePlugin(ABC):
     def __init__(self, plugin_name=None) -> None:
         """
         Initialize plugin state including its name, logger, configuration, mapped channels, and response delay.
-        
+
         Parameters:
             plugin_name (str, optional): Overrides the class-level plugin_name attribute when provided.
-        
+
         Raises:
             ValueError: If no plugin name is available from the parameter or the class attribute.
-        
+
         Notes:
             - Loads plugin configuration from the global `config` under "plugins", "community-plugins", or "custom-plugins".
             - Maps Matrix rooms to Meshtastic channels and validates the plugin's configured channels, logging a warning for unmapped channels.
@@ -183,9 +184,19 @@ class BasePlugin(ABC):
                 # Enforce minimum delay above firmware limit to prevent message dropping
                 if self.response_delay < MINIMUM_MESSAGE_DELAY:
                     # Only warn once per unique delay value to prevent spam
-                    global _warned_delay_values
+                    global _warned_delay_values, _plugins_low_delay_warned
                     warning_message = f"{delay_key} of {self.response_delay}s is below minimum of {MINIMUM_MESSAGE_DELAY}s (above firmware limit). Using {MINIMUM_MESSAGE_DELAY}s."
+
                     if self.response_delay not in _warned_delay_values:
+                        # Show generic plugins warning on first occurrence
+                        if not _plugins_low_delay_warned:
+                            self.logger.warning(
+                                f"One or more plugins have message_delay below {MINIMUM_MESSAGE_DELAY}s. "
+                                f"This may affect multiple plugins. Check individual plugin logs for details."
+                            )
+                            _plugins_low_delay_warned = True
+
+                        # Show per-plugin specific warning
                         self.logger.warning(warning_message)
                         _warned_delay_values.add(self.response_delay)
                     else:
