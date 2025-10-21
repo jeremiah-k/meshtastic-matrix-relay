@@ -72,15 +72,18 @@ class BasePlugin(ABC):
 
     def __init__(self, plugin_name=None) -> None:
         """
-        Initialize the plugin instance, setting its name, logger, configuration, mapped channels, and response delay.
-
+        Initialize plugin state including its name, logger, configuration, mapped channels, and response delay.
+        
         Parameters:
-            plugin_name (str, optional): Overrides the plugin's name. If not provided, uses the class-level `plugin_name` attribute.
-
+            plugin_name (str, optional): Overrides the class-level plugin_name attribute when provided.
+        
         Raises:
-            ValueError: If the plugin name is not set via parameter or class attribute.
-
-        Loads plugin-specific configuration from the global config, validates assigned channels, and determines the response delay, enforcing a minimum of 2.1 seconds. Logs a warning if deprecated configuration options are used or if channels are not mapped.
+            ValueError: If no plugin name is available from the parameter or the class attribute.
+        
+        Notes:
+            - Loads plugin configuration from the global `config` under "plugins", "community-plugins", or "custom-plugins".
+            - Maps Matrix rooms to Meshtastic channels and validates the plugin's configured channels, logging a warning for unmapped channels.
+            - Reads `meshtastic.message_delay` (or the deprecated `meshtastic.plugin_response_delay`) and enforces a minimum delay of MINIMUM_MESSAGE_DELAY; deprecated option emits a one-time warning and delays below the minimum are clamped.
         """
         # Allow plugin_name to be passed as a parameter for simpler initialization
         # This maintains backward compatibility while providing a cleaner API

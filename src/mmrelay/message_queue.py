@@ -81,12 +81,12 @@ class MessageQueue:
 
     def start(self, message_delay: float = DEFAULT_MESSAGE_DELAY):
         """
-        Start the message queue processor and configure the inter-message delay.
-
-        Sets the queue to running, applies the provided delay (used as-is), ensures a single-worker ThreadPoolExecutor exists for send operations, and schedules the background processor when an asyncio event loop is available. If the provided delay is at or below MINIMUM_MESSAGE_DELAY, a warning is logged indicating that the Meshtastic firmware may drop messages sent too frequently.
-
+        Start the message queue processor and set the inter-message delay.
+        
+        Activate the queue, apply the provided inter-message delay, ensure a single-worker executor exists for send operations, and schedule the background processor when an asyncio event loop is available. Logs a warning if the provided delay is less than or equal to MINIMUM_MESSAGE_DELAY.
+        
         Parameters:
-            message_delay (float): Requested delay between consecutive sends, in seconds; the value is applied as provided and may trigger a warning if it is at or below MINIMUM_MESSAGE_DELAY.
+            message_delay (float): Delay between consecutive sends in seconds; applied as provided and may trigger a warning if <= MINIMUM_MESSAGE_DELAY.
         """
         with self._lock:
             if self._running:
@@ -358,9 +358,9 @@ class MessageQueue:
 
     async def _process_queue(self):
         """
-        Continuously processes queued messages in FIFO order, sending each when the connection is ready and the configured inter-message delay has elapsed.
-
-        Pulls queued QueuedMessage items, enforces connection/readiness checks and the configured inter-message delay, updates last-send timestamps after a send, and persists message mapping information when provided and the send result exposes an `id`. The coroutine runs until the queue is stopped or the task is cancelled; cancellation may drop an in-flight message (which will be logged).
+        Process queued messages in FIFO order, sending each when the connection is ready and the configured inter-message delay has elapsed.
+        
+        Runs until the queue is stopped or the task is cancelled. For each message, enforces connection/readiness checks and the configured inter-message delay, updates last-send timestamps after a successful send, and persists message mapping information when provided and the send result exposes an `id`. Cancellation may drop an in-flight message.
         """
         logger.debug("Message queue processor started")
         current_message = None
@@ -627,9 +627,18 @@ def queue_message(
 
 def get_queue_status() -> dict:
     """
-    Return detailed status information about the global message queue.
-
+    Get a snapshot of the global message queue's current status.
+    
     Returns:
-        dict: A dictionary containing the running state, queue size, message delay, processor task activity, last send time, and time since last send.
+        status (dict): Dictionary containing status fields including:
+            - running: whether the processor is active
+            - queue_size: current number of queued messages
+            - message_delay: configured inter-message delay (seconds)
+            - processor_task_active: whether the processor task exists and is not done
+            - last_send_time: wall-clock timestamp of the last successful send or None
+            - time_since_last_send: seconds since last send (monotonic) or None
+            - in_flight: whether a send is currently executing
+            - dropped_messages: count of messages dropped due to a full queue
+            - default_msgs_to_keep: configured number of message mappings to retain
     """
     return _message_queue.get_status()
