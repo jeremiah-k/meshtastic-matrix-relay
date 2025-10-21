@@ -131,16 +131,15 @@ def get_windows_error_message(error: Exception) -> str:
 
 def check_windows_requirements() -> Optional[str]:
     """
-    Return a multi-line warning string when common Windows environment issues are detected; otherwise None.
+    Report Windows environment compatibility issues as a multi-line warning string.
 
-    Performs Windows-only checks:
-    - Python version: warns if running on Python < 3.9.
-    - Virtual environment: warns if the process does not appear to be inside a venv/pipx.
-    - Current working directory length: warns if the cwd path length exceeds 200 characters.
+    When running on Windows, performs these checks and accumulates user-facing warnings:
+    - Python version is older than 3.10.
+    - Process does not appear to be running inside a virtual environment (venv/pipx).
+    - Current working directory path length exceeds 200 characters.
 
     Returns:
-        Optional[str]: A human-readable, multi-line warning message when one or more checks trigger;
-        returns None if running on a non-Windows platform or no issues are found.
+        Optional[str]: Multi-line warning message prefixed with "Windows compatibility warnings:" and bullet points for each detected issue; `None` if no issues are detected or when not running on Windows.
     """
     if not is_windows():
         return None
@@ -148,10 +147,8 @@ def check_windows_requirements() -> Optional[str]:
     warnings = []
 
     # Check Python version for Windows compatibility
-    if sys.version_info < (3, 9):
-        warnings.append(
-            "Python 3.9+ is recommended on Windows for better compatibility"
-        )
+    if sys.version_info < (3, 10):
+        warnings.append("Python 3.10+ is required for this application")
 
     # Check if running in a virtual environment
     if not hasattr(sys, "real_prefix") and not (
