@@ -3513,13 +3513,13 @@ async def test_resolve_aliases_in_mapping_dict():
 
     async def mock_resolver(alias):
         """
-        Resolve a Matrix room alias to a room ID (test helper).
-
+        Resolve a Matrix room alias to a room ID for tests.
+        
         Parameters:
-            alias (str): A Matrix room alias to resolve, e.g. "#alias:matrix.org".
-
+            alias (str): Matrix room alias to resolve (e.g. "#alias:matrix.org").
+        
         Returns:
-            str: The resolved room ID for known aliases, otherwise the original `alias`.
+            str: Resolved room ID for known aliases, otherwise returns the original `alias`.
         """
         if alias == "#alias1:matrix.org":
             return "!resolved1:matrix.org"
