@@ -174,7 +174,7 @@ class BasePlugin(ABC):
                 # Show deprecated warning only once globally
                 global _deprecated_warning_shown
                 if not _deprecated_warning_shown:
-                    self.logger.warning(
+                    plugins_logger.warning(
                         "Configuration option 'plugin_response_delay' is deprecated. "
                         "Please use 'message_delay' instead. Support for 'plugin_response_delay' will be removed in a future version."
                     )
@@ -197,8 +197,8 @@ class BasePlugin(ABC):
                             )
                             _plugins_low_delay_warned = True
 
-                        # Show per-plugin specific warning
-                        self.logger.warning(warning_message)
+                        # Show specific delay warning (global configuration issue)
+                        plugins_logger.warning(warning_message)
                         _warned_delay_values.add(self.response_delay)
                     else:
                         # Log additional instances at debug level to avoid spam
