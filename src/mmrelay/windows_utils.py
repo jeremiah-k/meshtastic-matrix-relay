@@ -132,12 +132,12 @@ def get_windows_error_message(error: Exception) -> str:
 def check_windows_requirements() -> Optional[str]:
     """
     Report Windows environment compatibility issues as a multi-line warning string.
-    
+
     When running on Windows, performs these checks and accumulates user-facing warnings:
     - Python version is older than 3.10.
     - Process does not appear to be running inside a virtual environment (venv/pipx).
     - Current working directory path length exceeds 200 characters.
-    
+
     Returns:
         Optional[str]: Multi-line warning message prefixed with "Windows compatibility warnings:" and bullet points for each detected issue; `None` if no issues are detected or when not running on Windows.
     """

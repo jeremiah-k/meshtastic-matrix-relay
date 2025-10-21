@@ -78,14 +78,14 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
     def test_queue_overflow_handling(self):
         """
         Verify MessageQueue enforces its configured maximum capacity and rejects further enqueues when full.
-        
+
         Starts the queue, fills it until enqueue returns False or the configured MAX_QUEUE_SIZE is reached, then attempts one additional enqueue which must be rejected. Asserts that at least one message was accepted and that the final queue size does not exceed MAX_QUEUE_SIZE.
         """
 
         async def async_test():
             """
             Verify the message queue enforces its maximum capacity by filling it to its limit and asserting additional enqueue attempts are rejected.
-            
+
             Starts the queue, enqueues messages up to the configured MAX_QUEUE_SIZE (or until the queue refuses further enqueues), then asserts that an extra enqueue is rejected and that at least one message was accepted.
             """
             self.queue.start(message_delay=TEST_MESSAGE_DELAY_LOW)
@@ -222,7 +222,7 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
     def test_processor_import_error_handling(self, mock_logger):
         """
         Verify MessageQueue handles an ImportError raised during message processing without crashing.
-        
+
         Starts the queue, causes MessageQueue._should_send_message to raise ImportError while a message is processed, enqueues a message, waits for processing to occur, and asserts the queue remains in a stable running state and that an exception or error was logged.
         """
 
@@ -278,7 +278,7 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
         async def async_test():
             """
             Verify the queue accepts and processes a message when the send function returns an object missing the `id` attribute.
-            
+
             Asserts that enqueueing the message succeeds and the processor handles the send result without raising an exception.
             """
             self.queue.start(message_delay=TEST_MESSAGE_DELAY_LOW)
@@ -323,7 +323,7 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
     def test_processor_task_cancellation(self):
         """
         Ensure the MessageQueue's internal processor task can be cancelled and completes.
-        
+
         Starts the queue and processor, cancels the internal `_processor_task`, awaits its completion while ignoring `asyncio.CancelledError`, and asserts the cancelled task reports as done.
         """
 
@@ -376,14 +376,14 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
     def test_rate_limiting_edge_cases(self):
         """
         Verify MessageQueue enforces the configured inter-send delay near the rate-limit boundary.
-        
+
         Starts the queue with a short message delay and uses a mocked wall-clock to simulate two enqueue events separated by less than the configured delay, asserting both enqueues succeed and processing occurs consistent with rate limiting.
         """
 
         async def async_test():
             """
             Verifies MessageQueue enforces the configured inter-send delay when messages are enqueued with controlled timing.
-            
+
             Starts the queue with TEST_MESSAGE_DELAY_LOW, mocks wall-clock time to simulate two enqueue events separated by less than the configured delay, and asserts both enqueues succeed while processing adheres to rate limiting.
             """
             self.queue.start(message_delay=TEST_MESSAGE_DELAY_LOW)
@@ -436,7 +436,7 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
     def test_concurrent_enqueue_operations(self):
         """
         Start the queue, perform concurrent enqueues from multiple threads, and assert at least one enqueue succeeded.
-        
+
         Starts the MessageQueue with a low message delay, launches five threads that each enqueue ten distinct messages concurrently, waits for all threads to finish, and asserts that at least one enqueue returned success.
         """
         self.queue.start(message_delay=TEST_MESSAGE_DELAY_LOW)
@@ -484,7 +484,7 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
         async def async_test():
             """
             Test that a message with mapping_info set to None can be enqueued and processed by the MessageQueue.
-            
+
             Asserts that enqueue returns `True` for a message whose `mapping_info` is `None` and allows time for the queue processor to handle the message.
             """
             self.queue.start(message_delay=TEST_MESSAGE_DELAY_LOW)

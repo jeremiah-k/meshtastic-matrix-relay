@@ -82,9 +82,9 @@ class MessageQueue:
     def start(self, message_delay: float = DEFAULT_MESSAGE_DELAY):
         """
         Start the message queue processor and set the inter-message delay.
-        
+
         Activate the queue, apply the provided inter-message delay, ensure a single-worker executor exists for send operations, and schedule the background processor when an asyncio event loop is available. Logs a warning if the provided delay is less than or equal to MINIMUM_MESSAGE_DELAY.
-        
+
         Parameters:
             message_delay (float): Delay between consecutive sends in seconds; applied as provided and may trigger a warning if <= MINIMUM_MESSAGE_DELAY.
         """
@@ -359,7 +359,7 @@ class MessageQueue:
     async def _process_queue(self):
         """
         Process queued messages in FIFO order, sending each when the connection is ready and the configured inter-message delay has elapsed.
-        
+
         Runs until the queue is stopped or the task is cancelled. For each message, enforces connection/readiness checks and the configured inter-message delay, updates last-send timestamps after a successful send, and persists message mapping information when provided and the send result exposes an `id`. Cancellation may drop an in-flight message.
         """
         logger.debug("Message queue processor started")
@@ -628,7 +628,7 @@ def queue_message(
 def get_queue_status() -> dict:
     """
     Get a snapshot of the global message queue's current status.
-    
+
     Returns:
         status (dict): Dictionary containing status fields including:
             - running: whether the processor is active
