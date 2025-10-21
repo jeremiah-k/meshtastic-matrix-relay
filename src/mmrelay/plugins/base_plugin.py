@@ -27,6 +27,9 @@ config = None
 # Track if we've already shown the deprecated warning
 _deprecated_warning_shown = False
 
+# Track delay values we've already warned about to prevent spam
+_warned_delay_values = set()
+
 
 class BasePlugin(ABC):
     """Abstract base class for all mmrelay plugins.
@@ -176,9 +179,18 @@ class BasePlugin(ABC):
                 self.response_delay = delay
                 # Enforce minimum delay above firmware limit to prevent message dropping
                 if self.response_delay < MINIMUM_MESSAGE_DELAY:
-                    self.logger.debug(
-                        f"{delay_key} of {self.response_delay}s is below minimum of {MINIMUM_MESSAGE_DELAY}s (above firmware limit). Using {MINIMUM_MESSAGE_DELAY}s."
-                    )
+                    # Only warn once per unique delay value to prevent spam
+                    global _warned_delay_values
+                    if self.response_delay not in _warned_delay_values:
+                        self.logger.warning(
+                            f"{delay_key} of {self.response_delay}s is below minimum of {MINIMUM_MESSAGE_DELAY}s (above firmware limit). Using {MINIMUM_MESSAGE_DELAY}s."
+                        )
+                        _warned_delay_values.add(self.response_delay)
+                    else:
+                        # Log additional instances at debug level for troubleshooting
+                        self.logger.debug(
+                            f"{delay_key} of {self.response_delay}s is below minimum of {MINIMUM_MESSAGE_DELAY}s (above firmware limit). Using {MINIMUM_MESSAGE_DELAY}s."
+                        )
                     self.response_delay = MINIMUM_MESSAGE_DELAY
 
     def start(self):
