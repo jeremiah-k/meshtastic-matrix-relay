@@ -20,6 +20,7 @@ from mmrelay.db_utils import (
 )
 from mmrelay.log_utils import get_logger
 from mmrelay.message_queue import queue_message
+from mmrelay.plugin_loader import logger as plugins_logger
 
 # Global config variable that will be set from main.py
 config = None
@@ -190,7 +191,7 @@ class BasePlugin(ABC):
                     if self.response_delay not in _warned_delay_values:
                         # Show generic plugins warning on first occurrence
                         if not _plugins_low_delay_warned:
-                            self.logger.warning(
+                            plugins_logger.warning(
                                 f"One or more plugins have message_delay below {MINIMUM_MESSAGE_DELAY}s. "
                                 f"This may affect multiple plugins. Check individual plugin logs for details."
                             )
