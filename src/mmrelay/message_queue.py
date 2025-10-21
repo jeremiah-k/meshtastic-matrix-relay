@@ -411,7 +411,7 @@ class MessageQueue:
                     elif time_since_last < MINIMUM_MESSAGE_DELAY:
                         # Warn when messages are sent less than MINIMUM_MESSAGE_DELAY seconds apart
                         logger.warning(
-                            f"Messages sent {time_since_last:.1f}s apart, which is below {MINIMUM_MESSAGE_DELAY}s. "
+                            f"[Runtime] Messages sent {time_since_last:.1f}s apart, which is below {MINIMUM_MESSAGE_DELAY}s. "
                             f"Due to rate limiting in the Meshtastic Firmware, messages may be dropped."
                         )
 

@@ -30,6 +30,18 @@ from mmrelay.message_queue import MessageQueue, get_message_queue, queue_message
 class TestMessageQueueEdgeCases(unittest.TestCase):
     """Test cases for Message Queue edge cases and error handling."""
 
+    # Warning message constants for maintainability
+    LOW_DELAY_WARNING_PREFIX = "Message delay {delay}s is at or below {minimum}s"
+    RECOMMENDED_DELAY_SUFFIX = "2.1s or higher is recommended"
+    RUNTIME_WARNING_PREFIX = "[Runtime] Messages sent"
+
+    # Common test delay values
+    TEST_DELAY_LOW = 0.1
+    TEST_DELAY_WARNING_THRESHOLD = 1.0
+    TEST_DELAY_NEGATIVE = -1.0
+    TEST_DELAY_NORMAL = 2.5
+    TEST_DELAY_HIGH = 3.0
+
     def setUp(self):
         """
         Prepare the test environment by resetting global state variables and creating a new MessageQueue instance before each test.
@@ -159,38 +171,40 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
         from mmrelay.constants.network import MINIMUM_MESSAGE_DELAY
 
         # Test with delay below MINIMUM_MESSAGE_DELAY - should log warning but accept value
-        self.queue.start(message_delay=1.0)
+        self.queue.start(message_delay=self.TEST_DELAY_WARNING_THRESHOLD)
         status = self.queue.get_status()
         self.assertEqual(status["message_delay"], 1.0)  # Should accept the value
         mock_logger.warning.assert_called_once()
         warning_call = mock_logger.warning.call_args[0][0]
-        self.assertIn(
-            f"Message delay 1.0s is at or below {MINIMUM_MESSAGE_DELAY}s", warning_call
+        expected_warning = self.LOW_DELAY_WARNING_PREFIX.format(
+            delay=self.TEST_DELAY_WARNING_THRESHOLD, minimum=MINIMUM_MESSAGE_DELAY
         )
-        self.assertIn("2.1s or higher is recommended", warning_call)
+        self.assertIn(expected_warning, warning_call)
+        self.assertIn(self.RECOMMENDED_DELAY_SUFFIX, warning_call)
 
         # Test with negative delay - should log warning but accept value
         self.queue.stop()
         self.queue = MessageQueue()
         mock_logger.reset_mock()
-        self.queue.start(message_delay=-1.0)
+        self.queue.start(message_delay=self.TEST_DELAY_NEGATIVE)
         status = self.queue.get_status()
         self.assertEqual(status["message_delay"], -1.0)  # Should accept the value
         mock_logger.warning.assert_called_once()
         warning_call = mock_logger.warning.call_args[0][0]
-        self.assertIn(
-            f"Message delay -1.0s is at or below {MINIMUM_MESSAGE_DELAY}s", warning_call
+        expected_warning = self.LOW_DELAY_WARNING_PREFIX.format(
+            delay=self.TEST_DELAY_NEGATIVE, minimum=MINIMUM_MESSAGE_DELAY
         )
+        self.assertIn(expected_warning, warning_call)
 
     def test_double_start(self):
         """
         Verify that starting the message queue multiple times does not disrupt its running state or alter the initial message delay.
         """
-        self.queue.start(message_delay=2.5)
+        self.queue.start(message_delay=self.TEST_DELAY_NORMAL)
         self.assertTrue(self.queue.is_running())
 
         # Starting again should not cause issues
-        self.queue.start(message_delay=3.0)
+        self.queue.start(message_delay=self.TEST_DELAY_HIGH)
         self.assertTrue(self.queue.is_running())
 
         # Message delay should not change
@@ -507,7 +521,7 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
             # The message_delay needs to be: actual_time_between_sends >= message_delay < MINIMUM_MESSAGE_DELAY
             # This allows messages to be sent (no rate limiting wait) but still triggers the runtime warning
             self.queue.start(
-                message_delay=1.0
+                message_delay=self.TEST_DELAY_WARNING_THRESHOLD
             )  # 1.0s delay, less than MINIMUM_MESSAGE_DELAY (2.0s)
             self.queue.ensure_processor_started()
 
@@ -537,6 +551,7 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
 
             # Check that we got the expected runtime warning
             warning_messages = "\n".join(cm.output)
+            self.assertIn(self.RUNTIME_WARNING_PREFIX, warning_messages)
             self.assertIn(f"below {MINIMUM_MESSAGE_DELAY}s", warning_messages)
             self.assertIn("may be dropped", warning_messages)
 
