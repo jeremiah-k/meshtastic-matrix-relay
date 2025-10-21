@@ -17,7 +17,6 @@ from queue import Empty, Full, Queue
 from typing import Callable, Optional
 
 from mmrelay.constants.database import DEFAULT_MSGS_TO_KEEP
-from mmrelay.constants.network import MINIMUM_MESSAGE_DELAY
 from mmrelay.constants.queue import (
     DEFAULT_MESSAGE_DELAY,
     MAX_QUEUE_SIZE,
@@ -81,25 +80,28 @@ class MessageQueue:
 
     def start(self, message_delay: float = DEFAULT_MESSAGE_DELAY):
         """
-        Activate the message queue processor with a minimum inter-message delay.
+        Activate the message queue processor with the specified inter-message delay.
 
-        Enables processing, sets the configured message delay (raised to MINIMUM_MESSAGE_DELAY if a smaller value is provided), creates a dedicated ThreadPoolExecutor for send operations if one does not exist, and starts the asyncio processor task immediately when a running event loop is available; if no running loop is available startup is deferred until a loop is present.
+        Enables processing, sets the configured message delay, creates a dedicated ThreadPoolExecutor for send operations if one does not exist, and starts the asyncio processor task immediately when a running event loop is available; if no running loop is available startup is deferred until a loop is present.
 
         Parameters:
-            message_delay (float): Requested minimum delay between sends, in seconds. Values below MINIMUM_MESSAGE_DELAY are replaced with MINIMUM_MESSAGE_DELAY.
+            message_delay (float): Requested minimum delay between sends, in seconds.
         """
         with self._lock:
             if self._running:
                 return
 
-            # Validate and enforce firmware minimum
-            if message_delay < MINIMUM_MESSAGE_DELAY:
+            # Set the message delay as requested
+            self._message_delay = message_delay
+
+            # Log warning if delay is at or below 2.0 seconds due to firmware rate limiting
+            if message_delay <= 2.0:
                 logger.warning(
-                    f"Message delay {message_delay}s below firmware minimum ({MINIMUM_MESSAGE_DELAY}s), using {MINIMUM_MESSAGE_DELAY}s"
+                    f"Message delay {message_delay}s is at or below 2.0s. "
+                    f"Due to rate limiting in the Meshtastic Firmware, 2.1s or higher is recommended. "
+                    f"Messages may be dropped by the firmware if sent too frequently."
                 )
-                self._message_delay = MINIMUM_MESSAGE_DELAY
-            else:
-                self._message_delay = message_delay
+
             self._running = True
 
             # Create dedicated executor for this MessageQueue
@@ -405,6 +407,12 @@ class MessageQueue:
                         )
                         await asyncio.sleep(wait_time)
                         continue
+                    elif time_since_last < 2.0:
+                        # Warn when messages are sent less than 2.0s apart
+                        logger.warning(
+                            f"Messages sent {time_since_last:.1f}s apart, which is below 2.0s. "
+                            f"Due to rate limiting in the Meshtastic Firmware, messages may be dropped."
+                        )
 
                 # Send the message
                 try:

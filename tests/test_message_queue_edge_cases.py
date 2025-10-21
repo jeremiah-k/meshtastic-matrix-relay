@@ -150,21 +150,30 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
         success = self.queue.enqueue(lambda: None, description="Test message")
         self.assertFalse(success)
 
-    def test_start_with_invalid_message_delay(self):
+    @patch("mmrelay.message_queue.logger")
+    def test_start_with_invalid_message_delay(self, mock_logger):
         """
-        Verify that starting the queue with an invalid message delay (below minimum or negative) automatically corrects the delay to the minimum allowed value.
+        Verify that starting the queue with a message delay at or below 2.0s logs a warning but accepts the value.
         """
-        # Test with delay below firmware minimum
+        # Test with delay below 2.0s - should log warning but accept value
         self.queue.start(message_delay=1.0)
         status = self.queue.get_status()
-        self.assertEqual(status["message_delay"], 2.0)  # Should be corrected to minimum
+        self.assertEqual(status["message_delay"], 1.0)  # Should accept the value
+        mock_logger.warning.assert_called_once()
+        warning_call = mock_logger.warning.call_args[0][0]
+        self.assertIn("Message delay 1.0s is at or below 2.0s", warning_call)
+        self.assertIn("2.1s or higher is recommended", warning_call)
 
-        # Test with negative delay
+        # Test with negative delay - should log warning but accept value
         self.queue.stop()
         self.queue = MessageQueue()
+        mock_logger.reset_mock()
         self.queue.start(message_delay=-1.0)
         status = self.queue.get_status()
-        self.assertEqual(status["message_delay"], 2.0)  # Should be corrected to minimum
+        self.assertEqual(status["message_delay"], -1.0)  # Should accept the value
+        mock_logger.warning.assert_called_once()
+        warning_call = mock_logger.warning.call_args[0][0]
+        self.assertIn("Message delay -1.0s is at or below 2.0s", warning_call)
 
     def test_double_start(self):
         """
@@ -457,6 +466,61 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
 
             # Wait for processing
             await asyncio.sleep(0.2)
+
+        # Run the async test with proper event loop handling
+        try:
+            asyncio.run(async_test())
+        except RuntimeError as e:
+            if "cannot be called from a running event loop" in str(e):
+                loop = asyncio.get_event_loop()
+                loop.run_until_complete(async_test())
+            else:
+                raise
+
+    @patch("mmrelay.message_queue.logger")
+    def test_runtime_warning_for_fast_messages(self, mock_logger):
+        """
+        Verify that runtime warnings are logged when messages are sent less than 2.0s apart.
+        """
+
+        async def async_test():
+            """
+            Asynchronously tests that warnings are logged when messages are sent too quickly.
+            """
+            # Start queue with delay less than 2.0s to trigger runtime warnings
+            self.queue.start(message_delay=0.5)
+            self.queue.ensure_processor_started()
+
+            # Mock send function
+            calls = []
+
+            def mock_send(text):
+                calls.append(text)
+                return {"id": len(calls)}
+
+            # Queue two messages quickly
+            success1 = self.queue.enqueue(
+                mock_send, text="First", description="First message"
+            )
+            success2 = self.queue.enqueue(
+                mock_send, text="Second", description="Second message"
+            )
+
+            self.assertTrue(success1)
+            self.assertTrue(success2)
+
+            # Wait for both messages to be processed
+            await self.queue.drain(timeout=5.0)
+
+            # Should have logged a runtime warning about fast sending
+            warning_calls = [
+                call
+                for call in mock_logger.warning.call_args_list
+                if "below 2.0s" in str(call) and "messages may be dropped" in str(call)
+            ]
+            self.assertGreater(
+                len(warning_calls), 0, "Should log runtime warning for fast messages"
+            )
 
         # Run the async test with proper event loop handling
         try:
