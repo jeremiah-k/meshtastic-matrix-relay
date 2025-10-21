@@ -74,7 +74,6 @@ class TestBasePlugin(unittest.TestCase):
 
         base_plugin_module._plugins_low_delay_warned = False
         _warned_delay_values.clear()
-        _plugins_low_delay_warned = False
 
         # Mock the global config
         self.mock_config = {
