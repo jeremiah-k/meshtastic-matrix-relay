@@ -17,6 +17,7 @@ from queue import Empty, Full, Queue
 from typing import Callable, Optional
 
 from mmrelay.constants.database import DEFAULT_MSGS_TO_KEEP
+from mmrelay.constants.network import MINIMUM_MESSAGE_DELAY
 from mmrelay.constants.queue import (
     DEFAULT_MESSAGE_DELAY,
     MAX_QUEUE_SIZE,
@@ -94,10 +95,10 @@ class MessageQueue:
             # Set the message delay as requested
             self._message_delay = message_delay
 
-            # Log warning if delay is at or below 2.0 seconds due to firmware rate limiting
-            if message_delay <= 2.0:
+            # Log warning if delay is at or below MINIMUM_MESSAGE_DELAY seconds due to firmware rate limiting
+            if message_delay <= MINIMUM_MESSAGE_DELAY:
                 logger.warning(
-                    f"Message delay {message_delay}s is at or below 2.0s. "
+                    f"Message delay {message_delay}s is at or below {MINIMUM_MESSAGE_DELAY}s. "
                     f"Due to rate limiting in the Meshtastic Firmware, 2.1s or higher is recommended. "
                     f"Messages may be dropped by the firmware if sent too frequently."
                 )
@@ -407,10 +408,10 @@ class MessageQueue:
                         )
                         await asyncio.sleep(wait_time)
                         continue
-                    elif time_since_last < 2.0:
-                        # Warn when messages are sent less than 2.0s apart
+                    elif time_since_last < MINIMUM_MESSAGE_DELAY:
+                        # Warn when messages are sent less than MINIMUM_MESSAGE_DELAY seconds apart
                         logger.warning(
-                            f"Messages sent {time_since_last:.1f}s apart, which is below 2.0s. "
+                            f"Messages sent {time_since_last:.1f}s apart, which is below {MINIMUM_MESSAGE_DELAY}s. "
                             f"Due to rate limiting in the Meshtastic Firmware, messages may be dropped."
                         )
 

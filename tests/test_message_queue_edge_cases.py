@@ -153,15 +153,20 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
     @patch("mmrelay.message_queue.logger")
     def test_start_with_invalid_message_delay(self, mock_logger):
         """
-        Verify that starting the queue with a message delay at or below 2.0s logs a warning but accepts the value.
+        Verify that starting the queue with a message delay at or below MINIMUM_MESSAGE_DELAY seconds logs a warning but accepts the value.
         """
-        # Test with delay below 2.0s - should log warning but accept value
+        # Import the constant for consistent testing
+        from mmrelay.constants.network import MINIMUM_MESSAGE_DELAY
+
+        # Test with delay below MINIMUM_MESSAGE_DELAY - should log warning but accept value
         self.queue.start(message_delay=1.0)
         status = self.queue.get_status()
         self.assertEqual(status["message_delay"], 1.0)  # Should accept the value
         mock_logger.warning.assert_called_once()
         warning_call = mock_logger.warning.call_args[0][0]
-        self.assertIn("Message delay 1.0s is at or below 2.0s", warning_call)
+        self.assertIn(
+            f"Message delay 1.0s is at or below {MINIMUM_MESSAGE_DELAY}s", warning_call
+        )
         self.assertIn("2.1s or higher is recommended", warning_call)
 
         # Test with negative delay - should log warning but accept value
@@ -173,7 +178,9 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
         self.assertEqual(status["message_delay"], -1.0)  # Should accept the value
         mock_logger.warning.assert_called_once()
         warning_call = mock_logger.warning.call_args[0][0]
-        self.assertIn("Message delay -1.0s is at or below 2.0s", warning_call)
+        self.assertIn(
+            f"Message delay -1.0s is at or below {MINIMUM_MESSAGE_DELAY}s", warning_call
+        )
 
     def test_double_start(self):
         """
@@ -480,14 +487,16 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
     @patch("mmrelay.message_queue.logger")
     def test_runtime_warning_for_fast_messages(self, mock_logger):
         """
-        Verify that runtime warnings are logged when messages are sent less than 2.0s apart.
+        Verify that runtime warnings are logged when messages are sent less than MINIMUM_MESSAGE_DELAY seconds apart.
         """
+        # Import the constant for consistent testing
+        from mmrelay.constants.network import MINIMUM_MESSAGE_DELAY
 
         async def async_test():
             """
             Asynchronously tests that warnings are logged when messages are sent too quickly.
             """
-            # Start queue with delay less than 2.0s to trigger runtime warnings
+            # Start queue with delay less than MINIMUM_MESSAGE_DELAY to trigger runtime warnings
             self.queue.start(message_delay=0.5)
             self.queue.ensure_processor_started()
 
@@ -513,10 +522,12 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
             await self.queue.drain(timeout=5.0)
 
             # Should have logged a runtime warning about fast sending
+            # Look for the specific warning message pattern
             warning_calls = [
                 call
                 for call in mock_logger.warning.call_args_list
-                if "below 2.0s" in str(call) and "messages may be dropped" in str(call)
+                if f"below {MINIMUM_MESSAGE_DELAY}s" in str(call)
+                and "messages may be dropped" in str(call)
             ]
             self.assertGreater(
                 len(warning_calls), 0, "Should log runtime warning for fast messages"
