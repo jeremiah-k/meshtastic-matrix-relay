@@ -17,7 +17,7 @@ from queue import Empty, Full, Queue
 from typing import Callable, Optional
 
 from mmrelay.constants.database import DEFAULT_MSGS_TO_KEEP
-from mmrelay.constants.network import MINIMUM_MESSAGE_DELAY
+from mmrelay.constants.network import MINIMUM_MESSAGE_DELAY, RECOMMENDED_MINIMUM_DELAY
 from mmrelay.constants.queue import (
     DEFAULT_MESSAGE_DELAY,
     MAX_QUEUE_SIZE,
@@ -81,25 +81,28 @@ class MessageQueue:
 
     def start(self, message_delay: float = DEFAULT_MESSAGE_DELAY):
         """
-        Activate the message queue processor with a minimum inter-message delay.
-
-        Enables processing, sets the configured message delay (raised to MINIMUM_MESSAGE_DELAY if a smaller value is provided), creates a dedicated ThreadPoolExecutor for send operations if one does not exist, and starts the asyncio processor task immediately when a running event loop is available; if no running loop is available startup is deferred until a loop is present.
-
+        Start the message queue processor and configure the inter-message delay.
+        
+        Sets the queue to running, applies the provided delay (used as-is), ensures a single-worker ThreadPoolExecutor exists for send operations, and schedules the background processor when an asyncio event loop is available. If the provided delay is at or below MINIMUM_MESSAGE_DELAY, a warning is logged indicating that the Meshtastic firmware may drop messages sent too frequently.
+        
         Parameters:
-            message_delay (float): Requested minimum delay between sends, in seconds. Values below MINIMUM_MESSAGE_DELAY are replaced with MINIMUM_MESSAGE_DELAY.
+            message_delay (float): Requested delay between consecutive sends, in seconds; the value is applied as provided and may trigger a warning if it is at or below MINIMUM_MESSAGE_DELAY.
         """
         with self._lock:
             if self._running:
                 return
 
-            # Validate and enforce firmware minimum
-            if message_delay < MINIMUM_MESSAGE_DELAY:
+            # Set the message delay as requested
+            self._message_delay = message_delay
+
+            # Log warning if delay is at or below MINIMUM_MESSAGE_DELAY seconds due to firmware rate limiting
+            if message_delay <= MINIMUM_MESSAGE_DELAY:
                 logger.warning(
-                    f"Message delay {message_delay}s below firmware minimum ({MINIMUM_MESSAGE_DELAY}s), using {MINIMUM_MESSAGE_DELAY}s"
+                    f"Message delay {message_delay}s is at or below {MINIMUM_MESSAGE_DELAY}s. "
+                    f"Due to rate limiting in the Meshtastic Firmware, {RECOMMENDED_MINIMUM_DELAY}s or higher is recommended. "
+                    f"Messages may be dropped by the firmware if sent too frequently."
                 )
-                self._message_delay = MINIMUM_MESSAGE_DELAY
-            else:
-                self._message_delay = message_delay
+
             self._running = True
 
             # Create dedicated executor for this MessageQueue
@@ -355,9 +358,9 @@ class MessageQueue:
 
     async def _process_queue(self):
         """
-        Process queued messages in FIFO order, sending each when the connection is ready and the configured inter-message delay has elapsed.
-
-        This background coroutine continuously pulls QueuedMessage items from the internal queue and executes their send_function in the configured executor, enforcing rate limiting (_message_delay) and checking connection/readiness via _should_send_message. After a successful send, it updates last-send timestamps and optionally persists message mapping information via _handle_message_mapping when mapping_info is present and the send result exposes an `id`. The coroutine exits when the queue is stopped or when cancelled; cancellation may drop an in-flight message, which will be logged.
+        Continuously processes queued messages in FIFO order, sending each when the connection is ready and the configured inter-message delay has elapsed.
+        
+        Pulls queued QueuedMessage items, enforces connection/readiness checks and the configured inter-message delay, updates last-send timestamps after a send, and persists message mapping information when provided and the send result exposes an `id`. The coroutine runs until the queue is stopped or the task is cancelled; cancellation may drop an in-flight message (which will be logged).
         """
         logger.debug("Message queue processor started")
         current_message = None
@@ -405,6 +408,12 @@ class MessageQueue:
                         )
                         await asyncio.sleep(wait_time)
                         continue
+                    elif time_since_last < MINIMUM_MESSAGE_DELAY:
+                        # Warn when messages are sent less than MINIMUM_MESSAGE_DELAY seconds apart
+                        logger.warning(
+                            f"[Runtime] Messages sent {time_since_last:.1f}s apart, which is below {MINIMUM_MESSAGE_DELAY}s. "
+                            f"Due to rate limiting in the Meshtastic Firmware, messages may be dropped."
+                        )
 
                 # Send the message
                 try:

@@ -23,7 +23,15 @@ import pytest
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from mmrelay.constants.network import MINIMUM_MESSAGE_DELAY, RECOMMENDED_MINIMUM_DELAY
 from mmrelay.message_queue import MessageQueue, get_message_queue, queue_message
+from tests.constants import (
+    TEST_MESSAGE_DELAY_HIGH,
+    TEST_MESSAGE_DELAY_LOW,
+    TEST_MESSAGE_DELAY_NEGATIVE,
+    TEST_MESSAGE_DELAY_NORMAL,
+    TEST_MESSAGE_DELAY_WARNING_THRESHOLD,
+)
 
 
 @pytest.mark.usefixtures("comprehensive_cleanup")
@@ -69,18 +77,18 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
 
     def test_queue_overflow_handling(self):
         """
-        Test that the message queue enforces its maximum capacity and rejects additional messages when full.
-
-        Fills the queue to its defined maximum size, verifies that enqueueing beyond this limit fails, and asserts the queue size does not exceed the allowed maximum.
+        Verify that the MessageQueue enforces its maximum capacity and rejects additional enqueues when full.
+        
+        Starts the queue, fills it up to the configured maximum, attempts one additional enqueue which must be rejected, and asserts the final queue size is greater than zero and does not exceed MAX_QUEUE_SIZE.
         """
 
         async def async_test():
             """
-            Asynchronously verifies that the message queue enforces its maximum capacity by filling it to the defined limit and confirming that additional enqueue attempts are rejected.
-
-            Ensures the queue does not exceed its maximum size and that overflow messages are not accepted.
+            Verify the message queue enforces its maximum capacity by filling it to its limit and asserting additional enqueue attempts are rejected.
+            
+            Starts the queue, fills it up to the configured MAX_QUEUE_SIZE (or the actual limit reached), then attempts one more enqueue which must be rejected. Asserts that at least one message was accepted and that the final queue size does not exceed the configured maximum.
             """
-            self.queue.start(message_delay=0.1)
+            self.queue.start(message_delay=TEST_MESSAGE_DELAY_LOW)
 
             # Give the queue a moment to start
             await asyncio.sleep(0.1)
@@ -150,36 +158,57 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
         success = self.queue.enqueue(lambda: None, description="Test message")
         self.assertFalse(success)
 
-    def test_start_with_invalid_message_delay(self):
+    @patch("mmrelay.message_queue.logger")
+    def test_start_with_invalid_message_delay(self, mock_logger):
         """
-        Verify that starting the queue with an invalid message delay (below minimum or negative) automatically corrects the delay to the minimum allowed value.
+        Verify that starting the queue with a message delay at or below MINIMUM_MESSAGE_DELAY seconds logs a warning but accepts the value.
         """
-        # Test with delay below firmware minimum
-        self.queue.start(message_delay=1.0)
+        # Test with delay below MINIMUM_MESSAGE_DELAY - should log warning but accept value
+        self.queue.start(message_delay=TEST_MESSAGE_DELAY_WARNING_THRESHOLD)
         status = self.queue.get_status()
-        self.assertEqual(status["message_delay"], 2.0)  # Should be corrected to minimum
+        self.assertEqual(
+            status["message_delay"], TEST_MESSAGE_DELAY_WARNING_THRESHOLD
+        )  # Should accept the value
+        mock_logger.warning.assert_called_once()
+        warning_call = mock_logger.warning.call_args[0][0]
+        # Test against real warning message patterns from the code
+        expected_warning_part = f"Message delay {TEST_MESSAGE_DELAY_WARNING_THRESHOLD}s is at or below {MINIMUM_MESSAGE_DELAY}s"
+        self.assertIn(expected_warning_part, warning_call)
+        # Test the recommendation using the constant
+        expected_recommendation = (
+            f"{RECOMMENDED_MINIMUM_DELAY}s or higher is recommended"
+        )
+        self.assertIn(expected_recommendation, warning_call)
 
-        # Test with negative delay
+        # Test with negative delay - should log warning but accept value
         self.queue.stop()
         self.queue = MessageQueue()
-        self.queue.start(message_delay=-1.0)
+        mock_logger.reset_mock()
+        self.queue.start(message_delay=TEST_MESSAGE_DELAY_NEGATIVE)
         status = self.queue.get_status()
-        self.assertEqual(status["message_delay"], 2.0)  # Should be corrected to minimum
+        self.assertEqual(
+            status["message_delay"], TEST_MESSAGE_DELAY_NEGATIVE
+        )  # Should accept the value
+        mock_logger.warning.assert_called_once()
+        warning_call = mock_logger.warning.call_args[0][0]
+        # Test against real warning message patterns from the code
+        expected_warning_part = f"Message delay {TEST_MESSAGE_DELAY_NEGATIVE}s is at or below {MINIMUM_MESSAGE_DELAY}s"
+        self.assertIn(expected_warning_part, warning_call)
 
     def test_double_start(self):
         """
         Verify that starting the message queue multiple times does not disrupt its running state or alter the initial message delay.
         """
-        self.queue.start(message_delay=2.5)
+        self.queue.start(message_delay=TEST_MESSAGE_DELAY_NORMAL)
         self.assertTrue(self.queue.is_running())
 
         # Starting again should not cause issues
-        self.queue.start(message_delay=3.0)
+        self.queue.start(message_delay=TEST_MESSAGE_DELAY_HIGH)
         self.assertTrue(self.queue.is_running())
 
         # Message delay should not change
         status = self.queue.get_status()
-        self.assertEqual(status["message_delay"], 2.5)
+        self.assertEqual(status["message_delay"], TEST_MESSAGE_DELAY_NORMAL)
 
     def test_stop_when_not_running(self):
         """
@@ -192,9 +221,9 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
     @patch("mmrelay.message_queue.logger")
     def test_processor_import_error_handling(self, mock_logger):
         """
-        Verify the message queue handles ImportError raised during message processing without raising unhandled exceptions.
-
-        Starts the queue, causes MessageQueue._should_send_message to raise ImportError while a message is enqueued, and asserts the queue remains in a stable boolean running state after processing.
+        Ensure MessageQueue handles an ImportError raised during message processing without crashing.
+        
+        Starts the queue, patches MessageQueue._should_send_message to raise ImportError while enqueuing a message, waits for processing, asserts the queue remains in a stable running state (boolean), and verifies the logger recorded an exception or error.
         """
 
         async def async_test():
@@ -203,7 +232,7 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
 
             This test starts the queue, mocks the message sending check to raise ImportError, enqueues a message, and verifies that the queue remains stable and its running state is a boolean after processing.
             """
-            self.queue.start(message_delay=0.1)
+            self.queue.start(message_delay=TEST_MESSAGE_DELAY_LOW)
             self.queue.ensure_processor_started()
 
             # Mock the import to raise ImportError
@@ -248,11 +277,11 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
 
         async def async_test():
             """
-            Asynchronously tests that the message queue processes messages whose send function returns an object lacking the expected 'id' attribute.
-
-            Verifies that enqueueing such a message succeeds and the queue handles the missing attribute without failure.
+            Verify the queue accepts and processes a message when the send function returns an object missing the `id` attribute.
+            
+            Asserts that enqueueing the message succeeds and allows the processor to handle the send result without raising an exception.
             """
-            self.queue.start(message_delay=0.1)
+            self.queue.start(message_delay=TEST_MESSAGE_DELAY_LOW)
             self.queue.ensure_processor_started()
 
             # Mock send function that returns object without 'id' attribute
@@ -293,14 +322,19 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
 
     def test_processor_task_cancellation(self):
         """
-        Verifies that the message processor task can be cancelled and properly transitions to a done state.
+        Verify that the message queue's processor task can be cancelled and transitions to a completed state.
+        
+        Starts the queue, ensures the processor is running, cancels the internal `_processor_task`, awaits its completion (handling `asyncio.CancelledError`), and asserts the task reports as done.
         """
 
         async def async_test():
             """
-            Cancels the message queue's processor task and verifies it is properly terminated.
+            Cancel the MessageQueue processor task and assert it terminates.
+            
+            Starts the queue, ensures the internal processor task is running, cancels that task,
+            awaits its completion (ignoring CancelledError), and asserts the task is done.
             """
-            self.queue.start(message_delay=0.1)
+            self.queue.start(message_delay=TEST_MESSAGE_DELAY_LOW)
             self.queue.ensure_processor_started()
 
             # Get the processor task
@@ -348,9 +382,11 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
 
         async def async_test():
             """
-            Tests rate limiting behavior of the message queue by enqueueing messages with controlled timing and verifying that messages are processed according to the specified delay.
+            Verify that MessageQueue enforces the configured inter-send delay when messages are enqueued with controlled timing.
+            
+            Starts the queue with TEST_MESSAGE_DELAY_LOW, mocks wall-clock time to create two enqueue events separated by less than the configured delay, and asserts both enqueues succeed while processing occurs in a manner consistent with rate limiting.
             """
-            self.queue.start(message_delay=0.1)
+            self.queue.start(message_delay=TEST_MESSAGE_DELAY_LOW)
             self.queue.ensure_processor_started()
 
             # Mock time to control timing
@@ -399,9 +435,11 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
 
     def test_concurrent_enqueue_operations(self):
         """
-        Verifies that the message queue can handle concurrent enqueue operations from multiple threads without errors.
+        Start the queue, spawn multiple threads that enqueue messages concurrently, and verify enqueues succeed.
+        
+        Starts the MessageQueue with a low delay, launches five threads that each enqueue ten messages labeled by thread and index, waits for all threads to finish, and asserts that at least one enqueue operation returned success.
         """
-        self.queue.start(message_delay=0.1)
+        self.queue.start(message_delay=TEST_MESSAGE_DELAY_LOW)
 
         results = []
 
@@ -445,9 +483,11 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
 
         async def async_test():
             """
-            Asynchronously tests that a message with None mapping info can be enqueued and processed successfully.
+            Verify a message with `mapping_info` set to None can be enqueued and processed by the queue.
+            
+            The test starts the queue and its processor, enqueues a message with `mapping_info=None`, asserts the enqueue returned `True`, and waits briefly for processing.
             """
-            self.queue.start(message_delay=0.1)
+            self.queue.start(message_delay=TEST_MESSAGE_DELAY_LOW)
             self.queue.ensure_processor_started()
 
             success = self.queue.enqueue(
@@ -457,6 +497,85 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
 
             # Wait for processing
             await asyncio.sleep(0.2)
+
+        # Run the async test with proper event loop handling
+        try:
+            asyncio.run(async_test())
+        except RuntimeError as e:
+            if "cannot be called from a running event loop" in str(e):
+                loop = asyncio.get_event_loop()
+                loop.run_until_complete(async_test())
+            else:
+                raise
+
+    def test_runtime_warning_for_fast_messages(self):
+        """
+        Assert that a runtime warning is emitted when two messages are enqueued with inter-send time below MINIMUM_MESSAGE_DELAY.
+        
+        Sets up a meshtastic client mock, starts the MessageQueue with a sub-minimum message_delay, enqueues two messages back-to-back, captures WARNING logs for the MessageQueue logger, and verifies the logs include indications that messages were sent below MINIMUM_MESSAGE_DELAY and "may be dropped".
+        """
+
+        async def async_test():
+            """
+            Verify that a WARNING is logged when messages are enqueued faster than the configured minimum inter-send delay.
+            
+            Sets up a mock meshtastic client, starts the MessageQueue with a message_delay below MINIMUM_MESSAGE_DELAY, enqueues two messages in quick succession, drains the queue, and asserts that the captured WARNING logs include runtime-warning text indicating messages were sent below the minimum delay and may be dropped.
+            """
+            # Set up mock meshtastic client to allow message sending
+            from unittest.mock import MagicMock
+
+            import mmrelay.meshtastic_utils
+
+            mmrelay.meshtastic_utils.meshtastic_client = MagicMock()
+            mmrelay.meshtastic_utils.reconnecting = False
+
+            # Start queue with a delay that allows messages to be sent but still triggers runtime warnings
+            # The message_delay needs to be: actual_time_between_sends >= message_delay < MINIMUM_MESSAGE_DELAY
+            # This allows messages to be sent (no rate limiting wait) but still triggers the runtime warning
+            self.queue.start(
+                message_delay=TEST_MESSAGE_DELAY_WARNING_THRESHOLD
+            )  # 1.0s delay, less than MINIMUM_MESSAGE_DELAY (2.0s)
+            self.queue.ensure_processor_started()
+
+            # Mock send function
+            calls = []
+
+            def mock_send(text):
+                """
+                Record the provided text and return a simple object containing a sequential `id`.
+                
+                Parameters:
+                    text (str): The message text to record.
+                
+                Returns:
+                    obj: An object with an `id` attribute equal to the number of times this function has been called (1-based).
+                """
+                calls.append(text)
+                # Return an object with an 'id' attribute to match application expectations
+                return type("obj", (object,), {"id": len(calls)})()
+
+            # Use assertLogs to capture log messages as recommended in testing guide
+            # Use the correct logger name "MessageQueue" as defined in message_queue.py
+            with self.assertLogs("MessageQueue", level="WARNING") as cm:
+                # Queue two messages quickly
+                success1 = self.queue.enqueue(
+                    mock_send, text="First", description="First message"
+                )
+                success2 = self.queue.enqueue(
+                    mock_send, text="Second", description="Second message"
+                )
+
+                self.assertTrue(success1)
+                self.assertTrue(success2)
+
+                # Wait for both messages to be processed
+                await self.queue.drain(timeout=5.0)
+
+            # Check that we got the expected runtime warning
+            warning_messages = "\n".join(cm.output)
+            self.assertIn("[Runtime] Messages sent", warning_messages)
+            self.assertIn(f"below {MINIMUM_MESSAGE_DELAY}s", warning_messages)
+            self.assertIn("may be dropped", warning_messages)
 
         # Run the async test with proper event loop handling
         try:
