@@ -59,3 +59,15 @@ TEST_MESHTASTIC_CONFIG_WITH_PREFIX = {
     "prefix_format": TEST_PREFIX_FORMAT_DISPLAY5,
     "message_interactions": {"reactions": False, "replies": False},
 }
+
+# Test message delay values for message queue testing
+TEST_MESSAGE_DELAY_LOW = 0.1
+TEST_MESSAGE_DELAY_WARNING_THRESHOLD = 1.0
+TEST_MESSAGE_DELAY_NEGATIVE = -1.0
+TEST_MESSAGE_DELAY_NORMAL = 2.5
+TEST_MESSAGE_DELAY_HIGH = 3.0
+
+# Test warning message constants
+TEST_LOW_DELAY_WARNING_PREFIX = "Message delay {delay}s is at or below {minimum}s"
+TEST_RECOMMENDED_DELAY_SUFFIX = "2.1s or higher is recommended"
+TEST_RUNTIME_WARNING_PREFIX = "[Runtime] Messages sent"

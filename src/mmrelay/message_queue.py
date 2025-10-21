@@ -21,6 +21,9 @@ from mmrelay.constants.network import MINIMUM_MESSAGE_DELAY
 from mmrelay.constants.queue import (
     DEFAULT_MESSAGE_DELAY,
     MAX_QUEUE_SIZE,
+)
+from mmrelay.constants.queue import MINIMUM_MESSAGE_DELAY as RECOMMENDED_MINIMUM_DELAY
+from mmrelay.constants.queue import (
     QUEUE_HIGH_WATER_MARK,
     QUEUE_MEDIUM_WATER_MARK,
 )
@@ -99,7 +102,7 @@ class MessageQueue:
             if message_delay <= MINIMUM_MESSAGE_DELAY:
                 logger.warning(
                     f"Message delay {message_delay}s is at or below {MINIMUM_MESSAGE_DELAY}s. "
-                    f"Due to rate limiting in the Meshtastic Firmware, 2.1s or higher is recommended. "
+                    f"Due to rate limiting in the Meshtastic Firmware, {RECOMMENDED_MINIMUM_DELAY}s or higher is recommended. "
                     f"Messages may be dropped by the firmware if sent too frequently."
                 )
 
