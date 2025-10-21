@@ -23,6 +23,7 @@ import pytest
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from mmrelay.constants.network import MINIMUM_MESSAGE_DELAY
 from mmrelay.message_queue import MessageQueue, get_message_queue, queue_message
 from tests.constants import (
     TEST_MESSAGE_DELAY_HIGH,
@@ -162,9 +163,6 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
         """
         Verify that starting the queue with a message delay at or below MINIMUM_MESSAGE_DELAY seconds logs a warning but accepts the value.
         """
-        # Import the constant for consistent testing
-        from mmrelay.constants.network import MINIMUM_MESSAGE_DELAY
-
         # Test with delay below MINIMUM_MESSAGE_DELAY - should log warning but accept value
         self.queue.start(message_delay=TEST_MESSAGE_DELAY_WARNING_THRESHOLD)
         status = self.queue.get_status()
@@ -503,8 +501,6 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
         """
         Verify that runtime warnings are logged when messages are sent less than MINIMUM_MESSAGE_DELAY seconds apart.
         """
-        # Import the constant for consistent testing
-        from mmrelay.constants.network import MINIMUM_MESSAGE_DELAY
 
         async def async_test():
             """
