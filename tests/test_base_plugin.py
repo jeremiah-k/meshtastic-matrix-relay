@@ -233,20 +233,26 @@ class TestBasePlugin(unittest.TestCase):
                 self.assertIn("below minimum of 2.1s", cm1.output[0])
 
             # Second plugin instance with same delay - should NOT log additional warnings
-            # Use a different approach - capture logs and verify no warnings
+            # but should log a debug message for troubleshooting.
             import logging
 
-            with patch.object(
-                logging.getLogger("Plugin:test_plugin"), "warning"
-            ) as mock_warning:
-                plugin2 = MockPlugin()
-                self.assertEqual(plugin2.response_delay, 2.1)
+            logger = logging.getLogger("Plugin:test_plugin")
 
-                # Warning should not be called the second time
-                mock_warning.assert_not_called()
+            with patch.object(logger, "warning") as mock_warning:
+                with patch.object(logger, "debug") as mock_debug:
+                    plugin2 = MockPlugin()
+                    self.assertEqual(plugin2.response_delay, 2.1)
 
-                # Verify the delay value is tracked in the global set
-                self.assertIn(0.5, _warned_delay_values)
+                    # Warning should not be called the second time
+                    mock_warning.assert_not_called()
+
+                    # A debug message should be logged for subsequent occurrences
+                    mock_debug.assert_called_once()
+                    debug_call_args = mock_debug.call_args[0][0]
+                    self.assertIn("below minimum of 2.1s", debug_call_args)
+
+                    # Verify the delay value is tracked in the global set
+                    self.assertIn(0.5, _warned_delay_values)
 
     def test_response_delay_different_values_log_warning(self):
         """

@@ -78,14 +78,14 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
     def test_queue_overflow_handling(self):
         """
         Verify that the MessageQueue enforces its maximum capacity and rejects additional enqueues when full.
-        
+
         Starts the queue, fills it up to the configured maximum, attempts one additional enqueue which must be rejected, and asserts the final queue size is greater than zero and does not exceed MAX_QUEUE_SIZE.
         """
 
         async def async_test():
             """
             Verify the message queue enforces its maximum capacity by filling it to its limit and asserting additional enqueue attempts are rejected.
-            
+
             Starts the queue, fills it up to the configured MAX_QUEUE_SIZE (or the actual limit reached), then attempts one more enqueue which must be rejected. Asserts that at least one message was accepted and that the final queue size does not exceed the configured maximum.
             """
             self.queue.start(message_delay=TEST_MESSAGE_DELAY_LOW)
@@ -222,7 +222,7 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
     def test_processor_import_error_handling(self, mock_logger):
         """
         Ensure MessageQueue handles an ImportError raised during message processing without crashing.
-        
+
         Starts the queue, patches MessageQueue._should_send_message to raise ImportError while enqueuing a message, waits for processing, asserts the queue remains in a stable running state (boolean), and verifies the logger recorded an exception or error.
         """
 
@@ -278,7 +278,7 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
         async def async_test():
             """
             Verify the queue accepts and processes a message when the send function returns an object missing the `id` attribute.
-            
+
             Asserts that enqueueing the message succeeds and allows the processor to handle the send result without raising an exception.
             """
             self.queue.start(message_delay=TEST_MESSAGE_DELAY_LOW)
@@ -323,14 +323,14 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
     def test_processor_task_cancellation(self):
         """
         Verify that the message queue's processor task can be cancelled and transitions to a completed state.
-        
+
         Starts the queue, ensures the processor is running, cancels the internal `_processor_task`, awaits its completion (handling `asyncio.CancelledError`), and asserts the task reports as done.
         """
 
         async def async_test():
             """
             Cancel the MessageQueue processor task and assert it terminates.
-            
+
             Starts the queue, ensures the internal processor task is running, cancels that task,
             awaits its completion (ignoring CancelledError), and asserts the task is done.
             """
@@ -383,7 +383,7 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
         async def async_test():
             """
             Verify that MessageQueue enforces the configured inter-send delay when messages are enqueued with controlled timing.
-            
+
             Starts the queue with TEST_MESSAGE_DELAY_LOW, mocks wall-clock time to create two enqueue events separated by less than the configured delay, and asserts both enqueues succeed while processing occurs in a manner consistent with rate limiting.
             """
             self.queue.start(message_delay=TEST_MESSAGE_DELAY_LOW)
@@ -436,7 +436,7 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
     def test_concurrent_enqueue_operations(self):
         """
         Start the queue, spawn multiple threads that enqueue messages concurrently, and verify enqueues succeed.
-        
+
         Starts the MessageQueue with a low delay, launches five threads that each enqueue ten messages labeled by thread and index, waits for all threads to finish, and asserts that at least one enqueue operation returned success.
         """
         self.queue.start(message_delay=TEST_MESSAGE_DELAY_LOW)
@@ -484,7 +484,7 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
         async def async_test():
             """
             Verify a message with `mapping_info` set to None can be enqueued and processed by the queue.
-            
+
             The test starts the queue and its processor, enqueues a message with `mapping_info=None`, asserts the enqueue returned `True`, and waits briefly for processing.
             """
             self.queue.start(message_delay=TEST_MESSAGE_DELAY_LOW)
@@ -511,14 +511,14 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
     def test_runtime_warning_for_fast_messages(self):
         """
         Assert that a runtime warning is emitted when two messages are enqueued with inter-send time below MINIMUM_MESSAGE_DELAY.
-        
+
         Sets up a meshtastic client mock, starts the MessageQueue with a sub-minimum message_delay, enqueues two messages back-to-back, captures WARNING logs for the MessageQueue logger, and verifies the logs include indications that messages were sent below MINIMUM_MESSAGE_DELAY and "may be dropped".
         """
 
         async def async_test():
             """
             Verify that a WARNING is logged when messages are enqueued faster than the configured minimum inter-send delay.
-            
+
             Sets up a mock meshtastic client, starts the MessageQueue with a message_delay below MINIMUM_MESSAGE_DELAY, enqueues two messages in quick succession, drains the queue, and asserts that the captured WARNING logs include runtime-warning text indicating messages were sent below the minimum delay and may be dropped.
             """
             # Set up mock meshtastic client to allow message sending
@@ -543,10 +543,10 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
             def mock_send(text):
                 """
                 Record the provided text and return a simple object containing a sequential `id`.
-                
+
                 Parameters:
                     text (str): The message text to record.
-                
+
                 Returns:
                     obj: An object with an `id` attribute equal to the number of times this function has been called (1-based).
                 """

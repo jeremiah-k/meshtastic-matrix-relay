@@ -82,9 +82,9 @@ class MessageQueue:
     def start(self, message_delay: float = DEFAULT_MESSAGE_DELAY):
         """
         Start the message queue processor and configure the inter-message delay.
-        
+
         Sets the queue to running, applies the provided delay (used as-is), ensures a single-worker ThreadPoolExecutor exists for send operations, and schedules the background processor when an asyncio event loop is available. If the provided delay is at or below MINIMUM_MESSAGE_DELAY, a warning is logged indicating that the Meshtastic firmware may drop messages sent too frequently.
-        
+
         Parameters:
             message_delay (float): Requested delay between consecutive sends, in seconds; the value is applied as provided and may trigger a warning if it is at or below MINIMUM_MESSAGE_DELAY.
         """
@@ -359,7 +359,7 @@ class MessageQueue:
     async def _process_queue(self):
         """
         Continuously processes queued messages in FIFO order, sending each when the connection is ready and the configured inter-message delay has elapsed.
-        
+
         Pulls queued QueuedMessage items, enforces connection/readiness checks and the configured inter-message delay, updates last-send timestamps after a send, and persists message mapping information when provided and the send result exposes an `id`. The coroutine runs until the queue is stopped or the task is cancelled; cancellation may drop an in-flight message (which will be logged).
         """
         logger.debug("Message queue processor started")

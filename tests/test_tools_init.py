@@ -1,7 +1,6 @@
 """Tests for mmrelay.tools module."""
 
 import unittest
-from unittest.mock import patch
 
 from mmrelay.tools import get_sample_config_path, get_service_template_path
 
