@@ -180,8 +180,8 @@ class BasePlugin(ABC):
                 # Enforce minimum delay above firmware limit to prevent message dropping
                 if self.response_delay < MINIMUM_MESSAGE_DELAY:
                     # Only warn once per unique delay value to prevent spam
-                    warning_message = f"{delay_key} of {self.response_delay}s is below minimum of {MINIMUM_MESSAGE_DELAY}s (above firmware limit). Using {MINIMUM_MESSAGE_DELAY}s."
                     global _warned_delay_values
+                    warning_message = f"{delay_key} of {self.response_delay}s is below minimum of {MINIMUM_MESSAGE_DELAY}s (above firmware limit). Using {MINIMUM_MESSAGE_DELAY}s."
                     if self.response_delay not in _warned_delay_values:
                         self.logger.warning(warning_message)
                         _warned_delay_values.add(self.response_delay)

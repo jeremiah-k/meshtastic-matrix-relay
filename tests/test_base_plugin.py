@@ -14,6 +14,7 @@ Tests the core plugin functionality including:
 """
 
 import asyncio
+import logging
 import os
 import sqlite3
 import sys
@@ -234,8 +235,6 @@ class TestBasePlugin(unittest.TestCase):
 
             # Second plugin instance with same delay - should NOT log additional warnings
             # but should log a debug message for troubleshooting.
-            import logging
-
             logger = logging.getLogger("Plugin:test_plugin")
 
             with patch.object(logger, "warning") as mock_warning:
