@@ -25,14 +25,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.message_queue import MessageQueue, get_message_queue, queue_message
 from tests.constants import (
-    TEST_LOW_DELAY_WARNING_PREFIX,
     TEST_MESSAGE_DELAY_HIGH,
     TEST_MESSAGE_DELAY_LOW,
     TEST_MESSAGE_DELAY_NEGATIVE,
     TEST_MESSAGE_DELAY_NORMAL,
     TEST_MESSAGE_DELAY_WARNING_THRESHOLD,
-    TEST_RECOMMENDED_DELAY_SUFFIX,
-    TEST_RUNTIME_WARNING_PREFIX,
 )
 
 
@@ -176,11 +173,14 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
         )  # Should accept the value
         mock_logger.warning.assert_called_once()
         warning_call = mock_logger.warning.call_args[0][0]
-        expected_warning = TEST_LOW_DELAY_WARNING_PREFIX.format(
-            delay=TEST_MESSAGE_DELAY_WARNING_THRESHOLD, minimum=MINIMUM_MESSAGE_DELAY
+        # Test against real warning message patterns from the code
+        expected_warning_part = f"Message delay {TEST_MESSAGE_DELAY_WARNING_THRESHOLD}s is at or below {MINIMUM_MESSAGE_DELAY}s"
+        self.assertIn(expected_warning_part, warning_call)
+        # Test the dynamic recommendation: MINIMUM_MESSAGE_DELAY + 0.1
+        expected_recommendation = (
+            f"{MINIMUM_MESSAGE_DELAY + 0.1:.1f}s or higher is recommended"
         )
-        self.assertIn(expected_warning, warning_call)
-        self.assertIn(TEST_RECOMMENDED_DELAY_SUFFIX, warning_call)
+        self.assertIn(expected_recommendation, warning_call)
 
         # Test with negative delay - should log warning but accept value
         self.queue.stop()
@@ -193,10 +193,9 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
         )  # Should accept the value
         mock_logger.warning.assert_called_once()
         warning_call = mock_logger.warning.call_args[0][0]
-        expected_warning = TEST_LOW_DELAY_WARNING_PREFIX.format(
-            delay=TEST_MESSAGE_DELAY_NEGATIVE, minimum=MINIMUM_MESSAGE_DELAY
-        )
-        self.assertIn(expected_warning, warning_call)
+        # Test against real warning message patterns from the code
+        expected_warning_part = f"Message delay {TEST_MESSAGE_DELAY_NEGATIVE}s is at or below {MINIMUM_MESSAGE_DELAY}s"
+        self.assertIn(expected_warning_part, warning_call)
 
     def test_double_start(self):
         """
@@ -553,7 +552,7 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
 
             # Check that we got the expected runtime warning
             warning_messages = "\n".join(cm.output)
-            self.assertIn(TEST_RUNTIME_WARNING_PREFIX, warning_messages)
+            self.assertIn("[Runtime] Messages sent", warning_messages)
             self.assertIn(f"below {MINIMUM_MESSAGE_DELAY}s", warning_messages)
             self.assertIn("may be dropped", warning_messages)
 
