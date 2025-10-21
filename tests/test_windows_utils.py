@@ -149,7 +149,7 @@ class TestCheckWindowsRequirements(unittest.TestCase):
         result = check_windows_requirements()
 
         self.assertIsNotNone(result)
-        self.assertIn("Python 3.10+ is recommended", result)
+        self.assertIn("Python 3.10+ is required", result)
 
     @patch("sys.platform", "win32")
     @patch("sys.version_info", (3, 12, 0))
