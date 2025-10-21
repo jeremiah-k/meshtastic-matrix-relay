@@ -23,7 +23,7 @@ import pytest
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from mmrelay.constants.network import MINIMUM_MESSAGE_DELAY
+from mmrelay.constants.network import MINIMUM_MESSAGE_DELAY, RECOMMENDED_MINIMUM_DELAY
 from mmrelay.message_queue import MessageQueue, get_message_queue, queue_message
 from tests.constants import (
     TEST_MESSAGE_DELAY_HIGH,
@@ -174,9 +174,9 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
         # Test against real warning message patterns from the code
         expected_warning_part = f"Message delay {TEST_MESSAGE_DELAY_WARNING_THRESHOLD}s is at or below {MINIMUM_MESSAGE_DELAY}s"
         self.assertIn(expected_warning_part, warning_call)
-        # Test the dynamic recommendation: MINIMUM_MESSAGE_DELAY + 0.1
+        # Test the recommendation using the constant
         expected_recommendation = (
-            f"{MINIMUM_MESSAGE_DELAY + 0.1:.1f}s or higher is recommended"
+            f"{RECOMMENDED_MINIMUM_DELAY}s or higher is recommended"
         )
         self.assertIn(expected_recommendation, warning_call)
 
@@ -527,7 +527,8 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
 
             def mock_send(text):
                 calls.append(text)
-                return {"id": len(calls)}
+                # Return an object with an 'id' attribute to match application expectations
+                return type("obj", (object,), {"id": len(calls)})()
 
             # Use assertLogs to capture log messages as recommended in testing guide
             # Use the correct logger name "MessageQueue" as defined in message_queue.py

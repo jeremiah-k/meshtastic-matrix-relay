@@ -24,6 +24,9 @@ DEFAULT_BACKOFF_TIME = 10  # seconds
 DEFAULT_RETRY_ATTEMPTS = 1
 INFINITE_RETRIES = 0  # 0 means infinite retries
 MINIMUM_MESSAGE_DELAY = 2.0  # Minimum delay for message queue fallback
+RECOMMENDED_MINIMUM_DELAY = (
+    2.1  # Recommended minimum delay (MINIMUM_MESSAGE_DELAY + 0.1)
+)
 
 # Matrix client timeouts
 MATRIX_EARLY_SYNC_TIMEOUT = 2000  # milliseconds
