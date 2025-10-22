@@ -43,7 +43,7 @@ setup(
     ],
     python_requires=">=3.10",
     install_requires=[
-        "meshtastic @ git+https://github.com/jeremiah-k/meshtastic-python.git@fix/ble-refactor-final-dev",
+        "meshtastic @ git+https://github.com/jeremiah-k/meshtastic-python.git@jules-ble-reconnect-fix",
         "Pillow==11.3.0",
         "matrix-nio==0.25.2",
         "matplotlib==3.10.1",
