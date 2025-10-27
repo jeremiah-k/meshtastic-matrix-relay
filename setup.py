@@ -52,7 +52,7 @@ setup(
         "bleach==6.2.0",
         "haversine==2.9.0",
         "schedule==1.2.2",
-        "platformdirs==4.4.0",
+        "platformdirs==4.5.0",
         "py-staticmaps>=0.4.0",
         "psutil>=5.8.0",
         "rich==14.2.0",
