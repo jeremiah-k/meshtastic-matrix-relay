@@ -92,7 +92,7 @@ jobs:
             echo "✅ PYZ test passed"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: mmrelay-${{ env.FILE_VERSION }}-armv7
           path: dist/*.pyz
