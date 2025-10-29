@@ -46,7 +46,7 @@ setup(
         "meshtastic>=2.7.3",
         "Pillow==11.3.0",
         "matrix-nio==0.25.2",
-        "matplotlib==3.10.1",
+        "matplotlib==3.10.7",
         "requests==2.32.5",
         "markdown==3.9",
         "bleach==6.2.0",
