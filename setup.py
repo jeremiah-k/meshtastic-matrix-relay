@@ -44,7 +44,7 @@ setup(
     python_requires=">=3.10",
     install_requires=[
         "meshtastic>=2.7.3",
-        "Pillow==11.3.0",
+        "Pillow==12.0.0",
         "matrix-nio==0.25.2",
         "matplotlib==3.10.7",
         "requests==2.32.5",
