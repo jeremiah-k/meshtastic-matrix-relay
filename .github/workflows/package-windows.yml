@@ -64,7 +64,7 @@ jobs:
           filepath: "/DAppVersion=${{ env.FILE_VERSION }} ./scripts/mmrelay.iss"
 
       - name: Upload installer as artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: MMRelay_setup_${{ env.FILE_VERSION }}
           path: scripts/MMRelay_setup_${{ env.FILE_VERSION }}.exe
