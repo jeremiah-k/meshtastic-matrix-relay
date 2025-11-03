@@ -552,6 +552,7 @@ def wipe_message_map():
     with _get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM message_map")
+        conn.commit()
     logger.info("message_map table wiped successfully.")
 
 

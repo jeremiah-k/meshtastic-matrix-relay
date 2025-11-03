@@ -72,8 +72,10 @@ class ConnectionPool:
         conn.execute(
             "PRAGMA synchronous=NORMAL"
         )  # Balance between safety and performance
-        conn.execute("PRAGMA cache_size=10000")  # Increase cache size
+        conn.execute("PRAGMA cache_size=-2000")  # 2MB cache for better performance
         conn.execute("PRAGMA temp_store=MEMORY")  # Store temporary tables in memory
+        conn.execute("PRAGMA mmap_size=268435456")  # 256MB memory mapping
+        conn.execute("PRAGMA wal_autocheckpoint=1000")  # WAL checkpoint interval
         conn.execute("PRAGMA busy_timeout=30000")  # 30 second timeout
 
         self._created_connections += 1

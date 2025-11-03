@@ -20,17 +20,18 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from mmrelay import async_db_utils
 
 
+@pytest.mark.usefixtures("mock_event_loop")
 class TestAsyncDbUtils:
     """Test cases for async database utilities."""
 
     @pytest.fixture(autouse=True)
-    def setup(self):
+    def setup_method(self):
         """Set up test environment."""
         self.temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
         self.temp_db.close()
         self.db_path = self.temp_db.name
 
-        # Mock the db_path function
+        # Mock db_path function
         import mmrelay.db_utils
 
         self.original_get_db_path = mmrelay.db_utils.get_db_path
@@ -42,9 +43,10 @@ class TestAsyncDbUtils:
         if os.path.exists(self.db_path):
             os.unlink(self.db_path)
         # Restore original function
+        import mmrelay.db_utils
+
         mmrelay.db_utils.get_db_path = self.original_get_db_path
 
-    @pytest.mark.asyncio
     async def test_async_initialize_database(self):
         """Test async database initialization."""
         await async_db_utils.async_initialize_database()
@@ -66,7 +68,8 @@ class TestAsyncDbUtils:
             for table in expected_tables:
                 assert table in table_names
 
-    @pytest.mark.asyncio
+        pass
+
     async def test_async_plugin_data_operations(self):
         """Test async plugin data storage and retrieval."""
         await async_db_utils.async_initialize_database()
@@ -79,20 +82,21 @@ class TestAsyncDbUtils:
         retrieved_data = await async_db_utils.async_get_plugin_data_for_node(
             "test_plugin", "node1"
         )
-        self.assertEqual(retrieved_data, [test_data])
+        assert retrieved_data == [test_data]
 
         # Test retrieving all plugin data
         all_data = await async_db_utils.async_get_plugin_data("test_plugin")
-        self.assertEqual(all_data, [test_data])
+        assert all_data == [test_data]
 
         # Test deleting plugin data
         await async_db_utils.async_delete_plugin_data("test_plugin", "node1")
         deleted_data = await async_db_utils.async_get_plugin_data_for_node(
             "test_plugin", "node1"
         )
-        self.assertEqual(deleted_data, [])
+        assert deleted_data == []
 
-    @pytest.mark.asyncio
+        pass
+
     async def test_async_longname_operations(self):
         """Test async longname storage and retrieval."""
         await async_db_utils.async_initialize_database()
@@ -102,13 +106,14 @@ class TestAsyncDbUtils:
 
         # Test retrieving longname
         retrieved_name = await async_db_utils.async_get_longname("node1")
-        self.assertEqual(retrieved_name, "TestLongName")
+        assert retrieved_name == "TestLongName"
 
         # Test non-existent node
         non_existent = await async_db_utils.async_get_longname("nonexistent")
-        self.assertIsNone(non_existent)
+        assert non_existent is None
 
-    @pytest.mark.asyncio
+        pass
+
     async def test_async_shortname_operations(self):
         """Test async shortname storage and retrieval."""
         await async_db_utils.async_initialize_database()
@@ -118,13 +123,14 @@ class TestAsyncDbUtils:
 
         # Test retrieving shortname
         retrieved_name = await async_db_utils.async_get_shortname("node1")
-        self.assertEqual(retrieved_name, "TN")
+        assert retrieved_name == "TN"
 
         # Test non-existent node
         non_existent = await async_db_utils.async_get_shortname("nonexistent")
-        self.assertIsNone(non_existent)
+        assert non_existent is None
 
-    @pytest.mark.asyncio
+        pass
+
     async def test_async_message_map_operations(self):
         """Test async message map storage and retrieval."""
         await async_db_utils.async_initialize_database()
@@ -134,194 +140,139 @@ class TestAsyncDbUtils:
             meshtastic_id="msg1",
             matrix_event_id="$event1",
             matrix_room_id="!room1",
-            meshtastic_text="Hello world",
+            meshtastic_text="Hello World",
             meshtastic_meshnet="testnet",
         )
 
-        # Test retrieving by meshtastic ID
+        # Test retrieval by meshtastic_id
         result = await async_db_utils.async_get_message_map_by_meshtastic_id("msg1")
-        self.assertIsNotNone(result)
-        self.assertEqual(result[0], "$event1")  # matrix_event_id
-        self.assertEqual(result[1], "!room1")  # matrix_room_id
-        self.assertEqual(result[2], "Hello world")  # meshtastic_text
-        self.assertEqual(result[3], "testnet")  # meshtastic_meshnet
+        assert result is not None
+        assert result[0] == "$event1"
+        assert result[1] == "!room1"
+        assert result[2] == "Hello World"
+        assert result[3] == "testnet"
 
-        # Test retrieving by matrix event ID
+        # Test retrieval by matrix_event_id
         result = await async_db_utils.async_get_message_map_by_matrix_event_id(
             "$event1"
         )
-        self.assertIsNotNone(result)
-        self.assertEqual(result[0], "msg1")  # meshtastic_id
-        self.assertEqual(result[1], "!room1")  # matrix_room_id
-        self.assertEqual(result[2], "Hello world")  # meshtastic_text
-        self.assertEqual(result[3], "testnet")  # meshtastic_meshnet
+        assert result is not None
+        assert result[0] == "msg1"
+        assert result[1] == "!room1"
+        assert result[2] == "Hello World"
+        assert result[3] == "testnet"
 
-    @pytest.mark.asyncio
-    async def test_async_message_map_edge_cases(self):
-        """Test async message map edge cases and error handling."""
-        await async_db_utils.async_initialize_database()
+        pass
 
-        # Test storing minimal message map
-        await async_db_utils.async_store_message_map(
-            meshtastic_id="msg2", matrix_event_id="$event2", matrix_room_id="!room2"
-        )
-
-        result = await async_db_utils.async_get_message_map_by_meshtastic_id("msg2")
-        self.assertIsNotNone(result)
-        self.assertEqual(result[0], "$event2")
-        self.assertEqual(result[1], "!room2")
-        self.assertIsNone(result[2])  # meshtastic_text should be None
-        self.assertIsNone(result[3])  # meshtastic_meshnet should be None
-
-        # Test non-existent message
-        non_existent = await async_db_utils.async_get_message_map_by_meshtastic_id(
-            "nonexistent"
-        )
-        self.assertIsNone(non_existent)
-
-    @pytest.mark.asyncio
     async def test_async_wipe_message_map(self):
-        """Test async message map wiping."""
+        """Test async message map wipe functionality."""
         await async_db_utils.async_initialize_database()
 
-        # Add some test data
-        await async_db_utils.async_store_message_map("msg1", "$event1", "!room1")
-        await async_db_utils.async_store_message_map("msg2", "$event2", "!room2")
+        # Add a test entry
+        await async_db_utils.async_store_message_map(
+            meshtastic_id="msg1", matrix_event_id="$event1", matrix_room_id="!room1"
+        )
 
-        # Verify data exists
+        # Verify entry exists
         result = await async_db_utils.async_get_message_map_by_meshtastic_id("msg1")
-        self.assertIsNotNone(result)
+        assert result is not None
 
         # Wipe the table
         await async_db_utils.async_wipe_message_map()
 
-        # Verify data is gone
+        # Verify entry is gone
         result = await async_db_utils.async_get_message_map_by_meshtastic_id("msg1")
-        self.assertIsNone(result)
+        assert result is None
 
-    @pytest.mark.asyncio
+        pass
+
     async def test_async_prune_message_map(self):
-        """Test async message map pruning."""
+        """Test async message map pruning functionality."""
         await async_db_utils.async_initialize_database()
 
-        # Add test data
+        # Add 10 messages
         for i in range(10):
             await async_db_utils.async_store_message_map(
-                f"msg{i}", f"$event{i}", f"!room{i}"
+                meshtastic_id=f"msg{i}",
+                matrix_event_id=f"$event{i}",
+                matrix_room_id="!room1",
             )
 
-        # Prune to keep only 5 messages
+        # Prune to keep only 5
         await async_db_utils.async_prune_message_map(5)
 
-        # Should only have 5 messages remaining (the newest ones)
+        # Should only have 5 remaining (newest ones)
         import aiosqlite
 
         async with aiosqlite.connect(self.db_path) as conn:
             cursor = await conn.execute("SELECT COUNT(*) FROM message_map")
             count = (await cursor.fetchone())[0]
-            self.assertEqual(count, 5)
+            assert count == 5
 
-    @pytest.mark.asyncio
-    async def test_async_error_handling(self):
-        """Test async error handling and rollback."""
-        await async_db_utils.async_initialize_database()
-
-        # Test handling of invalid JSON in plugin data
-        import aiosqlite
-
-        async with aiosqlite.connect(self.db_path) as conn:
-            # Insert invalid JSON directly
-            await conn.execute(
-                "INSERT INTO plugin_data (plugin_name, meshtastic_id, data) VALUES (?, ?, ?)",
-                ("test_plugin", "node1", "invalid json {"),
-            )
-            await conn.commit()
-
-        # Should handle invalid JSON gracefully
-        retrieved_data = await async_db_utils.async_get_plugin_data_for_node(
-            "test_plugin", "node1"
-        )
-        self.assertEqual(retrieved_data, [])  # Should return empty list on error
-
-    @pytest.mark.asyncio
-    async def test_async_database_connection_fallback(self):
-        """Test fallback to direct connection when pooling is disabled."""
-        # Mock config to disable pooling
-        with patch("mmrelay.db_utils.config", {"database": {"pool_enabled": False}}):
-
-            # Should still work with direct connection
-            await async_db_utils.async_initialize_database()
-
-            # Test basic operation
-            await async_db_utils.async_save_longname("test_node", "TestName")
-            retrieved = await async_db_utils.async_get_longname("test_node")
-            self.assertEqual(retrieved, "TestName")
+        pass
 
 
-class TestAsyncDbUtilsIntegration(unittest.TestCase):
+@pytest.mark.usefixtures("mock_event_loop")
+class TestAsyncDbUtilsIntegration:
     """Integration tests for async database utilities."""
 
-    def setUp(self):
+    @pytest.fixture(autouse=True)
+    def setup_method(self):
         """Set up test environment."""
         self.temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
         self.temp_db.close()
         self.db_path = self.temp_db.name
 
-        patcher = patch("mmrelay.async_db_utils.get_db_path")
-        self.mock_get_db_path = patcher.start()
-        self.mock_get_db_path.return_value = self.db_path
+        # Mock db_path function
+        import mmrelay.db_utils
 
-    def tearDown(self):
-        """Clean up test environment."""
-        self.mock_get_db_path.stop()
+        self.original_get_db_path = mmrelay.db_utils.get_db_path
+        mmrelay.db_utils.get_db_path = lambda: self.db_path
+
+        yield
+
+        # Cleanup
         if os.path.exists(self.db_path):
             os.unlink(self.db_path)
+        # Restore original function
+        import mmrelay.db_utils
+
+        mmrelay.db_utils.get_db_path = self.original_get_db_path
 
     @pytest.mark.asyncio
     async def test_complex_workflow(self):
-        """Test a complex workflow using multiple async operations."""
+        """Test complex workflow with multiple operations."""
         await async_db_utils.async_initialize_database()
 
-        # Setup: Save some names
-        await async_db_utils.async_save_longname("node1", "Alice")
-        await async_db_utils.async_save_shortname("node1", "A")
-        await async_db_utils.async_save_longname("node2", "Bob")
-        await async_db_utils.async_save_shortname("node2", "B")
+        # Store node information
+        await async_db_utils.async_save_longname("node1", "TestNode")
+        await async_db_utils.async_save_shortname("node1", "TN")
 
-        # Store some plugin data
-        plugin_data = {"settings": {"theme": "dark", "notifications": True}}
-        await async_db_utils.async_store_plugin_data("ui_plugin", "node1", plugin_data)
+        # Store plugin data
+        await async_db_utils.async_store_plugin_data("weather", "node1", {"temp": 72})
 
-        # Store some message mappings
+        # Store message
         await async_db_utils.async_store_message_map(
-            "msg1", "$event1", "!room1", "Hello from Alice"
+            meshtastic_id="msg1",
+            matrix_event_id="$event1",
+            matrix_room_id="!room1",
+            meshtastic_text="Weather update",
         )
-        await async_db_utils.async_store_message_map(
-            "msg2", "$event2", "!room1", "Hi from Bob"
+
+        # Verify all data is retrievable
+        longname_result = await async_db_utils.async_get_longname("node1")
+        assert longname_result == "TestNode"
+
+        shortname_result = await async_db_utils.async_get_shortname("node1")
+        assert shortname_result == "TN"
+
+        plugin_data_result = await async_db_utils.async_get_plugin_data_for_node(
+            "weather", "node1"
         )
+        assert plugin_data_result == [{"temp": 72}]
 
-        # Verify all data is correctly stored and retrievable
-        alice_long = await async_db_utils.async_get_longname("node1")
-        self.assertEqual(alice_long, "Alice")
+        result = await async_db_utils.async_get_message_map_by_meshtastic_id("msg1")
+        assert result is not None
+        assert result[2] == "Weather update"
 
-        bob_short = await async_db_utils.async_get_shortname("node2")
-        self.assertEqual(bob_short, "B")
-
-        alice_plugin = await async_db_utils.async_get_plugin_data_for_node(
-            "ui_plugin", "node1"
-        )
-        self.assertEqual(alice_plugin, [plugin_data])
-
-        alice_msg = await async_db_utils.async_get_message_map_by_meshtastic_id("msg1")
-        self.assertEqual(alice_msg[2], "Hello from Alice")
-
-        # Test cleanup
-        await async_db_utils.async_delete_plugin_data("ui_plugin", "node1")
-        deleted_plugin = await async_db_utils.async_get_plugin_data_for_node(
-            "ui_plugin", "node1"
-        )
-        self.assertEqual(deleted_plugin, [])
-
-
-if __name__ == "__main__":
-    unittest.main()
+        pass

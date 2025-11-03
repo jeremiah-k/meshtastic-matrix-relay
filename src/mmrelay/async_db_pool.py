@@ -73,10 +73,14 @@ class AsyncConnectionPool:
         await conn.execute(
             "PRAGMA synchronous=NORMAL"
         )  # Balance between safety and performance
-        await conn.execute("PRAGMA cache_size=10000")  # Increase cache size
+        await conn.execute(
+            "PRAGMA cache_size=-2000"
+        )  # 2MB cache for better performance
         await conn.execute(
             "PRAGMA temp_store=MEMORY"
         )  # Store temporary tables in memory
+        await conn.execute("PRAGMA mmap_size=268435456")  # 256MB memory mapping
+        await conn.execute("PRAGMA wal_autocheckpoint=1000")  # WAL checkpoint interval
         await conn.execute("PRAGMA busy_timeout=30000")  # 30 second timeout
 
         self._created_connections += 1

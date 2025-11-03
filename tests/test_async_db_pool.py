@@ -5,6 +5,7 @@ Tests the async-safe connection pool functionality including
 connection reuse, cleanup, error handling, and configuration.
 """
 
+import asyncio
 import os
 import sqlite3
 
@@ -27,10 +28,12 @@ from mmrelay.async_db_pool import (
 )
 
 
-class TestAsyncConnectionPool(unittest.TestCase):
+@pytest.mark.usefixtures("mock_event_loop")
+class TestAsyncConnectionPool:
     """Test cases for AsyncConnectionPool class."""
 
-    def setUp(self):
+    @pytest.fixture(autouse=True)
+    def setup_method(self):
         """Set up test environment."""
         self.temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
         self.temp_db.close()
@@ -39,8 +42,9 @@ class TestAsyncConnectionPool(unittest.TestCase):
             self.db_path, max_connections=3, max_idle_time=1
         )
 
-    def tearDown(self):
-        """Clean up test environment."""
+        yield
+
+        # Clean up test environment.
         # Note: We need to run the async cleanup
         import asyncio
 
@@ -50,17 +54,17 @@ class TestAsyncConnectionPool(unittest.TestCase):
 
     def test_pool_initialization(self):
         """Test that pool initializes correctly."""
-        self.assertEqual(self.pool.database_path, self.db_path)
-        self.assertEqual(self.pool.max_connections, 3)
-        self.assertEqual(self.pool.max_idle_time, 1)
-        self.assertEqual(self.pool._created_connections, 0)
-        self.assertEqual(len(self.pool._pool), 0)
+        assert self.pool.database_path == self.db_path
+        assert self.pool.max_connections == 3
+        assert self.pool.max_idle_time == 1
+        assert self.pool._created_connections == 0
+        assert len(self.pool._pool) == 0
 
     @pytest.mark.asyncio
     async def test_single_connection_usage(self):
         """Test using a single connection from pool."""
         async with self.pool.get_connection() as conn:
-            self.assertIsNotNone(conn)
+            assert conn is not None
             # Test that connection works
             await conn.execute(
                 "CREATE TABLE IF NOT EXISTS test (id INTEGER PRIMARY KEY, value TEXT)"
@@ -73,7 +77,7 @@ class TestAsyncConnectionPool(unittest.TestCase):
                 "SELECT value FROM test WHERE value = ?", ("test",)
             )
             result = await cursor.fetchone()
-            self.assertEqual(result[0], "test")
+            assert result[0] == "test"
 
     @pytest.mark.asyncio
     async def test_connection_reuse(self):
@@ -88,7 +92,7 @@ class TestAsyncConnectionPool(unittest.TestCase):
             conn2_id = id(conn2)
 
         # Should reuse the same connection (pool size is 1 for reuse)
-        self.assertEqual(conn1_id, conn2_id)
+        assert conn1_id == conn2_id
 
     @pytest.mark.asyncio
     async def test_multiple_connections(self):
@@ -105,7 +109,7 @@ class TestAsyncConnectionPool(unittest.TestCase):
         await asyncio.gather(*tasks)
 
         # Should have 3 different connections
-        self.assertEqual(len(set(connections)), 3)
+        assert len(set(connections)) == 3
 
     @pytest.mark.asyncio
     async def test_connection_limit(self):
@@ -122,7 +126,7 @@ class TestAsyncConnectionPool(unittest.TestCase):
 
         # Wait a bit then check that only 3 connections are active
         await asyncio.sleep(0.1)
-        self.assertEqual(len(set(active_connections)), 3)
+        assert len(set(active_connections)) == 3
 
         # Wait for all to complete
         await asyncio.gather(*tasks)
@@ -140,7 +144,7 @@ class TestAsyncConnectionPool(unittest.TestCase):
             await conn.commit()
 
             # Simulate an error
-            with self.assertRaises(Exception):
+            with pytest.raises(Exception):
                 async with conn:
                     await conn.execute(
                         "INSERT INTO test_rollback (value) VALUES (?)", ("after_error",)
@@ -150,7 +154,7 @@ class TestAsyncConnectionPool(unittest.TestCase):
             # Verify only first insert was committed
             cursor = await conn.execute("SELECT COUNT(*) FROM test_rollback")
             count = (await cursor.fetchone())[0]
-            self.assertEqual(count, 1)
+            assert count == 1
 
     @pytest.mark.asyncio
     async def test_idle_connection_cleanup(self):
@@ -169,7 +173,7 @@ class TestAsyncConnectionPool(unittest.TestCase):
         await self.pool._cleanup_idle_connections()
 
         # Pool should be empty after cleanup
-        self.assertEqual(len(self.pool._pool), 0)
+        assert len(self.pool._pool) == 0
 
     @pytest.mark.asyncio
     async def test_pool_statistics(self):
@@ -177,32 +181,35 @@ class TestAsyncConnectionPool(unittest.TestCase):
         stats = self.pool.get_stats()
 
         # Initially empty
-        self.assertEqual(stats["total_connections"], 0)
-        self.assertEqual(stats["active_connections"], 0)
-        self.assertEqual(stats["idle_connections"], 0)
-        self.assertEqual(stats["created_connections"], 0)
-        self.assertEqual(stats["max_connections"], 3)
+        assert stats["total_connections"] == 0
+        assert stats["active_connections"] == 0
+        assert stats["idle_connections"] == 0
+        assert stats["created_connections"] == 0
+        assert stats["max_connections"] == 3
 
         # Use a connection
         async with self.pool.get_connection() as conn:
             stats = self.pool.get_stats()
-            self.assertEqual(stats["total_connections"], 1)
-            self.assertEqual(stats["active_connections"], 1)
-            self.assertEqual(stats["idle_connections"], 0)
-            self.assertEqual(stats["created_connections"], 1)
+            assert stats["total_connections"] == 1
+            assert stats["active_connections"] == 1
+            assert stats["idle_connections"] == 0
+            assert stats["created_connections"] == 1
 
 
-class TestAsyncConnectionPoolIntegration(unittest.TestCase):
+@pytest.mark.usefixtures("mock_event_loop")
+class TestAsyncConnectionPoolIntegration:
     """Integration tests for async connection pool management."""
 
-    def setUp(self):
+    @pytest.fixture(autouse=True)
+    def setup_method(self):
         """Set up test environment."""
         self.temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
         self.temp_db.close()
         self.db_path = self.temp_db.name
 
-    def tearDown(self):
-        """Clean up test environment."""
+        yield
+
+        # Clean up test environment.
         import asyncio
 
         asyncio.run(close_all_async_pools())
@@ -215,7 +222,7 @@ class TestAsyncConnectionPoolIntegration(unittest.TestCase):
         pool1 = await get_async_connection_pool(self.db_path)
         pool2 = await get_async_connection_pool(self.db_path)
 
-        self.assertIs(pool1, pool2)
+        assert pool1 is pool2
 
     @pytest.mark.asyncio
     async def test_get_async_db_connection_with_config(self):
@@ -229,8 +236,8 @@ class TestAsyncConnectionPoolIntegration(unittest.TestCase):
             }
         }
 
-        async with get_async_db_connection(config) as conn:
-            self.assertIsNotNone(conn)
+        async with await get_async_db_connection(config) as conn:
+            assert conn is not None
             # Test that connection works
             await conn.execute(
                 "CREATE TABLE IF NOT EXISTS test_config (id INTEGER PRIMARY KEY)"
@@ -242,8 +249,8 @@ class TestAsyncConnectionPoolIntegration(unittest.TestCase):
         """Test get_async_db_connection with pooling disabled."""
         config = {"database": {"pool_enabled": False}}
 
-        async with get_async_db_connection(config) as conn:
-            self.assertIsNotNone(conn)
+        async with await get_async_db_connection(config) as conn:
+            assert conn is not None
             # Test that connection works
             await conn.execute(
                 "CREATE TABLE IF NOT EXISTS test_fallback (id INTEGER PRIMARY KEY)"
@@ -255,29 +262,32 @@ class TestAsyncConnectionPoolIntegration(unittest.TestCase):
         """Test get_async_pool_stats function."""
         # Create a pool by getting a connection
         config = {"database": {"pool_enabled": True}}
-        async with get_async_db_connection(config) as conn:
+        async with await get_async_db_connection(config) as conn:
             await conn.execute(
                 "CREATE TABLE IF NOT EXISTS test_stats (id INTEGER PRIMARY KEY)"
             )
             await conn.commit()
 
         stats = get_async_pool_stats()
-        self.assertIsInstance(stats, dict)
-        self.assertIn(self.db_path, stats)
+        assert isinstance(stats, dict)
+        assert self.db_path in stats
 
 
-class TestAsyncConnectionPoolThreadSafety(unittest.TestCase):
+@pytest.mark.usefixtures("mock_event_loop")
+class TestAsyncConnectionPoolThreadSafety:
     """Test thread safety of async connection pool."""
 
-    def setUp(self):
+    @pytest.fixture(autouse=True)
+    def setup_method(self):
         """Set up test environment."""
         self.temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
         self.temp_db.close()
         self.db_path = self.temp_db.name
         self.pool = AsyncConnectionPool(self.db_path, max_connections=5)
 
-    def tearDown(self):
-        """Clean up test environment."""
+        yield
+
+        # Clean up test environment.
         import asyncio
 
         asyncio.run(self.pool.close_all())
@@ -310,16 +320,16 @@ class TestAsyncConnectionPoolThreadSafety(unittest.TestCase):
         await asyncio.gather(*tasks, return_exceptions=True)
 
         # Verify no errors occurred
-        self.assertEqual(len(errors), 0)
+        assert len(errors) == 0
 
         # Verify all workers got connections
-        self.assertEqual(len(connection_ids), 10)
+        assert len(connection_ids) == 10
 
         # Verify data integrity
         async with self.pool.get_connection() as conn:
             cursor = await conn.execute("SELECT COUNT(*) FROM test_worker")
             count = (await cursor.fetchone())[0]
-            self.assertEqual(count, 10)
+            assert count == 10
 
     @pytest.mark.asyncio
     async def test_pool_statistics_thread_safety(self):
@@ -342,10 +352,10 @@ class TestAsyncConnectionPoolThreadSafety(unittest.TestCase):
 
         # All stats should be valid
         for stats in stats_list:
-            self.assertIsInstance(stats, dict)
-            self.assertIn("total_connections", stats)
-            self.assertIn("active_connections", stats)
-            self.assertIn("idle_connections", stats)
+            assert isinstance(stats, dict)
+            assert "total_connections" in stats
+            assert "active_connections" in stats
+            assert "idle_connections" in stats
 
 
 if __name__ == "__main__":
