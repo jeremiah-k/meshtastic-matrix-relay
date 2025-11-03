@@ -27,7 +27,14 @@ def _get_db_connection():
             pass
 
     # Direct connection (pool disabled or not available)
-    return sqlite3.connect(get_db_path())
+    conn = sqlite3.connect(get_db_path())
+    # Apply same PRAGMAs for consistency with pooled connections
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA cache_size=10000")
+    conn.execute("PRAGMA temp_store=MEMORY")
+    conn.execute("PRAGMA busy_timeout=30000")
+    return conn
 
 
 # Cache for database path to avoid repeated logging and path resolution
@@ -545,7 +552,6 @@ def wipe_message_map():
     with _get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM message_map")
-        conn.commit()
     logger.info("message_map table wiped successfully.")
 
 

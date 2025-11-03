@@ -316,6 +316,12 @@ def get_db_connection(config, **kwargs):
             def direct_connection():
                 conn = sqlite3.connect(database_path)
                 try:
+                    # Apply same PRAGMAs for consistency with pooled connections
+                    conn.execute("PRAGMA journal_mode=WAL")
+                    conn.execute("PRAGMA synchronous=NORMAL")
+                    conn.execute("PRAGMA cache_size=10000")
+                    conn.execute("PRAGMA temp_store=MEMORY")
+                    conn.execute("PRAGMA busy_timeout=30000")
                     yield conn
                 finally:
                     conn.close()
