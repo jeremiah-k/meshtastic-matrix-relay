@@ -380,8 +380,15 @@ async def async_cleanup():
 
 # Emergency fallback cleanup handler - only used if normal shutdown fails
 # Normal shutdown should call async_cleanup() from main() for proper cleanup
+# During testing, this handler is disabled to prevent hanging during pytest session cleanup
 def _cleanup_atexit():
     """Emergency cleanup function for atexit - unreliable for async operations."""
+    # Skip cleanup during testing to prevent pytest session hanging
+    import os
+
+    if os.getenv("PYTEST_CURRENT_TEST"):
+        return
+
     try:
         loop = asyncio.get_event_loop()
         if loop.is_running():

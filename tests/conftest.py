@@ -551,7 +551,7 @@ def reset_banner_flag():
     yield
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def comprehensive_cleanup():
     """
     Pytest fixture that performs a thorough cleanup of async resources, event loops, executors, and non-daemon threads after a test.
