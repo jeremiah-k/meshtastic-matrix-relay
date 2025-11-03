@@ -217,7 +217,6 @@ class TestMessageQueue(unittest.TestCase):
 
         self.loop.run_until_complete(async_test())
 
-    @pytest.mark.usefixtures("comprehensive_cleanup")
     def test_queue_size_limit(self):
         """
         Verify that the message queue enforces its maximum size limit by accepting messages up to the limit and rejecting additional messages beyond capacity.
@@ -280,7 +279,6 @@ class TestMessageQueue(unittest.TestCase):
 
         self.loop.run_until_complete(async_test())
 
-    @pytest.mark.usefixtures("comprehensive_cleanup")
     def test_error_handling(self):
         """
         Verify that the MessageQueue survives exceptions raised by send functions and continues processing.

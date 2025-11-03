@@ -6,7 +6,6 @@ to improve performance and resource management in async environments.
 """
 
 import asyncio
-import atexit
 import sqlite3
 import time
 from contextlib import asynccontextmanager
@@ -119,34 +118,34 @@ class AsyncConnectionPool:
         try:
             # Synchronous cleanup that doesn't require event loop
             if hasattr(self, "_pool") and self._pool:
-                for conn_id, conn_info in list(self._pool.items()):
+                for _conn_id, conn_info in list(self._pool.items()):
                     try:
                         conn = conn_info.get("connection")
                         if conn and hasattr(conn, "_connection"):
                             # Force close the underlying SQLite connection
                             conn._connection.close()
-                    except Exception:
+                    except Exception:  # nosec B110
                         pass  # Ignore all errors during garbage collection
                 self._pool.clear()
                 self._created_connections = 0
-        except Exception:
+        except Exception:  # nosec B110
             pass  # Ignore all errors during garbage collection
 
     def close_all_sync(self):
         """Synchronous version of close_all for use during shutdown."""
         try:
             if hasattr(self, "_pool") and self._pool:
-                for conn_id, conn_info in list(self._pool.items()):
+                for _conn_id, conn_info in list(self._pool.items()):
                     try:
                         conn = conn_info.get("connection")
                         if conn and hasattr(conn, "_connection"):
                             # Force close the underlying SQLite connection
                             conn._connection.close()
-                    except Exception:
+                    except Exception:  # nosec B110
                         pass  # Ignore errors during sync cleanup
                 self._pool.clear()
                 self._created_connections = 0
-        except Exception:
+        except Exception:  # nosec B110
             pass  # Ignore all errors during sync cleanup
 
     @asynccontextmanager
@@ -235,11 +234,11 @@ class AsyncConnectionPool:
                     try:
                         conn = conn_info["connection"]
                         await self._force_close_connection(conn, conn_id)
-                    except Exception:
+                    except Exception:  # nosec B110
                         pass  # Ignore errors during shutdown cleanup
                 self._pool.clear()
                 self._created_connections = 0
-            except Exception:
+            except Exception:  # nosec B110
                 pass  # Ignore all errors during shutdown
             return
 
@@ -286,7 +285,7 @@ class AsyncConnectionPool:
             if hasattr(conn, "_connection"):
                 try:
                     conn._connection.close()
-                except Exception:
+                except Exception:  # nosec B110
                     pass
         except Exception as e:
             logger.warning(f"Error closing async connection {conn_id}: {e}")
@@ -294,7 +293,7 @@ class AsyncConnectionPool:
             if hasattr(conn, "_connection"):
                 try:
                     conn._connection.close()
-                except Exception:
+                except Exception:  # nosec B110
                     pass
 
     def get_stats(self) -> Dict[str, Any]:
@@ -425,10 +424,10 @@ async def close_all_async_pools():
             for pool in list(_async_pools.values()):
                 try:
                     await pool.close_all()
-                except Exception:
+                except Exception:  # nosec B110
                     pass  # Ignore errors during shutdown cleanup
             _async_pools.clear()
-        except Exception:
+        except Exception:  # nosec B110
             pass  # Ignore all errors during shutdown
         return
 
@@ -436,7 +435,7 @@ async def close_all_async_pools():
         for pool in list(_async_pools.values()):
             try:
                 await pool.close_all()
-            except Exception:
+            except Exception:  # nosec B110
                 pass  # Ignore errors during shutdown cleanup
         _async_pools.clear()
         try:
@@ -448,7 +447,7 @@ async def close_all_async_pools():
     finally:
         try:
             _async_pools_lock.release()
-        except (RuntimeError, Exception):
+        except (RuntimeError, Exception):  # nosec B110
             pass  # Ignore errors during shutdown
 
 
@@ -463,7 +462,7 @@ def close_all_async_pools_sync():
     try:
         # Clear pools without any cleanup to prevent hanging
         _async_pools.clear()
-    except Exception:
+    except Exception:  # nosec B110
         pass  # Ignore all errors during sync cleanup
 
 

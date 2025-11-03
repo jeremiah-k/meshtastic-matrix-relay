@@ -416,7 +416,7 @@ async def async_get_message_map_by_meshtastic_id(
                     )
                     return None
             return None
-    except (UnicodeDecodeError, sqlite3.Error) as e:
+    except (UnicodeDecodeError, sqlite3.Error):
         logger.exception(
             f"Database error retrieving message map for meshtastic_id {meshtastic_id}"
         )
@@ -476,7 +476,7 @@ async def async_get_message_map_by_matrix_event_id(
                     )
                     return None
             return None
-    except sqlite3.Error as e:
+    except sqlite3.Error:
         logger.exception(
             f"Database error retrieving message map for matrix_event_id {matrix_event_id}"
         )
@@ -519,7 +519,8 @@ async def async_prune_message_map(msgs_to_keep: int):
             cursor = await conn.cursor()
             # Count total entries
             await cursor.execute("SELECT COUNT(*) FROM message_map")
-            total_entries = (await cursor.fetchone())[0]
+            result = await cursor.fetchone()
+            total_entries = result[0] if result else 0
 
             if total_entries > msgs_to_keep:
                 # Calculate how many to delete

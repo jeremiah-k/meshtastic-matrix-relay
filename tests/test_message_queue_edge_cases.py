@@ -34,7 +34,6 @@ from tests.constants import (
 )
 
 
-@pytest.mark.usefixtures("comprehensive_cleanup")
 class TestMessageQueueEdgeCases(unittest.TestCase):
     """Test cases for Message Queue edge cases and error handling."""
 

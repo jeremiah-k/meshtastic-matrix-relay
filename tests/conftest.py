@@ -14,7 +14,6 @@ sys.path.insert(
 )
 
 import asyncio
-import gc
 import logging
 
 # Preserve references to built-in modules that should NOT be mocked
