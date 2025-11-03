@@ -54,7 +54,6 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
         # Clear any cached database path
         clear_db_path_cache()
         # Reset global config
-        import mmrelay.db_utils
 
         mmrelay.db_utils.config = None
 
@@ -80,7 +79,6 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
 
         Simulates an OSError during directory creation and verifies that get_db_path handles the error gracefully by still returning a string path.
         """
-        import mmrelay.db_utils
 
         mmrelay.db_utils.config = {
             "database": {"path": "/nonexistent/invalid/path/db.sqlite"}
@@ -340,7 +338,6 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
         """
         Verify that database path caching remains consistent and robust when the cache is cleared between calls, simulating a race condition.
         """
-        import mmrelay.db_utils
 
         # Simulate race condition by clearing cache between calls
         def side_effect_clear_cache(*args, **kwargs):
