@@ -3027,9 +3027,6 @@ class TestMatrixE2EEHasAttrChecks:
             async def mock_login(*args, **kwargs):
                 return MagicMock()
 
-            async def mock_login(*args, **kwargs):
-                return MagicMock()
-
             async def mock_sync(*args, **kwargs):
                 return {}
 

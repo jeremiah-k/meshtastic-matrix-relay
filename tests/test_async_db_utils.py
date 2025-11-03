@@ -81,7 +81,7 @@ class TestAsyncDbUtils:
         retrieved_data = await async_db_utils.async_get_plugin_data_for_node(
             "test_plugin", "node1"
         )
-        assert retrieved_data == [test_data]
+        assert retrieved_data == test_data
 
         # Test retrieving all plugin data
         all_data = await async_db_utils.async_get_plugin_data("test_plugin")
@@ -92,7 +92,7 @@ class TestAsyncDbUtils:
         deleted_data = await async_db_utils.async_get_plugin_data_for_node(
             "test_plugin", "node1"
         )
-        assert deleted_data == []
+        assert deleted_data is None
 
         pass
 
@@ -269,7 +269,7 @@ class TestAsyncDbUtilsIntegration:
         plugin_data_result = await async_db_utils.async_get_plugin_data_for_node(
             "weather", "node1"
         )
-        assert plugin_data_result == [{"temp": 72}]
+        assert plugin_data_result == {"temp": 72}
 
         result = await async_db_utils.async_get_message_map_by_meshtastic_id("msg1")
         assert result is not None

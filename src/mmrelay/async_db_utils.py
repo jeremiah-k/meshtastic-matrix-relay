@@ -6,6 +6,7 @@ enabling better performance in async-heavy application contexts.
 """
 
 import json
+import os
 import sqlite3
 from typing import Any, List, Optional, Tuple
 
@@ -39,8 +40,6 @@ async def async_initialize_database():
     db_path = get_db_path()
 
     # Check if database file exists
-    import os
-
     db_exists = os.path.exists(db_path)
 
     if db_exists:
@@ -168,7 +167,7 @@ async def async_delete_plugin_data(plugin_name: str, meshtastic_id: str):
 
 async def async_get_plugin_data_for_node(
     plugin_name: str, meshtastic_id: str
-) -> List[Any]:
+) -> Optional[Any]:
     """
     Retrieve plugin-specific data for a specific node asynchronously.
 
@@ -177,7 +176,7 @@ async def async_get_plugin_data_for_node(
         meshtastic_id (str): The Meshtastic node ID associated with the plugin data.
 
     Returns:
-        list: The deserialized plugin data as a list, or an empty list if no data is found or on error.
+        Any | None: The deserialized plugin data, or None if no data is found or on error.
     """
     try:
         async with await _get_async_db_connection() as conn:
@@ -190,14 +189,14 @@ async def async_get_plugin_data_for_node(
 
             if result:
                 try:
-                    return [json.loads(result[0])]
+                    return json.loads(result[0])
                 except json.JSONDecodeError:
                     logger.warning(f"Invalid JSON in plugin data for {plugin_name}")
-                    return []
-            return []
+                    return None
+            return None
     except sqlite3.Error:
         logger.exception(f"Failed to retrieve plugin data for {plugin_name}")
-        return []
+        return None
 
 
 async def async_get_plugin_data(plugin_name: str) -> List[Any]:
@@ -341,7 +340,7 @@ async def async_store_message_map(
         async with await _get_async_db_connection() as conn:
             cursor = await conn.cursor()
             logger.debug(
-                f"Storing message map: meshtastic_id={meshtastic_id}, matrix_event_id={matrix_event_id}, matrix_room_id={matrix_room_id}, meshtastic_text={meshtastic_text}, meshtastic_meshnet={meshtastic_meshnet}"
+                f"Storing message map: meshtastic_id={meshtastic_id}, matrix_event_id={matrix_event_id}, matrix_room_id={matrix_room_id}, meshtastic_meshnet={meshtastic_meshnet}"
             )
             await cursor.execute(
                 """
@@ -385,36 +384,21 @@ async def async_get_message_map_by_meshtastic_id(
             result = await cursor.fetchone()
 
             if result:
-                try:
-                    # Validate that we have the expected number of fields
-                    if len(result) >= 2:
-                        matrix_event_id, matrix_room_id = result[0], result[1]
-                        meshtastic_text = result[2] if len(result) > 2 else None
-                        meshtastic_meshnet = result[3] if len(result) > 3 else None
+                matrix_event_id, matrix_room_id = result[0], result[1]
+                meshtastic_text = result[2] if len(result) > 2 else None
+                meshtastic_meshnet = result[3] if len(result) > 3 else None
 
-                        # Validate that required fields are not empty
-                        if matrix_event_id and matrix_room_id:
-                            return (
-                                matrix_event_id,
-                                matrix_room_id,
-                                meshtastic_text,
-                                meshtastic_meshnet,
-                            )
-                        else:
-                            logger.warning(
-                                f"Invalid message map data for meshtastic_id {meshtastic_id}: missing required fields"
-                            )
-                            return None
-                    else:
-                        logger.warning(
-                            f"Invalid message map data for meshtastic_id {meshtastic_id}: insufficient fields"
-                        )
-                        return None
-                except (ValueError, IndexError) as e:
-                    logger.warning(
-                        f"Invalid message map data for meshtastic_id {meshtastic_id}: {e}"
+                if matrix_event_id and matrix_room_id:
+                    return (
+                        matrix_event_id,
+                        matrix_room_id,
+                        meshtastic_text,
+                        meshtastic_meshnet,
                     )
-                    return None
+                else:
+                    logger.warning(
+                        f"Invalid message map data for meshtastic_id {meshtastic_id}: missing required fields"
+                    )
             return None
     except (UnicodeDecodeError, sqlite3.Error):
         logger.exception(
@@ -445,36 +429,21 @@ async def async_get_message_map_by_matrix_event_id(
             result = await cursor.fetchone()
 
             if result:
-                try:
-                    # Validate that we have the expected number of fields
-                    if len(result) >= 2:
-                        meshtastic_id, matrix_room_id = result[0], result[1]
-                        meshtastic_text = result[2] if len(result) > 2 else None
-                        meshtastic_meshnet = result[3] if len(result) > 3 else None
+                meshtastic_id, matrix_room_id = result[0], result[1]
+                meshtastic_text = result[2] if len(result) > 2 else None
+                meshtastic_meshnet = result[3] if len(result) > 3 else None
 
-                        # Validate that required fields are not empty
-                        if meshtastic_id and matrix_room_id:
-                            return (
-                                meshtastic_id,
-                                matrix_room_id,
-                                meshtastic_text,
-                                meshtastic_meshnet,
-                            )
-                        else:
-                            logger.warning(
-                                f"Invalid message map data for matrix_event_id {matrix_event_id}: missing required fields"
-                            )
-                            return None
-                    else:
-                        logger.warning(
-                            f"Invalid message map data for matrix_event_id {matrix_event_id}: insufficient fields"
-                        )
-                        return None
-                except (ValueError, IndexError) as e:
-                    logger.warning(
-                        f"Invalid message map data for matrix_event_id {matrix_event_id}: {e}"
+                if meshtastic_id and matrix_room_id:
+                    return (
+                        meshtastic_id,
+                        matrix_room_id,
+                        meshtastic_text,
+                        meshtastic_meshnet,
                     )
-                    return None
+                else:
+                    logger.warning(
+                        f"Invalid message map data for matrix_event_id {matrix_event_id}: missing required fields"
+                    )
             return None
     except sqlite3.Error:
         logger.exception(
@@ -526,13 +495,13 @@ async def async_prune_message_map(msgs_to_keep: int):
                 # Calculate how many to delete
                 entries_to_delete = total_entries - msgs_to_keep
 
-                # Delete oldest entries based on rowid
+                # Delete oldest entries based on created_at
                 await cursor.execute(
                     """
                     DELETE FROM message_map 
                     WHERE rowid IN (
                         SELECT rowid FROM message_map 
-                        ORDER BY rowid ASC 
+                        ORDER BY created_at ASC 
                         LIMIT ?
                     )
                     """,

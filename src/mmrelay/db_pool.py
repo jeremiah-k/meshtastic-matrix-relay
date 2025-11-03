@@ -5,7 +5,6 @@ Provides thread-safe connection pooling for SQLite databases to improve
 performance and resource management in multi-threaded environments.
 """
 
-import atexit
 import sqlite3
 import threading
 import time
