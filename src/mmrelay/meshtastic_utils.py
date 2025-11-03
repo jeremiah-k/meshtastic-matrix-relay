@@ -888,12 +888,10 @@ def on_meshtastic_message(packet, interface):
         # Attempt to get longname/shortname from database or nodes
         try:
             longname = get_longname(sender)
-        except Exception:
-            longname = None
-
-        try:
             shortname = get_shortname(sender)
         except Exception:
+            # Database failed, use interface fallback immediately
+            longname = None
             shortname = None
 
         if not longname or not shortname:
@@ -904,12 +902,21 @@ def on_meshtastic_message(packet, interface):
                     if not longname:
                         longname_val = user.get("longName")
                         if longname_val:
-                            save_longname(sender, longname_val)
+                            try:
+                                save_longname(sender, longname_val)
+                            except Exception:  # nosec B110
+                                # Database still failing, ignore
+                                # Broad exception catch is intentional - database is known to be failing
+                                pass
                             longname = longname_val
                     if not shortname:
                         shortname_val = user.get("shortName")
                         if shortname_val:
-                            save_shortname(sender, shortname_val)
+                            try:
+                                save_shortname(sender, shortname_val)
+                            except Exception:  # nosec B110
+                                pass  # Database still failing, ignore
+                                # Broad exception catch is intentional - database is known to be failing
                             shortname = shortname_val
             else:
                 logger.debug(f"Node info for sender {sender} not available yet.")

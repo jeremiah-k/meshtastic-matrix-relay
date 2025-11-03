@@ -230,8 +230,9 @@ class ConnectionPool:
             self._created_connections = 0
             try:
                 logger.info("Closed all connections in pool")
-            except (ValueError, OSError):
+            except Exception:  # nosec B110
                 # Logging system may be shut down during atexit
+                # Broad exception catch is intentional - we want to silence any logging errors during shutdown
                 pass
 
     def get_stats(self) -> Dict[str, Any]:
@@ -346,8 +347,9 @@ def close_all_pools():
         _pools.clear()
         try:
             logger.info("Closed all connection pools")
-        except (ValueError, OSError):
+        except Exception:  # nosec B110
             # Logging system may be shut down during atexit
+            # Broad exception catch is intentional - we want to silence any logging errors during shutdown
             pass
 
 
