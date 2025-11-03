@@ -66,17 +66,13 @@ class ConnectionPool:
         )
 
         # Configure connection for better performance and reliability
-        conn.execute(
-            "PRAGMA journal_mode=WAL"
-        )  # Write-Ahead Logging for better concurrency
-        conn.execute(
-            "PRAGMA synchronous=NORMAL"
-        )  # Balance between safety and performance
-        conn.execute("PRAGMA cache_size=-2000")  # 2MB cache for better performance
-        conn.execute("PRAGMA temp_store=MEMORY")  # Store temporary tables in memory
-        conn.execute("PRAGMA mmap_size=268435456")  # 256MB memory mapping
-        conn.execute("PRAGMA wal_autocheckpoint=1000")  # WAL checkpoint interval
-        conn.execute("PRAGMA busy_timeout=30000")  # 30 second timeout
+        from mmrelay.constants.database import OPTIMIZATION_PRAGMAS
+
+        for pragma_name, pragma_value in OPTIMIZATION_PRAGMAS.items():
+            if pragma_name == "optimize":
+                # Skip optimize pragma as it's not a standard PRAGMA
+                continue
+            conn.execute(f"PRAGMA {pragma_name}={pragma_value}")
 
         self._created_connections += 1
         logger.debug(

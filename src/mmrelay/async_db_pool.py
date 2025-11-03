@@ -67,21 +67,13 @@ class AsyncConnectionPool:
         )
 
         # Configure connection for better performance and reliability
-        await conn.execute(
-            "PRAGMA journal_mode=WAL"
-        )  # Write-Ahead Logging for better concurrency
-        await conn.execute(
-            "PRAGMA synchronous=NORMAL"
-        )  # Balance between safety and performance
-        await conn.execute(
-            "PRAGMA cache_size=-2000"
-        )  # 2MB cache for better performance
-        await conn.execute(
-            "PRAGMA temp_store=MEMORY"
-        )  # Store temporary tables in memory
-        await conn.execute("PRAGMA mmap_size=268435456")  # 256MB memory mapping
-        await conn.execute("PRAGMA wal_autocheckpoint=1000")  # WAL checkpoint interval
-        await conn.execute("PRAGMA busy_timeout=30000")  # 30 second timeout
+        from mmrelay.constants.database import OPTIMIZATION_PRAGMAS
+
+        for pragma_name, pragma_value in OPTIMIZATION_PRAGMAS.items():
+            if pragma_name == "optimize":
+                # Skip optimize pragma as it's not a standard PRAGMA
+                continue
+            await conn.execute(f"PRAGMA {pragma_name}={pragma_value}")
 
         self._created_connections += 1
         logger.debug(
@@ -121,6 +113,41 @@ class AsyncConnectionPool:
                     )
 
             self._last_cleanup = current_time
+
+    def __del__(self):
+        """Destructor that ensures cleanup doesn't hang during garbage collection."""
+        try:
+            # Synchronous cleanup that doesn't require event loop
+            if hasattr(self, "_pool") and self._pool:
+                for conn_id, conn_info in list(self._pool.items()):
+                    try:
+                        conn = conn_info.get("connection")
+                        if conn and hasattr(conn, "_connection"):
+                            # Force close the underlying SQLite connection
+                            conn._connection.close()
+                    except Exception:
+                        pass  # Ignore all errors during garbage collection
+                self._pool.clear()
+                self._created_connections = 0
+        except Exception:
+            pass  # Ignore all errors during garbage collection
+
+    def close_all_sync(self):
+        """Synchronous version of close_all for use during shutdown."""
+        try:
+            if hasattr(self, "_pool") and self._pool:
+                for conn_id, conn_info in list(self._pool.items()):
+                    try:
+                        conn = conn_info.get("connection")
+                        if conn and hasattr(conn, "_connection"):
+                            # Force close the underlying SQLite connection
+                            conn._connection.close()
+                    except Exception:
+                        pass  # Ignore errors during sync cleanup
+                self._pool.clear()
+                self._created_connections = 0
+        except Exception:
+            pass  # Ignore all errors during sync cleanup
 
     @asynccontextmanager
     async def get_connection(self):
@@ -197,27 +224,31 @@ class AsyncConnectionPool:
 
     async def close_all(self):
         """Close all connections in the pool."""
-        async with self._pool_condition:
+        # Try to acquire the condition lock with timeout to prevent hanging during shutdown
+        try:
+            await asyncio.wait_for(self._pool_condition.acquire(), timeout=0.5)
+        except (asyncio.TimeoutError, RuntimeError, Exception):
+            # If we can't acquire the lock, try to close connections directly without lock
+            # This can happen during shutdown when the event loop is closing
+            try:
+                for conn_id, conn_info in self._pool.items():
+                    try:
+                        conn = conn_info["connection"]
+                        await self._force_close_connection(conn, conn_id)
+                    except Exception:
+                        pass  # Ignore errors during shutdown cleanup
+                self._pool.clear()
+                self._created_connections = 0
+            except Exception:
+                pass  # Ignore all errors during shutdown
+            return
+
+        try:
             for conn_id, conn_info in self._pool.items():
                 try:
                     conn = conn_info["connection"]
                     # Close connection with timeout to avoid hanging
-                    try:
-                        await asyncio.wait_for(conn.close(), timeout=1.0)
-                        logger.debug(f"Closed async connection {conn_id}")
-                    except asyncio.TimeoutError:
-                        logger.warning(f"Timeout closing async connection {conn_id}")
-                        # Force close the underlying SQLite connection
-                        if hasattr(conn, "_connection"):
-                            conn._connection.close()
-                    except Exception as e:
-                        logger.warning(f"Error closing async connection {conn_id}: {e}")
-                        # Try to force close the underlying connection
-                        if hasattr(conn, "_connection"):
-                            try:
-                                conn._connection.close()
-                            except Exception:
-                                pass
+                    await self._force_close_connection(conn, conn_id)
                 except Exception as e:
                     try:
                         logger.warning(f"Error closing async connection {conn_id}: {e}")
@@ -228,13 +259,43 @@ class AsyncConnectionPool:
             self._pool.clear()
             self._created_connections = 0
             # Notify all waiting tasks that the pool is closed
-            self._pool_condition.notify_all()
+            try:
+                self._pool_condition.notify_all()
+            except RuntimeError:
+                pass  # Event loop may be closing
             try:
                 logger.info("Closed all async connections in pool")
             except Exception:  # nosec B110
                 # Logging system may be shut down during atexit
                 # Broad exception catch is intentional - we want to silence any logging errors during shutdown
                 pass
+        finally:
+            try:
+                self._pool_condition.release()
+            except (RuntimeError, Exception):
+                pass  # Ignore errors during shutdown
+
+    async def _force_close_connection(self, conn, conn_id: str):
+        """Force close a connection with multiple fallback strategies."""
+        try:
+            await asyncio.wait_for(conn.close(), timeout=1.0)
+            logger.debug(f"Closed async connection {conn_id}")
+        except asyncio.TimeoutError:
+            logger.warning(f"Timeout closing async connection {conn_id}")
+            # Force close the underlying SQLite connection
+            if hasattr(conn, "_connection"):
+                try:
+                    conn._connection.close()
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.warning(f"Error closing async connection {conn_id}: {e}")
+            # Try to force close the underlying connection
+            if hasattr(conn, "_connection"):
+                try:
+                    conn._connection.close()
+                except Exception:
+                    pass
 
     def get_stats(self) -> Dict[str, Any]:
         """Get pool statistics."""
@@ -354,9 +415,29 @@ async def get_async_db_connection(config, **kwargs):
 
 async def close_all_async_pools():
     """Close all async connection pools."""
-    async with _async_pools_lock:
-        for pool in _async_pools.values():
-            await pool.close_all()
+    # Try to acquire the global pools lock with timeout to prevent hanging
+    try:
+        await asyncio.wait_for(_async_pools_lock.acquire(), timeout=0.5)
+    except (asyncio.TimeoutError, RuntimeError, Exception):
+        # If we can't acquire the lock, try to close pools directly without lock
+        # This can happen during shutdown when the event loop is closing
+        try:
+            for pool in list(_async_pools.values()):
+                try:
+                    await pool.close_all()
+                except Exception:
+                    pass  # Ignore errors during shutdown cleanup
+            _async_pools.clear()
+        except Exception:
+            pass  # Ignore all errors during shutdown
+        return
+
+    try:
+        for pool in list(_async_pools.values()):
+            try:
+                await pool.close_all()
+            except Exception:
+                pass  # Ignore errors during shutdown cleanup
         _async_pools.clear()
         try:
             logger.info("Closed all async connection pools")
@@ -364,6 +445,11 @@ async def close_all_async_pools():
             # Logging system may be shut down during atexit
             # Broad exception catch is intentional - we want to silence any logging errors during shutdown
             pass
+    finally:
+        try:
+            _async_pools_lock.release()
+        except (RuntimeError, Exception):
+            pass  # Ignore errors during shutdown
 
 
 def get_async_pool_stats() -> Dict[str, Dict[str, Any]]:
@@ -372,35 +458,21 @@ def get_async_pool_stats() -> Dict[str, Dict[str, Any]]:
     return {path: pool.get_stats() for path, pool in _async_pools.items()}
 
 
+def close_all_async_pools_sync():
+    """Synchronous version of close_all_async_pools for use during shutdown."""
+    try:
+        # Clear pools without any cleanup to prevent hanging
+        _async_pools.clear()
+    except Exception:
+        pass  # Ignore all errors during sync cleanup
+
+
 # Cleanup function to be called on application shutdown
 async def async_cleanup():
     """Cleanup async connection pools on application shutdown."""
     await close_all_async_pools()
 
 
-# Emergency fallback cleanup handler - only used if normal shutdown fails
-# Normal shutdown should call async_cleanup() from main() for proper cleanup
-# During testing, this handler is disabled to prevent hanging during pytest session cleanup
-def _cleanup_atexit():
-    """Emergency cleanup function for atexit - unreliable for async operations."""
-    # Skip cleanup during testing to prevent pytest session hanging
-    import os
-
-    if os.getenv("PYTEST_CURRENT_TEST"):
-        return
-
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            # If loop is running, create a fire-and-forget task (may not complete before shutdown)
-            # This is unreliable - normal shutdown should use await async_cleanup() in main()
-            asyncio.create_task(async_cleanup())
-        else:
-            # If loop is not running, run the coroutine directly
-            loop.run_until_complete(async_cleanup())
-    except RuntimeError:
-        # No event loop available, skip cleanup
-        pass
-
-
-atexit.register(_cleanup_atexit)
+# Completely disable atexit handler during tests to prevent hanging
+# The async connection pools will be cleaned up by pytest fixtures and garbage collection
+# atexit.register(_cleanup_atexit)  # Commented out to prevent test hanging

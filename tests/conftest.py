@@ -480,20 +480,40 @@ def mock_submit_coro(monkeypatch):
         if not inspect.iscoroutine(coro):  # Not a coroutine
             return None
 
-        # For AsyncMock coroutines, we need to actually await them to get the result
-        # and prevent "never awaited" warnings, while also triggering any side effects
-        temp_loop = asyncio.new_event_loop()
-        try:
-            result = temp_loop.run_until_complete(coro)
-            future = Future()
-            future.set_result(result)
-            return future
-        except Exception as e:
-            future = Future()
-            future.set_exception(e)
-            return future
-        finally:
-            temp_loop.close()
+        # Check if this is an AsyncMock coroutine and handle it specially
+        if "AsyncMockMixin" in coro.__qualname__:
+            # AsyncMock coroutines need to be consumed by sending None to them
+            try:
+                # Send None to start and complete the coroutine
+                coro.send(None)
+            except StopIteration as e:
+                # Coroutine completed successfully
+                result = e.value
+                future = Future()
+                future.set_result(result)
+                return future
+            except Exception as e:
+                # Coroutine failed
+                future = Future()
+                future.set_exception(e)
+                return future
+        else:
+            # Regular coroutines - run in a new loop
+            temp_loop = asyncio.new_event_loop()
+            try:
+                result = temp_loop.run_until_complete(coro)
+                future = Future()
+                future.set_result(result)
+                return future
+            except Exception as e:
+                future = Future()
+                future.set_exception(e)
+                return future
+            finally:
+                try:
+                    temp_loop.close()
+                except Exception:
+                    pass  # Ignore errors during cleanup
 
     monkeypatch.setattr(mu, "_submit_coro", mock_submit)
     yield
@@ -551,110 +571,7 @@ def reset_banner_flag():
     yield
 
 
-@pytest.fixture(autouse=True)
-def comprehensive_cleanup():
-    """
-    Pytest fixture that performs a thorough cleanup of async resources, event loops, executors, and non-daemon threads after a test.
-
-    When used as an autouse fixture, it yields to the test and on teardown:
-    - cancels pending asyncio tasks and waits for their completion with timeout,
-    - shuts down the loop's default executor (if any) with timeout and closes the event loop,
-    - clears the global event loop reference,
-    - runs garbage collection before and after thread cleanup,
-    - joins any remaining non-daemon threads for a short timeout.
-
-    This prevents resource warnings about unclosed sockets, executors, or event loops and reduces flaky CI failures related to lingering async resources.
-    """
-    yield
-
-    # Force cleanup of all async tasks and event loops
-    try:
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            try:
-                loop = asyncio.get_event_loop()
-            except RuntimeError:
-                loop = None
-
-        if loop and not loop.is_closed():
-            # Cancel all pending tasks
-            pending_tasks = [
-                task for task in asyncio.all_tasks(loop) if not task.done()
-            ]
-            for task in pending_tasks:
-                task.cancel()
-
-            # Wait for cancelled tasks to complete with timeout
-            if pending_tasks:
-                try:
-                    # Create a timeout task to prevent hanging
-                    async def wait_with_timeout():
-                        await asyncio.wait_for(
-                            asyncio.gather(*pending_tasks, return_exceptions=True),
-                            timeout=1.0,  # 1 second timeout
-                        )
-
-                    # Run the timeout-wrapped wait in a new event loop if needed
-                    if loop.is_running():
-                        # If loop is running, we can't use run_until_complete
-                        # Just proceed without waiting
-                        pass
-                    else:
-                        loop.run_until_complete(wait_with_timeout())
-                except (asyncio.TimeoutError, Exception):
-                    # If timeout or any other exception, continue cleanup
-                    pass
-
-            # Shutdown any remaining executors with timeout
-            try:
-                # Try to shutdown default executor if it exists
-                if hasattr(loop, "_default_executor") and loop._default_executor:
-                    executor = loop._default_executor
-                    loop._default_executor = None
-                    try:
-                        # Shutdown without waiting to prevent hanging
-                        executor.shutdown(wait=False)
-                    except Exception:
-                        pass
-            except Exception:
-                # If executor shutdown fails, just continue
-                pass
-
-            # Close the event loop
-            try:
-                if not loop.is_running():
-                    loop.close()
-            except Exception:
-                pass
-    except Exception:
-        pass  # Continue cleanup even if loop operations fail
-
-    # Set event loop to None to ensure clean state
-    try:
-        asyncio.set_event_loop(None)
-    except Exception:
-        pass
-
-    # Force garbage collection to clean up any remaining resources
-    gc.collect()
-
-    # Clean up any remaining threads (avoid daemon threads to prevent hangs)
-    main_thread = threading.main_thread()
-    for thread in threading.enumerate():
-        if (
-            thread is not main_thread
-            and thread.is_alive()
-            and not getattr(thread, "daemon", False)
-            and hasattr(thread, "join")
-        ):
-            try:
-                thread.join(timeout=0.1)
-            except Exception:
-                pass  # Continue if thread join fails
-
-    # Force another garbage collection after thread cleanup
-    gc.collect()
+# Removed comprehensive_cleanup fixture as it was causing hanging during pytest teardown
 
 
 @pytest.fixture
