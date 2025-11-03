@@ -59,7 +59,7 @@ class TestConnectionPool(unittest.TestCase):
 
         # Connection should be returned to pool
         self.assertEqual(len(self.pool._pool), 1)
-        self.assertFalse(list(self.pool._pool.values())[0]["in_use"])
+        self.assertFalse(next(iter(self.pool._pool.values()))["in_use"])
 
     def test_connection_reuse(self):
         """Test that connections are reused from pool."""

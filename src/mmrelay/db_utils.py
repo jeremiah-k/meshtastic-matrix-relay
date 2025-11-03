@@ -11,14 +11,23 @@ config = None
 
 # Import connection pool (lazy import to avoid circular dependencies)
 def _get_db_connection():
-    """Get database connection using connection pool if available."""
-    try:
-        from mmrelay.db_pool import get_db_connection
+    """Get database connection using connection pool if available and enabled."""
+    # Check if pooling is disabled in config
+    pool_enabled = (
+        config.get("database", {}).get("pool_enabled", True) if config else True
+    )
 
-        return get_db_connection(config)
-    except ImportError:
-        # Fallback to direct connection if pool not available
-        return sqlite3.connect(get_db_path())
+    if pool_enabled:
+        try:
+            from mmrelay.db_pool import get_db_connection
+
+            return get_db_connection(config)
+        except ImportError:
+            # Fallback to direct connection if pool not available
+            pass
+
+    # Direct connection (pool disabled or not available)
+    return sqlite3.connect(get_db_path())
 
 
 # Cache for database path to avoid repeated logging and path resolution

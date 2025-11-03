@@ -74,7 +74,7 @@ The current implementation in `src/mmrelay/db_utils.py` creates new connections 
 **New Files to Create:**
 
 - `src/mmrelay/db_pool.py` - Connection pool implementation
-- `src/mmrelay/db_pool_manager.py` - Pool lifecycle management
+- `src/mmrelay/db_utils.py` - Updated to use connection pool
 - `tests/test_db_pool.py` - Comprehensive pool testing
 
 **Configuration Options:**
@@ -82,17 +82,10 @@ The current implementation in `src/mmrelay/db_utils.py` creates new connections 
 ```yaml
 database:
   path: ~/.mmrelay/data/meshtastic.sqlite
-  connection_pool:
-    enabled: true
-    max_connections: 10 # Maximum connections in pool
-    min_connections: 2 # Minimum connections to maintain
-    connection_timeout: 30 # Connection timeout in seconds
-    health_check_interval: 60 # Health check interval in seconds
-    idle_timeout: 300 # Idle connection timeout
-    max_retries: 3 # Connection retry attempts
-    retry_delay: 1.0 # Delay between retries
-    enable_wal_mode: true # Enable WAL mode for better concurrency
-    checkpoint_interval: 1000 # WAL checkpoint interval
+  pool_enabled: true # Enable/disable connection pooling
+  pool_max_connections: 10 # Maximum connections in pool
+  pool_max_idle_time: 300 # Maximum idle time for connections in seconds
+  pool_timeout: 30 # Connection timeout in seconds
 ```
 
 #### 1.2 Async Database Operations

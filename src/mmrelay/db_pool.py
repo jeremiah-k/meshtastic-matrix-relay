@@ -48,6 +48,7 @@ class ConnectionPool:
 
         self._pool: Dict[str, Dict[str, Any]] = {}
         self._pool_lock = threading.RLock()
+        self._pool_condition = threading.Condition(self._pool_lock)
         self._created_connections = 0
         self._last_cleanup = time.time()
 
@@ -111,10 +112,30 @@ class ConnectionPool:
 
             self._last_cleanup = current_time
 
+    def _wait_for_available_connection(self, max_wait_seconds=5):
+        """Wait for an available connection with timeout using threading.Condition."""
+        deadline = time.time() + max_wait_seconds
+
+        while time.time() < deadline:
+            # Check for available connection
+            for pool_id, conn_info in self._pool.items():
+                if not conn_info["in_use"]:
+                    conn_info["in_use"] = True
+                    conn_info["last_used"] = time.time()
+                    return pool_id, conn_info["connection"]
+
+            # Wait for a connection to be released
+            remaining_time = deadline - time.time()
+            if remaining_time <= 0:
+                break
+            self._pool_condition.wait(min(remaining_time, 0.1))
+
+        return None, None
+
     @contextmanager
     def get_connection(self):
         """
-        Get a connection from the pool.
+        Get a connection from pool.
 
         Returns:
             Context manager that yields a database connection
@@ -143,9 +164,7 @@ class ConnectionPool:
                     and self._created_connections < self.max_connections
                 ):
                     connection = self._create_connection()
-                    conn_id = (
-                        f"conn_{int(time.time() * 1000000)}_{self._created_connections}"
-                    )
+                    conn_id = str(id(connection))
                     self._pool[conn_id] = {
                         "connection": connection,
                         "in_use": True,
@@ -159,21 +178,9 @@ class ConnectionPool:
                     logger.warning(
                         "Connection pool exhausted, waiting for available connection"
                     )
-                    # Simple retry mechanism - in production, you might want a more sophisticated approach
-                    time.sleep(0.1)
-                    # Try again (recursive call with depth limit)
-                    for _ in range(50):  # Max 5 second wait
-                        with self._pool_lock:
-                            for pool_id, conn_info in self._pool.items():
-                                if not conn_info["in_use"]:
-                                    conn_id = pool_id
-                                    connection = conn_info["connection"]
-                                    conn_info["in_use"] = True
-                                    conn_info["last_used"] = time.time()
-                                    break
-                        if connection is not None:
-                            break
-                        time.sleep(0.1)
+                    conn_id, connection = self._wait_for_available_connection(
+                        max_wait_seconds=5
+                    )
 
                     if connection is None:
                         raise sqlite3.OperationalError(
@@ -182,8 +189,8 @@ class ConnectionPool:
 
             yield connection
 
-        except Exception as e:
-            logger.error(f"Error in connection pool: {e}")
+        except Exception:
+            logger.exception("Error in connection pool")
             if connection:
                 try:
                     connection.rollback()
@@ -193,11 +200,13 @@ class ConnectionPool:
         finally:
             # Return connection to pool
             if conn_id and connection:
-                with self._pool_lock:
+                with self._pool_condition:
                     if conn_id in self._pool:
                         self._pool[conn_id]["in_use"] = False
                         self._pool[conn_id]["last_used"] = time.time()
                         logger.debug(f"Returned connection {conn_id} to pool")
+                        # Notify one waiting thread that a connection is available
+                        self._pool_condition.notify()
 
     def close_all(self):
         """Close all connections in the pool."""
@@ -266,6 +275,18 @@ def get_db_connection(config, **kwargs):
         Context manager that yields a database connection
     """
     # Import here to avoid circular imports
+    import sqlite3
+
+    from mmrelay.constants.config import (
+        CONFIG_KEY_POOL_ENABLED,
+        CONFIG_KEY_POOL_MAX_CONNECTIONS,
+        CONFIG_KEY_POOL_MAX_IDLE_TIME,
+        CONFIG_KEY_POOL_TIMEOUT,
+        DEFAULT_POOL_ENABLED,
+        DEFAULT_POOL_MAX_CONNECTIONS,
+        DEFAULT_POOL_MAX_IDLE_TIME,
+        DEFAULT_POOL_TIMEOUT,
+    )
     from mmrelay.db_utils import get_db_path
 
     database_path = get_db_path()
@@ -274,10 +295,28 @@ def get_db_connection(config, **kwargs):
     pool_config = {}
     if config:
         db_config = config.get("database", {})
+
+        # Check if pooling is disabled
+        if not db_config.get(CONFIG_KEY_POOL_ENABLED, DEFAULT_POOL_ENABLED):
+
+            @contextmanager
+            def direct_connection():
+                conn = sqlite3.connect(database_path)
+                try:
+                    yield conn
+                finally:
+                    conn.close()
+
+            return direct_connection()
+
         pool_config = {
-            "max_connections": db_config.get("pool_max_connections", 10),
-            "max_idle_time": db_config.get("pool_max_idle_time", 300),
-            "timeout": db_config.get("pool_timeout", 30),
+            "max_connections": db_config.get(
+                CONFIG_KEY_POOL_MAX_CONNECTIONS, DEFAULT_POOL_MAX_CONNECTIONS
+            ),
+            "max_idle_time": db_config.get(
+                CONFIG_KEY_POOL_MAX_IDLE_TIME, DEFAULT_POOL_MAX_IDLE_TIME
+            ),
+            "timeout": db_config.get(CONFIG_KEY_POOL_TIMEOUT, DEFAULT_POOL_TIMEOUT),
         }
 
     # Override with any explicitly passed kwargs
