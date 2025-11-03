@@ -23,14 +23,14 @@ lint:
     - actionlint@1.7.8
     - bandit@1.8.6
     - black@25.9.0
-    - checkov@3.2.485
+    - checkov@3.2.489
     - git-diff-check
     - isort@7.0.0
     - markdownlint@0.45.0
-    - osv-scanner@2.2.3
+    - osv-scanner@2.2.4
     - prettier@3.6.2
-    - ruff@0.14.1
-    - trufflehog@3.90.11
+    - ruff@0.14.3
+    - trufflehog@3.90.12
     - yamllint@1.37.1
   # Remove map_plugin.py after staticmaps is updated and we're able to work on it again
   # For more info: https://github.com/geoffwhittington/meshtastic-matrix-relay/issues/117
