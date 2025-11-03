@@ -524,8 +524,12 @@ plugins:
             "mmrelay.matrix_utils.matrix_relay", new_callable=AsyncMock
         ) as mock_matrix_relay:
             with patch("mmrelay.plugin_loader.load_plugins", return_value=[]):
-                with patch("mmrelay.db_utils.get_longname", return_value="TestNode"):
-                    with patch("mmrelay.db_utils.get_shortname", return_value="TN"):
+                with patch(
+                    "mmrelay.meshtastic_utils.get_longname", return_value="TestNode"
+                ):
+                    with patch(
+                        "mmrelay.meshtastic_utils.get_shortname", return_value="TN"
+                    ):
                         with patch("mmrelay.meshtastic_utils.logger"):
                             with patch(
                                 "mmrelay.matrix_utils.get_interaction_settings"

@@ -158,10 +158,11 @@ class TestErrorBoundaries(unittest.TestCase):
 
         # Mock database failures
         with patch(
-            "mmrelay.db_utils.get_longname", side_effect=Exception("Database error")
+            "mmrelay.meshtastic_utils.get_longname",
+            side_effect=Exception("Database error"),
         ):
             with patch(
-                "mmrelay.db_utils.get_shortname",
+                "mmrelay.meshtastic_utils.get_shortname",
                 side_effect=Exception("Database error"),
             ):
                 with patch("mmrelay.plugin_loader.load_plugins", return_value=[]):
