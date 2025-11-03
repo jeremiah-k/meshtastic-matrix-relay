@@ -740,12 +740,23 @@ def on_meshtastic_message(packet, interface):
 
     meshnet_name = config[CONFIG_SECTION_MESHTASTIC][CONFIG_KEY_MESHNET_NAME]
 
+    # Initialize variables for reaction handling
+    longname = str(sender)
+    shortname = str(sender)
+    orig = None
+
     # Reaction handling (Meshtastic -> Matrix)
     # If replyId and emoji_flag are present and reactions are enabled, we relay as text reactions in Matrix
     if replyId and emoji_flag and interactions["reactions"]:
-        longname = get_longname(sender) or str(sender)
-        shortname = get_shortname(sender) or str(sender)
-        orig = get_message_map_by_meshtastic_id(replyId)
+        try:
+            longname = get_longname(sender) or str(sender)
+            shortname = get_shortname(sender) or str(sender)
+            orig = get_message_map_by_meshtastic_id(replyId)
+        except Exception:
+            longname = str(sender)
+            shortname = str(sender)
+            orig = None
+
         if orig:
             # orig = (matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet)
             matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet = orig
@@ -790,9 +801,14 @@ def on_meshtastic_message(packet, interface):
     # Reply handling (Meshtastic -> Matrix)
     # If replyId is present but emoji is not (or not 1), this is a reply
     if replyId and not emoji_flag and interactions["replies"]:
-        longname = get_longname(sender) or str(sender)
-        shortname = get_shortname(sender) or str(sender)
-        orig = get_message_map_by_meshtastic_id(replyId)
+        try:
+            longname = get_longname(sender) or str(sender)
+            shortname = get_shortname(sender) or str(sender)
+            orig = get_message_map_by_meshtastic_id(replyId)
+        except Exception:
+            longname = str(sender)
+            shortname = str(sender)
+            orig = None
         if orig:
             # orig = (matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet)
             matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet = orig
@@ -870,8 +886,15 @@ def on_meshtastic_message(packet, interface):
             return
 
         # Attempt to get longname/shortname from database or nodes
-        longname = get_longname(sender)
-        shortname = get_shortname(sender)
+        try:
+            longname = get_longname(sender)
+        except Exception:
+            longname = None
+
+        try:
+            shortname = get_shortname(sender)
+        except Exception:
+            shortname = None
 
         if not longname or not shortname:
             node = interface.nodes.get(sender)

@@ -214,13 +214,25 @@ class ConnectionPool:
             for conn_id, conn_info in self._pool.items():
                 try:
                     conn_info["connection"].close()
-                    logger.debug(f"Closed connection {conn_id}")
+                    try:
+                        logger.debug(f"Closed connection {conn_id}")
+                    except (ValueError, OSError):
+                        # Logging system may be shut down during atexit
+                        pass
                 except sqlite3.Error as e:
-                    logger.warning(f"Error closing connection {conn_id}: {e}")
+                    try:
+                        logger.warning(f"Error closing connection {conn_id}: {e}")
+                    except (ValueError, OSError):
+                        # Logging system may be shut down during atexit
+                        pass
 
             self._pool.clear()
             self._created_connections = 0
-            logger.info("Closed all connections in pool")
+            try:
+                logger.info("Closed all connections in pool")
+            except (ValueError, OSError):
+                # Logging system may be shut down during atexit
+                pass
 
     def get_stats(self) -> Dict[str, Any]:
         """Get pool statistics."""
@@ -332,7 +344,11 @@ def close_all_pools():
         for pool in _pools.values():
             pool.close_all()
         _pools.clear()
-        logger.info("Closed all connection pools")
+        try:
+            logger.info("Closed all connection pools")
+        except (ValueError, OSError):
+            # Logging system may be shut down during atexit
+            pass
 
 
 def get_pool_stats() -> Dict[str, Dict[str, Any]]:
