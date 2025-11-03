@@ -7,13 +7,11 @@ connection reuse, cleanup, error handling, and configuration.
 
 import asyncio
 import os
-import sqlite3
 
 # Set PYTHONPATH for imports
 import sys
 import tempfile
 import unittest
-from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -28,7 +26,6 @@ from mmrelay.async_db_pool import (
 )
 
 
-@pytest.mark.usefixtures("mock_event_loop")
 class TestAsyncConnectionPool:
     """Test cases for AsyncConnectionPool class."""
 
@@ -39,7 +36,7 @@ class TestAsyncConnectionPool:
         self.temp_db.close()
         self.db_path = self.temp_db.name
         self.pool = AsyncConnectionPool(
-            self.db_path, max_connections=3, max_idle_time=1
+            self.db_path, max_connections=3, max_idle_time=1, timeout=1
         )
 
         yield
@@ -117,7 +114,7 @@ class TestAsyncConnectionPool:
 
         async def get_and_hold_connection():
             nonlocal active_count, max_active_seen
-            async with self.pool.get_connection() as conn:
+            async with self.pool.get_connection():
                 active_count += 1
                 max_active_seen = max(max_active_seen, active_count)
                 await asyncio.sleep(0.1)  # Hold connection
@@ -145,12 +142,12 @@ class TestAsyncConnectionPool:
             await conn.commit()
 
             # Simulate an error
-            with pytest.raises(Exception):
+            with pytest.raises(RuntimeError):
                 async with conn:
                     await conn.execute(
                         "INSERT INTO test_rollback (value) VALUES (?)", ("after_error",)
                     )
-                    raise Exception("Simulated error")
+                    raise RuntimeError("Simulated error")
 
             # Verify only first insert was committed
             cursor = await conn.execute("SELECT COUNT(*) FROM test_rollback")
@@ -192,7 +189,7 @@ class TestAsyncConnectionPool:
         assert stats["max_connections"] == 3
 
         # Use a connection
-        async with self.pool.get_connection() as conn:
+        async with self.pool.get_connection():
             stats = self.pool.get_stats()
             assert stats["total_connections"] == 1
             assert stats["active_connections"] == 1

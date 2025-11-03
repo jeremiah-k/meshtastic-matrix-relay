@@ -7,7 +7,7 @@ enabling better performance in async-heavy application contexts.
 
 import json
 import sqlite3
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
 from mmrelay.log_utils import get_logger
 
@@ -69,10 +69,10 @@ def _get_async_db_connection():
                 yield conn
             finally:
                 await conn.close()
-        except ImportError:
+        except ImportError as err:
             raise ImportError(
                 "aiosqlite is required for async database operations. Please install it with: pip install aiosqlite"
-            )
+            ) from err
 
     return connection_manager()
 
@@ -84,7 +84,6 @@ async def async_initialize_database():
     Creates tables for plugin_data, longnames, shortnames, and message_map
     with proper indexes for performance optimization.
     """
-    import aiosqlite
 
     from mmrelay.db_utils import get_db_path
 
