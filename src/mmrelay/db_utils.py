@@ -9,32 +9,12 @@ from mmrelay.log_utils import get_logger
 config = None
 
 
-# Import connection pool (lazy import to avoid circular dependencies)
 def _get_db_connection():
     """Get database connection using connection pool if available and enabled."""
-    # Check if pooling is disabled in config
-    pool_enabled = (
-        config.get("database", {}).get("pool_enabled", True) if config else True
-    )
+    # Import here to avoid circular imports
+    from mmrelay.db_pool import get_db_connection
 
-    if pool_enabled:
-        try:
-            from mmrelay.db_pool import get_db_connection
-
-            return get_db_connection(config)
-        except ImportError:
-            # Fallback to direct connection if pool not available
-            pass
-
-    # Direct connection (pool disabled or not available)
-    conn = sqlite3.connect(get_db_path())
-    # Apply same PRAGMAs for consistency with pooled connections
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")
-    conn.execute("PRAGMA cache_size=10000")
-    conn.execute("PRAGMA temp_store=MEMORY")
-    conn.execute("PRAGMA busy_timeout=30000")
-    return conn
+    return get_db_connection(config)
 
 
 # Cache for database path to avoid repeated logging and path resolution
