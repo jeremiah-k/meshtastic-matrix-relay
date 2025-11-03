@@ -340,15 +340,17 @@ sys.modules["staticmaps"] = MockStaticmapsModule()
 
 
 @pytest.fixture(autouse=True)
-def meshtastic_loop_safety(monkeypatch):
+def meshtastic_loop_safety(request, monkeypatch):
     """
     Module-scoped pytest fixture that provides a dedicated asyncio event loop for tests that interact with mmrelay.meshtastic_utils.
 
     Creates a fresh event loop, assigns it to mmrelay.meshtastic_utils.event_loop for the duration of the test module, yields the loop to tests, and on teardown cancels any remaining tasks, awaits their completion, closes the loop, and clears the global event loop reference.
-
-    Yields:
-        asyncio.AbstractEventLoop: a new event loop isolated to the test module.
     """
+    # Skip for E2EE tests that may have hanging issues
+    if "e2ee" in request.node.name.lower():
+        yield None
+        return
+
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     monkeypatch.setattr(mu, "event_loop", loop)
@@ -480,7 +482,8 @@ def mock_submit_coro(monkeypatch):
             return None
 
         # Check if this is an AsyncMock coroutine and handle it specially
-        if "AsyncMockMixin" in coro.__qualname__:
+        qualname = getattr(getattr(coro, "cr_code", None), "co_qualname", "")
+        if "AsyncMockMixin" in qualname:
             # AsyncMock coroutines need to be consumed by sending None to them
             try:
                 # Send None to start and complete the coroutine

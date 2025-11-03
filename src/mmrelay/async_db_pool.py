@@ -381,14 +381,10 @@ async def get_async_db_connection(config, **kwargs):
             async def direct_connection():
                 conn = await aiosqlite.connect(database_path)
                 try:
-                    # Apply same PRAGMAs for consistency with pooled connections
-                    await conn.execute("PRAGMA journal_mode=WAL")
-                    await conn.execute("PRAGMA synchronous=NORMAL")
-                    await conn.execute("PRAGMA cache_size=-2000")
-                    await conn.execute("PRAGMA temp_store=MEMORY")
-                    await conn.execute("PRAGMA mmap_size=268435456")
-                    await conn.execute("PRAGMA wal_autocheckpoint=1000")
-                    await conn.execute("PRAGMA busy_timeout=30000")
+                    from mmrelay.constants.database import OPTIMIZATION_PRAGMAS
+
+                    for pragma_name, pragma_value in OPTIMIZATION_PRAGMAS.items():
+                        await conn.execute(f"PRAGMA {pragma_name}={pragma_value}")
                     yield conn
                 finally:
                     await conn.close()

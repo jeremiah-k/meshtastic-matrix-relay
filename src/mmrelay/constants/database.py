@@ -30,5 +30,4 @@ OPTIMIZATION_PRAGMAS = {
     "mmap_size": 268435456,  # 256MB memory mapping
     "wal_autocheckpoint": 1000,  # WAL checkpoint interval
     "busy_timeout": 30000,  # 30 second timeout
-    "optimize": "ON",  # Enable automatic optimizations
 }
