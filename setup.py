@@ -49,7 +49,7 @@ setup(
         "matplotlib==3.10.7",
         "requests==2.32.5",
         "markdown==3.9",
-        "bleach==6.2.0",
+        "bleach==6.3.0",
         "haversine==2.9.0",
         "schedule==1.2.2",
         "platformdirs==4.5.0",
