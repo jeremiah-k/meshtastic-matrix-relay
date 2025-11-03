@@ -2472,7 +2472,7 @@ async def test_connect_matrix_legacy_config(
 
     # Mock the global matrix_client to None to ensure fresh creation
     with patch("mmrelay.matrix_utils.matrix_client", None):
-        client = asyncio.run(connect_matrix(test_config))
+        client = await connect_matrix(test_config)
 
         assert client is not None
         assert client == mock_client_instance
