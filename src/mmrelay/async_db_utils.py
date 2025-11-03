@@ -15,14 +15,15 @@ logger = get_logger(name="async_db_utils")
 
 
 # Import connection pool (lazy import to avoid circular dependencies)
-def _get_async_db_connection():
+async def _get_async_db_connection():
     """Get async database connection using async connection pool."""
     # Import here to avoid circular imports
     from mmrelay import db_utils
-    from mmrelay.async_db_pool import get_async_db_connection as get_pool_connection
+
+    from .async_db_pool import get_async_db_connection as get_pool_connection
 
     config = getattr(db_utils, "config", None)
-    return get_pool_connection(config)
+    return await get_pool_connection(config)
 
 
 async def async_initialize_database():
@@ -48,7 +49,7 @@ async def async_initialize_database():
         logger.info(f"Creating new database at: {db_path}")
 
     try:
-        connection_manager = _get_async_db_connection()
+        connection_manager = await _get_async_db_connection()
         async with connection_manager as conn:
             cursor = await conn.cursor()
 
@@ -127,7 +128,7 @@ async def async_store_plugin_data(plugin_name: str, meshtastic_id: str, data: An
         data (Any): The plugin data to be serialized and stored.
     """
     try:
-        async with _get_async_db_connection() as conn:
+        async with await _get_async_db_connection() as conn:
             cursor = await conn.cursor()
             serialized_data = json.dumps(data)
             await cursor.execute(
@@ -153,7 +154,7 @@ async def async_delete_plugin_data(plugin_name: str, meshtastic_id: str):
         meshtastic_id (str): The Meshtastic node ID associated with the plugin data.
     """
     try:
-        async with _get_async_db_connection() as conn:
+        async with await _get_async_db_connection() as conn:
             cursor = await conn.cursor()
             await cursor.execute(
                 "DELETE FROM plugin_data WHERE plugin_name=? AND meshtastic_id=?",
@@ -179,7 +180,7 @@ async def async_get_plugin_data_for_node(
         list: The deserialized plugin data as a list, or an empty list if no data is found or on error.
     """
     try:
-        async with _get_async_db_connection() as conn:
+        async with await _get_async_db_connection() as conn:
             cursor = await conn.cursor()
             await cursor.execute(
                 "SELECT data FROM plugin_data WHERE plugin_name=? AND meshtastic_id=?",
@@ -210,7 +211,7 @@ async def async_get_plugin_data(plugin_name: str) -> List[Any]:
         list: A list of all deserialized plugin data entries, or an empty list if no data is found or on error.
     """
     try:
-        async with _get_async_db_connection() as conn:
+        async with await _get_async_db_connection() as conn:
             cursor = await conn.cursor()
             await cursor.execute(
                 "SELECT data FROM plugin_data WHERE plugin_name=? ",
@@ -241,7 +242,7 @@ async def async_get_longname(meshtastic_id: str) -> Optional[str]:
         str | None: The long name if found, otherwise None.
     """
     try:
-        async with _get_async_db_connection() as conn:
+        async with await _get_async_db_connection() as conn:
             cursor = await conn.cursor()
             await cursor.execute(
                 "SELECT longname FROM longnames WHERE meshtastic_id=?", (meshtastic_id,)
@@ -262,7 +263,7 @@ async def async_save_longname(meshtastic_id: str, longname: str):
         longname: The full/display name to store for the node (string).
     """
     try:
-        async with _get_async_db_connection() as conn:
+        async with await _get_async_db_connection() as conn:
             cursor = await conn.cursor()
             await cursor.execute(
                 "INSERT OR REPLACE INTO longnames (meshtastic_id, longname) VALUES (?, ?)",
@@ -285,7 +286,7 @@ async def async_get_shortname(meshtastic_id: str) -> Optional[str]:
         str or None: The short name if found, or None if not found or on database error.
     """
     try:
-        async with _get_async_db_connection() as conn:
+        async with await _get_async_db_connection() as conn:
             cursor = await conn.cursor()
             await cursor.execute(
                 "SELECT shortname FROM shortnames WHERE meshtastic_id=?",
@@ -307,7 +308,7 @@ async def async_save_shortname(meshtastic_id: str, shortname: str):
         shortname (str): Display name to store for the node.
     """
     try:
-        async with _get_async_db_connection() as conn:
+        async with await _get_async_db_connection() as conn:
             cursor = await conn.cursor()
             await cursor.execute(
                 "INSERT OR REPLACE INTO shortnames (meshtastic_id, shortname) VALUES (?, ?)",
@@ -337,7 +338,7 @@ async def async_store_message_map(
         meshtastic_meshnet: Optional name of the meshnet where the message originated, used to distinguish remote from local mesh origins.
     """
     try:
-        async with _get_async_db_connection() as conn:
+        async with await _get_async_db_connection() as conn:
             cursor = await conn.cursor()
             logger.debug(
                 f"Storing message map: meshtastic_id={meshtastic_id}, matrix_event_id={matrix_event_id}, matrix_room_id={matrix_room_id}, meshtastic_text={meshtastic_text}, meshtastic_meshnet={meshtastic_meshnet}"
@@ -375,7 +376,7 @@ async def async_get_message_map_by_meshtastic_id(
         tuple or None: A tuple (matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) if found and valid, or None if not found, on malformed data, or if a database error occurs.
     """
     try:
-        async with _get_async_db_connection() as conn:
+        async with await _get_async_db_connection() as conn:
             cursor = await conn.cursor()
             await cursor.execute(
                 "SELECT matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet FROM message_map WHERE meshtastic_id=?",
@@ -435,7 +436,7 @@ async def async_get_message_map_by_matrix_event_id(
         tuple or None: A tuple (meshtastic_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) if found, or None if not found or on error.
     """
     try:
-        async with _get_async_db_connection() as conn:
+        async with await _get_async_db_connection() as conn:
             cursor = await conn.cursor()
             await cursor.execute(
                 "SELECT meshtastic_id, matrix_room_id, meshtastic_text, meshtastic_meshnet FROM message_map WHERE matrix_event_id=?",
@@ -490,7 +491,7 @@ async def async_wipe_message_map():
     ensuring no stale data remains.
     """
     try:
-        async with _get_async_db_connection() as conn:
+        async with await _get_async_db_connection() as conn:
             cursor = await conn.cursor()
             await cursor.execute("DELETE FROM message_map")
             await conn.commit()
@@ -514,7 +515,7 @@ async def async_prune_message_map(msgs_to_keep: int):
     - If total > msgs_to_keep, delete oldest entries based on rowid.
     """
     try:
-        async with _get_async_db_connection() as conn:
+        async with await _get_async_db_connection() as conn:
             cursor = await conn.cursor()
             # Count total entries
             await cursor.execute("SELECT COUNT(*) FROM message_map")
