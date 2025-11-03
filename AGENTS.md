@@ -33,6 +33,13 @@
 - **Mock Patterns**: Mock external dependencies, not internal logic; use proper patch paths
 - **Coverage**: Run tests with `pytest --cov=src/mmrelay --cov-report=term-missing --tb=short` and ensure no warnings
 
+## Communication and Status Reporting Guidelines
+
+- **No Marketing Language**: Never use terms like "production ready", "enterprise-grade", or other marketing terms when describing project status
+- **Accurate Status Reporting**: Only use factual, technical, yet simple and easy to understand descriptions of what has been completed and what remains
+- **Focus on Implementation**: Describe specific features implemented and tests passing, rather than code metrics and readiness claims
+- **Incremental Progress**: Each task completion represents a small step toward overall project goals
+
 ## Inno Setup Guidelines (from INNO_SETUP_GUIDE.md)
 
 - **Critical Warning**: Always ask for feedback before committing changes to `scripts/mmrelay.iss`

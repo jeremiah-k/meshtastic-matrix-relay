@@ -22,6 +22,7 @@ from unittest.mock import MagicMock, patch
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+import mmrelay.db_utils
 from mmrelay.db_utils import (
     clear_db_path_cache,
     delete_plugin_data,
@@ -94,7 +95,10 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
         """
         Verify initialize_database raises sqlite3.Error when sqlite3.connect fails and that logger.exception is invoked.
         """
-        with patch("sqlite3.connect", side_effect=sqlite3.Error("Connection failed")):
+        with patch(
+            "mmrelay.db_utils._get_db_connection",
+            side_effect=sqlite3.Error("Connection failed"),
+        ):
             with patch("mmrelay.db_utils.logger") as mock_logger:
                 # Should raise exception on connection failure (fail fast)
                 with self.assertRaises(sqlite3.Error):
@@ -155,7 +159,10 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
         """
         Test that get_longname returns None when a database connection error occurs.
         """
-        with patch("sqlite3.connect", side_effect=sqlite3.Error("Connection failed")):
+        with patch(
+            "mmrelay.db_utils._get_db_connection",
+            side_effect=sqlite3.Error("Connection failed"),
+        ):
             result = get_longname("test_id")
             self.assertIsNone(result)
 
@@ -163,12 +170,12 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
         """
         Test that get_shortname returns None when the database table does not exist.
         """
-        with patch("sqlite3.connect") as mock_connect:
+        with patch("mmrelay.db_utils._get_db_connection") as mock_get_connection:
             mock_conn = MagicMock()
             mock_conn.cursor.return_value.execute.side_effect = (
                 sqlite3.OperationalError("no such table")
             )
-            mock_connect.return_value.__enter__.return_value = mock_conn
+            mock_get_connection.return_value.__enter__.return_value = mock_conn
 
             result = get_shortname("test_id")
             self.assertIsNone(result)
@@ -191,12 +198,12 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
         """
         Test that get_message_map_by_meshtastic_id returns None when the database returns malformed or incomplete data.
         """
-        with patch("sqlite3.connect") as mock_connect:
+        with patch("mmrelay.db_utils._get_db_connection") as mock_get_connection:
             mock_conn = MagicMock()
             mock_cursor = mock_conn.cursor.return_value
             # Return malformed data (missing columns)
             mock_cursor.fetchone.return_value = ("incomplete_data",)
-            mock_connect.return_value.__enter__.return_value = mock_conn
+            mock_get_connection.return_value.__enter__.return_value = mock_conn
 
             result = get_message_map_by_meshtastic_id("test_id")
             # Should handle malformed data gracefully by returning None
@@ -206,14 +213,14 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
         """
         Test that get_message_map_by_matrix_event_id returns None when a UnicodeDecodeError occurs during database query execution.
         """
-        with patch("sqlite3.connect") as mock_connect:
+        with patch("mmrelay.db_utils._get_db_connection") as mock_get_connection:
             mock_conn = MagicMock()
             mock_cursor = mock_conn.cursor.return_value
             # Simulate unicode error
             mock_cursor.execute.side_effect = UnicodeDecodeError(
                 "utf-8", b"", 0, 1, "invalid"
             )
-            mock_connect.return_value.__enter__.return_value = mock_conn
+            mock_get_connection.return_value.__enter__.return_value = mock_conn
 
             result = get_message_map_by_matrix_event_id("test_id")
             self.assertIsNone(result)
@@ -222,12 +229,12 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
         """
         Test that prune_message_map can handle pruning operations when the database contains a very large number of records.
         """
-        with patch("sqlite3.connect") as mock_connect:
+        with patch("mmrelay.db_utils._get_db_connection") as mock_get_connection:
             mock_conn = MagicMock()
             mock_cursor = mock_conn.cursor.return_value
             # Simulate large dataset by making count very high
             mock_cursor.fetchone.return_value = (1000000,)
-            mock_connect.return_value.__enter__.return_value = mock_conn
+            mock_get_connection.return_value.__enter__.return_value = mock_conn
 
             # Should handle large datasets
             prune_message_map(100)
@@ -361,7 +368,7 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
 
         Simulates partial failure by causing one table creation to raise an error, and asserts that the function fails fast by raising the exception.
         """
-        with patch("sqlite3.connect") as mock_connect:
+        with patch("mmrelay.db_utils._get_db_connection") as mock_get_connection:
             mock_conn = MagicMock()
             mock_cursor = mock_conn.cursor.return_value
             # First table creation succeeds, second fails, rest succeed
@@ -374,7 +381,7 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
                     "Column already exists"
                 ),  # ALTER TABLE (expected)
             ]
-            mock_connect.return_value.__enter__.return_value = mock_conn
+            mock_get_connection.return_value.__enter__.return_value = mock_conn
 
             # Should raise exception on table creation failure (fail fast)
             with self.assertRaises(sqlite3.Error):

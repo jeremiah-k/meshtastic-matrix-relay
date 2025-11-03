@@ -13,6 +13,7 @@ Tests the SQLite database operations including:
 
 import json
 import os
+import shutil
 import sqlite3
 import sys
 import tempfile
@@ -22,6 +23,7 @@ from unittest.mock import patch
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+import mmrelay.db_utils
 from mmrelay.db_utils import (
     clear_db_path_cache,
     delete_plugin_data,
@@ -62,21 +64,18 @@ class TestDbUtils(unittest.TestCase):
         self.mock_config = {"database": {"path": self.test_db_path}}
 
         # Patch the config in db_utils
-        import mmrelay.db_utils
-
         mmrelay.db_utils.config = self.mock_config
 
     def tearDown(self):
         """
-        Cleans up the test environment by clearing the database path cache and removing temporary files and directories created during the test.
+        Cleans up test environment by clearing the database path cache and removing temporary files and directories created during the test.
         """
         # Clear cache after each test
         clear_db_path_cache()
 
         # Clean up temporary files
-        if os.path.exists(self.test_db_path):
-            os.remove(self.test_db_path)
-        os.rmdir(self.test_dir)
+        if os.path.exists(self.test_dir):
+            shutil.rmtree(self.test_dir)
 
     def test_get_db_path_with_config(self):
         """
@@ -105,7 +104,6 @@ class TestDbUtils(unittest.TestCase):
         Mocks the data directory to verify that the default path is constructed correctly when no configuration is set.
         """
         # Clear config to test default behavior
-        import mmrelay.db_utils
 
         mmrelay.db_utils.config = None
         clear_db_path_cache()
@@ -125,8 +123,6 @@ class TestDbUtils(unittest.TestCase):
         """
         # Use legacy db.path format
         legacy_config = {"db": {"path": self.test_db_path}}
-
-        import mmrelay.db_utils
 
         mmrelay.db_utils.config = legacy_config
         clear_db_path_cache()
