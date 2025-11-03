@@ -17,6 +17,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay import async_db_utils
 
+pytestmark = pytest.mark.asyncio
+
 
 class TestAsyncDbUtils:
     """Test cases for async database utilities."""

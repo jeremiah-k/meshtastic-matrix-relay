@@ -133,11 +133,11 @@ async def async_store_plugin_data(plugin_name: str, meshtastic_id: str, data: An
             serialized_data = json.dumps(data)
             await cursor.execute(
                 """
-                INSERT OR REPLACE INTO plugin_data (plugin_name, meshtastic_id, data) 
-                VALUES (?, ?, ?) 
-                ON CONFLICT (plugin_name, meshtastic_id) DO UPDATE SET data = ?
+                INSERT INTO plugin_data (plugin_name, meshtastic_id, data)
+                VALUES (?, ?, ?)
+                ON CONFLICT(plugin_name, meshtastic_id) DO UPDATE SET data = excluded.data
                 """,
-                (plugin_name, meshtastic_id, serialized_data, serialized_data),
+                (plugin_name, meshtastic_id, serialized_data),
             )
             await conn.commit()
     except sqlite3.Error:

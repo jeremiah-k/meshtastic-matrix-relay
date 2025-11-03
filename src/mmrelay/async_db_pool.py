@@ -123,28 +123,6 @@ class AsyncConnectionPool:
 
             self._last_cleanup = current_time
 
-    async def _wait_for_available_connection(self, max_wait_seconds=5):
-        """Wait for an available connection with timeout."""
-        logger.debug(f"Waiting for available connection, timeout={max_wait_seconds}")
-
-        # Simple polling approach
-        start_time = time.time()
-        while time.time() - start_time < max_wait_seconds:
-            async with self._pool_lock:
-                # Check for available connection
-                for pool_id, conn_info in self._pool.items():
-                    if not conn_info["in_use"]:
-                        conn_info["in_use"] = True
-                        conn_info["last_used"] = time.time()
-                        print(f"Found available connection {pool_id}")
-                        return pool_id, conn_info["connection"]
-
-            # Wait a short time before checking again
-            await asyncio.sleep(0.01)
-
-        print("Timeout waiting for connection")
-        return None, None
-
     @asynccontextmanager
     async def get_connection(self):
         """
@@ -153,15 +131,14 @@ class AsyncConnectionPool:
         Returns:
             Context manager that yields an async database connection
         """
+        await self._cleanup_idle_connections()
         conn_id = None
         connection = None
 
-        try:
-            # Cleanup idle connections periodically
-            await self._cleanup_idle_connections()
-
-            async with self._pool_lock:
-                # Look for available connection in pool
+        async with self._pool_condition:
+            # Wait until a connection is available or can be created
+            while connection is None:
+                # Try to find an available connection
                 for pool_id, conn_info in self._pool.items():
                     if not conn_info["in_use"]:
                         conn_id = pool_id
@@ -170,12 +147,11 @@ class AsyncConnectionPool:
                         conn_info["last_used"] = time.time()
                         logger.debug(f"Reusing async connection {conn_id} from pool")
                         break
+                if connection:
+                    break
 
-                # If no available connection and we can create more, create new one
-                if (
-                    connection is None
-                    and self._created_connections < self.max_connections
-                ):
+                # If no connection is available, try to create one
+                if self._created_connections < self.max_connections:
                     connection = await self._create_connection()
                     conn_id = str(id(connection))
                     self._pool[conn_id] = {
@@ -185,26 +161,22 @@ class AsyncConnectionPool:
                         "last_used": time.time(),
                     }
                     logger.debug(f"Created new async connection {conn_id}")
+                    break
 
-                need_wait = connection is None
-
-            # If we need to wait for a connection, do it outside the lock
-            if need_wait:
+                # Pool is full, wait for a connection to be released
                 logger.warning(
-                    "Async connection pool exhausted, waiting for available connection"
+                    "Async connection pool exhausted, waiting for available connection. Pool stats: %s",
+                    self.get_stats(),
                 )
-                logger.debug(f"Pool stats: {self.get_stats()}")
-                conn_id, connection = await self._wait_for_available_connection(
-                    max_wait_seconds=self.timeout
-                )
-                if connection is None:
-                    logger.debug("Raising timeout error")
+                try:
+                    await asyncio.wait_for(self._pool_condition.wait(), self.timeout)
+                except asyncio.TimeoutError as err:
                     raise sqlite3.OperationalError(
                         "Async connection pool exhausted and timeout reached"
-                    )
+                    ) from err
 
+        try:
             yield connection
-
         except Exception:
             logger.exception("Error in async connection pool")
             if connection:
@@ -217,11 +189,12 @@ class AsyncConnectionPool:
             # Return connection to pool
             if conn_id and connection:
                 logger.debug(f"Returning connection {conn_id} to pool")
-                async with self._pool_lock:
+                async with self._pool_condition:
                     if conn_id in self._pool:
                         self._pool[conn_id]["in_use"] = False
                         self._pool[conn_id]["last_used"] = time.time()
                         logger.debug(f"Returned async connection {conn_id} to pool")
+                        self._pool_condition.notify()
 
     async def close_all(self):
         """Close all connections in the pool."""
