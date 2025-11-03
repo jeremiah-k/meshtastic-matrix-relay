@@ -355,19 +355,6 @@ def meshtastic_loop_safety(monkeypatch):
     asyncio.set_event_loop(loop)
     monkeypatch.setattr(mu, "event_loop", loop)
 
-    # Patch run_in_executor to execute synchronously to prevent thread pool hangs
-    def run_in_executor_sync(executor, func, *args, **kwargs):
-        """Execute function synchronously, returning a completed Future."""
-        future = loop.create_future()
-        try:
-            result = func(*args, **kwargs)
-            future.set_result(result)
-        except Exception as exc:
-            future.set_exception(exc)
-        return future
-
-    loop.run_in_executor = run_in_executor_sync  # type: ignore
-
     yield loop
 
     # Teardown: Clean up the loop with timeout protection

@@ -119,19 +119,20 @@ class ConnectionPool:
         """Wait for an available connection with timeout using threading.Condition."""
         deadline = time.time() + max_wait_seconds
 
-        while time.time() < deadline:
-            # Check for available connection
-            for pool_id, conn_info in self._pool.items():
-                if not conn_info["in_use"]:
-                    conn_info["in_use"] = True
-                    conn_info["last_used"] = time.time()
-                    return pool_id, conn_info["connection"]
+        with self._pool_condition:
+            while time.time() < deadline:
+                # Check for available connection
+                for pool_id, conn_info in self._pool.items():
+                    if not conn_info["in_use"]:
+                        conn_info["in_use"] = True
+                        conn_info["last_used"] = time.time()
+                        return pool_id, conn_info["connection"]
 
-            # Wait for a connection to be released
-            remaining_time = deadline - time.time()
-            if remaining_time <= 0:
-                break
-            self._pool_condition.wait(min(remaining_time, 0.1))
+                # Wait for a connection to be released
+                remaining_time = deadline - time.time()
+                if remaining_time <= 0:
+                    break
+                self._pool_condition.wait(remaining_time)
 
         return None, None
 

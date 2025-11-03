@@ -170,37 +170,59 @@ def initialize_database():
             cursor = conn.cursor()
             # Updated table schema: matrix_event_id is now PRIMARY KEY, meshtastic_id is not necessarily unique
             cursor.execute(
-                "CREATE TABLE IF NOT EXISTS longnames (meshtastic_id TEXT PRIMARY KEY, longname TEXT)"
-            )
-            cursor.execute(
-                "CREATE TABLE IF NOT EXISTS shortnames (meshtastic_id TEXT PRIMARY KEY, shortname TEXT)"
-            )
-            cursor.execute(
-                "CREATE TABLE IF NOT EXISTS plugin_data (plugin_name TEXT, meshtastic_id TEXT, data TEXT, PRIMARY KEY (plugin_name, meshtastic_id))"
-            )
-            # Changed the schema for message_map: matrix_event_id is now primary key
-            # Added a new column 'meshtastic_meshnet' to store the meshnet origin of the message.
-            # If table already exists, we try adding the column if it doesn't exist.
-            cursor.execute(
-                "CREATE TABLE IF NOT EXISTS message_map (meshtastic_id INTEGER, matrix_event_id TEXT PRIMARY KEY, matrix_room_id TEXT, meshtastic_text TEXT, meshtastic_meshnet TEXT)"
-            )
-
-            # Attempt to add meshtastic_meshnet column if it's missing (for upgrades)
-            # This is a no-op if the column already exists.
-            # If user runs fresh, it will already be there from CREATE TABLE IF NOT EXISTS.
-            try:
-                cursor.execute(
-                    "ALTER TABLE message_map ADD COLUMN meshtastic_meshnet TEXT"
+                """
+                CREATE TABLE IF NOT EXISTS plugin_data (
+                    plugin_name TEXT NOT NULL,
+                    meshtastic_id TEXT NOT NULL,
+                    data TEXT NOT NULL,
+                    PRIMARY KEY (plugin_name, meshtastic_id)
                 )
-            except sqlite3.OperationalError:
-                # Column already exists, or table just created with it
-                pass
+                """
+            )
 
-            # Create index on meshtastic_id for performance improvement
-            # This is a no-op if the index already exists.
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS longnames (
+                    meshtastic_id TEXT PRIMARY KEY,
+                    longname TEXT NOT NULL
+                )
+                """
+            )
+
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS shortnames (
+                    meshtastic_id TEXT PRIMARY KEY,
+                    shortname TEXT NOT NULL
+                )
+                """
+            )
+
+            # Updated table schema: matrix_event_id is now PRIMARY KEY, meshtastic_id is not necessarily unique
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS message_map (
+                    meshtastic_id INTEGER,
+                    matrix_event_id TEXT PRIMARY KEY,
+                    matrix_room_id TEXT NOT NULL,
+                    meshtastic_text TEXT,
+                    meshtastic_meshnet TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+
+            # Create indexes for better performance
+            # These are no-ops if the indexes already exist.
             try:
                 cursor.execute(
-                    "CREATE INDEX IF NOT EXISTS idx_message_map_meshtastic_id ON message_map (meshtastic_id)"
+                    "CREATE INDEX IF NOT EXISTS idx_plugin_data_name ON plugin_data(plugin_name)"
+                )
+                cursor.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_message_map_meshtastic_id ON message_map(meshtastic_id)"
+                )
+                cursor.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_message_map_created_at ON message_map(created_at)"
                 )
             except sqlite3.OperationalError:
                 # Index creation failed, continue without it

@@ -124,9 +124,7 @@ class AsyncConnectionPool:
 
     async def _wait_for_available_connection(self, max_wait_seconds=5):
         """Wait for an available connection with timeout using asyncio.Condition."""
-        deadline = time.time() + max_wait_seconds
-
-        while time.time() < deadline:
+        async with self._pool_condition:
             # Check for available connection
             for pool_id, conn_info in self._pool.items():
                 if not conn_info["in_use"]:
@@ -134,16 +132,20 @@ class AsyncConnectionPool:
                     conn_info["last_used"] = time.time()
                     return pool_id, conn_info["connection"]
 
-            # Wait for a connection to be released
-            remaining_time = deadline - time.time()
-            if remaining_time <= 0:
-                break
+            # Wait for a connection to be released with full timeout
             try:
                 await asyncio.wait_for(
-                    self._pool_condition.wait(), timeout=min(remaining_time, 0.1)
+                    self._pool_condition.wait(), timeout=max_wait_seconds
                 )
             except asyncio.TimeoutError:
-                continue
+                return None, None
+
+            # Check again after waiting
+            for pool_id, conn_info in self._pool.items():
+                if not conn_info["in_use"]:
+                    conn_info["in_use"] = True
+                    conn_info["last_used"] = time.time()
+                    return pool_id, conn_info["connection"]
 
         return None, None
 

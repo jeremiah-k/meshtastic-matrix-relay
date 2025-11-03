@@ -28,11 +28,12 @@ from mmrelay.async_db_pool import (
 )
 
 
+@pytest.mark.usefixtures("mock_event_loop")
 class TestAsyncConnectionPool:
     """Test cases for AsyncConnectionPool class."""
 
     @pytest.fixture(autouse=True)
-    def setup_method(self):
+    async def setup_method(self):
         """Set up test environment."""
         self.temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
         self.temp_db.close()
@@ -45,9 +46,7 @@ class TestAsyncConnectionPool:
 
         # Clean up test environment.
         # Note: We need to run the async cleanup
-        import asyncio
-
-        asyncio.run(self.pool.close_all())
+        await self.pool.close_all()
         if os.path.exists(self.db_path):
             os.unlink(self.db_path)
 
@@ -201,11 +200,12 @@ class TestAsyncConnectionPool:
             assert stats["created_connections"] == 1
 
 
+@pytest.mark.usefixtures("mock_event_loop")
 class TestAsyncConnectionPoolIntegration:
     """Integration tests for async connection pool management."""
 
     @pytest.fixture(autouse=True)
-    def setup_method(self):
+    async def setup_method(self):
         """Set up test environment."""
         self.temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
         self.temp_db.close()
@@ -214,9 +214,7 @@ class TestAsyncConnectionPoolIntegration:
         yield
 
         # Clean up test environment.
-        import asyncio
-
-        asyncio.run(close_all_async_pools())
+        await close_all_async_pools()
         if os.path.exists(self.db_path):
             os.unlink(self.db_path)
 
@@ -289,11 +287,12 @@ class TestAsyncConnectionPoolIntegration:
             mmrelay.db_utils.get_db_path = original_get_db_path
 
 
+@pytest.mark.usefixtures("mock_event_loop")
 class TestAsyncConnectionPoolThreadSafety:
     """Test thread safety of async connection pool."""
 
     @pytest.fixture(autouse=True)
-    def setup_method(self):
+    async def setup_method(self):
         """Set up test environment."""
         self.temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
         self.temp_db.close()
@@ -303,9 +302,7 @@ class TestAsyncConnectionPoolThreadSafety:
         yield
 
         # Clean up test environment.
-        import asyncio
-
-        asyncio.run(self.pool.close_all())
+        await self.pool.close_all()
         if os.path.exists(self.db_path):
             os.unlink(self.db_path)
 

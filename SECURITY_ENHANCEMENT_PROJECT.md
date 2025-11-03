@@ -67,7 +67,7 @@ The current implementation in `src/mmrelay/db_utils.py` creates new connections 
 **Files to Modify:**
 
 - `src/mmrelay/db_utils.py` - Replace direct connections with pool access
-- `src/mmrelay/constants/database.py` - Add pool configuration constants
+- `src/mmrelay/constants/config.py` - Add pool configuration constants
 - `src/mmrelay/tools/sample_config.yaml` - Add database pool configuration
 - `tests/test_db_utils.py` - Add connection pool testing
 

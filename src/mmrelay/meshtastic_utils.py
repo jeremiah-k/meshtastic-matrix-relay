@@ -905,9 +905,8 @@ def on_meshtastic_message(packet, interface):
                         if longname_val:
                             try:
                                 save_longname(sender, longname_val)
-                            except Exception:  # nosec B110
+                            except (sqlite3.Error, OSError):
                                 # Database still failing, ignore
-                                # Broad exception catch is intentional - database is known to be failing
                                 pass
                             longname = longname_val
                     if not shortname:
