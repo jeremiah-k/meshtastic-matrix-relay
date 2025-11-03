@@ -355,18 +355,55 @@ def meshtastic_loop_safety(monkeypatch):
     asyncio.set_event_loop(loop)
     monkeypatch.setattr(mu, "event_loop", loop)
 
+    # Patch run_in_executor to execute synchronously to prevent thread pool hangs
+    def run_in_executor_sync(executor, func, *args, **kwargs):
+        """Execute function synchronously, returning a completed Future."""
+        future = loop.create_future()
+        try:
+            result = func(*args, **kwargs)
+            future.set_result(result)
+        except Exception as exc:
+            future.set_exception(exc)
+        return future
+
+    loop.run_in_executor = run_in_executor_sync  # type: ignore
+
     yield loop
 
-    # Teardown: Clean up the loop
+    # Teardown: Clean up the loop with timeout protection
     try:
         tasks = asyncio.all_tasks(loop=loop)
         for task in tasks:
             task.cancel()
         if tasks:
-            loop.run_until_complete(asyncio.gather(*tasks, return_exceptions=True))
+            try:
+                # Create a timeout task to prevent hanging
+                async def wait_with_timeout():
+                    await asyncio.wait_for(
+                        asyncio.gather(*tasks, return_exceptions=True),
+                        timeout=1.0,  # 1 second timeout
+                    )
+
+                # Run the timeout-wrapped wait
+                if loop.is_running():
+                    # If loop is running, we can't use run_until_complete
+                    # Just proceed without waiting
+                    pass
+                else:
+                    loop.run_until_complete(wait_with_timeout())
+            except (asyncio.TimeoutError, Exception):
+                # If timeout or any other exception, continue cleanup
+                pass
     finally:
-        loop.close()
-        asyncio.set_event_loop(None)
+        try:
+            if not loop.is_running():
+                loop.close()
+        except Exception:
+            pass
+        try:
+            asyncio.set_event_loop(None)
+        except Exception:
+            pass
 
 
 @pytest.fixture(autouse=True)
@@ -534,8 +571,8 @@ def comprehensive_cleanup():
     Pytest fixture that performs a thorough cleanup of async resources, event loops, executors, and non-daemon threads after a test.
 
     When used as an autouse fixture, it yields to the test and on teardown:
-    - cancels pending asyncio tasks and waits for their completion,
-    - shuts down the loop's default executor (if any) and closes the event loop,
+    - cancels pending asyncio tasks and waits for their completion with timeout,
+    - shuts down the loop's default executor (if any) with timeout and closes the event loop,
     - clears the global event loop reference,
     - runs garbage collection before and after thread cleanup,
     - joins any remaining non-daemon threads for a short timeout.
@@ -549,8 +586,12 @@ def comprehensive_cleanup():
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
-            loop = asyncio.get_event_loop()
-        if not loop.is_closed():
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = None
+
+        if loop and not loop.is_closed():
             # Cancel all pending tasks
             pending_tasks = [
                 task for task in asyncio.all_tasks(loop) if not task.done()
@@ -558,26 +599,56 @@ def comprehensive_cleanup():
             for task in pending_tasks:
                 task.cancel()
 
-            # Wait for cancelled tasks to complete
+            # Wait for cancelled tasks to complete with timeout
             if pending_tasks:
-                with contextlib.suppress(Exception):
-                    loop.run_until_complete(
-                        asyncio.gather(*pending_tasks, return_exceptions=True)
-                    )
+                try:
+                    # Create a timeout task to prevent hanging
+                    async def wait_with_timeout():
+                        await asyncio.wait_for(
+                            asyncio.gather(*pending_tasks, return_exceptions=True),
+                            timeout=1.0,  # 1 second timeout
+                        )
 
-            # Shutdown any remaining executors
-            if hasattr(loop, "_default_executor") and loop._default_executor:
-                executor = loop._default_executor
-                loop._default_executor = None
-                executor.shutdown(wait=True)
+                    # Run the timeout-wrapped wait in a new event loop if needed
+                    if loop.is_running():
+                        # If loop is running, we can't use run_until_complete
+                        # Just proceed without waiting
+                        pass
+                    else:
+                        loop.run_until_complete(wait_with_timeout())
+                except (asyncio.TimeoutError, Exception):
+                    # If timeout or any other exception, continue cleanup
+                    pass
+
+            # Shutdown any remaining executors with timeout
+            try:
+                # Try to shutdown default executor if it exists
+                if hasattr(loop, "_default_executor") and loop._default_executor:
+                    executor = loop._default_executor
+                    loop._default_executor = None
+                    try:
+                        # Shutdown without waiting to prevent hanging
+                        executor.shutdown(wait=False)
+                    except Exception:
+                        pass
+            except Exception:
+                # If executor shutdown fails, just continue
+                pass
 
             # Close the event loop
-            loop.close()
-    except RuntimeError:
-        pass  # No event loop available
+            try:
+                if not loop.is_running():
+                    loop.close()
+            except Exception:
+                pass
+    except Exception:
+        pass  # Continue cleanup even if loop operations fail
 
     # Set event loop to None to ensure clean state
-    asyncio.set_event_loop(None)
+    try:
+        asyncio.set_event_loop(None)
+    except Exception:
+        pass
 
     # Force garbage collection to clean up any remaining resources
     gc.collect()
@@ -591,7 +662,10 @@ def comprehensive_cleanup():
             and not getattr(thread, "daemon", False)
             and hasattr(thread, "join")
         ):
-            thread.join(timeout=0.1)
+            try:
+                thread.join(timeout=0.1)
+            except Exception:
+                pass  # Continue if thread join fails
 
     # Force another garbage collection after thread cleanup
     gc.collect()

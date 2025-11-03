@@ -28,7 +28,6 @@ from mmrelay.async_db_pool import (
 )
 
 
-@pytest.mark.usefixtures("mock_event_loop")
 class TestAsyncConnectionPool:
     """Test cases for AsyncConnectionPool class."""
 
@@ -202,7 +201,6 @@ class TestAsyncConnectionPool:
             assert stats["created_connections"] == 1
 
 
-@pytest.mark.usefixtures("mock_event_loop")
 class TestAsyncConnectionPoolIntegration:
     """Integration tests for async connection pool management."""
 
@@ -291,7 +289,6 @@ class TestAsyncConnectionPoolIntegration:
             mmrelay.db_utils.get_db_path = original_get_db_path
 
 
-@pytest.mark.usefixtures("mock_event_loop")
 class TestAsyncConnectionPoolThreadSafety:
     """Test thread safety of async connection pool."""
 

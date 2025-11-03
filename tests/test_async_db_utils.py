@@ -20,7 +20,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from mmrelay import async_db_utils
 
 
-@pytest.mark.usefixtures("mock_event_loop")
 class TestAsyncDbUtils:
     """Test cases for async database utilities."""
 
@@ -212,7 +211,6 @@ class TestAsyncDbUtils:
         pass
 
 
-@pytest.mark.usefixtures("mock_event_loop")
 class TestAsyncDbUtilsIntegration:
     """Integration tests for async database utilities."""
 
