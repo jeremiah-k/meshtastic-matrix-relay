@@ -114,22 +114,25 @@ class TestAsyncConnectionPool:
     @pytest.mark.asyncio
     async def test_connection_limit(self):
         """Test that pool respects connection limit."""
-        active_connections = []
+        active_count = 0
+        max_active_seen = 0
 
         async def get_and_hold_connection():
+            nonlocal active_count, max_active_seen
             async with self.pool.get_connection() as conn:
-                active_connections.append(id(conn))
-                await asyncio.sleep(0.2)  # Hold connection
+                active_count += 1
+                max_active_seen = max(max_active_seen, active_count)
+                await asyncio.sleep(0.1)  # Hold connection
+                active_count -= 1
 
         # Start 4 tasks (pool limit is 3)
-        tasks = [get_and_hold_connection() for _ in range(4)]
-
-        # Wait a bit then check that only 3 connections are active
-        await asyncio.sleep(0.1)
-        assert len(set(active_connections)) == 3
+        tasks = [asyncio.create_task(get_and_hold_connection()) for _ in range(4)]
 
         # Wait for all to complete
         await asyncio.gather(*tasks)
+
+        # Should have seen at most 3 active connections
+        assert max_active_seen == 3
 
     @pytest.mark.asyncio
     async def test_connection_rollback_on_error(self):
@@ -168,6 +171,9 @@ class TestAsyncConnectionPool:
 
         # Wait for connection to become idle (max_idle_time=1)
         await asyncio.sleep(1.5)
+
+        # Force cleanup by resetting last cleanup time
+        self.pool._last_cleanup = 0
 
         # Trigger cleanup
         await self.pool._cleanup_idle_connections()
@@ -260,17 +266,29 @@ class TestAsyncConnectionPoolIntegration:
     @pytest.mark.asyncio
     async def test_pool_stats_function(self):
         """Test get_async_pool_stats function."""
-        # Create a pool by getting a connection
-        config = {"database": {"pool_enabled": True}}
-        async with await get_async_db_connection(config) as conn:
-            await conn.execute(
-                "CREATE TABLE IF NOT EXISTS test_stats (id INTEGER PRIMARY KEY)"
-            )
-            await conn.commit()
+        from mmrelay.db_utils import get_db_path
 
-        stats = get_async_pool_stats()
-        assert isinstance(stats, dict)
-        assert self.db_path in stats
+        # Mock get_db_path to return our test db path
+        original_get_db_path = get_db_path
+        import mmrelay.db_utils
+
+        mmrelay.db_utils.get_db_path = lambda: self.db_path
+
+        try:
+            # Create a pool by getting a connection
+            config = {"database": {"pool_enabled": True}}
+            async with await get_async_db_connection(config) as conn:
+                await conn.execute(
+                    "CREATE TABLE IF NOT EXISTS test_stats (id INTEGER PRIMARY KEY)"
+                )
+                await conn.commit()
+
+            stats = get_async_pool_stats()
+            assert isinstance(stats, dict)
+            assert self.db_path in stats
+        finally:
+            # Restore original function
+            mmrelay.db_utils.get_db_path = original_get_db_path
 
 
 @pytest.mark.usefixtures("mock_event_loop")
