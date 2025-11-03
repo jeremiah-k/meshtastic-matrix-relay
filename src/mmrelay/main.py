@@ -20,6 +20,7 @@ from nio.events.room_events import RoomMemberEvent
 # Import version from package
 # Import meshtastic_utils as a module to set event_loop
 from mmrelay import __version__, meshtastic_utils
+from mmrelay.async_db_pool import async_cleanup
 from mmrelay.cli_utils import msg_suggest_check_config, msg_suggest_generate_config
 from mmrelay.constants.app import APP_DISPLAY_NAME, WINDOWS_PLATFORM
 from mmrelay.db_utils import (
@@ -255,6 +256,9 @@ async def main(config):
         # Cleanup
         matrix_logger.info("Stopping message queue...")
         stop_message_queue()
+
+        matrix_logger.info("Cleaning up async database connection pool...")
+        await async_cleanup()
 
         matrix_logger.info("Closing Matrix client...")
         await matrix_client.close()

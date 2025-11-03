@@ -49,7 +49,6 @@ class AsyncConnectionPool:
         self._pool: Dict[str, Dict[str, Any]] = {}
         self._pool_lock = asyncio.Lock()
         self._pool_condition = asyncio.Condition(self._pool_lock)
-        self._available_event = asyncio.Event()
         self._created_connections = 0
         self._last_cleanup = time.time()
 
@@ -379,13 +378,15 @@ async def async_cleanup():
     await close_all_async_pools()
 
 
-# Register cleanup function to be called when the module is garbage collected
+# Emergency fallback cleanup handler - only used if normal shutdown fails
+# Normal shutdown should call async_cleanup() from main() for proper cleanup
 def _cleanup_atexit():
-    """Cleanup function for atexit that handles async cleanup safely."""
+    """Emergency cleanup function for atexit - unreliable for async operations."""
     try:
         loop = asyncio.get_event_loop()
         if loop.is_running():
-            # If loop is running, create a task
+            # If loop is running, create a fire-and-forget task (may not complete before shutdown)
+            # This is unreliable - normal shutdown should use await async_cleanup() in main()
             asyncio.create_task(async_cleanup())
         else:
             # If loop is not running, run the coroutine directly

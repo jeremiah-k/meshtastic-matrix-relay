@@ -417,8 +417,8 @@ async def async_get_message_map_by_meshtastic_id(
                     return None
             return None
     except (UnicodeDecodeError, sqlite3.Error) as e:
-        logger.error(
-            f"Database error retrieving message map for meshtastic_id {meshtastic_id}: {e}"
+        logger.exception(
+            f"Database error retrieving message map for meshtastic_id {meshtastic_id}"
         )
         return None
 
@@ -477,8 +477,8 @@ async def async_get_message_map_by_matrix_event_id(
                     return None
             return None
     except sqlite3.Error as e:
-        logger.error(
-            f"Database error retrieving message map for matrix_event_id {matrix_event_id}: {e}"
+        logger.exception(
+            f"Database error retrieving message map for matrix_event_id {matrix_event_id}"
         )
         return None
 
