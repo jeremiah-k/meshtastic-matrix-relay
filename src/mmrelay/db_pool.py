@@ -103,9 +103,10 @@ class ConnectionPool:
 
             for conn_id in idle_connections:
                 conn_info = self._pool.pop(conn_id)
+                # Decrement connection count before attempting to close
+                self._created_connections -= 1
                 try:
                     conn_info["connection"].close()
-                    self._created_connections -= 1
                     logger.debug(f"Closed idle connection {conn_id}")
                 except sqlite3.Error as e:
                     logger.warning(f"Error closing idle connection {conn_id}: {e}")
@@ -179,7 +180,7 @@ class ConnectionPool:
                         "Connection pool exhausted, waiting for available connection"
                     )
                     conn_id, connection = self._wait_for_available_connection(
-                        max_wait_seconds=5
+                        max_wait_seconds=self.timeout
                     )
 
                     if connection is None:

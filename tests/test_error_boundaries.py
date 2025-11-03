@@ -14,6 +14,7 @@ Tests error boundaries and recovery including:
 
 import asyncio
 import os
+import sqlite3
 import sys
 import time
 import unittest
@@ -159,11 +160,11 @@ class TestErrorBoundaries(unittest.TestCase):
         # Mock database failures
         with patch(
             "mmrelay.meshtastic_utils.get_longname",
-            side_effect=Exception("Database error"),
+            side_effect=sqlite3.Error("Database error"),
         ):
             with patch(
                 "mmrelay.meshtastic_utils.get_shortname",
-                side_effect=Exception("Database error"),
+                side_effect=sqlite3.Error("Database error"),
             ):
                 with patch("mmrelay.plugin_loader.load_plugins", return_value=[]):
                     with patch(

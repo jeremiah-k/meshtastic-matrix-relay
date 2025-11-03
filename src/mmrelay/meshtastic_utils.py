@@ -3,6 +3,7 @@ import contextlib
 import inspect
 import io
 import re
+import sqlite3  # For database exception handling
 import threading
 import time
 from concurrent.futures import Future
@@ -752,7 +753,7 @@ def on_meshtastic_message(packet, interface):
             longname = get_longname(sender) or str(sender)
             shortname = get_shortname(sender) or str(sender)
             orig = get_message_map_by_meshtastic_id(replyId)
-        except Exception:
+        except (sqlite3.Error, OSError):
             longname = str(sender)
             shortname = str(sender)
             orig = None
@@ -805,7 +806,7 @@ def on_meshtastic_message(packet, interface):
             longname = get_longname(sender) or str(sender)
             shortname = get_shortname(sender) or str(sender)
             orig = get_message_map_by_meshtastic_id(replyId)
-        except Exception:
+        except (sqlite3.Error, OSError):
             longname = str(sender)
             shortname = str(sender)
             orig = None
@@ -889,7 +890,7 @@ def on_meshtastic_message(packet, interface):
         try:
             longname = get_longname(sender)
             shortname = get_shortname(sender)
-        except Exception:
+        except (sqlite3.Error, OSError):
             # Database failed, use interface fallback immediately
             longname = None
             shortname = None
