@@ -754,9 +754,7 @@ def on_meshtastic_message(packet, interface):
             shortname = get_shortname(sender) or str(sender)
             orig = get_message_map_by_meshtastic_id(replyId)
         except (sqlite3.Error, OSError):
-            longname = str(sender)
-            shortname = str(sender)
-            orig = None
+            pass
 
         if orig:
             # orig = (matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet)
@@ -807,9 +805,7 @@ def on_meshtastic_message(packet, interface):
             shortname = get_shortname(sender) or str(sender)
             orig = get_message_map_by_meshtastic_id(replyId)
         except (sqlite3.Error, OSError):
-            longname = str(sender)
-            shortname = str(sender)
-            orig = None
+            pass
         if orig:
             # orig = (matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet)
             matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet = orig
