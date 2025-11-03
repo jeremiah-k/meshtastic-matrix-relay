@@ -352,8 +352,10 @@ async def get_async_db_connection(config, **kwargs):
                     # Apply same PRAGMAs for consistency with pooled connections
                     await conn.execute("PRAGMA journal_mode=WAL")
                     await conn.execute("PRAGMA synchronous=NORMAL")
-                    await conn.execute("PRAGMA cache_size=10000")
+                    await conn.execute("PRAGMA cache_size=-2000")
                     await conn.execute("PRAGMA temp_store=MEMORY")
+                    await conn.execute("PRAGMA mmap_size=268435456")
+                    await conn.execute("PRAGMA wal_autocheckpoint=1000")
                     await conn.execute("PRAGMA busy_timeout=30000")
                     yield conn
                 finally:

@@ -141,15 +141,14 @@ class TestAsyncConnectionPool:
             )
             await conn.commit()
 
-            # Simulate an error
-            with pytest.raises(RuntimeError):
-                async with conn:
-                    await conn.execute(
-                        "INSERT INTO test_rollback (value) VALUES (?)", ("after_error",)
-                    )
-                    raise RuntimeError("Simulated error")
+        with pytest.raises(RuntimeError):
+            async with self.pool.get_connection() as failing_conn:
+                await failing_conn.execute(
+                    "INSERT INTO test_rollback (value) VALUES (?)", ("after_error",)
+                )
+                raise RuntimeError("Simulated error")
 
-            # Verify only first insert was committed
+        async with self.pool.get_connection() as conn:
             cursor = await conn.execute("SELECT COUNT(*) FROM test_rollback")
             count = (await cursor.fetchone())[0]
             assert count == 1

@@ -914,9 +914,9 @@ def on_meshtastic_message(packet, interface):
                         if shortname_val:
                             try:
                                 save_shortname(sender, shortname_val)
-                            except Exception:  # nosec B110
-                                pass  # Database still failing, ignore
-                                # Broad exception catch is intentional - database is known to be failing
+                            except (sqlite3.Error, OSError):
+                                # Database is known to be failing, ignore to prioritize message delivery.
+                                pass
                             shortname = shortname_val
             else:
                 logger.debug(f"Node info for sender {sender} not available yet.")

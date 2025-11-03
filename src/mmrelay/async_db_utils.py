@@ -16,65 +16,13 @@ logger = get_logger(name="async_db_utils")
 
 # Import connection pool (lazy import to avoid circular dependencies)
 def _get_async_db_connection():
-    """Get async database connection using async connection pool if available and enabled."""
-    from contextlib import asynccontextmanager
-
+    """Get async database connection using async connection pool."""
     # Import here to avoid circular imports
-    try:
-        # Import global config from db_utils module
-        from mmrelay import db_utils
-        from mmrelay.constants.config import (
-            CONFIG_KEY_POOL_ENABLED,
-            DEFAULT_POOL_ENABLED,
-        )
+    from mmrelay import db_utils
+    from mmrelay.async_db_pool import get_async_db_connection as get_pool_connection
 
-        config = getattr(db_utils, "config", None)
-
-        # Check if pooling is disabled in config
-        pool_enabled = (
-            config.get("database", {}).get(
-                CONFIG_KEY_POOL_ENABLED, DEFAULT_POOL_ENABLED
-            )
-            if config
-            else DEFAULT_POOL_ENABLED
-        )
-    except ImportError:
-        # Fallback if config module not available
-        config = None
-        pool_enabled = True
-
-    @asynccontextmanager
-    async def connection_manager():
-        if pool_enabled:
-            try:
-                from mmrelay.async_db_pool import (
-                    get_async_db_connection as get_pool_connection,
-                )
-
-                async with await get_pool_connection(config) as conn:
-                    yield conn
-                return
-            except ImportError:
-                # Fallback to direct connection if pool not available
-                pass
-
-        # Direct connection (pool disabled or not available)
-        try:
-            import aiosqlite
-
-            from mmrelay.db_utils import get_db_path
-
-            conn = await aiosqlite.connect(get_db_path())
-            try:
-                yield conn
-            finally:
-                await conn.close()
-        except ImportError as err:
-            raise ImportError(
-                "aiosqlite is required for async database operations. Please install it with: pip install aiosqlite"
-            ) from err
-
-    return connection_manager()
+    config = getattr(db_utils, "config", None)
+    return get_pool_connection(config)
 
 
 async def async_initialize_database():
