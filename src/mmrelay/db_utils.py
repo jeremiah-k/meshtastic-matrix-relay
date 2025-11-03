@@ -8,6 +8,19 @@ from mmrelay.log_utils import get_logger
 # Global config variable that will be set from main.py
 config = None
 
+
+# Import connection pool (lazy import to avoid circular dependencies)
+def _get_db_connection():
+    """Get database connection using connection pool if available."""
+    try:
+        from mmrelay.db_pool import get_db_connection
+
+        return get_db_connection(config)
+    except ImportError:
+        # Fallback to direct connection if pool not available
+        return sqlite3.connect(get_db_path())
+
+
 # Cache for database path to avoid repeated logging and path resolution
 _cached_db_path = None
 _db_path_logged = False
@@ -137,7 +150,7 @@ def initialize_database():
     else:
         logger.info(f"Creating new database at: {db_path}")
     try:
-        with sqlite3.connect(db_path) as conn:
+        with _get_db_connection() as conn:
             cursor = conn.cursor()
             # Updated table schema: matrix_event_id is now PRIMARY KEY, meshtastic_id is not necessarily unique
             cursor.execute(
@@ -176,6 +189,7 @@ def initialize_database():
             except sqlite3.OperationalError:
                 # Index creation failed, continue without it
                 pass
+            conn.commit()
     except sqlite3.Error:
         logger.exception("Database initialization failed")
         raise
@@ -191,7 +205,7 @@ def store_plugin_data(plugin_name, meshtastic_id, data):
         data (Any): The plugin data to be serialized and stored.
     """
     try:
-        with sqlite3.connect(get_db_path()) as conn:
+        with _get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "INSERT OR REPLACE INTO plugin_data (plugin_name, meshtastic_id, data) VALUES (?, ?, ?) ON CONFLICT (plugin_name, meshtastic_id) DO UPDATE SET data = ?",
@@ -213,7 +227,7 @@ def delete_plugin_data(plugin_name, meshtastic_id):
         meshtastic_id (str): The Meshtastic node ID associated with the plugin data.
     """
     try:
-        with sqlite3.connect(get_db_path()) as conn:
+        with _get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "DELETE FROM plugin_data WHERE plugin_name=? AND meshtastic_id=?",
@@ -235,7 +249,7 @@ def get_plugin_data_for_node(plugin_name, meshtastic_id):
         list: The deserialized plugin data as a list, or an empty list if no data is found or on error.
     """
     try:
-        with sqlite3.connect(get_db_path()) as conn:
+        with _get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT data FROM plugin_data WHERE plugin_name=? AND meshtastic_id=?",
@@ -261,7 +275,7 @@ def get_plugin_data_for_node(plugin_name, meshtastic_id):
 
 # Get the data for a given plugin
 def get_plugin_data(plugin_name):
-    with sqlite3.connect(get_db_path()) as conn:
+    with _get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
             "SELECT data FROM plugin_data WHERE plugin_name=? ",
@@ -284,7 +298,7 @@ def get_longname(meshtastic_id):
         str | None: The long name if found, otherwise None.
     """
     try:
-        with sqlite3.connect(get_db_path()) as conn:
+        with _get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT longname FROM longnames WHERE meshtastic_id=?", (meshtastic_id,)
@@ -308,7 +322,7 @@ def save_longname(meshtastic_id, longname):
         longname: The full/display name to store for the node (string).
     """
     try:
-        with sqlite3.connect(get_db_path()) as conn:
+        with _get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "INSERT OR REPLACE INTO longnames (meshtastic_id, longname) VALUES (?, ?)",
@@ -352,7 +366,7 @@ def get_shortname(meshtastic_id):
         str or None: The short name if found, or None if not found or on database error.
     """
     try:
-        with sqlite3.connect(get_db_path()) as conn:
+        with _get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT shortname FROM shortnames WHERE meshtastic_id=?",
@@ -376,7 +390,7 @@ def save_shortname(meshtastic_id, shortname):
         shortname (str): Display name to store for the node.
     """
     try:
-        with sqlite3.connect(get_db_path()) as conn:
+        with _get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "INSERT OR REPLACE INTO shortnames (meshtastic_id, shortname) VALUES (?, ?)",
@@ -423,7 +437,7 @@ def store_message_map(
         meshtastic_meshnet: Optional name of the meshnet where the message originated, used to distinguish remote from local mesh origins.
     """
     try:
-        with sqlite3.connect(get_db_path()) as conn:
+        with _get_db_connection() as conn:
             cursor = conn.cursor()
             logger.debug(
                 f"Storing message map: meshtastic_id={meshtastic_id}, matrix_event_id={matrix_event_id}, matrix_room_id={matrix_room_id}, meshtastic_text={meshtastic_text}, meshtastic_meshnet={meshtastic_meshnet}"
@@ -451,7 +465,7 @@ def get_message_map_by_meshtastic_id(meshtastic_id):
         tuple or None: A tuple (matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) if found and valid, or None if not found, on malformed data, or if a database error occurs.
     """
     try:
-        with sqlite3.connect(get_db_path()) as conn:
+        with _get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet FROM message_map WHERE meshtastic_id=?",
@@ -471,7 +485,7 @@ def get_message_map_by_meshtastic_id(meshtastic_id):
                     )
                     return None
             return None
-    except sqlite3.Error as e:
+    except (UnicodeDecodeError, sqlite3.Error) as e:
         logger.error(
             f"Database error retrieving message map for meshtastic_id {meshtastic_id}: {e}"
         )
@@ -486,7 +500,7 @@ def get_message_map_by_matrix_event_id(matrix_event_id):
         tuple or None: A tuple (meshtastic_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) if found, or None if not found or on error.
     """
     try:
-        with sqlite3.connect(get_db_path()) as conn:
+        with _get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT meshtastic_id, matrix_room_id, meshtastic_text, meshtastic_meshnet FROM message_map WHERE matrix_event_id=?",
@@ -519,7 +533,7 @@ def wipe_message_map():
     Useful when database.msg_map.wipe_on_restart or db.msg_map.wipe_on_restart is True,
     ensuring no stale data remains.
     """
-    with sqlite3.connect(get_db_path()) as conn:
+    with _get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM message_map")
         conn.commit()
@@ -537,7 +551,7 @@ def prune_message_map(msgs_to_keep):
     - Count total rows.
     - If total > msgs_to_keep, delete oldest entries based on rowid.
     """
-    with sqlite3.connect(get_db_path()) as conn:
+    with _get_db_connection() as conn:
         cursor = conn.cursor()
         # Count total entries
         cursor.execute("SELECT COUNT(*) FROM message_map")

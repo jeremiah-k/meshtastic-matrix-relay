@@ -84,6 +84,11 @@ logging:
 #  msg_map: # The message map is necessary for the relay_reactions functionality. If `relay_reactions` is set to false, nothing will be saved to the message map.
 #    msgs_to_keep: 500 # If set to 0, it will not delete any messages; Defaults to 500
 #    wipe_on_restart: true # Clears out the message map when the relay is restarted; Defaults to False
+#  # Connection pooling configuration (improves performance in multi-threaded environments)
+#  pool_enabled: true                          # Enable database connection pooling (default: true)
+#  pool_max_connections: 10                    # Maximum number of connections in pool (default: 10)
+#  pool_max_idle_time: 300                     # Maximum idle time for connections in seconds (default: 300)
+#  pool_timeout: 30                           # Connection timeout in seconds (default: 30)
 
 # These are core Plugins - Note: Some plugins are experimental and some need maintenance.
 plugins:
