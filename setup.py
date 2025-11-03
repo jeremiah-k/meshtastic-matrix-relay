@@ -56,6 +56,7 @@ setup(
         "py-staticmaps>=0.4.0",
         "psutil>=5.8.0",
         "rich==14.2.0",
+        "aiosqlite>=0.19.0",
         "setuptools>=80.9.0",  # Required for console script entry points and Windows compatibility
     ],
     extras_require={
