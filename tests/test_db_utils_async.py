@@ -10,6 +10,7 @@ This test module covers:
 """
 
 import asyncio
+import json
 import os
 import sqlite3
 import tempfile
@@ -26,15 +27,21 @@ from mmrelay.db_utils import (
     async_prune_message_map,
     async_store_message_map,
     clear_db_path_cache,
+    delete_plugin_data,
     get_db_path,
     get_longname,
+    get_message_map_by_matrix_event_id,
     get_message_map_by_meshtastic_id,
     get_plugin_data_for_node,
+    get_shortname,
     initialize_database,
     prune_message_map,
     save_longname,
+    save_shortname,
     store_message_map,
     store_plugin_data,
+    update_longnames,
+    update_shortnames,
     wipe_message_map,
 )
 
@@ -594,6 +601,489 @@ class TestDatabaseManagerReset(unittest.TestCase):
             # Verify manager was still reset
             new_manager = _get_db_manager()
             self.assertIsNot(new_manager, manager)
+
+    def test_get_db_manager_runtime_error_on_init_failure(self):
+        """Test that _get_db_manager raises RuntimeError when DatabaseManager initialization fails."""
+        # Reset manager to None first
+        _reset_db_manager()
+
+        with patch("mmrelay.db_utils.get_db_path", return_value=self.db_path):
+            # Mock DatabaseManager to return None (simulating failed initialization)
+            with patch("mmrelay.db_utils.DatabaseManager", return_value=None):
+                with self.assertRaises(RuntimeError) as cm:
+                    _get_db_manager()
+
+                self.assertIn(
+                    "Database manager initialization failed", str(cm.exception)
+                )
+
+
+class TestInitializeDatabaseErrors(unittest.TestCase):
+    """Test error handling in initialize_database function."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
+        self.temp_db.close()
+        self.db_path = self.temp_db.name
+
+    def tearDown(self):
+        """Clean up test environment."""
+        try:
+            os.unlink(self.db_path)
+        except OSError:
+            pass
+
+    @patch("mmrelay.db_utils._get_db_manager")
+    def test_initialize_database_operational_error_on_index_creation(
+        self, mock_get_manager
+    ):
+        """Test initialize_database handles OperationalError during index creation gracefully."""
+        from unittest.mock import MagicMock
+
+        # Mock manager and cursor
+        mock_manager = MagicMock()
+        mock_get_manager.return_value = mock_manager
+
+        # Mock cursor to raise OperationalError on specific execute calls
+        mock_cursor = MagicMock()
+        mock_manager.run_sync.side_effect = lambda func, write=True: func(mock_cursor)
+
+        def execute_side_effect(sql, *args, **kwargs):
+            # Raise OperationalError for index creation calls only
+            if "CREATE INDEX" in sql or "ALTER TABLE" in sql:
+                raise sqlite3.OperationalError("Index/column already exists")
+            return None  # Table creation succeeds
+
+        mock_cursor.execute.side_effect = execute_side_effect
+
+        # Should not raise exception - should handle OperationalError gracefully
+        try:
+            initialize_database()
+        except Exception as e:
+            self.fail(
+                f"initialize_database() raised {e} unexpectedly! Should handle OperationalError gracefully."
+            )
+
+        # Verify that execute was called multiple times
+        self.assertGreater(mock_cursor.execute.call_count, 5)
+
+    @patch("mmrelay.db_utils._get_db_manager")
+    @patch("mmrelay.db_utils.logger")
+    def test_initialize_database_sqlite_error_propagated(
+        self, mock_logger, mock_get_manager
+    ):
+        """Test initialize_database logs and re-raises sqlite3.Error."""
+        from unittest.mock import MagicMock
+
+        # Mock manager to raise sqlite3.Error
+        mock_manager = MagicMock()
+        mock_get_manager.return_value = mock_manager
+        mock_manager.run_sync.side_effect = sqlite3.Error("Database connection failed")
+
+        # Should raise sqlite3.Error
+        with self.assertRaises(sqlite3.Error) as cm:
+            initialize_database()
+
+        self.assertIn("Database connection failed", str(cm.exception))
+
+        # Verify error was logged with exception
+        mock_logger.exception.assert_called_once_with("Database initialization failed")
+
+
+class TestPluginDataErrors(unittest.TestCase):
+    """Test error handling in plugin data functions."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
+        self.temp_db.close()
+        self.db_path = self.temp_db.name
+
+    def tearDown(self):
+        """Clean up test environment."""
+        try:
+            os.unlink(self.db_path)
+        except OSError:
+            pass
+
+    @patch("mmrelay.db_utils._get_db_manager")
+    @patch("mmrelay.db_utils.logger")
+    def test_store_plugin_data_database_error(self, mock_logger, mock_get_manager):
+        """Test store_plugin_data handles database errors gracefully."""
+        from unittest.mock import MagicMock
+
+        # Mock manager to raise sqlite3.Error
+        mock_manager = MagicMock()
+        mock_get_manager.return_value = mock_manager
+        mock_manager.run_sync.side_effect = sqlite3.Error("Database locked")
+
+        # Should not raise exception - should handle error gracefully
+        try:
+            store_plugin_data("test_plugin", "node123", {"key": "value"})
+        except Exception as e:
+            self.fail(
+                f"store_plugin_data() raised {e} unexpectedly! Should handle database errors gracefully."
+            )
+
+        # Verify error was logged
+        mock_logger.error.assert_called_once()
+        call_args = mock_logger.error.call_args[0][0]
+        self.assertIn("Database error storing plugin data", call_args)
+        self.assertIn("test_plugin", call_args)
+        self.assertIn("node123", call_args)
+        self.assertIn("Database locked", call_args)
+
+    @patch("mmrelay.db_utils._get_db_manager")
+    @patch("mmrelay.db_utils.logger")
+    def test_delete_plugin_data_database_error(self, mock_logger, mock_get_manager):
+        """Test delete_plugin_data handles database errors gracefully."""
+        from unittest.mock import MagicMock
+
+        # Mock manager to raise sqlite3.Error
+        mock_manager = MagicMock()
+        mock_get_manager.return_value = mock_manager
+        mock_manager.run_sync.side_effect = sqlite3.Error("Database locked")
+
+        # Should not raise exception - should handle error gracefully
+        try:
+            delete_plugin_data("test_plugin", "node123")
+        except Exception as e:
+            self.fail(
+                f"delete_plugin_data() raised {e} unexpectedly! Should handle database errors gracefully."
+            )
+
+        # Verify error was logged
+        mock_logger.error.assert_called_once()
+        call_args = mock_logger.error.call_args[0][0]
+        self.assertIn("Database error deleting plugin data", call_args)
+        self.assertIn("test_plugin", call_args)
+        self.assertIn("node123", call_args)
+        self.assertIn("Database locked", call_args)
+
+    @patch("mmrelay.db_utils._get_db_manager")
+    @patch("mmrelay.db_utils.logger")
+    def test_get_plugin_data_for_node_database_error(
+        self, mock_logger, mock_get_manager
+    ):
+        """Test get_plugin_data_for_node handles database errors gracefully."""
+        from unittest.mock import MagicMock
+
+        # Mock manager to raise sqlite3.Error
+        mock_manager = MagicMock()
+        mock_get_manager.return_value = mock_manager
+        mock_manager.run_sync.side_effect = sqlite3.Error("Connection lost")
+
+        # Should return empty list and log error
+        result = get_plugin_data_for_node("test_plugin", "node123")
+
+        self.assertEqual(result, [])
+        mock_logger.exception.assert_called_once()
+        call_args = mock_logger.exception.call_args[0][0]
+        self.assertIn("Database error retrieving plugin data", call_args)
+        self.assertIn("test_plugin", call_args)
+        self.assertIn("node123", call_args)
+        self.assertIn("Connection lost", call_args)
+
+    @patch("mmrelay.db_utils._get_db_manager")
+    @patch("mmrelay.db_utils.logger")
+    @patch("json.loads")
+    def test_get_plugin_data_for_node_json_decode_error(
+        self, mock_json_loads, mock_logger, mock_get_manager
+    ):
+        """Test get_plugin_data_for_node handles JSON decode errors gracefully."""
+        from unittest.mock import MagicMock
+
+        # Mock manager to return valid result
+        mock_manager = MagicMock()
+        mock_get_manager.return_value = mock_manager
+        mock_manager.run_sync.return_value = ('{"invalid": json}',)  # Invalid JSON
+
+        # Mock json.loads to raise JSONDecodeError
+        mock_json_loads.side_effect = json.JSONDecodeError("Invalid JSON", "doc", 0)
+
+        # Should return empty list and log error
+        result = get_plugin_data_for_node("test_plugin", "node123")
+
+        self.assertEqual(result, [])
+        mock_logger.error.assert_called_once()
+        call_args = mock_logger.error.call_args[0][0]
+        self.assertIn("Failed to decode JSON data", call_args)
+        self.assertIn("test_plugin", call_args)
+        self.assertIn("node123", call_args)
+
+    @patch("mmrelay.db_utils._get_db_manager")
+    @patch("mmrelay.db_utils.logger")
+    @patch("json.loads")
+    def test_get_plugin_data_for_node_type_error(
+        self, mock_json_loads, mock_logger, mock_get_manager
+    ):
+        """Test get_plugin_data_for_node handles TypeError gracefully."""
+        from unittest.mock import MagicMock
+
+        # Mock manager to return valid result
+        mock_manager = MagicMock()
+        mock_get_manager.return_value = mock_manager
+        mock_manager.run_sync.return_value = ('{"key": "value"}',)
+
+        # Mock json.loads to raise TypeError
+        mock_json_loads.side_effect = TypeError("Not serializable")
+
+        # Should return empty list and log error
+        result = get_plugin_data_for_node("test_plugin", "node123")
+
+        self.assertEqual(result, [])
+        mock_logger.error.assert_called_once()
+        call_args = mock_logger.error.call_args[0][0]
+        self.assertIn("Failed to decode JSON data", call_args)
+        self.assertIn("test_plugin", call_args)
+        self.assertIn("node123", call_args)
+
+
+class TestMessageMapErrors(unittest.TestCase):
+    """Test error handling in message map functions."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
+        self.temp_db.close()
+        self.db_path = self.temp_db.name
+
+    def tearDown(self):
+        """Clean up test environment."""
+        try:
+            os.unlink(self.db_path)
+        except OSError:
+            pass
+
+    @patch("mmrelay.db_utils._get_db_manager")
+    @patch("mmrelay.db_utils.logger")
+    def test_store_message_map_database_error(self, mock_logger, mock_get_manager):
+        """Test store_message_map handles database errors gracefully."""
+        from unittest.mock import MagicMock
+
+        # Mock manager to raise sqlite3.Error
+        mock_manager = MagicMock()
+        mock_get_manager.return_value = mock_manager
+        mock_manager.run_sync.side_effect = sqlite3.Error("Database locked")
+
+        # Should not raise exception - should handle error gracefully
+        try:
+            store_message_map(123, "$event123", "!room123", "test message", "testnet")
+        except Exception as e:
+            self.fail(
+                f"store_message_map() raised {e} unexpectedly! Should handle database errors gracefully."
+            )
+
+        # Verify error was logged
+        mock_logger.error.assert_called_once()
+        call_args = mock_logger.error.call_args[0][0]
+        self.assertIn("Database error storing message map", call_args)
+        self.assertIn("$event123", call_args)
+        self.assertIn("Database locked", call_args)
+
+    @patch("mmrelay.db_utils._get_db_manager")
+    @patch("mmrelay.db_utils.logger")
+    def test_get_message_map_by_meshtastic_id_database_error(
+        self, mock_logger, mock_get_manager
+    ):
+        """Test get_message_map_by_meshtastic_id handles database errors gracefully."""
+        from unittest.mock import MagicMock
+
+        # Mock manager to raise sqlite3.Error
+        mock_manager = MagicMock()
+        mock_get_manager.return_value = mock_manager
+        mock_manager.run_sync.side_effect = sqlite3.Error("Connection lost")
+
+        # Should return None and log error
+        result = get_message_map_by_meshtastic_id(123)
+
+        self.assertIsNone(result)
+        mock_logger.error.assert_called_once()
+        call_args = mock_logger.error.call_args[0][0]
+        self.assertIn("Database error retrieving message map", call_args)
+        self.assertIn("123", call_args)
+        self.assertIn("Connection lost", call_args)
+
+    @patch("mmrelay.db_utils._get_db_manager")
+    @patch("mmrelay.db_utils.logger")
+    def test_get_message_map_by_meshtastic_id_malformed_data(
+        self, mock_logger, mock_get_manager
+    ):
+        """Test get_message_map_by_meshtastic_id handles malformed data gracefully."""
+        from unittest.mock import MagicMock
+
+        # Mock manager to return malformed data (not enough elements)
+        mock_manager = MagicMock()
+        mock_get_manager.return_value = mock_manager
+        mock_manager.run_sync.return_value = (
+            "$event123",
+            "!room123",
+        )  # Missing 2 elements
+
+        # Should return None and log error
+        result = get_message_map_by_meshtastic_id(123)
+
+        self.assertIsNone(result)
+        mock_logger.error.assert_called_once()
+        call_args = mock_logger.error.call_args[0][0]
+        self.assertIn("Malformed data in message_map", call_args)
+        self.assertIn("123", call_args)
+
+    @patch("mmrelay.db_utils._get_db_manager")
+    @patch("mmrelay.db_utils.logger")
+    def test_get_message_map_by_matrix_event_id_database_error(
+        self, mock_logger, mock_get_manager
+    ):
+        """Test get_message_map_by_matrix_event_id handles database errors gracefully."""
+        from unittest.mock import MagicMock
+
+        # Mock manager to raise sqlite3.Error
+        mock_manager = MagicMock()
+        mock_get_manager.return_value = mock_manager
+        mock_manager.run_sync.side_effect = sqlite3.Error("Connection lost")
+
+        # Should return None and log error
+        result = get_message_map_by_matrix_event_id("$event123")
+
+        self.assertIsNone(result)
+        mock_logger.error.assert_called_once()
+        call_args = mock_logger.error.call_args[0][0]
+        self.assertIn("Database error retrieving message map", call_args)
+        self.assertIn("$event123", call_args)
+        self.assertIn("Connection lost", call_args)
+
+    @patch("mmrelay.db_utils._get_db_manager")
+    @patch("mmrelay.db_utils.logger")
+    def test_wipe_message_map_database_error(self, mock_logger, mock_get_manager):
+        """Test wipe_message_map handles database errors gracefully."""
+        from unittest.mock import MagicMock
+
+        # Mock manager to raise sqlite3.Error
+        mock_manager = MagicMock()
+        mock_get_manager.return_value = mock_manager
+        mock_manager.run_sync.side_effect = sqlite3.Error("Database locked")
+
+        # Should not raise exception - should handle error gracefully
+        try:
+            wipe_message_map()
+        except Exception as e:
+            self.fail(
+                f"wipe_message_map() raised {e} unexpectedly! Should handle database errors gracefully."
+            )
+
+        # Verify error was logged
+        mock_logger.error.assert_called_once()
+        call_args = mock_logger.error.call_args[0][0]
+        self.assertIn("Failed to wipe message_map", call_args)
+        self.assertIn("Database locked", call_args)
+
+
+class TestLongnameShortnameErrors(unittest.TestCase):
+    """Test error handling in longname/shortname operations."""
+
+    @patch("mmrelay.db_utils._get_db_manager")
+    @patch("mmrelay.db_utils.logger")
+    def test_get_longname_database_error(self, mock_logger, mock_get_manager):
+        """Test get_longname handles database errors gracefully."""
+        from unittest.mock import MagicMock
+
+        mock_manager = MagicMock()
+        mock_get_manager.return_value = mock_manager
+        mock_manager.run_sync.side_effect = sqlite3.Error("Connection lost")
+
+        result = get_longname("!testid")
+
+        self.assertIsNone(result)
+        mock_logger.exception.assert_called_once()
+        call_args = mock_logger.exception.call_args[0][0]
+        self.assertIn("Database error retrieving longname for !testid", call_args)
+
+    @patch("mmrelay.db_utils._get_db_manager")
+    @patch("mmrelay.db_utils.logger")
+    def test_save_longname_database_error(self, mock_logger, mock_get_manager):
+        """Test save_longname handles database errors gracefully."""
+        from unittest.mock import MagicMock
+
+        mock_manager = MagicMock()
+        mock_get_manager.return_value = mock_manager
+        mock_manager.run_sync.side_effect = sqlite3.Error("Disk full")
+
+        save_longname("!testid", "Test Long Name")
+
+        mock_logger.exception.assert_called_once()
+        call_args = mock_logger.exception.call_args[0][0]
+        self.assertIn("Database error saving longname for !testid", call_args)
+
+    @patch("mmrelay.db_utils._get_db_manager")
+    @patch("mmrelay.db_utils.logger")
+    def test_update_longnames_database_error(self, mock_logger, mock_get_manager):
+        """Test update_longnames handles database errors gracefully."""
+        from unittest.mock import MagicMock
+
+        mock_manager = MagicMock()
+        mock_get_manager.return_value = mock_manager
+        mock_manager.run_sync.side_effect = sqlite3.Error("Database locked")
+
+        # update_longnames expects a dict with .values(), and user needs an "id" field
+        nodes = {"1": {"num": 1, "user": {"id": "!testid", "longName": "Test1"}}}
+        update_longnames(nodes)
+
+        mock_logger.exception.assert_called_once()
+        call_args = mock_logger.exception.call_args[0][0]
+        self.assertIn("Database error saving longname for !testid", call_args)
+
+    @patch("mmrelay.db_utils._get_db_manager")
+    @patch("mmrelay.db_utils.logger")
+    def test_get_shortname_database_error(self, mock_logger, mock_get_manager):
+        """Test get_shortname handles database errors gracefully."""
+        from unittest.mock import MagicMock
+
+        mock_manager = MagicMock()
+        mock_get_manager.return_value = mock_manager
+        mock_manager.run_sync.side_effect = sqlite3.Error("Connection lost")
+
+        result = get_shortname("!testid")
+
+        self.assertIsNone(result)
+        mock_logger.exception.assert_called_once()
+        call_args = mock_logger.exception.call_args[0][0]
+        self.assertIn("Database error retrieving shortname", call_args)
+        self.assertIn("Connection lost", call_args)
+
+    @patch("mmrelay.db_utils._get_db_manager")
+    @patch("mmrelay.db_utils.logger")
+    def test_save_shortname_database_error(self, mock_logger, mock_get_manager):
+        """Test save_shortname handles database errors gracefully."""
+        from unittest.mock import MagicMock
+
+        mock_manager = MagicMock()
+        mock_get_manager.return_value = mock_manager
+        mock_manager.run_sync.side_effect = sqlite3.Error("Disk full")
+
+        save_shortname("!testid", "TN")
+
+        mock_logger.exception.assert_called_once()
+        call_args = mock_logger.exception.call_args[0][0]
+        self.assertIn("Database error saving shortname for !testid", call_args)
+
+    @patch("mmrelay.db_utils._get_db_manager")
+    @patch("mmrelay.db_utils.logger")
+    def test_update_shortnames_database_error(self, mock_logger, mock_get_manager):
+        """Test update_shortnames handles database errors gracefully."""
+        from unittest.mock import MagicMock
+
+        mock_manager = MagicMock()
+        mock_get_manager.return_value = mock_manager
+        mock_manager.run_sync.side_effect = sqlite3.Error("Database locked")
+
+        # update_shortnames expects a dict with .values(), and user needs an "id" field
+        nodes = {"1": {"num": 1, "user": {"id": "!testid", "shortName": "T1"}}}
+        update_shortnames(nodes)
+
+        mock_logger.exception.assert_called_once()
+        call_args = mock_logger.exception.call_args[0][0]
+        self.assertIn("Database error saving shortname for !testid", call_args)
 
 
 class TestIntegrationWithRealDatabase(unittest.TestCase):
