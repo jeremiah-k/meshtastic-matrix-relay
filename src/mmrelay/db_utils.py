@@ -1,4 +1,3 @@
-import asyncio
 import contextlib
 import json
 import os
@@ -224,8 +223,9 @@ def _get_db_manager() -> DatabaseManager:
                 extra_pragmas=extra_pragmas,
             )
             _db_manager_signature = signature
-    # mypy hint: manager no longer None
-    assert _db_manager is not None
+    # Runtime check - manager should be initialized at this point
+    if _db_manager is None:
+        raise RuntimeError("Database manager initialization failed")
     return _db_manager
 
 
@@ -292,8 +292,8 @@ def store_plugin_data(plugin_name, meshtastic_id, data):
         payload = json.dumps(data)
         cursor.execute(
             "INSERT INTO plugin_data (plugin_name, meshtastic_id, data) VALUES (?, ?, ?) "
-            "ON CONFLICT (plugin_name, meshtastic_id) DO UPDATE SET data = ?",
-            (plugin_name, meshtastic_id, payload, payload),
+            "ON CONFLICT (plugin_name, meshtastic_id) DO UPDATE SET data = excluded.data",
+            (plugin_name, meshtastic_id, payload),
         )
 
     try:
@@ -348,7 +348,7 @@ def get_plugin_data_for_node(plugin_name, meshtastic_id):
     try:
         result = manager.run_sync(_fetch)
     except (MemoryError, sqlite3.Error) as e:
-        logger.error(
+        logger.exception(
             f"Database error retrieving plugin data for {plugin_name}, node {meshtastic_id}: {e}"
         )
         return []
@@ -475,7 +475,9 @@ def get_shortname(meshtastic_id):
         result = manager.run_sync(_fetch)
         return result[0] if result else None
     except sqlite3.Error as e:
-        logger.error(f"Database error retrieving shortname for {meshtastic_id}: {e}")
+        logger.exception(
+            f"Database error retrieving shortname for {meshtastic_id}: {e}"
+        )
         return None
 
 
@@ -611,7 +613,8 @@ def get_message_map_by_meshtastic_id(meshtastic_id):
                     f"Malformed data in message_map for meshtastic_id {meshtastic_id}: {e}"
                 )
                 return None
-        return None
+        else:
+            return None
     except sqlite3.Error as e:
         logger.error(
             f"Database error retrieving message map for meshtastic_id {meshtastic_id}: {e}"
@@ -648,7 +651,8 @@ def get_message_map_by_matrix_event_id(matrix_event_id):
                     f"Malformed data in message_map for matrix_event_id {matrix_event_id}: {e}"
                 )
                 return None
-        return None
+        else:
+            return None
     except (UnicodeDecodeError, sqlite3.Error) as e:
         logger.error(
             f"Database error retrieving message map for matrix_event_id {matrix_event_id}: {e}"
@@ -719,7 +723,7 @@ def prune_message_map(msgs_to_keep):
                 msgs_to_keep,
             )
     except sqlite3.Error as e:
-        logger.error(f"Database error pruning message_map: {e}")
+        logger.exception(f"Database error pruning message_map: {e}")
 
 
 async def async_store_message_map(
@@ -755,7 +759,9 @@ async def async_store_message_map(
             write=True,
         )
     except sqlite3.Error as e:
-        logger.error(f"Database error storing message map for {matrix_event_id}: {e}")
+        logger.exception(
+            f"Database error storing message map for {matrix_event_id}: {e}"
+        )
 
 
 async def async_prune_message_map(msgs_to_keep):
@@ -776,4 +782,4 @@ async def async_prune_message_map(msgs_to_keep):
                 msgs_to_keep,
             )
     except sqlite3.Error as e:
-        logger.error(f"Database error pruning message_map: {e}")
+        logger.exception(f"Database error pruning message_map: {e}")

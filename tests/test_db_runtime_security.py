@@ -15,7 +15,6 @@ import sqlite3
 import tempfile
 import threading
 import unittest
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -601,7 +600,7 @@ class TestDatabaseManagerEdgeCases(unittest.TestCase):
 
             # Verify all reads succeeded
             self.assertEqual(len(results), 5)
-            for thread_id, result in results:
+            for _thread_id, result in results:
                 self.assertEqual(result, "test")
         finally:
             manager.close()

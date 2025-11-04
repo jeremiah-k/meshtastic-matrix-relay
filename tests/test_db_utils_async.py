@@ -10,12 +10,11 @@ This test module covers:
 """
 
 import asyncio
-import json
 import os
 import sqlite3
 import tempfile
 import unittest
-from unittest.mock import MagicMock, mock_open, patch
+from unittest.mock import MagicMock, patch
 
 import mmrelay.db_utils
 from mmrelay.db_utils import (
@@ -264,9 +263,10 @@ class TestAsyncHelpers(unittest.TestCase):
             )
 
             # Verify error was logged
-            mock_logger.error.assert_called_once()
+            mock_logger.exception.assert_called_once()
             self.assertIn(
-                "Database error storing message map", mock_logger.error.call_args[0][0]
+                "Database error storing message map",
+                mock_logger.exception.call_args[0][0],
             )
 
     @patch("mmrelay.db_utils._get_db_manager")
@@ -350,9 +350,10 @@ class TestAsyncHelpers(unittest.TestCase):
             asyncio.run(async_prune_message_map(msgs_to_keep=100))
 
             # Verify error was logged
-            mock_logger.error.assert_called_once()
+            mock_logger.exception.assert_called_once()
             self.assertIn(
-                "Database error pruning message_map", mock_logger.error.call_args[0][0]
+                "Database error pruning message_map",
+                mock_logger.exception.call_args[0][0],
             )
 
 

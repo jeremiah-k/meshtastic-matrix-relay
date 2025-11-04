@@ -53,28 +53,32 @@ class DatabaseManager:
     def _create_connection(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self._path, check_same_thread=False)
         try:
-            if self._busy_timeout_ms:
-                conn.execute(f"PRAGMA busy_timeout={int(self._busy_timeout_ms)}")
-            if self._enable_wal:
-                # journal_mode pragma returns the applied mode; ignore result
-                conn.execute("PRAGMA journal_mode=WAL")
-            conn.execute("PRAGMA foreign_keys=ON")
-            for pragma, value in self._extra_pragmas.items():
-                # Validate pragma name to prevent injection.
-                if not re.fullmatch(r"[a-zA-Z_]+", pragma):
-                    raise ValueError(f"Invalid pragma name provided: {pragma}")
-                # Validate and sanitize value to prevent injection
-                if isinstance(value, str):
-                    # Allow only alphanumeric, spaces, and common punctuation for string values
-                    if not re.fullmatch(r"[a-zA-Z0-9_\-\s,\.]+", value):
-                        raise ValueError(f"Invalid pragma value provided: {value}")
-                    conn.execute(f"PRAGMA {pragma}='{value}'")
-                else:
-                    # For numeric values, ensure they're actually numeric
-                    if isinstance(value, (int, float)):
-                        conn.execute(f"PRAGMA {pragma}={value}")
+            # Serialize PRAGMA setup to avoid concurrent WAL initialization races
+            with self._write_lock:
+                if self._busy_timeout_ms:
+                    conn.execute(f"PRAGMA busy_timeout={int(self._busy_timeout_ms)}")
+                if self._enable_wal:
+                    # journal_mode pragma returns the applied mode; ignore result
+                    conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute("PRAGMA foreign_keys=ON")
+                for pragma, value in self._extra_pragmas.items():
+                    # Validate pragma name to prevent injection.
+                    if not re.fullmatch(r"[a-zA-Z_]+", pragma):
+                        raise ValueError(f"Invalid pragma name provided: {pragma}")
+                    # Validate and sanitize value to prevent injection
+                    if isinstance(value, str):
+                        # Allow only alphanumeric, spaces, and common punctuation for string values
+                        if not re.fullmatch(r"[a-zA-Z0-9_\-\s,\.]+", value):
+                            raise ValueError(f"Invalid pragma value provided: {value}")
+                        conn.execute(f"PRAGMA {pragma}='{value}'")
                     else:
-                        raise ValueError(f"Invalid pragma value type: {type(value)}")
+                        # For numeric values, ensure they're actually numeric
+                        if isinstance(value, (int, float)):
+                            conn.execute(f"PRAGMA {pragma}={value}")
+                        else:
+                            raise ValueError(
+                                f"Invalid pragma value type: {type(value)}"
+                            )
         except sqlite3.Error:
             # Ensure partially configured connection does not leak
             conn.close()
