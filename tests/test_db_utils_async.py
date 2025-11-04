@@ -52,7 +52,7 @@ class TestDatabaseManagerIntegration(unittest.TestCase):
     def setUp(self):
         """
         Prepare a temporary SQLite database file and reset global DatabaseManager state before each test.
-        
+
         Creates a temporary file with a .db suffix, stores its path on self.db_path, closes the file descriptor, resets the cached DatabaseManager instance, and clears the database path cache so each test starts with a fresh database environment.
         """
         self.temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
@@ -66,7 +66,7 @@ class TestDatabaseManagerIntegration(unittest.TestCase):
     def tearDown(self):
         """
         Tear down test fixtures and remove the temporary database file.
-        
+
         Resets the global DatabaseManager cache, clears the database path cache, and deletes the test database file if present.
         """
         _reset_db_manager()
@@ -201,7 +201,7 @@ class TestAsyncHelpers(unittest.TestCase):
     def setUp(self):
         """
         Prepare a temporary SQLite database file and reset global DatabaseManager state before each test.
-        
+
         Creates a temporary file with a .db suffix, stores its path on self.db_path, closes the file descriptor, resets the cached DatabaseManager instance, and clears the database path cache so each test starts with a fresh database environment.
         """
         self.temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
@@ -215,7 +215,7 @@ class TestAsyncHelpers(unittest.TestCase):
     def tearDown(self):
         """
         Tear down test fixtures and remove the temporary database file.
-        
+
         Resets the global DatabaseManager cache, clears the database path cache, and deletes the test database file if present.
         """
         _reset_db_manager()
@@ -261,14 +261,11 @@ class TestAsyncHelpers(unittest.TestCase):
         expected_params = (123, "$event123", "!room123", "Test message", "testnet")
         mock_cursor.execute.assert_called_once_with(expected_sql, expected_params)
 
-        # Explicit return to avoid deprecation warning
-        return
-
     @patch("mmrelay.db_utils._get_db_manager")
     def test_async_store_message_map_error(self, mock_get_manager):
         """
         Verify that async_store_message_map logs an exception and does not raise when the database operation fails.
-        
+
         Calls async_store_message_map with a mocked DatabaseManager whose run_async raises sqlite3.Error and asserts that logger.exception is called once with a message containing "Database error storing message map".
         """
         from unittest.mock import AsyncMock
@@ -437,7 +434,7 @@ class TestConfigurationParsing(unittest.TestCase):
     def test_resolve_database_options_invalid_values(self):
         """
         Validate that parsing helpers fall back to provided defaults for invalid inputs and parse valid integer strings.
-        
+
         Asserts that _parse_bool returns the supplied default for an unrecognized string input and that _parse_int returns the supplied default for an invalid string but correctly parses a valid numeric string.
         """
         # Test with _parse_bool and _parse_int functions directly
@@ -496,7 +493,7 @@ class TestDatabasePathCaching(unittest.TestCase):
     def tearDown(self):
         """
         Clear the module-level cached database path used by tests.
-        
+
         This is called after each test to ensure subsequent tests compute and use a fresh database path.
         """
         clear_db_path_cache()
@@ -591,7 +588,7 @@ class TestDatabaseManagerReset(unittest.TestCase):
     def tearDown(self):
         """
         Tear down test fixtures and remove the temporary database file.
-        
+
         Resets the global DatabaseManager cache, clears the database path cache, and deletes the test database file if present.
         """
         _reset_db_manager()
@@ -656,7 +653,7 @@ class TestInitializeDatabaseErrors(unittest.TestCase):
     def setUp(self):
         """
         Create a temporary SQLite database file and initialize attributes for tests.
-        
+
         Creates a temporary file with a `.db` suffix (left on disk), closes the file handle, and sets `self.temp_db` and `self.db_path` for use by the test.
         """
         self.temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
@@ -666,7 +663,7 @@ class TestInitializeDatabaseErrors(unittest.TestCase):
     def tearDown(self):
         """
         Remove the temporary database file created for the test.
-        
+
         Ignores OSError exceptions raised while attempting to unlink the file (e.g., if the file does not exist or cannot be removed).
         """
         try:
@@ -693,13 +690,13 @@ class TestInitializeDatabaseErrors(unittest.TestCase):
             # Raise OperationalError for index creation calls only
             """
             Simulates executing a SQL statement, failing for index/column creation and succeeding otherwise.
-            
+
             Parameters:
                 sql (str): The SQL statement to simulate executing. `args` and `kwargs` are accepted for compatibility and ignored.
-            
+
             Returns:
                 None: Indicates the statement succeeded.
-            
+
             Raises:
                 sqlite3.OperationalError: If `sql` contains "CREATE INDEX" or "ALTER TABLE", simulating an index/column already existing.
             """
@@ -749,7 +746,7 @@ class TestPluginDataErrors(unittest.TestCase):
     def setUp(self):
         """
         Create a temporary SQLite database file and initialize attributes for tests.
-        
+
         Creates a temporary file with a `.db` suffix (left on disk), closes the file handle, and sets `self.temp_db` and `self.db_path` for use by the test.
         """
         self.temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
@@ -759,7 +756,7 @@ class TestPluginDataErrors(unittest.TestCase):
     def tearDown(self):
         """
         Remove the temporary database file created for the test.
-        
+
         Ignores OSError exceptions raised while attempting to unlink the file (e.g., if the file does not exist or cannot be removed).
         """
         try:
@@ -787,8 +784,8 @@ class TestPluginDataErrors(unittest.TestCase):
             )
 
         # Verify error was logged
-        mock_logger.error.assert_called_once()
-        call_args = mock_logger.error.call_args[0][0]
+        mock_logger.exception.assert_called_once()
+        call_args = mock_logger.exception.call_args[0][0]
         self.assertIn("Database error storing plugin data", call_args)
         self.assertIn("test_plugin", call_args)
         self.assertIn("node123", call_args)
@@ -814,8 +811,8 @@ class TestPluginDataErrors(unittest.TestCase):
             )
 
         # Verify error was logged
-        mock_logger.error.assert_called_once()
-        call_args = mock_logger.error.call_args[0][0]
+        mock_logger.exception.assert_called_once()
+        call_args = mock_logger.exception.call_args[0][0]
         self.assertIn("Database error deleting plugin data", call_args)
         self.assertIn("test_plugin", call_args)
         self.assertIn("node123", call_args)
@@ -865,8 +862,8 @@ class TestPluginDataErrors(unittest.TestCase):
         result = get_plugin_data_for_node("test_plugin", "node123")
 
         self.assertEqual(result, [])
-        mock_logger.error.assert_called_once()
-        call_args = mock_logger.error.call_args[0][0]
+        mock_logger.exception.assert_called_once()
+        call_args = mock_logger.exception.call_args[0][0]
         self.assertIn("Failed to decode JSON data", call_args)
         self.assertIn("test_plugin", call_args)
         self.assertIn("node123", call_args)
@@ -892,8 +889,8 @@ class TestPluginDataErrors(unittest.TestCase):
         result = get_plugin_data_for_node("test_plugin", "node123")
 
         self.assertEqual(result, [])
-        mock_logger.error.assert_called_once()
-        call_args = mock_logger.error.call_args[0][0]
+        mock_logger.exception.assert_called_once()
+        call_args = mock_logger.exception.call_args[0][0]
         self.assertIn("Failed to decode JSON data", call_args)
         self.assertIn("test_plugin", call_args)
         self.assertIn("node123", call_args)
@@ -905,7 +902,7 @@ class TestMessageMapErrors(unittest.TestCase):
     def setUp(self):
         """
         Create a temporary SQLite database file and initialize attributes for tests.
-        
+
         Creates a temporary file with a `.db` suffix (left on disk), closes the file handle, and sets `self.temp_db` and `self.db_path` for use by the test.
         """
         self.temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
@@ -915,7 +912,7 @@ class TestMessageMapErrors(unittest.TestCase):
     def tearDown(self):
         """
         Remove the temporary database file created for the test.
-        
+
         Ignores OSError exceptions raised while attempting to unlink the file (e.g., if the file does not exist or cannot be removed).
         """
         try:
@@ -943,11 +940,10 @@ class TestMessageMapErrors(unittest.TestCase):
             )
 
         # Verify error was logged
-        mock_logger.error.assert_called_once()
-        call_args = mock_logger.error.call_args[0]
+        mock_logger.exception.assert_called_once()
+        call_args = mock_logger.exception.call_args[0]
         self.assertIn("Database error storing message map", call_args[0])
         self.assertEqual(call_args[1], "$event123")
-        self.assertEqual(str(call_args[2]), "Database locked")
 
     @patch("mmrelay.db_utils._get_db_manager")
     @patch("mmrelay.db_utils.logger")
@@ -966,8 +962,8 @@ class TestMessageMapErrors(unittest.TestCase):
         result = get_message_map_by_meshtastic_id(123)
 
         self.assertIsNone(result)
-        mock_logger.error.assert_called_once()
-        call_args = mock_logger.error.call_args[0][0]
+        mock_logger.exception.assert_called_once()
+        call_args = mock_logger.exception.call_args[0][0]
         self.assertIn("Database error retrieving message map", call_args)
         self.assertIn("123", call_args)
         self.assertIn("Connection lost", call_args)
@@ -992,8 +988,8 @@ class TestMessageMapErrors(unittest.TestCase):
         result = get_message_map_by_meshtastic_id(123)
 
         self.assertIsNone(result)
-        mock_logger.error.assert_called_once()
-        call_args = mock_logger.error.call_args[0]
+        mock_logger.exception.assert_called_once()
+        call_args = mock_logger.exception.call_args[0]
         self.assertIn("Malformed data in message_map", call_args[0])
         self.assertEqual(call_args[1], 123)
 
@@ -1014,11 +1010,10 @@ class TestMessageMapErrors(unittest.TestCase):
         result = get_message_map_by_matrix_event_id("$event123")
 
         self.assertIsNone(result)
-        mock_logger.error.assert_called_once()
-        call_args = mock_logger.error.call_args[0]
+        mock_logger.exception.assert_called_once()
+        call_args = mock_logger.exception.call_args[0]
         self.assertIn("Database error retrieving message map", call_args[0])
         self.assertEqual(call_args[1], "$event123")
-        self.assertEqual(str(call_args[2]), "Connection lost")
 
     @patch("mmrelay.db_utils._get_db_manager")
     @patch("mmrelay.db_utils.logger")
@@ -1040,10 +1035,9 @@ class TestMessageMapErrors(unittest.TestCase):
             )
 
         # Verify error was logged
-        mock_logger.error.assert_called_once()
-        call_args = mock_logger.error.call_args[0]
+        mock_logger.exception.assert_called_once()
+        call_args = mock_logger.exception.call_args[0]
         self.assertIn("Failed to wipe message_map", call_args[0])
-        self.assertEqual(str(call_args[1]), "Database locked")
 
 
 class TestLongnameShortnameErrors(unittest.TestCase):
@@ -1119,7 +1113,6 @@ class TestLongnameShortnameErrors(unittest.TestCase):
         mock_logger.exception.assert_called_once()
         call_args = mock_logger.exception.call_args[0][0]
         self.assertIn("Database error retrieving shortname", call_args)
-        self.assertIn("Connection lost", call_args)
 
     @patch("mmrelay.db_utils._get_db_manager")
     @patch("mmrelay.db_utils.logger")
@@ -1164,7 +1157,7 @@ class TestIntegrationWithRealDatabase(unittest.TestCase):
     def setUp(self):
         """
         Create a temporary SQLite database file and configure the test environment to use it.
-        
+
         Creates a temporary .db file, closes it, resets the global DatabaseManager and database-path cache, and patches mmrelay.db_utils.config so the module uses the temporary database path for the duration of the test.
         """
         self.temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
@@ -1262,7 +1255,7 @@ class TestIntegrationWithRealDatabase(unittest.TestCase):
     def test_delete_plugin_data_success(self):
         """
         Verifies that delete_plugin_data removes stored plugin data for a given plugin and node id.
-        
+
         Stores plugin data, confirms it can be retrieved, calls delete_plugin_data for the same plugin and node id, and asserts that subsequent retrieval returns an empty list.
         """
         # Initialize database

@@ -89,8 +89,8 @@ class DatabaseManager:
                         raise ValueError(f"Invalid pragma name provided: {pragma}")
                     # Validate and sanitize value to prevent injection
                     if isinstance(value, str):
-                        # Allow only alphanumeric, spaces, and common punctuation for string values
-                        if not re.fullmatch(r"[a-zA-Z0-9_\-\s,\.]+", value):
+                        # Allow paths and URIs while still blocking quotes/semicolons
+                        if not re.fullmatch(r"[a-zA-Z0-9_\-\s,\.\/:\\]+", value):
                             raise ValueError(f"Invalid pragma value provided: {value}")
                         conn.execute(f"PRAGMA {pragma}='{value}'")
                     else:
