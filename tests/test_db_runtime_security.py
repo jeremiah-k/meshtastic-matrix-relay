@@ -25,7 +25,14 @@ class TestDatabaseManager(unittest.TestCase):
     """Test DatabaseManager functionality including security fixes."""
 
     def setUp(self):
-        """Set up test fixtures with temporary database."""
+        """
+        Prepare test fixtures by creating a temporary SQLite database file and initializing a DatabaseManager.
+        
+        Creates the following attributes on self:
+        - temp_db: a NamedTemporaryFile object for the database file (closed but not deleted).
+        - db_path: filesystem path to the temporary database file.
+        - manager: a DatabaseManager instance initialized with db_path.
+        """
         self.temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
         self.temp_db.close()
         self.db_path = self.temp_db.name
@@ -249,6 +256,15 @@ class TestDatabaseManager(unittest.TestCase):
         """Test run_sync for read operations."""
 
         def query_func(cursor):
+            """
+            Fetch the integer 42 using the provided database cursor.
+            
+            Parameters:
+                cursor (sqlite3.Cursor or DB-API cursor): Cursor used to execute the query.
+            
+            Returns:
+                int: The integer 42.
+            """
             return cursor.execute("SELECT 42").fetchone()[0]
 
         result = self.manager.run_sync(query_func, write=False)
@@ -258,6 +274,15 @@ class TestDatabaseManager(unittest.TestCase):
         """Test run_sync for write operations."""
 
         def write_func(cursor):
+            """
+            Creates the table named "test" (id INTEGER PRIMARY KEY, value TEXT) and inserts a row with value "sync_test".
+            
+            Parameters:
+                cursor (sqlite3.Cursor): Database cursor used to execute statements.
+            
+            Returns:
+                int: The `lastrowid` of the inserted row.
+            """
             cursor.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, value TEXT)")
             cursor.execute("INSERT INTO test (value) VALUES (?)", ("sync_test",))
             return cursor.lastrowid
@@ -278,6 +303,15 @@ class TestDatabaseManager(unittest.TestCase):
 
         async def test_async():
             def async_func(cursor):
+                """
+                A simple test operation that ignores the provided DB cursor and yields a fixed result used in async tests.
+                
+                Parameters:
+                    cursor: A DB-API cursor object (unused).
+                
+                Returns:
+                    str: The literal string "async_result".
+                """
                 return "async_result"
 
             result = await self.manager.run_async(async_func, write=False)
@@ -292,6 +326,12 @@ class TestDatabaseManager(unittest.TestCase):
         connections = []
 
         def get_connection():
+            """
+            Obtain a connection from the DatabaseManager and append it to the local `connections` list for tracking.
+            
+            Returns:
+                sqlite3.Connection: The acquired database connection.
+            """
             conn = self.manager._get_connection()
             connections.append(conn)
             return conn
@@ -370,12 +410,29 @@ class TestDatabaseManager(unittest.TestCase):
         errors = []
 
         def write_operation(thread_id):
+            """
+            Attempt to increment a shared counter in the database with retries and record the outcome.
+            
+            Runs a write operation that ensures a single-row counter table exists, increments its value, and records the resulting count or any exception. Retries the write up to three times with brief exponential backoff on failure. On success appends (thread_id, count) to the shared `results` list; on final failure appends (thread_id, exception) to the shared `errors` list.
+            
+            Parameters:
+                thread_id (int): Identifier for the caller thread used when recording the result or error.
+            """
             max_retries = 3
             for attempt in range(max_retries):
                 try:
 
                     def write_func(cursor):
                         # Create table if not exists
+                        """
+                        Increment the single-row counter stored in a table and return the updated count.
+                        
+                        Parameters:
+                            cursor (sqlite3.Cursor): Database cursor used to execute SQL statements.
+                        
+                        Returns:
+                            int or None: The updated counter value after incrementing, or `None` if the row was not found.
+                        """
                         cursor.execute(
                             """
                             CREATE TABLE IF NOT EXISTS counter (
@@ -486,13 +543,21 @@ class TestDatabaseManagerEdgeCases(unittest.TestCase):
     """Test DatabaseManager edge cases and error conditions."""
 
     def setUp(self):
-        """Set up test fixtures."""
+        """
+        Create a temporary SQLite database file and record its path on the test instance.
+        
+        The file is created with a ".db" suffix, closed so it can be opened by tests, and not marked for automatic deletion; its file object is stored on `self.temp_db` and the filesystem path on `self.db_path` for use in test cases.
+        """
         self.temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
         self.temp_db.close()
         self.db_path = self.temp_db.name
 
     def tearDown(self):
-        """Clean up test fixtures."""
+        """
+        Remove the temporary database file created for the test.
+        
+        If removing the file fails (for example, because it does not exist or due to permission issues), the error is ignored.
+        """
         import os
 
         try:
@@ -537,7 +602,11 @@ class TestDatabaseManagerEdgeCases(unittest.TestCase):
             manager.close()
 
     def test_database_file_permissions(self):
-        """Test behavior with various database file permissions."""
+        """
+        Verify DatabaseManager behavior when the database file's filesystem permissions are changed to read-only.
+        
+        Creates a table to ensure the database file exists, changes the file mode to read-only, attempts a write that may either succeed or raise sqlite3.OperationalError depending on the platform/SQLite build, restores the original permissions, and closes the manager to ensure cleanup.
+        """
         import os
         import stat
 
@@ -578,6 +647,14 @@ class TestDatabaseManagerEdgeCases(unittest.TestCase):
             results = []
 
             def read_operation(thread_id):
+                """
+                Read the row with id = 1 from the "test" table and record (thread_id, value) in the shared results list.
+                
+                If the row exists, `value` is the stored value; if not, `value` is `None`. This function appends the tuple (thread_id, value) to the surrounding `results` list as a side effect.
+                
+                Parameters:
+                    thread_id (int): Identifier for the calling thread used when recording the result.
+                """
                 def read_func(cursor):
                     result = cursor.execute(
                         "SELECT value FROM test WHERE id = 1"
