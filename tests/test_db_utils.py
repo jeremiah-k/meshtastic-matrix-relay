@@ -11,6 +11,7 @@ Tests the SQLite database operations including:
 - Configuration-based database paths
 """
 
+import asyncio
 import json
 import os
 import sqlite3
@@ -23,6 +24,8 @@ from unittest.mock import patch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.db_utils import (
+    async_prune_message_map,
+    async_store_message_map,
     clear_db_path_cache,
     delete_plugin_data,
     get_db_path,
@@ -370,6 +373,41 @@ class TestDbUtils(unittest.TestCase):
             cursor.execute("SELECT meshtastic_id FROM message_map ORDER BY rowid")
             kept_ids = [row[0] for row in cursor.fetchall()]
             self.assertEqual(kept_ids, [5, 6, 7, 8, 9])
+
+    def test_database_manager_reuses_connection(self):
+        """
+        Ensure that the database manager reuses the same SQLite connection for multiple operations within the same thread.
+        """
+        clear_db_path_cache()
+        with patch("sqlite3.connect", wraps=sqlite3.connect) as mock_connect:
+            initialize_database()
+            store_plugin_data("plugin", "nodeA", {"value": 1})
+            store_plugin_data("plugin", "nodeB", {"value": 2})
+            # Only the initial connection should be created; subsequent calls reuse it.
+            self.assertEqual(mock_connect.call_count, 1)
+
+    def test_async_store_and_prune_message_map(self):
+        """
+        Validate the async helpers for storing and pruning message map entries execute without blocking.
+        """
+        initialize_database()
+
+        async def exercise():
+            await async_store_message_map(
+                "mesh1", "$event1:matrix.org", "!room:matrix.org", "text1"
+            )
+            await async_store_message_map(
+                "mesh2", "$event2:matrix.org", "!room:matrix.org", "text2"
+            )
+            await async_prune_message_map(1)
+
+        asyncio.run(exercise())
+
+        # Oldest entry should have been pruned
+        self.assertIsNone(get_message_map_by_meshtastic_id("mesh1"))
+        latest = get_message_map_by_meshtastic_id("mesh2")
+        self.assertIsNotNone(latest)
+        self.assertEqual(latest[0], "$event2:matrix.org")
 
 
 if __name__ == "__main__":

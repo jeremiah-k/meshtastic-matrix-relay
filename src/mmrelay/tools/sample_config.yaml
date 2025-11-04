@@ -81,6 +81,11 @@ logging:
 
 #database:
 #  path: ~/.mmrelay/data/meshtastic.sqlite   # Default location
+#  enable_wal: true  # Enable Write-Ahead Logging for better concurrency
+#  busy_timeout_ms: 5000  # Milliseconds to wait if the database is busy
+#  pragmas:
+#    synchronous: NORMAL
+#    temp_store: MEMORY
 #  msg_map: # The message map is necessary for the relay_reactions functionality. If `relay_reactions` is set to false, nothing will be saved to the message map.
 #    msgs_to_keep: 500 # If set to 0, it will not delete any messages; Defaults to 500
 #    wipe_on_restart: true # Clears out the message map when the relay is restarted; Defaults to False

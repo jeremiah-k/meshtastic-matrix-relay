@@ -90,9 +90,9 @@ from mmrelay.constants.network import (
     MILLISECONDS_PER_SECOND,
 )
 from mmrelay.db_utils import (
+    async_prune_message_map,
+    async_store_message_map,
     get_message_map_by_matrix_event_id,
-    prune_message_map,
-    store_message_map,
 )
 from mmrelay.log_utils import get_logger
 
@@ -2158,23 +2158,18 @@ async def matrix_relay(
             and hasattr(response, "event_id")
         ):
             try:
-                loop = asyncio.get_running_loop()
-                # Store the message map in executor
-                await loop.run_in_executor(
-                    None,
-                    lambda: store_message_map(
-                        meshtastic_id,
-                        response.event_id,
-                        room_id,
-                        meshtastic_text if meshtastic_text else message,
-                        meshtastic_meshnet=local_meshnet_name,
-                    ),
+                await async_store_message_map(
+                    meshtastic_id,
+                    response.event_id,
+                    room_id,
+                    meshtastic_text if meshtastic_text else message,
+                    meshtastic_meshnet=local_meshnet_name,
                 )
                 logger.debug(f"Stored message map for meshtastic_id: {meshtastic_id}")
 
                 # If msgs_to_keep > 0, prune old messages after inserting a new one
                 if msgs_to_keep > 0:
-                    await loop.run_in_executor(None, prune_message_map, msgs_to_keep)
+                    await async_prune_message_map(msgs_to_keep)
             except Exception as e:
                 logger.error(f"Error storing message map: {e}")
 
