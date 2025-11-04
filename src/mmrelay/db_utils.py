@@ -705,20 +705,63 @@ async def async_store_message_map(
     meshtastic_meshnet=None,
 ):
     """
-    Async helper for store_message_map that offloads work to a thread.
+    Async helper for store_message_map that uses DatabaseManager.run_async.
     """
-    await asyncio.to_thread(
-        store_message_map,
-        meshtastic_id,
-        matrix_event_id,
-        matrix_room_id,
-        meshtastic_text,
-        meshtastic_meshnet,
-    )
+    manager = _get_db_manager()
+
+    def _store(cursor: sqlite3.Cursor) -> None:
+        cursor.execute(
+            "INSERT OR REPLACE INTO message_map (meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) VALUES (?, ?, ?, ?, ?)",
+            (
+                meshtastic_id,
+                matrix_event_id,
+                matrix_room_id,
+                meshtastic_text,
+                meshtastic_meshnet,
+            ),
+        )
+
+    try:
+        logger.debug(
+            "Storing message map: meshtastic_id=%s, matrix_event_id=%s, matrix_room_id=%s, meshtastic_text=%s, meshtastic_meshnet=%s",
+            meshtastic_id,
+            matrix_event_id,
+            matrix_room_id,
+            meshtastic_text,
+            meshtastic_meshnet,
+        )
+        await manager.run_async(_store, write=True)
+    except sqlite3.Error as e:
+        logger.error(f"Database error storing message map for {matrix_event_id}: {e}")
 
 
 async def async_prune_message_map(msgs_to_keep):
     """
-    Async helper for prune_message_map that offloads work to a thread.
+    Async helper for prune_message_map that uses DatabaseManager.run_async.
     """
-    await asyncio.to_thread(prune_message_map, msgs_to_keep)
+    manager = _get_db_manager()
+
+    def _prune(cursor: sqlite3.Cursor) -> int:
+        cursor.execute("SELECT COUNT(*) FROM message_map")
+        row = cursor.fetchone()
+        total = row[0] if row else 0
+
+        if total > msgs_to_keep:
+            to_delete = total - msgs_to_keep
+            cursor.execute(
+                "DELETE FROM message_map WHERE rowid IN (SELECT rowid FROM message_map ORDER BY rowid ASC LIMIT ?)",
+                (to_delete,),
+            )
+            return to_delete
+        return 0
+
+    try:
+        pruned = await manager.run_async(_prune, write=True)
+        if pruned > 0:
+            logger.info(
+                "Pruned %s old message_map entries, keeping last %s.",
+                pruned,
+                msgs_to_keep,
+            )
+    except sqlite3.Error as e:
+        logger.error(f"Database error pruning message_map: {e}")

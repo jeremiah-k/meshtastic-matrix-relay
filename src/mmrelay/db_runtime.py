@@ -9,6 +9,7 @@ managers and async helpers for executing read/write operations.
 from __future__ import annotations
 
 import asyncio
+import re
 import sqlite3
 import threading
 from collections.abc import Awaitable, Callable
@@ -59,7 +60,21 @@ class DatabaseManager:
                 conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA foreign_keys=ON")
             for pragma, value in self._extra_pragmas.items():
-                conn.execute(f"PRAGMA {pragma}={value}")
+                # Validate pragma name to prevent injection.
+                if not re.fullmatch(r"[a-zA-Z_]+", pragma):
+                    raise ValueError(f"Invalid pragma name provided: {pragma}")
+                # Validate and sanitize value to prevent injection
+                if isinstance(value, str):
+                    # Allow only alphanumeric, spaces, and common punctuation for string values
+                    if not re.fullmatch(r"[a-zA-Z0-9_\-\s,\.]+", value):
+                        raise ValueError(f"Invalid pragma value provided: {value}")
+                    conn.execute(f"PRAGMA {pragma}='{value}'")
+                else:
+                    # For numeric values, ensure they're actually numeric
+                    if isinstance(value, (int, float)):
+                        conn.execute(f"PRAGMA {pragma}={value}")
+                    else:
+                        raise ValueError(f"Invalid pragma value type: {type(value)}")
         except sqlite3.Error:
             # Ensure partially configured connection does not leak
             conn.close()
@@ -163,7 +178,7 @@ class DatabaseManager:
             try:
                 del self._thread_local.connection
             except AttributeError:
-                self._thread_local.connection = None
+                pass
 
 
 # Convenience alias for type hints
