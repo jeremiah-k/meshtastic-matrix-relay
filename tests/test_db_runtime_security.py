@@ -202,7 +202,7 @@ class TestDatabaseManager(unittest.TestCase):
 
         for value in invalid_types:
             with self.subTest(value=value):
-                with self.assertRaises(ValueError) as cm:
+                with self.assertRaises(TypeError) as cm:
                     manager = DatabaseManager(
                         self.db_path, extra_pragmas={"test_pragma": value}
                     )
