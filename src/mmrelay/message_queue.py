@@ -359,8 +359,8 @@ class MessageQueue:
     async def _process_queue(self):
         """
         Process queued messages in FIFO order, sending each when the connection is ready and the configured inter-message delay has elapsed.
-
-        Runs until the queue is stopped or the task is cancelled. For each message, enforces connection/readiness checks and the configured inter-message delay, updates last-send timestamps after a successful send, and persists message mapping information when provided and the send result exposes an `id`. Cancellation may drop an in-flight message.
+        
+        Runs until the queue is stopped or the task is cancelled. After a successful send, updates last-send timestamps and, when provided mapping information is present and the send result exposes an `id`, persists the message mapping. Cancellation may drop an in-flight message.
         """
         logger.debug("Message queue processor started")
         current_message = None
@@ -482,10 +482,10 @@ class MessageQueue:
 
     def _should_send_message(self) -> bool:
         """
-        Check whether the queue may send a Meshtastic message.
-
-        Performs runtime checks: returns True only if the reconnection flag is not set, a Meshtastic client object exists, and—if the client exposes `is_connected`—that check indicates the client is connected. If importing Meshtastic utilities raises ImportError, a critical log is emitted and the queue is stopped asynchronously.
-
+        Determine whether conditions allow sending a Meshtastic message.
+        
+        Performs runtime checks: verifies the global reconnecting flag is not set, a Meshtastic client object exists, and—if the client exposes a connectivity indicator—that indicator reports connected. If importing Meshtastic utilities fails, logs a critical error and asynchronously stops the queue.
+        
         Returns:
             `True` if not reconnecting, a Meshtastic client exists, and the client is connected when checkable; `False` otherwise.
         """

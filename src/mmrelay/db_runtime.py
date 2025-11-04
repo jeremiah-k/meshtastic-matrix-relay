@@ -36,6 +36,17 @@ class DatabaseManager:
         busy_timeout_ms: int = 5000,
         extra_pragmas: Optional[dict[str, Any]] = None,
     ) -> None:
+        """
+        Create a DatabaseManager configured for the given SQLite file path.
+        
+        Parameters:
+            path (str): Filesystem path to the SQLite database file.
+            enable_wal (bool): If true, connections will be configured to use Write-Ahead Logging (WAL) mode.
+            busy_timeout_ms (int): Milliseconds to wait for the database when it is busy before raising an error.
+            extra_pragmas (Optional[dict[str, Any]]): Additional PRAGMA directives to apply to each connection.
+                Keys are pragma names and values are either numeric or string pragma values. Invalid pragma
+                names or values will raise when a connection is created.
+        """
         self._path = path
         self._enable_wal = enable_wal
         self._busy_timeout_ms = busy_timeout_ms
@@ -51,6 +62,17 @@ class DatabaseManager:
     # ------------------------------------------------------------------ #
 
     def _create_connection(self) -> sqlite3.Connection:
+        """
+        Create and configure a new sqlite3.Connection for this manager, apply configured PRAGMA directives, and register the connection for later cleanup.
+        
+        Returns:
+            sqlite3.Connection: A connection configured with the manager's pragmas and tracked by the manager.
+        
+        Raises:
+            sqlite3.Error: If an SQLite error occurs during connection creation or PRAGMA setup (the partially configured connection is closed before the error is propagated).
+            ValueError: If an extra PRAGMA name or string value fails validation.
+            TypeError: If an extra PRAGMA value has an unsupported type.
+        """
         conn = sqlite3.connect(self._path, check_same_thread=False)
         try:
             # Serialize PRAGMA setup to avoid concurrent WAL initialization races
@@ -87,6 +109,12 @@ class DatabaseManager:
         return conn
 
     def _get_connection(self) -> sqlite3.Connection:
+        """
+        Get the thread-local SQLite connection, creating and storing a new connection if none exists.
+        
+        Returns:
+            sqlite3.Connection: The per-thread SQLite connection.
+        """
         conn = getattr(self._thread_local, "connection", None)
         if conn is None:
             conn = self._create_connection()
@@ -100,7 +128,12 @@ class DatabaseManager:
     @contextmanager
     def read(self) -> sqlite3.Cursor:
         """
-        Yield a cursor for read operations without committing.
+        Provide a cursor for performing read-only database operations.
+        
+        The cursor is obtained from the per-thread connection and is guaranteed to be closed when the context exits. This context does not commit or roll back any transactions; it is intended for queries that do not modify persistent state.
+        
+        Returns:
+            sqlite3.Cursor: A cursor tied to the manager's per-thread connection.
         """
         conn = self._get_connection()
         cursor = conn.cursor()
@@ -112,7 +145,12 @@ class DatabaseManager:
     @contextmanager
     def write(self) -> sqlite3.Cursor:
         """
-        Yield a cursor for write operations, committing on success.
+        Provide a context manager that yields a cursor for transactional write operations.
+        
+        The yielded cursor is intended for executing modifying statements. The transaction is committed when the context exits normally and rolled back if an exception is raised. Write operations are serialized across threads using the manager's write lock, and the cursor is closed on exit.
+        
+        Returns:
+            cursor (sqlite3.Cursor): Cursor for executing write statements; committed on success, rolled back on exception.
         """
         conn = self._get_connection()
         cursor = conn.cursor()
@@ -137,7 +175,16 @@ class DatabaseManager:
         write: bool = False,
     ) -> Any:
         """
-        Execute `func` with a managed cursor and return the result.
+        Execute a callable with a managed SQLite cursor.
+        
+        Run `func` with a cursor provided by the manager; when `write` is True, the callable is executed inside a write transaction that will be committed on success and rolled back on exception.
+        
+        Parameters:
+            func (Callable[[sqlite3.Cursor], Any]): A callable that receives a `sqlite3.Cursor` and returns a result.
+            write (bool): If True, execute `func` in a transactional write context; otherwise use a read-only cursor. Defaults to False.
+        
+        Returns:
+            Any: The value returned by `func`.
         """
         context = self.write if write else self.read
         with context() as cursor:
@@ -151,7 +198,15 @@ class DatabaseManager:
         loop: Optional[asyncio.AbstractEventLoop] = None,
     ) -> Any:
         """
-        Execute `func` in the default executor and return its result.
+        Run a database callable in the event loop's executor and return its result.
+        
+        Parameters:
+            func (Callable[[sqlite3.Cursor], Any]): Callable that will be invoked with a managed SQLite cursor.
+            write (bool, optional): If true, the callable receives a cursor from a transactional write context; otherwise a read-only context is used. Defaults to False.
+            loop (asyncio.AbstractEventLoop, optional): Event loop whose executor will run the callable. If omitted, the running event loop is used.
+        
+        Returns:
+            Any: The value returned by `func` when invoked with the cursor.
         """
         loop = loop or asyncio.get_running_loop()
         executor_func = partial(self.run_sync, func, write=write)
@@ -163,7 +218,9 @@ class DatabaseManager:
 
     def close(self) -> None:
         """
-        Close all tracked SQLite connections.
+        Close and clean up all tracked SQLite connections.
+        
+        Removes every connection from the manager's internal registry, attempts to close each connection (suppressing sqlite3.Error), and clears the current thread's stored connection reference.
         """
         with self._connections_lock:
             connections = list(self._connections)
