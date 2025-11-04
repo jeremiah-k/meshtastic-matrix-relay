@@ -99,7 +99,7 @@ def get_db_path():
                 # Cache the path and log only once
                 _cached_db_path = custom_path
                 if not _db_path_logged:
-                    logger.info(f"Using database path from config: {custom_path}")
+                    logger.info("Using database path from config: %s", custom_path)
                     _db_path_logged = True
                 return custom_path
 
@@ -133,7 +133,7 @@ def get_db_path():
     try:
         os.makedirs(data_dir, exist_ok=True)
     except (OSError, PermissionError) as e:
-        logger.warning(f"Could not create data directory {data_dir}: {e}")
+        logger.warning("Could not create data directory %s: %s", data_dir, e)
         # Continue anyway - the database connection will fail later if needed
     default_path = os.path.join(data_dir, "meshtastic.sqlite")
     _cached_db_path = default_path
@@ -245,9 +245,9 @@ def initialize_database():
     db_path = get_db_path()
     # Check if database exists
     if os.path.exists(db_path):
-        logger.info(f"Loading database from: {db_path}")
+        logger.info("Loading database from: %s", db_path)
     else:
-        logger.info(f"Creating new database at: {db_path}")
+        logger.info("Creating new database at: %s", db_path)
     manager = _get_db_manager()
 
     def _initialize(cursor: sqlite3.Cursor) -> None:
@@ -355,7 +355,9 @@ def get_plugin_data_for_node(plugin_name, meshtastic_id):
         result = manager.run_sync(_fetch)
     except (MemoryError, sqlite3.Error) as e:
         logger.exception(
-            f"Database error retrieving plugin data for {plugin_name}, node {meshtastic_id}: {e}"
+            "Database error retrieving plugin data for %s, node %s",
+            plugin_name,
+            meshtastic_id,
         )
         return []
 
@@ -407,7 +409,7 @@ def get_longname(meshtastic_id):
         result = manager.run_sync(_fetch)
         return result[0] if result else None
     except sqlite3.Error:
-        logger.exception(f"Database error retrieving longname for {meshtastic_id}")
+        logger.exception("Database error retrieving longname for %s", meshtastic_id)
         return None
 
 
@@ -433,7 +435,7 @@ def save_longname(meshtastic_id, longname):
     try:
         manager.run_sync(_store, write=True)
     except sqlite3.Error:
-        logger.exception(f"Database error saving longname for {meshtastic_id}")
+        logger.exception("Database error saving longname for %s", meshtastic_id)
 
 
 def update_longnames(nodes):
@@ -508,7 +510,7 @@ def save_shortname(meshtastic_id, shortname):
     try:
         manager.run_sync(_store, write=True)
     except sqlite3.Error:
-        logger.exception(f"Database error saving shortname for {meshtastic_id}")
+        logger.exception("Database error saving shortname for %s", meshtastic_id)
 
 
 def update_shortnames(nodes):
@@ -587,7 +589,9 @@ def store_message_map(
             write=True,
         )
     except sqlite3.Error as e:
-        logger.error(f"Database error storing message map for {matrix_event_id}: {e}")
+        logger.error(
+            "Database error storing message map for %s: %s", matrix_event_id, e
+        )
 
 
 def get_message_map_by_meshtastic_id(meshtastic_id):
@@ -611,15 +615,16 @@ def get_message_map_by_meshtastic_id(meshtastic_id):
         logger.debug(
             "Retrieved message map by meshtastic_id=%s: %s", meshtastic_id, result
         )
-        if result:
-            try:
-                return result[0], result[1], result[2], result[3]
-            except (IndexError, TypeError) as e:
-                logger.error(
-                    f"Malformed data in message_map for meshtastic_id {meshtastic_id}: {e}"
-                )
-                return None
-        else:
+        if not result:
+            return None
+        try:
+            return result[0], result[1], result[2], result[3]
+        except (IndexError, TypeError) as e:
+            logger.error(
+                "Malformed data in message_map for meshtastic_id %s: %s",
+                meshtastic_id,
+                e,
+            )
             return None
     except sqlite3.Error as e:
         logger.error(
@@ -649,19 +654,22 @@ def get_message_map_by_matrix_event_id(matrix_event_id):
         logger.debug(
             "Retrieved message map by matrix_event_id=%s: %s", matrix_event_id, result
         )
-        if result:
-            try:
-                return result[0], result[1], result[2], result[3]
-            except (IndexError, TypeError) as e:
-                logger.error(
-                    f"Malformed data in message_map for matrix_event_id {matrix_event_id}: {e}"
-                )
-                return None
-        else:
+        if not result:
+            return None
+        try:
+            return result[0], result[1], result[2], result[3]
+        except (IndexError, TypeError) as e:
+            logger.error(
+                "Malformed data in message_map for matrix_event_id %s: %s",
+                matrix_event_id,
+                e,
+            )
             return None
     except (UnicodeDecodeError, sqlite3.Error) as e:
         logger.error(
-            f"Database error retrieving message map for matrix_event_id {matrix_event_id}: {e}"
+            "Database error retrieving message map for matrix_event_id %s: %s",
+            matrix_event_id,
+            e,
         )
         return None
 
@@ -681,7 +689,7 @@ def wipe_message_map():
         manager.run_sync(_wipe, write=True)
         logger.info("message_map table wiped successfully.")
     except sqlite3.Error as e:
-        logger.error(f"Failed to wipe message_map: {e}")
+        logger.error("Failed to wipe message_map: %s", e)
 
 
 def _prune_message_map_core(cursor: sqlite3.Cursor, msgs_to_keep: int) -> int:
@@ -729,7 +737,7 @@ def prune_message_map(msgs_to_keep):
                 msgs_to_keep,
             )
     except sqlite3.Error as e:
-        logger.exception(f"Database error pruning message_map: {e}")
+        logger.exception("Database error pruning message_map: %s", e)
 
 
 async def async_store_message_map(
@@ -788,4 +796,4 @@ async def async_prune_message_map(msgs_to_keep):
                 msgs_to_keep,
             )
     except sqlite3.Error as e:
-        logger.exception(f"Database error pruning message_map: {e}")
+        logger.exception("Database error pruning message_map: %s", e)

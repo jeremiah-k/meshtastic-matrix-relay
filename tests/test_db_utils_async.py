@@ -779,11 +779,10 @@ class TestPluginDataErrors(unittest.TestCase):
 
         self.assertEqual(result, [])
         mock_logger.exception.assert_called_once()
-        call_args = mock_logger.exception.call_args[0][0]
-        self.assertIn("Database error retrieving plugin data", call_args)
-        self.assertIn("test_plugin", call_args)
-        self.assertIn("node123", call_args)
-        self.assertIn("Connection lost", call_args)
+        call_args = mock_logger.exception.call_args[0]
+        self.assertIn("Database error retrieving plugin data", call_args[0])
+        self.assertEqual(call_args[1], "test_plugin")
+        self.assertEqual(call_args[2], "node123")
 
     @patch("mmrelay.db_utils._get_db_manager")
     @patch("mmrelay.db_utils.logger")
@@ -877,10 +876,10 @@ class TestMessageMapErrors(unittest.TestCase):
 
         # Verify error was logged
         mock_logger.error.assert_called_once()
-        call_args = mock_logger.error.call_args[0][0]
-        self.assertIn("Database error storing message map", call_args)
-        self.assertIn("$event123", call_args)
-        self.assertIn("Database locked", call_args)
+        call_args = mock_logger.error.call_args[0]
+        self.assertIn("Database error storing message map", call_args[0])
+        self.assertEqual(call_args[1], "$event123")
+        self.assertEqual(str(call_args[2]), "Database locked")
 
     @patch("mmrelay.db_utils._get_db_manager")
     @patch("mmrelay.db_utils.logger")
@@ -926,9 +925,9 @@ class TestMessageMapErrors(unittest.TestCase):
 
         self.assertIsNone(result)
         mock_logger.error.assert_called_once()
-        call_args = mock_logger.error.call_args[0][0]
-        self.assertIn("Malformed data in message_map", call_args)
-        self.assertIn("123", call_args)
+        call_args = mock_logger.error.call_args[0]
+        self.assertIn("Malformed data in message_map", call_args[0])
+        self.assertEqual(call_args[1], 123)
 
     @patch("mmrelay.db_utils._get_db_manager")
     @patch("mmrelay.db_utils.logger")
@@ -948,10 +947,10 @@ class TestMessageMapErrors(unittest.TestCase):
 
         self.assertIsNone(result)
         mock_logger.error.assert_called_once()
-        call_args = mock_logger.error.call_args[0][0]
-        self.assertIn("Database error retrieving message map", call_args)
-        self.assertIn("$event123", call_args)
-        self.assertIn("Connection lost", call_args)
+        call_args = mock_logger.error.call_args[0]
+        self.assertIn("Database error retrieving message map", call_args[0])
+        self.assertEqual(call_args[1], "$event123")
+        self.assertEqual(str(call_args[2]), "Connection lost")
 
     @patch("mmrelay.db_utils._get_db_manager")
     @patch("mmrelay.db_utils.logger")
@@ -974,9 +973,9 @@ class TestMessageMapErrors(unittest.TestCase):
 
         # Verify error was logged
         mock_logger.error.assert_called_once()
-        call_args = mock_logger.error.call_args[0][0]
-        self.assertIn("Failed to wipe message_map", call_args)
-        self.assertIn("Database locked", call_args)
+        call_args = mock_logger.error.call_args[0]
+        self.assertIn("Failed to wipe message_map", call_args[0])
+        self.assertEqual(str(call_args[1]), "Database locked")
 
 
 class TestLongnameShortnameErrors(unittest.TestCase):
@@ -996,8 +995,9 @@ class TestLongnameShortnameErrors(unittest.TestCase):
 
         self.assertIsNone(result)
         mock_logger.exception.assert_called_once()
-        call_args = mock_logger.exception.call_args[0][0]
-        self.assertIn("Database error retrieving longname for !testid", call_args)
+        call_args = mock_logger.exception.call_args[0]
+        self.assertIn("Database error retrieving longname for", call_args[0])
+        self.assertEqual(call_args[1], "!testid")
 
     @patch("mmrelay.db_utils._get_db_manager")
     @patch("mmrelay.db_utils.logger")
@@ -1012,8 +1012,9 @@ class TestLongnameShortnameErrors(unittest.TestCase):
         save_longname("!testid", "Test Long Name")
 
         mock_logger.exception.assert_called_once()
-        call_args = mock_logger.exception.call_args[0][0]
-        self.assertIn("Database error saving longname for !testid", call_args)
+        call_args = mock_logger.exception.call_args[0]
+        self.assertIn("Database error saving longname for", call_args[0])
+        self.assertEqual(call_args[1], "!testid")
 
     @patch("mmrelay.db_utils._get_db_manager")
     @patch("mmrelay.db_utils.logger")
@@ -1030,8 +1031,9 @@ class TestLongnameShortnameErrors(unittest.TestCase):
         update_longnames(nodes)
 
         mock_logger.exception.assert_called_once()
-        call_args = mock_logger.exception.call_args[0][0]
-        self.assertIn("Database error saving longname for !testid", call_args)
+        call_args = mock_logger.exception.call_args[0]
+        self.assertIn("Database error saving longname for", call_args[0])
+        self.assertEqual(call_args[1], "!testid")
 
     @patch("mmrelay.db_utils._get_db_manager")
     @patch("mmrelay.db_utils.logger")
@@ -1064,8 +1066,9 @@ class TestLongnameShortnameErrors(unittest.TestCase):
         save_shortname("!testid", "TN")
 
         mock_logger.exception.assert_called_once()
-        call_args = mock_logger.exception.call_args[0][0]
-        self.assertIn("Database error saving shortname for !testid", call_args)
+        call_args = mock_logger.exception.call_args[0]
+        self.assertIn("Database error saving shortname for", call_args[0])
+        self.assertEqual(call_args[1], "!testid")
 
     @patch("mmrelay.db_utils._get_db_manager")
     @patch("mmrelay.db_utils.logger")
@@ -1082,8 +1085,9 @@ class TestLongnameShortnameErrors(unittest.TestCase):
         update_shortnames(nodes)
 
         mock_logger.exception.assert_called_once()
-        call_args = mock_logger.exception.call_args[0][0]
-        self.assertIn("Database error saving shortname for !testid", call_args)
+        call_args = mock_logger.exception.call_args[0]
+        self.assertIn("Database error saving shortname for", call_args[0])
+        self.assertEqual(call_args[1], "!testid")
 
 
 class TestIntegrationWithRealDatabase(unittest.TestCase):
