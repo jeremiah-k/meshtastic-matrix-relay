@@ -76,9 +76,7 @@ class DatabaseManager:
                         if isinstance(value, (int, float)):
                             conn.execute(f"PRAGMA {pragma}={value}")
                         else:
-                            raise ValueError(
-                                f"Invalid pragma value type: {type(value)}"
-                            )
+                            raise TypeError(f"Invalid pragma value type: {type(value)}")
         except sqlite3.Error:
             # Ensure partially configured connection does not leak
             conn.close()
