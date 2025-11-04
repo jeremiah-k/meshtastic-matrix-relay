@@ -291,7 +291,7 @@ def store_plugin_data(plugin_name, meshtastic_id, data):
     def _store(cursor: sqlite3.Cursor) -> None:
         payload = json.dumps(data)
         cursor.execute(
-            "INSERT OR REPLACE INTO plugin_data (plugin_name, meshtastic_id, data) VALUES (?, ?, ?) "
+            "INSERT INTO plugin_data (plugin_name, meshtastic_id, data) VALUES (?, ?, ?) "
             "ON CONFLICT (plugin_name, meshtastic_id) DO UPDATE SET data = ?",
             (plugin_name, meshtastic_id, payload, payload),
         )
@@ -521,6 +521,30 @@ def update_shortnames(nodes):
                 save_shortname(meshtastic_id, shortname)
 
 
+def _store_message_map_core(
+    cursor: sqlite3.Cursor,
+    meshtastic_id,
+    matrix_event_id,
+    matrix_room_id,
+    meshtastic_text,
+    meshtastic_meshnet=None,
+) -> None:
+    """
+    Core database operation for storing message map.
+    Shared between sync and async implementations.
+    """
+    cursor.execute(
+        "INSERT OR REPLACE INTO message_map (meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) VALUES (?, ?, ?, ?, ?)",
+        (
+            meshtastic_id,
+            matrix_event_id,
+            matrix_room_id,
+            meshtastic_text,
+            meshtastic_meshnet,
+        ),
+    )
+
+
 def store_message_map(
     meshtastic_id,
     matrix_event_id,
@@ -529,28 +553,10 @@ def store_message_map(
     meshtastic_meshnet=None,
 ):
     """
-    Stores or updates a mapping between a Meshtastic message and its corresponding Matrix event in the database.
-
-    Parameters:
-        meshtastic_id: The Meshtastic message ID.
-        matrix_event_id: The Matrix event ID (primary key).
-        matrix_room_id: The Matrix room ID.
-        meshtastic_text: The text content of the Meshtastic message.
-        meshtastic_meshnet: Optional name of the meshnet where the message originated, used to distinguish remote from local mesh origins.
+    Store mapping between Meshtastic message ID and Matrix event ID in the database.
+    Ensures that each Matrix event ID is unique in the table.
     """
     manager = _get_db_manager()
-
-    def _store(cursor: sqlite3.Cursor) -> None:
-        cursor.execute(
-            "INSERT OR REPLACE INTO message_map (meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) VALUES (?, ?, ?, ?, ?)",
-            (
-                meshtastic_id,
-                matrix_event_id,
-                matrix_room_id,
-                meshtastic_text,
-                meshtastic_meshnet,
-            ),
-        )
 
     try:
         logger.debug(
@@ -561,7 +567,17 @@ def store_message_map(
             meshtastic_text,
             meshtastic_meshnet,
         )
-        manager.run_sync(_store, write=True)
+        manager.run_sync(
+            lambda cursor: _store_message_map_core(
+                cursor,
+                meshtastic_id,
+                matrix_event_id,
+                matrix_room_id,
+                meshtastic_text,
+                meshtastic_meshnet,
+            ),
+            write=True,
+        )
     except sqlite3.Error as e:
         logger.error(f"Database error storing message map for {matrix_event_id}: {e}")
 
@@ -658,12 +674,32 @@ def wipe_message_map():
         logger.error(f"Failed to wipe message_map: {e}")
 
 
+def _prune_message_map_core(cursor: sqlite3.Cursor, msgs_to_keep: int) -> int:
+    """
+    Core database operation for pruning message map.
+    Shared between sync and async implementations.
+    Returns the number of entries deleted.
+    """
+    cursor.execute("SELECT COUNT(*) FROM message_map")
+    row = cursor.fetchone()
+    total = row[0] if row else 0
+
+    if total > msgs_to_keep:
+        to_delete = total - msgs_to_keep
+        cursor.execute(
+            "DELETE FROM message_map WHERE rowid IN (SELECT rowid FROM message_map ORDER BY rowid ASC LIMIT ?)",
+            (to_delete,),
+        )
+        return to_delete
+    return 0
+
+
 def prune_message_map(msgs_to_keep):
     """
-    Prune the message_map table to keep only the most recent msgs_to_keep entries
+    Prune message_map table to keep only the most recent msgs_to_keep entries
     in order to prevent database bloat.
-    We use the matrix_event_id's insertion order as a heuristic.
-    Note: matrix_event_id is a string, so we rely on the rowid or similar approach.
+    We use matrix_event_id's insertion order as a heuristic.
+    Note: matrix_event_id is a string, so we rely on rowid or similar approach.
 
     Approach:
     - Count total rows.
@@ -671,22 +707,11 @@ def prune_message_map(msgs_to_keep):
     """
     manager = _get_db_manager()
 
-    def _prune(cursor: sqlite3.Cursor) -> int:
-        cursor.execute("SELECT COUNT(*) FROM message_map")
-        row = cursor.fetchone()
-        total = row[0] if row else 0
-
-        if total > msgs_to_keep:
-            to_delete = total - msgs_to_keep
-            cursor.execute(
-                "DELETE FROM message_map WHERE rowid IN (SELECT rowid FROM message_map ORDER BY rowid ASC LIMIT ?)",
-                (to_delete,),
-            )
-            return to_delete
-        return 0
-
     try:
-        pruned = manager.run_sync(_prune, write=True)
+        pruned = manager.run_sync(
+            lambda cursor: _prune_message_map_core(cursor, msgs_to_keep),
+            write=True,
+        )
         if pruned > 0:
             logger.info(
                 "Pruned %s old message_map entries, keeping last %s.",
@@ -709,18 +734,6 @@ async def async_store_message_map(
     """
     manager = _get_db_manager()
 
-    def _store(cursor: sqlite3.Cursor) -> None:
-        cursor.execute(
-            "INSERT OR REPLACE INTO message_map (meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) VALUES (?, ?, ?, ?, ?)",
-            (
-                meshtastic_id,
-                matrix_event_id,
-                matrix_room_id,
-                meshtastic_text,
-                meshtastic_meshnet,
-            ),
-        )
-
     try:
         logger.debug(
             "Storing message map: meshtastic_id=%s, matrix_event_id=%s, matrix_room_id=%s, meshtastic_text=%s, meshtastic_meshnet=%s",
@@ -730,7 +743,17 @@ async def async_store_message_map(
             meshtastic_text,
             meshtastic_meshnet,
         )
-        await manager.run_async(_store, write=True)
+        await manager.run_async(
+            lambda cursor: _store_message_map_core(
+                cursor,
+                meshtastic_id,
+                matrix_event_id,
+                matrix_room_id,
+                meshtastic_text,
+                meshtastic_meshnet,
+            ),
+            write=True,
+        )
     except sqlite3.Error as e:
         logger.error(f"Database error storing message map for {matrix_event_id}: {e}")
 
@@ -741,22 +764,11 @@ async def async_prune_message_map(msgs_to_keep):
     """
     manager = _get_db_manager()
 
-    def _prune(cursor: sqlite3.Cursor) -> int:
-        cursor.execute("SELECT COUNT(*) FROM message_map")
-        row = cursor.fetchone()
-        total = row[0] if row else 0
-
-        if total > msgs_to_keep:
-            to_delete = total - msgs_to_keep
-            cursor.execute(
-                "DELETE FROM message_map WHERE rowid IN (SELECT rowid FROM message_map ORDER BY rowid ASC LIMIT ?)",
-                (to_delete,),
-            )
-            return to_delete
-        return 0
-
     try:
-        pruned = await manager.run_async(_prune, write=True)
+        pruned = await manager.run_async(
+            lambda cursor: _prune_message_map_core(cursor, msgs_to_keep),
+            write=True,
+        )
         if pruned > 0:
             logger.info(
                 "Pruned %s old message_map entries, keeping last %s.",
