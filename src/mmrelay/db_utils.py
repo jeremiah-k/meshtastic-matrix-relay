@@ -142,15 +142,19 @@ def get_db_path():
 
 def _reset_db_manager():
     """
-    Reset the cached DatabaseManager, closing any open connections.
+    Reset the database manager instance.
+    Used for testing and configuration changes.
     """
     global _db_manager, _db_manager_signature
+    manager_to_close = None
     with _db_manager_lock:
         if _db_manager is not None:
-            with contextlib.suppress(Exception):
-                _db_manager.close()
-        _db_manager = None
-        _db_manager_signature = None
+            manager_to_close = _db_manager
+            _db_manager = None
+            _db_manager_signature = None
+    if manager_to_close:
+        with contextlib.suppress(Exception):
+            manager_to_close.close()
 
 
 def _parse_bool(value, default):
@@ -211,11 +215,10 @@ def _get_db_manager() -> DatabaseManager:
         tuple(sorted(extra_pragmas.items())),
     )
 
+    manager_to_close = None
     with _db_manager_lock:
         if _db_manager is None or _db_manager_signature != signature:
-            if _db_manager is not None:
-                with contextlib.suppress(Exception):
-                    _db_manager.close()
+            manager_to_close = _db_manager
             _db_manager = DatabaseManager(
                 path,
                 enable_wal=enable_wal,
@@ -223,6 +226,9 @@ def _get_db_manager() -> DatabaseManager:
                 extra_pragmas=extra_pragmas,
             )
             _db_manager_signature = signature
+    if manager_to_close:
+        with contextlib.suppress(Exception):
+            manager_to_close.close()
     # Runtime check - manager should be initialized at this point
     if _db_manager is None:
         raise RuntimeError("Database manager initialization failed")

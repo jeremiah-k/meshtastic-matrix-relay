@@ -1147,6 +1147,62 @@ class TestIntegrationWithRealDatabase(unittest.TestCase):
         result = get_longname("!nonexistent")
         self.assertIsNone(result)
 
+    def test_store_and_get_shortname_with_manager(self):
+        """Test save_shortname and get_shortname work with DatabaseManager."""
+        # Initialize database
+        initialize_database()
+
+        # Save shortname
+        save_shortname("!testid", "TN")
+
+        # Retrieve shortname
+        result = get_shortname("!testid")
+        self.assertEqual(result, "TN")
+
+        # Test non-existent ID
+        result = get_shortname("!nonexistent")
+        self.assertIsNone(result)
+
+    def test_initialize_database_creates_new_db(self):
+        """Test initialize_database creates new database when none exists."""
+        import os
+        import tempfile
+
+        # Create a temporary database path that doesn't exist
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = os.path.join(temp_dir, "test_new.db")
+
+            # Ensure database doesn't exist
+            self.assertFalse(os.path.exists(db_path))
+
+            # Mock config to use our temporary path
+            with patch("mmrelay.db_utils.get_db_path", return_value=db_path):
+                # Initialize database - should create new one
+                initialize_database()
+
+                # Database should now exist
+                self.assertTrue(os.path.exists(db_path))
+
+    def test_delete_plugin_data_success(self):
+        """Test delete_plugin_data works correctly."""
+        # Initialize database
+        initialize_database()
+
+        # Store some plugin data first
+        store_plugin_data("test_plugin", "!testid", {"key": "value"})
+
+        # Verify data exists
+        data = get_plugin_data_for_node("test_plugin", "!testid")
+        self.assertIsNotNone(data)
+        self.assertEqual(data, {"key": "value"})
+
+        # Delete the plugin data
+        delete_plugin_data("test_plugin", "!testid")
+
+        # Verify data is gone
+        data = get_plugin_data_for_node("test_plugin", "!testid")
+        self.assertEqual(data, [])
+
     def test_store_and_get_plugin_data_with_manager(self):
         """Test plugin data functions work with DatabaseManager."""
         # Initialize database
