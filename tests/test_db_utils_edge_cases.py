@@ -163,12 +163,13 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
         """
         Test that get_shortname returns None when the database table does not exist.
         """
-        with patch("sqlite3.connect") as mock_connect:
-            mock_conn = MagicMock()
-            mock_conn.cursor.return_value.execute.side_effect = (
-                sqlite3.OperationalError("no such table")
+        with patch("mmrelay.db_utils._get_db_manager") as mock_get_manager:
+            mock_manager = MagicMock()
+            # Make run_sync raise the OperationalError
+            mock_manager.run_sync.side_effect = sqlite3.OperationalError(
+                "no such table"
             )
-            mock_connect.return_value.__enter__.return_value = mock_conn
+            mock_get_manager.return_value = mock_manager
 
             result = get_shortname("test_id")
             self.assertIsNone(result)
@@ -191,12 +192,11 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
         """
         Test that get_message_map_by_meshtastic_id returns None when the database returns malformed or incomplete data.
         """
-        with patch("sqlite3.connect") as mock_connect:
-            mock_conn = MagicMock()
-            mock_cursor = mock_conn.cursor.return_value
-            # Return malformed data (missing columns)
-            mock_cursor.fetchone.return_value = ("incomplete_data",)
-            mock_connect.return_value.__enter__.return_value = mock_conn
+        with patch("mmrelay.db_utils._get_db_manager") as mock_get_manager:
+            mock_manager = MagicMock()
+            # Return malformed data (missing columns - should have 4 but only has 1)
+            mock_manager.run_sync.return_value = ("incomplete_data",)
+            mock_get_manager.return_value = mock_manager
 
             result = get_message_map_by_meshtastic_id("test_id")
             # Should handle malformed data gracefully by returning None
@@ -206,14 +206,13 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
         """
         Test that get_message_map_by_matrix_event_id returns None when a UnicodeDecodeError occurs during database query execution.
         """
-        with patch("sqlite3.connect") as mock_connect:
-            mock_conn = MagicMock()
-            mock_cursor = mock_conn.cursor.return_value
-            # Simulate unicode error
-            mock_cursor.execute.side_effect = UnicodeDecodeError(
+        with patch("mmrelay.db_utils._get_db_manager") as mock_get_manager:
+            mock_manager = MagicMock()
+            # Make run_sync raise the UnicodeDecodeError
+            mock_manager.run_sync.side_effect = UnicodeDecodeError(
                 "utf-8", b"", 0, 1, "invalid"
             )
-            mock_connect.return_value.__enter__.return_value = mock_conn
+            mock_get_manager.return_value = mock_manager
 
             result = get_message_map_by_matrix_event_id("test_id")
             self.assertIsNone(result)
@@ -222,14 +221,17 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
         """
         Test that prune_message_map can handle pruning operations when the database contains a very large number of records.
         """
-        with patch("sqlite3.connect") as mock_connect:
-            mock_conn = MagicMock()
-            mock_cursor = mock_conn.cursor.return_value
+        with patch("mmrelay.db_utils._get_db_manager") as mock_get_manager:
+            mock_manager = MagicMock()
+            mock_cursor = MagicMock()
+
             # Simulate large dataset by making count very high
             mock_cursor.fetchone.return_value = (1000000,)
-            mock_connect.return_value.__enter__.return_value = mock_conn
+            mock_manager.run_sync.return_value = 900000  # Number of records pruned
 
-            # Should handle large datasets
+            mock_get_manager.return_value = mock_manager
+
+            # Should handle large datasets without error
             prune_message_map(100)
 
     def test_wipe_message_map_transaction_rollback(self):
@@ -361,20 +363,12 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
 
         Simulates partial failure by causing one table creation to raise an error, and asserts that the function fails fast by raising the exception.
         """
-        with patch("sqlite3.connect") as mock_connect:
-            mock_conn = MagicMock()
-            mock_cursor = mock_conn.cursor.return_value
-            # First table creation succeeds, second fails, rest succeed
-            mock_cursor.execute.side_effect = [
-                None,  # longnames table succeeds
-                sqlite3.Error("Table creation failed"),  # shortnames table fails
-                None,  # plugin_data table succeeds
-                None,  # message_map table succeeds
-                sqlite3.OperationalError(
-                    "Column already exists"
-                ),  # ALTER TABLE (expected)
-            ]
-            mock_connect.return_value.__enter__.return_value = mock_conn
+        with patch("mmrelay.db_utils._get_db_manager") as mock_get_manager:
+            mock_manager = MagicMock()
+            mock_get_manager.return_value = mock_manager
+
+            # Make run_sync raise the exception when called
+            mock_manager.run_sync.side_effect = sqlite3.Error("Table creation failed")
 
             # Should raise exception on table creation failure (fail fast)
             with self.assertRaises(sqlite3.Error):

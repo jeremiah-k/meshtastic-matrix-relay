@@ -14,6 +14,7 @@ Tests the SQLite database operations including:
 import asyncio
 import json
 import os
+import shutil
 import sqlite3
 import sys
 import tempfile
@@ -76,10 +77,9 @@ class TestDbUtils(unittest.TestCase):
         # Clear cache after each test
         clear_db_path_cache()
 
-        # Clean up temporary files
-        if os.path.exists(self.test_db_path):
-            os.remove(self.test_db_path)
-        os.rmdir(self.test_dir)
+        # Clean up temporary files and directory
+        if os.path.exists(self.test_dir):
+            shutil.rmtree(self.test_dir)
 
     def test_get_db_path_with_config(self):
         """
