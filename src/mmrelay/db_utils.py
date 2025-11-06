@@ -224,7 +224,11 @@ def _resolve_database_options() -> Tuple[bool, int, Dict[str, Any]]:
     )
 
     extra_pragmas = dict(DEFAULT_EXTRA_PRAGMAS)
-    pragmas_cfg = database_cfg.get("pragmas") or legacy_cfg.get("pragmas")
+    pragmas_cfg = (
+        database_cfg.get("pragmas")
+        if "pragmas" in database_cfg
+        else legacy_cfg.get("pragmas")
+    )
     if isinstance(pragmas_cfg, dict):
         for pragma, value in pragmas_cfg.items():
             extra_pragmas[str(pragma)] = value

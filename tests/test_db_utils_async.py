@@ -482,6 +482,28 @@ class TestConfigurationParsing(unittest.TestCase):
             # Restore original config
             mmrelay.db_utils.config = original_config
 
+    def test_resolve_database_options_empty_pragmas_dict(self):
+        """Test _resolve_database_options with empty pragmas dictionary."""
+        # Mock config with empty pragmas dict
+        test_config = {
+            "database": {
+                "enable_wal": True,
+                "busy_timeout_ms": 3000,
+                "pragmas": {},  # Empty dict should be respected
+            }
+        }
+
+        with patch.object(mmrelay.db_utils, "config", test_config):
+            enable_wal, busy_timeout, pragmas = _resolve_database_options()
+
+        self.assertTrue(enable_wal)
+        self.assertEqual(busy_timeout, 3000)
+        expected_pragmas = {
+            "synchronous": "NORMAL",
+            "temp_store": "MEMORY",
+        }  # Default pragmas only
+        self.assertEqual(pragmas, expected_pragmas)
+
 
 class TestDatabasePathCaching(unittest.TestCase):
     """Test database path resolution and caching."""

@@ -93,12 +93,14 @@ class DatabaseManager:
                         if not re.fullmatch(r"[a-zA-Z0-9_\-\s,\.\/:\\]+", value):
                             raise ValueError(f"Invalid pragma value provided: {value}")
                         conn.execute(f"PRAGMA {pragma} = '{value}'")
-                    else:
+                    elif isinstance(value, bool):
+                        # Convert boolean values to ON/OFF for SQLite pragmas
+                        conn.execute(f"PRAGMA {pragma} = {'ON' if value else 'OFF'}")
+                    elif isinstance(value, (int, float)):
                         # For numeric values, ensure they're actually numeric
-                        if isinstance(value, (int, float)):
-                            conn.execute(f"PRAGMA {pragma} = {value}")
-                        else:
-                            raise TypeError(f"Invalid pragma value type: {type(value)}")
+                        conn.execute(f"PRAGMA {pragma} = {value}")
+                    else:
+                        raise TypeError(f"Invalid pragma value type: {type(value)}")
         except sqlite3.Error:
             # Ensure partially configured connection does not leak
             conn.close()

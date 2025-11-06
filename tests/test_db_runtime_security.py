@@ -192,6 +192,21 @@ class TestDatabaseManager(unittest.TestCase):
                 finally:
                     manager.close()
 
+    def test_pragma_validation_boolean_values(self):
+        """Test pragma validation for boolean values."""
+        valid_boolean = [True, False]
+
+        for value in valid_boolean:
+            with self.subTest(value=value):
+                manager = DatabaseManager(
+                    self.db_path, extra_pragmas={"recursive_triggers": value}
+                )
+                try:
+                    with manager.read() as cursor:
+                        cursor.execute("SELECT 1")
+                finally:
+                    manager.close()
+
     def test_pragma_validation_invalid_numeric_types(self):
         """Test that invalid numeric pragma value types are rejected."""
         invalid_types = [
