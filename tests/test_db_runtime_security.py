@@ -85,6 +85,8 @@ class TestDatabaseManager(unittest.TestCase):
             "foreign_keys",
             "query_only",
             "recursive_triggers",
+            "my_pragma_2",  # Valid: contains numbers after first character
+            "pragma_v3",  # Valid: contains numbers after first character
         ]
 
         for pragma in valid_pragmas:
