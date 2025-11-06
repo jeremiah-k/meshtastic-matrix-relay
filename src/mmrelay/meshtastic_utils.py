@@ -207,7 +207,7 @@ def _get_name_safely(name_func, sender):
     """
     try:
         return name_func(sender) or str(sender)
-    except Exception:
+    except (TypeError, AttributeError):
         return str(sender)
 
 
@@ -227,7 +227,7 @@ def _get_name_or_none(name_func, sender):
     """
     try:
         return name_func(sender)
-    except Exception:
+    except (TypeError, AttributeError):
         return None
 
 
@@ -913,13 +913,15 @@ def on_meshtastic_message(packet, interface):
         longname = _get_name_or_none(get_longname, sender)
         if longname is None:
             logger.debug(
-                f"Failed to get longname from database for {sender}, will try interface fallback"
+                "Failed to get longname from database for %s, will try interface fallback",
+                sender,
             )
 
         shortname = _get_name_or_none(get_shortname, sender)
         if shortname is None:
             logger.debug(
-                f"Failed to get shortname from database for {sender}, will try interface fallback"
+                "Failed to get shortname from database for %s, will try interface fallback",
+                sender,
             )
 
         if not longname or not shortname:

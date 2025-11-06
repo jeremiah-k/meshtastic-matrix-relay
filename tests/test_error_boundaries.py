@@ -159,11 +159,11 @@ class TestErrorBoundaries(unittest.TestCase):
         # Mock database failures
         with patch(
             "mmrelay.meshtastic_utils.get_longname",
-            side_effect=Exception("Database error"),
+            side_effect=TypeError("Database error"),
         ):
             with patch(
                 "mmrelay.meshtastic_utils.get_shortname",
-                side_effect=Exception("Database error"),
+                side_effect=TypeError("Database error"),
             ):
                 with patch("mmrelay.plugin_loader.load_plugins", return_value=[]):
                     with patch(
@@ -369,11 +369,11 @@ class TestErrorBoundaries(unittest.TestCase):
 
         # Create a chain of potential failures
         with patch(
-            "mmrelay.meshtastic_utils.get_longname", side_effect=Exception("DB failure")
+            "mmrelay.meshtastic_utils.get_longname", side_effect=TypeError("DB failure")
         ):
             with patch(
                 "mmrelay.meshtastic_utils.get_shortname",
-                side_effect=Exception("DB failure"),
+                side_effect=TypeError("DB failure"),
             ):
                 with patch("mmrelay.plugin_loader.load_plugins") as mock_load_plugins:
                     # Plugin loading fails

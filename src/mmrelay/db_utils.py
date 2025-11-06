@@ -137,6 +137,18 @@ def get_db_path():
     return default_path
 
 
+def _close_manager_safely(manager: DatabaseManager | None) -> None:
+    """
+    Safely close a DatabaseManager instance.
+
+    Parameters:
+        manager: The manager to close, or None.
+    """
+    if manager:
+        with contextlib.suppress(Exception):
+            manager.close()
+
+
 def _reset_db_manager():
     """
     Reset the database manager instance.
@@ -152,9 +164,7 @@ def _reset_db_manager():
 
             # Close old manager inside the lock to prevent race condition
             # where another thread might be using connections from the old manager
-            if manager_to_close:
-                with contextlib.suppress(Exception):
-                    manager_to_close.close()
+            _close_manager_safely(manager_to_close)
 
 
 def _parse_bool(value, default):
@@ -268,9 +278,7 @@ def _get_db_manager() -> DatabaseManager:
 
             # Close old manager inside the lock to prevent race condition
             # where another thread might be using connections from the old manager
-            if manager_to_close:
-                with contextlib.suppress(Exception):
-                    manager_to_close.close()
+            _close_manager_safely(manager_to_close)
     # Runtime check - manager should be initialized at this point
     if _db_manager is None:
         raise RuntimeError("Database manager initialization failed")
