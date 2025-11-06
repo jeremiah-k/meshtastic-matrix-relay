@@ -269,6 +269,110 @@ class TestDatabaseManager(unittest.TestCase):
             result = cursor.execute("SELECT value FROM test").fetchone()
             self.assertEqual(result[0], "initial")
 
+    def test_write_context_manager_rollback_on_non_sqlite_exception(self):
+        """Test write context manager rolls back on non-SQLite exceptions."""
+        # Create initial table
+        with self.manager.write() as cursor:
+            cursor.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, value TEXT)")
+            cursor.execute("INSERT INTO test (value) VALUES (?)", ("initial",))
+
+        # Attempt operation that will fail with ValueError
+        with self.assertRaises(ValueError):
+            with self.manager.write() as cursor:
+                cursor.execute(
+                    "INSERT INTO test (value) VALUES (?)", ("should_be_rolled_back",)
+                )
+                # Raise a non-SQLite exception
+                raise ValueError("Test exception")
+
+        # Verify initial data is still there (rollback worked)
+        with self.manager.read() as cursor:
+            result = cursor.execute("SELECT COUNT(*) FROM test").fetchone()
+            self.assertEqual(result[0], 1)
+            result = cursor.execute("SELECT value FROM test").fetchone()
+            self.assertEqual(result[0], "initial")
+
+    def test_write_context_manager_rollback_on_custom_exception(self):
+        """Test write context manager rolls back on custom exceptions."""
+        # Create initial table
+        with self.manager.write() as cursor:
+            cursor.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, value TEXT)")
+            cursor.execute("INSERT INTO test (value) VALUES (?)", ("initial",))
+
+        # Define a custom exception
+        class CustomTestError(Exception):
+            pass
+
+        # Attempt operation that will fail with custom exception
+        with self.assertRaises(CustomTestError):
+            with self.manager.write() as cursor:
+                cursor.execute(
+                    "INSERT INTO test (value) VALUES (?)", ("should_be_rolled_back",)
+                )
+                # Raise a custom exception
+                raise CustomTestError("Custom test exception")
+
+        # Verify initial data is still there (rollback worked)
+        with self.manager.read() as cursor:
+            result = cursor.execute("SELECT COUNT(*) FROM test").fetchone()
+            self.assertEqual(result[0], 1)
+            result = cursor.execute("SELECT value FROM test").fetchone()
+            self.assertEqual(result[0], "initial")
+
+    def test_write_context_manager_rollback_on_runtime_error(self):
+        """Test write context manager rolls back on RuntimeError."""
+        # Create initial table
+        with self.manager.write() as cursor:
+            cursor.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, value TEXT)")
+            cursor.execute("INSERT INTO test (value) VALUES (?)", ("initial",))
+
+        # Attempt operation that will fail with RuntimeError
+        with self.assertRaises(RuntimeError):
+            with self.manager.write() as cursor:
+                cursor.execute(
+                    "INSERT INTO test (value) VALUES (?)", ("should_be_rolled_back",)
+                )
+                # Raise a RuntimeError
+                raise RuntimeError("Runtime error test")
+
+        # Verify initial data is still there (rollback worked)
+        with self.manager.read() as cursor:
+            result = cursor.execute("SELECT COUNT(*) FROM test").fetchone()
+            self.assertEqual(result[0], 1)
+            result = cursor.execute("SELECT value FROM test").fetchone()
+            self.assertEqual(result[0], "initial")
+
+    def test_write_context_manager_partial_transaction_rollback(self):
+        """Test that partial transactions are properly rolled back on non-SQLite exceptions."""
+        # Create initial table with some data
+        with self.manager.write() as cursor:
+            cursor.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, value TEXT)")
+            cursor.execute("INSERT INTO test (value) VALUES (?)", ("initial",))
+
+        # Get initial count
+        with self.manager.read() as cursor:
+            initial_count = cursor.execute("SELECT COUNT(*) FROM test").fetchone()[0]
+
+        # Attempt operation with multiple statements that fails partway through
+        with self.assertRaises(ValueError):
+            with self.manager.write() as cursor:
+                # First insert should succeed
+                cursor.execute("INSERT INTO test (value) VALUES (?)", ("first_insert",))
+                # Second insert should also succeed
+                cursor.execute(
+                    "INSERT INTO test (value) VALUES (?)", ("second_insert",)
+                )
+                # Raise exception before commit
+                raise ValueError("Exception after partial work")
+
+        # Verify no new data was committed (rollback worked)
+        with self.manager.read() as cursor:
+            final_count = cursor.execute("SELECT COUNT(*) FROM test").fetchone()[0]
+            self.assertEqual(final_count, initial_count)
+            # Verify only initial data exists
+            result = cursor.execute("SELECT value FROM test").fetchone()
+            self.assertEqual(result[0], "initial")
+
     def test_run_sync_read_operation(self):
         """Test run_sync for read operations."""
 

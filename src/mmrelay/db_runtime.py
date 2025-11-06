@@ -171,6 +171,9 @@ class DatabaseManager:
             except sqlite3.Error:
                 conn.rollback()
                 raise
+            except Exception:
+                conn.rollback()
+                raise
             finally:
                 cursor.close()
 
