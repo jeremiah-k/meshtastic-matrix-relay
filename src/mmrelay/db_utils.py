@@ -150,9 +150,12 @@ def _reset_db_manager():
             manager_to_close = _db_manager
             _db_manager = None
             _db_manager_signature = None
-    if manager_to_close:
-        with contextlib.suppress(Exception):
-            manager_to_close.close()
+
+            # Close old manager inside the lock to prevent race condition
+            # where another thread might be using connections from the old manager
+            if manager_to_close:
+                with contextlib.suppress(Exception):
+                    manager_to_close.close()
 
 
 def _parse_bool(value, default):
@@ -267,9 +270,12 @@ def _get_db_manager() -> DatabaseManager:
                 extra_pragmas=extra_pragmas,
             )
             _db_manager_signature = signature
-    if manager_to_close:
-        with contextlib.suppress(Exception):
-            manager_to_close.close()
+
+            # Close old manager inside the lock to prevent race condition
+            # where another thread might be using connections from the old manager
+            if manager_to_close:
+                with contextlib.suppress(Exception):
+                    manager_to_close.close()
     # Runtime check - manager should be initialized at this point
     if _db_manager is None:
         raise RuntimeError("Database manager initialization failed")

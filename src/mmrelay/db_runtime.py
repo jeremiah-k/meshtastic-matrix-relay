@@ -236,6 +236,8 @@ class DatabaseManager:
             connections = list(self._connections)
             self._connections.clear()
 
+        # Close connections while still holding the connections lock to prevent
+        # race conditions where new connections might be created during closing
         for conn in connections:
             try:
                 conn.close()
