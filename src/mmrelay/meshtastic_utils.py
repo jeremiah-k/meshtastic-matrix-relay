@@ -743,8 +743,15 @@ def on_meshtastic_message(packet, interface):
     # Reaction handling (Meshtastic -> Matrix)
     # If replyId and emoji_flag are present and reactions are enabled, we relay as text reactions in Matrix
     if replyId and emoji_flag and interactions["reactions"]:
-        longname = get_longname(sender) or str(sender)
-        shortname = get_shortname(sender) or str(sender)
+        try:
+            longname = get_longname(sender) or str(sender)
+        except Exception:
+            longname = str(sender)
+
+        try:
+            shortname = get_shortname(sender) or str(sender)
+        except Exception:
+            shortname = str(sender)
         orig = get_message_map_by_meshtastic_id(replyId)
         if orig:
             # orig = (matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet)
@@ -790,8 +797,15 @@ def on_meshtastic_message(packet, interface):
     # Reply handling (Meshtastic -> Matrix)
     # If replyId is present but emoji is not (or not 1), this is a reply
     if replyId and not emoji_flag and interactions["replies"]:
-        longname = get_longname(sender) or str(sender)
-        shortname = get_shortname(sender) or str(sender)
+        try:
+            longname = get_longname(sender) or str(sender)
+        except Exception:
+            longname = str(sender)
+
+        try:
+            shortname = get_shortname(sender) or str(sender)
+        except Exception:
+            shortname = str(sender)
         orig = get_message_map_by_meshtastic_id(replyId)
         if orig:
             # orig = (matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet)
@@ -870,8 +884,21 @@ def on_meshtastic_message(packet, interface):
             return
 
         # Attempt to get longname/shortname from database or nodes
-        longname = get_longname(sender)
-        shortname = get_shortname(sender)
+        try:
+            longname = get_longname(sender)
+        except Exception:
+            longname = None
+            logger.debug(
+                f"Failed to get longname from database for {sender}, will try interface fallback"
+            )
+
+        try:
+            shortname = get_shortname(sender)
+        except Exception:
+            shortname = None
+            logger.debug(
+                f"Failed to get shortname from database for {sender}, will try interface fallback"
+            )
 
         if not longname or not shortname:
             node = interface.nodes.get(sender)
