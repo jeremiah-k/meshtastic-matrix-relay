@@ -367,9 +367,10 @@ def store_plugin_data(plugin_name, meshtastic_id, data):
 
     try:
         manager.run_sync(_store, write=True)
-    except sqlite3.Error:
+    except sqlite3.Error as e:
         logger.exception(
-            "Database error storing plugin data for %s, %s", plugin_name, meshtastic_id
+            "Database error storing plugin data for %s, %s: %s"
+            % (plugin_name, meshtastic_id, str(e))
         )
 
 
@@ -397,9 +398,10 @@ def delete_plugin_data(plugin_name, meshtastic_id):
 
     try:
         manager.run_sync(_delete, write=True)
-    except sqlite3.Error:
+    except sqlite3.Error as e:
         logger.exception(
-            "Database error deleting plugin data for %s, %s", plugin_name, meshtastic_id
+            "Database error deleting plugin data for %s, %s: %s"
+            % (plugin_name, meshtastic_id, str(e))
         )
 
 
@@ -443,9 +445,8 @@ def get_plugin_data_for_node(plugin_name, meshtastic_id):
         return json.loads(result[0] if result else "[]")
     except (json.JSONDecodeError, TypeError):
         logger.exception(
-            "Failed to decode JSON data for plugin %s, node %s",
-            plugin_name,
-            meshtastic_id,
+            "Failed to decode JSON data for plugin %s, node %s"
+            % (plugin_name, meshtastic_id)
         )
         return []
 
@@ -773,9 +774,8 @@ def get_message_map_by_meshtastic_id(meshtastic_id):
             return None
     except sqlite3.Error as e:
         logger.exception(
-            "Database error retrieving message map for meshtastic_id %s: %s",
-            meshtastic_id,
-            e,
+            "Database error retrieving message map for meshtastic_id %s: %s"
+            % (meshtastic_id, e)
         )
         return None
 
