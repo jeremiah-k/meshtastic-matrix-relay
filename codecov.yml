@@ -46,6 +46,8 @@ component_management:
       paths:
         - src/mmrelay/meshtastic_utils.py
         - src/mmrelay/matrix_utils.py
+        - src/mmrelay/message_queue.py
+        - src/mmrelay/plugin_loader.py
       statuses:
         - type: project
           target: 40%
@@ -59,6 +61,8 @@ component_management:
         - src/mmrelay/main.py
         - src/mmrelay/cli.py
         - src/mmrelay/cli_utils.py
+        - src/mmrelay/log_utils.py
+        - src/mmrelay/runtime_utils.py
       statuses:
         - type: project
           target: 60%
@@ -70,6 +74,7 @@ component_management:
       name: Database
       paths:
         - src/mmrelay/db_utils.py
+        - src/mmrelay/db_runtime.py
       statuses:
         - type: project
           target: 70%
@@ -82,6 +87,7 @@ component_management:
       paths:
         - src/mmrelay/setup_utils.py
         - src/mmrelay/tools/**
+        - src/mmrelay/windows_utils.py
       statuses:
         - type: project
           target: 30%
