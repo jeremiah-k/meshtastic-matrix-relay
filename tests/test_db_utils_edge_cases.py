@@ -23,6 +23,7 @@ from unittest.mock import MagicMock, patch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.db_utils import (
+    _reset_db_manager,
     clear_db_path_cache,
     delete_plugin_data,
     get_db_path,
@@ -92,9 +93,17 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
 
     def test_initialize_database_connection_failure(self):
         """
-        Verify initialize_database raises sqlite3.Error when sqlite3.connect fails and that logger.exception is invoked.
+        Verify initialize_database raises sqlite3.Error when DatabaseManager.run_sync fails and that logger.exception is invoked.
         """
-        with patch("sqlite3.connect", side_effect=sqlite3.Error("Connection failed")):
+        # Reset any cached database manager to ensure fresh state
+        _reset_db_manager()
+
+        with patch("mmrelay.db_utils._get_db_manager") as mock_get_manager:
+            mock_manager = MagicMock()
+            # Make run_sync raise the sqlite3.Error to simulate connection failure during initialization
+            mock_manager.run_sync.side_effect = sqlite3.Error("Connection failed")
+            mock_get_manager.return_value = mock_manager
+
             with patch("mmrelay.db_utils.logger") as mock_logger:
                 # Should raise exception on connection failure (fail fast)
                 with self.assertRaises(sqlite3.Error):
@@ -155,7 +164,12 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
         """
         Test that get_longname returns None when a database connection error occurs.
         """
-        with patch("sqlite3.connect", side_effect=sqlite3.Error("Connection failed")):
+        with patch("mmrelay.db_utils._get_db_manager") as mock_get_manager:
+            mock_manager = MagicMock()
+            # Make run_sync raise the sqlite3.Error to simulate connection failure
+            mock_manager.run_sync.side_effect = sqlite3.Error("Connection failed")
+            mock_get_manager.return_value = mock_manager
+
             result = get_longname("test_id")
             self.assertIsNone(result)
 
