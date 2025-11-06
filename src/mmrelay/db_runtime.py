@@ -85,7 +85,7 @@ class DatabaseManager:
                 conn.execute("PRAGMA foreign_keys=ON")
                 for pragma, value in self._extra_pragmas.items():
                     # Validate pragma name to prevent injection.
-                    if not re.fullmatch(r"[a-zA-Z_]+", pragma):
+                    if not re.fullmatch(r"[a-zA-Z_][a-zA-Z0-9_]*", pragma):
                         raise ValueError(f"Invalid pragma name provided: {pragma}")
                     # Validate and sanitize value to prevent injection
                     if isinstance(value, str):
