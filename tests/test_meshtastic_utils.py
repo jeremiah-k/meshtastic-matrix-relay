@@ -1479,10 +1479,16 @@ class TestUncoveredMeshtasticUtils(unittest.TestCase):
             "success": False,
         }
         self.assertEqual(result, expected)
-        mock_logger.debug.assert_called_with(
+        # Verify the logger was called with the correct message and exc_info
+        mock_logger.debug.assert_called_once()
+        call_args = mock_logger.debug.call_args
+        self.assertEqual(
+            call_args[0][0],
             "Could not retrieve device metadata via localNode.getMetadata()",
-            exc_info=True,
         )
+        self.assertTrue(call_args[1]["exc_info"])
+        self.assertIsInstance(call_args[1]["exc_info"], Exception)
+        self.assertEqual(str(call_args[1]["exc_info"]), "Test error")
 
     @patch("mmrelay.meshtastic_utils.logger")
     @patch("mmrelay.meshtastic_utils.meshtastic_client")
