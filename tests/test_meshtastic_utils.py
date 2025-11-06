@@ -1491,25 +1491,32 @@ class TestUncoveredMeshtasticUtils(unittest.TestCase):
         self.assertEqual(str(call_args[1]["exc_info"]), "Test error")
 
     @patch("mmrelay.meshtastic_utils.logger")
-    @patch("mmrelay.meshtastic_utils.meshtastic_client")
     @patch("mmrelay.meshtastic_utils.meshtastic_lock")
     def test_connect_meshtastic_close_existing_connection_error(
-        self, mock_lock, mock_client, mock_logger
+        self, mock_lock, mock_logger
     ):
         """Test connect_meshtastic handles error when closing existing connection."""
-        from mmrelay.meshtastic_utils import connect_meshtastic
+        from mmrelay.meshtastic_utils import connect_meshtastic, meshtastic_client
 
-        # Mock existing client that raises error on close
-        mock_client.close.side_effect = Exception("Close error")
+        # Create a mock existing client that raises error on close
+        mock_existing_client = Mock()
+        mock_existing_client.close.side_effect = Exception("Close error")
+
+        # Set up the global meshtastic_client to have an existing client
+        import mmrelay.meshtastic_utils
+
+        mmrelay.meshtastic_utils.meshtastic_client = mock_existing_client
 
         config = {
             "meshtastic": {"connection_type": "tcp", "host": "localhost:4403"},
             "matrix_rooms": {},
         }
 
-        # Mock the interface creation to avoid actual connection
+        # Mock interface creation to avoid actual connection
         with patch("meshtastic.tcp_interface.TCPInterface") as mock_tcp:
-            mock_tcp.return_value = None
+            mock_interface = Mock()
+            mock_interface.getMyNodeInfo.return_value = {"num": 123}
+            mock_tcp.return_value = mock_interface
 
             connect_meshtastic(config, force_connect=True)
 
