@@ -168,9 +168,6 @@ class DatabaseManager:
             try:
                 yield cursor
                 conn.commit()
-            except sqlite3.Error:
-                conn.rollback()
-                raise
             except Exception:
                 conn.rollback()
                 raise
