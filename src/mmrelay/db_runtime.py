@@ -235,14 +235,13 @@ class DatabaseManager:
         with self._connections_lock:
             connections = list(self._connections)
             self._connections.clear()
-
-        # Close connections while still holding the connections lock to prevent
-        # race conditions where new connections might be created during closing
-        for conn in connections:
-            try:
-                conn.close()
-            except sqlite3.Error:
-                pass
+            # Close connections while holding the lock to prevent race conditions
+            # where new connections might be created and missed during cleanup.
+            for conn in connections:
+                try:
+                    conn.close()
+                except sqlite3.Error:
+                    pass
 
         # Clear thread-local references in the current thread
         if hasattr(self._thread_local, "connection"):
