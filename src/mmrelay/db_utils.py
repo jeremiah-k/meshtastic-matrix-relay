@@ -227,11 +227,7 @@ def _resolve_database_options() -> Tuple[bool, int, Dict[str, Any]]:
     )
 
     extra_pragmas = dict(DEFAULT_EXTRA_PRAGMAS)
-    pragmas_cfg = (
-        database_cfg.get("pragmas")
-        if "pragmas" in database_cfg
-        else legacy_cfg.get("pragmas")
-    )
+    pragmas_cfg = database_cfg.get("pragmas", legacy_cfg.get("pragmas"))
     if isinstance(pragmas_cfg, dict):
         for pragma, value in pragmas_cfg.items():
             extra_pragmas[str(pragma)] = value
@@ -431,11 +427,14 @@ def get_plugin_data_for_node(plugin_name, meshtastic_id):
     manager = _get_db_manager()
 
     def _fetch(cursor: sqlite3.Cursor):
-        """
-        Retrieve the first `data` column for a plugin/node pair using the provided DB cursor.
+        """Retrieve the first `data` column for a plugin/node pair using the provided DB cursor.
 
-        @param cursor: An open sqlite3.Cursor used to execute the query.
-        @returns: A single row (sequence) containing the `data` column for the matching plugin and Meshtastic ID, or `None` if no matching row exists.
+        Args:
+            cursor: An open sqlite3.Cursor used to execute the query.
+
+        Returns:
+            A single row (sequence) containing the `data` column for the
+            matching plugin and Meshtastic ID, or `None` if no matching row exists.
         """
         cursor.execute(
             "SELECT data FROM plugin_data WHERE plugin_name=? AND meshtastic_id=?",
@@ -477,11 +476,14 @@ def get_plugin_data(plugin_name):
     manager = _get_db_manager()
 
     def _fetch_all(cursor: sqlite3.Cursor):
-        """
-        Fetch all data rows for a plugin using the provided DB cursor.
+        """Fetch all data rows for a plugin using the provided DB cursor.
 
-        @param cursor: An open sqlite3.Cursor used to execute the query.
-        @returns: List of rows, where each row is a tuple containing the JSON string from the `data` column.
+        Args:
+            cursor: An open sqlite3.Cursor used to execute the query.
+
+        Returns:
+            List of rows, where each row is a tuple containing the JSON string
+            from the `data` column.
         """
         cursor.execute(
             "SELECT data FROM plugin_data WHERE plugin_name=?", (plugin_name,)
