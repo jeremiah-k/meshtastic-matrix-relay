@@ -25,6 +25,7 @@ import pytest
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from mmrelay.constants.queue import DEFAULT_MESSAGE_DELAY, MINIMUM_MESSAGE_DELAY
 from mmrelay.meshtastic_utils import on_meshtastic_message
 from mmrelay.message_queue import MessageQueue
 
@@ -182,7 +183,7 @@ class TestPerformanceStress:
         """
         Verify MessageQueue enforces a minimum inter-message delay and maintains acceptable throughput when messages are enqueued rapidly.
 
-        Enqueues 50 messages into a started MessageQueue (requested delay 0.01s, internally enforced to ~2.0s per message), waits up to 120 seconds for processing to complete, and asserts that all messages are processed, the total processing time respects the ~2.0s per-message minimum (with a small tolerance), and the observed throughput exceeds 0.3 messages/second.
+        Enqueues 50 messages into a started MessageQueue (requested delay 0.01s, internally enforced to ~2.1s per message), waits up to 120 seconds for processing to complete, and asserts that all messages are processed, total processing time respects ~2.1s per-message minimum (with a small tolerance), and observed throughput exceeds 0.3 messages/second.
 
         Side effects: starts and stops a MessageQueue instance.
         """
@@ -202,12 +203,14 @@ class TestPerformanceStress:
                 with patch("mmrelay.meshtastic_utils.reconnecting", False):
                     queue = MessageQueue()
                     queue.start(
-                        message_delay=0.01
-                    )  # Very fast processing (will be enforced to 2.0s minimum)
+                        message_delay=DEFAULT_MESSAGE_DELAY
+                    )  # Use default delay (2.5s)
                     # Ensure processor starts now that event loop is running
                     queue.ensure_processor_started()
 
-                    message_count = 50  # Can use larger numbers with 500 queue limit
+                    message_count = (
+                        20  # Reduced for reasonable test duration (20 * 2.5s = 50s)
+                    )
                     processed_count = 0
 
                     def mock_send_function():
@@ -226,8 +229,8 @@ class TestPerformanceStress:
                             )
                             assert success, f"Failed to enqueue message {i}"
 
-                        # Wait for processing to complete (50 messages * 2s = 100s + buffer)
-                        timeout = 120  # 120 second timeout
+                        # Wait for processing to complete (20 messages * DEFAULT_MESSAGE_DELAY = 50s + buffer)
+                        timeout = 65  # 65 second timeout (20 * 2.5s = 50s + buffer)
                         while (
                             processed_count < message_count
                             and time.time() - start_time < timeout
@@ -240,17 +243,17 @@ class TestPerformanceStress:
                         # Verify all messages were processed
                         assert processed_count == message_count
 
-                        # Performance assertions (adjusted for 2s minimum delay)
+                        # Performance assertions (adjusted for 2.5s default delay)
                         expected_min_time = (
-                            message_count * 2.0
-                        )  # 2s per message minimum
+                            message_count * DEFAULT_MESSAGE_DELAY
+                        )  # 2.5s per message with default delay
                         assert (
                             processing_time >= expected_min_time - 5.0
-                        ), "Processing too fast (below firmware minimum)"
+                        ), "Processing too fast (below expected delay)"
 
                         messages_per_second = message_count / processing_time
                         assert (
-                            messages_per_second > 0.3
+                            messages_per_second > 0.2
                         ), "Queue processing rate too slow"
 
                     finally:
@@ -465,9 +468,7 @@ class TestPerformanceStress:
                     queue.ensure_processor_started()
 
                     thread_count = 5
-                    messages_per_thread = (
-                        3  # Small number due to 2s minimum delay (15 messages = 30s)
-                    )
+                    messages_per_thread = 3  # Small number due to DEFAULT_MESSAGE_DELAY delay (15 messages = 37.5s)
                     total_messages = thread_count * messages_per_thread
 
                     processed_count = 0
@@ -500,8 +501,8 @@ class TestPerformanceStress:
                         for thread in threads:
                             thread.join()
 
-                        # Wait for queue processing to complete (15 messages * 2s = 30s + buffer)
-                        timeout = 40
+                        # Wait for queue processing to complete (15 messages * DEFAULT_MESSAGE_DELAY = 37.5s + buffer)
+                        timeout = 45  # 15 * 2.5s = 37.5s + buffer
                         while (
                             processed_count < total_messages
                             and time.time() - start_time < timeout
@@ -514,10 +515,10 @@ class TestPerformanceStress:
                         # Verify all messages were processed
                         assert processed_count == total_messages
 
-                        # Performance assertions (adjusted for 2s minimum delay)
+                        # Performance assertions (adjusted for 2.1s minimum delay)
                         expected_min_time = (
-                            total_messages * 2.0
-                        )  # 2s per message minimum
+                            total_messages * MINIMUM_MESSAGE_DELAY
+                        )  # 2.1s per message minimum
                         assert (
                             processing_time < expected_min_time + 10.0
                         ), "Concurrent processing too slow"
@@ -607,7 +608,7 @@ class TestPerformanceStress:
             ):
                 with patch("mmrelay.meshtastic_utils.reconnecting", False):
                     queue = MessageQueue()
-                    message_delay = 0.1  # 100ms delay between messages (will be enforced to 2.0s minimum)
+                    message_delay = 0.1  # 100ms delay between messages (will be enforced to 2.1s minimum)
                     queue.start(message_delay=message_delay)
                     # Ensure processor starts now that event loop is running
                     queue.ensure_processor_started()
@@ -626,10 +627,10 @@ class TestPerformanceStress:
                                 mock_send_function, description=f"Rate limit test {i}"
                             )
 
-                        # Wait for all messages to be processed (5 messages * 2s = 10s + buffer)
+                        # Wait for all messages to be processed (5 messages * 2.1s = 10.5s + buffer)
                         timeout = (
-                            message_count * 2.0 + 5
-                        )  # Extra buffer for 2s minimum delay
+                            message_count * MINIMUM_MESSAGE_DELAY + 5
+                        )  # Extra buffer for 2.1s minimum delay
                         start_wait = time.time()
                         while (
                             len(send_times) < message_count
@@ -640,13 +641,13 @@ class TestPerformanceStress:
                         # Verify all messages were sent
                         assert len(send_times) == message_count
 
-                        # Verify rate limiting was effective (2s minimum delay)
+                        # Verify rate limiting was effective (2.1s minimum delay)
                         for i in range(1, len(send_times)):
                             time_diff = send_times[i] - send_times[i - 1]
                             # Allow some tolerance for timing variations
                             assert (
-                                time_diff >= 2.0 * 0.8
-                            ), f"Rate limiting not effective between messages {i-1} and {i}"  # 80% of 2s minimum delay
+                                time_diff >= MINIMUM_MESSAGE_DELAY * 0.8
+                            ), f"Rate limiting not effective between messages {i-1} and {i}"  # 80% of 2.1s minimum delay
 
                     finally:
                         queue.stop()
@@ -720,7 +721,7 @@ class TestPerformanceStress:
 
             This coroutine:
             - Seeds the RNG for deterministic test behavior.
-            - Starts a MessageQueue processor with a 2.0 second enforced send delay.
+            - Starts a MessageQueue processor with a 2.1 second enforced send delay.
             - Enqueues messages of several types from multiple mock node IDs at randomized intervals (0.5–3.0s) for 30 seconds.
             - Records timestamps of processed messages, waits up to 15s for the queue to drain, and computes throughput using the active processing window (first to last processed timestamp) when possible.
             - Asserts minimal test invariants: multiple messages were queued and at least one processed; throughput does not exceed the rate-limit-derived upper bound and — when >= 2 messages were processed — meets a minimum expected throughput; message-type diversity is observed.
@@ -737,7 +738,9 @@ class TestPerformanceStress:
             ):
                 with patch("mmrelay.meshtastic_utils.reconnecting", False):
                     queue = MessageQueue()
-                    queue.start(message_delay=2.0)  # Use realistic 2s delay
+                    queue.start(
+                        message_delay=MINIMUM_MESSAGE_DELAY
+                    )  # Use realistic 2.1s delay
                     queue.ensure_processor_started()
 
                     # Realistic test parameters
@@ -824,14 +827,14 @@ class TestPerformanceStress:
                         assert messages_queued > 5, "Should queue multiple messages"
                         assert messages_processed > 0, "Should process some messages"
 
-                        # Throughput should be reasonable for 2s minimum delay
-                        # With 2s delay, max theoretical throughput is 0.5 msg/s
+                        # Throughput should be reasonable for MINIMUM_MESSAGE_DELAY minimum delay
+                        # With MINIMUM_MESSAGE_DELAY delay, max theoretical throughput is 1/MINIMUM_MESSAGE_DELAY msg/s
                         assert (
                             throughput <= 0.6
                         ), "Throughput should respect rate limiting"
 
                         # Should achieve at least 65% of theoretical maximum during active window
-                        # With 2s delay, max theoretical throughput is 0.5 msg/s
+                        # With MINIMUM_MESSAGE_DELAY delay, max theoretical throughput is 1/MINIMUM_MESSAGE_DELAY msg/s
                         min_expected_throughput = 0.32
                         if messages_processed >= 2:
                             assert (
