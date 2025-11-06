@@ -608,7 +608,7 @@ class TestPerformanceStress:
             ):
                 with patch("mmrelay.meshtastic_utils.reconnecting", False):
                     queue = MessageQueue()
-                    message_delay = 0.1  # 100ms delay between messages (will be enforced to 2.1s minimum)
+                    message_delay = 0.1  # 100ms delay between messages (will warn about 2.1s minimum)
                     queue.start(message_delay=message_delay)
                     # Ensure processor starts now that event loop is running
                     queue.ensure_processor_started()
@@ -627,10 +627,10 @@ class TestPerformanceStress:
                                 mock_send_function, description=f"Rate limit test {i}"
                             )
 
-                        # Wait for all messages to be processed (5 messages * 2.1s = 10.5s + buffer)
+                        # Wait for all messages to be processed (5 messages * 0.1s = 0.5s + buffer)
                         timeout = (
-                            message_count * MINIMUM_MESSAGE_DELAY + 5
-                        )  # Extra buffer for 2.1s minimum delay
+                            message_count * message_delay + 5
+                        )  # Extra buffer for actual delay
                         start_wait = time.time()
                         while (
                             len(send_times) < message_count
@@ -641,13 +641,14 @@ class TestPerformanceStress:
                         # Verify all messages were sent
                         assert len(send_times) == message_count
 
-                        # Verify rate limiting was effective (2.1s minimum delay)
+                        # Verify messages were sent with approximately the configured delay
                         for i in range(1, len(send_times)):
                             time_diff = send_times[i] - send_times[i - 1]
-                            # Allow some tolerance for timing variations
+                            # Allow some tolerance for timing variations (should be close to 0.1s)
                             assert (
-                                time_diff >= MINIMUM_MESSAGE_DELAY * 0.8
-                            ), f"Rate limiting not effective between messages {i-1} and {i}"  # 80% of 2.1s minimum delay
+                                time_diff >= message_delay * 0.5
+                                and time_diff <= message_delay * 2.0
+                            ), f"Message delay {time_diff:.3f}s not close to expected {message_delay}s between messages {i-1} and {i}"
 
                     finally:
                         queue.stop()
