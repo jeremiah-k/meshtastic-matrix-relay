@@ -580,7 +580,7 @@ def get_shortname(meshtastic_id):
     try:
         result = manager.run_sync(_fetch)
         return result[0] if result else None
-    except sqlite3.Error as e:
+    except sqlite3.Error:
         logger.exception("Database error retrieving shortname for %s", meshtastic_id)
         return None
 
@@ -705,7 +705,7 @@ def store_message_map(
             ),
             write=True,
         )
-    except sqlite3.Error as e:
+    except sqlite3.Error:
         logger.exception("Database error storing message map for %s", matrix_event_id)
 
 
@@ -798,7 +798,7 @@ def get_message_map_by_matrix_event_id(matrix_event_id):
                 e,
             )
             return None
-    except (UnicodeDecodeError, sqlite3.Error) as e:
+    except (UnicodeDecodeError, sqlite3.Error):
         logger.exception(
             "Database error retrieving message map for matrix_event_id %s",
             matrix_event_id,
@@ -826,7 +826,7 @@ def wipe_message_map():
     try:
         manager.run_sync(_wipe, write=True)
         logger.info("message_map table wiped successfully.")
-    except sqlite3.Error as e:
+    except sqlite3.Error:
         logger.exception("Failed to wipe message_map")
 
 
@@ -875,7 +875,7 @@ def prune_message_map(msgs_to_keep):
                 pruned,
                 msgs_to_keep,
             )
-    except sqlite3.Error as e:
+    except sqlite3.Error:
         logger.exception("Database error pruning message_map")
 
 
@@ -920,7 +920,7 @@ async def async_store_message_map(
             ),
             write=True,
         )
-    except sqlite3.Error as e:
+    except sqlite3.Error:
         logger.exception("Database error storing message map for %s", matrix_event_id)
 
 
@@ -946,5 +946,5 @@ async def async_prune_message_map(msgs_to_keep):
                 pruned,
                 msgs_to_keep,
             )
-    except sqlite3.Error as e:
+    except sqlite3.Error:
         logger.exception("Database error pruning message_map")

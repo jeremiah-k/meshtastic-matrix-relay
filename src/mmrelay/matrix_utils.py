@@ -1904,9 +1904,9 @@ async def matrix_relay(
 ):
     """
     Relay a Meshtastic message into a Matrix room and optionally persist a Meshtastic⇄Matrix mapping for later interactions.
-    
+
     Formats the Meshtastic text into plain and HTML-safe formatted Matrix content, applies Matrix reply framing when reply_to_event_id is provided, enforces E2EE restrictions, sends the event via the configured Matrix client, and—when message-interactions are enabled—stores a mapping from the Meshtastic message to the created Matrix event for use by cross-network replies and reactions. Errors are logged; the function does not raise on send or storage failures.
-    
+
     Parameters:
         room_id (str): Matrix room ID or alias to send the message into.
         message (str): Text of the Meshtastic message to relay.

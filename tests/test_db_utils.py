@@ -395,7 +395,7 @@ class TestDbUtils(unittest.TestCase):
         async def exercise():
             """
             Exercise message-map helpers by storing two entries then pruning to keep the most recent one.
-            
+
             Stores two message map entries and then prunes the message map to a limit of 1 so that only the latest stored entry remains.
             """
             await async_store_message_map(

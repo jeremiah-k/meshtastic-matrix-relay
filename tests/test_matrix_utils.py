@@ -1,6 +1,7 @@
 import asyncio
 import os
 import re
+import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
@@ -3828,3 +3829,205 @@ async def test_on_room_member():
 
     # The function just passes, so we just test it can be called
     await on_room_member(mock_room, mock_event)
+
+
+class TestUncoveredMatrixUtils(unittest.TestCase):
+    """Test cases for uncovered functions and edge cases in matrix_utils.py."""
+
+    @patch("mmrelay.matrix_utils.logger")
+    def test_is_room_alias_with_various_inputs(self, mock_logger):
+        """Test _is_room_alias function with different input types."""
+        from mmrelay.matrix_utils import _is_room_alias
+
+        # Test with valid alias
+        self.assertTrue(_is_room_alias("#room:example.com"))
+
+        # Test with room ID
+        self.assertFalse(_is_room_alias("!room:example.com"))
+
+        # Test with non-string types
+        self.assertFalse(_is_room_alias(None))
+        self.assertFalse(_is_room_alias(123))
+        self.assertFalse(_is_room_alias([]))
+
+    @patch("mmrelay.matrix_utils.logger")
+    def test_iter_room_alias_entries_list_format(self, mock_logger):
+        """Test _iter_room_alias_entries with list format."""
+        from mmrelay.matrix_utils import _iter_room_alias_entries
+
+        # Test with list of strings
+        mapping = ["#room1:example.com", "#room2:example.com"]
+        entries = list(_iter_room_alias_entries(mapping))
+
+        self.assertEqual(len(entries), 2)
+        self.assertEqual(entries[0][0], "#room1:example.com")
+        self.assertEqual(entries[1][0], "#room2:example.com")
+
+        # Test that setters work
+        entries[0][1]("!newroom:example.com")
+        self.assertEqual(mapping[0], "!newroom:example.com")
+
+    @patch("mmrelay.matrix_utils.logger")
+    def test_iter_room_alias_entries_dict_format(self, mock_logger):
+        """Test _iter_room_alias_entries with dict format."""
+        from mmrelay.matrix_utils import _iter_room_alias_entries
+
+        # Test with dict values
+        mapping = {
+            "room1": "#alias1:example.com",
+            "room2": {"id": "#alias2:example.com"},
+        }
+        entries = list(_iter_room_alias_entries(mapping))
+
+        self.assertEqual(len(entries), 2)
+        self.assertEqual(entries[0][0], "#alias1:example.com")
+        self.assertEqual(entries[1][0], "#alias2:example.com")
+
+    @patch("mmrelay.matrix_utils.logger")
+    def test_can_auto_create_credentials_success(self, mock_logger):
+        """Test _can_auto_create_credentials with valid config."""
+        from mmrelay.matrix_utils import _can_auto_create_credentials
+
+        config = {
+            "homeserver": "https://example.com",
+            "bot_user_id": "@bot:example.com",
+            "password": "secret123",
+        }
+
+        result = _can_auto_create_credentials(config)
+        self.assertTrue(result)
+
+    @patch("mmrelay.matrix_utils.logger")
+    def test_can_auto_create_credentials_missing_fields(self, mock_logger):
+        """Test _can_auto_create_credentials with missing fields."""
+        from mmrelay.matrix_utils import _can_auto_create_credentials
+
+        # Test missing homeserver
+        config1 = {"bot_user_id": "@bot:example.com", "password": "secret123"}
+        self.assertFalse(_can_auto_create_credentials(config1))
+
+        # Test missing user_id
+        config2 = {"homeserver": "https://example.com", "password": "secret123"}
+        self.assertFalse(_can_auto_create_credentials(config2))
+
+        # Test empty strings
+        config3 = {
+            "homeserver": "",
+            "bot_user_id": "@bot:example.com",
+            "password": "secret123",
+        }
+        self.assertFalse(_can_auto_create_credentials(config3))
+
+    @patch("mmrelay.matrix_utils.logger")
+    def test_normalize_bot_user_id_various_formats(self, mock_logger):
+        """Test _normalize_bot_user_id with different input formats."""
+        from mmrelay.matrix_utils import _normalize_bot_user_id
+
+        # Test with full MXID
+        result1 = _normalize_bot_user_id("example.com", "@user:example.com")
+        self.assertEqual(result1, "@user:example.com")
+
+        # Test with localpart only
+        result2 = _normalize_bot_user_id("example.com", "user")
+        self.assertEqual(result2, "@user:example.com")
+
+        # Test with already formatted ID
+        result3 = _normalize_bot_user_id("example.com", "user:example.com")
+        self.assertEqual(result3, "@user:example.com")
+
+        # Test with falsy input
+        result4 = _normalize_bot_user_id("example.com", "")
+        self.assertEqual(result4, "")
+
+    @patch("mmrelay.matrix_utils.logger")
+    def test_get_detailed_sync_error_message_bytes(self, mock_logger):
+        """Test _get_detailed_sync_error_message with bytes input."""
+        from mmrelay.matrix_utils import _get_detailed_sync_error_message
+
+        # Test with valid UTF-8 bytes
+        result = _get_detailed_sync_error_message(b"Error message")
+        self.assertEqual(result, "Error message")
+
+        # Test with invalid UTF-8 bytes
+        result = _get_detailed_sync_error_message(b"\xff\xfe\xfd")
+        self.assertEqual(
+            result, "Network connectivity issue or server unreachable (binary data)"
+        )
+
+    @patch("mmrelay.matrix_utils.logger")
+    def test_get_detailed_sync_error_message_object_attributes(self, mock_logger):
+        """Test _get_detailed_sync_error_message with object having attributes."""
+        from mmrelay.matrix_utils import _get_detailed_sync_error_message
+
+        # Test with message attribute
+        mock_response = MagicMock()
+        mock_response.message = "Custom error message"
+        result = _get_detailed_sync_error_message(mock_response)
+        self.assertEqual(result, "Custom error message")
+
+        # Test with status_code attribute only (no message)
+        mock_response2 = MagicMock()
+        mock_response2.message = None  # No message
+        mock_response2.status_code = 404
+        result = _get_detailed_sync_error_message(mock_response2)
+        self.assertEqual(result, "Server not found - check homeserver URL")
+
+        # Test with status_code 429 only
+        mock_response3 = MagicMock()
+        mock_response3.message = None  # No message
+        mock_response3.status_code = 429
+        result = _get_detailed_sync_error_message(mock_response3)
+        self.assertEqual(result, "Rate limited - too many requests")
+
+    @patch("mmrelay.matrix_utils.logger")
+    def test_update_room_id_in_mapping_list(self, mock_logger):
+        """Test _update_room_id_in_mapping with list input."""
+        from mmrelay.matrix_utils import _update_room_id_in_mapping
+
+        mapping = ["#old:example.com", "#other:example.com"]
+        result = _update_room_id_in_mapping(
+            mapping, "#old:example.com", "!new:example.com"
+        )
+
+        self.assertTrue(result)
+        self.assertEqual(mapping[0], "!new:example.com")
+        self.assertEqual(mapping[1], "#other:example.com")
+
+    @patch("mmrelay.matrix_utils.logger")
+    def test_update_room_id_in_mapping_dict(self, mock_logger):
+        """Test _update_room_id_in_mapping with dict input."""
+        from mmrelay.matrix_utils import _update_room_id_in_mapping
+
+        mapping = {"room1": "#old:example.com", "room2": "#other:example.com"}
+        result = _update_room_id_in_mapping(
+            mapping, "#old:example.com", "!new:example.com"
+        )
+
+        self.assertTrue(result)
+        self.assertEqual(mapping["room1"], "!new:example.com")
+        self.assertEqual(mapping["room2"], "#other:example.com")
+
+    @patch("mmrelay.matrix_utils.logger")
+    def test_update_room_id_in_mapping_not_found(self, mock_logger):
+        """Test _update_room_id_in_mapping when alias not found."""
+        from mmrelay.matrix_utils import _update_room_id_in_mapping
+
+        mapping = ["#other:example.com"]
+        result = _update_room_id_in_mapping(
+            mapping, "#missing:example.com", "!new:example.com"
+        )
+
+        self.assertFalse(result)
+        self.assertEqual(mapping[0], "#other:example.com")
+
+    @patch("mmrelay.matrix_utils.logger")
+    def test_update_room_id_in_mapping_unsupported_type(self, mock_logger):
+        """Test _update_room_id_in_mapping with unsupported mapping type."""
+        from mmrelay.matrix_utils import _update_room_id_in_mapping
+
+        mapping = "not a list or dict"
+        result = _update_room_id_in_mapping(
+            mapping, "#old:example.com", "!new:example.com"
+        )
+
+        self.assertFalse(result)
