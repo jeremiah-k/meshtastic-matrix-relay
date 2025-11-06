@@ -785,11 +785,10 @@ class TestPluginDataErrors(unittest.TestCase):
 
         # Verify error was logged
         mock_logger.exception.assert_called_once()
-        call_args = mock_logger.exception.call_args[0][0]
-        self.assertIn("Database error storing plugin data", call_args)
-        self.assertIn("test_plugin", call_args)
-        self.assertIn("node123", call_args)
-        self.assertIn("Database locked", call_args)
+        call_args = mock_logger.exception.call_args[0]
+        self.assertIn("Database error storing plugin data", call_args[0])
+        self.assertEqual(call_args[1], "test_plugin")
+        self.assertEqual(call_args[2], "node123")
 
     @patch("mmrelay.db_utils._get_db_manager")
     @patch("mmrelay.db_utils.logger")
@@ -812,61 +811,10 @@ class TestPluginDataErrors(unittest.TestCase):
 
         # Verify error was logged
         mock_logger.exception.assert_called_once()
-        call_args = mock_logger.exception.call_args[0][0]
-        self.assertIn("Database error deleting plugin data", call_args)
-        self.assertIn("test_plugin", call_args)
-        self.assertIn("node123", call_args)
-        self.assertIn("Database locked", call_args)
-
-    @patch("mmrelay.db_utils._get_db_manager")
-    @patch("mmrelay.db_utils.logger")
-    def test_get_plugin_data_for_node_database_error(
-        self, mock_logger, mock_get_manager
-    ):
-        """Test get_plugin_data_for_node handles database errors gracefully."""
-        from unittest.mock import MagicMock
-
-        # Mock manager to raise sqlite3.Error
-        mock_manager = MagicMock()
-        mock_get_manager.return_value = mock_manager
-        mock_manager.run_sync.side_effect = sqlite3.Error("Connection lost")
-
-        # Should return empty list and log error
-        result = get_plugin_data_for_node("test_plugin", "node123")
-
-        self.assertEqual(result, [])
-        mock_logger.exception.assert_called_once()
         call_args = mock_logger.exception.call_args[0]
-        self.assertIn("Database error retrieving plugin data", call_args[0])
+        self.assertIn("Database error deleting plugin data", call_args[0])
         self.assertEqual(call_args[1], "test_plugin")
         self.assertEqual(call_args[2], "node123")
-
-    @patch("mmrelay.db_utils._get_db_manager")
-    @patch("mmrelay.db_utils.logger")
-    @patch("json.loads")
-    def test_get_plugin_data_for_node_json_decode_error(
-        self, mock_json_loads, mock_logger, mock_get_manager
-    ):
-        """Test get_plugin_data_for_node handles JSON decode errors gracefully."""
-        from unittest.mock import MagicMock
-
-        # Mock manager to return valid result
-        mock_manager = MagicMock()
-        mock_get_manager.return_value = mock_manager
-        mock_manager.run_sync.return_value = ('{"invalid": json}',)  # Invalid JSON
-
-        # Mock json.loads to raise JSONDecodeError
-        mock_json_loads.side_effect = json.JSONDecodeError("Invalid JSON", "doc", 0)
-
-        # Should return empty list and log error
-        result = get_plugin_data_for_node("test_plugin", "node123")
-
-        self.assertEqual(result, [])
-        mock_logger.exception.assert_called_once()
-        call_args = mock_logger.exception.call_args[0][0]
-        self.assertIn("Failed to decode JSON data", call_args)
-        self.assertIn("test_plugin", call_args)
-        self.assertIn("node123", call_args)
 
     @patch("mmrelay.db_utils._get_db_manager")
     @patch("mmrelay.db_utils.logger")
@@ -890,10 +838,10 @@ class TestPluginDataErrors(unittest.TestCase):
 
         self.assertEqual(result, [])
         mock_logger.exception.assert_called_once()
-        call_args = mock_logger.exception.call_args[0][0]
-        self.assertIn("Failed to decode JSON data", call_args)
-        self.assertIn("test_plugin", call_args)
-        self.assertIn("node123", call_args)
+        call_args = mock_logger.exception.call_args[0]
+        self.assertIn("Failed to decode JSON data", call_args[0])
+        self.assertEqual(call_args[1], "test_plugin")
+        self.assertEqual(call_args[2], "node123")
 
 
 class TestMessageMapErrors(unittest.TestCase):
@@ -944,29 +892,6 @@ class TestMessageMapErrors(unittest.TestCase):
         call_args = mock_logger.exception.call_args[0]
         self.assertIn("Database error storing message map", call_args[0])
         self.assertEqual(call_args[1], "$event123")
-
-    @patch("mmrelay.db_utils._get_db_manager")
-    @patch("mmrelay.db_utils.logger")
-    def test_get_message_map_by_meshtastic_id_database_error(
-        self, mock_logger, mock_get_manager
-    ):
-        """Test get_message_map_by_meshtastic_id handles database errors gracefully."""
-        from unittest.mock import MagicMock
-
-        # Mock manager to raise sqlite3.Error
-        mock_manager = MagicMock()
-        mock_get_manager.return_value = mock_manager
-        mock_manager.run_sync.side_effect = sqlite3.Error("Connection lost")
-
-        # Should return None and log error
-        result = get_message_map_by_meshtastic_id(123)
-
-        self.assertIsNone(result)
-        mock_logger.exception.assert_called_once()
-        call_args = mock_logger.exception.call_args[0][0]
-        self.assertIn("Database error retrieving message map", call_args)
-        self.assertIn("123", call_args)
-        self.assertIn("Connection lost", call_args)
 
     @patch("mmrelay.db_utils._get_db_manager")
     @patch("mmrelay.db_utils.logger")
@@ -1111,8 +1036,8 @@ class TestLongnameShortnameErrors(unittest.TestCase):
 
         self.assertIsNone(result)
         mock_logger.exception.assert_called_once()
-        call_args = mock_logger.exception.call_args[0][0]
-        self.assertIn("Database error retrieving shortname", call_args)
+        call_args = mock_logger.exception.call_args[0]
+        self.assertIn("Database error retrieving shortname", call_args[0])
 
     @patch("mmrelay.db_utils._get_db_manager")
     @patch("mmrelay.db_utils.logger")

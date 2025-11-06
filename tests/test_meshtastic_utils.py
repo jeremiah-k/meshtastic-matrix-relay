@@ -1491,10 +1491,7 @@ class TestUncoveredMeshtasticUtils(unittest.TestCase):
         self.assertEqual(str(call_args[1]["exc_info"]), "Test error")
 
     @patch("mmrelay.meshtastic_utils.logger")
-    @patch("mmrelay.meshtastic_utils.meshtastic_lock")
-    def test_connect_meshtastic_close_existing_connection_error(
-        self, mock_lock, mock_logger
-    ):
+    def test_connect_meshtastic_close_existing_connection_error(self, mock_logger):
         """Test connect_meshtastic handles error when closing existing connection."""
         from mmrelay.meshtastic_utils import connect_meshtastic
 
@@ -1525,12 +1522,11 @@ class TestUncoveredMeshtasticUtils(unittest.TestCase):
                 "Error closing previous connection: Close error"
             )
 
-    @patch("mmrelay.meshtastic_utils.logger")
     @patch("mmrelay.meshtastic_utils.reconnecting", True)
     @patch(
         "mmrelay.meshtastic_utils.shutting_down", True
     )  # Set to True to exit immediately
-    def test_reconnect_function_basic(self, mock_logger):
+    def test_reconnect_function_basic(self):
         """Test reconnect function basic functionality."""
         import asyncio
 
