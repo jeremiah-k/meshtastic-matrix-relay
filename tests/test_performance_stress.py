@@ -463,12 +463,14 @@ class TestPerformanceStress:
             ):
                 with patch("mmrelay.meshtastic_utils.reconnecting", False):
                     queue = MessageQueue()
-                    queue.start(message_delay=0.01)
+                    queue.start(
+                        message_delay=0.5
+                    )  # 0.5s delay for reasonable test duration
                     # Ensure processor starts now that event loop is running
                     queue.ensure_processor_started()
 
                     thread_count = 5
-                    messages_per_thread = 3  # Small number due to DEFAULT_MESSAGE_DELAY delay (15 messages = 37.5s)
+                    messages_per_thread = 3  # Small number for reasonable test duration (15 messages * 0.5s = 7.5s)
                     total_messages = thread_count * messages_per_thread
 
                     processed_count = 0
@@ -501,8 +503,8 @@ class TestPerformanceStress:
                         for thread in threads:
                             thread.join()
 
-                        # Wait for queue processing to complete (15 messages * DEFAULT_MESSAGE_DELAY = 37.5s + buffer)
-                        timeout = 45  # 15 * 2.5s = 37.5s + buffer
+                        # Wait for queue processing to complete (15 messages * 0.5s = 7.5s + buffer)
+                        timeout = 15  # 15 * 0.5s = 7.5s + buffer
                         while (
                             processed_count < total_messages
                             and time.time() - start_time < timeout
@@ -515,13 +517,11 @@ class TestPerformanceStress:
                         # Verify all messages were processed
                         assert processed_count == total_messages
 
-                        # Performance assertions (adjusted for 2.1s minimum delay)
-                        expected_min_time = (
-                            total_messages * MINIMUM_MESSAGE_DELAY
-                        )  # 2.1s per message minimum
+                        # Performance assertions (adjusted for 0.5s delay)
+                        expected_min_time = total_messages * 0.5  # 0.5s per message
                         assert (
-                            processing_time < expected_min_time + 10.0
-                        ), "Concurrent processing too slow"
+                            processing_time >= expected_min_time - 2.0
+                        ), "Concurrent processing too fast (below expected delay)"
 
                         messages_per_second = total_messages / processing_time
                         assert (
