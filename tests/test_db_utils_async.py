@@ -112,7 +112,7 @@ class TestDatabaseManagerIntegration(unittest.TestCase):
 
     @patch("mmrelay.db_utils.get_data_dir")
     @patch("os.makedirs")
-    def test_get_db_manager_legacy_config(self, mock_makedirs, mock_get_data_dir):
+    def test_get_db_manager_legacy_config(self, _mock_makedirs, mock_get_data_dir):
         """Test _get_db_manager with legacy configuration format."""
         mock_get_data_dir.return_value = "/mock/data/dir"
 

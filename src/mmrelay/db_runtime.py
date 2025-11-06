@@ -78,7 +78,7 @@ class DatabaseManager:
             # Serialize PRAGMA setup to avoid concurrent WAL initialization races
             with self._write_lock:
                 if self._busy_timeout_ms:
-                    conn.execute(f"PRAGMA busy_timeout={int(self._busy_timeout_ms)}")
+                    conn.execute(f"PRAGMA busy_timeout = {int(self._busy_timeout_ms)}")
                 if self._enable_wal:
                     # journal_mode pragma returns the applied mode; ignore result
                     conn.execute("PRAGMA journal_mode=WAL")
@@ -92,11 +92,11 @@ class DatabaseManager:
                         # Allow paths and URIs while still blocking quotes/semicolons
                         if not re.fullmatch(r"[a-zA-Z0-9_\-\s,\.\/:\\]+", value):
                             raise ValueError(f"Invalid pragma value provided: {value}")
-                        conn.execute(f"PRAGMA {pragma}='{value}'")
+                        conn.execute(f"PRAGMA {pragma} = '{value}'")
                     else:
                         # For numeric values, ensure they're actually numeric
                         if isinstance(value, (int, float)):
-                            conn.execute(f"PRAGMA {pragma}={value}")
+                            conn.execute(f"PRAGMA {pragma} = {value}")
                         else:
                             raise TypeError(f"Invalid pragma value type: {type(value)}")
         except sqlite3.Error:
@@ -166,7 +166,7 @@ class DatabaseManager:
             try:
                 yield cursor
                 conn.commit()
-            except Exception:
+            except sqlite3.Error:
                 conn.rollback()
                 raise
             finally:

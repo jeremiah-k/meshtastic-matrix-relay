@@ -1496,7 +1496,7 @@ class TestUncoveredMeshtasticUtils(unittest.TestCase):
         self, mock_lock, mock_logger
     ):
         """Test connect_meshtastic handles error when closing existing connection."""
-        from mmrelay.meshtastic_utils import connect_meshtastic, meshtastic_client
+        from mmrelay.meshtastic_utils import connect_meshtastic
 
         # Create a mock existing client that raises error on close
         mock_existing_client = Mock()
@@ -1540,10 +1540,17 @@ class TestUncoveredMeshtasticUtils(unittest.TestCase):
         with patch("mmrelay.meshtastic_utils.connect_meshtastic") as mock_connect:
             # Run the async function - it should exit immediately due to shutting_down=True
             loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+            policy = asyncio.get_event_loop_policy()
+            previous_loop = None
+            try:
+                previous_loop = policy.get_event_loop()
+            except RuntimeError:
+                pass
+            policy.set_event_loop(loop)
             try:
                 result = loop.run_until_complete(reconnect())
             finally:
+                policy.set_event_loop(previous_loop)
                 loop.close()
 
             # Should not have attempted connection since shutting_down is True
@@ -1561,10 +1568,17 @@ class TestUncoveredMeshtasticUtils(unittest.TestCase):
 
         # Run the async function with no config
         loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+        policy = asyncio.get_event_loop_policy()
+        previous_loop = None
+        try:
+            previous_loop = policy.get_event_loop()
+        except RuntimeError:
+            pass
+        policy.set_event_loop(loop)
         try:
             result = loop.run_until_complete(check_connection())
         finally:
+            policy.set_event_loop(previous_loop)
             loop.close()
 
         # Should return None when no config available

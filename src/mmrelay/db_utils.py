@@ -90,7 +90,7 @@ def get_db_path():
                         os.makedirs(db_dir, exist_ok=True)
                     except (OSError, PermissionError) as e:
                         logger.warning(
-                            f"Could not create database directory {db_dir}: {e}"
+                            "Could not create database directory %s: %s", db_dir, e
                         )
                         # Continue anyway - the database connection will fail later if needed
 
@@ -112,7 +112,7 @@ def get_db_path():
                         os.makedirs(db_dir, exist_ok=True)
                     except (OSError, PermissionError) as e:
                         logger.warning(
-                            f"Could not create database directory {db_dir}: {e}"
+                            "Could not create database directory %s: %s", db_dir, e
                         )
                         # Continue anyway - the database connection will fail later if needed
 
@@ -341,16 +341,24 @@ def store_plugin_data(plugin_name, meshtastic_id, data):
     """
     manager = _get_db_manager()
 
+    # Serialize payload up front to surface JSON errors before opening a write txn
+    try:
+        payload = json.dumps(data)
+    except (TypeError, ValueError):
+        logger.exception(
+            "Plugin data for %s/%s is not JSON-serializable", plugin_name, meshtastic_id
+        )
+        return
+
     def _store(cursor: sqlite3.Cursor) -> None:
         """
-        Store JSON-serialized plugin data for a specific plugin and Meshtastic node using the provided DB cursor.
+        Store JSON-serialized plugin data for a specific plugin and Meshtastic node using to provided DB cursor.
 
-        Executes an INSERT (with ON CONFLICT DO UPDATE) into `plugin_data` for the captured `plugin_name` and `meshtastic_id`, storing `data` serialized as JSON.
+        Executes an INSERT (with ON CONFLICT DO UPDATE) into `plugin_data` for captured `plugin_name` and `meshtastic_id`, storing `data` serialized as JSON.
 
         Parameters:
-            cursor (sqlite3.Cursor): Open database cursor used to execute the insert/update. The function uses `plugin_name`, `meshtastic_id`, and `data` from the enclosing scope.
+            cursor (sqlite3.Cursor): Open database cursor used to execute to insert/update. The function uses `plugin_name`, `meshtastic_id`, and `data` from to enclosing scope.
         """
-        payload = json.dumps(data)
         cursor.execute(
             "INSERT INTO plugin_data (plugin_name, meshtastic_id, data) VALUES (?, ?, ?) "
             "ON CONFLICT (plugin_name, meshtastic_id) DO UPDATE SET data = excluded.data",
@@ -359,9 +367,9 @@ def store_plugin_data(plugin_name, meshtastic_id, data):
 
     try:
         manager.run_sync(_store, write=True)
-    except sqlite3.Error as e:
+    except sqlite3.Error:
         logger.exception(
-            f"Database error storing plugin data for {plugin_name}, {meshtastic_id}: {e}"
+            "Database error storing plugin data for %s, %s", plugin_name, meshtastic_id
         )
 
 
@@ -389,13 +397,12 @@ def delete_plugin_data(plugin_name, meshtastic_id):
 
     try:
         manager.run_sync(_delete, write=True)
-    except sqlite3.Error as e:
+    except sqlite3.Error:
         logger.exception(
-            f"Database error deleting plugin data for {plugin_name}, {meshtastic_id}: {e}"
+            "Database error deleting plugin data for %s, %s", plugin_name, meshtastic_id
         )
 
 
-# Get the data for a given plugin and Meshtastic ID
 def get_plugin_data_for_node(plugin_name, meshtastic_id):
     """
     Retrieve JSON-encoded plugin data for a specific Meshtastic node.
@@ -434,14 +441,15 @@ def get_plugin_data_for_node(plugin_name, meshtastic_id):
 
     try:
         return json.loads(result[0] if result else "[]")
-    except (json.JSONDecodeError, TypeError) as e:
+    except (json.JSONDecodeError, TypeError):
         logger.exception(
-            f"Failed to decode JSON data for plugin {plugin_name}, node {meshtastic_id}: {e}"
+            "Failed to decode JSON data for plugin %s, node %s",
+            plugin_name,
+            meshtastic_id,
         )
         return []
 
 
-# Get the data for a given plugin
 def get_plugin_data(plugin_name):
     """
     Retrieve all stored plugin data rows for a given plugin.
@@ -454,41 +462,54 @@ def get_plugin_data(plugin_name):
     """
     manager = _get_db_manager()
 
-    def _fetch(cursor: sqlite3.Cursor):
+    def _fetch_all(cursor: sqlite3.Cursor):
+        """
+        Fetch all data rows for a plugin using the provided DB cursor.
+
+        @param cursor: An open sqlite3.Cursor used to execute the query.
+        @returns: List of rows, where each row is a tuple containing the JSON string from the `data` column.
+        """
         cursor.execute(
-            "SELECT data FROM plugin_data WHERE plugin_name=? ",
-            (plugin_name,),
+            "SELECT data FROM plugin_data WHERE plugin_name=?", (plugin_name,)
         )
         return cursor.fetchall()
 
-    return manager.run_sync(_fetch)
+    try:
+        result = manager.run_sync(_fetch_all)
+    except (MemoryError, sqlite3.Error):
+        logger.exception(
+            "Database error retrieving all plugin data for %s", plugin_name
+        )
+        return []
+
+    return result
 
 
-# Get the longname for a given Meshtastic ID
 def get_longname(meshtastic_id):
     """
-    Retrieve the stored long display name for a Meshtastic node.
+    Retrieve the long name associated with a given Meshtastic ID.
 
     Parameters:
-        meshtastic_id (str): Meshtastic node identifier.
+        meshtastic_id (str): The Meshtastic node ID to look up.
 
     Returns:
-        str | None: The stored long name if present, `None` otherwise.
+        str or None: The long name if found, or None if not found or on database error.
     """
     manager = _get_db_manager()
 
     def _fetch(cursor: sqlite3.Cursor):
         """
-        Fetches the first `longname` row for a Meshtastic ID from the `longnames` table using the provided cursor.
+        Retrieve the longname row for the current Meshtastic ID using the provided DB cursor.
 
         Parameters:
-            cursor (sqlite3.Cursor): Cursor used to execute the query.
+            cursor (sqlite3.Cursor): Cursor used to execute the SELECT query.
 
         Returns:
-            tuple or None: The first row (containing the `longname`) returned by the query, or `None` if no matching row exists.
+            sqlite3.Row or tuple or None: The first row containing the `longname` if found, `None` otherwise.
         """
         cursor.execute(
-            "SELECT longname FROM longnames WHERE meshtastic_id=?", (meshtastic_id,)
+            "SELECT longname FROM longnames WHERE meshtastic_id=?",
+            (meshtastic_id,),
         )
         return cursor.fetchone()
 
@@ -515,10 +536,10 @@ def save_longname(meshtastic_id, longname):
 
     def _store(cursor: sqlite3.Cursor) -> None:
         """
-        Insert or replace a row in the `longnames` table for the current `meshtastic_id` and `longname`.
+        Store the longname using the provided cursor.
 
         Parameters:
-            cursor (sqlite3.Cursor): A database cursor positioned within a write transaction; used to execute the INSERT OR REPLACE into `longnames` with the `meshtastic_id` and `longname` values available in the enclosing scope.
+            cursor (sqlite3.Cursor): Open database cursor used to execute the insert/update. The function uses `meshtastic_id` and `longname` from the enclosing scope.
         """
         cursor.execute(
             "INSERT OR REPLACE INTO longnames (meshtastic_id, longname) VALUES (?, ?)",
@@ -752,7 +773,9 @@ def get_message_map_by_meshtastic_id(meshtastic_id):
             return None
     except sqlite3.Error as e:
         logger.exception(
-            f"Database error retrieving message map for meshtastic_id {meshtastic_id}: {e}"
+            "Database error retrieving message map for meshtastic_id %s: %s",
+            meshtastic_id,
+            e,
         )
         return None
 
