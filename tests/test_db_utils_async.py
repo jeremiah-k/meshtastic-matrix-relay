@@ -12,6 +12,7 @@ This test module covers:
 import asyncio
 import json
 import os
+import shutil
 import sqlite3
 import tempfile
 import unittest
@@ -144,7 +145,9 @@ class TestDatabaseManagerIntegration(unittest.TestCase):
     @patch("mmrelay.db_utils.get_data_dir")
     def test_get_db_manager_default_config(self, mock_get_data_dir):
         """Test _get_db_manager with default configuration."""
-        mock_get_data_dir.return_value = "/mock/data/dir"
+        temp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, temp_dir)
+        mock_get_data_dir.return_value = temp_dir
 
         # Mock config as empty dict
         with patch.object(mmrelay.db_utils, "config", {}):
@@ -154,7 +157,7 @@ class TestDatabaseManagerIntegration(unittest.TestCase):
             manager = _get_db_manager()
 
             self.assertIsNotNone(manager)
-            self.assertEqual(manager._path, "/mock/data/dir/meshtastic.sqlite")
+            self.assertEqual(manager._path, os.path.join(temp_dir, "meshtastic.sqlite"))
         self.assertTrue(manager._enable_wal)
         self.assertEqual(manager._busy_timeout_ms, 5000)
         self.assertEqual(
