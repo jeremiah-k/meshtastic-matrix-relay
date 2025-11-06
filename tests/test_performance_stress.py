@@ -181,9 +181,9 @@ class TestPerformanceStress:
     @pytest.mark.performance  # Changed from slow to performance
     def test_message_queue_performance_under_load(self):
         """
-        Verify MessageQueue enforces a minimum inter-message delay and maintains acceptable throughput when messages are enqueued rapidly.
+        Verify MessageQueue processes messages with configured delay and maintains acceptable throughput when messages are enqueued rapidly.
 
-        Enqueues 50 messages into a started MessageQueue (requested delay 0.01s, internally enforced to ~2.1s per message), waits up to 120 seconds for processing to complete, and asserts that all messages are processed, total processing time respects ~2.1s per-message minimum (with a small tolerance), and observed throughput exceeds 0.3 messages/second.
+        Enqueues 20 messages into a started MessageQueue (using DEFAULT_MESSAGE_DELAY of 2.5s), waits for processing to complete, and asserts that all messages are processed, total processing time respects the 2.5s per-message delay (with a small tolerance), and observed throughput exceeds 0.2 messages/second.
 
         Side effects: starts and stops a MessageQueue instance.
         """
@@ -192,9 +192,9 @@ class TestPerformanceStress:
         async def run_test():
             # Mock Meshtastic client to allow message sending
             """
-            Asynchronously tests MessageQueue performance under rapid enqueueing with enforced minimum delay.
+            Asynchronously tests MessageQueue performance under rapid enqueueing with configured delay.
 
-            Enqueues 50 messages using a mock send function into the MessageQueue, ensuring all messages are processed within 120 seconds. Verifies that the queue enforces a minimum 2-second delay between messages, all messages are processed, and the processing rate exceeds 0.3 messages per second.
+            Enqueues 20 messages using a mock send function into the MessageQueue, ensuring all messages are processed. Verifies that the queue respects the 2.5s configured delay between messages, all messages are processed, and the processing rate exceeds 0.2 messages per second.
             """
             with patch(
                 "mmrelay.meshtastic_utils.meshtastic_client",
@@ -455,7 +455,7 @@ class TestPerformanceStress:
             """
             Test concurrent enqueuing and processing of messages in MessageQueue from multiple threads.
 
-            This function starts a MessageQueue with a minimal enforced delay, spawns several threads to enqueue messages concurrently, and waits for all messages to be processed. It asserts that all messages are processed within the expected time frame and that the processing rate meets minimum performance requirements.
+            This function starts a MessageQueue with a minimal configured delay, spawns several threads to enqueue messages concurrently, and waits for all messages to be processed. It asserts that all messages are processed within the expected time frame and that the processing rate meets minimum performance requirements.
             """
             with patch(
                 "mmrelay.meshtastic_utils.meshtastic_client",
@@ -591,16 +591,16 @@ class TestPerformanceStress:
     @pytest.mark.performance  # Changed from slow to performance
     def test_rate_limiting_effectiveness(self):
         """
-        Test that MessageQueue enforces the minimum delay between message sends, confirming rate limiting by measuring intervals between processed messages.
+        Test that MessageQueue respects the configured delay between message sends, confirming timing behavior by measuring intervals between processed messages.
 
-        Rapidly enqueues multiple messages with a short requested delay and asserts that the actual delay between sends is at least 80% of the enforced 2-second minimum. Ensures all messages are sent within the expected timeframe.
+        Rapidly enqueues multiple messages with a short requested delay and asserts that the actual delay between sends is close to the configured 0.1s delay (within 50%-200% tolerance). Ensures all messages are sent within the expected timeframe.
         """
         import asyncio
 
         async def run_rate_limit_test():
             # Mock Meshtastic client to allow message sending
             """
-            Asynchronously verifies that the MessageQueue enforces a minimum delay between message sends by measuring the intervals between processed messages to confirm rate limiting behavior.
+            Asynchronously verifies that the MessageQueue respects the configured delay between message sends by measuring the intervals between processed messages to confirm timing behavior.
             """
             with patch(
                 "mmrelay.meshtastic_utils.meshtastic_client",
@@ -711,7 +711,7 @@ class TestPerformanceStress:
         """
         Benchmark message throughput under realistic conditions with mixed message types and enforced rate limiting.
 
-        Simulates a mesh network by asynchronously queuing and processing messages of various types from multiple nodes over a fixed duration. Validates that throughput adheres to a 2-second minimum delay, achieves at least 65% of theoretical maximum throughput, and processes multiple message types. Prints detailed throughput statistics after completion.
+        Simulates a mesh network by asynchronously queuing and processing messages of various types from multiple nodes over a fixed duration. Validates that throughput uses the configured delay, achieves at least 65% of theoretical maximum throughput, and processes multiple message types. Prints detailed throughput statistics after completion.
         """
         import asyncio
         import random
