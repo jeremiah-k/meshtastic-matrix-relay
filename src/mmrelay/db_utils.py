@@ -42,7 +42,6 @@ def clear_db_path_cache():
     _cached_db_path = None
     _db_path_logged = False
     _cached_config_hash = None
-    _reset_db_manager()
 
 
 # Get the database path

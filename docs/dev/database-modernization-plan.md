@@ -22,7 +22,7 @@
   - Exposes context helpers:
     - `with manager.read()` → yields cursor, ensures rollback on failure, no implicit commit.
     - `with manager.write()` → yields cursor, commits on success, rollbacks on exception.
-  - Provides coroutine helpers: `await manager.run(op, *args, use_writer=True|False)` to dispatch sync callbacks through the default executor.
+  - Provides coroutine helpers: `await manager.run_async(op, *args, write=True|False)` to dispatch sync callbacks through the default executor.
   - Surfaces `close()` for orderly shutdown (used by tests or future teardown hooks).
 
 - **`db_utils` refactor:**

@@ -124,6 +124,8 @@ class DatabaseManager:
                 conn.cursor().close()
             except sqlite3.ProgrammingError:
                 # Connection is closed, so we'll create a new one.
+                with self._connections_lock:
+                    self._connections.discard(conn)
                 conn = None
 
         if conn is None:
