@@ -267,22 +267,31 @@ def _get_db_manager() -> DatabaseManager:
     manager_to_close = None
     with _db_manager_lock:
         if _db_manager is None or _db_manager_signature != signature:
-            manager_to_close = _db_manager
-            _db_manager = DatabaseManager(
-                path,
-                enable_wal=enable_wal,
-                busy_timeout_ms=busy_timeout_ms,
-                extra_pragmas=extra_pragmas,
-            )
-            _db_manager_signature = signature
+            try:
+                new_manager = DatabaseManager(
+                    path,
+                    enable_wal=enable_wal,
+                    busy_timeout_ms=busy_timeout_ms,
+                    extra_pragmas=extra_pragmas,
+                )
+                # Successfully created a new manager, now swap it with the old one.
+                manager_to_close = _db_manager
+                _db_manager = new_manager
+                _db_manager_signature = signature
+                _close_manager_safely(manager_to_close)
+            except Exception:
+                if _db_manager is None:
+                    # First-time initialization failed, so we cannot proceed.
+                    raise
 
-            # Close old manager inside the lock - note: this can still cause
-            # race conditions if another thread is actively using connections
-            # from the old manager when configuration changes at runtime.
-            # Implementing graceful shutdown (waiting for active operations to complete)
-            # would be complex and could introduce deadlocks or performance issues.
-            # Since runtime config changes are rare, this risk is acceptable.
-            _close_manager_safely(manager_to_close)
+                # A configuration change failed. Log the error but continue with the old manager
+                # to keep the application alive.
+                logger.exception(
+                    "Failed to create new DatabaseManager with updated configuration. "
+                    "The application will continue using the previous database settings."
+                )
+                # Update the signature to the new (failed) one to prevent repeated attempts.
+                _db_manager_signature = signature
     # Runtime check - manager should be initialized at this point
     if _db_manager is None:
         raise RuntimeError("Database manager initialization failed")
@@ -369,12 +378,12 @@ def store_plugin_data(plugin_name, meshtastic_id, data):
 
     def _store(cursor: sqlite3.Cursor) -> None:
         """
-        Store JSON-serialized plugin data for a specific plugin and Meshtastic node using to provided DB cursor.
+        Store JSON-serialized plugin data for a specific plugin and Meshtastic node using the provided DB cursor.
 
         Executes an INSERT (with ON CONFLICT DO UPDATE) into `plugin_data` for captured `plugin_name` and `meshtastic_id`, storing `data` serialized as JSON.
 
         Parameters:
-            cursor (sqlite3.Cursor): Open database cursor used to execute to insert/update. The function uses `plugin_name`, `meshtastic_id`, and `data` from to enclosing scope.
+            cursor (sqlite3.Cursor): Open database cursor used to execute the insert/update. The function uses `plugin_name`, `meshtastic_id`, and `payload` from the enclosing scope.
         """
         cursor.execute(
             "INSERT INTO plugin_data (plugin_name, meshtastic_id, data) VALUES (?, ?, ?) "
