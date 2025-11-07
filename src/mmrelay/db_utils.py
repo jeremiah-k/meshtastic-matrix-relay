@@ -292,8 +292,7 @@ def _get_db_manager() -> DatabaseManager:
                     "Failed to create new DatabaseManager with updated configuration. "
                     "The application will continue using the previous database settings."
                 )
-                # Update the signature to the new (failed) one to prevent repeated attempts.
-                _db_manager_signature = signature
+                # Leave _db_manager_signature unchanged so a future call will retry once the issue is resolved.
     # Runtime check - manager should be initialized at this point
     if _db_manager is None:
         raise RuntimeError("Database manager initialization failed")
