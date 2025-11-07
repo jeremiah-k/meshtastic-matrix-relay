@@ -276,8 +276,12 @@ def _get_db_manager() -> DatabaseManager:
             )
             _db_manager_signature = signature
 
-            # Close old manager inside the lock to prevent race condition
-            # where another thread might be using connections from the old manager
+            # Close old manager inside the lock - note: this can still cause
+            # race conditions if another thread is actively using connections
+            # from the old manager when configuration changes at runtime.
+            # Implementing graceful shutdown (waiting for active operations to complete)
+            # would be complex and could introduce deadlocks or performance issues.
+            # Since runtime config changes are rare, this risk is acceptable.
             _close_manager_safely(manager_to_close)
     # Runtime check - manager should be initialized at this point
     if _db_manager is None:
@@ -787,11 +791,10 @@ def get_message_map_by_meshtastic_id(meshtastic_id):
             return None
         try:
             return result[0], result[1], result[2], result[3]
-        except (IndexError, TypeError) as e:
+        except (IndexError, TypeError):
             logger.exception(
-                "Malformed data in message_map for meshtastic_id %s: %s",
+                "Malformed data in message_map for meshtastic_id %s",
                 meshtastic_id,
-                e,
             )
             return None
     except sqlite3.Error:
@@ -836,11 +839,10 @@ def get_message_map_by_matrix_event_id(matrix_event_id):
             return None
         try:
             return result[0], result[1], result[2], result[3]
-        except (IndexError, TypeError) as e:
+        except (IndexError, TypeError):
             logger.exception(
-                "Malformed data in message_map for matrix_event_id %s: %s",
+                "Malformed data in message_map for matrix_event_id %s",
                 matrix_event_id,
-                e,
             )
             return None
     except (UnicodeDecodeError, sqlite3.Error):
