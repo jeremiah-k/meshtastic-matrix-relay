@@ -90,8 +90,12 @@ class DatabaseManager:
                     # Validate and sanitize value to prevent injection
                     if isinstance(value, str):
                         # Allow safe characters for pragma values, prevent SQL injection.
-                        if not re.fullmatch(r"[a-zA-Z0-9_\-\s,\.\/:\\]+", value):
-                            raise ValueError(f"Invalid pragma value provided: {value}")
+                        if not re.fullmatch(
+                            r"[a-zA-Z0-9_\-\s,./:\\]+", value
+                        ) or value.endswith("\\"):
+                            raise ValueError(
+                                f"Invalid or unsafe pragma value provided: {value}"
+                            )
                         conn.execute(f"PRAGMA {pragma} = '{value}'")
                     elif isinstance(value, bool):
                         # Convert boolean values to ON/OFF for SQLite pragmas

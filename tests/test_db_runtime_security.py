@@ -164,6 +164,7 @@ class TestDatabaseManager(unittest.TestCase):
             "value\x00null",
             "value'; DROP TABLE users; --",
             "value' OR '1'='1 --",
+            "value\\",  # Test backslash at end vulnerability
         ]
 
         for value in invalid_values:
@@ -175,7 +176,7 @@ class TestDatabaseManager(unittest.TestCase):
                     # Try to create connection to trigger validation
                     with manager.read() as cursor:
                         cursor.execute("SELECT 1")
-                self.assertIn("Invalid pragma value", str(cm.exception))
+                self.assertIn("Invalid or unsafe pragma value", str(cm.exception))
 
     def test_pragma_validation_numeric_values(self):
         """Test pragma validation for numeric values."""
