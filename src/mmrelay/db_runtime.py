@@ -89,9 +89,16 @@ class DatabaseManager:
                         raise ValueError(f"Invalid pragma name provided: {pragma}")
                     # Validate and sanitize value to prevent injection
                     if isinstance(value, str):
-                        # Allow safe characters for pragma values, prevent SQL injection.
+                        # Security: Restrict pragma string values to safe characters only.
+                        # This regex allows alphanumeric, underscore, hyphen, space, comma, period, and backslash.
+                        # We deliberately exclude forward slash and colon to prevent path injection attacks.
+                        # Backslash is allowed but trailing backslashes are blocked to prevent escape sequences.
+                        #
+                        # Security assumption: Configuration sources are trusted, but we validate defensively
+                        # to prevent accidental or malicious injection through compromised config files.
+                        # This balances security with practical SQLite pragma value requirements.
                         if not re.fullmatch(
-                            r"[a-zA-Z0-9_\-\s,./:\\]+", value
+                            r"[a-zA-Z0-9_\-\s,.\\\\]+", value
                         ) or value.endswith("\\"):
                             raise ValueError(
                                 f"Invalid or unsafe pragma value provided: {value}"

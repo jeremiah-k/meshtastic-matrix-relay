@@ -293,10 +293,13 @@ def _get_db_manager() -> DatabaseManager:
                     "The application will continue using the previous database settings."
                 )
                 # Leave _db_manager_signature unchanged so a future call will retry once the issue is resolved.
-    # Runtime check - manager should be initialized at this point
-    if _db_manager is None:
-        raise RuntimeError("Database manager initialization failed")
-    return _db_manager
+
+        # Critical: Final check and return must be inside the lock to prevent race condition.
+        # Without this, _reset_db_manager() could set _db_manager = None after we release
+        # the lock but before we return, causing an unexpected RuntimeError.
+        if _db_manager is None:
+            raise RuntimeError("Database manager initialization failed")
+        return _db_manager
 
 
 # Initialize SQLite database
