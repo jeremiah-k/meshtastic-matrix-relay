@@ -279,6 +279,8 @@ def _get_db_manager() -> DatabaseManager:
                 _db_manager = new_manager
                 _db_manager_signature = signature
                 _close_manager_safely(manager_to_close)
+            except (KeyboardInterrupt, SystemExit):
+                raise
             except Exception:
                 if _db_manager is None:
                     # First-time initialization failed, so we cannot proceed.

@@ -19,12 +19,15 @@ import sqlite3
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.db_utils import (
+    _parse_bool,
+    _parse_int,
+    _reset_db_manager,
     async_prune_message_map,
     async_store_message_map,
     clear_db_path_cache,
@@ -413,6 +416,302 @@ class TestDbUtils(unittest.TestCase):
         latest = get_message_map_by_meshtastic_id("mesh2")
         self.assertIsNotNone(latest)
         self.assertEqual(latest[0], "$event2:matrix.org")
+
+    def test_database_manager_keyboard_interrupt(self):
+        """
+        Test that DatabaseManager creation re-raises KeyboardInterrupt.
+
+        This test verifies that KeyboardInterrupt exceptions are not caught
+        by the fallback exception handler and are properly re-raised.
+        """
+        # Reset any existing database manager
+        _reset_db_manager()
+        clear_db_path_cache()
+
+        # Configure a database path
+        mock_config = {"database": {"path": self.test_db_path}}
+        import mmrelay.db_utils
+
+        mmrelay.db_utils.config = mock_config
+
+        # Mock DatabaseManager to raise KeyboardInterrupt
+        with patch(
+            "mmrelay.db_utils.DatabaseManager",
+            side_effect=KeyboardInterrupt("User interrupt"),
+        ):
+            with self.assertRaises(KeyboardInterrupt):
+                from mmrelay.db_utils import _get_db_manager
+
+                _get_db_manager()
+
+    def test_database_manager_system_exit(self):
+        """
+        Test that DatabaseManager creation re-raises SystemExit.
+
+        This test verifies that SystemExit exceptions are not caught
+        by the fallback exception handler and are properly re-raised.
+        """
+        # Reset any existing database manager
+        _reset_db_manager()
+        clear_db_path_cache()
+
+        # Configure a database path
+        mock_config = {"database": {"path": self.test_db_path}}
+        import mmrelay.db_utils
+
+        mmrelay.db_utils.config = mock_config
+
+        # Mock DatabaseManager to raise SystemExit
+        with patch(
+            "mmrelay.db_utils.DatabaseManager",
+            side_effect=SystemExit("System shutdown"),
+        ):
+            with self.assertRaises(SystemExit):
+                from mmrelay.db_utils import _get_db_manager
+
+                _get_db_manager()
+
+    def test_get_db_path_directory_creation_error(self):
+        """
+        Test that get_db_path() handles OSError/PermissionError when creating directories gracefully.
+
+        This test verifies that when directory creation fails, the function logs a warning
+        but continues execution, returning the configured path.
+        """
+        # Clear cache to ensure fresh resolution
+        clear_db_path_cache()
+
+        # Configure a path in a non-existent directory
+        invalid_db_path = "/nonexistent/invalid/path/test.db"
+        mock_config = {"database": {"path": invalid_db_path}}
+
+        import mmrelay.db_utils
+
+        mmrelay.db_utils.config = mock_config
+
+        # Mock os.makedirs to raise PermissionError
+        with patch("os.makedirs", side_effect=PermissionError("Permission denied")):
+            with patch("mmrelay.db_utils.logger") as mock_logger:
+                path = get_db_path()
+                self.assertEqual(path, invalid_db_path)
+                mock_logger.warning.assert_called_once()
+
+    def test_get_db_path_legacy_directory_creation_error(self):
+        """
+        Test that get_db_path() handles OSError/PermissionError when creating directories for legacy config.
+
+        This test verifies the same error handling for the legacy 'db.path' configuration format.
+        """
+        # Clear cache to ensure fresh resolution
+        clear_db_path_cache()
+
+        # Configure a legacy path in a non-existent directory
+        invalid_db_path = "/nonexistent/legacy/path/test.db"
+        mock_config = {"db": {"path": invalid_db_path}}
+
+        import mmrelay.db_utils
+
+        mmrelay.db_utils.config = mock_config
+
+        # Mock os.makedirs to raise OSError
+        with patch("os.makedirs", side_effect=OSError("No space left on device")):
+            with patch("mmrelay.db_utils.logger") as mock_logger:
+                path = get_db_path()
+                self.assertEqual(path, invalid_db_path)
+                # Should have two warnings: one for directory creation failure, one for legacy config
+                self.assertEqual(mock_logger.warning.call_count, 2)
+
+    def test_get_db_path_data_directory_creation_error(self):
+        """
+        Test that get_db_path() handles OSError/PermissionError when creating the default data directory.
+
+        This test verifies error handling when the default data directory cannot be created.
+        """
+        # Clear cache and remove any database config to force default path
+        clear_db_path_cache()
+        mock_config = {}
+
+        import mmrelay.db_utils
+
+        mmrelay.db_utils.config = mock_config
+
+        # Mock get_data_dir and os.makedirs to raise PermissionError
+        with patch("mmrelay.db_utils.get_data_dir", return_value="/nonexistent/data"):
+            with patch("os.makedirs", side_effect=PermissionError("Permission denied")):
+                with patch("mmrelay.db_utils.logger") as mock_logger:
+                    path = get_db_path()
+                    self.assertTrue(path.endswith("meshtastic.sqlite"))
+                    mock_logger.warning.assert_called_once()
+
+    def test_database_manager_config_change_fallback(self):
+        """
+        Test that DatabaseManager creation falls back to old manager on config change failure.
+
+        This test verifies that when a configuration change causes DatabaseManager
+        creation to fail, the system continues using the previous working manager.
+        """
+        # Clear cache and create initial database manager
+        clear_db_path_cache()
+        mock_config = {"database": {"path": self.test_db_path}}
+        import mmrelay.db_utils
+
+        mmrelay.db_utils.config = mock_config
+
+        # Create initial manager
+        from mmrelay.db_utils import _get_db_manager
+
+        initial_manager = _get_db_manager()
+        self.assertIsNotNone(initial_manager)
+
+        # Change config to trigger manager recreation, but make it fail
+        new_db_path = os.path.join(self.test_dir, "new_test.db")
+        mock_config["database"]["path"] = new_db_path
+
+        with patch(
+            "mmrelay.db_utils.DatabaseManager",
+            side_effect=RuntimeError("Invalid configuration"),
+        ):
+            with patch("mmrelay.db_utils.logger") as mock_logger:
+                # Should return the same manager (fallback)
+                fallback_manager = _get_db_manager()
+                self.assertEqual(initial_manager, fallback_manager)
+                mock_logger.exception.assert_called_once()
+
+    def test_database_manager_first_time_failure(self):
+        """
+        Test that DatabaseManager creation raises exception on first-time initialization failure.
+
+        This test verifies that when no previous manager exists and creation fails,
+        the exception is properly raised (no fallback possible).
+        """
+        # Reset any existing database manager
+        _reset_db_manager()
+        clear_db_path_cache()
+
+        # Configure a database path
+        mock_config = {"database": {"path": self.test_db_path}}
+        import mmrelay.db_utils
+
+        mmrelay.db_utils.config = mock_config
+
+        # Mock DatabaseManager to raise RuntimeError
+        with patch(
+            "mmrelay.db_utils.DatabaseManager",
+            side_effect=RuntimeError("Cannot create database"),
+        ):
+            with self.assertRaises(RuntimeError):
+                from mmrelay.db_utils import _get_db_manager
+
+                _get_db_manager()
+
+    def test_parse_bool_function(self):
+        """
+        Test the _parse_bool function with various inputs.
+
+        This test verifies that the function correctly parses boolean values
+        from different input types and formats.
+        """
+
+        # Test boolean inputs
+        self.assertTrue(_parse_bool(True, False))
+        self.assertFalse(_parse_bool(False, True))
+
+        # Test string inputs - true values
+        self.assertTrue(_parse_bool("1", False))
+        self.assertTrue(_parse_bool("true", False))
+        self.assertTrue(_parse_bool("TRUE", False))
+        self.assertTrue(_parse_bool("yes", False))
+        self.assertTrue(_parse_bool("YES", False))
+        self.assertTrue(_parse_bool("on", False))
+        self.assertTrue(_parse_bool("ON", False))
+
+        # Test string inputs - false values
+        self.assertFalse(_parse_bool("0", True))
+        self.assertFalse(_parse_bool("false", True))
+        self.assertFalse(_parse_bool("FALSE", True))
+        self.assertFalse(_parse_bool("no", True))
+        self.assertFalse(_parse_bool("NO", True))
+        self.assertFalse(_parse_bool("off", True))
+        self.assertFalse(_parse_bool("OFF", True))
+
+        # Test string inputs with whitespace
+        self.assertTrue(_parse_bool("  true  ", False))
+        self.assertFalse(_parse_bool("  false  ", True))
+
+        # Test fallback for unrecognized values
+        self.assertTrue(_parse_bool("unknown", True))
+        self.assertFalse(_parse_bool("unknown", False))
+        self.assertTrue(_parse_bool(None, True))
+        self.assertFalse(_parse_bool(None, False))
+        self.assertTrue(_parse_bool(123, True))
+        self.assertFalse(_parse_bool(123, False))
+
+    def test_parse_int_function(self):
+        """
+        Test the _parse_int function with various inputs.
+
+        This test verifies that the function correctly parses integer values
+        from different input types and falls back to default on failure.
+        """
+
+        # Test valid integer inputs
+        self.assertEqual(_parse_int(42, 0), 42)
+        self.assertEqual(_parse_int("42", 0), 42)
+        self.assertEqual(_parse_int("-10", 0), -10)
+        self.assertEqual(_parse_int("0", 99), 0)
+
+        # Test invalid inputs - should return default
+        self.assertEqual(_parse_int("not_a_number", 42), 42)
+        self.assertEqual(_parse_int("", 99), 99)
+        self.assertEqual(_parse_int(None, 10), 10)
+        self.assertEqual(_parse_int([], 5), 5)
+        self.assertEqual(_parse_int({}, 7), 7)
+
+        # Test float strings - should fail and return default
+        self.assertEqual(_parse_int("3.14", 0), 0)
+        self.assertEqual(_parse_int("42.0", 99), 99)
+
+    def test_initialize_database_sqlite_error(self):
+        """
+        Test that initialize_database() handles sqlite3.Error gracefully.
+
+        This test verifies that when database initialization fails due to
+        sqlite3.Error, the exception is logged and re-raised.
+        """
+        # Mock the database manager's run_sync method to raise sqlite3.Error
+        with patch("mmrelay.db_utils._get_db_manager") as mock_get_manager:
+            mock_manager = MagicMock()
+            mock_manager.run_sync.side_effect = sqlite3.Error(
+                "Database initialization failed"
+            )
+            mock_get_manager.return_value = mock_manager
+
+            with patch("mmrelay.db_utils.logger") as mock_logger:
+                with self.assertRaises(sqlite3.Error):
+                    initialize_database()
+                mock_logger.exception.assert_called_once_with(
+                    "Database initialization failed"
+                )
+
+    def test_schema_upgrade_operational_errors(self):
+        """
+        Test that schema upgrade operations handle OperationalError gracefully.
+
+        This test verifies that ALTER TABLE and CREATE INDEX operations
+        that fail with OperationalError are ignored (safe no-op) by
+        running initialize_database twice and checking that it succeeds.
+        """
+        # Initialize database first time - should succeed
+        initialize_database()
+
+        # Initialize database second time - should also succeed even though
+        # ALTER TABLE and CREATE INDEX will fail with OperationalError
+        # because the column and index already exist
+        try:
+            initialize_database()
+            # If we get here, the OperationalError was handled correctly
+        except sqlite3.OperationalError:
+            self.fail("Schema upgrade should handle OperationalError gracefully")
 
 
 if __name__ == "__main__":
