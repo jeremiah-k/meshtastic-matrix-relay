@@ -424,12 +424,12 @@ class TestDatabaseManager(unittest.TestCase):
         """Test run_async for async operations with proper mocking."""
 
         async def test_async():
-            def async_func(cursor):
+            def async_func(_):
                 """
-                A simple test operation that ignores the provided DB cursor and yields a fixed result used in async tests.
+                A simple test operation that yields a fixed result used in async tests.
 
                 Parameters:
-                    cursor: A DB-API cursor object (unused).
+                    _: A DB-API cursor object (unused).
 
                 Returns:
                     str: The literal string "async_result".
