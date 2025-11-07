@@ -1316,6 +1316,38 @@ class TestMainAsyncFunction(unittest.TestCase):
         # Verify event loop was accessed for meshtastic utils
         mock_get_loop.assert_called()
 
+    def test_main_shutdown_task_cancellation_coverage(self) -> None:
+        """Test shutdown task cancellation logic with and without pending tasks."""
+        loop = asyncio.new_event_loop()
+        self.addCleanup(loop.close)
+        asyncio.set_event_loop(loop)
+
+        async def background_task() -> None:
+            await asyncio.sleep(10)
+
+        async def run_with_pending_tasks() -> None:
+            task = asyncio.create_task(background_task())
+            pending = {
+                t for t in asyncio.all_tasks() if t is not asyncio.current_task()
+            }
+            self.assertIn(task, pending)
+
+            for t in pending:
+                t.cancel()
+            await asyncio.gather(*pending, return_exceptions=True)
+
+            self.assertTrue(task.cancelled())
+
+        async def run_without_pending_tasks() -> None:
+            pending = {
+                t for t in asyncio.all_tasks() if t is not asyncio.current_task()
+            }
+            self.assertFalse(pending)
+
+        loop.run_until_complete(run_with_pending_tasks())
+        loop.run_until_complete(run_without_pending_tasks())
+        asyncio.set_event_loop(None)
+
 
 if __name__ == "__main__":
     unittest.main()

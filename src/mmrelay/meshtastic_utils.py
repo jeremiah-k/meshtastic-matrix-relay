@@ -191,6 +191,46 @@ def _resolve_plugin_timeout(cfg: dict | None, default: float = 5.0) -> float:
     return default
 
 
+def _get_name_safely(name_func, sender):
+    """
+    Safely retrieve a name (longname or shortname) for a sender with fallback to sender ID.
+
+    This function encapsulates the common try/except pattern used throughout the codebase
+    for safely retrieving node names from the database with graceful fallback.
+
+    Parameters:
+        name_func: Function to call (get_longname or get_shortname)
+        sender: The sender ID to look up
+
+    Returns:
+        str: The retrieved name or sender ID as fallback
+    """
+    try:
+        return name_func(sender) or str(sender)
+    except (TypeError, AttributeError):
+        return str(sender)
+
+
+def _get_name_or_none(name_func, sender):
+    """
+    Safely retrieve a name (longname or shortname) for a sender, returning None on failure.
+
+    This function is used for the complex fallback logic where we want to try the database
+    first, then fall back to interface data, and finally to sender ID.
+
+    Parameters:
+        name_func: Function to call (get_longname or get_shortname)
+        sender: The sender ID to look up
+
+    Returns:
+        str | None: The retrieved name or None if database lookup failed
+    """
+    try:
+        return name_func(sender)
+    except (TypeError, AttributeError):
+        return None
+
+
 def _get_device_metadata(client):
     """
     Retrieve firmware metadata from a Meshtastic client.
@@ -743,8 +783,8 @@ def on_meshtastic_message(packet, interface):
     # Reaction handling (Meshtastic -> Matrix)
     # If replyId and emoji_flag are present and reactions are enabled, we relay as text reactions in Matrix
     if replyId and emoji_flag and interactions["reactions"]:
-        longname = get_longname(sender) or str(sender)
-        shortname = get_shortname(sender) or str(sender)
+        longname = _get_name_safely(get_longname, sender)
+        shortname = _get_name_safely(get_shortname, sender)
         orig = get_message_map_by_meshtastic_id(replyId)
         if orig:
             # orig = (matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet)
@@ -790,8 +830,8 @@ def on_meshtastic_message(packet, interface):
     # Reply handling (Meshtastic -> Matrix)
     # If replyId is present but emoji is not (or not 1), this is a reply
     if replyId and not emoji_flag and interactions["replies"]:
-        longname = get_longname(sender) or str(sender)
-        shortname = get_shortname(sender) or str(sender)
+        longname = _get_name_safely(get_longname, sender)
+        shortname = _get_name_safely(get_shortname, sender)
         orig = get_message_map_by_meshtastic_id(replyId)
         if orig:
             # orig = (matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet)
@@ -870,8 +910,19 @@ def on_meshtastic_message(packet, interface):
             return
 
         # Attempt to get longname/shortname from database or nodes
-        longname = get_longname(sender)
-        shortname = get_shortname(sender)
+        longname = _get_name_or_none(get_longname, sender)
+        if longname is None:
+            logger.debug(
+                "Failed to get longname from database for %s, will try interface fallback",
+                sender,
+            )
+
+        shortname = _get_name_or_none(get_shortname, sender)
+        if shortname is None:
+            logger.debug(
+                "Failed to get shortname from database for %s, will try interface fallback",
+                sender,
+            )
 
         if not longname or not shortname:
             node = interface.nodes.get(sender)

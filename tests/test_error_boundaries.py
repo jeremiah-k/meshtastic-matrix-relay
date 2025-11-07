@@ -158,11 +158,12 @@ class TestErrorBoundaries(unittest.TestCase):
 
         # Mock database failures
         with patch(
-            "mmrelay.db_utils.get_longname", side_effect=Exception("Database error")
+            "mmrelay.meshtastic_utils.get_longname",
+            side_effect=TypeError("Database error"),
         ):
             with patch(
-                "mmrelay.db_utils.get_shortname",
-                side_effect=Exception("Database error"),
+                "mmrelay.meshtastic_utils.get_shortname",
+                side_effect=TypeError("Database error"),
             ):
                 with patch("mmrelay.plugin_loader.load_plugins", return_value=[]):
                     with patch(
@@ -282,9 +283,7 @@ class TestErrorBoundaries(unittest.TestCase):
             ):
                 with patch("mmrelay.meshtastic_utils.reconnecting", False):
                     queue = MessageQueue()
-                    queue.start(
-                        message_delay=0.01
-                    )  # Very fast processing (will be enforced to 2.0s minimum)
+                    queue.start(message_delay=0.1)  # Reasonable delay for testing
                     # Ensure processor starts now that event loop is running
                     queue.ensure_processor_started()
 
@@ -370,10 +369,11 @@ class TestErrorBoundaries(unittest.TestCase):
 
         # Create a chain of potential failures
         with patch(
-            "mmrelay.db_utils.get_longname", side_effect=Exception("DB failure")
+            "mmrelay.meshtastic_utils.get_longname", side_effect=TypeError("DB failure")
         ):
             with patch(
-                "mmrelay.db_utils.get_shortname", side_effect=Exception("DB failure")
+                "mmrelay.meshtastic_utils.get_shortname",
+                side_effect=TypeError("DB failure"),
             ):
                 with patch("mmrelay.plugin_loader.load_plugins") as mock_load_plugins:
                     # Plugin loading fails
@@ -443,7 +443,7 @@ class TestErrorBoundaries(unittest.TestCase):
                         return MagicMock(id="success_id")
 
                     queue = MessageQueue()
-                    queue.start(message_delay=0.01)  # Will be enforced to 2.0s minimum
+                    queue.start(message_delay=0.1)  # Use reasonable delay for testing
                     queue.ensure_processor_started()
 
                     try:
@@ -547,7 +547,7 @@ class TestErrorBoundaries(unittest.TestCase):
         Verifies that some tasks are accepted up to the queue's capacity, and that the queue remains operational despite high memory usage.
         """
         queue = MessageQueue()
-        queue.start(message_delay=0.01)
+        queue.start(message_delay=0.1)  # Use reasonable delay for testing
 
         def memory_intensive_function():
             # Simulate memory-intensive operation

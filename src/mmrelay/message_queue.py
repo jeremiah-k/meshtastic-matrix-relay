@@ -360,7 +360,7 @@ class MessageQueue:
         """
         Process queued messages in FIFO order, sending each when the connection is ready and the configured inter-message delay has elapsed.
 
-        Runs until the queue is stopped or the task is cancelled. For each message, enforces connection/readiness checks and the configured inter-message delay, updates last-send timestamps after a successful send, and persists message mapping information when provided and the send result exposes an `id`. Cancellation may drop an in-flight message.
+        Runs until the queue is stopped or the task is cancelled. After a successful send, updates last-send timestamps and, when provided mapping information is present and the send result exposes an `id`, persists the message mapping. Cancellation may drop an in-flight message.
         """
         logger.debug("Message queue processor started")
         current_message = None
@@ -450,7 +450,7 @@ class MessageQueue:
 
                         # Handle message mapping if provided
                         if current_message.mapping_info and hasattr(result, "id"):
-                            self._handle_message_mapping(
+                            await self._handle_message_mapping(
                                 result, current_message.mapping_info
                             )
 
@@ -482,9 +482,9 @@ class MessageQueue:
 
     def _should_send_message(self) -> bool:
         """
-        Check whether the queue may send a Meshtastic message.
+        Determine whether conditions allow sending a Meshtastic message.
 
-        Performs runtime checks: returns True only if the reconnection flag is not set, a Meshtastic client object exists, and—if the client exposes `is_connected`—that check indicates the client is connected. If importing Meshtastic utilities raises ImportError, a critical log is emitted and the queue is stopped asynchronously.
+        Performs runtime checks: verifies the global reconnecting flag is not set, a Meshtastic client object exists, and—if the client exposes a connectivity indicator—that indicator reports connected. If importing Meshtastic utilities fails, logs a critical error and asynchronously stops the queue.
 
         Returns:
             `True` if not reconnecting, a Meshtastic client exists, and the client is connected when checkable; `False` otherwise.
@@ -525,7 +525,7 @@ class MessageQueue:
             ).start()
             return False
 
-    def _handle_message_mapping(self, result, mapping_info):
+    async def _handle_message_mapping(self, result, mapping_info):
         """
         Persist a mapping from a sent Meshtastic message to a Matrix event and optionally prune old mappings.
 
@@ -542,7 +542,10 @@ class MessageQueue:
         """
         try:
             # Import here to avoid circular imports
-            from mmrelay.db_utils import prune_message_map, store_message_map
+            from mmrelay.db_utils import (
+                async_prune_message_map,
+                async_store_message_map,
+            )
 
             # Extract mapping information
             matrix_event_id = mapping_info.get("matrix_event_id")
@@ -552,7 +555,7 @@ class MessageQueue:
 
             if matrix_event_id and room_id and text:
                 # Store the message mapping
-                store_message_map(
+                await async_store_message_map(
                     result.id,
                     matrix_event_id,
                     room_id,
@@ -564,7 +567,7 @@ class MessageQueue:
                 # Handle pruning if configured
                 msgs_to_keep = mapping_info.get("msgs_to_keep", DEFAULT_MSGS_TO_KEEP)
                 if msgs_to_keep > 0:
-                    prune_message_map(msgs_to_keep)
+                    await async_prune_message_map(msgs_to_keep)
 
         except Exception:
             logger.exception("Error handling message mapping")

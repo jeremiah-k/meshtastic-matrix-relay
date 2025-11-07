@@ -14,7 +14,7 @@ import os
 import sys
 import unittest
 from concurrent.futures import TimeoutError as ConcurrentTimeoutError
-from unittest.mock import AsyncMock, MagicMock, mock_open, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, mock_open, patch
 
 import pytest
 
@@ -1392,6 +1392,196 @@ def test_resolve_plugin_timeout(cfg, default, expected):
     """Test _resolve_plugin_timeout with various configurations."""
     result = _resolve_plugin_timeout(cfg, default)
     assert result == expected
+
+
+class TestUncoveredMeshtasticUtils(unittest.TestCase):
+    """Test cases for uncovered functions and edge cases in meshtastic_utils.py."""
+
+    @patch("mmrelay.meshtastic_utils.logger")
+    def test_resolve_plugin_timeout_attribute_error_handling(self, mock_logger):
+        """Test _resolve_plugin_timeout handles AttributeError gracefully."""
+        from mmrelay.meshtastic_utils import _resolve_plugin_timeout
+
+        # Create a config dict that will cause AttributeError when accessing nested dict
+        class FaultyDict(dict):
+            def get(self, key, default=None):
+                if key == "meshtastic":
+                    # Return None to cause AttributeError when trying to access .get() on None
+                    return None
+                return super().get(key, default)
+
+        faulty_config = FaultyDict()
+        result = _resolve_plugin_timeout(faulty_config, 10.0)
+
+        # Should return default value when AttributeError occurs
+        self.assertEqual(result, 10.0)
+        # Should not log any warnings for AttributeError handling
+        mock_logger.warning.assert_not_called()
+
+    @patch("mmrelay.meshtastic_utils.logger")
+    def test_get_device_metadata_no_localnode(self, mock_logger):
+        """Test _get_device_metadata when client has no localNode attribute."""
+        from mmrelay.meshtastic_utils import _get_device_metadata
+
+        # Mock client without localNode
+        mock_client = Mock(spec=[])  # No attributes at all
+
+        result = _get_device_metadata(mock_client)
+
+        # Should return default result
+        expected = {
+            "firmware_version": "unknown",
+            "raw_output": "",
+            "success": False,
+        }
+        self.assertEqual(result, expected)
+        mock_logger.debug.assert_called_with(
+            "Meshtastic client has no localNode.getMetadata(); skipping metadata retrieval"
+        )
+
+    @patch("mmrelay.meshtastic_utils.logger")
+    def test_get_device_metadata_no_getmetadata_method(self, mock_logger):
+        """Test _get_device_metadata when localNode has no getMetadata method."""
+        from mmrelay.meshtastic_utils import _get_device_metadata
+
+        # Mock client with localNode but no getMetadata method
+        mock_client = Mock()
+        mock_client.localNode = Mock(spec=[])  # No attributes at all
+
+        result = _get_device_metadata(mock_client)
+
+        # Should return default result
+        expected = {
+            "firmware_version": "unknown",
+            "raw_output": "",
+            "success": False,
+        }
+        self.assertEqual(result, expected)
+        mock_logger.debug.assert_called_with(
+            "Meshtastic client has no localNode.getMetadata(); skipping metadata retrieval"
+        )
+
+    @patch("mmrelay.meshtastic_utils.logger")
+    def test_get_device_metadata_getmetadata_exception(self, mock_logger):
+        """Test _get_device_metadata when getMetadata raises exception."""
+        from mmrelay.meshtastic_utils import _get_device_metadata
+
+        # Mock client where getMetadata raises exception
+        mock_client = Mock()
+        mock_client.localNode.getMetadata.side_effect = Exception("Test error")
+
+        result = _get_device_metadata(mock_client)
+
+        # Should return default result when exception occurs
+        expected = {
+            "firmware_version": "unknown",
+            "raw_output": "",
+            "success": False,
+        }
+        self.assertEqual(result, expected)
+        # Verify the logger was called with the correct message and exc_info
+        mock_logger.debug.assert_called_once()
+        call_args = mock_logger.debug.call_args
+        self.assertEqual(
+            call_args[0][0],
+            "Could not retrieve device metadata via localNode.getMetadata()",
+        )
+        self.assertTrue(call_args[1]["exc_info"])
+        self.assertIsInstance(call_args[1]["exc_info"], Exception)
+        self.assertEqual(str(call_args[1]["exc_info"]), "Test error")
+
+    @patch("mmrelay.meshtastic_utils.logger")
+    def test_connect_meshtastic_close_existing_connection_error(self, mock_logger):
+        """Test connect_meshtastic handles error when closing existing connection."""
+        from mmrelay.meshtastic_utils import connect_meshtastic
+
+        # Create a mock existing client that raises error on close
+        mock_existing_client = Mock()
+        mock_existing_client.close.side_effect = Exception("Close error")
+
+        # Set up the global meshtastic_client to have an existing client
+        import mmrelay.meshtastic_utils
+
+        mmrelay.meshtastic_utils.meshtastic_client = mock_existing_client
+
+        config = {
+            "meshtastic": {"connection_type": "tcp", "host": "localhost:4403"},
+            "matrix_rooms": {},
+        }
+
+        # Mock interface creation to avoid actual connection
+        with patch("meshtastic.tcp_interface.TCPInterface") as mock_tcp:
+            mock_interface = Mock()
+            mock_interface.getMyNodeInfo.return_value = {"num": 123}
+            mock_tcp.return_value = mock_interface
+
+            connect_meshtastic(config, force_connect=True)
+
+            # Should log warning about close error but continue
+            mock_logger.warning.assert_called_with(
+                "Error closing previous connection: Close error"
+            )
+
+    @patch("mmrelay.meshtastic_utils.reconnecting", True)
+    @patch(
+        "mmrelay.meshtastic_utils.shutting_down", True
+    )  # Set to True to exit immediately
+    def test_reconnect_function_basic(self):
+        """Test reconnect function basic functionality."""
+        import asyncio
+
+        from mmrelay.meshtastic_utils import reconnect
+
+        # Mock the connect_meshtastic function
+        with patch("mmrelay.meshtastic_utils.connect_meshtastic") as mock_connect:
+            # Run the async function - it should exit immediately due to shutting_down=True
+            loop = asyncio.new_event_loop()
+            policy = asyncio.get_event_loop_policy()
+            previous_loop = None
+            try:
+                previous_loop = policy.get_event_loop()
+            except RuntimeError:
+                pass
+            policy.set_event_loop(loop)
+            try:
+                result = loop.run_until_complete(reconnect())
+            finally:
+                policy.set_event_loop(previous_loop)
+                loop.close()
+
+            # Should not have attempted connection since shutting_down is True
+            mock_connect.assert_not_called()
+            # Function should return None when shutting down
+            self.assertIsNone(result)
+
+    @patch("mmrelay.meshtastic_utils.logger")
+    @patch("mmrelay.meshtastic_utils.config", None)
+    def test_check_connection_uncovered_paths(self, mock_logger):
+        """Test check_connection function with missing config."""
+        import asyncio
+
+        from mmrelay.meshtastic_utils import check_connection
+
+        # Run the async function with no config
+        loop = asyncio.new_event_loop()
+        policy = asyncio.get_event_loop_policy()
+        previous_loop = None
+        try:
+            previous_loop = policy.get_event_loop()
+        except RuntimeError:
+            pass
+        policy.set_event_loop(loop)
+        try:
+            result = loop.run_until_complete(check_connection())
+        finally:
+            policy.set_event_loop(previous_loop)
+            loop.close()
+
+        # Should return None when no config available
+        self.assertIsNone(result)
+        mock_logger.error.assert_called_with(
+            "No configuration available. Cannot check connection."
+        )
 
 
 if __name__ == "__main__":

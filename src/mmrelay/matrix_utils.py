@@ -90,9 +90,9 @@ from mmrelay.constants.network import (
     MILLISECONDS_PER_SECOND,
 )
 from mmrelay.db_utils import (
+    async_prune_message_map,
+    async_store_message_map,
     get_message_map_by_matrix_event_id,
-    prune_message_map,
-    store_message_map,
 )
 from mmrelay.log_utils import get_logger
 
@@ -1903,25 +1903,23 @@ async def matrix_relay(
     reply_to_event_id=None,
 ):
     """
-    Relay a Meshtastic message into a Matrix room and optionally record a Meshtastic↔Matrix mapping.
+    Relay a Meshtastic message into a Matrix room and optionally persist a Meshtastic⇄Matrix mapping for later interactions.
 
-    Formats the provided Meshtastic text into plain and HTML-safe formatted Matrix content (supports basic Markdown/HTML when libraries are available), applies Matrix reply framing when reply_to_event_id is provided, enforces E2EE restrictions (will not send into an encrypted room if the Matrix client's E2EE support is not enabled), sends the event via the global Matrix client, and—when message-interactions are enabled and a meshtastic_id is given—persists a mapping for later cross-network replies/reactions. Errors and timeouts are logged; the function does not raise on send/storage failures.
+    Formats the Meshtastic text into plain and HTML-safe formatted Matrix content, applies Matrix reply framing when reply_to_event_id is provided, enforces E2EE restrictions, sends the event via the configured Matrix client, and—when message-interactions are enabled—stores a mapping from the Meshtastic message to the created Matrix event for use by cross-network replies and reactions. Errors are logged; the function does not raise on send or storage failures.
 
-    Parameters that require extra context:
-    - meshtastic_id: when provided and storage is enabled, used to persist a mapping from the Meshtastic message to the created Matrix event for future reply/reaction handling.
-    - meshtastic_replyId: original Meshtastic message ID being replied to; included as metadata on the Matrix event.
-    - meshtastic_text: original Meshtastic text used when creating stored mappings (falls back to the relayed message if omitted).
-    - emote: if True, the Matrix message is sent as an `m.emote` (emote) instead of `m.text`.
-    - emoji: if True, a flag is added to the event to indicate emoji-like content.
-    - reply_to_event_id: when provided, the outgoing Matrix event will include an `m.in_reply_to` relation and quoted/HTML reply content if the original mapping can be found.
-
-    Side effects:
-    - Sends a message to Matrix using the global Matrix client.
-    - May persist a message mapping (Meshtastic ID → Matrix event) when configured.
-    - Logs operational and error information; does not propagate send/storage exceptions to callers.
-
-    Returns:
-    - None
+    Parameters:
+        room_id (str): Matrix room ID or alias to send the message into.
+        message (str): Text of the Meshtastic message to relay.
+        longname (str): Sender long display name from Meshtastic.
+        shortname (str): Sender short display name from Meshtastic.
+        meshnet_name (str): Remote meshnet name associated with the incoming message.
+        portnum (int): Meshtastic application/port number for the message.
+        meshtastic_id (optional): Meshtastic message identifier; when provided and storage is enabled, used to persist a mapping to the created Matrix event.
+        meshtastic_replyId (optional): Original Meshtastic message ID being replied to; included as metadata on the Matrix event.
+        meshtastic_text (optional): Original Meshtastic text to store with the mapping; if omitted, the relayed message text is used.
+        emote (bool, optional): If True, send the Matrix event as `m.emote` instead of `m.text`.
+        emoji (bool, optional): If True, mark the event with an emoji flag used by downstream logic.
+        reply_to_event_id (str, optional): Matrix event_id being replied to; if provided the outgoing event will include an `m.in_reply_to` relation and quoted/HTML reply content when the original mapping can be found.
     """
     global config
 
@@ -2158,23 +2156,18 @@ async def matrix_relay(
             and hasattr(response, "event_id")
         ):
             try:
-                loop = asyncio.get_running_loop()
-                # Store the message map in executor
-                await loop.run_in_executor(
-                    None,
-                    lambda: store_message_map(
-                        meshtastic_id,
-                        response.event_id,
-                        room_id,
-                        meshtastic_text if meshtastic_text else message,
-                        meshtastic_meshnet=local_meshnet_name,
-                    ),
+                await async_store_message_map(
+                    meshtastic_id,
+                    response.event_id,
+                    room_id,
+                    meshtastic_text if meshtastic_text else message,
+                    meshtastic_meshnet=local_meshnet_name,
                 )
                 logger.debug(f"Stored message map for meshtastic_id: {meshtastic_id}")
 
                 # If msgs_to_keep > 0, prune old messages after inserting a new one
                 if msgs_to_keep > 0:
-                    await loop.run_in_executor(None, prune_message_map, msgs_to_keep)
+                    await async_prune_message_map(msgs_to_keep)
             except Exception as e:
                 logger.error(f"Error storing message map: {e}")
 
