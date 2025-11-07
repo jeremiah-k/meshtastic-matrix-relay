@@ -5,7 +5,7 @@ on:
   release:
     types: [published]
   pull_request:
-    branches: [main, develop]
+    branches: [main, develop, "**-review"]
     paths:
       - .github/workflows/package-windows.yml
       - scripts/mmrelay.iss
