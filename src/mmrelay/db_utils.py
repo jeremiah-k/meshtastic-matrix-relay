@@ -582,7 +582,8 @@ def save_longname(meshtastic_id, longname):
             cursor (sqlite3.Cursor): Open database cursor used to execute the insert/update. The function uses `meshtastic_id` and `longname` from the enclosing scope.
         """
         cursor.execute(
-            "INSERT OR REPLACE INTO longnames (meshtastic_id, longname) VALUES (?, ?)",
+            "INSERT INTO longnames (meshtastic_id, longname) VALUES (?, ?) "
+            "ON CONFLICT(meshtastic_id) DO UPDATE SET longname=excluded.longname",
             (meshtastic_id, longname),
         )
 
@@ -666,7 +667,8 @@ def save_shortname(meshtastic_id, shortname):
             cursor (sqlite3.Cursor): Active database cursor used to execute the write operation.
         """
         cursor.execute(
-            "INSERT OR REPLACE INTO shortnames (meshtastic_id, shortname) VALUES (?, ?)",
+            "INSERT INTO shortnames (meshtastic_id, shortname) VALUES (?, ?) "
+            "ON CONFLICT(meshtastic_id) DO UPDATE SET shortname=excluded.shortname",
             (meshtastic_id, shortname),
         )
 
@@ -716,7 +718,12 @@ def _store_message_map_core(
         meshtastic_meshnet (optional): Meshnet flag or value associated with the Meshtastic message; may be None.
     """
     cursor.execute(
-        "INSERT OR REPLACE INTO message_map (meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO message_map (meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) VALUES (?, ?, ?, ?, ?) "
+        "ON CONFLICT(matrix_event_id) DO UPDATE SET "
+        "meshtastic_id=excluded.meshtastic_id, "
+        "matrix_room_id=excluded.matrix_room_id, "
+        "meshtastic_text=excluded.meshtastic_text, "
+        "meshtastic_meshnet=excluded.meshtastic_meshnet",
         (
             meshtastic_id,
             matrix_event_id,
