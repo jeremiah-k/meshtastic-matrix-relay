@@ -696,10 +696,6 @@ def _run(cmd, timeout=120, retry_attempts=1, retry_delay=1, **kwargs):
             if delay:
                 time.sleep(delay)
 
-    if last_exception:
-        raise last_exception
-    raise RuntimeError("Command execution failed without exception context")
-
 
 def _run_git(cmd, timeout=120, **kwargs):
     """
