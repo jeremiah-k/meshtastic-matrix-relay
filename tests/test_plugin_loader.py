@@ -702,6 +702,23 @@ class TestPluginSecurityGuards(unittest.TestCase):
         self.assertEqual(safe, requirements)
         self.assertEqual(flagged, [])
 
+    def test_get_allowed_repo_hosts_empty_list_override(self):
+        """Explicit empty list should override default hosts."""
+        self.pl.config = {"security": {"community_repo_hosts": []}}
+        from mmrelay.plugin_loader import _get_allowed_repo_hosts
+
+        result = _get_allowed_repo_hosts()
+        self.assertEqual(result, [])
+
+    def test_get_allowed_repo_hosts_none_uses_default(self):
+        """None config should use default hosts."""
+        self.pl.config = {"security": {"community_repo_hosts": None}}
+        from mmrelay.plugin_loader import _get_allowed_repo_hosts
+
+        result = _get_allowed_repo_hosts()
+        expected = ["github.com", "gitlab.com", "codeberg.org", "bitbucket.org"]
+        self.assertEqual(result, expected)
+
 
 class TestCommandRunner(unittest.TestCase):
     """Verify helper command execution behavior."""

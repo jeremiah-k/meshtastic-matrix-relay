@@ -47,6 +47,17 @@ else:
         if deps_path not in sys.path:
             sys.path.append(deps_path)
 
+# Pip source flags that can be followed by URLs
+_PIP_SOURCE_FLAGS = {
+    "-e",
+    "--editable",
+    "-f",
+    "--find-links",
+    "-i",
+    "--index-url",
+    "--extra-index-url",
+}
+
 
 def _collect_requirements(
     requirements_file: str, visited: Set[str] | None = None
@@ -186,14 +197,19 @@ def _get_allowed_repo_hosts() -> list[str]:
     """
     security_config = _get_security_settings()
     hosts = security_config.get("community_repo_hosts")
-    if not hosts:
+
+    if hosts is None:
         return list(DEFAULT_ALLOWED_COMMUNITY_HOSTS)
+
     if isinstance(hosts, str):
         hosts = [hosts]
-    normalized_hosts = [
+
+    if not isinstance(hosts, list):
+        return list(DEFAULT_ALLOWED_COMMUNITY_HOSTS)
+
+    return [
         host.strip().lower() for host in hosts if isinstance(host, str) and host.strip()
     ]
-    return normalized_hosts or list(DEFAULT_ALLOWED_COMMUNITY_HOSTS)
 
 
 def _allow_local_plugin_paths() -> bool:
@@ -339,16 +355,7 @@ def _filter_risky_requirements(
 
         if is_risky and not allow_untrusted:
             # Remove preceding source-related flag if present
-            source_flags = {
-                "-e",
-                "--editable",
-                "-f",
-                "--find-links",
-                "-i",
-                "--index-url",
-                "--extra-index-url",
-            }
-            if safe and safe[-1].lower() in source_flags:
+            if safe and safe[-1].lower() in _PIP_SOURCE_FLAGS:
                 flagged.append(safe.pop())
             flagged.append(token)
             continue
