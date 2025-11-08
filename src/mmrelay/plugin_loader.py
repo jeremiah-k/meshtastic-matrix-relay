@@ -149,9 +149,12 @@ def _collect_requirements(
 @contextmanager
 def _temp_sys_path(path: str):
     """
-    Context manager that temporarily prepends a directory to Python's import search path.
-
-    Use as: `with _temp_sys_path(path): ...` — the given `path` is inserted at the front of `sys.path` for the duration of the context. On exit the first occurrence of `path` is removed; if the path is already absent, removal is silently ignored.
+    Temporarily prepends a directory to Python's import search path for the duration of a with-block.
+    
+    The given path is inserted at the front of sys.path on entry. On exit the first occurrence of the path is removed; if the path is not present, no error is raised.
+    
+    Parameters:
+        path (str | os.PathLike): Directory to temporarily add to sys.path.
     """
     path = os.fspath(path)
     sys.path.insert(0, path)
@@ -166,19 +169,12 @@ def _temp_sys_path(path: str):
 
 def _clean_python_cache(directory: str) -> None:
     """
-    Recursively remove Python bytecode cache directories from a plugin directory.
-
-    This function walks through the given directory and removes all __pycache__ directories
-    and their contents to ensure that updated plugin code is loaded fresh instead of using
-    stale compiled bytecode from previous runs.
-
+    Remove Python bytecode cache files and __pycache__ directories under the given directory.
+    
+    Walks the directory tree rooted at `directory` and deletes any `__pycache__` directories and `.pyc` files it finds; removal errors are logged and ignored so the operation is non-fatal.
+    
     Parameters:
-        directory (str): Path to directory to clean of Python cache files.
-
-    Side effects:
-        - Removes __pycache__ directories and .pyc files from the filesystem.
-        - Logs debug information about cache cleaning operations.
-        - Silently continues if cache removal fails (non-critical operation).
+        directory (str): Path to the directory to clean of Python cache files.
     """
     if not os.path.isdir(directory):
         return
@@ -507,22 +503,19 @@ def _raise_install_error(pkg_name):
 
 def clone_or_update_repo(repo_url, ref, plugins_dir):
     """
-    Clone or update a community plugin Git repository.
-
-    Performs a best-effort clone or update of the repository at repo_url into
-    plugins_dir/repo_name using the provided ref (a dict with keys "type"
-    ("tag" or "branch") and "value" (name)). If the repository already exists,
-    the function attempts to fetch and switch to the requested branch or tag,
-    with fallbacks to common default branches ("main", "master") when
-    appropriate.
-
+    Clone or update a community plugin Git repository into plugins_dir/<repo_name>.
+    
+    Attempts to ensure the repository identified by repo_url exists under plugins_dir and is checked out at the specified ref (a dict with keys "type" set to "tag" or "branch", and "value" set to the tag or branch name). If the repository already exists the function attempts to fetch and switch to the requested ref, falling back to common default branches ("main", "master") when appropriate.
+    
     Parameters:
-        ref (dict): Reference spec with keys:
-            - type: either "tag" or "branch".
-            - value: the tag or branch name to check out.
-
+        repo_url (str): URL of the Git repository to clone or update.
+        ref (dict): Reference specification with keys:
+            - type (str): "tag" or "branch".
+            - value (str): The tag or branch name to check out.
+        plugins_dir (str): Directory under which the repository should be placed.
+    
     Returns:
-        bool: True if the repository was successfully cloned/updated; False if a fatal git or filesystem error prevented cloning or updating.
+        bool: `True` if the repository was successfully cloned or updated, `False` otherwise.
     """
     repo_url = (repo_url or "").strip()
     ref_type = ref.get("type")  # expected: "tag" or "branch"
@@ -979,20 +972,16 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
 
 def load_plugins_from_directory(directory, recursive=False):
     """
-    Load and instantiate Plugin classes from Python files in a directory.
-
-    Searches `directory` (optionally recursively) for .py files, imports each module in an isolated module name and, if the module defines a `Plugin` class, instantiates and collects it. If an import fails with ModuleNotFoundError, the function will (when auto-install is enabled in the global `config`) attempt to install the missing distribution with pip or pipx, refresh import paths, and retry importing the module. Files that do not define `Plugin` are skipped; unresolved import errors or other exceptions are logged and do not abort the whole scan.
-
+    Discovers and instantiates Plugin classes from Python modules in the given directory.
+    
+    Searches directory (optionally recursively) for .py files, imports each module under an isolated name, and instantiates any top-level `Plugin` class found. On import failures for missing dependencies, the function may attempt to install those dependencies when auto-install is enabled; it also refreshes import paths and retries loading. The function may modify interpreter import state (e.g., entries in sys.modules) and can invoke external installers when auto-install is enabled.
+    
     Parameters:
         directory (str): Path to the directory containing plugin Python files.
         recursive (bool): If True, scan subdirectories recursively; otherwise only the top-level directory.
-
+    
     Returns:
-        list: Instances of found plugin classes (may be empty).
-
-    Notes:
-    - The function mutates interpreter import state (may add entries to sys.modules) and can invoke external installers (pip/pipx) when auto-install is enabled.
-    - Only modules that define a top-level `Plugin` attribute are instantiated and returned.
+        list: Instances of discovered plugin classes (may be empty).
     """
     plugins = []
     if os.path.isdir(directory):

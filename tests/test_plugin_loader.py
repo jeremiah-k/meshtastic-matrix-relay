@@ -215,7 +215,14 @@ def some_function():
         self.assertEqual(plugins, [])
 
     def test_load_plugins_dependency_install_refreshes_path(self):
-        """Ensure dependency installs on user site become importable for plugins."""
+        """
+        Verify that when a plugin requires a package, a dependency installation into the user's site-packages is made importable during plugin loading.
+        
+        This test creates a plugin that imports a fake dependency, simulates installing that dependency into a test user site directory (via a patched subprocess call), and patches site package discovery and addsitedir behavior. It then calls the plugin loader and asserts:
+        - the plugin is discovered and loaded,
+        - the test user site directory was added to the interpreter import path,
+        - the plugin source directory itself was not added to sys.path.
+        """
 
         for var in ("PIPX_HOME", "PIPX_LOCAL_VENVS"):
             os.environ.pop(var, None)
@@ -258,10 +265,10 @@ class Plugin:
 
         def fake_addsitedir(path):
             """
-            Record a directory and ensure it's on the Python import path.
-
-            Adds `path` to the external `added_dirs` list and, if not already present, inserts it at the front of `sys.path` so it takes precedence during imports.
-
+            Register a directory for testing and ensure it is available to the Python import system.
+            
+            Adds the given path to the external `added_dirs` list and places it at the front of `sys.path` if it is not already present so imports prefer that directory.
+            
             Parameters:
                 path (str): Filesystem path to register on the import search path.
             """
@@ -845,7 +852,11 @@ class TestCleanPythonCache(unittest.TestCase):
 
     @patch("mmrelay.plugin_loader.logger")
     def test_clean_python_cache_logs_debug_messages(self, mock_logger):
-        """Test that debug messages are logged."""
+        """
+        Verify that cleaning Python cache logs debug messages and includes a removal message for __pycache__ directories.
+        
+        The test creates a __pycache__ directory, invokes _clean_python_cache on the containing directory, and asserts that logger.debug was called and one of the debug messages contains "Removed Python cache directory".
+        """
         # Create a __pycache__ directory
         pycache = os.path.join(self.temp_dir, "__pycache__")
         os.makedirs(pycache, exist_ok=True)
@@ -914,7 +925,13 @@ class TestCacheCleaningIntegration(unittest.TestCase):
     """Test cases for cache cleaning integration in plugin loading workflow."""
 
     def setUp(self):
-        """Set up test environment."""
+        """
+        Prepare an isolated temporary directory for the test and reset plugin loader state.
+        
+        Creates and assigns a temporary directory to `self.temp_dir` and registers a cleanup
+        to remove it after the test. Resets `mmrelay.plugin_loader.sorted_active_plugins`
+        to an empty list and `mmrelay.plugin_loader.plugins_loaded` to False.
+        """
         self.temp_dir = tempfile.mkdtemp()
         self.addCleanup(lambda: shutil.rmtree(self.temp_dir, ignore_errors=True))
 
