@@ -213,6 +213,23 @@ def _clean_python_cache(directory: str) -> None:
         )
 
 
+def _success_with_cache_clean(repo_path: str) -> bool:
+    """
+    Helper function to clean Python cache and return success.
+
+    This function encapsulates the common pattern of cleaning Python bytecode cache
+    after successful repository operations and returning True to indicate success.
+
+    Parameters:
+        repo_path (str): Path to the repository directory to clean cache from.
+
+    Returns:
+        bool: Always returns True to indicate successful operation.
+    """
+    _clean_python_cache(repo_path)
+    return True
+
+
 def _reset_caches_for_tests():
     """
     Reset the global plugin loader caches to their initial state for testing purposes.
@@ -581,9 +598,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                             logger.info(
                                 f"Updated repository {repo_name} branch {ref_value}"
                             )
-                            # Clean Python cache to ensure fresh code loading
-                            _clean_python_cache(repo_path)
-                            return True
+                            return _success_with_cache_clean(repo_path)
                         except subprocess.CalledProcessError as e:
                             logger.warning(f"Error pulling branch {ref_value}: {e}")
                             # Continue anyway, we'll use what we have
@@ -602,9 +617,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                             logger.info(f"Switched to and updated branch {ref_value}")
                         else:
                             logger.info(f"Switched to and updated tag {ref_value}")
-                        # Clean Python cache to ensure fresh code loading
-                        _clean_python_cache(repo_path)
-                        return True
+                        return _success_with_cache_clean(repo_path)
                 except subprocess.CalledProcessError:
                     # If we can't checkout the specified branch, try the other default branch
                     other_default = "main" if ref_value == "master" else "master"
@@ -623,9 +636,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                         logger.info(
                             f"Using {other_default} branch instead of {ref_value}"
                         )
-                        # Clean Python cache to ensure fresh code loading
-                        _clean_python_cache(repo_path)
-                        return True
+                        return _success_with_cache_clean(repo_path)
                     except subprocess.CalledProcessError:
                         # If that fails too, we can't update the repository
                         logger.warning(
@@ -646,9 +657,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                         logger.info(
                             f"Updated repository {repo_name} to branch {ref_value}"
                         )
-                        # Clean Python cache to ensure fresh code loading
-                        _clean_python_cache(repo_path)
-                        return True
+                        return _success_with_cache_clean(repo_path)
                     except subprocess.CalledProcessError as exc:
                         logger.warning(
                             "Failed to update branch %s for %s: %s",
@@ -683,9 +692,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                         logger.info(
                             f"Repository {repo_name} is already at tag {ref_value}"
                         )
-                        # Clean Python cache to ensure fresh code loading
-                        _clean_python_cache(repo_path)
-                        return True
+                        return _success_with_cache_clean(repo_path)
 
                     # Otherwise, try to checkout the tag or branch
                     _run(
@@ -693,9 +700,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                         timeout=120,
                     )
                     logger.info(f"Updated repository {repo_name} to tag {ref_value}")
-                    # Clean Python cache to ensure fresh code loading
-                    _clean_python_cache(repo_path)
-                    return True
+                    return _success_with_cache_clean(repo_path)
                 except subprocess.CalledProcessError:
                     # If tag checkout fails, try to fetch it specifically
                     logger.warning(
@@ -748,9 +753,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                         logger.info(
                             f"Successfully fetched and checked out tag {ref_value}"
                         )
-                        # Clean Python cache to ensure fresh code loading
-                        _clean_python_cache(repo_path)
-                        return True
+                        return _success_with_cache_clean(repo_path)
                     except subprocess.CalledProcessError:
                         # If that fails too, try as a branch
                         logger.warning(
@@ -772,9 +775,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                             logger.info(
                                 f"Updated repository {repo_name} to branch {ref_value}"
                             )
-                            # Clean Python cache to ensure fresh code loading
-                            _clean_python_cache(repo_path)
-                            return True
+                            return _success_with_cache_clean(repo_path)
                         except subprocess.CalledProcessError:
                             # If all else fails, just use a default branch
                             logger.warning(
