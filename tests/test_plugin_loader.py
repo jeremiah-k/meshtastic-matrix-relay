@@ -825,6 +825,18 @@ class TestCleanPythonCache(unittest.TestCase):
             # Should not raise exception
             _clean_python_cache(self.temp_dir)
 
+    def test_clean_python_cache_handles_permission_errors_os_remove(self):
+        """Test that function handles permission errors from os.remove gracefully."""
+        # Create a .pyc file
+        pyc_file = os.path.join(self.temp_dir, "test.pyc")
+        with open(pyc_file, "w") as f:
+            f.write("dummy")
+
+        # Mock os.remove to raise PermissionError
+        with patch("os.remove", side_effect=PermissionError("Permission denied")):
+            # Should not raise exception
+            _clean_python_cache(self.temp_dir)
+
     @patch("mmrelay.plugin_loader.logger")
     def test_clean_python_cache_logs_debug_messages(self, mock_logger):
         """Test that debug messages are logged."""
@@ -877,10 +889,7 @@ class TestCacheCleaningIntegration(unittest.TestCase):
         pl.plugins_loaded = False
 
     @patch("mmrelay.plugin_loader._clean_python_cache")
-    @patch("mmrelay.plugin_loader.load_plugins_from_directory")
-    def test_load_plugins_calls_cache_cleaning(
-        self, mock_load_plugins, mock_clean_cache
-    ):
+    def test_load_plugins_calls_cache_cleaning(self, mock_clean_cache):
         """Test that load_plugins_from_directory calls cache cleaning."""
         # Create a plugin directory
         plugin_dir = os.path.join(self.temp_dir, "plugins")

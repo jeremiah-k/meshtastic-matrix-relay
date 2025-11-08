@@ -164,7 +164,7 @@ def _temp_sys_path(path: str):
             pass
 
 
-def _clean_python_cache(directory):
+def _clean_python_cache(directory: str) -> None:
     """
     Recursively remove Python bytecode cache directories from a plugin directory.
 
