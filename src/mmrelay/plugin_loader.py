@@ -336,12 +336,8 @@ def _filter_risky_requirement_lines(
 
         # Check if any token in the line is risky
         line_is_risky = False
-        risky_tokens = []
 
-        i = 0
-        while i < len(tokens):
-            token = tokens[i]
-
+        for token in tokens:
             # Handle editable flags with values (--editable=url)
             if token.startswith("-") and "=" in token:
                 flag_name, _, flag_value = token.partition("=")
@@ -351,27 +347,15 @@ def _filter_risky_requirement_lines(
                     and not allow_untrusted
                 ):
                     line_is_risky = True
-                    risky_tokens.extend([token])
-                i += 1
                 continue
 
             # Handle flags that take values
             if token.lower() in PIP_SOURCE_FLAGS:
-                if i + 1 < len(tokens) and not tokens[i + 1].startswith("-"):
-                    next_token = tokens[i + 1]
-                    if _is_requirement_risky(next_token) and not allow_untrusted:
-                        line_is_risky = True
-                        risky_tokens.extend([token, next_token])
-                    i += 2
-                else:
-                    i += 1
-                continue
+                continue  # Skip flag tokens, as they don't indicate risk by themselves
 
             # Check if token itself is risky
             if _is_requirement_risky(token) and not allow_untrusted:
                 line_is_risky = True
-                risky_tokens.append(token)
-            i += 1
 
         if line_is_risky:
             flagged_lines.append(line)
@@ -582,19 +566,24 @@ def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
             if not pipx_path:
                 raise FileNotFoundError("pipx executable not found on PATH")
             if safe_requirements:
-                # Separate packages from pip arguments, handling flags with values
+                # Tokenize all safe lines into a flat list of tokens to correctly separate packages from arguments.
+                all_tokens = []
+                for line in safe_requirements:
+                    all_tokens.extend(shlex.split(line, posix=True, comments=True))
+
+                # Separate packages from pip arguments from the token list
                 packages = []
                 pip_args = []
                 i = 0
-                while i < len(safe_requirements):
-                    token = safe_requirements[i]
+                while i < len(all_tokens):
+                    token = all_tokens[i]
                     if token.startswith("-"):
                         pip_args.append(token)
                         # Check if next token exists and doesn't start with "-", assume it's a value
-                        if i + 1 < len(safe_requirements) and not safe_requirements[
-                            i + 1
-                        ].startswith("-"):
-                            pip_args.append(safe_requirements[i + 1])
+                        if i + 1 < len(all_tokens) and not all_tokens[i + 1].startswith(
+                            "-"
+                        ):
+                            pip_args.append(all_tokens[i + 1])
                             i += 1
                     else:
                         packages.append(token)
