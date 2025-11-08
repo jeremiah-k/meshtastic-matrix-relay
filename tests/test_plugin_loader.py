@@ -1077,23 +1077,41 @@ class TestRequirementFiltering(unittest.TestCase):
         self.assertEqual(flagged, [])
 
     def test_filter_risky_requirements_allow_untrusted(self):
-        """Test allowing untrusted dependencies via config."""
+        """Test that allow_untrusted=True allows risky requirements."""
         from mmrelay.plugin_loader import _filter_risky_requirements
 
+        # Set up config to allow untrusted dependencies
         self.pl.config = {"security": {"allow_untrusted_dependencies": True}}
 
         requirements = [
             "git+https://github.com/user/repo.git",
-            "--extra-index-url",
-            "https://pypi.org/simple",
-            "requests==2.28.0",
+            "http://example.com/package.tar.gz",
         ]
 
         safe, flagged, allow = _filter_risky_requirements(requirements)
 
-        self.assertEqual(len(safe), 4)
-        self.assertEqual(flagged, [])
+        self.assertEqual(len(safe), 2)
+        self.assertEqual(len(flagged), 0)
         self.assertTrue(allow)
+
+    def test_filter_risky_requirements_short_form_flags_with_attached_values(self):
+        """Test that short-form flags with attached values are properly filtered."""
+        from mmrelay.plugin_loader import _filter_risky_requirements
+
+        requirements = [
+            "-ihttps://malicious.example.com/simple",  # Should be flagged
+            "-fsafe-local-path",  # Should be safe (find-links with local path)
+            "-egit+https://github.com/user/repo.git",  # Should be flagged (editable with VCS)
+            "requests==2.28.0",  # Should be safe
+        ]
+
+        safe, flagged, allow = _filter_risky_requirements(requirements)
+
+        self.assertIn("requests==2.28.0", safe)
+        self.assertIn("-fsafe-local-path", safe)
+        self.assertIn("-ihttps://malicious.example.com/simple", flagged)
+        self.assertIn("-egit+https://github.com/user/repo.git", flagged)
+        self.assertFalse(allow)
 
 
 class TestGitOperations(unittest.TestCase):
@@ -1889,17 +1907,24 @@ class TestDependencyInstallation(unittest.TestCase):
         with patch.dict(os.environ, {"PIPX_HOME": "/pipx/home"}):
             _install_requirements_for_repo(self.repo_path, "test-plugin")
 
-        mock_run.assert_called_once_with(
-            [
-                "/usr/bin/pipx",
-                "inject",
-                "mmrelay",
-                "requests==2.28.0",
-                "--pip-args",
-                "--extra-index-url https://pypi.org/simple",
-            ],
-            timeout=600,
-        )
+        # Verify the call uses temporary file approach
+        mock_run.assert_called_once()
+        call_args = mock_run.call_args
+        cmd = call_args[0][0]
+
+        # Should be pipx inject with --pip-args containing -r flag
+        assert cmd[0] == "/usr/bin/pipx"
+        assert cmd[1] == "inject"
+        assert cmd[2] == "mmrelay"
+        assert cmd[3] == "--pip-args"
+
+        # The --pip-args should contain -r with a temporary file path
+        pip_args = cmd[4]
+        assert pip_args.startswith("-r ")
+        assert pip_args.endswith(".txt")
+
+        # Verify timeout
+        assert call_args[1]["timeout"] == 600
 
     def test_install_plugin_requirements_pip_install(self):
         """Test dependency installation with pip."""

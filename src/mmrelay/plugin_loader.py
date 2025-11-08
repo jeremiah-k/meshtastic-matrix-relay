@@ -375,6 +375,30 @@ def _filter_risky_requirement_lines(
                     line_is_risky = True
                 continue
 
+            # Handle short-form flags with attached values (-iflagvalue, -ivalue)
+            if token.startswith("-") and not token.startswith("--"):
+                # Check if this matches any short-form source flag
+                for flag in PIP_SOURCE_FLAGS:
+                    if flag.startswith("-") and not flag.startswith("--"):
+                        # Extract the flag character (e.g., 'i' from '-i')
+                        flag_char = flag[1] if len(flag) == 2 else None
+                        if (
+                            flag_char
+                            and token.startswith(f"-{flag_char}")
+                            and len(token) > 2
+                        ):
+                            # This is a short flag with attached value
+                            flag_value = token[
+                                2:
+                            ]  # Extract everything after the flag character
+                            if (
+                                _is_requirement_risky(flag_value)
+                                and not allow_untrusted
+                            ):
+                                line_is_risky = True
+                            break
+                continue
+
             # Handle flags that take values
             if token.lower() in PIP_SOURCE_FLAGS:
                 continue  # Skip flag tokens, as they don't indicate risk by themselves
@@ -592,41 +616,35 @@ def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
             if not pipx_path:
                 raise FileNotFoundError("pipx executable not found on PATH")
             if safe_requirements:
-                # Tokenize all safe lines into a flat list of tokens to correctly separate packages from arguments.
-                all_tokens = []
-                for line in safe_requirements:
-                    all_tokens.extend(shlex.split(line, posix=True, comments=True))
+                # Write safe requirements to a temporary file to handle hashed requirements
+                # and environment markers properly
+                with tempfile.NamedTemporaryFile(
+                    mode="w", suffix=".txt", delete=False
+                ) as temp_file:
+                    temp_path = temp_file.name
+                    for entry in safe_requirements:
+                        temp_file.write(entry + "\n")
 
-                # Separate packages from pip arguments from the token list
-                packages = []
-                pip_args = []
-                # Flags that are known to take a value as the next token.
-                flags_with_values = PIP_SOURCE_FLAGS + ("--hash",)
-                i = 0
-                while i < len(all_tokens):
-                    token = all_tokens[i]
-                    if token.startswith("-"):
-                        pip_args.append(token)
-                        # If the flag is known to take a value, and a value is present, consume it.
-                        if token.lower() in flags_with_values and i + 1 < len(
-                            all_tokens
-                        ):
-                            pip_args.append(all_tokens[i + 1])
-                            i += 1  # Also advance past the value token
-                    else:
-                        packages.append(token)
-                    i += 1
-                if not packages:
-                    logger.info(
-                        "Requirements in %s only contained pip flags; skipping pipx injection.",
-                        requirements_path,
-                    )
-                else:
-                    cmd = [pipx_path, "inject", "mmrelay", *packages]
-                    if pip_args:
-                        cmd += ["--pip-args", " ".join(pip_args)]
+                try:
+                    # Use pipx inject with --pip-args to pass -r flag to underlying pip
+                    cmd = [
+                        pipx_path,
+                        "inject",
+                        "mmrelay",
+                        "--pip-args",
+                        f"-r {temp_path}",
+                    ]
                     _run(cmd, timeout=600)
                     installed_packages = True
+                finally:
+                    # Clean up the temporary file
+                    try:
+                        os.unlink(temp_path)
+                    except OSError:
+                        logger.debug(
+                            "Failed to clean up temporary requirements file: %s",
+                            temp_path,
+                        )
             else:
                 logger.info(
                     "No dependencies listed in %s; skipping pipx injection.",
