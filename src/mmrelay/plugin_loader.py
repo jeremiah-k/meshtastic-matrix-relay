@@ -251,10 +251,13 @@ def _is_repo_url_allowed(repo_url: str) -> bool:
     scheme, host = _normalize_repo_target(repo_url)
 
     if not scheme:
-        if _allow_local_plugin_paths() and os.path.exists(repo_url):
-            return True
+        if _allow_local_plugin_paths():
+            if os.path.exists(repo_url):
+                return True
+            logger.error("Local repository path does not exist: %s", repo_url)
+            return False
         logger.error(
-            "Local community plugin paths are disabled. Rejecting repository: %s",
+            "Invalid repository '%s'. Local paths are disabled, and remote URLs must include a scheme (e.g., 'https://').",
             repo_url,
         )
         return False
