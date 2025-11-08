@@ -626,7 +626,13 @@ def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
                 ]
                 if not in_venv:
                     cmd.append("--user")
-                cmd.extend(safe_requirements)
+                pip_args: list[str] = []
+                for entry in safe_requirements:
+                    if entry.startswith("-"):
+                        pip_args.extend(shlex.split(entry, posix=True))
+                    else:
+                        pip_args.append(entry)
+                cmd.extend(pip_args)
                 _run(cmd, timeout=600)
                 installed_packages = True
 
