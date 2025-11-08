@@ -615,7 +615,9 @@ def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
             pipx_path = shutil.which("pipx")
             if not pipx_path:
                 raise FileNotFoundError("pipx executable not found on PATH")
-            if safe_requirements:
+            # Check if there are actual packages to install (not just flags)
+            packages = [r for r in safe_requirements if not r.startswith("-")]
+            if packages:
                 # Write safe requirements to a temporary file to handle hashed requirements
                 # and environment markers properly
                 with tempfile.NamedTemporaryFile(
