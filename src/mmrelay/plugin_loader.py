@@ -285,6 +285,22 @@ def _is_repo_url_allowed(repo_url: str) -> bool:
     return True
 
 
+def _is_requirement_risky(req_string: str) -> bool:
+    """
+    Check if a requirement string is considered risky.
+
+    Args:
+        req_string: The requirement string to check
+
+    Returns:
+        True if requirement is risky (VCS/URL source), False otherwise
+    """
+    lowered = req_string.lower()
+    return any(lowered.startswith(prefix) for prefix in RISKY_REQUIREMENT_PREFIXES) or (
+        "@" in req_string and "://" in req_string
+    )
+
+
 def _filter_risky_requirements(
     requirements: List[str],
 ) -> tuple[List[str], List[str], bool]:
@@ -307,12 +323,8 @@ def _filter_risky_requirements(
         # Handle editable flags with values (--editable=url)
         if token.startswith("-") and "=" in token:
             flag_name, _, flag_value = token.partition("=")
-            value_lower = flag_value.lower()
-            value_is_risky = any(
-                value_lower.startswith(prefix) for prefix in RISKY_REQUIREMENT_PREFIXES
-            ) or ("@" in flag_value and "://" in flag_value)
 
-            if value_is_risky and not allow_untrusted:
+            if _is_requirement_risky(flag_value) and not allow_untrusted:
                 flagged.append(token)
                 continue
 
@@ -324,9 +336,7 @@ def _filter_risky_requirements(
             safe.append(token)
             continue
 
-        is_risky = any(
-            lowered.startswith(prefix) for prefix in RISKY_REQUIREMENT_PREFIXES
-        ) or ("@" in normalized and "://" in normalized)
+        is_risky = _is_requirement_risky(normalized)
 
         if is_risky and not allow_untrusted:
             # Remove preceding editable flag if present
@@ -677,13 +687,11 @@ def _run(cmd, timeout=120, retry_attempts=1, retry_delay=1, **kwargs):
 
     attempts = max(int(retry_attempts or 1), 1)
     delay = max(int(retry_delay or 0), 0)
-    last_exception: Exception | None = None
 
     for attempt in range(1, attempts + 1):
         try:
             return subprocess.run(cmd, check=True, timeout=timeout, **kwargs)
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
-            last_exception = exc
             if attempt >= attempts:
                 raise
             logger.warning(
