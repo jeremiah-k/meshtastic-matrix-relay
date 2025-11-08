@@ -184,6 +184,7 @@ def _clean_python_cache(directory: str) -> None:
         return
 
     cache_dirs_removed = 0
+    pyc_files_removed = 0
     for root, dirs, files in os.walk(directory):
         # Remove __pycache__ directories
         if "__pycache__" in dirs:
@@ -192,7 +193,7 @@ def _clean_python_cache(directory: str) -> None:
                 shutil.rmtree(cache_path)
                 logger.debug(f"Removed Python cache directory: {cache_path}")
                 cache_dirs_removed += 1
-            except (OSError, PermissionError) as e:
+            except OSError as e:
                 logger.debug(f"Could not remove cache directory {cache_path}: {e}")
             # Remove from dirs list to prevent walking into it
             dirs.remove("__pycache__")
@@ -204,30 +205,19 @@ def _clean_python_cache(directory: str) -> None:
             try:
                 os.remove(pyc_path)
                 logger.debug(f"Removed .pyc file: {pyc_path}")
-            except (OSError, PermissionError) as e:
+                pyc_files_removed += 1
+            except OSError as e:
                 logger.debug(f"Could not remove .pyc file {pyc_path}: {e}")
 
-    if cache_dirs_removed > 0:
-        logger.info(
-            f"Cleaned {cache_dirs_removed} Python cache directories from {directory}"
-        )
-
-
-def _success_with_cache_clean(repo_path: str) -> bool:
-    """
-    Helper function to clean Python cache and return success.
-
-    This function encapsulates the common pattern of cleaning Python bytecode cache
-    after successful repository operations and returning True to indicate success.
-
-    Parameters:
-        repo_path (str): Path to the repository directory to clean cache from.
-
-    Returns:
-        bool: Always returns True to indicate successful operation.
-    """
-    _clean_python_cache(repo_path)
-    return True
+    if cache_dirs_removed > 0 or pyc_files_removed > 0:
+        log_parts = []
+        if cache_dirs_removed > 0:
+            plural_dir = "ies" if cache_dirs_removed > 1 else "y"
+            log_parts.append(f"{cache_dirs_removed} Python cache director{plural_dir}")
+        if pyc_files_removed > 0:
+            plural_file = "s" if pyc_files_removed > 1 else ""
+            log_parts.append(f"{pyc_files_removed} .pyc file{plural_file}")
+        logger.info(f"Cleaned {' and '.join(log_parts)} from {directory}")
 
 
 def _reset_caches_for_tests():
@@ -598,7 +588,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                             logger.info(
                                 f"Updated repository {repo_name} branch {ref_value}"
                             )
-                            return _success_with_cache_clean(repo_path)
+                            return True
                         except subprocess.CalledProcessError as e:
                             logger.warning(f"Error pulling branch {ref_value}: {e}")
                             # Continue anyway, we'll use what we have
@@ -617,7 +607,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                             logger.info(f"Switched to and updated branch {ref_value}")
                         else:
                             logger.info(f"Switched to and updated tag {ref_value}")
-                        return _success_with_cache_clean(repo_path)
+                        return True
                 except subprocess.CalledProcessError:
                     # If we can't checkout the specified branch, try the other default branch
                     other_default = "main" if ref_value == "master" else "master"
@@ -636,7 +626,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                         logger.info(
                             f"Using {other_default} branch instead of {ref_value}"
                         )
-                        return _success_with_cache_clean(repo_path)
+                        return True
                     except subprocess.CalledProcessError:
                         # If that fails too, we can't update the repository
                         logger.warning(
@@ -657,7 +647,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                         logger.info(
                             f"Updated repository {repo_name} to branch {ref_value}"
                         )
-                        return _success_with_cache_clean(repo_path)
+                        return True
                     except subprocess.CalledProcessError as exc:
                         logger.warning(
                             "Failed to update branch %s for %s: %s",
@@ -692,7 +682,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                         logger.info(
                             f"Repository {repo_name} is already at tag {ref_value}"
                         )
-                        return _success_with_cache_clean(repo_path)
+                        return True
 
                     # Otherwise, try to checkout the tag or branch
                     _run(
@@ -700,7 +690,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                         timeout=120,
                     )
                     logger.info(f"Updated repository {repo_name} to tag {ref_value}")
-                    return _success_with_cache_clean(repo_path)
+                    return True
                 except subprocess.CalledProcessError:
                     # If tag checkout fails, try to fetch it specifically
                     logger.warning(
@@ -753,7 +743,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                         logger.info(
                             f"Successfully fetched and checked out tag {ref_value}"
                         )
-                        return _success_with_cache_clean(repo_path)
+                        return True
                     except subprocess.CalledProcessError:
                         # If that fails too, try as a branch
                         logger.warning(
@@ -775,7 +765,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                             logger.info(
                                 f"Updated repository {repo_name} to branch {ref_value}"
                             )
-                            return _success_with_cache_clean(repo_path)
+                            return True
                         except subprocess.CalledProcessError:
                             # If all else fails, just use a default branch
                             logger.warning(

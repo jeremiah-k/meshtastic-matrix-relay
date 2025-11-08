@@ -901,12 +901,9 @@ class TestCacheCleaningIntegration(unittest.TestCase):
         # Verify cache cleaning was called
         mock_clean_cache.assert_called_once_with(plugin_dir)
 
-    @patch("mmrelay.plugin_loader._clean_python_cache")
     @patch("mmrelay.plugin_loader._run")
-    def test_clone_or_update_repo_calls_cache_cleaning_on_success(
-        self, mock_run, mock_clean_cache
-    ):
-        """Test that clone_or_update_repo calls cache cleaning after successful update."""
+    def test_clone_or_update_repo_success(self, mock_run):
+        """Test that clone_or_update_repo succeeds with valid git operations."""
         # Set up mock for successful git pull
         mock_run.return_value = subprocess.CompletedProcess(
             args=["git", "pull"], returncode=0, stdout="", stderr=""
@@ -937,16 +934,12 @@ class TestCacheCleaningIntegration(unittest.TestCase):
 
             result = clone_or_update_repo(repo_url, ref, plugins_dir)
 
-        # Verify cache cleaning was called
-        mock_clean_cache.assert_called_once_with(repo_path)
+        # Verify success (cache cleaning now happens in load_plugins_from_directory)
         self.assertTrue(result)
 
-    @patch("mmrelay.plugin_loader._clean_python_cache")
     @patch("mmrelay.plugin_loader._run")
-    def test_clone_or_update_repo_calls_cache_cleaning_on_checkout(
-        self, mock_run, mock_clean_cache
-    ):
-        """Test that cache cleaning is called after successful checkout."""
+    def test_clone_or_update_repo_checkout_success(self, mock_run):
+        """Test that clone_or_update_repo succeeds when checking out different branch."""
         # Set up mock for successful git checkout and pull
         mock_run.return_value = subprocess.CompletedProcess(
             args=["git", "pull"], returncode=0, stdout="", stderr=""
@@ -984,8 +977,7 @@ class TestCacheCleaningIntegration(unittest.TestCase):
 
             result = clone_or_update_repo(repo_url, ref, plugins_dir)
 
-        # Verify cache cleaning was called
-        mock_clean_cache.assert_called_once_with(repo_path)
+        # Verify success (cache cleaning now happens in load_plugins_from_directory)
         self.assertTrue(result)
 
     @patch("mmrelay.plugin_loader._clean_python_cache")
