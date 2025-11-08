@@ -1311,6 +1311,111 @@ class TestGitOperations(unittest.TestCase):
 
         self.assertFalse(result)
 
+    @patch("mmrelay.plugin_loader._is_repo_url_allowed", return_value=True)
+    @patch("mmrelay.plugin_loader._run_git")
+    def test_clone_or_update_repo_pull_current_branch_fails(
+        self, mock_run_git, mock_is_allowed
+    ):
+        """Test that clone_or_update_repo handles git pull failure on current branch (lines 985-988)."""
+        from mmrelay.plugin_loader import clone_or_update_repo
+
+        # Mock successful fetch, current branch check, but pull fails
+        mock_run_git.side_effect = [
+            None,  # fetch succeeds
+            MagicMock(stdout=b"main\n"),  # current branch is main
+            subprocess.CalledProcessError(1, "git pull"),  # pull fails
+        ]
+
+        repo_url = "https://github.com/test/plugin.git"
+        ref = {"type": "branch", "value": "main"}
+
+        with tempfile.TemporaryDirectory() as plugins_dir:
+            repo_path = os.path.join(plugins_dir, "plugin")
+            os.makedirs(repo_path)  # It's an existing repo
+
+            result = clone_or_update_repo(repo_url, ref, plugins_dir)
+            # Should return True despite pull failure (continues anyway)
+            self.assertTrue(result)
+
+    @patch("mmrelay.plugin_loader._is_repo_url_allowed", return_value=True)
+    @patch("mmrelay.plugin_loader._run_git")
+    def test_clone_or_update_repo_checkout_and_pull_branch(
+        self, mock_run_git, mock_is_allowed
+    ):
+        """Test that clone_or_update_repo handles checkout and pull for different branch (lines 991-1003)."""
+        from mmrelay.plugin_loader import clone_or_update_repo
+
+        # Mock successful fetch, different current branch, successful checkout and pull
+        mock_run_git.side_effect = [
+            None,  # fetch succeeds
+            MagicMock(stdout=b"develop\n"),  # current branch is develop
+            None,  # checkout succeeds
+            None,  # pull succeeds
+        ]
+
+        repo_url = "https://github.com/test/plugin.git"
+        ref = {"type": "branch", "value": "main"}
+
+        with tempfile.TemporaryDirectory() as plugins_dir:
+            repo_path = os.path.join(plugins_dir, "plugin")
+            os.makedirs(repo_path)  # It's an existing repo
+
+            result = clone_or_update_repo(repo_url, ref, plugins_dir)
+            self.assertTrue(result)
+
+    @patch("mmrelay.plugin_loader._is_repo_url_allowed", return_value=True)
+    @patch("mmrelay.plugin_loader._run_git")
+    def test_clone_or_update_repo_checkout_and_pull_tag(
+        self, mock_run_git, mock_is_allowed
+    ):
+        """Test that clone_or_update_repo handles checkout and pull for tag (lines 991-1003)."""
+        from mmrelay.plugin_loader import clone_or_update_repo
+
+        # Mock successful fetch, different current branch, successful checkout and pull for tag
+        mock_run_git.side_effect = [
+            None,  # fetch succeeds
+            MagicMock(stdout=b"main\n"),  # current branch is main
+            None,  # checkout succeeds
+            None,  # pull succeeds
+        ]
+
+        repo_url = "https://github.com/test/plugin.git"
+        ref = {"type": "tag", "value": "v1.0.0"}
+
+        with tempfile.TemporaryDirectory() as plugins_dir:
+            repo_path = os.path.join(plugins_dir, "plugin")
+            os.makedirs(repo_path)  # It's an existing repo
+
+            result = clone_or_update_repo(repo_url, ref, plugins_dir)
+            self.assertTrue(result)
+
+    @patch("mmrelay.plugin_loader._is_repo_url_allowed", return_value=True)
+    @patch("mmrelay.plugin_loader._run_git")
+    def test_clone_or_update_repo_checkout_fails_fallback(
+        self, mock_run_git, mock_is_allowed
+    ):
+        """Test that clone_or_update_repo handles checkout failure and tries fallback (line 1004)."""
+        from mmrelay.plugin_loader import clone_or_update_repo
+
+        # Mock successful fetch, different current branch, checkout fails
+        mock_run_git.side_effect = [
+            None,  # fetch succeeds
+            MagicMock(stdout=b"develop\n"),  # current branch is develop
+            subprocess.CalledProcessError(1, "git checkout"),  # checkout fails
+            # Fallback logic would try other branches, but we'll mock it to fail
+        ]
+
+        repo_url = "https://github.com/test/plugin.git"
+        ref = {"type": "branch", "value": "main"}
+
+        with tempfile.TemporaryDirectory() as plugins_dir:
+            repo_path = os.path.join(plugins_dir, "plugin")
+            os.makedirs(repo_path)  # It's an existing repo
+
+            result = clone_or_update_repo(repo_url, ref, plugins_dir)
+            # Should return False when checkout fails and no fallback succeeds
+            self.assertFalse(result)
+
 
 class TestCommandRunner(unittest.TestCase):
     """Verify helper command execution behavior."""
@@ -2425,6 +2530,138 @@ class TestCacheCleaningIntegration(unittest.TestCase):
             os.makedirs(repo_path)  # It's an existing repo
 
             result = clone_or_update_repo(repo_url, ref, plugins_dir)
+            self.assertFalse(result)
+
+    @patch("mmrelay.plugin_loader._is_repo_url_allowed", return_value=True)
+    @patch("mmrelay.plugin_loader._run_git")
+    def test_clone_or_update_repo_pull_current_branch_fails(
+        self, mock_run_git, mock_is_allowed
+    ):
+        """Test that clone_or_update_repo handles git pull failure on current branch (lines 985-988)."""
+        from mmrelay.plugin_loader import clone_or_update_repo
+
+        # Mock successful fetch, current branch check, but pull fails - continues anyway
+        def mock_run_git_side_effect(*args, **kwargs):
+            cmd = args[0]
+            if "fetch" in cmd:
+                return None  # fetch succeeds
+            elif "rev-parse" in cmd:
+                return MagicMock(stdout=b"main\n")  # current branch is main
+            elif "pull" in cmd:
+                raise subprocess.CalledProcessError(1, cmd)  # pull fails
+            return None
+
+        mock_run_git.side_effect = mock_run_git_side_effect
+
+        repo_url = "https://github.com/test/plugin.git"
+        ref = {"type": "branch", "value": "main"}
+
+        with tempfile.TemporaryDirectory() as plugins_dir:
+            repo_path = os.path.join(plugins_dir, "plugin")
+            os.makedirs(repo_path)  # It's an existing repo
+
+            result = clone_or_update_repo(repo_url, ref, plugins_dir)
+            # Should return True despite pull failure (continues anyway)
+            self.assertTrue(result)
+
+    @patch("mmrelay.plugin_loader._is_repo_url_allowed", return_value=True)
+    @patch("mmrelay.plugin_loader._run_git")
+    def test_clone_or_update_repo_checkout_and_pull_branch(
+        self, mock_run_git, mock_is_allowed
+    ):
+        """Test that clone_or_update_repo handles checkout and pull for different branch (lines 991-1003)."""
+        from mmrelay.plugin_loader import clone_or_update_repo
+
+        # Mock successful fetch, different current branch, successful checkout and pull
+        def mock_run_git_side_effect(*args, **kwargs):
+            cmd = args[0]
+            if "fetch" in cmd:
+                return None  # fetch succeeds
+            elif "rev-parse" in cmd:
+                return MagicMock(stdout=b"develop\n")  # current branch is develop
+            elif "checkout" in cmd:
+                return None  # checkout succeeds
+            elif "pull" in cmd:
+                return None  # pull succeeds
+            return None
+
+        mock_run_git.side_effect = mock_run_git_side_effect
+
+        repo_url = "https://github.com/test/plugin.git"
+        ref = {"type": "branch", "value": "main"}
+
+        with tempfile.TemporaryDirectory() as plugins_dir:
+            repo_path = os.path.join(plugins_dir, "plugin")
+            os.makedirs(repo_path)  # It's an existing repo
+
+            result = clone_or_update_repo(repo_url, ref, plugins_dir)
+            self.assertTrue(result)
+
+    @patch("mmrelay.plugin_loader._is_repo_url_allowed", return_value=True)
+    @patch("mmrelay.plugin_loader._run_git")
+    def test_clone_or_update_repo_checkout_and_pull_tag(
+        self, mock_run_git, mock_is_allowed
+    ):
+        """Test that clone_or_update_repo handles checkout and pull for tag (lines 991-1003)."""
+        from mmrelay.plugin_loader import clone_or_update_repo
+
+        # Mock successful fetch, current branch check, successful checkout and pull for tag
+        def mock_run_git_side_effect(*args, **kwargs):
+            cmd = args[0]
+            if "fetch" in cmd:
+                return None  # fetch succeeds
+            elif "rev-parse" in cmd:
+                return MagicMock(stdout=b"main\n")  # current branch is main
+            elif "checkout" in cmd:
+                return None  # checkout succeeds
+            elif "pull" in cmd:
+                return None  # pull succeeds
+            return None
+
+        mock_run_git.side_effect = mock_run_git_side_effect
+
+        repo_url = "https://github.com/test/plugin.git"
+        ref = {"type": "tag", "value": "v1.0.0"}
+
+        with tempfile.TemporaryDirectory() as plugins_dir:
+            repo_path = os.path.join(plugins_dir, "plugin")
+            os.makedirs(repo_path)  # It's an existing repo
+
+            result = clone_or_update_repo(repo_url, ref, plugins_dir)
+            self.assertTrue(result)
+
+    @patch("mmrelay.plugin_loader._is_repo_url_allowed", return_value=True)
+    @patch("mmrelay.plugin_loader._run_git")
+    def test_clone_or_update_repo_checkout_fails_fallback(
+        self, mock_run_git, mock_is_allowed
+    ):
+        """Test that clone_or_update_repo handles checkout failure and tries fallback (line 1004)."""
+        from mmrelay.plugin_loader import clone_or_update_repo
+
+        # Mock successful fetch, different current branch, checkout fails, fallback also fails
+        def mock_run_git_side_effect(*args, **kwargs):
+            cmd = args[0]
+            if "fetch" in cmd:
+                return None  # fetch succeeds
+            elif "rev-parse" in cmd:
+                return MagicMock(stdout=b"develop\n")  # current branch is develop
+            elif "checkout" in cmd:
+                raise subprocess.CalledProcessError(1, cmd)  # checkout fails
+            elif "pull" in cmd:
+                raise subprocess.CalledProcessError(1, cmd)  # pull also fails
+            return None
+
+        mock_run_git.side_effect = mock_run_git_side_effect
+
+        repo_url = "https://github.com/test/plugin.git"
+        ref = {"type": "branch", "value": "main"}
+
+        with tempfile.TemporaryDirectory() as plugins_dir:
+            repo_path = os.path.join(plugins_dir, "plugin")
+            os.makedirs(repo_path)  # It's an existing repo
+
+            result = clone_or_update_repo(repo_url, ref, plugins_dir)
+            # Should return False when checkout fails and fallback also fails
             self.assertFalse(result)
 
 
