@@ -15,6 +15,10 @@ from typing import List, Set
 from urllib.parse import urlparse
 
 from mmrelay.config import get_app_path, get_base_dir
+from mmrelay.constants.plugins import (
+    DEFAULT_ALLOWED_COMMUNITY_HOSTS,
+    RISKY_REQUIREMENT_PREFIXES,
+)
 from mmrelay.log_utils import get_logger
 
 # Global config variable that will be set from main.py
@@ -42,22 +46,6 @@ else:
         deps_path = os.fspath(_PLUGIN_DEPS_DIR)
         if deps_path not in sys.path:
             sys.path.append(deps_path)
-
-_DEFAULT_ALLOWED_COMMUNITY_HOSTS = (
-    "github.com",
-    "gitlab.com",
-    "codeberg.org",
-    "bitbucket.org",
-)
-_RISKY_REQUIREMENT_PREFIXES = (
-    "git+",
-    "ssh://",
-    "git://",
-    "hg+",
-    "bzr+",
-    "svn+",
-    "http://",
-)
 
 
 def _collect_requirements(
@@ -202,13 +190,13 @@ def _get_allowed_repo_hosts() -> list[str]:
     security_config = _get_security_settings()
     hosts = security_config.get("community_repo_hosts")
     if not hosts:
-        return list(_DEFAULT_ALLOWED_COMMUNITY_HOSTS)
+        return list(DEFAULT_ALLOWED_COMMUNITY_HOSTS)
     if isinstance(hosts, str):
         hosts = [hosts]
     normalized_hosts = [
         host.strip().lower() for host in hosts if isinstance(host, str) and host.strip()
     ]
-    return normalized_hosts or list(_DEFAULT_ALLOWED_COMMUNITY_HOSTS)
+    return normalized_hosts or list(DEFAULT_ALLOWED_COMMUNITY_HOSTS)
 
 
 def _allow_local_plugin_paths() -> bool:
@@ -318,7 +306,7 @@ def _filter_risky_requirements(
         normalized = token.strip()
         lowered = normalized.lower()
         is_risky = any(
-            lowered.startswith(prefix) for prefix in _RISKY_REQUIREMENT_PREFIXES
+            lowered.startswith(prefix) for prefix in RISKY_REQUIREMENT_PREFIXES
         ) or ("@" in normalized and "://" in normalized)
 
         if is_risky and not allow_untrusted:

@@ -9,11 +9,13 @@ This package organizes all application constants by functional area:
 - messages: User-facing strings and templates
 - database: Database-related constants
 - config: Configuration section and key constants
+- plugins: Plugin system security and validation constants
 
 Usage:
     from mmrelay.constants import queue
     from mmrelay.constants.app import APP_NAME
     from mmrelay.constants.queue import DEFAULT_MESSAGE_DELAY
+    from mmrelay.constants.plugins import DEFAULT_ALLOWED_COMMUNITY_HOSTS
 """
 
 # Re-export commonly used constants for convenience
@@ -26,6 +28,10 @@ from .config import (
     DEFAULT_LOG_LEVEL,
 )
 from .formats import DEFAULT_MATRIX_PREFIX, DEFAULT_MESHTASTIC_PREFIX
+from .plugins import (
+    DEFAULT_ALLOWED_COMMUNITY_HOSTS,
+    RISKY_REQUIREMENT_PREFIXES,
+)
 from .queue import (
     DEFAULT_MESSAGE_DELAY,
     MAX_QUEUE_SIZE,
@@ -51,4 +57,7 @@ __all__ = [
     # Format constants
     "DEFAULT_MESHTASTIC_PREFIX",
     "DEFAULT_MATRIX_PREFIX",
+    # Plugin constants
+    "DEFAULT_ALLOWED_COMMUNITY_HOSTS",
+    "RISKY_REQUIREMENT_PREFIXES",
 ]
