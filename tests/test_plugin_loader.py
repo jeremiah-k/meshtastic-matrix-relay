@@ -1474,13 +1474,6 @@ class TestCollectRequirements(unittest.TestCase):
         # Should still include the valid requirement
         self.assertIn("requests==2.28.0", result)
 
-        result = _collect_requirements(req_file)
-
-        # Should log warning for malformed directive
-        mock_logger.warning.assert_called()
-        # Should still include the valid requirement
-        self.assertIn("requests==2.28.0", result)
-
     @patch("mmrelay.plugin_loader.logger")
     def test_collect_requirements_io_error(self, mock_logger):
         """Test handling of IO errors during file reading."""

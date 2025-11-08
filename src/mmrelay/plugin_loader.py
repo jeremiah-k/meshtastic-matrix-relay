@@ -522,9 +522,16 @@ def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
             for key in ("PIPX_HOME", "PIPX_LOCAL_VENVS", "PIPX_BIN_DIR")
         )
 
-        requirements = _collect_requirements(requirements_path)
+        # Collect requirements as full lines to preserve PEP 508 compliance
+        # (version specifiers, environment markers, etc.), then tokenize for
+        # security filtering which needs to validate individual flags and URLs
+        requirements_lines = _collect_requirements(requirements_path)
+        requirements_tokens = []
+        for line in requirements_lines:
+            requirements_tokens.extend(shlex.split(line, posix=True, comments=True))
+
         safe_requirements, flagged_requirements, allow_untrusted = (
-            _filter_risky_requirements(requirements)
+            _filter_risky_requirements(requirements_tokens)
         )
 
         if flagged_requirements:
