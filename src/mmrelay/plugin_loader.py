@@ -582,8 +582,23 @@ def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
             if not pipx_path:
                 raise FileNotFoundError("pipx executable not found on PATH")
             if safe_requirements:
-                packages = [r for r in safe_requirements if not r.startswith("-")]
-                pip_args = [r for r in safe_requirements if r.startswith("-")]
+                # Separate packages from pip arguments, handling flags with values
+                packages = []
+                pip_args = []
+                i = 0
+                while i < len(safe_requirements):
+                    token = safe_requirements[i]
+                    if token.startswith("-"):
+                        pip_args.append(token)
+                        # Check if next token exists and doesn't start with "-", assume it's a value
+                        if i + 1 < len(safe_requirements) and not safe_requirements[
+                            i + 1
+                        ].startswith("-"):
+                            pip_args.append(safe_requirements[i + 1])
+                            i += 1
+                    else:
+                        packages.append(token)
+                    i += 1
                 if not packages:
                     logger.info(
                         "Requirements in %s only contained pip flags; skipping pipx injection.",

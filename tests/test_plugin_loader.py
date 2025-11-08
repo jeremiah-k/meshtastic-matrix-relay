@@ -694,8 +694,7 @@ class TestPluginSecurityGuards(unittest.TestCase):
             flagged,
             [
                 "git+https://github.com/example/risky.git",
-                "--extra-index-url",
-                "https://mirror.example",
+                "--extra-index-url https://mirror.example",
             ],
         )
         self.assertIn("safe-package==1.0.0", safe)

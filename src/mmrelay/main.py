@@ -118,8 +118,12 @@ async def main(config):
         logger.debug("wipe_on_restart enabled. Wiping message_map now (startup).")
         wipe_message_map()
 
-    # Load plugins early
-    load_plugins(passed_config=config)
+    # Load plugins early (run in executor to avoid blocking event loop with time.sleep)
+    import functools
+
+    await loop.run_in_executor(
+        None, functools.partial(load_plugins, passed_config=config)
+    )
 
     # Start message queue with configured message delay
     message_delay = config.get("meshtastic", {}).get(
