@@ -243,6 +243,10 @@ class BasePlugin(ABC):
             self.logger.error("Plugin name not set, cannot schedule background jobs")
             return
 
+        # Clear stop event to ensure clean start
+        if hasattr(self, "_stop_event") and self._stop_event is not None:
+            self._stop_event.clear()
+
         # Clear any existing jobs for this plugin
         clear_plugin_jobs(self.plugin_name)
 
@@ -297,6 +301,10 @@ class BasePlugin(ABC):
 
         Clears any scheduled jobs tagged with the plugin name and then invokes on_stop() for plugin-specific cleanup. Exceptions raised by on_stop() are caught and logged.
         """
+        # Signal stop event for any threads waiting on it
+        if hasattr(self, "_stop_event") and self._stop_event is not None:
+            self._stop_event.set()
+
         if self.plugin_name:
             clear_plugin_jobs(self.plugin_name)
         try:
