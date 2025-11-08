@@ -607,7 +607,7 @@ def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
                 else:
                     cmd = [pipx_path, "inject", "mmrelay", *packages]
                     if pip_args:
-                        cmd += ["--pip-args", shlex.join(pip_args)]
+                        cmd += ["--pip-args", " ".join(pip_args)]
                     _run(cmd, timeout=600)
                     installed_packages = True
             else:

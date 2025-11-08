@@ -684,8 +684,7 @@ class TestPluginSecurityGuards(unittest.TestCase):
         requirements = [
             "safe-package==1.0.0",
             "git+https://github.com/example/risky.git",
-            "--extra-index-url",
-            "https://mirror.example",
+            "--extra-index-url https://mirror.example",
             "another-safe",
         ]
         safe, flagged, allow = _filter_risky_requirements(requirements)
@@ -1027,8 +1026,7 @@ class TestRequirementFiltering(unittest.TestCase):
         from mmrelay.plugin_loader import _filter_risky_requirements
 
         requirements = [
-            "--extra-index-url",
-            "https://pypi.org/simple",
+            "--extra-index-url https://pypi.org/simple",
             "git+https://github.com/user/repo.git",
             "requests==2.28.0",
         ]
@@ -1036,8 +1034,7 @@ class TestRequirementFiltering(unittest.TestCase):
         safe, flagged, allow = _filter_risky_requirements(requirements)
 
         self.assertIn("requests==2.28.0", safe)
-        self.assertIn("--extra-index-url", flagged)
-        self.assertIn("https://pypi.org/simple", flagged)
+        self.assertIn("--extra-index-url https://pypi.org/simple", flagged)
         self.assertIn("git+https://github.com/user/repo.git", flagged)
         self.assertFalse(allow)
 
@@ -1810,9 +1807,9 @@ class TestDependencyInstallation(unittest.TestCase):
             "requests==2.28.0",
             "--extra-index-url https://pypi.org/simple",
         ]
-        # The function tokenizes the lines, so filter receives: ["requests==2.28.0", "--extra-index-url", "https://pypi.org/simple"]
+        # The filter receives the lines
         mock_filter.return_value = (
-            ["requests==2.28.0", "--extra-index-url", "https://pypi.org/simple"],
+            ["requests==2.28.0", "--extra-index-url https://pypi.org/simple"],
             [],
             False,
         )
