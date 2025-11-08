@@ -47,7 +47,7 @@ from mmrelay.message_queue import (
     start_message_queue,
     stop_message_queue,
 )
-from mmrelay.plugin_loader import load_plugins
+from mmrelay.plugin_loader import load_plugins, shutdown_plugins
 
 # Initialize logger
 logger = get_logger(name=APP_DISPLAY_NAME)
@@ -253,6 +253,8 @@ async def main(config):
         await shutdown()
     finally:
         # Cleanup
+        matrix_logger.info("Stopping plugins...")
+        shutdown_plugins()
         matrix_logger.info("Stopping message queue...")
         stop_message_queue()
 

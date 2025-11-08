@@ -22,6 +22,7 @@ import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import schedule
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -108,6 +109,9 @@ class TestBasePlugin(unittest.TestCase):
         self.mock_delete_plugin_data = patch(
             "mmrelay.plugins.base_plugin.delete_plugin_data"
         ).start()
+
+        schedule.clear()
+        self.addCleanup(schedule.clear)
 
         self.addCleanup(patch.stopall)
 
@@ -200,6 +204,20 @@ class TestBasePlugin(unittest.TestCase):
             self.assertFalse(plugin.config["active"])
             self.assertEqual(plugin.response_delay, 2.5)  # DEFAULT_MESSAGE_DELAY
             self.assertEqual(plugin.channels, [])
+
+    def test_start_stop_schedule_thread(self):
+        """Plugins should register and clear scheduled jobs via start/stop."""
+        plugin = MockPlugin()
+        plugin.config["schedule"] = {"minutes": 1}
+
+        plugin.start()
+        jobs = schedule.get_jobs(tag=plugin.plugin_name)
+        self.assertTrue(jobs, "Expected a scheduled job after start()")
+
+        plugin.stop()
+        self.assertEqual(
+            schedule.get_jobs(tag=plugin.plugin_name), [], "Jobs should be cleared"
+        )
 
     def test_response_delay_minimum_enforcement(self):
         """

@@ -1,6 +1,5 @@
 import os
 import threading
-import time
 from abc import ABC, abstractmethod
 
 import markdown
@@ -90,6 +89,9 @@ class BasePlugin(ABC):
         # Allow plugin_name to be passed as a parameter for simpler initialization
         # This maintains backward compatibility while providing a cleaner API
         super().__init__()
+
+        self._stop_event = threading.Event()
+        self._schedule_thread = None
 
         # If plugin_name is provided as a parameter, use it
         if plugin_name is not None:
@@ -212,44 +214,94 @@ class BasePlugin(ABC):
 
         If scheduling options are present in the plugin configuration, sets up periodic execution of the `background_job` method using the specified schedule. Runs scheduled jobs in a separate daemon thread. If no scheduling is configured, the plugin starts without background tasks.
         """
-        if "schedule" not in self.config or (
-            "at" not in self.config["schedule"]
-            and "hours" not in self.config["schedule"]
-            and "minutes" not in self.config["schedule"]
+        schedule_config = self.config.get("schedule") or {}
+        if not isinstance(schedule_config, dict):
+            schedule_config = {}
+
+        if not schedule_config or (
+            "at" not in schedule_config
+            and "hours" not in schedule_config
+            and "minutes" not in schedule_config
         ):
             self.logger.debug(f"Started with priority={self.priority}")
             return
 
+        self._stop_event.clear()
+        schedule.clear(self.plugin_name)
+
+        job = None
         # Schedule the background job based on the configuration
-        if "at" in self.config["schedule"] and "hours" in self.config["schedule"]:
-            schedule.every(self.config["schedule"]["hours"]).hours.at(
-                self.config["schedule"]["at"]
-            ).do(self.background_job)
-        elif "at" in self.config["schedule"] and "minutes" in self.config["schedule"]:
-            schedule.every(self.config["schedule"]["minutes"]).minutes.at(
-                self.config["schedule"]["at"]
-            ).do(self.background_job)
-        elif "hours" in self.config["schedule"]:
-            schedule.every(self.config["schedule"]["hours"]).hours.do(
+        if "at" in schedule_config and "hours" in schedule_config:
+            job = (
+                schedule.every(schedule_config["hours"])
+                .hours.at(schedule_config["at"])
+                .do(self.background_job)
+            )
+        elif "at" in schedule_config and "minutes" in schedule_config:
+            job = (
+                schedule.every(schedule_config["minutes"])
+                .minutes.at(schedule_config["at"])
+                .do(self.background_job)
+            )
+        elif "hours" in schedule_config:
+            job = schedule.every(schedule_config["hours"]).hours.do(self.background_job)
+        elif "minutes" in schedule_config:
+            job = schedule.every(schedule_config["minutes"]).minutes.do(
                 self.background_job
             )
-        elif "minutes" in self.config["schedule"]:
-            schedule.every(self.config["schedule"]["minutes"]).minutes.do(
-                self.background_job
+
+        if job is None:
+            self.logger.warning(
+                "Schedule config present but invalid for plugin '%s'. Starting without background job.",
+                self.plugin_name,
             )
+            self.logger.debug(f"Started with priority={self.priority}")
+            return
+
+        job.tag(self.plugin_name)
 
         # Function to execute the scheduled tasks
         def run_schedule():
-            while True:
+            while not self._stop_event.is_set():
                 schedule.run_pending()
-                time.sleep(1)
+                # Wait up to one second or until stop is requested to avoid busy loops
+                self._stop_event.wait(1)
 
         # Create a thread for executing the scheduled tasks
-        schedule_thread = threading.Thread(target=run_schedule)
+        self._schedule_thread = threading.Thread(
+            target=run_schedule, name=f"{self.plugin_name}-schedule", daemon=True
+        )
 
         # Start the thread
-        schedule_thread.start()
+        self._schedule_thread.start()
         self.logger.debug(f"Scheduled with priority={self.priority}")
+
+    def stop(self):
+        """
+        Stop scheduled work and invoke plugin-specific cleanup hooks.
+        """
+        if hasattr(self, "_stop_event"):
+            self._stop_event.set()
+        schedule.clear(self.plugin_name)
+        schedule_thread = getattr(self, "_schedule_thread", None)
+        if schedule_thread and schedule_thread.is_alive():
+            schedule_thread.join(timeout=5)
+        self._schedule_thread = None
+        try:
+            self.on_stop()
+        except Exception:
+            self.logger.exception(
+                "Error running on_stop for plugin %s", self.plugin_name
+            )
+        self.logger.debug(f"Stopped plugin '{self.plugin_name}'")
+
+    def on_stop(self):
+        """
+        Hook for subclasses to clean up resources during shutdown.
+
+        Default implementation does nothing.
+        """
+        return None
 
     # trunk-ignore(ruff/B027)
     def background_job(self):

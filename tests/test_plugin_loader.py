@@ -25,11 +25,15 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from mmrelay.plugin_loader import (
     _clean_python_cache,
     _collect_requirements,
+    _filter_risky_requirements,
+    _is_repo_url_allowed,
+    _run,
     clone_or_update_repo,
     get_community_plugin_dirs,
     get_custom_plugin_dirs,
     load_plugins,
     load_plugins_from_directory,
+    shutdown_plugins,
 )
 
 
@@ -473,12 +477,29 @@ class Plugin:
         self.assertIsInstance(plugins2, list)
         self.assertEqual(plugins1, plugins2)
 
+    def test_shutdown_plugins_clears_state(self):
+        """Shutdown helper should call stop() on plugins and reset loader state."""
+        mock_plugin = MockPlugin("cleanup_plugin")
+        mock_plugin.stop = MagicMock()
+
+        import mmrelay.plugin_loader as pl
+
+        pl.sorted_active_plugins = [mock_plugin]
+        pl.plugins_loaded = True
+
+        shutdown_plugins()
+
+        mock_plugin.stop.assert_called_once()
+        self.assertEqual(pl.sorted_active_plugins, [])
+        self.assertFalse(pl.plugins_loaded)
+
     @patch("mmrelay.plugins.health_plugin.Plugin")
     def test_load_plugins_start_error(self, mock_health_plugin):
         """
-        Test that plugins raising exceptions in their start() method are still loaded.
+        Test that plugins raising exceptions in their start() method are skipped.
 
-        Ensures that if a plugin's start() method raises an exception during loading, the error is handled gracefully and the plugin remains in the loaded plugin list.
+        Ensures that if a plugin's start() method raises an exception during loading,
+        the error is handled gracefully and the plugin is not kept in the loaded list.
         """
         # Create a plugin that raises an error on start
         mock_plugin = MockPlugin("error_plugin")
@@ -494,9 +515,8 @@ class Plugin:
         # Should not raise exception, just log error
         plugins = load_plugins(config)
 
-        # Plugin should still be in the list even if start() failed
-        self.assertEqual(len(plugins), 1)
-        self.assertEqual(plugins[0].plugin_name, "error_plugin")
+        # Plugin should be skipped after a start failure
+        self.assertEqual(len(plugins), 0)
 
 
 def test_clone_or_update_repo_new_repo_tag(tmp_path):
@@ -506,7 +526,7 @@ def test_clone_or_update_repo_new_repo_tag(tmp_path):
     repo_url = "https://github.com/user/test-repo.git"
     ref = {"type": "tag", "value": "v1.0.0"}
 
-    with patch("mmrelay.plugin_loader._run") as mock_run:
+    with patch("mmrelay.plugin_loader._run_git") as mock_run:
         result = clone_or_update_repo(repo_url, ref, str(plugins_dir))
 
         assert result is True
@@ -524,7 +544,7 @@ def test_clone_or_update_repo_new_repo_branch(tmp_path):
     repo_url = "https://github.com/user/test-repo.git"
     ref = {"type": "branch", "value": "develop"}
 
-    with patch("mmrelay.plugin_loader._run") as mock_run:
+    with patch("mmrelay.plugin_loader._run_git") as mock_run:
         result = clone_or_update_repo(repo_url, ref, str(plugins_dir))
 
         assert result is True
@@ -535,7 +555,7 @@ def test_clone_or_update_repo_new_repo_branch(tmp_path):
         )
 
 
-@patch("mmrelay.plugin_loader._run")
+@patch("mmrelay.plugin_loader._run_git")
 def test_clone_or_update_repo_existing_repo_same_branch(mock_run, tmp_path):
     """Test updating an existing repository on the same branch."""
     # Mock the return values for the _run calls
@@ -568,7 +588,7 @@ def test_clone_or_update_repo_existing_repo_same_branch(mock_run, tmp_path):
     )
 
 
-@patch("mmrelay.plugin_loader._run")
+@patch("mmrelay.plugin_loader._run_git")
 def test_clone_or_update_repo_existing_repo_different_branch(mock_run, tmp_path):
     """Test updating an existing repository to a different branch."""
     mock_run.side_effect = [
@@ -606,12 +626,95 @@ def test_clone_or_update_repo_git_error(tmp_path):
     ref = {"type": "branch", "value": "main"}
 
     with patch(
-        "mmrelay.plugin_loader._run",
+        "mmrelay.plugin_loader._run_git",
         side_effect=subprocess.CalledProcessError(1, "git"),
     ):
         result = clone_or_update_repo(repo_url, ref, str(plugins_dir))
 
         assert result is False
+
+
+class TestPluginSecurityGuards(unittest.TestCase):
+    """Tests for plugin security helper utilities."""
+
+    def setUp(self):
+        import mmrelay.plugin_loader as pl
+
+        self.pl = pl
+        self.original_config = getattr(pl, "config", None)
+
+    def tearDown(self):
+        self.pl.config = self.original_config
+
+    def test_repo_url_allowed_https_known_host(self):
+        self.pl.config = {}
+        self.assertTrue(_is_repo_url_allowed("https://github.com/example/project.git"))
+
+    def test_repo_url_rejected_for_unknown_host(self):
+        self.pl.config = {}
+        self.assertFalse(
+            _is_repo_url_allowed("https://malicious.example.invalid/repo.git")
+        )
+
+    def test_repo_url_rejected_for_http_scheme(self):
+        self.pl.config = {}
+        self.assertFalse(_is_repo_url_allowed("http://github.com/example/project.git"))
+
+    def test_repo_url_allows_custom_host_from_config(self):
+        self.pl.config = {"security": {"community_repo_hosts": ["example.org"]}}
+        self.assertTrue(_is_repo_url_allowed("https://code.example.org/test.git"))
+
+    def test_local_repo_requires_opt_in(self):
+        temp_path = os.path.abspath("some/local/path")
+        self.pl.config = {}
+        self.assertFalse(_is_repo_url_allowed(temp_path))
+        self.pl.config = {"security": {"allow_local_plugin_paths": True}}
+        with patch("os.path.exists", return_value=True):
+            self.assertTrue(_is_repo_url_allowed(temp_path))
+
+    def test_filter_risky_requirements_blocks_vcs_by_default(self):
+        self.pl.config = {}
+        requirements = [
+            "safe-package==1.0.0",
+            "git+https://github.com/example/risky.git",
+            "--extra-index-url",
+            "https://mirror.example",
+            "another-safe",
+        ]
+        safe, flagged, allow = _filter_risky_requirements(requirements)
+        self.assertFalse(allow)
+        self.assertEqual(flagged, ["git+https://github.com/example/risky.git"])
+        self.assertIn("safe-package==1.0.0", safe)
+        self.assertIn("--extra-index-url", safe)
+
+    def test_filter_risky_requirements_can_allow_via_config(self):
+        self.pl.config = {"security": {"allow_untrusted_dependencies": True}}
+        requirements = ["pkg @ git+ssh://github.com/example/pkg.git"]
+        safe, flagged, allow = _filter_risky_requirements(requirements)
+        self.assertTrue(allow)
+        self.assertEqual(safe, requirements)
+        self.assertEqual(flagged, [])
+
+
+class TestCommandRunner(unittest.TestCase):
+    """Verify helper command execution behavior."""
+
+    def test_run_retries_on_failure(self):
+        with patch("subprocess.run") as mock_subprocess:
+            mock_subprocess.side_effect = [
+                subprocess.CalledProcessError(1, ["git", "status"]),
+                subprocess.CompletedProcess(args=["git", "status"], returncode=0),
+            ]
+            result = _run(["git", "status"], retry_attempts=2, retry_delay=0)
+            self.assertIsInstance(result, subprocess.CompletedProcess)
+            self.assertEqual(mock_subprocess.call_count, 2)
+
+    def test_run_raises_after_max_attempts(self):
+        with patch("subprocess.run") as mock_subprocess:
+            mock_subprocess.side_effect = subprocess.CalledProcessError(1, ["git"])
+            with self.assertRaises(subprocess.CalledProcessError):
+                _run(["git"], retry_attempts=2, retry_delay=0)
+            self.assertEqual(mock_subprocess.call_count, 2)
 
 
 class TestCollectRequirements(unittest.TestCase):
@@ -953,14 +1056,9 @@ class TestCacheCleaningIntegration(unittest.TestCase):
         # Verify cache cleaning was called
         mock_clean_cache.assert_called_once_with(plugin_dir)
 
-    @patch("mmrelay.plugin_loader._run")
+    @patch("mmrelay.plugin_loader._run_git")
     def test_clone_or_update_repo_success(self, mock_run):
         """Test that clone_or_update_repo succeeds with valid git operations."""
-        # Set up mock for successful git pull
-        mock_run.return_value = subprocess.CompletedProcess(
-            args=["git", "pull"], returncode=0, stdout="", stderr=""
-        )
-
         repo_url = "https://github.com/test/plugin.git"
         ref = {"type": "branch", "value": "main"}
         plugins_dir = self.temp_dir
@@ -970,33 +1068,26 @@ class TestCacheCleaningIntegration(unittest.TestCase):
         repo_path = os.path.join(plugins_dir, repo_name)
         os.makedirs(repo_path, exist_ok=True)
 
-        # Mock current branch check to return the same branch
-        with patch("subprocess.run") as mock_subprocess:
-            mock_subprocess.side_effect = [
-                # Current branch check
-                subprocess.CompletedProcess(
-                    args=["git", "rev-parse", "--abbrev-ref", "HEAD"],
-                    returncode=0,
-                    stdout="main\n",
-                    stderr="",
-                ),
-                # Git pull
-                mock_run.return_value,
-            ]
+        mock_run.side_effect = [
+            subprocess.CompletedProcess(args=["git", "fetch"], returncode=0),
+            subprocess.CompletedProcess(
+                args=["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                returncode=0,
+                stdout="main\n",
+            ),
+            subprocess.CompletedProcess(
+                args=["git", "pull"], returncode=0, stdout="", stderr=""
+            ),
+        ]
 
-            result = clone_or_update_repo(repo_url, ref, plugins_dir)
+        result = clone_or_update_repo(repo_url, ref, plugins_dir)
 
         # Verify success (cache cleaning now happens in load_plugins_from_directory)
         self.assertTrue(result)
 
-    @patch("mmrelay.plugin_loader._run")
+    @patch("mmrelay.plugin_loader._run_git")
     def test_clone_or_update_repo_checkout_success(self, mock_run):
         """Test that clone_or_update_repo succeeds when checking out different branch."""
-        # Set up mock for successful git checkout and pull
-        mock_run.return_value = subprocess.CompletedProcess(
-            args=["git", "pull"], returncode=0, stdout="", stderr=""
-        )
-
         repo_url = "https://github.com/test/plugin.git"
         ref = {"type": "branch", "value": "develop"}
         plugins_dir = self.temp_dir
@@ -1006,33 +1097,33 @@ class TestCacheCleaningIntegration(unittest.TestCase):
         repo_path = os.path.join(plugins_dir, repo_name)
         os.makedirs(repo_path, exist_ok=True)
 
-        # Mock current branch check to return different branch
-        with patch("subprocess.run") as mock_subprocess:
-            mock_subprocess.side_effect = [
-                # Current branch check (different branch)
-                subprocess.CompletedProcess(
-                    args=["git", "rev-parse", "--abbrev-ref", "HEAD"],
-                    returncode=0,
-                    stdout="main\n",
-                    stderr="",
-                ),
-                # Git checkout
-                subprocess.CompletedProcess(
-                    args=["git", "checkout", "develop"],
-                    returncode=0,
-                    stdout="",
-                    stderr="",
-                ),
-                # Git pull
-                mock_run.return_value,
-            ]
+        mock_run.side_effect = [
+            subprocess.CompletedProcess(args=["git", "fetch"], returncode=0),
+            subprocess.CompletedProcess(
+                args=["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                returncode=0,
+                stdout="main\n",
+            ),
+            subprocess.CompletedProcess(
+                args=["git", "checkout", "develop"],
+                returncode=0,
+                stdout="",
+                stderr="",
+            ),
+            subprocess.CompletedProcess(
+                args=["git", "pull"],
+                returncode=0,
+                stdout="",
+                stderr="",
+            ),
+        ]
 
-            result = clone_or_update_repo(repo_url, ref, plugins_dir)
+        result = clone_or_update_repo(repo_url, ref, plugins_dir)
 
         # Verify success (cache cleaning now happens in load_plugins_from_directory)
         self.assertTrue(result)
 
-    @patch("mmrelay.plugin_loader._run")
+    @patch("mmrelay.plugin_loader._run_git")
     def test_clone_or_update_repo_returns_false_on_failure(self, mock_run):
         """Test that clone_or_update_repo returns False when git operations fail."""
         # Set up mock for failed git operation
