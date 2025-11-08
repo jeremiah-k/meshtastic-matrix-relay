@@ -150,10 +150,7 @@ def _collect_requirements(
                     )
                     continue
 
-                if line.startswith("-"):
-                    requirements.append(line)
-                else:
-                    requirements.extend(shlex.split(line, posix=True))
+                requirements.append(line)
     except (FileNotFoundError, OSError) as e:
         logger.warning("Error reading requirements file %s: %s", normalized_path, e)
         return []

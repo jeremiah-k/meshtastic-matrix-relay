@@ -1427,13 +1427,11 @@ class TestCollectRequirements(unittest.TestCase):
             f.write("pytest<=7.0.0\n")
 
         result = _collect_requirements(req_file)
-        # With shlex.split, complex requirement lines are properly tokenized
+        # Requirements are kept as full lines to preserve PEP 508 syntax
         expected = [
             "pytest>=6.0.0",
             "pytest<=7.0.0",
-            "package>=1.0.0",
-            "--extra-index-url",
-            "https://pypi.org/simple",
+            "package>=1.0.0 --extra-index-url https://pypi.org/simple",
         ]
         self.assertEqual(result, expected)
 
@@ -1821,11 +1819,10 @@ class TestDependencyInstallation(unittest.TestCase):
         mock_check_enabled.return_value = True
         mock_collect.return_value = [
             "requests==2.28.0",
-            "--extra-index-url",
-            "https://pypi.org/simple",
+            "--extra-index-url https://pypi.org/simple",
         ]
         mock_filter.return_value = (
-            ["requests==2.28.0", "--extra-index-url", "https://pypi.org/simple"],
+            ["requests==2.28.0", "--extra-index-url https://pypi.org/simple"],
             [],
             False,
         )
@@ -1845,9 +1842,8 @@ class TestDependencyInstallation(unittest.TestCase):
                 "inject",
                 "mmrelay",
                 "requests==2.28.0",
-                "https://pypi.org/simple",
                 "--pip-args",
-                "--extra-index-url",
+                "'--extra-index-url https://pypi.org/simple'",
             ],
             timeout=600,
         )
