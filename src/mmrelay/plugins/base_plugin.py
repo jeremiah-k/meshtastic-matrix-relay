@@ -288,7 +288,7 @@ class BasePlugin(ABC):
 
         if job is None:
             self.logger.warning(
-                "Schedule config present but invalid for plugin '%s'. Starting without background job.",
+                "Could not set up scheduled job for plugin '%s'. This may be due to an invalid configuration or a missing 'schedule' library. Starting without background job.",
                 self.plugin_name,
             )
             self.logger.debug(f"Started with priority={self.priority}")

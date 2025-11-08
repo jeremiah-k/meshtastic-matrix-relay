@@ -834,20 +834,7 @@ def _run(cmd, timeout=120, retry_attempts=1, retry_delay=1, **kwargs):
                 exc,
             )
             if delay:
-                # Use non-blocking sleep in async contexts to prevent event loop blocking
-                try:
-                    import asyncio
-
-                    # Check if we're in an async context with a running loop
-                    if asyncio.get_running_loop() is not None:
-                        # In async context, use asyncio.sleep
-                        asyncio.run(asyncio.sleep(delay))
-                    else:
-                        # In sync context, use time.sleep
-                        time.sleep(delay)
-                except (RuntimeError, ImportError):
-                    # Fallback to time.sleep if asyncio is not available or no running loop
-                    time.sleep(delay)
+                time.sleep(delay)
 
 
 def _run_git(cmd, timeout=120, **kwargs):
