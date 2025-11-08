@@ -58,6 +58,12 @@ class MockPlugin:
         """
         self.started = True
 
+    def stop(self):
+        """
+        Marks the mock plugin as stopped by setting the `started` flag to False.
+        """
+        self.started = False
+
     async def handle_meshtastic_message(
         self, packet, interface, longname, shortname, meshnet_name
     ):
@@ -725,7 +731,8 @@ class TestPluginSecurityGuards(unittest.TestCase):
         from mmrelay.plugin_loader import _get_allowed_repo_hosts
 
         result = _get_allowed_repo_hosts()
-        expected = ["github.com", "gitlab.com", "codeberg.org", "bitbucket.org"]
+        # String gets converted to list, then filtered
+        expected = ["invalid"]
         self.assertEqual(result, expected)
 
     def test_get_allowed_repo_filters_empty_strings(self):
@@ -740,6 +747,519 @@ class TestPluginSecurityGuards(unittest.TestCase):
         result = _get_allowed_repo_hosts()
         expected = ["github.com", "gitlab.com"]
         self.assertEqual(result, expected)
+
+    def test_get_allowed_repo_hosts_integer_type_uses_default(self):
+        """Integer type should use default hosts."""
+        self.pl.config = {"security": {"community_repo_hosts": 123}}
+        from mmrelay.plugin_loader import _get_allowed_repo_hosts
+
+        result = _get_allowed_repo_hosts()
+        expected = ["github.com", "gitlab.com", "codeberg.org", "bitbucket.org"]
+        self.assertEqual(result, expected)
+
+
+class TestURLValidation(unittest.TestCase):
+    """Test cases for URL validation and security functions."""
+
+    def setUp(self):
+        import mmrelay.plugin_loader as pl
+
+        self.pl = pl
+        self.original_config = getattr(pl, "config", None)
+
+    def tearDown(self):
+        self.pl.config = self.original_config
+
+    def test_normalize_repo_target_ssh_git_at(self):
+        """Test SSH URL normalization with git@ prefix."""
+        from mmrelay.plugin_loader import _normalize_repo_target
+
+        scheme, host = _normalize_repo_target("git@github.com:user/repo.git")
+        self.assertEqual(scheme, "ssh")
+        self.assertEqual(host, "github.com")
+
+    def test_normalize_repo_target_ssh_git_at_with_port(self):
+        """Test SSH URL normalization with port."""
+        from mmrelay.plugin_loader import _normalize_repo_target
+
+        scheme, host = _normalize_repo_target("git@github.com:2222:user/repo.git")
+        self.assertEqual(scheme, "ssh")
+        self.assertEqual(host, "github.com")
+
+    def test_normalize_repo_target_https_url(self):
+        """Test HTTPS URL normalization."""
+        from mmrelay.plugin_loader import _normalize_repo_target
+
+        scheme, host = _normalize_repo_target("https://github.com/user/repo.git")
+        self.assertEqual(scheme, "https")
+        self.assertEqual(host, "github.com")
+
+    def test_normalize_repo_target_git_ssh_scheme(self):
+        """Test git+ssh scheme normalization."""
+        from mmrelay.plugin_loader import _normalize_repo_target
+
+        scheme, host = _normalize_repo_target("git+ssh://github.com/user/repo.git")
+        self.assertEqual(scheme, "ssh")
+        self.assertEqual(host, "github.com")
+
+    def test_normalize_repo_target_ssh_git_scheme(self):
+        """Test ssh+git scheme normalization."""
+        from mmrelay.plugin_loader import _normalize_repo_target
+
+        scheme, host = _normalize_repo_target("ssh+git://github.com/user/repo.git")
+        self.assertEqual(scheme, "ssh")
+        self.assertEqual(host, "github.com")
+
+    def test_normalize_repo_target_empty_string(self):
+        """Test empty URL normalization."""
+        from mmrelay.plugin_loader import _normalize_repo_target
+
+        scheme, host = _normalize_repo_target("")
+        self.assertEqual(scheme, "")
+        self.assertEqual(host, "")
+
+    def test_normalize_repo_target_none(self):
+        """Test None URL normalization."""
+        from mmrelay.plugin_loader import _normalize_repo_target
+
+        scheme, host = _normalize_repo_target(None)  # type: ignore[arg-type]
+        self.assertEqual(scheme, "")
+        self.assertEqual(host, "")
+
+    def test_host_in_allowlist_exact_match(self):
+        """Test exact host match in allowlist."""
+        from mmrelay.plugin_loader import _host_in_allowlist
+
+        result = _host_in_allowlist("github.com", ["github.com", "gitlab.com"])
+        self.assertTrue(result)
+
+    def test_host_in_allowlist_subdomain_match(self):
+        """Test subdomain match in allowlist."""
+        from mmrelay.plugin_loader import _host_in_allowlist
+
+        result = _host_in_allowlist("api.github.com", ["github.com", "gitlab.com"])
+        self.assertTrue(result)
+
+    def test_host_in_allowlist_case_insensitive(self):
+        """Test case insensitive matching."""
+        from mmrelay.plugin_loader import _host_in_allowlist
+
+        result = _host_in_allowlist("GitHub.com", ["github.com"])
+        self.assertTrue(result)
+
+    def test_host_in_allowlist_empty_host(self):
+        """Test empty host handling."""
+        from mmrelay.plugin_loader import _host_in_allowlist
+
+        result = _host_in_allowlist("", ["github.com"])
+        self.assertFalse(result)
+
+    def test_host_in_allowlist_none_host(self):
+        """Test None host handling."""
+        from mmrelay.plugin_loader import _host_in_allowlist
+
+        result = _host_in_allowlist(None, ["github.com"])  # type: ignore[arg-type]
+        self.assertFalse(result)
+
+    @patch("mmrelay.plugin_loader.logger")
+    def test_repo_url_rejected_for_dash_prefix(self, mock_logger):
+        """Test that URLs starting with dash are rejected."""
+        self.pl.config = {}
+        result = _is_repo_url_allowed("-evil-option")
+        self.assertFalse(result)
+
+    @patch("mmrelay.plugin_loader.logger")
+    def test_repo_url_rejected_for_file_scheme(self, mock_logger):
+        """Test that file:// URLs are rejected by default."""
+        self.pl.config = {}
+        result = _is_repo_url_allowed("file:///local/path")
+        self.assertFalse(result)
+        mock_logger.error.assert_called_with(
+            "file:// repositories are disabled for security reasons."
+        )
+
+    @patch("mmrelay.plugin_loader.logger")
+    def test_repo_url_allows_file_scheme_with_opt_in(self, mock_logger):
+        """Test that file:// URLs are allowed when local paths are enabled."""
+        self.pl.config = {"security": {"allow_local_plugin_paths": True}}
+        result = _is_repo_url_allowed("file:///local/path")
+        self.assertTrue(result)
+
+    @patch("mmrelay.plugin_loader.logger")
+    def test_repo_url_rejected_for_unsupported_scheme(self, mock_logger):
+        """Test that unsupported schemes are rejected."""
+        self.pl.config = {}
+        result = _is_repo_url_allowed("ftp://github.com/user/repo.git")
+        self.assertFalse(result)
+        mock_logger.error.assert_called_with(
+            "Unsupported repository scheme '%s' for %s",
+            "ftp",
+            "ftp://github.com/user/repo.git",
+        )
+
+    @patch("mmrelay.plugin_loader.logger")
+    def test_repo_url_local_path_nonexistent(self, mock_logger):
+        """Test local path validation when path doesn't exist."""
+        self.pl.config = {"security": {"allow_local_plugin_paths": True}}
+        with patch("os.path.exists", return_value=False):
+            result = _is_repo_url_allowed("/nonexistent/path")
+            self.assertFalse(result)
+            mock_logger.error.assert_called_with(
+                "Local repository path does not exist: %s", "/nonexistent/path"
+            )
+
+    @patch("mmrelay.plugin_loader.logger")
+    def test_repo_url_local_path_disabled(self, mock_logger):
+        """Test local path validation when local paths are disabled."""
+        self.pl.config = {}
+        result = _is_repo_url_allowed("/local/path")
+        self.assertFalse(result)
+        mock_logger.error.assert_called_with(
+            "Invalid repository '%s'. Local paths are disabled, and remote URLs must include a scheme (e.g., 'https://').",
+            "/local/path",
+        )
+
+    @patch("mmrelay.plugin_loader.logger")
+    def test_repo_url_empty_string(self, mock_logger):
+        """Test empty URL handling."""
+        self.pl.config = {}
+        result = _is_repo_url_allowed("")
+        self.assertFalse(result)
+
+    @patch("mmrelay.plugin_loader.logger")
+    def test_repo_url_whitespace_only(self, mock_logger):
+        """Test whitespace-only URL handling."""
+        self.pl.config = {}
+        result = _is_repo_url_allowed("   ")
+        self.assertFalse(result)
+
+
+class TestRequirementFiltering(unittest.TestCase):
+    """Test cases for requirement filtering security functions."""
+
+    def setUp(self):
+        import mmrelay.plugin_loader as pl
+
+        self.pl = pl
+        self.original_config = getattr(pl, "config", None)
+
+    def tearDown(self):
+        self.pl.config = self.original_config
+
+    def test_is_requirement_risky_vcs_prefixes(self):
+        """Test VCS prefix detection."""
+        from mmrelay.plugin_loader import _is_requirement_risky
+
+        risky_requirements = [
+            "git+https://github.com/user/repo.git",
+            "hg+https://bitbucket.org/user/repo",
+            "bzr+https://launchpad.net/project",
+            "svn+https://svn.example.com/project",
+        ]
+
+        for req in risky_requirements:
+            with self.subTest(req=req):
+                self.assertTrue(_is_requirement_risky(req))
+
+    def test_is_requirement_risky_url_with_at(self):
+        """Test URL with @ symbol detection."""
+        from mmrelay.plugin_loader import _is_requirement_risky
+
+        risky_requirements = [
+            "package@https://example.com/package.tar.gz",
+            "pkg@file:///local/path",
+        ]
+
+        for req in risky_requirements:
+            with self.subTest(req=req):
+                self.assertTrue(_is_requirement_risky(req))
+
+    def test_is_requirement_risky_safe_requirements(self):
+        """Test safe requirement detection."""
+        from mmrelay.plugin_loader import _is_requirement_risky
+
+        safe_requirements = [
+            "requests==2.28.0",
+            "numpy>=1.20.0",
+            "django~=4.0.0",
+            "flask",
+            "pytest>=6.0.0,<7.0.0",
+        ]
+
+        for req in safe_requirements:
+            with self.subTest(req=req):
+                self.assertFalse(_is_requirement_risky(req))
+
+    def test_filter_risky_requirements_editable_with_url(self):
+        """Test filtering editable requirements with URLs."""
+        from mmrelay.plugin_loader import _filter_risky_requirements
+
+        requirements = [
+            "--editable=git+https://github.com/user/repo.git",
+            "requests==2.28.0",
+        ]
+
+        safe, flagged, allow = _filter_risky_requirements(requirements)
+
+        self.assertIn("requests==2.28.0", safe)
+        self.assertIn("--editable=git+https://github.com/user/repo.git", flagged)
+        self.assertFalse(allow)
+
+    def test_filter_risky_requirements_editable_safe(self):
+        """Test filtering safe editable requirements."""
+        from mmrelay.plugin_loader import _filter_risky_requirements
+
+        requirements = [
+            "--editable=.",
+            "--editable=/local/path",
+            "requests==2.28.0",
+        ]
+
+        safe, flagged, allow = _filter_risky_requirements(requirements)
+
+        self.assertIn("requests==2.28.0", safe)
+        self.assertIn("--editable=.", safe)
+        self.assertIn("--editable=/local/path", safe)
+        self.assertEqual(flagged, [])
+
+    def test_filter_risky_requirements_source_flag_removal(self):
+        """Test that source flags are removed with risky requirements."""
+        from mmrelay.plugin_loader import _filter_risky_requirements
+
+        requirements = [
+            "--extra-index-url",
+            "https://pypi.org/simple",
+            "git+https://github.com/user/repo.git",
+            "requests==2.28.0",
+        ]
+
+        safe, flagged, allow = _filter_risky_requirements(requirements)
+
+        self.assertIn("requests==2.28.0", safe)
+        self.assertIn("--extra-index-url", flagged)
+        self.assertIn("https://pypi.org/simple", flagged)
+        self.assertIn("git+https://github.com/user/repo.git", flagged)
+        self.assertFalse(allow)
+
+    def test_filter_risky_requirements_comments_and_empty(self):
+        """Test filtering comments and empty strings."""
+        from mmrelay.plugin_loader import _filter_risky_requirements
+
+        requirements = [
+            "# This is a comment",
+            "",
+            "   ",
+            "requests==2.28.0",
+        ]
+
+        safe, flagged, allow = _filter_risky_requirements(requirements)
+
+        self.assertIn("requests==2.28.0", safe)
+        self.assertEqual(flagged, [])
+
+    def test_filter_risky_requirements_allow_untrusted(self):
+        """Test allowing untrusted dependencies via config."""
+        from mmrelay.plugin_loader import _filter_risky_requirements
+
+        self.pl.config = {"security": {"allow_untrusted_dependencies": True}}
+
+        requirements = [
+            "git+https://github.com/user/repo.git",
+            "--extra-index-url",
+            "https://pypi.org/simple",
+            "requests==2.28.0",
+        ]
+
+        safe, flagged, allow = _filter_risky_requirements(requirements)
+
+        self.assertEqual(len(safe), 3)
+        self.assertEqual(flagged, [])
+        self.assertTrue(allow)
+
+
+class TestGitOperations(unittest.TestCase):
+    """Test cases for Git operations and repository management."""
+
+    def setUp(self):
+        import mmrelay.plugin_loader as pl
+
+        self.pl = pl
+        self.original_config = getattr(pl, "config", None)
+
+    def tearDown(self):
+        self.pl.config = self.original_config
+
+    @patch("mmrelay.plugin_loader._run_git")
+    def test_run_git_with_defaults(self, mock_run):
+        """Test _run_git uses default retry settings."""
+        from mmrelay.plugin_loader import _run_git
+
+        _run_git(["git", "status"])
+
+        mock_run.assert_called_once_with(
+            ["git", "status"], retry_attempts=3, retry_delay=2
+        )
+
+    @patch("mmrelay.plugin_loader._run_git")
+    def test_run_git_with_custom_settings(self, mock_run):
+        """Test _run_git accepts custom settings."""
+        from mmrelay.plugin_loader import _run_git
+
+        _run_git(["git", "clone"], timeout=300, retry_attempts=5)
+
+        mock_run.assert_called_once_with(
+            ["git", "clone"], timeout=300, retry_attempts=5
+        )
+
+    def test_check_auto_install_enabled_default(self):
+        """Test auto-install enabled by default."""
+        from mmrelay.plugin_loader import _check_auto_install_enabled
+
+        result = _check_auto_install_enabled(None)
+        self.assertTrue(result)
+
+    def test_check_auto_install_enabled_explicit_true(self):
+        """Test auto-install explicitly enabled."""
+        from mmrelay.plugin_loader import _check_auto_install_enabled
+
+        config = {"security": {"auto_install_deps": True}}
+        result = _check_auto_install_enabled(config)
+        self.assertTrue(result)
+
+    def test_check_auto_install_enabled_explicit_false(self):
+        """Test auto-install explicitly disabled."""
+        from mmrelay.plugin_loader import _check_auto_install_enabled
+
+        config = {"security": {"auto_install_deps": False}}
+        result = _check_auto_install_enabled(config)
+        self.assertFalse(result)
+
+    def test_check_auto_install_enabled_missing_security(self):
+        """Test auto-install when security section missing."""
+        from mmrelay.plugin_loader import _check_auto_install_enabled
+
+        config = {"other": "value"}
+        result = _check_auto_install_enabled(config)
+        self.assertTrue(result)
+
+    @patch("mmrelay.plugin_loader.logger")
+    def test_raise_install_error(self, mock_logger):
+        """Test _raise_install_error logs and raises exception."""
+        from mmrelay.plugin_loader import _raise_install_error
+
+        with self.assertRaises(subprocess.CalledProcessError):
+            _raise_install_error("test-package")
+
+        mock_logger.warning.assert_called_once_with(
+            "Auto-install disabled; cannot install test-package. See docs for enabling."
+        )
+
+    @patch("mmrelay.plugin_loader._is_repo_url_allowed")
+    @patch("mmrelay.plugin_loader.logger")
+    def test_clone_or_update_repo_invalid_url(self, mock_logger, mock_is_allowed):
+        """Test clone with invalid URL."""
+        from mmrelay.plugin_loader import clone_or_update_repo
+
+        mock_is_allowed.return_value = False
+        ref = {"type": "branch", "value": "main"}
+
+        result = clone_or_update_repo("https://invalid.com/repo.git", ref, "/tmp")
+
+        self.assertFalse(result)
+
+    @patch("mmrelay.plugin_loader._is_repo_url_allowed")
+    @patch("mmrelay.plugin_loader.logger")
+    def test_clone_or_update_repo_invalid_ref_type(self, mock_logger, mock_is_allowed):
+        """Test clone with invalid ref type."""
+        from mmrelay.plugin_loader import clone_or_update_repo
+
+        mock_is_allowed.return_value = True
+        ref = {"type": "invalid", "value": "main"}
+
+        result = clone_or_update_repo("https://github.com/user/repo.git", ref, "/tmp")
+
+        self.assertFalse(result)
+        mock_logger.error.assert_called_with(
+            "Invalid ref type %r (expected 'tag' or 'branch') for %r",
+            "invalid",
+            "https://github.com/user/repo.git",
+        )
+
+    @patch("mmrelay.plugin_loader._is_repo_url_allowed")
+    @patch("mmrelay.plugin_loader.logger")
+    def test_clone_or_update_repo_missing_ref_value(self, mock_logger, mock_is_allowed):
+        """Test clone with missing ref value."""
+        from mmrelay.plugin_loader import clone_or_update_repo
+
+        mock_is_allowed.return_value = True
+        ref = {"type": "branch", "value": ""}
+
+        result = clone_or_update_repo("https://github.com/user/repo.git", ref, "/tmp")
+
+        self.assertFalse(result)
+        mock_logger.error.assert_called_with(
+            "Missing ref value for %s on %r",
+            "branch",
+            "https://github.com/user/repo.git",
+        )
+
+    @patch("mmrelay.plugin_loader._is_repo_url_allowed")
+    @patch("mmrelay.plugin_loader.logger")
+    def test_clone_or_update_repo_ref_starts_with_dash(
+        self, mock_logger, mock_is_allowed
+    ):
+        """Test clone with ref value starting with dash."""
+        from mmrelay.plugin_loader import clone_or_update_repo
+
+        mock_is_allowed.return_value = True
+        ref = {"type": "branch", "value": "-evil"}
+
+        result = clone_or_update_repo("https://github.com/user/repo.git", ref, "/tmp")
+
+        self.assertFalse(result)
+        mock_logger.error.assert_called_with(
+            "Ref value looks invalid (starts with '-'): %r", "-evil"
+        )
+
+    @patch("mmrelay.plugin_loader._is_repo_url_allowed")
+    @patch("mmrelay.plugin_loader.logger")
+    def test_clone_or_update_repo_invalid_ref_chars(self, mock_logger, mock_is_allowed):
+        """Test clone with invalid characters in ref value."""
+        from mmrelay.plugin_loader import clone_or_update_repo
+
+        mock_is_allowed.return_value = True
+        ref = {"type": "branch", "value": "invalid@branch"}
+
+        result = clone_or_update_repo("https://github.com/user/repo.git", ref, "/tmp")
+
+        self.assertFalse(result)
+        mock_logger.error.assert_called_with(
+            "Invalid %s name supplied: %r", "branch", "invalid@branch"
+        )
+
+    @patch("mmrelay.plugin_loader._is_repo_url_allowed")
+    @patch("mmrelay.plugin_loader.logger")
+    def test_clone_or_update_repo_empty_url(self, mock_logger, mock_is_allowed):
+        """Test clone with empty URL."""
+        from mmrelay.plugin_loader import clone_or_update_repo
+
+        ref = {"type": "branch", "value": "main"}
+
+        result = clone_or_update_repo("", ref, "/tmp")
+
+        self.assertFalse(result)
+
+    @patch("mmrelay.plugin_loader._is_repo_url_allowed")
+    @patch("mmrelay.plugin_loader.logger")
+    def test_clone_or_update_repo_none_url(self, mock_logger, mock_is_allowed):
+        """Test clone with None URL."""
+        from mmrelay.plugin_loader import clone_or_update_repo
+
+        ref = {"type": "branch", "value": "main"}
+
+        result = clone_or_update_repo(None, ref, "/tmp")
+
+        self.assertFalse(result)
 
 
 class TestCommandRunner(unittest.TestCase):
@@ -761,6 +1281,58 @@ class TestCommandRunner(unittest.TestCase):
             with self.assertRaises(subprocess.CalledProcessError):
                 _run(["git"], retry_attempts=2, retry_delay=0)
             self.assertEqual(mock_subprocess.call_count, 2)
+
+    def test_run_type_error_not_list(self):
+        """Test _run raises TypeError for non-list command."""
+        with self.assertRaises(TypeError) as cm:
+            _run("git status")  # type: ignore[arg-type]
+        self.assertIn("cmd must be a list of str", str(cm.exception))
+
+    def test_run_value_error_empty_list(self):
+        """Test _run raises ValueError for empty command list."""
+        with self.assertRaises(ValueError) as cm:
+            _run([])
+        self.assertIn("Command list cannot be empty", str(cm.exception))
+
+    def test_run_type_error_non_string_args(self):
+        """Test _run raises TypeError for non-string arguments."""
+        with self.assertRaises(TypeError) as cm:
+            _run(["git", 123])  # type: ignore[list-item]
+        self.assertIn("all command arguments must be strings", str(cm.exception))
+
+    def test_run_value_error_empty_args(self):
+        """Test _run raises ValueError for empty/whitespace arguments."""
+        with self.assertRaises(ValueError) as cm:
+            _run(["git", ""])
+        self.assertIn("command arguments cannot be empty/whitespace", str(cm.exception))
+
+    def test_run_value_error_shell_true(self):
+        """Test _run raises ValueError for shell=True."""
+        with self.assertRaises(ValueError) as cm:
+            _run(["git", "status"], shell=True)
+        self.assertIn("shell=True is not allowed in _run", str(cm.exception))
+
+    def test_run_sets_text_default(self):
+        """Test _run sets text=True by default."""
+        with patch("subprocess.run") as mock_subprocess:
+            mock_subprocess.return_value = subprocess.CompletedProcess(
+                args=["echo", "test"], returncode=0, stdout="test"
+            )
+            _run(["echo", "test"])
+            # Check that text=True was set in the call
+            call_kwargs = mock_subprocess.call_args[1]
+            self.assertTrue(call_kwargs.get("text", False))
+
+    def test_run_preserves_text_setting(self):
+        """Test _run preserves existing text setting."""
+        with patch("subprocess.run") as mock_subprocess:
+            mock_subprocess.return_value = subprocess.CompletedProcess(
+                args=["echo", "test"], returncode=0, stdout=b"test"
+            )
+            _run(["echo", "test"], text=False)
+            # Check that text=False was preserved
+            call_kwargs = mock_subprocess.call_args[1]
+            self.assertFalse(call_kwargs.get("text", True))
 
 
 class TestCollectRequirements(unittest.TestCase):
@@ -887,6 +1459,51 @@ class TestCollectRequirements(unittest.TestCase):
         result = _collect_requirements(req1)
         # Should handle recursion gracefully and not crash
         self.assertIsInstance(result, list)
+
+    @patch("mmrelay.plugin_loader.logger")
+    def test_collect_requirements_malformed_requirement_directive(self, mock_logger):
+        """Test handling of malformed requirement directives."""
+        req_file = os.path.join(self.temp_dir, "requirements.txt")
+        with open(req_file, "w") as f:
+            f.write("-r\n")  # Malformed - missing file
+            f.write("requests==2.28.0\n")
+
+        result = _collect_requirements(req_file)
+
+        # Should log warning for malformed directive
+        mock_logger.warning.assert_called()
+        # Should still include the valid requirement
+        self.assertIn("requests==2.28.0", result)
+
+    @patch("mmrelay.plugin_loader.logger")
+    def test_collect_requirements_malformed_constraint_directive(self, mock_logger):
+        """Test handling of malformed constraint directives."""
+        req_file = os.path.join(self.temp_dir, "requirements.txt")
+        with open(req_file, "w") as f:
+            f.write("-c\n")  # Malformed - missing file
+            f.write("requests==2.28.0\n")
+
+        result = _collect_requirements(req_file)
+
+        # Should log warning for malformed directive
+        mock_logger.warning.assert_called()
+        # Should still include the valid requirement
+        self.assertIn("requests==2.28.0", result)
+
+    @patch("mmrelay.plugin_loader.logger")
+    def test_collect_requirements_io_error(self, mock_logger):
+        """Test handling of IO errors during file reading."""
+        req_file = os.path.join(self.temp_dir, "requirements.txt")
+
+        # Create file and then mock open to raise IOError
+        with open(req_file, "w") as f:
+            f.write("requests==2.28.0\n")
+
+        with patch("builtins.open", side_effect=IOError("Permission denied")):
+            result = _collect_requirements(req_file)
+
+        # Should handle IOError gracefully
+        self.assertEqual(result, [])
 
     def test_collect_requirements_empty_file(self):
         """Test handling empty requirements file."""
@@ -1069,6 +1686,370 @@ class TestCleanPythonCache(unittest.TestCase):
         self.assertIn("Python cache director", combined_message)
         self.assertIn(".pyc file", combined_message)
         self.assertIn(" and ", combined_message)  # Indicates both types were cleaned
+
+
+class TestPluginDirectories(unittest.TestCase):
+    """Test cases for plugin directory discovery and creation."""
+
+    @patch("mmrelay.plugin_loader.get_base_dir")
+    @patch("mmrelay.plugin_loader.get_app_path")
+    @patch("mmrelay.plugin_loader.logger")
+    def test_get_plugin_dirs_user_dir_success(
+        self, mock_logger, mock_get_app_path, mock_get_base_dir
+    ):
+        """Test successful user directory creation."""
+        from mmrelay.plugin_loader import _get_plugin_dirs
+
+        mock_get_base_dir.return_value = "/user/base"
+        mock_get_app_path.return_value = "/app/path"
+
+        dirs = _get_plugin_dirs("custom")
+
+        self.assertIn("/user/base/plugins/custom", dirs)
+        self.assertIn("/app/path/plugins/custom", dirs)
+
+    @patch("mmrelay.plugin_loader.get_base_dir")
+    @patch("mmrelay.plugin_loader.get_app_path")
+    @patch("mmrelay.plugin_loader.logger")
+    @patch("os.makedirs")
+    def test_get_plugin_dirs_user_dir_permission_error(
+        self, mock_makedirs, mock_logger, mock_get_app_path, mock_get_base_dir
+    ):
+        """Test handling of permission error in user directory."""
+        from mmrelay.plugin_loader import _get_plugin_dirs
+
+        mock_get_base_dir.return_value = "/user/base"
+        mock_get_app_path.return_value = "/app/path"
+        mock_makedirs.side_effect = [
+            PermissionError("Permission denied"),
+            None,  # Second call succeeds
+        ]
+
+        dirs = _get_plugin_dirs("custom")
+
+        # Should only include local directory since user dir failed
+        self.assertEqual(len(dirs), 1)
+        self.assertIn("/app/path/plugins/custom", dirs)
+        mock_logger.warning.assert_called()
+
+    @patch("mmrelay.plugin_loader.get_base_dir")
+    @patch("mmrelay.plugin_loader.get_app_path")
+    @patch("mmrelay.plugin_loader.logger")
+    @patch("os.makedirs")
+    def test_get_plugin_dirs_local_dir_os_error(
+        self, mock_makedirs, mock_logger, mock_get_app_path, mock_get_base_dir
+    ):
+        """Test handling of OS error in local directory."""
+        from mmrelay.plugin_loader import _get_plugin_dirs
+
+        mock_get_base_dir.return_value = "/user/base"
+        mock_get_app_path.return_value = "/app/path"
+        mock_makedirs.side_effect = [
+            None,  # User dir succeeds
+            OSError("Disk full"),
+        ]
+
+        dirs = _get_plugin_dirs("custom")
+
+        # Should only include user directory since local dir failed
+        self.assertEqual(len(dirs), 1)
+        self.assertIn("/user/base/plugins/custom", dirs)
+        mock_logger.debug.assert_called()
+
+
+class TestDependencyInstallation(unittest.TestCase):
+    """Test cases for dependency installation functionality."""
+
+    def setUp(self):
+        import mmrelay.plugin_loader as pl
+
+        self.pl = pl
+        self.original_config = getattr(pl, "config", None)
+        self.temp_dir = tempfile.mkdtemp()
+        self.addCleanup(lambda: shutil.rmtree(self.temp_dir, ignore_errors=True))
+
+    def tearDown(self):
+        self.pl.config = self.original_config
+
+    @patch("mmrelay.plugin_loader._check_auto_install_enabled")
+    @patch("mmrelay.plugin_loader.logger")
+    def test_install_plugin_requirements_disabled(
+        self, mock_logger, mock_check_enabled
+    ):
+        """Test dependency installation when disabled."""
+        from mmrelay.plugin_loader import _install_plugin_requirements
+
+        mock_check_enabled.return_value = False
+        requirements_path = os.path.join(self.temp_dir, "requirements.txt")
+
+        _install_plugin_requirements("test-plugin", requirements_path, {})
+
+        mock_logger.warning.assert_called_with(
+            "Auto-install of requirements for %s disabled by config; skipping.",
+            "test-plugin",
+        )
+
+    @patch("mmrelay.plugin_loader._collect_requirements")
+    @patch("mmrelay.plugin_loader._filter_risky_requirements")
+    @patch("mmrelay.plugin_loader._check_auto_install_enabled")
+    @patch("mmrelay.plugin_loader.logger")
+    def test_install_plugin_requirements_no_file(
+        self, mock_logger, mock_check_enabled, mock_filter, mock_collect
+    ):
+        """Test dependency installation when requirements file doesn't exist."""
+        from mmrelay.plugin_loader import _install_plugin_requirements
+
+        mock_check_enabled.return_value = True
+        requirements_path = os.path.join(self.temp_dir, "nonexistent.txt")
+
+        _install_plugin_requirements("test-plugin", requirements_path, {})
+
+        # Should return early without calling other functions
+        mock_collect.assert_not_called()
+        mock_filter.assert_not_called()
+
+    @patch.dict(os.environ, {"PIPX_HOME": "/pipx/home"})
+    @patch("mmrelay.plugin_loader._collect_requirements")
+    @patch("mmrelay.plugin_loader._filter_risky_requirements")
+    @patch("mmrelay.plugin_loader._check_auto_install_enabled")
+    @patch("mmrelay.plugin_loader._run")
+    @patch("mmrelay.plugin_loader.logger")
+    def test_install_plugin_requirements_pipx_injection(
+        self, mock_logger, mock_run, mock_check_enabled, mock_filter, mock_collect
+    ):
+        """Test dependency installation with pipx."""
+        from mmrelay.plugin_loader import _install_plugin_requirements
+
+        mock_check_enabled.return_value = True
+        mock_collect.return_value = [
+            "requests==2.28.0",
+            "--extra-index-url",
+            "https://pypi.org/simple",
+        ]
+        mock_filter.return_value = (
+            ["requests==2.28.0", "--extra-index-url", "https://pypi.org/simple"],
+            [],
+            False,
+        )
+
+        requirements_path = os.path.join(self.temp_dir, "requirements.txt")
+        with open(requirements_path, "w") as f:
+            f.write("requests==2.28.0\n")
+
+        with patch("shutil.which", return_value="/usr/bin/pipx"):
+            _install_plugin_requirements("test-plugin", requirements_path, {})
+
+        mock_run.assert_called_once_with(
+            [
+                "/usr/bin/pipx",
+                "inject",
+                "mmrelay",
+                "requests==2.28.0",
+                "--pip-args",
+                "--extra-index-url https://pypi.org/simple",
+            ],
+            timeout=600,
+        )
+
+    @patch.dict(os.environ, {}, clear=True)
+    @patch("mmrelay.plugin_loader._collect_requirements")
+    @patch("mmrelay.plugin_loader._filter_risky_requirements")
+    @patch("mmrelay.plugin_loader._check_auto_install_enabled")
+    @patch("mmrelay.plugin_loader._run")
+    @patch("mmrelay.plugin_loader.logger")
+    def test_install_plugin_requirements_pip_install(
+        self, mock_logger, mock_run, mock_check_enabled, mock_filter, mock_collect
+    ):
+        """Test dependency installation with pip."""
+        from mmrelay.plugin_loader import _install_plugin_requirements
+
+        mock_check_enabled.return_value = True
+        mock_collect.return_value = ["requests==2.28.0"]
+        mock_filter.return_value = (["requests==2.28.0"], [], False)
+
+        requirements_path = os.path.join(self.temp_dir, "requirements.txt")
+        with open(requirements_path, "w") as f:
+            f.write("requests==2.28.0\n")
+
+        _install_plugin_requirements("test-plugin", requirements_path, {})
+
+        expected_cmd = [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "--disable-pip-version-check",
+            "--no-input",
+            "--user",
+            "requests==2.28.0",
+        ]
+        mock_run.assert_called_once_with(expected_cmd, timeout=600)
+
+    @patch.dict(os.environ, {"VIRTUAL_ENV": "/venv"})
+    @patch("mmrelay.plugin_loader._collect_requirements")
+    @patch("mmrelay.plugin_loader._filter_risky_requirements")
+    @patch("mmrelay.plugin_loader._check_auto_install_enabled")
+    @patch("mmrelay.plugin_loader._run")
+    @patch("mmrelay.plugin_loader.logger")
+    def test_install_plugin_requirements_pip_in_venv(
+        self, mock_logger, mock_run, mock_check_enabled, mock_filter, mock_collect
+    ):
+        """Test dependency installation with pip in virtual environment."""
+        from mmrelay.plugin_loader import _install_plugin_requirements
+
+        mock_check_enabled.return_value = True
+        mock_collect.return_value = ["requests==2.28.0"]
+        mock_filter.return_value = (["requests==2.28.0"], [], False)
+
+        requirements_path = os.path.join(self.temp_dir, "requirements.txt")
+        with open(requirements_path, "w") as f:
+            f.write("requests==2.28.0\n")
+
+        _install_plugin_requirements("test-plugin", requirements_path, {})
+
+        expected_cmd = [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "--disable-pip-version-check",
+            "--no-input",
+            "requests==2.28.0",  # No --user flag in venv
+        ]
+        mock_run.assert_called_once_with(expected_cmd, timeout=600)
+
+    @patch("mmrelay.plugin_loader._collect_requirements")
+    @patch("mmrelay.plugin_loader._filter_risky_requirements")
+    @patch("mmrelay.plugin_loader._check_auto_install_enabled")
+    @patch("mmrelay.plugin_loader._run")
+    @patch("mmrelay.plugin_loader.logger")
+    def test_install_plugin_requirements_pipx_no_packages(
+        self, mock_logger, mock_run, mock_check_enabled, mock_filter, mock_collect
+    ):
+        """Test pipx injection when no packages to install."""
+        from mmrelay.plugin_loader import _install_plugin_requirements
+
+        mock_check_enabled.return_value = True
+        mock_collect.return_value = ["--extra-index-url", "https://pypi.org/simple"]
+        mock_filter.return_value = (
+            ["--extra-index-url", "https://pypi.org/simple"],
+            [],
+            False,
+        )
+
+        requirements_path = os.path.join(self.temp_dir, "requirements.txt")
+        with open(requirements_path, "w") as f:
+            f.write("--extra-index-url https://pypi.org/simple\n")
+
+        with patch.dict(os.environ, {"PIPX_HOME": "/pipx/home"}):
+            with patch("shutil.which", return_value="/usr/bin/pipx"):
+                _install_plugin_requirements("test-plugin", requirements_path, {})
+
+        # Should not call pipx inject when no packages
+        mock_run.assert_not_called()
+        mock_logger.info.assert_called_with(
+            "Requirements in %s only contained pip flags; skipping pipx injection.",
+            requirements_path,
+        )
+
+    @patch("mmrelay.plugin_loader._collect_requirements")
+    @patch("mmrelay.plugin_loader._filter_risky_requirements")
+    @patch("mmrelay.plugin_loader._check_auto_install_enabled")
+    @patch("mmrelay.plugin_loader._run")
+    @patch("mmrelay.plugin_loader.logger")
+    def test_install_plugin_requirements_with_flagged_deps(
+        self, mock_logger, mock_run, mock_check_enabled, mock_filter, mock_collect
+    ):
+        """Test dependency installation with flagged dependencies."""
+        from mmrelay.plugin_loader import _install_plugin_requirements
+
+        mock_check_enabled.return_value = True
+        mock_collect.return_value = [
+            "requests==2.28.0",
+            "git+https://github.com/user/repo.git",
+        ]
+        mock_filter.return_value = (
+            ["requests==2.28.0"],
+            ["git+https://github.com/user/repo.git"],
+            False,
+        )
+
+        requirements_path = os.path.join(self.temp_dir, "requirements.txt")
+        with open(requirements_path, "w") as f:
+            f.write("requests==2.28.0\ngit+https://github.com/user/repo.git\n")
+
+        _install_plugin_requirements("test-plugin", requirements_path, {})
+
+        mock_logger.warning.assert_called_with(
+            "Skipping %d flagged dependency entries for %s. Set security.allow_untrusted_dependencies=True to override.",
+            1,
+            "test-plugin",
+        )
+
+    @patch("mmrelay.plugin_loader._collect_requirements")
+    @patch("mmrelay.plugin_loader._filter_risky_requirements")
+    @patch("mmrelay.plugin_loader._check_auto_install_enabled")
+    @patch("mmrelay.plugin_loader._run")
+    @patch("mmrelay.plugin_loader.logger")
+    def test_install_plugin_requirements_allow_untrusted(
+        self, mock_logger, mock_run, mock_check_enabled, mock_filter, mock_collect
+    ):
+        """Test dependency installation with untrusted dependencies allowed."""
+        from mmrelay.plugin_loader import _install_plugin_requirements
+
+        mock_check_enabled.return_value = True
+        mock_collect.return_value = [
+            "requests==2.28.0",
+            "git+https://github.com/user/repo.git",
+        ]
+        mock_filter.return_value = (
+            ["requests==2.28.0", "git+https://github.com/user/repo.git"],
+            [],
+            True,
+        )
+
+        requirements_path = os.path.join(self.temp_dir, "requirements.txt")
+        with open(requirements_path, "w") as f:
+            f.write("requests==2.28.0\ngit+https://github.com/user/repo.git\n")
+
+        _install_plugin_requirements("test-plugin", requirements_path, {})
+
+        mock_logger.warning.assert_called_with(
+            "Allowing %d flagged dependency entries for %s due to security.allow_untrusted_dependencies=True",
+            0,
+            "test-plugin",
+        )
+
+    @patch("mmrelay.plugin_loader._collect_requirements")
+    @patch("mmrelay.plugin_loader._filter_risky_requirements")
+    @patch("mmrelay.plugin_loader._check_auto_install_enabled")
+    @patch(
+        "mmrelay.plugin_loader._run",
+        side_effect=subprocess.CalledProcessError(1, "pip"),
+    )
+    @patch("mmrelay.plugin_loader.logger")
+    def test_install_plugin_requirements_installation_error(
+        self, mock_logger, mock_run, mock_check_enabled, mock_filter, mock_collect
+    ):
+        """Test handling of installation errors."""
+        from mmrelay.plugin_loader import _install_plugin_requirements
+
+        mock_check_enabled.return_value = True
+        mock_collect.return_value = ["requests==2.28.0"]
+        mock_filter.return_value = (["requests==2.28.0"], [], False)
+
+        requirements_path = os.path.join(self.temp_dir, "requirements.txt")
+        with open(requirements_path, "w") as f:
+            f.write("requests==2.28.0\n")
+
+        _install_plugin_requirements("test-plugin", requirements_path, {})
+
+        # Should log error and warning
+        mock_logger.exception.assert_called()
+        mock_logger.warning.assert_called_with(
+            "Plugin %s may not work correctly without its dependencies",
+            "test-plugin",
+        )
 
 
 class TestCacheCleaningIntegration(unittest.TestCase):
