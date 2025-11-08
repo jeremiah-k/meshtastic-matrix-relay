@@ -11,6 +11,7 @@ Tests the ping/pong functionality including:
 - Channel enablement checking
 """
 
+import asyncio
 import os
 import sys
 import unittest
@@ -21,8 +22,9 @@ import pytest
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from mmrelay.meshtastic_utils import BROADCAST_NUM, match_case
-from mmrelay.plugins.ping_plugin import Plugin
+from meshtastic.mesh_interface import BROADCAST_NUM
+
+from mmrelay.plugins.ping_plugin import Plugin, match_case
 
 
 class TestMatchCase(unittest.TestCase):
@@ -532,10 +534,9 @@ class TestPingPlugin(unittest.TestCase):
 
         asyncio.run(run_test())
 
-    @patch("mmrelay.plugins.ping_plugin.connect_meshtastic")
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     def test_handle_meshtastic_message_broadcast_num(self, mock_connect):
         """Test handle_meshtastic_message with BROADCAST_NUM (line 57)."""
-        from mmrelay.meshtastic_utils import BROADCAST_NUM
 
         mock_client = MagicMock()
         mock_client.myInfo.my_node_num = 123456789
@@ -553,7 +554,8 @@ class TestPingPlugin(unittest.TestCase):
                 packet, "formatted_message", "TestNode", "TestMesh"
             )
             self.assertTrue(result)  # Should handle broadcast ping
-            self.plugin.send_matrix_message.assert_called_once()
+            # For broadcast messages, plugin sends Meshtastic reply, not Matrix message
+            mock_client.sendText.assert_called_once_with(text="pong", channelIndex=0)
 
         asyncio.run(run_test())
 

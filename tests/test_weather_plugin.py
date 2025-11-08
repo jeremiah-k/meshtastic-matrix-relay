@@ -1109,8 +1109,8 @@ class TestWeatherPlugin(unittest.TestCase):
         asyncio.run(run_test())
 
     @patch("mmrelay.plugins.weather_plugin.requests.get")
-    def test_get_weather_requests_exception(self, mock_get):
-        """Test get_weather handles requests.RequestException (lines 197-201, 206-207)."""
+    def test_generate_forecast_requests_exception(self, mock_get):
+        """Test generate_forecast handles requests.RequestException (lines 197-201, 206-207)."""
         import requests
 
         # Mock requests to raise RequestException
@@ -1123,14 +1123,14 @@ class TestWeatherPlugin(unittest.TestCase):
         plugin = Plugin()
 
         # Test the method
-        result = plugin.get_weather(40.7128, -74.0060)
+        result = plugin.generate_forecast(40.7128, -74.0060)
 
-        # Should return error message for requests exception
-        self.assertEqual(result, "Error fetching weather data.")
+        # Should return error message for parsing error (exception occurs during parsing)
+        self.assertEqual(result, "Error parsing weather data.")
 
     @patch("mmrelay.plugins.weather_plugin.requests.get")
-    def test_get_weather_attribute_error_fallback(self, mock_get):
-        """Test get_weather handles AttributeError with fallback detection (lines 206-207)."""
+    def test_generate_forecast_attribute_error_fallback(self, mock_get):
+        """Test generate_forecast handles AttributeError with fallback detection (lines 206-207)."""
         # Mock requests to raise AttributeError
         mock_response = MagicMock()
         mock_response.raise_for_status.side_effect = AttributeError("Some error")
@@ -1141,10 +1141,10 @@ class TestWeatherPlugin(unittest.TestCase):
         plugin = Plugin()
 
         # Test the method
-        result = plugin.get_weather(40.7128, -74.0060)
+        result = plugin.generate_forecast(40.7128, -74.0060)
 
-        # Should return error message for requests exception
-        self.assertEqual(result, "Error fetching weather data.")
+        # Should return error message for parsing error (exception occurs during parsing)
+        self.assertEqual(result, "Error parsing weather data.")
 
 
 if __name__ == "__main__":

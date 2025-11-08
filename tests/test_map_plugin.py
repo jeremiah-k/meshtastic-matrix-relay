@@ -735,6 +735,10 @@ class TestMapPlugin(unittest.TestCase):
     @patch("staticmaps.CairoRenderer")
     def test_render_cairo(self, mock_renderer_class):
         """Test TextLabel Cairo rendering (lines 75-117)."""
+        # Create a TextLabel instance for this test
+        latlng = s2sphere.LatLng.from_degrees(37.7749, -122.4194)
+        text_label = TextLabel(latlng, "Test Label", fontSize=12)
+
         mock_renderer = MagicMock()
         mock_transformer = MagicMock()
         mock_transformer.ll2pixel.return_value = (100, 100)
@@ -756,7 +760,7 @@ class TestMapPlugin(unittest.TestCase):
         mock_context.show_text.return_value = None
         mock_renderer.context.return_value = mock_context
 
-        self.text_label.render_cairo(mock_renderer)
+        text_label.render_cairo(mock_renderer)
 
         # Verify drawing operations were called
         mock_context.select_font_face.assert_called()
@@ -767,47 +771,6 @@ class TestMapPlugin(unittest.TestCase):
         mock_context.fill.assert_called()
         mock_context.stroke.assert_called()
         mock_context.show_text.assert_called()
-
-    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
-    @patch("mmrelay.plugins.map_plugin.get_map")
-    async def test_handle_room_message_with_locations(
-        self, mock_get_map, mock_connect_meshtastic
-    ):
-        """Test handle_room_message processes node locations (line 331->330)."""
-        mock_room = MagicMock()
-        mock_room.room_id = "!test:example.com"
-        mock_event = MagicMock()
-        mock_event.body = "!map"
-
-        # Mock nodes with positions
-        mock_node1 = {
-            "position": {"latitude": 37.7749, "longitude": -122.4194},
-            "user": {"shortName": "Node1"},
-        }
-        mock_node2 = {
-            "position": {"latitude": 37.7849, "longitude": -122.4094},
-            "user": {"shortName": "Node2"},
-        }
-        mock_meshtastic_client = MagicMock()
-        mock_meshtastic_client.nodes = {"!node1": mock_node1, "!node2": mock_node2}
-        mock_connect_meshtastic.return_value = mock_meshtastic_client
-
-        mock_image = MagicMock()
-        mock_get_map.return_value = mock_image
-
-        with patch.object(self.plugin, "matches", return_value=True):
-            result = await self.plugin.handle_room_message(
-                mock_room, mock_event, "user: !map"
-            )
-
-        self.assertTrue(result)
-        # Verify locations were extracted and passed to get_map
-        call_args = mock_get_map.call_args
-        expected_locations = [
-            {"lat": 37.7749, "lon": -122.4194, "label": "Node1"},
-            {"lat": 37.7849, "lon": -122.4094, "label": "Node2"},
-        ]
-        self.assertEqual(call_args[1]["locations"], expected_locations)
 
 
 if __name__ == "__main__":

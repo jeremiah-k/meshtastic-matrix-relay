@@ -1043,7 +1043,7 @@ class TestBasePlugin(unittest.TestCase):
                 return None
 
         with self.assertRaises(ValueError) as cm:
-            plugin = NoNamePlugin()
+            NoNamePlugin()
 
         self.assertIn("missing plugin_name definition", str(cm.exception))
 
