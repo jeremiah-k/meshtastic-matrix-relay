@@ -23,6 +23,7 @@ from unittest.mock import MagicMock, patch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.plugin_loader import (
+    _clean_python_cache,
     _collect_requirements,
     clone_or_update_repo,
     get_community_plugin_dirs,
@@ -214,7 +215,14 @@ def some_function():
         self.assertEqual(plugins, [])
 
     def test_load_plugins_dependency_install_refreshes_path(self):
-        """Ensure dependency installs on user site become importable for plugins."""
+        """
+        Verify that when a plugin requires a package, a dependency installation into the user's site-packages is made importable during plugin loading.
+
+        This test creates a plugin that imports a fake dependency, simulates installing that dependency into a test user site directory (via a patched subprocess call), and patches site package discovery and addsitedir behavior. It then calls the plugin loader and asserts:
+        - the plugin is discovered and loaded,
+        - the test user site directory was added to the interpreter import path,
+        - the plugin source directory itself was not added to sys.path.
+        """
 
         for var in ("PIPX_HOME", "PIPX_LOCAL_VENVS"):
             os.environ.pop(var, None)
@@ -257,9 +265,9 @@ class Plugin:
 
         def fake_addsitedir(path):
             """
-            Record a directory and ensure it's on the Python import path.
+            Register a directory for testing and ensure it is available to the Python import system.
 
-            Adds `path` to the external `added_dirs` list and, if not already present, inserts it at the front of `sys.path` so it takes precedence during imports.
+            Adds the given path to the external `added_dirs` list and places it at the front of `sys.path` if it is not already present so imports prefer that directory.
 
             Parameters:
                 path (str): Filesystem path to register on the import search path.
@@ -268,14 +276,14 @@ class Plugin:
             if path not in sys.path:
                 sys.path.insert(0, path)
 
-        with patch(
-            "mmrelay.plugin_loader.subprocess.run", side_effect=fake_check_call
-        ), patch(
-            "mmrelay.plugin_loader.site.getusersitepackages", return_value=[user_site]
-        ), patch(
-            "mmrelay.plugin_loader.site.getsitepackages", return_value=[]
-        ), patch(
-            "mmrelay.plugin_loader.site.addsitedir", side_effect=fake_addsitedir
+        with (
+            patch("mmrelay.plugin_loader.subprocess.run", side_effect=fake_check_call),
+            patch(
+                "mmrelay.plugin_loader.site.getusersitepackages",
+                return_value=[user_site],
+            ),
+            patch("mmrelay.plugin_loader.site.getsitepackages", return_value=[]),
+            patch("mmrelay.plugin_loader.site.addsitedir", side_effect=fake_addsitedir),
         ):
             try:
                 plugins = load_plugins_from_directory(self.custom_dir)
@@ -737,6 +745,311 @@ class TestCollectRequirements(unittest.TestCase):
 
         result = _collect_requirements(req_file)
         self.assertEqual(result, [])
+
+
+class TestCleanPythonCache(unittest.TestCase):
+    """Test cases for _clean_python_cache function."""
+
+    def setUp(self):
+        """Create a temporary directory for cache cleaning tests."""
+        self.temp_dir = tempfile.mkdtemp()
+        self.addCleanup(lambda: shutil.rmtree(self.temp_dir, ignore_errors=True))
+
+    def test_clean_python_cache_removes_pycache_directories(self):
+        """Test that __pycache__ directories are removed."""
+        # Create __pycache__ directories
+        pycache1 = os.path.join(self.temp_dir, "subdir1", "__pycache__")
+        pycache2 = os.path.join(self.temp_dir, "subdir2", "__pycache__")
+        os.makedirs(pycache1, exist_ok=True)
+        os.makedirs(pycache2, exist_ok=True)
+
+        # Create some files in cache directories
+        with open(os.path.join(pycache1, "test1.pyc"), "w"):
+            pass
+        with open(os.path.join(pycache2, "test2.pyc"), "w"):
+            pass
+
+        # Verify directories exist
+        self.assertTrue(os.path.exists(pycache1))
+        self.assertTrue(os.path.exists(pycache2))
+
+        # Clean cache
+        _clean_python_cache(self.temp_dir)
+
+        # Verify directories are removed
+        self.assertFalse(os.path.exists(pycache1))
+        self.assertFalse(os.path.exists(pycache2))
+
+    def test_clean_python_cache_removes_pyc_files(self):
+        """Test that .pyc files are removed."""
+        # Create .pyc files
+        pyc1 = os.path.join(self.temp_dir, "test1.pyc")
+        pyc2 = os.path.join(self.temp_dir, "subdir", "test2.pyc")
+        os.makedirs(os.path.dirname(pyc2), exist_ok=True)
+        with open(pyc1, "w"):
+            pass
+        with open(pyc2, "w"):
+            pass
+
+        # Verify files exist
+        self.assertTrue(os.path.exists(pyc1))
+        self.assertTrue(os.path.exists(pyc2))
+
+        # Clean cache
+        _clean_python_cache(self.temp_dir)
+
+        # Verify files are removed
+        self.assertFalse(os.path.exists(pyc1))
+        self.assertFalse(os.path.exists(pyc2))
+
+    def test_clean_python_cache_preserves_source_files(self):
+        """Test that .py files are preserved."""
+        # Create source files
+        py1 = os.path.join(self.temp_dir, "test1.py")
+        py2 = os.path.join(self.temp_dir, "subdir", "test2.py")
+        os.makedirs(os.path.dirname(py2), exist_ok=True)
+        with open(py1, "w"):
+            pass
+        with open(py2, "w"):
+            pass
+
+        # Clean cache
+        _clean_python_cache(self.temp_dir)
+
+        # Verify source files are preserved
+        self.assertTrue(os.path.exists(py1))
+        self.assertTrue(os.path.exists(py2))
+
+    def test_clean_python_cache_handles_nonexistent_directory(self):
+        """Test that function handles nonexistent directories gracefully."""
+        nonexistent_dir = os.path.join(self.temp_dir, "nonexistent")
+
+        # Should not raise exception
+        _clean_python_cache(nonexistent_dir)
+
+    def test_clean_python_cache_handles_permission_errors(self):
+        """Test that function handles permission errors gracefully."""
+        # Create a __pycache__ directory
+        pycache = os.path.join(self.temp_dir, "__pycache__")
+        os.makedirs(pycache, exist_ok=True)
+
+        # Mock shutil.rmtree to raise PermissionError
+        with patch("shutil.rmtree", side_effect=PermissionError("Permission denied")):
+            # Should not raise exception
+            _clean_python_cache(self.temp_dir)
+
+    def test_clean_python_cache_handles_permission_errors_os_remove(self):
+        """Test that function handles permission errors from os.remove gracefully."""
+        # Create a .pyc file
+        pyc_file = os.path.join(self.temp_dir, "test.pyc")
+        with open(pyc_file, "w") as f:
+            f.write("dummy")
+
+        # Mock os.remove to raise PermissionError
+        with patch("os.remove", side_effect=PermissionError("Permission denied")):
+            # Should not raise exception
+            _clean_python_cache(self.temp_dir)
+
+    @patch("mmrelay.plugin_loader.logger")
+    def test_clean_python_cache_logs_debug_messages(self, mock_logger):
+        """
+        Verify that cleaning Python cache logs debug messages and includes a removal message for __pycache__ directories.
+
+        The test creates a __pycache__ directory, invokes _clean_python_cache on the containing directory, and asserts that logger.debug was called and one of the debug messages contains "Removed Python cache directory".
+        """
+        # Create a __pycache__ directory
+        pycache = os.path.join(self.temp_dir, "__pycache__")
+        os.makedirs(pycache, exist_ok=True)
+
+        # Clean cache
+        _clean_python_cache(self.temp_dir)
+
+        # Verify debug messages were logged
+        mock_logger.debug.assert_called()
+
+        # Check for cache directory removal message
+        debug_calls = [call[0][0] for call in mock_logger.debug.call_args_list]
+        self.assertTrue(
+            any("Removed Python cache directory" in msg for msg in debug_calls)
+        )
+
+    @patch("mmrelay.plugin_loader.logger")
+    def test_clean_python_cache_logs_summary_message(self, mock_logger):
+        """Test that summary info message is logged when cache directories are removed."""
+        # Create multiple __pycache__ directories
+        for i in range(3):
+            pycache = os.path.join(self.temp_dir, f"subdir{i}", "__pycache__")
+            os.makedirs(pycache, exist_ok=True)
+
+        # Clean cache
+        _clean_python_cache(self.temp_dir)
+
+        # Verify info message was logged for the summary
+        mock_logger.info.assert_called_once()
+        call_args = mock_logger.info.call_args[0][0]
+        self.assertTrue(call_args.startswith("Cleaned"))
+        self.assertIn("3 Python cache directories", call_args)
+
+    @patch("mmrelay.plugin_loader.logger")
+    def test_clean_python_cache_logs_combined_info_message(self, mock_logger):
+        """Test that combined info message is logged when both cache directories and .pyc files are removed."""
+        # Create __pycache__ directories
+        pycache1 = os.path.join(self.temp_dir, "subdir1", "__pycache__")
+        pycache2 = os.path.join(self.temp_dir, "subdir2", "__pycache__")
+        os.makedirs(pycache1, exist_ok=True)
+        os.makedirs(pycache2, exist_ok=True)
+
+        # Create .pyc files
+        pyc_file1 = os.path.join(self.temp_dir, "test1.pyc")
+        pyc_file2 = os.path.join(self.temp_dir, "subdir3", "test2.pyc")
+        os.makedirs(os.path.dirname(pyc_file2), exist_ok=True)
+        with open(pyc_file1, "w") as f:
+            f.write("dummy")
+        with open(pyc_file2, "w") as f:
+            f.write("dummy")
+
+        # Clean cache
+        _clean_python_cache(self.temp_dir)
+
+        # Verify info message was logged for the combined summary
+        mock_logger.info.assert_called_once()
+        combined_message = mock_logger.info.call_args[0][0]
+        self.assertTrue(combined_message.startswith("Cleaned"))
+        self.assertIn("Python cache director", combined_message)
+        self.assertIn(".pyc file", combined_message)
+        self.assertIn(" and ", combined_message)  # Indicates both types were cleaned
+
+
+class TestCacheCleaningIntegration(unittest.TestCase):
+    """Test cases for cache cleaning integration in plugin loading workflow."""
+
+    def setUp(self):
+        """
+        Prepare an isolated temporary directory for the test and reset plugin loader state.
+
+        Creates and assigns a temporary directory to `self.temp_dir` and registers a cleanup
+        to remove it after the test. Resets `mmrelay.plugin_loader.sorted_active_plugins`
+        to an empty list and `mmrelay.plugin_loader.plugins_loaded` to False.
+        """
+        self.temp_dir = tempfile.mkdtemp()
+        self.addCleanup(lambda: shutil.rmtree(self.temp_dir, ignore_errors=True))
+
+        # Reset plugin loader state
+        import mmrelay.plugin_loader as pl
+
+        pl.sorted_active_plugins = []
+        pl.plugins_loaded = False
+
+    @patch("mmrelay.plugin_loader._clean_python_cache")
+    def test_load_plugins_calls_cache_cleaning(self, mock_clean_cache):
+        """Test that load_plugins_from_directory calls cache cleaning."""
+        # Create a plugin directory
+        plugin_dir = os.path.join(self.temp_dir, "plugins")
+        os.makedirs(plugin_dir, exist_ok=True)
+
+        # Call load_plugins_from_directory
+        load_plugins_from_directory(plugin_dir)
+
+        # Verify cache cleaning was called
+        mock_clean_cache.assert_called_once_with(plugin_dir)
+
+    @patch("mmrelay.plugin_loader._run")
+    def test_clone_or_update_repo_success(self, mock_run):
+        """Test that clone_or_update_repo succeeds with valid git operations."""
+        # Set up mock for successful git pull
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["git", "pull"], returncode=0, stdout="", stderr=""
+        )
+
+        repo_url = "https://github.com/test/plugin.git"
+        ref = {"type": "branch", "value": "main"}
+        plugins_dir = self.temp_dir
+
+        # Create a repo directory
+        repo_name = "plugin"
+        repo_path = os.path.join(plugins_dir, repo_name)
+        os.makedirs(repo_path, exist_ok=True)
+
+        # Mock current branch check to return the same branch
+        with patch("subprocess.run") as mock_subprocess:
+            mock_subprocess.side_effect = [
+                # Current branch check
+                subprocess.CompletedProcess(
+                    args=["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                    returncode=0,
+                    stdout="main\n",
+                    stderr="",
+                ),
+                # Git pull
+                mock_run.return_value,
+            ]
+
+            result = clone_or_update_repo(repo_url, ref, plugins_dir)
+
+        # Verify success (cache cleaning now happens in load_plugins_from_directory)
+        self.assertTrue(result)
+
+    @patch("mmrelay.plugin_loader._run")
+    def test_clone_or_update_repo_checkout_success(self, mock_run):
+        """Test that clone_or_update_repo succeeds when checking out different branch."""
+        # Set up mock for successful git checkout and pull
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["git", "pull"], returncode=0, stdout="", stderr=""
+        )
+
+        repo_url = "https://github.com/test/plugin.git"
+        ref = {"type": "branch", "value": "develop"}
+        plugins_dir = self.temp_dir
+
+        # Create a repo directory
+        repo_name = "plugin"
+        repo_path = os.path.join(plugins_dir, repo_name)
+        os.makedirs(repo_path, exist_ok=True)
+
+        # Mock current branch check to return different branch
+        with patch("subprocess.run") as mock_subprocess:
+            mock_subprocess.side_effect = [
+                # Current branch check (different branch)
+                subprocess.CompletedProcess(
+                    args=["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                    returncode=0,
+                    stdout="main\n",
+                    stderr="",
+                ),
+                # Git checkout
+                subprocess.CompletedProcess(
+                    args=["git", "checkout", "develop"],
+                    returncode=0,
+                    stdout="",
+                    stderr="",
+                ),
+                # Git pull
+                mock_run.return_value,
+            ]
+
+            result = clone_or_update_repo(repo_url, ref, plugins_dir)
+
+        # Verify success (cache cleaning now happens in load_plugins_from_directory)
+        self.assertTrue(result)
+
+    @patch("mmrelay.plugin_loader._run")
+    def test_clone_or_update_repo_returns_false_on_failure(self, mock_run):
+        """Test that clone_or_update_repo returns False when git operations fail."""
+        # Set up mock for failed git operation
+        mock_run.side_effect = subprocess.CalledProcessError(1, "git")
+
+        repo_url = "https://github.com/test/plugin.git"
+        ref = {"type": "branch", "value": "main"}
+        plugins_dir = self.temp_dir
+
+        # Create a repo directory
+        repo_name = "plugin"
+        repo_path = os.path.join(plugins_dir, repo_name)
+        os.makedirs(repo_path, exist_ok=True)
+
+        result = clone_or_update_repo(repo_url, ref, plugins_dir)
+
+        self.assertFalse(result)
 
 
 if __name__ == "__main__":
