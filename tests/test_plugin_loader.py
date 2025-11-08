@@ -69,7 +69,14 @@ class MockPlugin:
         self, packet, interface, longname, shortname, meshnet_name
     ):
         """
-        Asynchronously handles a Meshtastic message; implemented as a mock to suppress warnings during testing.
+        Mock handler for Meshtastic messages used in tests; performs no action to suppress warnings.
+        
+        Parameters:
+            packet: The raw Meshtastic packet object received.
+            interface: The interface name or object the packet arrived on.
+            longname (str): Sender's long display name.
+            shortname (str): Sender's short/abbreviated name.
+            meshnet_name (str): The mesh network identifier.
         """
         pass
 
@@ -651,6 +658,11 @@ class TestPluginSecurityGuards(unittest.TestCase):
         self.original_config = getattr(pl, "config", None)
 
     def tearDown(self):
+        """
+        Restore the original plugin loader configuration after a test.
+        
+        Reassigns the saved original configuration back to the plugin loader's `config` attribute to restore global state modified during the test.
+        """
         self.pl.config = self.original_config
 
     def test_repo_url_allowed_https_known_host(self):
@@ -767,6 +779,11 @@ class TestURLValidation(unittest.TestCase):
         self.original_config = getattr(pl, "config", None)
 
     def tearDown(self):
+        """
+        Restore the original plugin loader configuration after a test.
+        
+        Reassigns the saved original configuration back to the plugin loader's `config` attribute to restore global state modified during the test.
+        """
         self.pl.config = self.original_config
 
     def test_normalize_repo_target_ssh_git_at(self):
@@ -943,6 +960,11 @@ class TestRequirementFiltering(unittest.TestCase):
         self.original_config = getattr(pl, "config", None)
 
     def tearDown(self):
+        """
+        Restore the original plugin loader configuration after a test.
+        
+        Reassigns the saved original configuration back to the plugin loader's `config` attribute to restore global state modified during the test.
+        """
         self.pl.config = self.original_config
 
     def test_is_requirement_risky_vcs_prefixes(self):
@@ -1084,6 +1106,11 @@ class TestGitOperations(unittest.TestCase):
         self.original_config = getattr(pl, "config", None)
 
     def tearDown(self):
+        """
+        Restore the original plugin loader configuration after a test.
+        
+        Reassigns the saved original configuration back to the plugin loader's `config` attribute to restore global state modified during the test.
+        """
         self.pl.config = self.original_config
 
     @patch("mmrelay.plugin_loader._run")
@@ -1185,7 +1212,11 @@ class TestGitOperations(unittest.TestCase):
     @patch("mmrelay.plugin_loader._is_repo_url_allowed")
     @patch("mmrelay.plugin_loader.logger")
     def test_clone_or_update_repo_missing_ref_value(self, mock_logger, mock_is_allowed):
-        """Test clone with missing ref value."""
+        """
+        Verify clone_or_update_repo returns False and logs an error when a ref specifies a type but has an empty value.
+        
+        Asserts that the function rejects a ref with an empty 'value' field, returns False, and logs an error mentioning the ref type and repository URL.
+        """
         from mmrelay.plugin_loader import clone_or_update_repo
 
         mock_is_allowed.return_value = True
@@ -1742,6 +1773,13 @@ class TestDependencyInstallation(unittest.TestCase):
     """Test cases for dependency installation functionality."""
 
     def setUp(self):
+        """
+        Prepare the test environment for plugin_loader tests.
+        
+        Saves the mmrelay.plugin_loader module to `self.pl`, preserves the module's original
+        `config` (if any) in `self.original_config`, creates a temporary directory at
+        `self.temp_dir`, and registers a cleanup action to remove that directory after the test.
+        """
         import mmrelay.plugin_loader as pl
 
         self.pl = pl
@@ -1750,6 +1788,11 @@ class TestDependencyInstallation(unittest.TestCase):
         self.addCleanup(lambda: shutil.rmtree(self.temp_dir, ignore_errors=True))
 
     def tearDown(self):
+        """
+        Restore the original plugin loader configuration after a test.
+        
+        Reassigns the saved original configuration back to the plugin loader's `config` attribute to restore global state modified during the test.
+        """
         self.pl.config = self.original_config
 
     @patch("mmrelay.plugin_loader._check_auto_install_enabled")

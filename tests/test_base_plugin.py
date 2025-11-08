@@ -67,7 +67,9 @@ class TestBasePlugin(unittest.TestCase):
 
     def setUp(self):
         """
-        Prepare the test environment by mocking configuration and database functions for plugin tests.
+        Prepare the test environment for BasePlugin unit tests.
+        
+        Resets BasePlugin global warning state, installs a mocked global configuration, patches plugin database helper functions, clears any scheduled jobs, and registers cleanup handlers so patches and schedule state are restored after each test. Also stores a reference to the shared warned-delay values set for use by tests.
         """
         # Reset global warning state for clean test isolation between test cases
         import mmrelay.plugins.base_plugin as base_plugin_module
