@@ -164,6 +164,55 @@ def _temp_sys_path(path: str):
             pass
 
 
+def _clean_python_cache(directory):
+    """
+    Recursively remove Python bytecode cache directories from a plugin directory.
+
+    This function walks through the given directory and removes all __pycache__ directories
+    and their contents to ensure that updated plugin code is loaded fresh instead of using
+    stale compiled bytecode from previous runs.
+
+    Parameters:
+        directory (str): Path to directory to clean of Python cache files.
+
+    Side effects:
+        - Removes __pycache__ directories and .pyc files from the filesystem.
+        - Logs debug information about cache cleaning operations.
+        - Silently continues if cache removal fails (non-critical operation).
+    """
+    if not os.path.isdir(directory):
+        return
+
+    cache_dirs_removed = 0
+    for root, dirs, files in os.walk(directory):
+        # Remove __pycache__ directories
+        if "__pycache__" in dirs:
+            cache_path = os.path.join(root, "__pycache__")
+            try:
+                shutil.rmtree(cache_path)
+                logger.debug(f"Removed Python cache directory: {cache_path}")
+                cache_dirs_removed += 1
+            except (OSError, PermissionError) as e:
+                logger.debug(f"Could not remove cache directory {cache_path}: {e}")
+            # Remove from dirs list to prevent walking into it
+            dirs.remove("__pycache__")
+
+        # Also remove any .pyc files in the current directory
+        pyc_files = [f for f in files if f.endswith(".pyc")]
+        for pyc_file in pyc_files:
+            pyc_path = os.path.join(root, pyc_file)
+            try:
+                os.remove(pyc_path)
+                logger.debug(f"Removed .pyc file: {pyc_path}")
+            except (OSError, PermissionError) as e:
+                logger.debug(f"Could not remove .pyc file {pyc_path}: {e}")
+
+    if cache_dirs_removed > 0:
+        logger.info(
+            f"Cleaned {cache_dirs_removed} Python cache directories from {directory}"
+        )
+
+
 def _reset_caches_for_tests():
     """
     Reset the global plugin loader caches to their initial state for testing purposes.
@@ -532,6 +581,8 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                             logger.info(
                                 f"Updated repository {repo_name} branch {ref_value}"
                             )
+                            # Clean Python cache to ensure fresh code loading
+                            _clean_python_cache(repo_path)
                             return True
                         except subprocess.CalledProcessError as e:
                             logger.warning(f"Error pulling branch {ref_value}: {e}")
@@ -938,6 +989,8 @@ def load_plugins_from_directory(directory, recursive=False):
     """
     plugins = []
     if os.path.isdir(directory):
+        # Clean Python cache to ensure fresh code loading
+        _clean_python_cache(directory)
         for root, _dirs, files in os.walk(directory):
             for filename in files:
                 if filename.endswith(".py"):
