@@ -29,3 +29,14 @@ RISKY_REQUIREMENT_PREFIXES: Tuple[str, ...] = (
     "http://",
     "https://",
 )
+
+# Pip source flags that can be followed by URLs
+PIP_SOURCE_FLAGS: Tuple[str, ...] = (
+    "-e",
+    "--editable",
+    "-f",
+    "--find-links",
+    "-i",
+    "--index-url",
+    "--extra-index-url",
+)

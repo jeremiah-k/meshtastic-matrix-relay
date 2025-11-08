@@ -30,6 +30,7 @@ from .config import (
 from .formats import DEFAULT_MATRIX_PREFIX, DEFAULT_MESHTASTIC_PREFIX
 from .plugins import (
     DEFAULT_ALLOWED_COMMUNITY_HOSTS,
+    PIP_SOURCE_FLAGS,
     RISKY_REQUIREMENT_PREFIXES,
 )
 from .queue import (
@@ -59,5 +60,6 @@ __all__ = [
     "DEFAULT_MATRIX_PREFIX",
     # Plugin constants
     "DEFAULT_ALLOWED_COMMUNITY_HOSTS",
+    "PIP_SOURCE_FLAGS",
     "RISKY_REQUIREMENT_PREFIXES",
 ]

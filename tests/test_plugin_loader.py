@@ -719,6 +719,28 @@ class TestPluginSecurityGuards(unittest.TestCase):
         expected = ["github.com", "gitlab.com", "codeberg.org", "bitbucket.org"]
         self.assertEqual(result, expected)
 
+    def test_get_allowed_repo_hosts_invalid_type_uses_default(self):
+        """Invalid type should use default hosts."""
+        self.pl.config = {"security": {"community_repo_hosts": "invalid"}}
+        from mmrelay.plugin_loader import _get_allowed_repo_hosts
+
+        result = _get_allowed_repo_hosts()
+        expected = ["github.com", "gitlab.com", "codeberg.org", "bitbucket.org"]
+        self.assertEqual(result, expected)
+
+    def test_get_allowed_repo_filters_empty_strings(self):
+        """Empty strings should be filtered out."""
+        self.pl.config = {
+            "security": {
+                "community_repo_hosts": ["github.com", "", "gitlab.com", "   "]
+            }
+        }
+        from mmrelay.plugin_loader import _get_allowed_repo_hosts
+
+        result = _get_allowed_repo_hosts()
+        expected = ["github.com", "gitlab.com"]
+        self.assertEqual(result, expected)
+
 
 class TestCommandRunner(unittest.TestCase):
     """Verify helper command execution behavior."""

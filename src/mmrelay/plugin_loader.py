@@ -17,6 +17,7 @@ from urllib.parse import urlparse
 from mmrelay.config import get_app_path, get_base_dir
 from mmrelay.constants.plugins import (
     DEFAULT_ALLOWED_COMMUNITY_HOSTS,
+    PIP_SOURCE_FLAGS,
     RISKY_REQUIREMENT_PREFIXES,
 )
 from mmrelay.log_utils import get_logger
@@ -46,17 +47,6 @@ else:
         deps_path = os.fspath(_PLUGIN_DEPS_DIR)
         if deps_path not in sys.path:
             sys.path.append(deps_path)
-
-# Pip source flags that can be followed by URLs
-_PIP_SOURCE_FLAGS = {
-    "-e",
-    "--editable",
-    "-f",
-    "--find-links",
-    "-i",
-    "--index-url",
-    "--extra-index-url",
-}
 
 
 def _collect_requirements(
@@ -355,7 +345,7 @@ def _filter_risky_requirements(
 
         if is_risky and not allow_untrusted:
             # Remove preceding source-related flag if present
-            if safe and safe[-1].lower() in _PIP_SOURCE_FLAGS:
+            if safe and safe[-1].lower() in PIP_SOURCE_FLAGS:
                 flagged.append(safe.pop())
             flagged.append(token)
             continue
