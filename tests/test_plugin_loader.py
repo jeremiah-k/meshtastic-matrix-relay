@@ -879,6 +879,35 @@ class TestCleanPythonCache(unittest.TestCase):
             "Cleaned 3 Python cache directories", mock_logger.info.call_args[0][0]
         )
 
+    @patch("mmrelay.plugin_loader.logger")
+    def test_clean_python_cache_logs_combined_info_message(self, mock_logger):
+        """Test that combined info message is logged when both cache directories and .pyc files are removed."""
+        # Create __pycache__ directories
+        pycache1 = os.path.join(self.temp_dir, "subdir1", "__pycache__")
+        pycache2 = os.path.join(self.temp_dir, "subdir2", "__pycache__")
+        os.makedirs(pycache1, exist_ok=True)
+        os.makedirs(pycache2, exist_ok=True)
+
+        # Create .pyc files
+        pyc_file1 = os.path.join(self.temp_dir, "test1.pyc")
+        pyc_file2 = os.path.join(self.temp_dir, "subdir3", "test2.pyc")
+        os.makedirs(os.path.dirname(pyc_file2), exist_ok=True)
+        with open(pyc_file1, "w") as f:
+            f.write("dummy")
+        with open(pyc_file2, "w") as f:
+            f.write("dummy")
+
+        # Clean cache
+        _clean_python_cache(self.temp_dir)
+
+        # Verify info message was logged
+        mock_logger.info.assert_called_once()
+        info_message = mock_logger.info.call_args[0][0]
+        self.assertIn("Cleaned", info_message)
+        self.assertIn("Python cache director", info_message)
+        self.assertIn(".pyc file", info_message)
+        self.assertIn(" and ", info_message)  # Indicates both types were cleaned
+
 
 class TestCacheCleaningIntegration(unittest.TestCase):
     """Test cases for cache cleaning integration in plugin loading workflow."""
