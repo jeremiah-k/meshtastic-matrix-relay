@@ -2206,83 +2206,84 @@ class TestDependencyInstallation(unittest.TestCase):
             # Should not raise an exception
             clear_plugin_jobs("test_plugin")
 
+    @patch("mmrelay.plugin_loader.threading")
+    @patch("mmrelay.plugin_loader.schedule")
+    def test_start_global_scheduler_starts_thread(self, mock_schedule, mock_threading):
+        """Test that start_global_scheduler creates and starts a daemon thread."""
+        # Ensure mock_schedule is truthy so the function doesn't return early
+        mock_schedule.__bool__ = lambda: True
 
-@patch("mmrelay.plugin_loader.threading")
-@patch("mmrelay.plugin_loader.schedule")
-def test_start_global_scheduler_starts_thread(self, mock_schedule, mock_threading):
-    """Test that start_global_scheduler creates and starts a daemon thread."""
-    mock_event = MagicMock()
-    mock_threading.Event.return_value = mock_event
-    mock_thread = MagicMock()
-    mock_threading.Thread.return_value = mock_thread
+        mock_event = MagicMock()
+        mock_threading.Event.return_value = mock_event
+        mock_thread = MagicMock()
+        mock_threading.Thread.return_value = mock_thread
 
-    start_global_scheduler()
+        start_global_scheduler()
 
-    # Event should be called since schedule is available (mocked)
-    mock_threading.Event.assert_called_once()
-    mock_threading.Thread.assert_called_once()
-    mock_thread.start.assert_called_once()
+        # Event should be called since schedule is available (mocked)
+        mock_threading.Event.assert_called_once()
+        mock_threading.Thread.assert_called_once()
+        mock_thread.start.assert_called_once()
 
+    @patch("mmrelay.plugin_loader.threading")
+    @patch("mmrelay.plugin_loader.schedule", None)
+    def test_start_global_scheduler_no_schedule_library(self, mock_threading):
+        """Test that start_global_scheduler exits early when schedule is None."""
+        start_global_scheduler()
 
-@patch("mmrelay.plugin_loader.threading")
-@patch("mmrelay.plugin_loader.schedule", None)
-def test_start_global_scheduler_no_schedule_library(self, mock_threading):
-    """Test that start_global_scheduler exits early when schedule is None."""
-    start_global_scheduler()
+        # Should not create thread when schedule is None
+        mock_threading.Thread.assert_not_called()
 
-    # Should not create thread when schedule is None
-    mock_threading.Thread.assert_not_called()
+    @patch("mmrelay.plugin_loader.threading")
+    @patch("mmrelay.plugin_loader.schedule")
+    def test_start_global_scheduler_already_running(
+        self, mock_schedule, mock_threading
+    ):
+        """Test that start_global_scheduler exits early when already running."""
+        import mmrelay.plugin_loader as pl
 
+        # Simulate already running thread
+        pl._global_scheduler_thread = MagicMock()
+        pl._global_scheduler_thread.is_alive.return_value = True
 
-@patch("mmrelay.plugin_loader.threading")
-@patch("mmrelay.plugin_loader.schedule")
-def test_start_global_scheduler_already_running(self, mock_schedule, mock_threading):
-    """Test that start_global_scheduler exits early when already running."""
-    import mmrelay.plugin_loader as pl
+        start_global_scheduler()
 
-    # Simulate already running thread
-    pl._global_scheduler_thread = MagicMock()
-    pl._global_scheduler_thread.is_alive.return_value = True
+        # Should not create new thread
+        mock_threading.Thread.assert_not_called()
 
-    start_global_scheduler()
+    @patch("mmrelay.plugin_loader.threading")
+    @patch("mmrelay.plugin_loader.schedule")
+    def test_stop_global_scheduler_stops_thread(self, mock_schedule, mock_threading):
+        """Test that stop_global_scheduler stops the scheduler thread."""
+        import mmrelay.plugin_loader as pl
 
-    # Should not create new thread
-    mock_threading.Thread.assert_not_called()
+        # Setup running thread
+        mock_event = MagicMock()
+        mock_thread = MagicMock()
+        mock_thread.is_alive.return_value = True
+        pl._global_scheduler_thread = mock_thread
+        pl._global_scheduler_stop_event = mock_event
 
+        stop_global_scheduler()
 
-@patch("mmrelay.plugin_loader.threading")
-@patch("mmrelay.plugin_loader.schedule")
-def test_stop_global_scheduler_stops_thread(self, mock_schedule, mock_threading):
-    """Test that stop_global_scheduler stops the scheduler thread."""
-    import mmrelay.plugin_loader as pl
+        mock_event.set.assert_called_once()
+        mock_thread.join.assert_called_once_with(timeout=5)
+        mock_schedule.clear.assert_called_once()
+        self.assertIsNone(pl._global_scheduler_thread)
 
-    # Setup running thread
-    mock_event = MagicMock()
-    mock_thread = MagicMock()
-    mock_thread.is_alive.return_value = True
-    pl._global_scheduler_thread = mock_thread
-    pl._global_scheduler_stop_event = mock_event
+    @patch("mmrelay.plugin_loader.threading")
+    def test_stop_global_scheduler_no_thread(self, mock_threading):
+        """Test that stop_global_scheduler exits early when no thread exists."""
+        import mmrelay.plugin_loader as pl
 
-    stop_global_scheduler()
+        # Ensure no thread is running
+        pl._global_scheduler_thread = None
 
-    mock_event.set.assert_called_once()
-    mock_thread.join.assert_called_once_with(timeout=5)
-    mock_schedule.clear.assert_called_once()
-    self.assertIsNone(pl._global_scheduler_thread)
+        stop_global_scheduler()
 
+        # Should not call any threading methods
 
-@patch("mmrelay.plugin_loader.threading")
-def test_stop_global_scheduler_no_thread(self, mock_threading):
-    """Test that stop_global_scheduler exits early when no thread exists."""
-    import mmrelay.plugin_loader as pl
-
-    # Ensure no thread is running
-    pl._global_scheduler_thread = None
-
-    stop_global_scheduler()
-
-    # Should not call any threading methods
-    mock_threading.Event.assert_not_called()
+        mock_threading.Event.assert_not_called()
 
 
 class TestCacheCleaningIntegration(unittest.TestCase):
