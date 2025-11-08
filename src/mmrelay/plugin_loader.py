@@ -574,17 +574,19 @@ def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
                 # Separate packages from pip arguments from the token list
                 packages = []
                 pip_args = []
+                # Flags that are known to take a value as the next token.
+                flags_with_values = PIP_SOURCE_FLAGS + ("--hash",)
                 i = 0
                 while i < len(all_tokens):
                     token = all_tokens[i]
                     if token.startswith("-"):
                         pip_args.append(token)
-                        # Check if next token exists and doesn't start with "-", assume it's a value
-                        if i + 1 < len(all_tokens) and not all_tokens[i + 1].startswith(
-                            "-"
+                        # If the flag is known to take a value, and a value is present, consume it.
+                        if token.lower() in flags_with_values and i + 1 < len(
+                            all_tokens
                         ):
                             pip_args.append(all_tokens[i + 1])
-                            i += 1
+                            i += 1  # Also advance past the value token
                     else:
                         packages.append(token)
                     i += 1
