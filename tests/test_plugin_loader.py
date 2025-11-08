@@ -2024,16 +2024,15 @@ class TestDependencyInstallation(unittest.TestCase):
         call_args = mock_run.call_args
         cmd = call_args[0][0]
 
-        # Should be pipx inject with --pip-args containing -r flag
+        # Should be pipx inject with --requirement containing requirements file
         assert cmd[0] == "/usr/bin/pipx"
         assert cmd[1] == "inject"
         assert cmd[2] == "mmrelay"
-        assert cmd[3] == "--pip-args"
+        assert cmd[3] == "--requirement"
 
-        # The --pip-args should contain -r with a temporary file path
-        pip_args = cmd[4]
-        assert pip_args.startswith("-r ")
-        assert pip_args.endswith(".txt")
+        # The --requirement should point to a temporary file path
+        req_file = cmd[4]
+        assert req_file.endswith(".txt")
 
         # Verify timeout
         assert call_args[1]["timeout"] == 600

@@ -908,9 +908,7 @@ class TestBasePlugin(unittest.TestCase):
 
                 # The logic is: append new data first, then truncate to max_data_rows_per_node
                 # So existing_data + [new_data], then take last 2 items
-                expected_data = (existing_data + [new_data])[
-                    -plugin.max_data_rows_per_node :
-                ]
+                expected_data = [{"data": "item2"}, {"data": "item3"}]
                 mock_store.assert_called_once_with(
                     "test_plugin", "!node123", expected_data
                 )
