@@ -2210,6 +2210,12 @@ class TestDependencyInstallation(unittest.TestCase):
     @patch("mmrelay.plugin_loader.schedule")
     def test_start_global_scheduler_starts_thread(self, mock_schedule, mock_threading):
         """Test that start_global_scheduler creates and starts a daemon thread."""
+        import mmrelay.plugin_loader as pl
+
+        # Reset global state before test
+        pl._global_scheduler_thread = None
+        pl._global_scheduler_stop_event = None
+
         # Ensure mock_schedule is truthy so the function doesn't return early
         mock_schedule.__bool__ = lambda: True
 
