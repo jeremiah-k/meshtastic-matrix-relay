@@ -1,7 +1,6 @@
 import os
 import threading
 from abc import ABC, abstractmethod
-from typing import Optional
 
 import markdown
 import schedule
