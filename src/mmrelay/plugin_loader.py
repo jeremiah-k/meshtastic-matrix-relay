@@ -53,7 +53,7 @@ def _collect_requirements(
     requirements_file: str, visited: Set[str] | None = None
 ) -> List[str]:
     """
-    Parse a requirements.txt file and return a flattened list of installable requirement tokens.
+    Parse a requirements.txt file and return a flattened list of installable requirement lines.
 
     The function reads the given requirements file, ignores blank lines and comments (including inline
     comments after " #"), and resolves nested includes and constraint files. Supported include forms:
@@ -61,21 +61,20 @@ def _collect_requirements(
       - "-c <file>" or "--constraint <file>"
       - "--requirement=<file>" and "--constraint=<file>"
 
-    Lines beginning with "-" are tokenized with shlex.split (posix mode) so flags and compound entries
-    are preserved; other non-directive lines are returned verbatim.
+    All non-directive lines are returned verbatim, preserving PEP 508 syntax including version specifiers,
+    environment markers, and pip flags.
 
     Parameters:
         requirements_file (str): Path to a requirements file. Relative includes are resolved
             relative to this file's directory.
 
     Returns:
-        List[str]: A flattened list of requirement tokens suitable for passing to pip.
+        List[str]: A flattened list of requirement lines suitable for passing to pip.
         Returns an empty list if the file does not exist or if recursion is detected for a nested include.
 
     Notes:
         - The optional `visited` parameter (used internally) tracks normalized file paths to detect
           and prevent recursive includes; recursion results in a logged warning and the include is skipped.
-        - The function logs warnings for missing files and malformed include/constraint directives but
           does not raise exceptions for those conditions.
     """
     normalized_path = os.path.abspath(requirements_file)
