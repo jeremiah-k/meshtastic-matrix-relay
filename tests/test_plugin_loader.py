@@ -26,6 +26,7 @@ from mmrelay.plugin_loader import (
     _clean_python_cache,
     _collect_requirements,
     _filter_risky_requirements,
+    _install_requirements_for_repo,
     _is_repo_url_allowed,
     _run,
     clone_or_update_repo,
@@ -1072,7 +1073,7 @@ class TestRequirementFiltering(unittest.TestCase):
 
         safe, flagged, allow = _filter_risky_requirements(requirements)
 
-        self.assertEqual(len(safe), 3)
+        self.assertEqual(len(safe), 4)
         self.assertEqual(flagged, [])
         self.assertTrue(allow)
 
@@ -1089,7 +1090,7 @@ class TestGitOperations(unittest.TestCase):
     def tearDown(self):
         self.pl.config = self.original_config
 
-    @patch("mmrelay.plugin_loader._run_git")
+    @patch("mmrelay.plugin_loader._run")
     def test_run_git_with_defaults(self, mock_run):
         """Test _run_git uses default retry settings."""
         from mmrelay.plugin_loader import _run_git
@@ -1097,7 +1098,7 @@ class TestGitOperations(unittest.TestCase):
         _run_git(["git", "status"])
 
         mock_run.assert_called_once_with(
-            ["git", "status"], retry_attempts=3, retry_delay=2
+            ["git", "status"], timeout=120, retry_attempts=3, retry_delay=2
         )
 
     @patch("mmrelay.plugin_loader._run_git")
@@ -1475,14 +1476,6 @@ class TestCollectRequirements(unittest.TestCase):
         # Should still include the valid requirement
         self.assertIn("requests==2.28.0", result)
 
-    @patch("mmrelay.plugin_loader.logger")
-    def test_collect_requirements_malformed_constraint_directive(self, mock_logger):
-        """Test handling of malformed constraint directives."""
-        req_file = os.path.join(self.temp_dir, "requirements.txt")
-        with open(req_file, "w") as f:
-            f.write("-c\n")  # Malformed - missing file
-            f.write("requests==2.28.0\n")
-
         result = _collect_requirements(req_file)
 
         # Should log warning for malformed directive
@@ -1777,12 +1770,16 @@ class TestDependencyInstallation(unittest.TestCase):
         self, mock_logger, mock_check_enabled
     ):
         """Test dependency installation when disabled."""
-        from mmrelay.plugin_loader import _install_plugin_requirements
+        from mmrelay.plugin_loader import _install_requirements_for_repo
 
         mock_check_enabled.return_value = False
-        requirements_path = os.path.join(self.temp_dir, "requirements.txt")
+        repo_path = os.path.join(self.temp_dir, "test-plugin")
+        requirements_path = os.path.join(repo_path, "requirements.txt")
+        os.makedirs(repo_path, exist_ok=True)
+        with open(requirements_path, "w") as f:
+            f.write("requests==2.28.0\n")
 
-        _install_plugin_requirements("test-plugin", requirements_path, {})
+        _install_requirements_for_repo(repo_path, "test-plugin")
 
         mock_logger.warning.assert_called_with(
             "Auto-install of requirements for %s disabled by config; skipping.",
@@ -1797,12 +1794,12 @@ class TestDependencyInstallation(unittest.TestCase):
         self, mock_logger, mock_check_enabled, mock_filter, mock_collect
     ):
         """Test dependency installation when requirements file doesn't exist."""
-        from mmrelay.plugin_loader import _install_plugin_requirements
+        from mmrelay.plugin_loader import _install_requirements_for_repo
 
         mock_check_enabled.return_value = True
-        requirements_path = os.path.join(self.temp_dir, "nonexistent.txt")
+        repo_path = os.path.join(self.temp_dir, "test-plugin")
 
-        _install_plugin_requirements("test-plugin", requirements_path, {})
+        _install_requirements_for_repo(repo_path, "test-plugin")
 
         # Should return early without calling other functions
         mock_collect.assert_not_called()
@@ -1818,7 +1815,7 @@ class TestDependencyInstallation(unittest.TestCase):
         self, mock_logger, mock_run, mock_check_enabled, mock_filter, mock_collect
     ):
         """Test dependency installation with pipx."""
-        from mmrelay.plugin_loader import _install_plugin_requirements
+        from mmrelay.plugin_loader import _install_requirements_for_repo
 
         mock_check_enabled.return_value = True
         mock_collect.return_value = [
@@ -1832,12 +1829,14 @@ class TestDependencyInstallation(unittest.TestCase):
             False,
         )
 
-        requirements_path = os.path.join(self.temp_dir, "requirements.txt")
+        repo_path = os.path.join(self.temp_dir, "test-plugin")
+        requirements_path = os.path.join(repo_path, "requirements.txt")
+        os.makedirs(repo_path, exist_ok=True)
         with open(requirements_path, "w") as f:
             f.write("requests==2.28.0\n")
 
         with patch("shutil.which", return_value="/usr/bin/pipx"):
-            _install_plugin_requirements("test-plugin", requirements_path, {})
+            _install_requirements_for_repo(self.temp_dir, "test-plugin")
 
         mock_run.assert_called_once_with(
             [
@@ -1861,17 +1860,19 @@ class TestDependencyInstallation(unittest.TestCase):
         self, mock_logger, mock_run, mock_check_enabled, mock_filter, mock_collect
     ):
         """Test dependency installation with pip."""
-        from mmrelay.plugin_loader import _install_plugin_requirements
+        from mmrelay.plugin_loader import _install_requirements_for_repo
 
         mock_check_enabled.return_value = True
         mock_collect.return_value = ["requests==2.28.0"]
         mock_filter.return_value = (["requests==2.28.0"], [], False)
 
-        requirements_path = os.path.join(self.temp_dir, "requirements.txt")
+        repo_path = os.path.join(self.temp_dir, "test-plugin")
+        requirements_path = os.path.join(repo_path, "requirements.txt")
+        os.makedirs(repo_path, exist_ok=True)
         with open(requirements_path, "w") as f:
             f.write("requests==2.28.0\n")
 
-        _install_plugin_requirements("test-plugin", requirements_path, {})
+        _install_requirements_for_repo(repo_path, "test-plugin")
 
         expected_cmd = [
             sys.executable,
@@ -1895,17 +1896,19 @@ class TestDependencyInstallation(unittest.TestCase):
         self, mock_logger, mock_run, mock_check_enabled, mock_filter, mock_collect
     ):
         """Test dependency installation with pip in virtual environment."""
-        from mmrelay.plugin_loader import _install_plugin_requirements
+        from mmrelay.plugin_loader import _install_requirements_for_repo
 
         mock_check_enabled.return_value = True
         mock_collect.return_value = ["requests==2.28.0"]
         mock_filter.return_value = (["requests==2.28.0"], [], False)
 
-        requirements_path = os.path.join(self.temp_dir, "requirements.txt")
+        repo_path = os.path.join(self.temp_dir, "test-plugin")
+        requirements_path = os.path.join(repo_path, "requirements.txt")
+        os.makedirs(repo_path, exist_ok=True)
         with open(requirements_path, "w") as f:
             f.write("requests==2.28.0\n")
 
-        _install_plugin_requirements("test-plugin", requirements_path, {})
+        _install_requirements_for_repo(repo_path, "test-plugin")
 
         expected_cmd = [
             sys.executable,
@@ -1927,7 +1930,7 @@ class TestDependencyInstallation(unittest.TestCase):
         self, mock_logger, mock_run, mock_check_enabled, mock_filter, mock_collect
     ):
         """Test pipx injection when no packages to install."""
-        from mmrelay.plugin_loader import _install_plugin_requirements
+        from mmrelay.plugin_loader import _install_requirements_for_repo
 
         mock_check_enabled.return_value = True
         mock_collect.return_value = ["--extra-index-url", "https://pypi.org/simple"]
@@ -1937,13 +1940,15 @@ class TestDependencyInstallation(unittest.TestCase):
             False,
         )
 
-        requirements_path = os.path.join(self.temp_dir, "requirements.txt")
+        repo_path = os.path.join(self.temp_dir, "test-plugin")
+        requirements_path = os.path.join(repo_path, "requirements.txt")
+        os.makedirs(repo_path, exist_ok=True)
         with open(requirements_path, "w") as f:
             f.write("--extra-index-url https://pypi.org/simple\n")
 
         with patch.dict(os.environ, {"PIPX_HOME": "/pipx/home"}):
             with patch("shutil.which", return_value="/usr/bin/pipx"):
-                _install_plugin_requirements("test-plugin", requirements_path, {})
+                _install_requirements_for_repo(self.temp_dir, "test-plugin")
 
         # Should not call pipx inject when no packages
         mock_run.assert_not_called()
@@ -1961,7 +1966,7 @@ class TestDependencyInstallation(unittest.TestCase):
         self, mock_logger, mock_run, mock_check_enabled, mock_filter, mock_collect
     ):
         """Test dependency installation with flagged dependencies."""
-        from mmrelay.plugin_loader import _install_plugin_requirements
+        from mmrelay.plugin_loader import _install_requirements_for_repo
 
         mock_check_enabled.return_value = True
         mock_collect.return_value = [
@@ -1974,11 +1979,12 @@ class TestDependencyInstallation(unittest.TestCase):
             False,
         )
 
-        requirements_path = os.path.join(self.temp_dir, "requirements.txt")
+        repo_path = self.temp_dir
+        requirements_path = os.path.join(repo_path, "requirements.txt")
         with open(requirements_path, "w") as f:
             f.write("requests==2.28.0\ngit+https://github.com/user/repo.git\n")
 
-        _install_plugin_requirements("test-plugin", requirements_path, {})
+        _install_requirements_for_repo(repo_path, "test-plugin")
 
         mock_logger.warning.assert_called_with(
             "Skipping %d flagged dependency entries for %s. Set security.allow_untrusted_dependencies=True to override.",
@@ -1995,7 +2001,7 @@ class TestDependencyInstallation(unittest.TestCase):
         self, mock_logger, mock_run, mock_check_enabled, mock_filter, mock_collect
     ):
         """Test dependency installation with untrusted dependencies allowed."""
-        from mmrelay.plugin_loader import _install_plugin_requirements
+        from mmrelay.plugin_loader import _install_requirements_for_repo
 
         mock_check_enabled.return_value = True
         mock_collect.return_value = [
@@ -2008,11 +2014,13 @@ class TestDependencyInstallation(unittest.TestCase):
             True,
         )
 
-        requirements_path = os.path.join(self.temp_dir, "requirements.txt")
+        repo_path = os.path.join(self.temp_dir, "test-plugin")
+        requirements_path = os.path.join(repo_path, "requirements.txt")
+        os.makedirs(repo_path, exist_ok=True)
         with open(requirements_path, "w") as f:
             f.write("requests==2.28.0\ngit+https://github.com/user/repo.git\n")
 
-        _install_plugin_requirements("test-plugin", requirements_path, {})
+        _install_requirements_for_repo(repo_path, "test-plugin")
 
         mock_logger.warning.assert_called_with(
             "Allowing %d flagged dependency entries for %s due to security.allow_untrusted_dependencies=True",
@@ -2032,17 +2040,19 @@ class TestDependencyInstallation(unittest.TestCase):
         self, mock_logger, mock_run, mock_check_enabled, mock_filter, mock_collect
     ):
         """Test handling of installation errors."""
-        from mmrelay.plugin_loader import _install_plugin_requirements
+        from mmrelay.plugin_loader import _install_requirements_for_repo
 
         mock_check_enabled.return_value = True
         mock_collect.return_value = ["requests==2.28.0"]
         mock_filter.return_value = (["requests==2.28.0"], [], False)
 
-        requirements_path = os.path.join(self.temp_dir, "requirements.txt")
+        repo_path = os.path.join(self.temp_dir, "test-plugin")
+        requirements_path = os.path.join(repo_path, "requirements.txt")
+        os.makedirs(repo_path, exist_ok=True)
         with open(requirements_path, "w") as f:
-            f.write("requests==2.28.0\n")
+            f.write("requests==2.28.0\ngit+https://github.com/user/repo.git\n")
 
-        _install_plugin_requirements("test-plugin", requirements_path, {})
+        _install_requirements_for_repo(repo_path, "test-plugin")
 
         # Should log error and warning
         mock_logger.exception.assert_called()

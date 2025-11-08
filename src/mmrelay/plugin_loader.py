@@ -143,8 +143,8 @@ def _collect_requirements(
                     continue
 
                 requirements.extend(shlex.split(line, posix=True))
-    except FileNotFoundError:
-        logger.warning("Requirements file not found: %s", normalized_path)
+    except (FileNotFoundError, OSError) as e:
+        logger.warning("Error reading requirements file %s: %s", normalized_path, e)
         return []
 
     return requirements
