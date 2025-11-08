@@ -32,51 +32,25 @@ _warned_delay_values = set()
 _plugins_low_delay_warned = False
 
 
-class ThreadSafeScheduler:
+def schedule_job(plugin_name: str, interval: int = 1):
     """
-    Thread-safe wrapper for the schedule library.
+    Create a job that runs every specified interval for a plugin.
 
-    Provides thread-safe scheduling operations by using locks to protect
-    access to the global schedule state when multiple plugins are running
-    concurrently.
+    Parameters:
+        plugin_name (str): Name of the plugin for job tagging
+        interval (int): Interval for job execution
+
+    Returns:
+        Job object that can be configured with time units and actions
     """
+    job = schedule.every(interval)
+    job.tag(plugin_name)
+    return job
 
-    def __init__(self, plugin_name: str):
-        """
-        Initialize thread-safe scheduler for a specific plugin.
 
-        Parameters:
-            plugin_name (str): Name of the plugin for job tagging
-        """
-        self.plugin_name = plugin_name
-        self._lock = threading.RLock()
-        self._jobs = []
-
-    def every(self, interval: int = 1):
-        """
-        Create a job that runs every specified interval.
-
-        Parameters:
-            interval (int): Interval for job execution
-
-        Returns:
-            Job object that can be configured with time units and actions
-        """
-        with self._lock:
-            job = schedule.every(interval)
-            self._jobs.append(job)
-            return job
-
-    def clear(self) -> None:
-        """Clear all jobs for this plugin."""
-        with self._lock:
-            schedule.clear(self.plugin_name)
-            self._jobs.clear()
-
-    def run_pending(self) -> None:
-        """Run all pending jobs that are due."""
-        with self._lock:
-            schedule.run_pending()
+def clear_plugin_jobs(plugin_name: str) -> None:
+    """Clear all jobs for a specific plugin."""
+    schedule.clear(plugin_name)
 
 
 class BasePlugin(ABC):
@@ -261,14 +235,11 @@ class BasePlugin(ABC):
                         self.logger.debug(warning_message)
                     self.response_delay = MINIMUM_MESSAGE_DELAY
 
-        # Initialize thread-safe scheduler for this plugin
-        self._scheduler = ThreadSafeScheduler(self.plugin_name)
-
     def start(self) -> None:
         """
         Starts the plugin and configures scheduled background tasks based on plugin settings.
 
-        If scheduling options are present in the plugin configuration, sets up periodic execution of the `background_job` method using the specified schedule. Runs scheduled jobs in a separate daemon thread. If no scheduling is configured, the plugin starts without background tasks.
+        If scheduling options are present in plugin configuration, sets up periodic execution of `background_job` method using the global scheduler. If no scheduling is configured, the plugin starts without background tasks.
         """
         schedule_config = self.config.get("schedule") or {}
         if not isinstance(schedule_config, dict):
@@ -283,36 +254,59 @@ class BasePlugin(ABC):
             self.logger.debug(f"Started with priority={self.priority}")
             return
 
-        self._stop_event.clear()
-        self._scheduler.clear()
+        # Ensure plugin_name is set
+        if not self.plugin_name:
+            self.logger.error("Plugin name not set, cannot schedule background jobs")
+            return
+
+        # Clear any existing jobs for this plugin
+        clear_plugin_jobs(self.plugin_name)
 
         job = None
-        # Schedule the background job based on the configuration
+        # Schedule background job based on configuration
         try:
             if "at" in schedule_config and "hours" in schedule_config:
                 job = (
-                    self._scheduler.every(schedule_config["hours"])
+                    schedule_job(self.plugin_name, schedule_config["hours"])
                     .hours.at(schedule_config["at"])
                     .do(self.background_job)
                 )
             elif "at" in schedule_config and "minutes" in schedule_config:
                 job = (
-                    self._scheduler.every(schedule_config["minutes"])
+                    schedule_job(self.plugin_name, schedule_config["minutes"])
                     .minutes.at(schedule_config["at"])
                     .do(self.background_job)
                 )
             elif "hours" in schedule_config:
-                job = self._scheduler.every(schedule_config["hours"]).hours.do(
+                job = schedule_job(self.plugin_name, schedule_config["hours"]).hours.do(
                     self.background_job
                 )
             elif "minutes" in schedule_config:
-                job = self._scheduler.every(schedule_config["minutes"]).minutes.do(
-                    self.background_job
-                )
+                job = schedule_job(
+                    self.plugin_name, schedule_config["minutes"]
+                ).minutes.do(self.background_job)
             elif "seconds" in schedule_config:
-                job = self._scheduler.every(schedule_config["seconds"]).seconds.do(
+                job = schedule_job(
+                    self.plugin_name, schedule_config["seconds"]
+                ).seconds.do(self.background_job)
+            elif "at" in schedule_config and "minutes" in schedule_config:
+                job = (
+                    schedule_job(self.plugin_name, schedule_config["minutes"])
+                    .minutes.at(schedule_config["at"])
+                    .do(self.background_job)
+                )
+            elif "hours" in schedule_config:
+                job = schedule_job(self.plugin_name, schedule_config["hours"]).hours.do(
                     self.background_job
                 )
+            elif "minutes" in schedule_config:
+                job = schedule_job(
+                    self.plugin_name, schedule_config["minutes"]
+                ).minutes.do(self.background_job)
+            elif "seconds" in schedule_config:
+                job = schedule_job(
+                    self.plugin_name, schedule_config["seconds"]
+                ).seconds.do(self.background_job)
         except (ValueError, TypeError) as e:
             self.logger.warning(
                 "Invalid schedule configuration for plugin '%s': %s. Starting without background job.",
@@ -329,49 +323,23 @@ class BasePlugin(ABC):
             self.logger.debug(f"Started with priority={self.priority}")
             return
 
-        job.tag(self.plugin_name)
-
-        # Function to execute the scheduled tasks
-        def run_schedule():
-            """
-            Loop and execute scheduled jobs until the plugin is stopped.
-
-            Continuously calls the thread-safe scheduler to run any pending jobs and then waits up to one second (or until the plugin's stop event is set) before the next iteration to avoid busy-waiting.
-            """
-            while not self._stop_event.is_set():
-                self._scheduler.run_pending()
-                # Wait up to one second or until stop is requested to avoid busy loops
-                self._stop_event.wait(1)
-
-        # Create a thread for executing the scheduled tasks
-        self._schedule_thread = threading.Thread(
-            target=run_schedule, name=f"{self.plugin_name}-schedule", daemon=True
-        )
-
-        # Start the thread
-        self._schedule_thread.start()
         self.logger.debug(f"Scheduled with priority={self.priority}")
 
     def stop(self) -> None:
         """
         Stop scheduled background work and run the plugin's cleanup hook.
 
-        Signals the internal stop event (if present) to terminate the scheduler loop, clears any scheduled jobs tagged with the plugin name, waits up to 5 seconds for the scheduling thread to exit, sets the internal schedule thread reference to None, and then invokes on_stop() for plugin-specific cleanup. Exceptions raised by on_stop() are caught and logged.
+        Clears any scheduled jobs tagged with the plugin name and then invokes on_stop() for plugin-specific cleanup. Exceptions raised by on_stop() are caught and logged.
         """
-        if hasattr(self, "_stop_event"):
-            self._stop_event.set()
-        self._scheduler.clear()
-        schedule_thread = getattr(self, "_schedule_thread", None)
-        if schedule_thread and schedule_thread.is_alive():
-            schedule_thread.join(timeout=5)
-        self._schedule_thread = None
+        if self.plugin_name:
+            clear_plugin_jobs(self.plugin_name)
         try:
             self.on_stop()
         except Exception:
             self.logger.exception(
-                "Error running on_stop for plugin %s", self.plugin_name
+                "Error running on_stop for plugin %s", self.plugin_name or "unknown"
             )
-        self.logger.debug(f"Stopped plugin '{self.plugin_name}'")
+        self.logger.debug(f"Stopped plugin '{self.plugin_name or 'unknown'}'")
 
     def on_stop(self) -> None:
         """

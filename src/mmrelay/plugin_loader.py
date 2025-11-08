@@ -10,10 +10,16 @@ import site
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from contextlib import contextmanager
 from typing import List, Set
 from urllib.parse import urlparse
+
+try:
+    import schedule
+except ImportError:
+    schedule = None
 
 from mmrelay.config import get_app_path, get_base_dir
 from mmrelay.constants.plugins import (
@@ -29,6 +35,10 @@ config = None
 logger = get_logger(name="Plugins")
 sorted_active_plugins = []
 plugins_loaded = False
+
+# Global scheduler management
+_global_scheduler_thread = None
+_global_scheduler_stop_event = None
 
 
 try:
@@ -1513,10 +1523,80 @@ def load_plugins_from_directory(directory, recursive=False):
                         logger.exception(f"Error loading plugin {plugin_path}")
             if not recursive:
                 break
-    else:
-        if not plugins_loaded:  # Only log the missing directory once
-            logger.debug(f"Directory {directory} does not exist.")
+
     return plugins
+
+
+def start_global_scheduler():
+    """
+    Start the global scheduler thread for all plugins.
+
+    Creates and starts a single daemon thread that runs schedule.run_pending()
+    for all plugins. This eliminates race conditions from multiple threads
+    accessing the schedule library's global state.
+    """
+    global _global_scheduler_thread, _global_scheduler_stop_event
+
+    if schedule is None:
+        logger.warning(
+            "Schedule library not available, plugin background jobs disabled"
+        )
+        return
+
+    if _global_scheduler_thread is not None and _global_scheduler_thread.is_alive():
+        logger.debug("Global scheduler thread already running")
+        return
+
+    _global_scheduler_stop_event = threading.Event()
+
+    def scheduler_loop():
+        """Main scheduler loop that runs pending jobs."""
+        logger.debug("Global scheduler thread started")
+        while not _global_scheduler_stop_event.is_set():
+            if schedule:
+                schedule.run_pending()
+            # Wait up to 1 second or until stop is requested
+            _global_scheduler_stop_event.wait(1)
+        logger.debug("Global scheduler thread stopped")
+
+    _global_scheduler_thread = threading.Thread(
+        target=scheduler_loop, name="global-plugin-scheduler", daemon=True
+    )
+    _global_scheduler_thread.start()
+    logger.info("Global plugin scheduler started")
+
+
+def stop_global_scheduler():
+    """
+    Stop the global scheduler thread.
+
+    Signals the scheduler thread to stop and waits for it to terminate.
+    Clears all scheduled jobs to prevent memory leaks.
+    """
+    global _global_scheduler_thread, _global_scheduler_stop_event
+
+    if _global_scheduler_thread is None:
+        return
+
+    logger.debug("Stopping global scheduler thread")
+
+    # Signal the thread to stop
+    if _global_scheduler_stop_event:
+        _global_scheduler_stop_event.set()
+
+    # Wait for thread to finish
+    if _global_scheduler_thread.is_alive():
+        _global_scheduler_thread.join(timeout=5)
+        if _global_scheduler_thread.is_alive():
+            logger.warning("Global scheduler thread did not stop within timeout")
+
+    # Clear all scheduled jobs
+    if schedule:
+        schedule.clear()
+
+    _global_scheduler_thread = None
+    _global_scheduler_stop_event = None
+    logger.info("Global plugin scheduler stopped")
 
 
 def load_plugins(passed_config=None):
@@ -1737,6 +1817,9 @@ def load_plugins(passed_config=None):
                 plugin_name,
             )
 
+    # Start global scheduler for all plugins
+    start_global_scheduler()
+
     # Filter and sort active plugins by priority
     active_plugins = []
     for plugin in plugins:
@@ -1820,6 +1903,9 @@ def shutdown_plugins() -> None:
                 "Plugin %s does not implement stop(); skipping lifecycle cleanup",
                 plugin_name,
             )
+
+    # Stop global scheduler after all plugins are stopped
+    stop_global_scheduler()
 
     sorted_active_plugins = []
     plugins_loaded = False
