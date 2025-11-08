@@ -1849,6 +1849,8 @@ class TestDependencyInstallation(unittest.TestCase):
         )
 
     @patch("shutil.which", return_value=None)
+    @patch("sys.prefix", "/fake/prefix")
+    @patch("sys.base_prefix", "/fake/prefix")
     @patch.dict(os.environ, {}, clear=True)
     @patch("mmrelay.plugin_loader._collect_requirements")
     @patch("mmrelay.plugin_loader._filter_risky_requirements")
@@ -1886,12 +1888,13 @@ class TestDependencyInstallation(unittest.TestCase):
             "install",
             "--disable-pip-version-check",
             "--no-input",
+            "--user",
             "requests==2.28.0",
         ]
         mock_run.assert_called_once_with(expected_cmd, timeout=600)
 
     @patch("shutil.which", return_value=None)
-    @patch.dict(os.environ, {"VIRTUAL_ENV": "/venv"})
+    @patch.dict(os.environ, {"VIRTUAL_ENV": "/venv"}, clear=True)
     @patch("mmrelay.plugin_loader._collect_requirements")
     @patch("mmrelay.plugin_loader._filter_risky_requirements")
     @patch("mmrelay.plugin_loader._check_auto_install_enabled")
