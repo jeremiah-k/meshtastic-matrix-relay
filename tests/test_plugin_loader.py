@@ -863,8 +863,8 @@ class TestCleanPythonCache(unittest.TestCase):
         )
 
     @patch("mmrelay.plugin_loader.logger")
-    def test_clean_python_cache_logs_debug_message(self, mock_logger):
-        """Test that debug message is logged when cache directories are removed."""
+    def test_clean_python_cache_logs_summary_message(self, mock_logger):
+        """Test that summary debug message is logged when cache directories are removed."""
         # Create multiple __pycache__ directories
         for i in range(3):
             pycache = os.path.join(self.temp_dir, f"subdir{i}", "__pycache__")
@@ -1018,10 +1018,10 @@ class TestCacheCleaningIntegration(unittest.TestCase):
 
     @patch("mmrelay.plugin_loader._clean_python_cache")
     @patch("mmrelay.plugin_loader._run")
-    def test_clone_or_update_repo_no_cache_cleaning_on_failure(
+    def test_clone_or_update_repo_returns_false_on_failure(
         self, mock_run, mock_clean_cache
     ):
-        """Test that cache cleaning is not called when git operations fail."""
+        """Test that clone_or_update_repo returns False when git operations fail."""
         # Set up mock for failed git operation
         mock_run.side_effect = subprocess.CalledProcessError(1, "git")
 
