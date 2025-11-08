@@ -215,7 +215,7 @@ def _clean_python_cache(directory: str) -> None:
             log_parts.append(
                 f"{pyc_files_removed} .pyc file{'' if pyc_files_removed == 1 else 's'}"
             )
-        logger.debug(f"Cleaned {' and '.join(log_parts)} from {directory}")
+        logger.info(f"Cleaned {' and '.join(log_parts)} from {directory}")
 
 
 def _reset_caches_for_tests():

@@ -875,7 +875,7 @@ class TestCleanPythonCache(unittest.TestCase):
 
     @patch("mmrelay.plugin_loader.logger")
     def test_clean_python_cache_logs_summary_message(self, mock_logger):
-        """Test that summary debug message is logged when cache directories are removed."""
+        """Test that summary info message is logged when cache directories are removed."""
         # Create multiple __pycache__ directories
         for i in range(3):
             pycache = os.path.join(self.temp_dir, f"subdir{i}", "__pycache__")
@@ -884,15 +884,15 @@ class TestCleanPythonCache(unittest.TestCase):
         # Clean cache
         _clean_python_cache(self.temp_dir)
 
-        # Verify debug messages were logged, including the summary
-        debug_calls = [call[0][0] for call in mock_logger.debug.call_args_list]
-        summary_messages = [msg for msg in debug_calls if msg.startswith("Cleaned")]
-        self.assertEqual(len(summary_messages), 1)
-        self.assertIn("3 Python cache directories", summary_messages[0])
+        # Verify info message was logged for the summary
+        mock_logger.info.assert_called_once()
+        call_args = mock_logger.info.call_args[0][0]
+        self.assertTrue(call_args.startswith("Cleaned"))
+        self.assertIn("3 Python cache directories", call_args)
 
     @patch("mmrelay.plugin_loader.logger")
-    def test_clean_python_cache_logs_combined_debug_message(self, mock_logger):
-        """Test that combined debug message is logged when both cache directories and .pyc files are removed."""
+    def test_clean_python_cache_logs_combined_info_message(self, mock_logger):
+        """Test that combined info message is logged when both cache directories and .pyc files are removed."""
         # Create __pycache__ directories
         pycache1 = os.path.join(self.temp_dir, "subdir1", "__pycache__")
         pycache2 = os.path.join(self.temp_dir, "subdir2", "__pycache__")
@@ -911,11 +911,10 @@ class TestCleanPythonCache(unittest.TestCase):
         # Clean cache
         _clean_python_cache(self.temp_dir)
 
-        # Verify debug messages were logged, including the combined summary
-        debug_calls = [call[0][0] for call in mock_logger.debug.call_args_list]
-        combined_messages = [msg for msg in debug_calls if msg.startswith("Cleaned")]
-        self.assertEqual(len(combined_messages), 1)
-        combined_message = combined_messages[0]
+        # Verify info message was logged for the combined summary
+        mock_logger.info.assert_called_once()
+        combined_message = mock_logger.info.call_args[0][0]
+        self.assertTrue(combined_message.startswith("Cleaned"))
         self.assertIn("Python cache director", combined_message)
         self.assertIn(".pyc file", combined_message)
         self.assertIn(" and ", combined_message)  # Indicates both types were cleaned
