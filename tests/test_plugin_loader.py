@@ -1917,7 +1917,7 @@ class TestDependencyInstallation(unittest.TestCase):
             patch(
                 "mmrelay.plugin_loader.tempfile.NamedTemporaryFile"
             ) as mock_temp_file,
-            patch("mmrelay.plugin_loader.os.unlink") as mock_unlink,
+            patch("mmrelay.plugin_loader.os.unlink"),
         ):
             mock_check_enabled.return_value = True
             mock_collect.return_value = ["requests==2.28.0"]
@@ -2016,7 +2016,7 @@ class TestDependencyInstallation(unittest.TestCase):
             patch(
                 "mmrelay.plugin_loader.tempfile.NamedTemporaryFile"
             ) as mock_temp_file,
-            patch("mmrelay.plugin_loader.os.unlink") as mock_unlink,
+            patch("mmrelay.plugin_loader.os.unlink"),
         ):
             mock_check_enabled.return_value = True
             mock_collect.return_value = ["requests==2.28.0"]
