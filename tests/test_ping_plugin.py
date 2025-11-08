@@ -21,7 +21,8 @@ import pytest
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from mmrelay.plugins.ping_plugin import Plugin, match_case
+from mmrelay.meshtastic_utils import BROADCAST_NUM, match_case
+from mmrelay.plugins.ping_plugin import Plugin
 
 
 class TestMatchCase(unittest.TestCase):
@@ -528,6 +529,31 @@ class TestPingPlugin(unittest.TestCase):
             self.assertFalse(result)
 
         import asyncio
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.plugins.ping_plugin.connect_meshtastic")
+    def test_handle_meshtastic_message_broadcast_num(self, mock_connect):
+        """Test handle_meshtastic_message with BROADCAST_NUM (line 57)."""
+        from mmrelay.meshtastic_utils import BROADCAST_NUM
+
+        mock_client = MagicMock()
+        mock_client.myInfo.my_node_num = 123456789
+        mock_connect.return_value = mock_client
+
+        packet = {
+            "decoded": {"portnum": "TEXT_MESSAGE_APP", "text": "ping"},
+            "channel": 0,
+            "fromId": "!12345678",
+            "to": BROADCAST_NUM,
+        }
+
+        async def run_test():
+            result = await self.plugin.handle_meshtastic_message(
+                packet, "formatted_message", "TestNode", "TestMesh"
+            )
+            self.assertTrue(result)  # Should handle broadcast ping
+            self.plugin.send_matrix_message.assert_called_once()
 
         asyncio.run(run_test())
 

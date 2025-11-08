@@ -1108,6 +1108,44 @@ class TestWeatherPlugin(unittest.TestCase):
 
         asyncio.run(run_test())
 
+    @patch("mmrelay.plugins.weather_plugin.requests.get")
+    def test_get_weather_requests_exception(self, mock_get):
+        """Test get_weather handles requests.RequestException (lines 197-201, 206-207)."""
+        import requests
+
+        # Mock requests to raise RequestException
+        mock_response = MagicMock()
+        mock_response.raise_for_status.side_effect = requests.RequestException(
+            "Network error"
+        )
+        mock_get.return_value = mock_response
+
+        plugin = Plugin()
+
+        # Test the method
+        result = plugin.get_weather(40.7128, -74.0060)
+
+        # Should return error message for requests exception
+        self.assertEqual(result, "Error fetching weather data.")
+
+    @patch("mmrelay.plugins.weather_plugin.requests.get")
+    def test_get_weather_attribute_error_fallback(self, mock_get):
+        """Test get_weather handles AttributeError with fallback detection (lines 206-207)."""
+        # Mock requests to raise AttributeError
+        mock_response = MagicMock()
+        mock_response.raise_for_status.side_effect = AttributeError("Some error")
+        # Mock the exception to have requests module
+        mock_response.raise_for_status.__module__ = "requests"
+        mock_get.return_value = mock_response
+
+        plugin = Plugin()
+
+        # Test the method
+        result = plugin.get_weather(40.7128, -74.0060)
+
+        # Should return error message for requests exception
+        self.assertEqual(result, "Error fetching weather data.")
+
 
 if __name__ == "__main__":
     unittest.main()

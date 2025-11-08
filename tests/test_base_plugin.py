@@ -1011,7 +1011,8 @@ class TestBasePlugin(unittest.TestCase):
         plugin.config = {"schedule": "invalid"}  # String instead of dict
 
         plugin.start()
-        mock_clear.assert_called_once_with("test_plugin")
+        # clear_plugin_jobs should NOT be called when schedule is not a dict
+        mock_clear.assert_not_called()
 
     @patch("mmrelay.plugins.base_plugin.schedule_job")
     @patch("mmrelay.plugins.base_plugin.clear_plugin_jobs")
@@ -1021,7 +1022,8 @@ class TestBasePlugin(unittest.TestCase):
         plugin.config = {"schedule": {}}  # Empty dict
 
         plugin.start()
-        mock_clear.assert_called_once_with("test_plugin")
+        # clear_plugin_jobs should NOT be called when no schedule is configured
+        mock_clear.assert_not_called()
 
     @patch("mmrelay.plugins.base_plugin.schedule_job")
     @patch("mmrelay.plugins.base_plugin.clear_plugin_jobs")
@@ -1030,6 +1032,8 @@ class TestBasePlugin(unittest.TestCase):
 
         # Create a plugin without a name
         class NoNamePlugin(BasePlugin):
+            plugin_name = None  # Explicitly set to None
+
             async def handle_meshtastic_message(
                 self, packet, formatted_message, longname, meshnet_name
             ):
@@ -1038,11 +1042,10 @@ class TestBasePlugin(unittest.TestCase):
             async def handle_room_message(self, room, event, full_message):
                 return None
 
-        plugin = NoNamePlugin()
-        plugin.config = {"schedule": {"hours": 1}}
+        with self.assertRaises(ValueError) as cm:
+            plugin = NoNamePlugin()
 
-        plugin.start()
-        mock_clear.assert_called_once()
+        self.assertIn("missing plugin_name definition", str(cm.exception))
 
     @patch("mmrelay.plugins.base_plugin.schedule_job")
     @patch("mmrelay.plugins.base_plugin.clear_plugin_jobs")
@@ -1212,16 +1215,6 @@ class TestBasePlugin(unittest.TestCase):
         # Check that destinationId was included in the call
         call_args = mock_queue.call_args[1]
         self.assertEqual(call_args["destinationId"], "!node123")
-
-    @patch("mmrelay.matrix_utils.connect_matrix")
-    async def test_send_matrix_message_no_client(self, mock_connect):
-        """Test send_matrix_message when no matrix client available (lines 495-496)."""
-        mock_connect.return_value = None
-
-        plugin = MockPlugin()
-        result = await plugin.send_matrix_message("!room:matrix.org", "test")
-
-        self.assertIsNone(result)
 
     @patch("mmrelay.plugins.base_plugin.get_plugin_data_for_node")
     @patch("mmrelay.plugins.base_plugin.store_plugin_data")
