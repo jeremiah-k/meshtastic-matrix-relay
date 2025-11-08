@@ -796,7 +796,7 @@ class TestBasePlugin(unittest.TestCase):
         mock_delete_plugin_data.assert_called_once_with("test_plugin", 123456789)
 
     @patch("mmrelay.plugins.base_plugin.store_plugin_data")
-    def test_set_node_data_database_error_legacy(self, mock_store):
+    def test_set_node_data_database_error(self, mock_store):
         """Test that the `set_node_data` wrapper propagates exceptions from `db_utils`.
 
         This test ensures that if the underlying `db_utils.store_plugin_data`

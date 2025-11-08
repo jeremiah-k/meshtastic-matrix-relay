@@ -2476,11 +2476,6 @@ class TestCacheCleaningIntegration(unittest.TestCase):
         mock_run.side_effect = [
             subprocess.CompletedProcess(args=["git", "fetch"], returncode=0),
             subprocess.CompletedProcess(
-                args=["git", "rev-parse", "--abbrev-ref", "HEAD"],
-                returncode=0,
-                stdout="main\n",
-            ),
-            subprocess.CompletedProcess(
                 args=["git", "checkout", "develop"],
                 returncode=0,
                 stdout="",
