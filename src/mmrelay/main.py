@@ -257,9 +257,9 @@ async def main(config):
     finally:
         # Cleanup
         matrix_logger.info("Stopping plugins...")
-        shutdown_plugins()
+        await loop.run_in_executor(None, shutdown_plugins)
         matrix_logger.info("Stopping message queue...")
-        stop_message_queue()
+        await loop.run_in_executor(None, stop_message_queue)
 
         matrix_logger.info("Closing Matrix client...")
         await matrix_client.close()
