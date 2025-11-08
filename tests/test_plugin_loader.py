@@ -1848,6 +1848,7 @@ class TestDependencyInstallation(unittest.TestCase):
             timeout=600,
         )
 
+    @patch("shutil.which", return_value=None)
     @patch.dict(os.environ, {}, clear=True)
     @patch("mmrelay.plugin_loader._collect_requirements")
     @patch("mmrelay.plugin_loader._filter_risky_requirements")
@@ -1855,7 +1856,13 @@ class TestDependencyInstallation(unittest.TestCase):
     @patch("mmrelay.plugin_loader._run")
     @patch("mmrelay.plugin_loader.logger")
     def test_install_plugin_requirements_pip_install(
-        self, mock_logger, mock_run, mock_check_enabled, mock_filter, mock_collect
+        self,
+        mock_logger,
+        mock_run,
+        mock_check_enabled,
+        mock_filter,
+        mock_collect,
+        mock_which,
     ):
         """Test dependency installation with pip."""
         from mmrelay.plugin_loader import _install_requirements_for_repo
@@ -1883,6 +1890,7 @@ class TestDependencyInstallation(unittest.TestCase):
         ]
         mock_run.assert_called_once_with(expected_cmd, timeout=600)
 
+    @patch("shutil.which", return_value=None)
     @patch.dict(os.environ, {"VIRTUAL_ENV": "/venv"})
     @patch("mmrelay.plugin_loader._collect_requirements")
     @patch("mmrelay.plugin_loader._filter_risky_requirements")
@@ -1890,7 +1898,13 @@ class TestDependencyInstallation(unittest.TestCase):
     @patch("mmrelay.plugin_loader._run")
     @patch("mmrelay.plugin_loader.logger")
     def test_install_plugin_requirements_pip_in_venv(
-        self, mock_logger, mock_run, mock_check_enabled, mock_filter, mock_collect
+        self,
+        mock_logger,
+        mock_run,
+        mock_check_enabled,
+        mock_filter,
+        mock_collect,
+        mock_which,
     ):
         """Test dependency installation with pip in virtual environment."""
         from mmrelay.plugin_loader import _install_requirements_for_repo
