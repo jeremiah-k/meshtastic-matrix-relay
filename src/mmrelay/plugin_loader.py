@@ -314,84 +314,83 @@ def _is_requirement_risky(req_string: str) -> bool:
     )
 
 
+def _filter_risky_requirement_lines(
+    requirement_lines: List[str],
+) -> tuple[List[str], List[str], bool]:
+    """
+    Filter requirement lines that contain risky VCS/URL sources unless explicitly allowed.
+
+    Tokenizes each line internally for validation but preserves original lines for installation.
+    """
+    allow_untrusted = bool(
+        _get_security_settings().get("allow_untrusted_dependencies", False)
+    )
+    safe_lines: List[str] = []
+    flagged_lines: List[str] = []
+
+    for line in requirement_lines:
+        # Tokenize the line for validation
+        tokens = shlex.split(line, posix=True, comments=True)
+        if not tokens:
+            continue
+
+        # Check if any token in the line is risky
+        line_is_risky = False
+        risky_tokens = []
+
+        i = 0
+        while i < len(tokens):
+            token = tokens[i]
+
+            # Handle editable flags with values (--editable=url)
+            if token.startswith("-") and "=" in token:
+                flag_name, _, flag_value = token.partition("=")
+                if (
+                    flag_name.lower() in PIP_SOURCE_FLAGS
+                    and _is_requirement_risky(flag_value)
+                    and not allow_untrusted
+                ):
+                    line_is_risky = True
+                    risky_tokens.extend([token])
+                i += 1
+                continue
+
+            # Handle flags that take values
+            if token.lower() in PIP_SOURCE_FLAGS:
+                if i + 1 < len(tokens) and not tokens[i + 1].startswith("-"):
+                    next_token = tokens[i + 1]
+                    if _is_requirement_risky(next_token) and not allow_untrusted:
+                        line_is_risky = True
+                        risky_tokens.extend([token, next_token])
+                    i += 2
+                else:
+                    i += 1
+                continue
+
+            # Check if token itself is risky
+            if _is_requirement_risky(token) and not allow_untrusted:
+                line_is_risky = True
+                risky_tokens.append(token)
+            i += 1
+
+        if line_is_risky:
+            flagged_lines.append(line)
+        else:
+            safe_lines.append(line)
+
+    return safe_lines, flagged_lines, allow_untrusted
+
+
 def _filter_risky_requirements(
     requirements: List[str],
 ) -> tuple[List[str], List[str], bool]:
     """
     Remove requirement tokens that point to VCS/URL sources unless explicitly allowed.
+
+    Deprecated: Use _filter_risky_requirement_lines for line-based filtering.
     """
-    allow_untrusted = bool(
-        _get_security_settings().get("allow_untrusted_dependencies", False)
-    )
-    safe: List[str] = []
-    flagged: List[str] = []
-
-    i = 0
-    while i < len(requirements):
-        token = requirements[i]
-        if not token or token.startswith("#"):
-            i += 1
-            continue
-
-        normalized = token.strip()
-
-        # Handle editable flags with values (--editable=url)
-        if token.startswith("-") and "=" in token:
-            flag_name, _, flag_value = token.partition("=")
-            if (
-                flag_name.lower() in PIP_SOURCE_FLAGS
-                and _is_requirement_risky(flag_value)
-                and not allow_untrusted
-            ):
-                flagged.append(token)
-                i += 1
-                continue
-
-            safe.append(token)
-            i += 1
-            continue
-
-        # Handle flags that take values
-        if token.lower() in PIP_SOURCE_FLAGS:
-            # Check if next token is a value for this flag
-            if i + 1 < len(requirements) and not requirements[i + 1].startswith("-"):
-                next_token = requirements[i + 1]
-                # Check if the value is risky
-                if _is_requirement_risky(next_token) and not allow_untrusted:
-                    flagged.append(token)
-                    flagged.append(next_token)
-                    i += 2
-                    continue
-                else:
-                    safe.append(token)
-                    safe.append(next_token)
-                    i += 2
-                    continue
-            else:
-                safe.append(token)
-                i += 1
-                continue
-
-        # Handle other flags
-        if token.startswith("-"):
-            safe.append(token)
-            i += 1
-            continue
-
-        is_risky = _is_requirement_risky(normalized)
-
-        if is_risky and not allow_untrusted:
-            # Remove preceding source-related flag if present
-            if safe and safe[-1].lower() in PIP_SOURCE_FLAGS:
-                flagged.append(safe.pop())
-            flagged.append(token)
-            i += 1
-            continue
-
-        safe.append(token)
-        i += 1
-
-    return safe, flagged, allow_untrusted
+    # For backward compatibility, assume requirements are lines
+    return _filter_risky_requirement_lines(requirements)
 
 
 def _clean_python_cache(directory: str) -> None:
@@ -554,15 +553,11 @@ def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
         )
 
         # Collect requirements as full lines to preserve PEP 508 compliance
-        # (version specifiers, environment markers, etc.), then tokenize for
-        # security filtering which needs to validate individual flags and URLs
+        # (version specifiers, environment markers, etc.)
         requirements_lines = _collect_requirements(requirements_path)
-        requirements_tokens = []
-        for line in requirements_lines:
-            requirements_tokens.extend(shlex.split(line, posix=True, comments=True))
 
         safe_requirements, flagged_requirements, allow_untrusted = (
-            _filter_risky_requirements(requirements_tokens)
+            _filter_risky_requirements(requirements_lines)
         )
 
         if flagged_requirements:
@@ -587,25 +582,8 @@ def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
             if not pipx_path:
                 raise FileNotFoundError("pipx executable not found on PATH")
             if safe_requirements:
-                # Separate packages from pip arguments, accounting for flags with values
-                packages = []
-                pip_args = []
-                i = 0
-                while i < len(safe_requirements):
-                    token = safe_requirements[i]
-                    if token.startswith("-"):
-                        pip_args.append(token)
-                        # Check if this flag takes a value
-                        if (
-                            token.lower() in PIP_SOURCE_FLAGS
-                            and i + 1 < len(safe_requirements)
-                            and not safe_requirements[i + 1].startswith("-")
-                        ):
-                            pip_args.append(safe_requirements[i + 1])
-                            i += 1
-                    else:
-                        packages.append(token)
-                    i += 1
+                packages = [r for r in safe_requirements if not r.startswith("-")]
+                pip_args = [r for r in safe_requirements if r.startswith("-")]
                 if not packages:
                     logger.info(
                         "Requirements in %s only contained pip flags; skipping pipx injection.",
