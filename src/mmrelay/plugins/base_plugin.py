@@ -1,6 +1,7 @@
 import os
 import threading
 from abc import ABC, abstractmethod
+from typing import Any, Dict, Union
 
 import markdown
 
@@ -123,7 +124,7 @@ class BasePlugin(ABC):
                 )
 
         self.logger = get_logger(f"Plugin:{self.plugin_name}")
-        self.config = {"active": False}
+        self.config: Dict[str, Any] = {"active": False}
         global config
         plugin_levels = ["plugins", "community-plugins", "custom-plugins"]
 
@@ -136,7 +137,7 @@ class BasePlugin(ABC):
 
             # Get the list of mapped channels
             # Handle both list format and dict format for matrix_rooms
-            matrix_rooms = config.get("matrix_rooms", [])
+            matrix_rooms: Union[Dict[str, Any], list] = config.get("matrix_rooms", [])
             if isinstance(matrix_rooms, dict):
                 # Dict format: {"room_name": {"id": "...", "meshtastic_channel": 0}}
                 self.mapped_channels = [
@@ -225,16 +226,16 @@ class BasePlugin(ABC):
 
         If scheduling options are present in plugin configuration, sets up periodic execution of `background_job` method using the global scheduler. If no scheduling is configured, the plugin starts without background tasks.
         """
-        schedule_config = self.config.get("schedule") or {}
+        schedule_config: Dict[str, Any] = self.config.get("schedule") or {}
         if not isinstance(schedule_config, dict):
             schedule_config = {}
 
-        if not schedule_config or (
-            "at" not in schedule_config
-            and "hours" not in schedule_config
-            and "minutes" not in schedule_config
-            and "seconds" not in schedule_config
-        ):
+        # Check if scheduling is configured
+        has_schedule = any(
+            key in schedule_config for key in ("at", "hours", "minutes", "seconds")
+        )
+
+        if not has_schedule:
             self.logger.debug(f"Started with priority={self.priority}")
             return
 
@@ -250,33 +251,33 @@ class BasePlugin(ABC):
         # Clear any existing jobs for this plugin
         clear_plugin_jobs(self.plugin_name)
 
-        job = None
         # Schedule background job based on configuration
+        job = None
         try:
             if "at" in schedule_config and "hours" in schedule_config:
-                job = (
-                    schedule_job(self.plugin_name, schedule_config["hours"])
-                    .hours.at(schedule_config["at"])
-                    .do(self.background_job)
-                )
+                job_obj = schedule_job(self.plugin_name, schedule_config["hours"])
+                if job_obj is not None:
+                    job = job_obj.hours.at(schedule_config["at"]).do(
+                        self.background_job
+                    )
             elif "at" in schedule_config and "minutes" in schedule_config:
-                job = (
-                    schedule_job(self.plugin_name, schedule_config["minutes"])
-                    .minutes.at(schedule_config["at"])
-                    .do(self.background_job)
-                )
+                job_obj = schedule_job(self.plugin_name, schedule_config["minutes"])
+                if job_obj is not None:
+                    job = job_obj.minutes.at(schedule_config["at"]).do(
+                        self.background_job
+                    )
             elif "hours" in schedule_config:
-                job = schedule_job(self.plugin_name, schedule_config["hours"]).hours.do(
-                    self.background_job
-                )
+                job_obj = schedule_job(self.plugin_name, schedule_config["hours"])
+                if job_obj is not None:
+                    job = job_obj.hours.do(self.background_job)
             elif "minutes" in schedule_config:
-                job = schedule_job(
-                    self.plugin_name, schedule_config["minutes"]
-                ).minutes.do(self.background_job)
+                job_obj = schedule_job(self.plugin_name, schedule_config["minutes"])
+                if job_obj is not None:
+                    job = job_obj.minutes.do(self.background_job)
             elif "seconds" in schedule_config:
-                job = schedule_job(
-                    self.plugin_name, schedule_config["seconds"]
-                ).seconds.do(self.background_job)
+                job_obj = schedule_job(self.plugin_name, schedule_config["seconds"])
+                if job_obj is not None:
+                    job = job_obj.seconds.do(self.background_job)
         except (ValueError, TypeError) as e:
             self.logger.warning(
                 "Invalid schedule configuration for plugin '%s': %s. Starting without background job.",
@@ -489,6 +490,10 @@ class BasePlugin(ABC):
         from mmrelay.matrix_utils import connect_matrix
 
         matrix_client = await connect_matrix()
+
+        if matrix_client is None:
+            self.logger.error("Failed to connect to Matrix client")
+            return None
 
         return await matrix_client.room_send(
             room_id=room_id,
