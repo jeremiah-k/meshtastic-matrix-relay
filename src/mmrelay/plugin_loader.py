@@ -300,16 +300,38 @@ def _filter_risky_requirements(
     for token in requirements:
         if not token or token.startswith("#"):
             continue
+
+        normalized = token.strip()
+        lowered = normalized.lower()
+
+        # Handle editable flags with values (--editable=url)
+        if token.startswith("-") and "=" in token:
+            flag_name, _, flag_value = token.partition("=")
+            value_lower = flag_value.lower()
+            value_is_risky = any(
+                value_lower.startswith(prefix) for prefix in RISKY_REQUIREMENT_PREFIXES
+            ) or ("@" in flag_value and "://" in flag_value)
+
+            if value_is_risky and not allow_untrusted:
+                flagged.append(token)
+                continue
+
+            safe.append(token)
+            continue
+
+        # Handle standalone editable flags (-e, --editable)
         if token.startswith("-"):
             safe.append(token)
             continue
-        normalized = token.strip()
-        lowered = normalized.lower()
+
         is_risky = any(
             lowered.startswith(prefix) for prefix in RISKY_REQUIREMENT_PREFIXES
         ) or ("@" in normalized and "://" in normalized)
 
         if is_risky and not allow_untrusted:
+            # Remove preceding editable flag if present
+            if safe and safe[-1].lower() in {"-e", "--editable"}:
+                flagged.append(safe.pop())
             flagged.append(token)
             continue
 

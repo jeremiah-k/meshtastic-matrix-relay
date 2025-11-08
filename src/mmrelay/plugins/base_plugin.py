@@ -222,6 +222,7 @@ class BasePlugin(ABC):
             "at" not in schedule_config
             and "hours" not in schedule_config
             and "minutes" not in schedule_config
+            and "seconds" not in schedule_config
         ):
             self.logger.debug(f"Started with priority={self.priority}")
             return
@@ -250,6 +251,10 @@ class BasePlugin(ABC):
                 )
             elif "minutes" in schedule_config:
                 job = schedule.every(schedule_config["minutes"]).minutes.do(
+                    self.background_job
+                )
+            elif "seconds" in schedule_config:
+                job = schedule.every(schedule_config["seconds"]).seconds.do(
                     self.background_job
                 )
         except (ValueError, TypeError) as e:
