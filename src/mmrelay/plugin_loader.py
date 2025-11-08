@@ -199,7 +199,7 @@ def _clean_python_cache(directory: str) -> None:
             dirs.remove("__pycache__")
 
         # Also remove any .pyc files in the current directory
-        pyc_files = [f for f in files if f.endswith(".pyc")]
+        pyc_files = (f for f in files if f.endswith(".pyc"))
         for pyc_file in pyc_files:
             pyc_path = os.path.join(root, pyc_file)
             try:
@@ -212,11 +212,13 @@ def _clean_python_cache(directory: str) -> None:
     if cache_dirs_removed > 0 or pyc_files_removed > 0:
         log_parts = []
         if cache_dirs_removed > 0:
-            plural_dir = "ies" if cache_dirs_removed > 1 else "y"
-            log_parts.append(f"{cache_dirs_removed} Python cache director{plural_dir}")
+            log_parts.append(
+                f"{cache_dirs_removed} Python cache director{'y' if cache_dirs_removed == 1 else 'ies'}"
+            )
         if pyc_files_removed > 0:
-            plural_file = "s" if pyc_files_removed > 1 else ""
-            log_parts.append(f"{pyc_files_removed} .pyc file{plural_file}")
+            log_parts.append(
+                f"{pyc_files_removed} .pyc file{'' if pyc_files_removed == 1 else 's'}"
+            )
         logger.info(f"Cleaned {' and '.join(log_parts)} from {directory}")
 
 

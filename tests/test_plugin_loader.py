@@ -757,8 +757,10 @@ class TestCleanPythonCache(unittest.TestCase):
         os.makedirs(pycache2, exist_ok=True)
 
         # Create some files in cache directories
-        open(os.path.join(pycache1, "test1.pyc"), "w").close()
-        open(os.path.join(pycache2, "test2.pyc"), "w").close()
+        with open(os.path.join(pycache1, "test1.pyc"), "w"):
+            pass
+        with open(os.path.join(pycache2, "test2.pyc"), "w"):
+            pass
 
         # Verify directories exist
         self.assertTrue(os.path.exists(pycache1))
@@ -777,8 +779,10 @@ class TestCleanPythonCache(unittest.TestCase):
         pyc1 = os.path.join(self.temp_dir, "test1.pyc")
         pyc2 = os.path.join(self.temp_dir, "subdir", "test2.pyc")
         os.makedirs(os.path.dirname(pyc2), exist_ok=True)
-        open(pyc1, "w").close()
-        open(pyc2, "w").close()
+        with open(pyc1, "w"):
+            pass
+        with open(pyc2, "w"):
+            pass
 
         # Verify files exist
         self.assertTrue(os.path.exists(pyc1))
@@ -797,8 +801,10 @@ class TestCleanPythonCache(unittest.TestCase):
         py1 = os.path.join(self.temp_dir, "test1.py")
         py2 = os.path.join(self.temp_dir, "subdir", "test2.py")
         os.makedirs(os.path.dirname(py2), exist_ok=True)
-        open(py1, "w").close()
-        open(py2, "w").close()
+        with open(py1, "w"):
+            pass
+        with open(py2, "w"):
+            pass
 
         # Clean cache
         _clean_python_cache(self.temp_dir)
