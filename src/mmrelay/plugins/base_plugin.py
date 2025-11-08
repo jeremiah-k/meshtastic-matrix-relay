@@ -73,18 +73,24 @@ class BasePlugin(ABC):
 
     def __init__(self, plugin_name=None) -> None:
         """
-        Initialize plugin state including its name, logger, configuration, mapped channels, and response delay.
-
+        Initialize plugin state: name, logger, configuration, mapped channels, scheduling controls, and response delay.
+        
         Parameters:
-            plugin_name (str, optional): Overrides the class-level plugin_name attribute when provided.
-
+            plugin_name (str, optional): Overrides the class-level `plugin_name` when provided.
+        
+        Returns:
+            None
+        
         Raises:
-            ValueError: If no plugin name is available from the parameter or the class attribute.
-
-        Notes:
-            - Loads plugin configuration from the global `config` under "plugins", "community-plugins", or "custom-plugins".
-            - Maps Matrix rooms to Meshtastic channels and validates the plugin's configured channels, logging a warning for unmapped channels.
-            - Reads `meshtastic.message_delay` (or the deprecated `meshtastic.plugin_response_delay`) and enforces a minimum delay of MINIMUM_MESSAGE_DELAY; deprecated option emits a one-time warning and delays below the minimum are clamped.
+            ValueError: If no plugin name is available from the parameter, instance, or class attribute.
+        
+        Details:
+            - Loads per-plugin configuration from the global `config` by checking "plugins", "community-plugins", then "custom-plugins"; defaults to `{"active": False}` if not found.
+            - Builds `self.mapped_channels` from `config["matrix_rooms"]` supporting both dict and list formats.
+            - Determines `self.channels` from the plugin config (falls back to `self.mapped_channels`) and ensures it is a list; logs a warning for any configured channels not present in `mapped_channels`.
+            - Initializes scheduling controls (`self._stop_event`, `self._schedule_thread`) used by the plugin scheduler.
+            - Reads Meshtastic delay settings from `config["meshtastic"]`, preferring `message_delay` with fallback to deprecated `plugin_response_delay`. Emits a one-time deprecation warning when `plugin_response_delay` is used.
+            - Enforces a minimum delay of `MINIMUM_MESSAGE_DELAY`; values below the minimum are clamped and emit a one-time warning per unique delay value.
         """
         # Allow plugin_name to be passed as a parameter for simpler initialization
         # This maintains backward compatibility while providing a cleaner API
@@ -277,6 +283,11 @@ class BasePlugin(ABC):
 
         # Function to execute the scheduled tasks
         def run_schedule():
+            """
+            Loop and execute scheduled jobs until the plugin is stopped.
+            
+            Continuously calls the scheduler to run any pending jobs and then waits up to one second (or until the plugin's stop event is set) before the next iteration to avoid busy-waiting.
+            """
             while not self._stop_event.is_set():
                 schedule.run_pending()
                 # Wait up to one second or until stop is requested to avoid busy loops
@@ -293,7 +304,9 @@ class BasePlugin(ABC):
 
     def stop(self):
         """
-        Stop scheduled work and invoke plugin-specific cleanup hooks.
+        Stop scheduled background work and run the plugin's cleanup hook.
+        
+        Signals the internal stop event (if present) to terminate the scheduler loop, clears any scheduled jobs tagged with the plugin name, waits up to 5 seconds for the scheduling thread to exit, sets the internal schedule thread reference to None, and then invokes on_stop() for plugin-specific cleanup. Exceptions raised by on_stop() are caught and logged.
         """
         if hasattr(self, "_stop_event"):
             self._stop_event.set()

@@ -53,29 +53,19 @@ def _collect_requirements(
     requirements_file: str, visited: Set[str] | None = None
 ) -> List[str]:
     """
-    Parse a requirements.txt file and return a flattened list of installable requirement lines.
-
-    The function reads the given requirements file, ignores blank lines and comments (including inline
-    comments after " #"), and resolves nested includes and constraint files. Supported include forms:
+    Parse a requirements file into a flattened list of installable requirement lines.
+    
+    Ignores blank lines and full-line or inline comments, preserves PEP 508 requirement syntax,
+    and resolves nested includes and constraint files. Supported include forms:
       - "-r <file>" or "--requirement <file>"
       - "-c <file>" or "--constraint <file>"
       - "--requirement=<file>" and "--constraint=<file>"
-
-    All non-directive lines are returned verbatim, preserving PEP 508 syntax including version specifiers,
-    environment markers, and pip flags.
-
-    Parameters:
-        requirements_file (str): Path to a requirements file. Relative includes are resolved
-            relative to this file's directory.
-
+    Relative include paths are resolved relative to the directory containing the given file.
+    
     Returns:
-        List[str]: A flattened list of requirement lines suitable for passing to pip.
-        Returns an empty list if the file does not exist or if recursion is detected for a nested include.
-
-    Notes:
-        - The optional `visited` parameter (used internally) tracks normalized file paths to detect
-          and prevent recursive includes; recursion results in a logged warning and the include is skipped.
-          does not raise exceptions for those conditions.
+        A list of requirement lines suitable for passing to pip. Returns an empty list if the
+        file cannot be read or if a nested include recursion is detected (the latter is logged
+        and the duplicate include is skipped).
     """
     normalized_path = os.path.abspath(requirements_file)
     visited = visited or set()
@@ -180,7 +170,12 @@ def _temp_sys_path(path: str):
 
 def _get_security_settings() -> dict:
     """
-    Return the current security configuration dictionary or an empty dict.
+    Return the security settings mapping from the global configuration.
+    
+    If the global `config` is unset or does not contain a `"security"` mapping, or if `"security"` exists but is not a dict, this returns an empty dict.
+    
+    Returns:
+        dict: The security configuration dictionary, or an empty dict when unavailable or invalid.
     """
     if not config:
         return {}
@@ -190,7 +185,15 @@ def _get_security_settings() -> dict:
 
 def _get_allowed_repo_hosts() -> list[str]:
     """
-    Resolve the configured community plugin host allowlist.
+    Determine the normalized allowlist of community plugin repository hosts.
+    
+    Reads the security configuration's "community_repo_hosts" value and returns a list
+    of lowercase host strings with surrounding whitespace removed. If the setting is
+    missing or not a list, returns a copy of DEFAULT_ALLOWED_COMMUNITY_HOSTS. Non-string
+    or empty entries in the configured list are ignored.
+    
+    Returns:
+        list[str]: A list of allowed repository hostnames in lowercase.
     """
     security_config = _get_security_settings()
     hosts = security_config.get("community_repo_hosts")
@@ -211,14 +214,24 @@ def _get_allowed_repo_hosts() -> list[str]:
 
 def _allow_local_plugin_paths() -> bool:
     """
-    Return whether local filesystem plugin paths are allowed for community plugins.
+    Determine whether local filesystem plugin paths are permitted for community plugins.
+    
+    Returns:
+        True if the security setting `"allow_local_plugin_paths"` is enabled, False otherwise.
     """
     return bool(_get_security_settings().get("allow_local_plugin_paths", False))
 
 
 def _host_in_allowlist(host: str, allowlist: list[str]) -> bool:
     """
-    Check whether host is explicitly in or a subdomain of any host in allowlist.
+    Determine whether a host matches or is a subdomain of any hostname in an allowlist.
+    
+    Parameters:
+        host (str): Hostname to check.
+        allowlist (list[str]): List of allowed hostnames; comparison is case-insensitive.
+    
+    Returns:
+        bool: `True` if `host` equals or is a subdomain of any entry in `allowlist`, `False` otherwise.
     """
     host = (host or "").lower()
     if not host:
@@ -232,7 +245,10 @@ def _host_in_allowlist(host: str, allowlist: list[str]) -> bool:
 
 def _normalize_repo_target(repo_url: str) -> tuple[str, str]:
     """
-    Return a tuple of (scheme, host) for a repository URL or ssh spec.
+    Normalize a repository URL or SSH spec into a tuple of (scheme, host).
+    
+    Returns:
+        tuple[str, str]: `scheme` normalized to lowercase (uses "ssh" for `git@` SSH specs and `git+ssh`/`ssh+git` schemes), and `host` lowercased or an empty string if no host is present.
     """
     repo_url = (repo_url or "").strip()
     if repo_url.startswith("git@"):
@@ -249,7 +265,12 @@ def _normalize_repo_target(repo_url: str) -> tuple[str, str]:
 
 def _is_repo_url_allowed(repo_url: str) -> bool:
     """
-    Enforce scheme and host validation for community plugin repositories.
+    Determine whether a repository URL or local filesystem path is permitted for community plugins.
+    
+    Accepts a repository specification (URL or local path). Rejects empty values and entries beginning with '-'. Local filesystem paths are permitted only when configured security settings allow local plugin paths and the path exists; `file://` schemes follow the same restriction. Plain `http://` URLs are disallowed. Only `https` and `ssh` repository URLs are permitted, and the repository host must be included in the configured allowlist.
+    
+    Returns:
+        bool: `true` if the repository is allowed, `false` otherwise.
     """
     repo_url = (repo_url or "").strip()
     if not repo_url:
@@ -300,13 +321,12 @@ def _is_repo_url_allowed(repo_url: str) -> bool:
 
 def _is_requirement_risky(req_string: str) -> bool:
     """
-    Check if a requirement string is considered risky.
-
-    Args:
-        req_string: The requirement string to check
-
+    Determine whether a requirement line references a VCS or URL source and should be treated as risky.
+    
+    Checks for known risky prefixes (VCS/URL specifiers) or the presence of both `@` and `://`, which indicate a URL-based requirement.
+    
     Returns:
-        True if requirement is risky (VCS/URL source), False otherwise
+        `true` if the requirement references a VCS or URL source, `false` otherwise.
     """
     lowered = req_string.lower()
     return any(lowered.startswith(prefix) for prefix in RISKY_REQUIREMENT_PREFIXES) or (
@@ -318,9 +338,14 @@ def _filter_risky_requirement_lines(
     requirement_lines: List[str],
 ) -> tuple[List[str], List[str], bool]:
     """
-    Filter requirement lines that contain risky VCS/URL sources unless explicitly allowed.
-
-    Tokenizes each line internally for validation but preserves original lines for installation.
+    Categorizes requirement lines into safe and flagged groups based on whether they reference VCS or URL sources.
+    
+    Preserves the original requirement lines; classification is influenced by the security setting that allows untrusted dependencies.
+    
+    Returns:
+        safe_lines (List[str]): Requirement lines considered safe for installation.
+        flagged_lines (List[str]): Requirement lines that reference VCS/URL sources and were flagged as risky.
+        allow_untrusted (bool): `True` if the security setting permits untrusted (VCS/URL) dependencies, `False` otherwise.
     """
     allow_untrusted = bool(
         _get_security_settings().get("allow_untrusted_dependencies", False)
@@ -700,9 +725,12 @@ def get_custom_plugin_dirs():
 
 def get_community_plugin_dirs():
     """
-    Return the list of directories to search for community plugins, ordered by priority.
-
-    The directories include the user-specific community plugins directory and a local directory for backward compatibility.
+    List community plugin directories in priority order.
+    
+    Includes the per-user community plugins directory and a legacy local application directory for backward compatibility; directories that cannot be accessed or created are omitted.
+    
+    Returns:
+        list[str]: Filesystem paths to search for community plugins, ordered from highest to lowest priority.
     """
     return _get_plugin_dirs("community")
 
@@ -710,24 +738,24 @@ def get_community_plugin_dirs():
 def _run(cmd, timeout=120, retry_attempts=1, retry_delay=1, **kwargs):
     # Validate command to prevent shell injection
     """
-    Run a subprocess command safely with validated arguments and a configurable timeout.
-
-    Validates that `cmd` is a non-empty list of non-empty strings (to avoid shell-injection risks),
-    ensures text output by default, and executes the command via subprocess.run with check=True.
-
+    Run a subprocess command with validated arguments, optional retries, and a configurable timeout.
+    
+    Validates that `cmd` is a non-empty list of non-empty strings, disallows `shell=True`, sets `text=True` by default, and optionally retries failed attempts with a delay.
+    
     Parameters:
         cmd (list[str]): Command and arguments to execute; must be a non-empty list of non-empty strings.
-        timeout (int|float): Maximum seconds to allow the process to run before raising TimeoutExpired.
-        **kwargs: Additional keyword arguments forwarded to subprocess.run (e.g., cwd, env). `text=True`
-            is set by default if not provided.
-
+        timeout (int | float): Maximum seconds to allow the process to run before raising TimeoutExpired.
+        retry_attempts (int): Number of execution attempts (minimum 1).
+        retry_delay (int | float): Seconds to wait between retry attempts.
+        **kwargs: Additional keyword arguments forwarded to subprocess.run (e.g., cwd, env). `text=True` is used by default if not provided.
+    
     Returns:
         subprocess.CompletedProcess: The completed process object returned by subprocess.run.
-
+    
     Raises:
         TypeError: If `cmd` is not a list or any element of `cmd` is not a string.
-        ValueError: If `cmd` is empty or contains empty/whitespace-only arguments.
-        subprocess.CalledProcessError: If the subprocess exits with a non-zero status (check=True).
+        ValueError: If `cmd` is empty, contains empty/whitespace-only arguments, or if `shell=True` is provided.
+        subprocess.CalledProcessError: If the subprocess exits with a non-zero status.
         subprocess.TimeoutExpired: If the process exceeds the specified timeout.
     """
     if not isinstance(cmd, list):
@@ -765,7 +793,15 @@ def _run(cmd, timeout=120, retry_attempts=1, retry_delay=1, **kwargs):
 
 def _run_git(cmd, timeout=120, **kwargs):
     """
-    Convenience wrapper to run git commands with sane retry defaults.
+    Run a git command using the module's safe subprocess runner with conservative retry defaults.
+    
+    Parameters:
+        cmd (list[str]): Command and arguments to run (e.g., ['git', 'clone', '...']).
+        timeout (int): Maximum seconds to wait for each attempt.
+        **kwargs: Additional options forwarded to `_run` (can override retries).
+    
+    Returns:
+        subprocess.CompletedProcess: The completed process result containing `returncode`, `stdout`, and `stderr`.
     """
     kwargs.setdefault("retry_attempts", 3)
     kwargs.setdefault("retry_delay", 2)
@@ -774,10 +810,15 @@ def _run_git(cmd, timeout=120, **kwargs):
 
 def _check_auto_install_enabled(config):
     """
-    Return whether automatic dependency installation is enabled.
-
-    Reads the value at config["security"]["auto_install_deps"] and returns its truthiness.
-    If `config` is None or falsy, or the key is missing, this function returns True (auto-install enabled by default).
+    Determine if automatic dependency installation is enabled in the provided configuration.
+    
+    Parameters:
+        config (dict|None): Configuration mapping; expected to contain a "security" dict with an
+            optional boolean "auto_install_deps" key.
+    
+    Returns:
+        bool: `True` if automatic installation is enabled, `False` otherwise. If `config` is falsy
+        or the key is missing, automatic installation is enabled by default.
     """
     if not config:
         return True
@@ -802,17 +843,17 @@ def _raise_install_error(pkg_name):
 
 def clone_or_update_repo(repo_url, ref, plugins_dir):
     """
-    Clone or update a community plugin Git repository into plugins_dir/<repo_name>.
-
-    Attempts to ensure the repository identified by repo_url exists under plugins_dir and is checked out at the specified ref (a dict with keys "type" set to "tag" or "branch", and "value" set to the tag or branch name). If the repository already exists the function attempts to fetch and switch to the requested ref, falling back to common default branches ("main", "master") when appropriate.
-
+    Ensure a community plugin git repository exists under plugins_dir and is checked out at the specified ref.
+    
+    Attempts to clone the repository into plugins_dir/<repo_name> or update an existing clone so that it is on the requested ref. The ref argument must be a dict with keys `"type"` (either `"tag"` or `"branch"`) and `"value"` (the tag or branch name). Falls back to common default branches ("main", "master") when appropriate.
+    
     Parameters:
-        repo_url (str): URL of the Git repository to clone or update.
+        repo_url (str): URL or SSH spec of the git repository to clone or update.
         ref (dict): Reference specification with keys:
             - type (str): "tag" or "branch".
             - value (str): The tag or branch name to check out.
         plugins_dir (str): Directory under which the repository should be placed.
-
+    
     Returns:
         bool: `True` if the repository was successfully cloned or updated, `False` otherwise.
     """
@@ -1444,22 +1485,15 @@ def load_plugins_from_directory(directory, recursive=False):
 
 def load_plugins(passed_config=None):
     """
-    Discovers, loads, and initializes all active plugins based on the provided or global configuration.
-
-    This function orchestrates the full plugin lifecycle, including:
-    - Loading core, custom, and community plugins as specified in the configuration.
-    - Cloning or updating community plugin repositories and installing their dependencies.
-    - Dynamically loading plugin classes from discovered directories.
-    - Filtering and sorting plugins by their configured priority.
-    - Starting each active plugin.
-
-    If plugins have already been loaded, returns the cached sorted list.
-
+    Load, initialize, and return the application's active plugins according to the given or global configuration.
+    
+    Loads core, custom, and community plugins (cloning/updating community repositories and installing their dependencies as needed), starts each plugin that is configured active, and returns the resulting list sorted by plugin priority. Uses the global configuration when no configuration is passed and returns a cached result if plugins were already loaded.
+    
     Parameters:
-        passed_config (dict, optional): Configuration dictionary to use instead of the global configuration.
-
+        passed_config (dict, optional): Configuration to use instead of the module-global config.
+    
     Returns:
-        list: Active plugin instances, sorted by priority.
+        list: Active plugin instances sorted by their `priority` attribute.
     """
     global sorted_active_plugins
     global plugins_loaded
@@ -1726,7 +1760,9 @@ def load_plugins(passed_config=None):
 
 def shutdown_plugins() -> None:
     """
-    Stop all active plugins and reset loader state so plugins can be reloaded cleanly.
+    Stop all active plugins and reset loader state to allow a clean reload.
+    
+    Calls each plugin's stop() method if present; exceptions from stop() are caught and logged. Plugins that do not implement stop() are skipped. After attempting to stop all plugins, clears the active plugin list and marks plugins as not loaded.
     """
     global sorted_active_plugins, plugins_loaded
 
