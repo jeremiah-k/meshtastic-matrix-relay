@@ -74,16 +74,16 @@ class BasePlugin(ABC):
     def __init__(self, plugin_name=None) -> None:
         """
         Initialize plugin state: name, logger, configuration, mapped channels, scheduling controls, and response delay.
-        
+
         Parameters:
             plugin_name (str, optional): Overrides the class-level `plugin_name` when provided.
-        
+
         Returns:
             None
-        
+
         Raises:
             ValueError: If no plugin name is available from the parameter, instance, or class attribute.
-        
+
         Details:
             - Loads per-plugin configuration from the global `config` by checking "plugins", "community-plugins", then "custom-plugins"; defaults to `{"active": False}` if not found.
             - Builds `self.mapped_channels` from `config["matrix_rooms"]` supporting both dict and list formats.
@@ -285,7 +285,7 @@ class BasePlugin(ABC):
         def run_schedule():
             """
             Loop and execute scheduled jobs until the plugin is stopped.
-            
+
             Continuously calls the scheduler to run any pending jobs and then waits up to one second (or until the plugin's stop event is set) before the next iteration to avoid busy-waiting.
             """
             while not self._stop_event.is_set():
@@ -305,7 +305,7 @@ class BasePlugin(ABC):
     def stop(self):
         """
         Stop scheduled background work and run the plugin's cleanup hook.
-        
+
         Signals the internal stop event (if present) to terminate the scheduler loop, clears any scheduled jobs tagged with the plugin name, waits up to 5 seconds for the scheduling thread to exit, sets the internal schedule thread reference to None, and then invokes on_stop() for plugin-specific cleanup. Exceptions raised by on_stop() are caught and logged.
         """
         if hasattr(self, "_stop_event"):

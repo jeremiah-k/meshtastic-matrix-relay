@@ -70,7 +70,7 @@ class MockPlugin:
     ):
         """
         Mock handler for Meshtastic messages used in tests; performs no action to suppress warnings.
-        
+
         Parameters:
             packet: The raw Meshtastic packet object received.
             interface: The interface name or object the packet arrived on.
@@ -660,7 +660,7 @@ class TestPluginSecurityGuards(unittest.TestCase):
     def tearDown(self):
         """
         Restore the original plugin loader configuration after a test.
-        
+
         Reassigns the saved original configuration back to the plugin loader's `config` attribute to restore global state modified during the test.
         """
         self.pl.config = self.original_config
@@ -781,7 +781,7 @@ class TestURLValidation(unittest.TestCase):
     def tearDown(self):
         """
         Restore the original plugin loader configuration after a test.
-        
+
         Reassigns the saved original configuration back to the plugin loader's `config` attribute to restore global state modified during the test.
         """
         self.pl.config = self.original_config
@@ -962,7 +962,7 @@ class TestRequirementFiltering(unittest.TestCase):
     def tearDown(self):
         """
         Restore the original plugin loader configuration after a test.
-        
+
         Reassigns the saved original configuration back to the plugin loader's `config` attribute to restore global state modified during the test.
         """
         self.pl.config = self.original_config
@@ -1108,7 +1108,7 @@ class TestGitOperations(unittest.TestCase):
     def tearDown(self):
         """
         Restore the original plugin loader configuration after a test.
-        
+
         Reassigns the saved original configuration back to the plugin loader's `config` attribute to restore global state modified during the test.
         """
         self.pl.config = self.original_config
@@ -1214,7 +1214,7 @@ class TestGitOperations(unittest.TestCase):
     def test_clone_or_update_repo_missing_ref_value(self, mock_logger, mock_is_allowed):
         """
         Verify clone_or_update_repo returns False and logs an error when a ref specifies a type but has an empty value.
-        
+
         Asserts that the function rejects a ref with an empty 'value' field, returns False, and logs an error mentioning the ref type and repository URL.
         """
         from mmrelay.plugin_loader import clone_or_update_repo
@@ -1775,7 +1775,7 @@ class TestDependencyInstallation(unittest.TestCase):
     def setUp(self):
         """
         Prepare the test environment for plugin_loader tests.
-        
+
         Saves the mmrelay.plugin_loader module to `self.pl`, preserves the module's original
         `config` (if any) in `self.original_config`, creates a temporary directory at
         `self.temp_dir`, and registers a cleanup action to remove that directory after the test.
@@ -1790,7 +1790,7 @@ class TestDependencyInstallation(unittest.TestCase):
     def tearDown(self):
         """
         Restore the original plugin loader configuration after a test.
-        
+
         Reassigns the saved original configuration back to the plugin loader's `config` attribute to restore global state modified during the test.
         """
         self.pl.config = self.original_config
