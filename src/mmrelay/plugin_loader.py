@@ -342,8 +342,17 @@ def _filter_risky_requirements(
         is_risky = _is_requirement_risky(normalized)
 
         if is_risky and not allow_untrusted:
-            # Remove preceding editable flag if present
-            if safe and safe[-1].lower() in {"-e", "--editable"}:
+            # Remove preceding source-related flag if present
+            source_flags = {
+                "-e",
+                "--editable",
+                "-f",
+                "--find-links",
+                "-i",
+                "--index-url",
+                "--extra-index-url",
+            }
+            if safe and safe[-1].lower() in source_flags:
                 flagged.append(safe.pop())
             flagged.append(token)
             continue
@@ -765,9 +774,6 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
     ref_type = ref.get("type")  # expected: "tag" or "branch"
     ref_value = (ref.get("value") or "").strip()
 
-    if not repo_url or repo_url.startswith("-"):
-        logger.error("Repository URL looks invalid or dangerous: %r", repo_url)
-        return False
     if not _is_repo_url_allowed(repo_url):
         return False
     allowed_ref_types = {"tag", "branch"}

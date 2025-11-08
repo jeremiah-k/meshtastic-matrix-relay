@@ -683,9 +683,16 @@ class TestPluginSecurityGuards(unittest.TestCase):
         ]
         safe, flagged, allow = _filter_risky_requirements(requirements)
         self.assertFalse(allow)
-        self.assertEqual(flagged, ["git+https://github.com/example/risky.git"])
+        self.assertEqual(
+            flagged,
+            [
+                "git+https://github.com/example/risky.git",
+                "--extra-index-url",
+                "https://mirror.example",
+            ],
+        )
         self.assertIn("safe-package==1.0.0", safe)
-        self.assertIn("--extra-index-url", safe)
+        self.assertIn("another-safe", safe)
 
     def test_filter_risky_requirements_can_allow_via_config(self):
         self.pl.config = {"security": {"allow_untrusted_dependencies": True}}

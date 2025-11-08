@@ -27,4 +27,5 @@ RISKY_REQUIREMENT_PREFIXES: Tuple[str, ...] = (
     "bzr+",
     "svn+",
     "http://",
+    "https://",
 )
