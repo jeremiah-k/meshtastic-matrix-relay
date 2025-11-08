@@ -1527,6 +1527,31 @@ def load_plugins_from_directory(directory, recursive=False):
     return plugins
 
 
+def schedule_job(plugin_name: str, interval: int = 1):
+    """
+    Create a job that runs every specified interval for a plugin.
+
+    Parameters:
+        plugin_name (str): Name of the plugin for job tagging
+        interval (int): Interval for job execution
+
+    Returns:
+        Job object that can be configured with time units and actions
+    """
+    if schedule is None:
+        return None
+
+    job = schedule.every(interval)
+    job.tag(plugin_name)
+    return job
+
+
+def clear_plugin_jobs(plugin_name: str) -> None:
+    """Clear all jobs for a specific plugin."""
+    if schedule is not None:
+        schedule.clear(plugin_name)
+
+
 def start_global_scheduler():
     """
     Start the global scheduler thread for all plugins.

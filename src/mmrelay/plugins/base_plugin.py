@@ -3,7 +3,6 @@ import threading
 from abc import ABC, abstractmethod
 
 import markdown
-import schedule
 
 from mmrelay.config import get_plugin_data_dir
 from mmrelay.constants.database import (
@@ -19,7 +18,13 @@ from mmrelay.db_utils import (
 )
 from mmrelay.log_utils import get_logger
 from mmrelay.message_queue import queue_message
+from mmrelay.plugin_loader import (
+    clear_plugin_jobs,
+)
 from mmrelay.plugin_loader import logger as plugins_logger
+from mmrelay.plugin_loader import (
+    schedule_job,
+)
 
 # Global config variable that will be set from main.py
 config = None
@@ -30,27 +35,6 @@ _deprecated_warning_shown = False
 # Track delay values we've already warned about to prevent spam
 _warned_delay_values = set()
 _plugins_low_delay_warned = False
-
-
-def schedule_job(plugin_name: str, interval: int = 1):
-    """
-    Create a job that runs every specified interval for a plugin.
-
-    Parameters:
-        plugin_name (str): Name of the plugin for job tagging
-        interval (int): Interval for job execution
-
-    Returns:
-        Job object that can be configured with time units and actions
-    """
-    job = schedule.every(interval)
-    job.tag(plugin_name)
-    return job
-
-
-def clear_plugin_jobs(plugin_name: str) -> None:
-    """Clear all jobs for a specific plugin."""
-    schedule.clear(plugin_name)
 
 
 class BasePlugin(ABC):
