@@ -5,6 +5,7 @@ It uses Meshtastic-python and Matrix nio client library to interface with the ra
 
 import asyncio
 import concurrent.futures
+import functools
 import signal
 import sys
 
@@ -119,8 +120,6 @@ async def main(config):
         wipe_message_map()
 
     # Load plugins early (run in executor to avoid blocking event loop with time.sleep)
-    import functools
-
     await loop.run_in_executor(
         None, functools.partial(load_plugins, passed_config=config)
     )

@@ -630,8 +630,6 @@ def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
                 try:
                     # Use pipx inject with --pip-args to pass -r flag to underlying pip
                     # Properly quote the temp path to handle spaces
-                    import shlex
-
                     pip_args = shlex.join(["-r", temp_path])
                     cmd = [
                         pipx_path,
