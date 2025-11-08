@@ -1322,7 +1322,7 @@ class TestGitOperations(unittest.TestCase):
         # Mock successful fetch, current branch check, but pull fails
         mock_run_git.side_effect = [
             None,  # fetch succeeds
-            MagicMock(stdout=b"main\n"),  # current branch is main
+            MagicMock(stdout="main\n"),  # current branch is main
             subprocess.CalledProcessError(1, "git pull"),  # pull fails
         ]
 
@@ -1374,7 +1374,8 @@ class TestGitOperations(unittest.TestCase):
         # Mock successful fetch, different current branch, successful checkout and pull for tag
         mock_run_git.side_effect = [
             None,  # fetch succeeds
-            MagicMock(stdout=b"main\n"),  # current branch is main
+            MagicMock(stdout="main\n"),  # current branch is main
+            MagicMock(stdout="abc123\n"),  # tag commit hash
             None,  # checkout succeeds
             None,  # pull succeeds
         ]
@@ -1400,9 +1401,11 @@ class TestGitOperations(unittest.TestCase):
         # Mock successful fetch, different current branch, checkout fails
         mock_run_git.side_effect = [
             None,  # fetch succeeds
-            MagicMock(stdout=b"develop\n"),  # current branch is develop
-            subprocess.CalledProcessError(1, "git checkout"),  # checkout fails
-            # Fallback logic would try other branches, but we'll mock it to fail
+            MagicMock(stdout="develop\n"),  # current branch is develop
+            subprocess.CalledProcessError(1, "git checkout"),  # checkout main fails
+            subprocess.CalledProcessError(
+                1, "git checkout"
+            ),  # checkout master also fails
         ]
 
         repo_url = "https://github.com/test/plugin.git"
@@ -2546,7 +2549,7 @@ class TestCacheCleaningIntegration(unittest.TestCase):
             if "fetch" in cmd:
                 return None  # fetch succeeds
             elif "rev-parse" in cmd:
-                return MagicMock(stdout=b"main\n")  # current branch is main
+                return MagicMock(stdout="main\n")  # current branch is main
             elif "pull" in cmd:
                 raise subprocess.CalledProcessError(1, cmd)  # pull fails
             return None
