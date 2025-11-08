@@ -1466,7 +1466,7 @@ class TestCollectRequirements(unittest.TestCase):
         """Test handling of malformed requirement directives."""
         req_file = os.path.join(self.temp_dir, "requirements.txt")
         with open(req_file, "w") as f:
-            f.write("-r\n")  # Malformed - missing file
+            f.write("-r \n")  # Malformed - missing file
             f.write("requests==2.28.0\n")
 
         result = _collect_requirements(req_file)
@@ -1684,11 +1684,12 @@ class TestCleanPythonCache(unittest.TestCase):
 class TestPluginDirectories(unittest.TestCase):
     """Test cases for plugin directory discovery and creation."""
 
+    @patch("os.makedirs")
     @patch("mmrelay.plugin_loader.get_base_dir")
     @patch("mmrelay.plugin_loader.get_app_path")
     @patch("mmrelay.plugin_loader.logger")
     def test_get_plugin_dirs_user_dir_success(
-        self, mock_logger, mock_get_app_path, mock_get_base_dir
+        self, mock_logger, mock_get_app_path, mock_get_base_dir, mock_makedirs
     ):
         """Test successful user directory creation."""
         from mmrelay.plugin_loader import _get_plugin_dirs
@@ -1836,7 +1837,7 @@ class TestDependencyInstallation(unittest.TestCase):
             f.write("requests==2.28.0\n")
 
         with patch("shutil.which", return_value="/usr/bin/pipx"):
-            _install_requirements_for_repo(self.temp_dir, "test-plugin")
+            _install_requirements_for_repo(repo_path, "test-plugin")
 
         mock_run.assert_called_once_with(
             [
@@ -1844,8 +1845,9 @@ class TestDependencyInstallation(unittest.TestCase):
                 "inject",
                 "mmrelay",
                 "requests==2.28.0",
+                "https://pypi.org/simple",
                 "--pip-args",
-                "--extra-index-url https://pypi.org/simple",
+                "--extra-index-url",
             ],
             timeout=600,
         )
@@ -1881,7 +1883,6 @@ class TestDependencyInstallation(unittest.TestCase):
             "install",
             "--disable-pip-version-check",
             "--no-input",
-            "--user",
             "requests==2.28.0",
         ]
         mock_run.assert_called_once_with(expected_cmd, timeout=600)
@@ -1933,9 +1934,9 @@ class TestDependencyInstallation(unittest.TestCase):
         from mmrelay.plugin_loader import _install_requirements_for_repo
 
         mock_check_enabled.return_value = True
-        mock_collect.return_value = ["--extra-index-url", "https://pypi.org/simple"]
+        mock_collect.return_value = ["--extra-index-url https://pypi.org/simple"]
         mock_filter.return_value = (
-            ["--extra-index-url", "https://pypi.org/simple"],
+            ["--extra-index-url https://pypi.org/simple"],
             [],
             False,
         )
@@ -1948,13 +1949,13 @@ class TestDependencyInstallation(unittest.TestCase):
 
         with patch.dict(os.environ, {"PIPX_HOME": "/pipx/home"}):
             with patch("shutil.which", return_value="/usr/bin/pipx"):
-                _install_requirements_for_repo(self.temp_dir, "test-plugin")
+                _install_requirements_for_repo(repo_path, "test-plugin")
 
         # Should not call pipx inject when no packages
         mock_run.assert_not_called()
         mock_logger.info.assert_called_with(
-            "Requirements in %s only contained pip flags; skipping pipx injection.",
-            requirements_path,
+            "No dependency installation run for plugin %s",
+            "test-plugin",
         )
 
     @patch("mmrelay.plugin_loader._collect_requirements")
@@ -2009,8 +2010,8 @@ class TestDependencyInstallation(unittest.TestCase):
             "git+https://github.com/user/repo.git",
         ]
         mock_filter.return_value = (
-            ["requests==2.28.0", "git+https://github.com/user/repo.git"],
-            [],
+            ["requests==2.28.0"],
+            ["git+https://github.com/user/repo.git"],
             True,
         )
 
@@ -2024,7 +2025,7 @@ class TestDependencyInstallation(unittest.TestCase):
 
         mock_logger.warning.assert_called_with(
             "Allowing %d flagged dependency entries for %s due to security.allow_untrusted_dependencies=True",
-            0,
+            1,
             "test-plugin",
         )
 

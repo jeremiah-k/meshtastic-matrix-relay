@@ -142,7 +142,18 @@ def _collect_requirements(
                         )
                     continue
 
-                requirements.extend(shlex.split(line, posix=True))
+                # Check for malformed standalone directives
+                if lower_line in ("-r", "-c", "--requirement", "--constraint"):
+                    logger.warning(
+                        "Malformed directive, missing file: %s",
+                        raw_line.rstrip(),
+                    )
+                    continue
+
+                if line.startswith("-"):
+                    requirements.append(line)
+                else:
+                    requirements.extend(shlex.split(line, posix=True))
     except (FileNotFoundError, OSError) as e:
         logger.warning("Error reading requirements file %s: %s", normalized_path, e)
         return []
