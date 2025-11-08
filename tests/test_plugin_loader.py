@@ -1769,7 +1769,6 @@ class TestDependencyInstallation(unittest.TestCase):
         self, mock_logger, mock_check_enabled
     ):
         """Test dependency installation when disabled."""
-        from mmrelay.plugin_loader import _install_requirements_for_repo
 
         mock_check_enabled.return_value = False
         repo_path = os.path.join(self.temp_dir, "test-plugin")
@@ -1793,7 +1792,6 @@ class TestDependencyInstallation(unittest.TestCase):
         self, mock_logger, mock_check_enabled, mock_filter, mock_collect
     ):
         """Test dependency installation when requirements file doesn't exist."""
-        from mmrelay.plugin_loader import _install_requirements_for_repo
 
         mock_check_enabled.return_value = True
         repo_path = os.path.join(self.temp_dir, "test-plugin")
@@ -1814,7 +1812,6 @@ class TestDependencyInstallation(unittest.TestCase):
         self, mock_logger, mock_run, mock_check_enabled, mock_filter, mock_collect
     ):
         """Test dependency installation with pipx."""
-        from mmrelay.plugin_loader import _install_requirements_for_repo
 
         mock_check_enabled.return_value = True
         mock_collect.return_value = [
@@ -1867,7 +1864,6 @@ class TestDependencyInstallation(unittest.TestCase):
         mock_which,
     ):
         """Test dependency installation with pip."""
-        from mmrelay.plugin_loader import _install_requirements_for_repo
 
         mock_check_enabled.return_value = True
         mock_collect.return_value = ["requests==2.28.0"]
@@ -1910,7 +1906,6 @@ class TestDependencyInstallation(unittest.TestCase):
         mock_which,
     ):
         """Test dependency installation with pip in virtual environment."""
-        from mmrelay.plugin_loader import _install_requirements_for_repo
 
         mock_check_enabled.return_value = True
         mock_collect.return_value = ["requests==2.28.0"]
@@ -1944,7 +1939,6 @@ class TestDependencyInstallation(unittest.TestCase):
         self, mock_logger, mock_run, mock_check_enabled, mock_filter, mock_collect
     ):
         """Test pipx injection when no packages to install."""
-        from mmrelay.plugin_loader import _install_requirements_for_repo
 
         mock_check_enabled.return_value = True
         mock_collect.return_value = ["--extra-index-url https://pypi.org/simple"]
@@ -1980,7 +1974,6 @@ class TestDependencyInstallation(unittest.TestCase):
         self, mock_logger, mock_run, mock_check_enabled, mock_filter, mock_collect
     ):
         """Test dependency installation with flagged dependencies."""
-        from mmrelay.plugin_loader import _install_requirements_for_repo
 
         mock_check_enabled.return_value = True
         mock_collect.return_value = [
@@ -2015,7 +2008,6 @@ class TestDependencyInstallation(unittest.TestCase):
         self, mock_logger, mock_run, mock_check_enabled, mock_filter, mock_collect
     ):
         """Test dependency installation with untrusted dependencies allowed."""
-        from mmrelay.plugin_loader import _install_requirements_for_repo
 
         mock_check_enabled.return_value = True
         mock_collect.return_value = [
@@ -2054,7 +2046,6 @@ class TestDependencyInstallation(unittest.TestCase):
         self, mock_logger, mock_run, mock_check_enabled, mock_filter, mock_collect
     ):
         """Test handling of installation errors."""
-        from mmrelay.plugin_loader import _install_requirements_for_repo
 
         mock_check_enabled.return_value = True
         mock_collect.return_value = ["requests==2.28.0"]
