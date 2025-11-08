@@ -2140,9 +2140,6 @@ class TestDependencyInstallation(unittest.TestCase):
             _install_requirements_for_repo(self.repo_path, "test-plugin")
 
         # Should log warning but still install
-        print(
-            f"mock_logger.warning.call_args_list: {mock_logger.warning.call_args_list}"
-        )
         mock_logger.warning.assert_called_with(
             "Allowing %d flagged dependency entries for %s due to security.allow_untrusted_dependencies=True",
             1,
