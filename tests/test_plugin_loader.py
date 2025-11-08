@@ -882,7 +882,7 @@ class TestURLValidation(unittest.TestCase):
         self.assertFalse(result)
 
     @patch("mmrelay.plugin_loader.logger")
-    def test_repo_url_rejected_for_dash_prefix(self, mock_logger):
+    def test_repo_url_rejected_for_dash_prefix(self, _mock_logger):
         """Test that URLs starting with dash are rejected."""
         self.pl.config = {}
         result = _is_repo_url_allowed("-evil-option")
@@ -899,42 +899,42 @@ class TestURLValidation(unittest.TestCase):
         )
 
     @patch("mmrelay.plugin_loader.logger")
-    def test_repo_url_allows_file_scheme_with_opt_in(self, mock_logger):
+    def test_repo_url_allows_file_scheme_with_opt_in(self, _mock_logger):
         """Test that file:// URLs are allowed when local paths are enabled."""
         self.pl.config = {"security": {"allow_local_plugin_paths": True}}
         result = _is_repo_url_allowed("file:///local/path")
         self.assertTrue(result)
 
     @patch("mmrelay.plugin_loader.logger")
-    def test_repo_url_rejected_for_unsupported_scheme(self, mock_logger):
+    def test_repo_url_rejected_for_unsupported_scheme(self, _mock_logger):
         """Test that unsupported schemes are rejected."""
         self.pl.config = {}
         result = _is_repo_url_allowed("ftp://github.com/user/repo.git")
         self.assertFalse(result)
-        mock_logger.error.assert_called_with(
+        _mock_logger.error.assert_called_with(
             "Unsupported repository scheme '%s' for %s",
             "ftp",
             "ftp://github.com/user/repo.git",
         )
 
     @patch("mmrelay.plugin_loader.logger")
-    def test_repo_url_local_path_nonexistent(self, mock_logger):
+    def test_repo_url_local_path_nonexistent(self, _mock_logger):
         """Test local path validation when path doesn't exist."""
         self.pl.config = {"security": {"allow_local_plugin_paths": True}}
         with patch("os.path.exists", return_value=False):
             result = _is_repo_url_allowed("/nonexistent/path")
             self.assertFalse(result)
-            mock_logger.error.assert_called_with(
-                "Local repository path does not exist: %s", "/nonexistent/path"
-            )
+        _mock_logger.error.assert_called_with(
+            "Local repository path does not exist: %s", "/nonexistent/path"
+        )
 
     @patch("mmrelay.plugin_loader.logger")
-    def test_repo_url_local_path_disabled(self, mock_logger):
+    def test_repo_url_local_path_disabled(self, _mock_logger):
         """Test local path validation when local paths are disabled."""
         self.pl.config = {}
         result = _is_repo_url_allowed("/local/path")
         self.assertFalse(result)
-        mock_logger.error.assert_called_with(
+        _mock_logger.error.assert_called_with(
             "Invalid repository '%s'. Local paths are disabled, and remote URLs must include a scheme (e.g., 'https://').",
             "/local/path",
         )
@@ -1467,7 +1467,7 @@ class TestCommandRunner(unittest.TestCase):
     def test_run_value_error_shell_true(self):
         """Test _run raises ValueError for shell=True."""
         with self.assertRaises(ValueError) as cm:
-            _run(["git", "status"], shell=True)
+            _run(["git", "status"], shell=True)  # noqa: S604 - intentional for test
         self.assertIn("shell=True is not allowed in _run", str(cm.exception))
 
     def test_run_sets_text_default(self):
@@ -1970,7 +1970,8 @@ class TestDependencyInstallation(unittest.TestCase):
 
         # Mock the temporary file
         mock_file = mock_temp_file.return_value.__enter__.return_value
-        mock_file.name = "/tmp/test_requirements.txt"
+        temp_req = os.path.join(self.temp_dir, "test_requirements.txt")
+        mock_file.name = temp_req
 
         with patch.dict(os.environ, {"VIRTUAL_ENV": "/venv"}, clear=True):
             _install_requirements_for_repo(self.repo_path, "test-plugin")
@@ -1987,7 +1988,7 @@ class TestDependencyInstallation(unittest.TestCase):
         ]
         assert called_cmd[:6] == expected_base
         assert "-r" in called_cmd
-        assert called_cmd[called_cmd.index("-r") + 1] == "/tmp/test_requirements.txt"
+        assert called_cmd[called_cmd.index("-r") + 1] == temp_req
         mock_run.assert_called_once_with(called_cmd, timeout=600)
 
     @patch("mmrelay.plugin_loader.logger")

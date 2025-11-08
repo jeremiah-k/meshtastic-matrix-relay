@@ -209,28 +209,18 @@ class TestBasePlugin(unittest.TestCase):
 
     def test_start_stop_schedule_thread(self):
         """Plugins should register and clear scheduled jobs via start/stop."""
-        with patch("schedule.get_jobs") as mock_get_jobs:
-            with patch("schedule.clear") as mock_clear:
-                # Configure schedule mock to return appropriate values
-                mock_job = MagicMock()
-                mock_get_jobs.return_value = [mock_job]
+        with (
+            patch("mmrelay.plugins.base_plugin.schedule_job") as mock_schedule_job,
+            patch("schedule.clear") as mock_clear,
+        ):
+            plugin = MockPlugin()
+            plugin.config["schedule"] = {"minutes": 1}
 
-                plugin = MockPlugin()
-                plugin.config["schedule"] = {"minutes": 1}
+            plugin.start()
+            mock_schedule_job.assert_called_once_with("test_plugin", 1)
 
-                plugin.start()
-                jobs = schedule.get_jobs(tag=plugin.plugin_name)
-                self.assertTrue(jobs, "Expected a scheduled job after start()")
-
-                # After stop, configure schedule to return empty list
-                mock_get_jobs.return_value = []
-                plugin.stop()
-                self.assertEqual(
-                    schedule.get_jobs(tag=plugin.plugin_name),
-                    [],
-                    "Jobs should be cleared",
-                )
-                mock_clear.assert_called_with(plugin.plugin_name)
+            plugin.stop()
+            mock_clear.assert_called_with(plugin.plugin_name)
 
     def test_response_delay_minimum_enforcement(self):
         """

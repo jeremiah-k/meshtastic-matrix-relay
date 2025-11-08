@@ -169,8 +169,6 @@ class TestPingPlugin(unittest.TestCase):
             # Should log processing
             self.plugin.logger.info.assert_called_once()
 
-        import asyncio
-
         asyncio.run(run_test())
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
@@ -217,8 +215,6 @@ class TestPingPlugin(unittest.TestCase):
                 text="pong", destinationId="!12345678"
             )
 
-        import asyncio
-
         asyncio.run(run_test())
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
@@ -258,8 +254,6 @@ class TestPingPlugin(unittest.TestCase):
 
             # Should preserve punctuation in response
             mock_client.sendText.assert_called_once_with(text="!pong!", channelIndex=0)
-
-        import asyncio
 
         asyncio.run(run_test())
 
@@ -301,8 +295,6 @@ class TestPingPlugin(unittest.TestCase):
             # Should use "Pong..." for excessive punctuation (>5 chars)
             mock_client.sendText.assert_called_once_with(text="Pong...", channelIndex=0)
 
-        import asyncio
-
         asyncio.run(run_test())
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
@@ -341,8 +333,6 @@ class TestPingPlugin(unittest.TestCase):
             # Should match case of original ping
             mock_client.sendText.assert_called_once_with(text="PONG", channelIndex=0)
 
-        import asyncio
-
         asyncio.run(run_test())
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
@@ -379,8 +369,6 @@ class TestPingPlugin(unittest.TestCase):
 
             # Should not send any message
             mock_client.sendText.assert_not_called()
-
-        import asyncio
 
         asyncio.run(run_test())
 
@@ -422,8 +410,6 @@ class TestPingPlugin(unittest.TestCase):
             # Should not send any message
             mock_client.sendText.assert_not_called()
 
-        import asyncio
-
         asyncio.run(run_test())
 
     def test_handle_room_message_no_match(self):
@@ -446,8 +432,6 @@ class TestPingPlugin(unittest.TestCase):
             self.assertFalse(result)
             self.plugin.matches.assert_called_once_with(event)
             self.plugin.send_matrix_message.assert_not_called()
-
-        import asyncio
 
         asyncio.run(run_test())
 
@@ -475,8 +459,6 @@ class TestPingPlugin(unittest.TestCase):
                 "!test:matrix.org", "pong!"
             )
 
-        import asyncio
-
         asyncio.run(run_test())
 
     def test_handle_meshtastic_message_no_decoded(self):
@@ -499,8 +481,6 @@ class TestPingPlugin(unittest.TestCase):
             )
 
             self.assertFalse(result)
-
-        import asyncio
 
         asyncio.run(run_test())
 
@@ -530,13 +510,12 @@ class TestPingPlugin(unittest.TestCase):
 
             self.assertFalse(result)
 
-        import asyncio
-
         asyncio.run(run_test())
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
-    def test_handle_meshtastic_message_broadcast_num(self, mock_connect):
-        """Test handle_meshtastic_message with BROADCAST_NUM (line 57)."""
+    @patch("asyncio.sleep")
+    def test_handle_meshtastic_message_broadcast_num(self, mock_sleep, mock_connect):
+        """Test handle_meshtastic_message with BROADCAST_NUM."""
 
         mock_client = MagicMock()
         mock_client.myInfo.my_node_num = 123456789
@@ -558,6 +537,7 @@ class TestPingPlugin(unittest.TestCase):
             mock_client.sendText.assert_called_once_with(text="pong", channelIndex=0)
 
         asyncio.run(run_test())
+        mock_sleep.assert_called()  # ensure delay path exercised if applicable
 
 
 if __name__ == "__main__":

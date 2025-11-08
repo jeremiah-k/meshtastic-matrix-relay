@@ -387,6 +387,7 @@ def _filter_risky_requirement_lines(
 
             # Handle short-form flags with attached values (-iflagvalue, -ivalue)
             if token.startswith("-") and not token.startswith("--"):
+                is_short_form_with_value = False
                 # Check if this matches any short-form source flag
                 for flag in PIP_SOURCE_FLAGS:
                     if flag.startswith("-") and not flag.startswith("--"):
@@ -398,6 +399,7 @@ def _filter_risky_requirement_lines(
                             and len(token) > 2
                         ):
                             # This is a short flag with attached value
+                            is_short_form_with_value = True
                             flag_value = token[
                                 2:
                             ]  # Extract everything after the flag character
@@ -407,7 +409,8 @@ def _filter_risky_requirement_lines(
                             ):
                                 line_is_risky = True
                             break
-                continue
+                if is_short_form_with_value:
+                    continue
 
             # Handle flags that take values
             if token.lower() in PIP_SOURCE_FLAGS:

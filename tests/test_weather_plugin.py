@@ -1110,7 +1110,7 @@ class TestWeatherPlugin(unittest.TestCase):
 
     @patch("mmrelay.plugins.weather_plugin.requests.get")
     def test_generate_forecast_requests_exception(self, mock_get):
-        """Test generate_forecast handles requests.RequestException (lines 197-201, 206-207)."""
+        """Test generate_forecast handles requests.RequestException."""
         import requests
 
         # Mock requests to raise RequestException
@@ -1130,7 +1130,7 @@ class TestWeatherPlugin(unittest.TestCase):
 
     @patch("mmrelay.plugins.weather_plugin.requests.get")
     def test_generate_forecast_attribute_error_fallback(self, mock_get):
-        """Test generate_forecast handles AttributeError with fallback detection (lines 206-207)."""
+        """Test generate_forecast handles AttributeError with fallback detection."""
         # Mock requests to raise AttributeError
         mock_response = MagicMock()
         mock_response.raise_for_status.side_effect = AttributeError("Some error")

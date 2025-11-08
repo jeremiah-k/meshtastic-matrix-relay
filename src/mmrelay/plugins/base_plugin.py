@@ -103,7 +103,6 @@ class BasePlugin(ABC):
         super().__init__()
 
         self._stop_event = threading.Event()
-        self._schedule_thread = None
 
         # If plugin_name is provided as a parameter, use it
         if plugin_name is not None:
