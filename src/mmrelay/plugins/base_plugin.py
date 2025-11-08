@@ -231,24 +231,34 @@ class BasePlugin(ABC):
 
         job = None
         # Schedule the background job based on the configuration
-        if "at" in schedule_config and "hours" in schedule_config:
-            job = (
-                schedule.every(schedule_config["hours"])
-                .hours.at(schedule_config["at"])
-                .do(self.background_job)
+        try:
+            if "at" in schedule_config and "hours" in schedule_config:
+                job = (
+                    schedule.every(schedule_config["hours"])
+                    .hours.at(schedule_config["at"])
+                    .do(self.background_job)
+                )
+            elif "at" in schedule_config and "minutes" in schedule_config:
+                job = (
+                    schedule.every(schedule_config["minutes"])
+                    .minutes.at(schedule_config["at"])
+                    .do(self.background_job)
+                )
+            elif "hours" in schedule_config:
+                job = schedule.every(schedule_config["hours"]).hours.do(
+                    self.background_job
+                )
+            elif "minutes" in schedule_config:
+                job = schedule.every(schedule_config["minutes"]).minutes.do(
+                    self.background_job
+                )
+        except (ValueError, TypeError) as e:
+            self.logger.warning(
+                "Invalid schedule configuration for plugin '%s': %s. Starting without background job.",
+                self.plugin_name,
+                e,
             )
-        elif "at" in schedule_config and "minutes" in schedule_config:
-            job = (
-                schedule.every(schedule_config["minutes"])
-                .minutes.at(schedule_config["at"])
-                .do(self.background_job)
-            )
-        elif "hours" in schedule_config:
-            job = schedule.every(schedule_config["hours"]).hours.do(self.background_job)
-        elif "minutes" in schedule_config:
-            job = schedule.every(schedule_config["minutes"]).minutes.do(
-                self.background_job
-            )
+            job = None
 
         if job is None:
             self.logger.warning(
