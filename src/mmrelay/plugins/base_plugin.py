@@ -528,11 +528,11 @@ class BasePlugin(ABC):
         and stores back to database. Use for accumulating time-series data.
         """
         data = self.get_node_data(meshtastic_id=meshtastic_id)
-        data = data[-self.max_data_rows_per_node :]
         if isinstance(node_data, list):
             data.extend(node_data)
         else:
             data.append(node_data)
+        data = data[-self.max_data_rows_per_node :]
         store_plugin_data(self.plugin_name, meshtastic_id, data)
 
     def set_node_data(self, meshtastic_id, node_data):

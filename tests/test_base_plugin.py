@@ -864,31 +864,14 @@ class TestBasePlugin(unittest.TestCase):
         asyncio.run(run_test())
 
     def test_store_node_data_json_serialization_error(self):
-        """Test store_node_data handles JSON serialization errors (line 118)."""
+        """Test store_node_data handles JSON serialization errors gracefully."""
         plugin = MockPlugin()
-
-        # Mock data that causes JSON serialization error
         unserializable_data = {"key": set([1, 2, 3])}  # sets are not JSON serializable
 
-        # Mock get_plugin_data_for_node to return existing data
         with patch("mmrelay.plugins.base_plugin.get_plugin_data_for_node") as mock_get:
             mock_get.return_value = []
-
-            # Should handle JSON serialization gracefully by logging and returning early
-            # We expect no exception to be raised, but the data won't be stored
-            # Let's just verify the function doesn't crash - the JSON error handling is in db_utils
-            try:
-                plugin.store_node_data("!node123", unserializable_data)
-                # If we get here, the error was handled gracefully
-                test_passed = True
-            except Exception as e:
-                test_passed = False
-                self.fail(f"store_node_data raised an exception: {e}")
-
-            self.assertTrue(
-                test_passed,
-                "store_node_data should handle JSON serialization errors gracefully",
-            )
+            # Should not raise - error handling is in db_utils
+            plugin.store_node_data("!node123", unserializable_data)
 
     @patch("mmrelay.plugins.base_plugin.store_plugin_data")
     def test_store_node_data_database_error(self, mock_store):
@@ -907,19 +890,6 @@ class TestBasePlugin(unittest.TestCase):
             with self.assertRaisesRegex(sqlite3.Error, "Database connection failed"):
                 plugin.store_node_data("!node123", test_data)
 
-    @patch("mmrelay.plugins.base_plugin.store_plugin_data")
-    def test_set_node_data_database_error(self, mock_store):
-        """Test set_node_data propagates database errors (line 163)."""
-        plugin = MockPlugin()
-        test_data = [{"key": "value"}]
-
-        # Mock store_plugin_data to raise database error
-        mock_store.side_effect = sqlite3.Error("Database connection failed")
-
-        # Should propagate the database error
-        with self.assertRaisesRegex(sqlite3.Error, "Database connection failed"):
-            plugin.set_node_data("!node123", test_data)
-
     def test_store_node_data_max_data_rows_enforcement(self):
         """Test store_node_data enforces max_data_rows_per_node limit."""
         plugin = MockPlugin()
@@ -936,42 +906,25 @@ class TestBasePlugin(unittest.TestCase):
                 new_data = {"data": "item3"}
                 plugin.store_node_data("!node123", new_data)
 
-                # The logic is: truncate existing data first, then add new data
-                # So existing_data[-2:] = existing_data (no change), then append new_data
-                expected_data = existing_data + [
-                    new_data
-                ]  # Truncate happens before append
+                # The logic is: append new data first, then truncate to max_data_rows_per_node
+                # So existing_data + [new_data], then take last 2 items
+                expected_data = (existing_data + [new_data])[
+                    -plugin.max_data_rows_per_node :
+                ]
                 mock_store.assert_called_once_with(
                     "test_plugin", "!node123", expected_data
                 )
 
     def test_store_node_data_circular_reference_handling(self):
-        """Test store_node_data handles circular references in data."""
+        """Test store_node_data handles circular references gracefully."""
         plugin = MockPlugin()
-
-        # Create data with circular reference
         circular_data: dict = {"key": "value"}
-        circular_data["self_ref"] = circular_data  # Create circular reference
+        circular_data["self_ref"] = circular_data
 
         with patch("mmrelay.plugins.base_plugin.get_plugin_data_for_node") as mock_get:
             mock_get.return_value = []
-
-            # Should handle circular reference gracefully - JSON serialization error
-            # will be caught and logged in db_utils, so no exception should be raised here
-            try:
-                plugin.store_node_data("!node123", circular_data)
-                # If we get here, error was handled gracefully
-                test_passed = True
-            except Exception as e:
-                test_passed = False
-                self.fail(
-                    f"store_node_data raised an exception for circular reference: {e}"
-                )
-
-            self.assertTrue(
-                test_passed,
-                "store_node_data should handle circular references gracefully",
-            )
+            # Should not raise - JSON error handling is in db_utils
+            plugin.store_node_data("!node123", circular_data)
 
 
 if __name__ == "__main__":

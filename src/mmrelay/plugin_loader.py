@@ -638,15 +638,12 @@ def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
                         temp_file.write(entry + "\n")
 
                 try:
-                    # Use pipx inject with --pip-args to pass -r flag to underlying pip
-                    # Properly quote the temp path to handle spaces
-                    pip_args = shlex.join(["-r", temp_path])
                     cmd = [
                         pipx_path,
                         "inject",
                         "mmrelay",
-                        "--pip-args",
-                        pip_args,
+                        "--requirement",
+                        temp_path,
                     ]
                     _run(cmd, timeout=600)
                     installed_packages = True
