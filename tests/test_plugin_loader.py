@@ -217,7 +217,7 @@ def some_function():
     def test_load_plugins_dependency_install_refreshes_path(self):
         """
         Verify that when a plugin requires a package, a dependency installation into the user's site-packages is made importable during plugin loading.
-        
+
         This test creates a plugin that imports a fake dependency, simulates installing that dependency into a test user site directory (via a patched subprocess call), and patches site package discovery and addsitedir behavior. It then calls the plugin loader and asserts:
         - the plugin is discovered and loaded,
         - the test user site directory was added to the interpreter import path,
@@ -266,9 +266,9 @@ class Plugin:
         def fake_addsitedir(path):
             """
             Register a directory for testing and ensure it is available to the Python import system.
-            
+
             Adds the given path to the external `added_dirs` list and places it at the front of `sys.path` if it is not already present so imports prefer that directory.
-            
+
             Parameters:
                 path (str): Filesystem path to register on the import search path.
             """
@@ -854,7 +854,7 @@ class TestCleanPythonCache(unittest.TestCase):
     def test_clean_python_cache_logs_debug_messages(self, mock_logger):
         """
         Verify that cleaning Python cache logs debug messages and includes a removal message for __pycache__ directories.
-        
+
         The test creates a __pycache__ directory, invokes _clean_python_cache on the containing directory, and asserts that logger.debug was called and one of the debug messages contains "Removed Python cache directory".
         """
         # Create a __pycache__ directory
@@ -927,7 +927,7 @@ class TestCacheCleaningIntegration(unittest.TestCase):
     def setUp(self):
         """
         Prepare an isolated temporary directory for the test and reset plugin loader state.
-        
+
         Creates and assigns a temporary directory to `self.temp_dir` and registers a cleanup
         to remove it after the test. Resets `mmrelay.plugin_loader.sorted_active_plugins`
         to an empty list and `mmrelay.plugin_loader.plugins_loaded` to False.
@@ -1033,11 +1033,8 @@ class TestCacheCleaningIntegration(unittest.TestCase):
         # Verify success (cache cleaning now happens in load_plugins_from_directory)
         self.assertTrue(result)
 
-    @patch("mmrelay.plugin_loader._clean_python_cache")
     @patch("mmrelay.plugin_loader._run")
-    def test_clone_or_update_repo_returns_false_on_failure(
-        self, mock_run, mock_clean_cache
-    ):
+    def test_clone_or_update_repo_returns_false_on_failure(self, mock_run):
         """Test that clone_or_update_repo returns False when git operations fail."""
         # Set up mock for failed git operation
         mock_run.side_effect = subprocess.CalledProcessError(1, "git")
@@ -1053,8 +1050,6 @@ class TestCacheCleaningIntegration(unittest.TestCase):
 
         result = clone_or_update_repo(repo_url, ref, plugins_dir)
 
-        # Verify cache cleaning was not called
-        mock_clean_cache.assert_not_called()
         self.assertFalse(result)
 
 
