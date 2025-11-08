@@ -815,11 +815,13 @@ class TestCollectRequirements(unittest.TestCase):
             f.write("pytest<=7.0.0\n")
 
         result = _collect_requirements(req_file)
-        # The function appears to include both requirements and constraints
+        # With shlex.split, complex requirement lines are properly tokenized
         expected = [
             "pytest>=6.0.0",
             "pytest<=7.0.0",
-            "package>=1.0.0 --extra-index-url https://pypi.org/simple",
+            "package>=1.0.0",
+            "--extra-index-url",
+            "https://pypi.org/simple",
         ]
         self.assertEqual(result, expected)
 

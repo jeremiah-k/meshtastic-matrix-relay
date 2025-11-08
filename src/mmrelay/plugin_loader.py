@@ -141,10 +141,7 @@ def _collect_requirements(
                         )
                     continue
 
-                if line.startswith("-"):
-                    requirements.extend(shlex.split(line, posix=True))
-                else:
-                    requirements.append(line)
+                requirements.extend(shlex.split(line, posix=True))
     except FileNotFoundError:
         logger.warning("Requirements file not found: %s", normalized_path)
         return []
@@ -321,11 +318,10 @@ def _filter_risky_requirements(
             continue
 
         normalized = token.strip()
-        lowered = normalized.lower()
 
         # Handle editable flags with values (--editable=url)
         if token.startswith("-") and "=" in token:
-            flag_name, _, flag_value = token.partition("=")
+            _, _, flag_value = token.partition("=")
 
             if _is_requirement_risky(flag_value) and not allow_untrusted:
                 flagged.append(token)
