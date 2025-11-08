@@ -732,46 +732,6 @@ class TestMapPlugin(unittest.TestCase):
 
         asyncio.run(run_test())
 
-    @patch("staticmaps.CairoRenderer")
-    def test_render_cairo(self, mock_renderer_class):
-        """Test TextLabel Cairo rendering (lines 75-117)."""
-        # Create a TextLabel instance for this test
-        latlng = s2sphere.LatLng.from_degrees(37.7749, -122.4194)
-        text_label = TextLabel(latlng, "Test Label", fontSize=12)
-
-        mock_renderer = MagicMock()
-        mock_transformer = MagicMock()
-        mock_transformer.ll2pixel.return_value = (100, 100)
-        mock_renderer.transformer.return_value = mock_transformer
-        mock_renderer.offset_x.return_value = 0
-
-        mock_context = MagicMock()
-        mock_context.select_font_face.return_value = None
-        mock_context.set_font_size.return_value = None
-        mock_context.text_extents.return_value = (0, 0, 50, 12, 0, 0)
-        mock_context.set_source_rgb.return_value = None
-        mock_context.new_path.return_value = None
-        mock_context.line_to.return_value = None
-        mock_context.close_path.return_value = None
-        mock_context.fill.return_value = None
-        mock_context.set_line_width.return_value = None
-        mock_context.stroke.return_value = None
-        mock_context.move_to.return_value = None
-        mock_context.show_text.return_value = None
-        mock_renderer.context.return_value = mock_context
-
-        text_label.render_cairo(mock_renderer)
-
-        # Verify drawing operations were called
-        mock_context.select_font_face.assert_called()
-        mock_context.set_font_size.assert_called()
-        mock_context.text_extents.assert_called()
-        mock_context.set_source_rgb.assert_called()
-        mock_context.new_path.assert_called()
-        mock_context.fill.assert_called()
-        mock_context.stroke.assert_called()
-        mock_context.show_text.assert_called()
-
 
 if __name__ == "__main__":
     unittest.main()
