@@ -9,6 +9,7 @@ import shutil
 import site
 import subprocess
 import sys
+import tempfile
 import time
 from contextlib import contextmanager
 from typing import List, Set
@@ -653,15 +654,28 @@ def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
                 ]
                 if not in_venv:
                     cmd.append("--user")
-                pip_args: list[str] = []
-                for entry in safe_requirements:
-                    if entry.startswith("-"):
-                        pip_args.extend(shlex.split(entry, posix=True))
-                    else:
-                        pip_args.append(entry)
-                cmd.extend(pip_args)
-                _run(cmd, timeout=600)
-                installed_packages = True
+
+                # Write safe requirements to a temporary file to handle hashed requirements properly
+                with tempfile.NamedTemporaryFile(
+                    mode="w", suffix=".txt", delete=False
+                ) as temp_file:
+                    temp_path = temp_file.name
+                    for entry in safe_requirements:
+                        temp_file.write(entry + "\n")
+
+                try:
+                    cmd.extend(["-r", temp_path])
+                    _run(cmd, timeout=600)
+                    installed_packages = True
+                finally:
+                    # Clean up the temporary file
+                    try:
+                        os.unlink(temp_path)
+                    except OSError:
+                        logger.debug(
+                            "Failed to clean up temporary requirements file: %s",
+                            temp_path,
+                        )
 
         if installed_packages:
             logger.info("Successfully installed requirements for plugin %s", repo_name)

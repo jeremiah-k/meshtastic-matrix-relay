@@ -1820,8 +1820,12 @@ class TestDependencyInstallation(unittest.TestCase):
     @patch("mmrelay.plugin_loader._filter_risky_requirements")
     @patch("mmrelay.plugin_loader._collect_requirements")
     @patch("shutil.which", return_value=None)
+    @patch("mmrelay.plugin_loader.tempfile.NamedTemporaryFile")
+    @patch("mmrelay.plugin_loader.os.unlink")
     def test_install_plugin_requirements_pip_in_venv(
         self,
+        mock_unlink,
+        mock_temp_file,
         mock_which,
         mock_collect,
         mock_filter,
@@ -1833,19 +1837,28 @@ class TestDependencyInstallation(unittest.TestCase):
         mock_check_enabled.return_value = True
         mock_collect.return_value = ["requests==2.28.0"]
         mock_filter.return_value = (["requests==2.28.0"], [], False)
+
+        # Mock the temporary file
+        mock_file = mock_temp_file.return_value.__enter__.return_value
+        mock_file.name = "/tmp/test_requirements.txt"
+
         with patch.dict(os.environ, {"VIRTUAL_ENV": "/venv"}, clear=True):
             _install_requirements_for_repo(self.repo_path, "test-plugin")
 
-        expected_cmd = [
+        # Check that the command uses -r with the temporary file
+        called_cmd = mock_run.call_args[0][0]
+        expected_base = [
             sys.executable,
             "-m",
             "pip",
             "install",
             "--disable-pip-version-check",
             "--no-input",
-            "requests==2.28.0",  # No --user flag in venv
         ]
-        mock_run.assert_called_once_with(expected_cmd, timeout=600)
+        assert called_cmd[:6] == expected_base
+        assert "-r" in called_cmd
+        assert called_cmd[called_cmd.index("-r") + 1] == "/tmp/test_requirements.txt"
+        mock_run.assert_called_once_with(called_cmd, timeout=600)
 
     @patch("mmrelay.plugin_loader.logger")
     @patch("mmrelay.plugin_loader._run")
@@ -1890,28 +1903,36 @@ class TestDependencyInstallation(unittest.TestCase):
 
     def test_install_plugin_requirements_pip_install(self):
         """Test dependency installation with pip."""
-        with patch("mmrelay.plugin_loader.logger"), patch(
-            "mmrelay.plugin_loader._run"
-        ) as mock_run, patch(
-            "mmrelay.plugin_loader._check_auto_install_enabled"
-        ) as mock_check_enabled, patch(
-            "mmrelay.plugin_loader._filter_risky_requirements"
-        ) as mock_filter, patch(
-            "mmrelay.plugin_loader._collect_requirements"
-        ) as mock_collect, patch(
-            "sys.prefix", "/fake/prefix"
-        ), patch(
-            "sys.base_prefix", "/fake/prefix"
-        ), patch(
-            "shutil.which", return_value=None
+        with (
+            patch("mmrelay.plugin_loader.logger"),
+            patch("mmrelay.plugin_loader._run") as mock_run,
+            patch(
+                "mmrelay.plugin_loader._check_auto_install_enabled"
+            ) as mock_check_enabled,
+            patch("mmrelay.plugin_loader._filter_risky_requirements") as mock_filter,
+            patch("mmrelay.plugin_loader._collect_requirements") as mock_collect,
+            patch("sys.prefix", "/fake/prefix"),
+            patch("sys.base_prefix", "/fake/prefix"),
+            patch("shutil.which", return_value=None),
+            patch(
+                "mmrelay.plugin_loader.tempfile.NamedTemporaryFile"
+            ) as mock_temp_file,
+            patch("mmrelay.plugin_loader.os.unlink") as mock_unlink,
         ):
             mock_check_enabled.return_value = True
             mock_collect.return_value = ["requests==2.28.0"]
             mock_filter.return_value = (["requests==2.28.0"], [], False)
+
+            # Mock temporary file
+            mock_file = mock_temp_file.return_value.__enter__.return_value
+            mock_file.name = "/tmp/test_requirements.txt"
+
             with patch.dict(os.environ, {}, clear=True):
                 _install_requirements_for_repo(self.repo_path, "test-plugin")
 
-            expected_cmd = [
+            # Check that command uses -r with temporary file and --user flag
+            called_cmd = mock_run.call_args[0][0]
+            expected_base = [
                 sys.executable,
                 "-m",
                 "pip",
@@ -1919,9 +1940,13 @@ class TestDependencyInstallation(unittest.TestCase):
                 "--disable-pip-version-check",
                 "--no-input",
                 "--user",
-                "requests==2.28.0",
             ]
-            mock_run.assert_called_once_with(expected_cmd, timeout=600)
+            assert called_cmd[:7] == expected_base
+            assert "-r" in called_cmd
+            assert (
+                called_cmd[called_cmd.index("-r") + 1] == "/tmp/test_requirements.txt"
+            )
+            mock_run.assert_called_once_with(called_cmd, timeout=600)
 
     @patch("mmrelay.plugin_loader.logger")
     @patch("mmrelay.plugin_loader._run")
@@ -1977,29 +2002,36 @@ class TestDependencyInstallation(unittest.TestCase):
 
     def test_install_plugin_requirements_pipx_not_found(self):
         """Test fallback to pip when pipx is not found."""
-        with patch("mmrelay.plugin_loader.logger"), patch(
-            "mmrelay.plugin_loader._run"
-        ) as mock_run, patch(
-            "mmrelay.plugin_loader._check_auto_install_enabled"
-        ) as mock_check_enabled, patch(
-            "mmrelay.plugin_loader._filter_risky_requirements"
-        ) as mock_filter, patch(
-            "mmrelay.plugin_loader._collect_requirements"
-        ) as mock_collect, patch(
-            "sys.prefix", "/fake/prefix"
-        ), patch(
-            "sys.base_prefix", "/fake/prefix"
-        ), patch(
-            "shutil.which", return_value=None
+        with (
+            patch("mmrelay.plugin_loader.logger"),
+            patch("mmrelay.plugin_loader._run") as mock_run,
+            patch(
+                "mmrelay.plugin_loader._check_auto_install_enabled"
+            ) as mock_check_enabled,
+            patch("mmrelay.plugin_loader._filter_risky_requirements") as mock_filter,
+            patch("mmrelay.plugin_loader._collect_requirements") as mock_collect,
+            patch("sys.prefix", "/fake/prefix"),
+            patch("sys.base_prefix", "/fake/prefix"),
+            patch("shutil.which", return_value=None),
+            patch(
+                "mmrelay.plugin_loader.tempfile.NamedTemporaryFile"
+            ) as mock_temp_file,
+            patch("mmrelay.plugin_loader.os.unlink") as mock_unlink,
         ):
             mock_check_enabled.return_value = True
             mock_collect.return_value = ["requests==2.28.0"]
             mock_filter.return_value = (["requests==2.28.0"], [], False)
+
+            # Mock temporary file
+            mock_file = mock_temp_file.return_value.__enter__.return_value
+            mock_file.name = "/tmp/test_requirements.txt"
+
             with patch.dict(os.environ, {}, clear=True):
                 _install_requirements_for_repo(self.repo_path, "test-plugin")
 
-            # Should fall back to pip
-            expected_cmd = [
+            # Should fall back to pip with -r and temporary file
+            called_cmd = mock_run.call_args[0][0]
+            expected_base = [
                 sys.executable,
                 "-m",
                 "pip",
@@ -2007,9 +2039,13 @@ class TestDependencyInstallation(unittest.TestCase):
                 "--disable-pip-version-check",
                 "--no-input",
                 "--user",
-                "requests==2.28.0",
             ]
-            mock_run.assert_called_once_with(expected_cmd, timeout=600)
+            assert called_cmd[:7] == expected_base
+            assert "-r" in called_cmd
+            assert (
+                called_cmd[called_cmd.index("-r") + 1] == "/tmp/test_requirements.txt"
+            )
+            mock_run.assert_called_once_with(called_cmd, timeout=600)
 
     @patch("mmrelay.plugin_loader.logger")
     @patch("mmrelay.plugin_loader._run")
