@@ -683,6 +683,8 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                         logger.info(
                             f"Repository {repo_name} is already at tag {ref_value}"
                         )
+                        # Clean Python cache to ensure fresh code loading
+                        _clean_python_cache(repo_path)
                         return True
 
                     # Otherwise, try to checkout the tag or branch
@@ -770,6 +772,8 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                             logger.info(
                                 f"Updated repository {repo_name} to branch {ref_value}"
                             )
+                            # Clean Python cache to ensure fresh code loading
+                            _clean_python_cache(repo_path)
                             return True
                         except subprocess.CalledProcessError:
                             # If all else fails, just use a default branch
