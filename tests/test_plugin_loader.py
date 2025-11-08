@@ -1811,8 +1811,9 @@ class TestDependencyInstallation(unittest.TestCase):
             "requests==2.28.0",
             "--extra-index-url https://pypi.org/simple",
         ]
+        # The function tokenizes the lines, so filter receives: ["requests==2.28.0", "--extra-index-url", "https://pypi.org/simple"]
         mock_filter.return_value = (
-            ["requests==2.28.0", "--extra-index-url https://pypi.org/simple"],
+            ["requests==2.28.0", "--extra-index-url", "https://pypi.org/simple"],
             [],
             False,
         )
@@ -1833,7 +1834,7 @@ class TestDependencyInstallation(unittest.TestCase):
                 "mmrelay",
                 "requests==2.28.0",
                 "--pip-args",
-                "'--extra-index-url https://pypi.org/simple'",
+                "--extra-index-url https://pypi.org/simple",
             ],
             timeout=600,
         )

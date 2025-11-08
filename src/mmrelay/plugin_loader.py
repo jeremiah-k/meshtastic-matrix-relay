@@ -327,26 +327,56 @@ def _filter_risky_requirements(
     safe: List[str] = []
     flagged: List[str] = []
 
-    for token in requirements:
+    i = 0
+    while i < len(requirements):
+        token = requirements[i]
         if not token or token.startswith("#"):
+            i += 1
             continue
 
         normalized = token.strip()
 
         # Handle editable flags with values (--editable=url)
         if token.startswith("-") and "=" in token:
-            _, _, flag_value = token.partition("=")
-
-            if _is_requirement_risky(flag_value) and not allow_untrusted:
+            flag_name, _, flag_value = token.partition("=")
+            if (
+                flag_name.lower() in PIP_SOURCE_FLAGS
+                and _is_requirement_risky(flag_value)
+                and not allow_untrusted
+            ):
                 flagged.append(token)
+                i += 1
                 continue
 
             safe.append(token)
+            i += 1
             continue
 
-        # Handle standalone editable flags (-e, --editable)
+        # Handle flags that take values
+        if token.lower() in PIP_SOURCE_FLAGS:
+            # Check if next token is a value for this flag
+            if i + 1 < len(requirements) and not requirements[i + 1].startswith("-"):
+                next_token = requirements[i + 1]
+                # Check if the value is risky
+                if _is_requirement_risky(next_token) and not allow_untrusted:
+                    flagged.append(token)
+                    flagged.append(next_token)
+                    i += 2
+                    continue
+                else:
+                    safe.append(token)
+                    safe.append(next_token)
+                    i += 2
+                    continue
+            else:
+                safe.append(token)
+                i += 1
+                continue
+
+        # Handle other flags
         if token.startswith("-"):
             safe.append(token)
+            i += 1
             continue
 
         is_risky = _is_requirement_risky(normalized)
@@ -356,9 +386,11 @@ def _filter_risky_requirements(
             if safe and safe[-1].lower() in PIP_SOURCE_FLAGS:
                 flagged.append(safe.pop())
             flagged.append(token)
+            i += 1
             continue
 
         safe.append(token)
+        i += 1
 
     return safe, flagged, allow_untrusted
 
@@ -556,8 +588,25 @@ def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
             if not pipx_path:
                 raise FileNotFoundError("pipx executable not found on PATH")
             if safe_requirements:
-                packages = [r for r in safe_requirements if not r.startswith("-")]
-                pip_args = [r for r in safe_requirements if r.startswith("-")]
+                # Separate packages from pip arguments, accounting for flags with values
+                packages = []
+                pip_args = []
+                i = 0
+                while i < len(safe_requirements):
+                    token = safe_requirements[i]
+                    if token.startswith("-"):
+                        pip_args.append(token)
+                        # Check if this flag takes a value
+                        if (
+                            token.lower() in PIP_SOURCE_FLAGS
+                            and i + 1 < len(safe_requirements)
+                            and not safe_requirements[i + 1].startswith("-")
+                        ):
+                            pip_args.append(safe_requirements[i + 1])
+                            i += 1
+                    else:
+                        packages.append(token)
+                    i += 1
                 if not packages:
                     logger.info(
                         "Requirements in %s only contained pip flags; skipping pipx injection.",
