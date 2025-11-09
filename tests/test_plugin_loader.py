@@ -1371,14 +1371,21 @@ class TestGitOperations(unittest.TestCase):
         """Test that clone_or_update_repo handles checkout and pull for tag (lines 991-1003)."""
         from mmrelay.plugin_loader import clone_or_update_repo
 
-        # Mock successful fetch, different current branch, successful checkout and pull for tag
-        mock_run_git.side_effect = [
-            None,  # fetch succeeds
-            MagicMock(stdout="main\n"),  # current branch is main
-            MagicMock(stdout="abc123\n"),  # tag commit hash
-            None,  # checkout succeeds
-            None,  # pull succeeds
-        ]
+        def mock_run_git_side_effect(*args, **kwargs):
+            cmd = args[0]
+            if "fetch" in cmd:
+                return None  # fetch succeeds
+            elif "rev-parse" in cmd and "HEAD" in cmd:
+                return MagicMock(stdout=b"abc123commit\n")  # current commit
+            elif "rev-parse" in cmd:
+                return MagicMock(stdout=b"def456commit\n")  # tag commit (different)
+            elif "checkout" in cmd:
+                return None  # checkout succeeds
+            elif "pull" in cmd:
+                return None  # pull succeeds
+            return None
+
+        mock_run_git.side_effect = mock_run_git_side_effect
 
         repo_url = "https://github.com/test/plugin.git"
         ref = {"type": "tag", "value": "v1.0.0"}
@@ -2608,8 +2615,10 @@ class TestCacheCleaningIntegration(unittest.TestCase):
             cmd = args[0]
             if "fetch" in cmd:
                 return None  # fetch succeeds
+            elif "rev-parse" in cmd and "HEAD" in cmd:
+                return MagicMock(stdout=b"abc123commit\n")  # current commit
             elif "rev-parse" in cmd:
-                return MagicMock(stdout=b"main\n")  # current branch is main
+                return MagicMock(stdout=b"def456commit\n")  # tag commit (different)
             elif "checkout" in cmd:
                 return None  # checkout succeeds
             elif "pull" in cmd:
