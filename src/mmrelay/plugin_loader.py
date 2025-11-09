@@ -608,7 +608,7 @@ def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
                     repo_name,
                 )
                 # Include flagged requirements when allowed
-                safe_requirements + flagged_requirements
+                safe_requirements.extend(flagged_requirements)
             else:
                 logger.warning(
                     "Skipping %d flagged dependency entries for %s. Set security.allow_untrusted_dependencies=True to override.",
