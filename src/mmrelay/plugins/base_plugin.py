@@ -229,6 +229,14 @@ class BasePlugin(ABC):
         if not isinstance(schedule_config, dict):
             schedule_config = {}
 
+        # Always reset stop state on startup to ensure clean restart
+        if hasattr(self, "_stop_event") and self._stop_event is not None:
+            self._stop_event.clear()
+
+        # Clear any existing jobs for this plugin if we have a name
+        if self.plugin_name:
+            clear_plugin_jobs(self.plugin_name)
+
         # Check if scheduling is configured
         has_schedule = any(
             key in schedule_config for key in ("at", "hours", "minutes", "seconds")
@@ -238,17 +246,10 @@ class BasePlugin(ABC):
             self.logger.debug(f"Started with priority={self.priority}")
             return
 
-        # Ensure plugin_name is set
+        # Ensure plugin_name is set for scheduling operations
         if not self.plugin_name:
             self.logger.error("Plugin name not set, cannot schedule background jobs")
             return
-
-        # Clear stop event to ensure clean start
-        if hasattr(self, "_stop_event") and self._stop_event is not None:
-            self._stop_event.clear()
-
-        # Clear any existing jobs for this plugin
-        clear_plugin_jobs(self.plugin_name)
 
         # Schedule background job based on configuration
         job = None

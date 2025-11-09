@@ -1001,8 +1001,8 @@ class TestBasePlugin(unittest.TestCase):
         plugin.config = {"schedule": "invalid"}  # String instead of dict
 
         plugin.start()
-        # clear_plugin_jobs should NOT be called when schedule is not a dict
-        mock_clear.assert_not_called()
+        # clear_plugin_jobs SHOULD be called to ensure clean restart
+        mock_clear.assert_called_once_with("test_plugin")
 
     @patch("mmrelay.plugins.base_plugin.schedule_job")
     @patch("mmrelay.plugins.base_plugin.clear_plugin_jobs")
@@ -1012,8 +1012,8 @@ class TestBasePlugin(unittest.TestCase):
         plugin.config = {"schedule": {}}  # Empty dict
 
         plugin.start()
-        # clear_plugin_jobs should NOT be called when no schedule is configured
-        mock_clear.assert_not_called()
+        # clear_plugin_jobs SHOULD be called to ensure clean restart even with no schedule
+        mock_clear.assert_called_once_with("test_plugin")
 
     @patch("mmrelay.plugins.base_plugin.schedule_job")
     @patch("mmrelay.plugins.base_plugin.clear_plugin_jobs")
