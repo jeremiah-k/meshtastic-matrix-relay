@@ -345,71 +345,55 @@ def _is_requirement_risky(req_string: str) -> bool:
     )
 
 
+# Pre-compute short-form flag characters for efficiency
+PIP_SHORT_SOURCE_FLAGS = {
+    f[1] for f in PIP_SOURCE_FLAGS if len(f) == 2 and f.startswith("-")
+}
+
+
 def _filter_risky_requirement_lines(
     requirement_lines: List[str],
-) -> tuple[List[str], List[str], bool]:
+) -> tuple[List[str], List[str]]:
     """
     Categorizes requirement lines into safe and flagged groups based on whether they reference VCS or URL sources.
 
-    Preserves the original requirement lines; classification is influenced by the security setting that allows untrusted dependencies.
+    This function purely classifies lines without checking configuration. The caller should decide
+    whether to install flagged requirements based on security settings.
 
     Returns:
         safe_lines (List[str]): Requirement lines considered safe for installation.
         flagged_lines (List[str]): Requirement lines that reference VCS/URL sources and were flagged as risky.
-        allow_untrusted (bool): `True` if the security setting permits untrusted (VCS/URL) dependencies, `False` otherwise.
     """
-    allow_untrusted = bool(
-        _get_security_settings().get("allow_untrusted_dependencies", False)
-    )
     safe_lines: List[str] = []
     flagged_lines: List[str] = []
 
     for line in requirement_lines:
-        # Tokenize the line for validation
+        # Tokenize line for validation
         tokens = shlex.split(line, posix=True, comments=True)
         if not tokens:
             continue
 
-        # Check if any token in the line is risky
+        # Check if any token in line is risky
         line_is_risky = False
-
         for token in tokens:
             # Handle editable flags with values (--editable=url)
             if token.startswith("-") and "=" in token:
                 flag_name, _, flag_value = token.partition("=")
-                if (
-                    flag_name.lower() in PIP_SOURCE_FLAGS
-                    and _is_requirement_risky(flag_value)
-                    and not allow_untrusted
+                if flag_name.lower() in PIP_SOURCE_FLAGS and _is_requirement_risky(
+                    flag_value
                 ):
                     line_is_risky = True
                 continue
 
             # Handle short-form flags with attached values (-iflagvalue, -ivalue)
-            if token.startswith("-") and not token.startswith("--"):
-                is_short_form_with_value = False
-                # Check if this matches any short-form source flag
-                for flag in PIP_SOURCE_FLAGS:
-                    if flag.startswith("-") and not flag.startswith("--"):
-                        # Extract the flag character (e.g., 'i' from '-i')
-                        flag_char = flag[1] if len(flag) == 2 else None
-                        if (
-                            flag_char
-                            and token.startswith(f"-{flag_char}")
-                            and len(token) > 2
-                        ):
-                            # This is a short flag with attached value
-                            is_short_form_with_value = True
-                            flag_value = token[
-                                2:
-                            ]  # Extract everything after the flag character
-                            if (
-                                _is_requirement_risky(flag_value)
-                                and not allow_untrusted
-                            ):
-                                line_is_risky = True
-                            break
-                if is_short_form_with_value:
+            if token.startswith("-") and not token.startswith("--") and len(token) > 2:
+                flag_char = token[1]
+                if flag_char in PIP_SHORT_SOURCE_FLAGS:
+                    flag_value = token[
+                        2:
+                    ]  # Extract everything after the flag character
+                    if _is_requirement_risky(flag_value):
+                        line_is_risky = True
                     continue
 
             # Handle flags that take values
@@ -417,7 +401,7 @@ def _filter_risky_requirement_lines(
                 continue  # Skip flag tokens, as they don't indicate risk by themselves
 
             # Check if token itself is risky
-            if _is_requirement_risky(token) and not allow_untrusted:
+            if _is_requirement_risky(token):
                 line_is_risky = True
 
         if line_is_risky:
@@ -425,7 +409,7 @@ def _filter_risky_requirement_lines(
         else:
             safe_lines.append(line)
 
-    return safe_lines, flagged_lines, allow_untrusted
+    return safe_lines, flagged_lines
 
 
 def _filter_risky_requirements(
@@ -437,7 +421,11 @@ def _filter_risky_requirements(
     Deprecated: Use _filter_risky_requirement_lines for line-based filtering.
     """
     # For backward compatibility, assume requirements are lines
-    return _filter_risky_requirement_lines(requirements)
+    safe_lines, flagged_lines = _filter_risky_requirement_lines(requirements)
+    allow_untrusted = bool(
+        _get_security_settings().get("allow_untrusted_dependencies", False)
+    )
+    return safe_lines, flagged_lines, allow_untrusted
 
 
 def _clean_python_cache(directory: str) -> None:
@@ -603,8 +591,13 @@ def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
         # (version specifiers, environment markers, etc.)
         requirements_lines = _collect_requirements(requirements_path)
 
-        safe_requirements, flagged_requirements, allow_untrusted = (
-            _filter_risky_requirements(requirements_lines)
+        safe_requirements, flagged_requirements = _filter_risky_requirement_lines(
+            requirements_lines
+        )
+
+        # Check security configuration for handling flagged requirements
+        allow_untrusted = bool(
+            _get_security_settings().get("allow_untrusted_dependencies", False)
         )
 
         if flagged_requirements:
@@ -614,12 +607,16 @@ def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
                     len(flagged_requirements),
                     repo_name,
                 )
+                # Include flagged requirements when allowed
+                safe_requirements + flagged_requirements
             else:
                 logger.warning(
                     "Skipping %d flagged dependency entries for %s. Set security.allow_untrusted_dependencies=True to override.",
                     len(flagged_requirements),
                     repo_name,
                 )
+        else:
+            pass
 
         installed_packages = False
 

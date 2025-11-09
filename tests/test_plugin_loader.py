@@ -720,8 +720,10 @@ class TestPluginSecurityGuards(unittest.TestCase):
         requirements = ["pkg @ git+ssh://github.com/example/pkg.git"]
         safe, flagged, allow = _filter_risky_requirements(requirements)
         self.assertTrue(allow)
-        self.assertEqual(safe, requirements)
-        self.assertEqual(flagged, [])
+        # With new behavior, flagged requirements are still classified as flagged
+        # Configuration decision happens in caller
+        self.assertEqual(safe, [])
+        self.assertEqual(flagged, requirements)
 
     def test_get_allowed_repo_hosts_empty_list_override(self):
         """Explicit empty list should override default hosts."""
@@ -1094,9 +1096,11 @@ class TestRequirementFiltering(unittest.TestCase):
 
         safe, flagged, allow = _filter_risky_requirements(requirements)
 
-        self.assertEqual(len(safe), 2)
-        self.assertEqual(len(flagged), 0)
+        # With new behavior, classification is independent of config
+        self.assertEqual(len(safe), 0)
+        self.assertEqual(len(flagged), 2)
         self.assertTrue(allow)
+        self.assertEqual(flagged, requirements)
 
     def test_filter_risky_requirements_short_form_flags_with_attached_values(self):
         """Test that short-form flags with attached values are properly filtered."""
