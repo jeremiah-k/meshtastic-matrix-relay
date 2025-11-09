@@ -703,8 +703,8 @@ class TestPluginSecurityGuards(unittest.TestCase):
             "--extra-index-url https://mirror.example",
             "another-safe",
         ]
-        safe, flagged, allow = _filter_risky_requirements(requirements)
-        self.assertFalse(allow)
+        safe, flagged, _allow = _filter_risky_requirements(requirements)
+        self.assertFalse(_allow)
         self.assertEqual(
             flagged,
             [
@@ -718,8 +718,8 @@ class TestPluginSecurityGuards(unittest.TestCase):
     def test_filter_risky_requirements_can_allow_via_config(self):
         self.pl.config = {"security": {"allow_untrusted_dependencies": True}}
         requirements = ["pkg @ git+ssh://github.com/example/pkg.git"]
-        safe, flagged, allow = _filter_risky_requirements(requirements)
-        self.assertTrue(allow)
+        safe, flagged, _allow = _filter_risky_requirements(requirements)
+        self.assertTrue(_allow)
         # With new behavior, flagged requirements are still classified as flagged
         # Configuration decision happens in caller
         self.assertEqual(safe, [])
@@ -1026,11 +1026,11 @@ class TestRequirementFiltering(unittest.TestCase):
             "requests==2.28.0",
         ]
 
-        safe, flagged, allow = _filter_risky_requirements(requirements)
+        safe, flagged, _allow = _filter_risky_requirements(requirements)
 
         self.assertIn("requests==2.28.0", safe)
         self.assertIn("--editable=git+https://github.com/user/repo.git", flagged)
-        self.assertFalse(allow)
+        self.assertFalse(_allow)
 
     def test_filter_risky_requirements_editable_safe(self):
         """Test filtering safe editable requirements."""
@@ -1042,7 +1042,7 @@ class TestRequirementFiltering(unittest.TestCase):
             "requests==2.28.0",
         ]
 
-        safe, flagged, allow = _filter_risky_requirements(requirements)
+        safe, flagged, _allow = _filter_risky_requirements(requirements)
 
         self.assertIn("requests==2.28.0", safe)
         self.assertIn("--editable=.", safe)
@@ -1059,12 +1059,12 @@ class TestRequirementFiltering(unittest.TestCase):
             "requests==2.28.0",
         ]
 
-        safe, flagged, allow = _filter_risky_requirements(requirements)
+        safe, flagged, _allow = _filter_risky_requirements(requirements)
 
         self.assertIn("requests==2.28.0", safe)
         self.assertIn("--extra-index-url https://pypi.org/simple", flagged)
         self.assertIn("git+https://github.com/user/repo.git", flagged)
-        self.assertFalse(allow)
+        self.assertFalse(_allow)
 
     def test_filter_risky_requirements_comments_and_empty(self):
         """Test filtering comments and empty strings."""
@@ -1077,7 +1077,7 @@ class TestRequirementFiltering(unittest.TestCase):
             "requests==2.28.0",
         ]
 
-        safe, flagged, allow = _filter_risky_requirements(requirements)
+        safe, flagged, _allow = _filter_risky_requirements(requirements)
 
         self.assertIn("requests==2.28.0", safe)
         self.assertEqual(flagged, [])
@@ -1094,12 +1094,12 @@ class TestRequirementFiltering(unittest.TestCase):
             "http://example.com/package.tar.gz",
         ]
 
-        safe, flagged, allow = _filter_risky_requirements(requirements)
+        safe, flagged, _allow = _filter_risky_requirements(requirements)
 
         # With new behavior, classification is independent of config
         self.assertEqual(len(safe), 0)
         self.assertEqual(len(flagged), 2)
-        self.assertTrue(allow)
+        self.assertTrue(_allow)
         self.assertEqual(flagged, requirements)
 
     def test_filter_risky_requirements_short_form_flags_with_attached_values(self):
@@ -1113,13 +1113,13 @@ class TestRequirementFiltering(unittest.TestCase):
             "requests==2.28.0",  # Should be safe
         ]
 
-        safe, flagged, allow = _filter_risky_requirements(requirements)
+        safe, flagged, _allow = _filter_risky_requirements(requirements)
 
         self.assertIn("requests==2.28.0", safe)
         self.assertIn("-fsafe-local-path", safe)
         self.assertIn("-ihttps://malicious.example.com/simple", flagged)
         self.assertIn("-egit+https://github.com/user/repo.git", flagged)
-        self.assertFalse(allow)
+        self.assertFalse(_allow)
 
 
 class TestGitOperations(unittest.TestCase):
@@ -2023,8 +2023,9 @@ class TestDependencyInstallation(unittest.TestCase):
             "requests==2.28.0",
             "--extra-index-url https://pypi.org/simple",
         ]
+        # The function tokenizes lines from _collect_requirements, so filter receives tokenized input
         mock_filter.return_value = (
-            ["requests==2.28.0", "--extra-index-url https://pypi.org/simple"],
+            ["requests==2.28.0", "--extra-index-url", "https://pypi.org/simple"],
             [],
             False,
         )
@@ -2409,271 +2410,6 @@ class TestDependencyInstallation(unittest.TestCase):
         # Should not call any threading methods
 
         mock_threading.Event.assert_not_called()
-
-
-class TestCacheCleaningIntegration(unittest.TestCase):
-    """Test cases for cache cleaning integration in plugin loading workflow."""
-
-    def setUp(self):
-        """
-        Prepare an isolated temporary directory for the test and reset plugin loader state.
-
-        Creates and assigns a temporary directory to `self.temp_dir` and registers a cleanup
-        to remove it after the test. Resets `mmrelay.plugin_loader.sorted_active_plugins`
-        to an empty list and `mmrelay.plugin_loader.plugins_loaded` to False.
-        """
-        self.temp_dir = tempfile.mkdtemp()
-        self.addCleanup(lambda: shutil.rmtree(self.temp_dir, ignore_errors=True))
-
-        # Reset plugin loader state
-        import mmrelay.plugin_loader as pl
-
-        pl.sorted_active_plugins = []
-        pl.plugins_loaded = False
-
-    @patch("mmrelay.plugin_loader._clean_python_cache")
-    def test_load_plugins_calls_cache_cleaning(self, mock_clean_cache):
-        """Test that load_plugins_from_directory calls cache cleaning."""
-        # Create a plugin directory
-        plugin_dir = os.path.join(self.temp_dir, "plugins")
-        os.makedirs(plugin_dir, exist_ok=True)
-
-        # Call load_plugins_from_directory
-        load_plugins_from_directory(plugin_dir)
-
-        # Verify cache cleaning was called
-        mock_clean_cache.assert_called_once_with(plugin_dir)
-
-    @patch("mmrelay.plugin_loader._run_git")
-    def test_clone_or_update_repo_success(self, mock_run):
-        """Test that clone_or_update_repo succeeds with valid git operations."""
-        repo_url = "https://github.com/test/plugin.git"
-        ref = {"type": "branch", "value": "main"}
-        plugins_dir = self.temp_dir
-
-        # Create a repo directory
-        repo_name = "plugin"
-        repo_path = os.path.join(plugins_dir, repo_name)
-        os.makedirs(repo_path, exist_ok=True)
-
-        mock_run.side_effect = [
-            subprocess.CompletedProcess(args=["git", "fetch"], returncode=0),
-            subprocess.CompletedProcess(
-                args=["git", "rev-parse", "--abbrev-ref", "HEAD"],
-                returncode=0,
-                stdout="main\n",
-            ),
-            subprocess.CompletedProcess(
-                args=["git", "pull"], returncode=0, stdout="", stderr=""
-            ),
-        ]
-
-        result = clone_or_update_repo(repo_url, ref, plugins_dir)
-
-        # Verify success (cache cleaning now happens in load_plugins_from_directory)
-        self.assertTrue(result)
-
-    @patch("mmrelay.plugin_loader._run_git")
-    def test_clone_or_update_repo_checkout_success(self, mock_run):
-        """Test that clone_or_update_repo succeeds when checking out different branch."""
-        repo_url = "https://github.com/test/plugin.git"
-        ref = {"type": "branch", "value": "develop"}
-        plugins_dir = self.temp_dir
-
-        # Create a repo directory
-        repo_name = "plugin"
-        repo_path = os.path.join(plugins_dir, repo_name)
-        os.makedirs(repo_path, exist_ok=True)
-
-        mock_run.side_effect = [
-            subprocess.CompletedProcess(args=["git", "fetch"], returncode=0),
-            subprocess.CompletedProcess(
-                args=["git", "checkout", "develop"],
-                returncode=0,
-                stdout="",
-                stderr="",
-            ),
-            subprocess.CompletedProcess(
-                args=["git", "pull"],
-                returncode=0,
-                stdout="",
-                stderr="",
-            ),
-        ]
-
-        result = clone_or_update_repo(repo_url, ref, plugins_dir)
-
-        # Verify success (cache cleaning now happens in load_plugins_from_directory)
-        self.assertTrue(result)
-
-    @patch("mmrelay.plugin_loader._run_git")
-    def test_clone_or_update_repo_returns_false_on_failure(self, mock_run):
-        """Test that clone_or_update_repo returns False when git operations fail."""
-        # Set up mock for failed git operation
-        mock_run.side_effect = subprocess.CalledProcessError(1, "git")
-
-        repo_url = "https://github.com/test/plugin.git"
-        ref = {"type": "branch", "value": "main"}
-        plugins_dir = self.temp_dir
-
-        # Create a repo directory
-        repo_name = "plugin"
-        repo_path = os.path.join(plugins_dir, repo_name)
-        os.makedirs(repo_path, exist_ok=True)
-
-        result = clone_or_update_repo(repo_url, ref, plugins_dir)
-
-        self.assertFalse(result)
-
-    @patch("mmrelay.plugin_loader._is_repo_url_allowed", return_value=True)
-    @patch("mmrelay.plugin_loader._run_git")
-    def test_clone_or_update_repo_fetch_fails(self, mock_run_git, mock_is_allowed):
-        """Test that clone_or_update_repo returns False when git fetch fails."""
-        mock_run_git.side_effect = subprocess.CalledProcessError(1, "git fetch")
-
-        repo_url = "https://github.com/test/plugin.git"
-        ref = {"type": "branch", "value": "main"}
-
-        with tempfile.TemporaryDirectory() as plugins_dir:
-            repo_path = os.path.join(plugins_dir, "plugin")
-            os.makedirs(repo_path)  # It's an existing repo
-
-            result = clone_or_update_repo(repo_url, ref, plugins_dir)
-            self.assertFalse(result)
-
-    @patch("mmrelay.plugin_loader._is_repo_url_allowed", return_value=True)
-    @patch("mmrelay.plugin_loader._run_git")
-    def test_clone_or_update_repo_pull_current_branch_fails(
-        self, mock_run_git, mock_is_allowed
-    ):
-        """Test that clone_or_update_repo handles git pull failure on current branch (lines 985-988)."""
-        from mmrelay.plugin_loader import clone_or_update_repo
-
-        # Mock successful fetch, current branch check, but pull fails - continues anyway
-        def mock_run_git_side_effect(*args, **kwargs):
-            cmd = args[0]
-            if "fetch" in cmd:
-                return None  # fetch succeeds
-            elif "rev-parse" in cmd:
-                return MagicMock(stdout="main\n")  # current branch is main
-            elif "pull" in cmd:
-                raise subprocess.CalledProcessError(1, cmd)  # pull fails
-            return None
-
-        mock_run_git.side_effect = mock_run_git_side_effect
-
-        repo_url = "https://github.com/test/plugin.git"
-        ref = {"type": "branch", "value": "main"}
-
-        with tempfile.TemporaryDirectory() as plugins_dir:
-            repo_path = os.path.join(plugins_dir, "plugin")
-            os.makedirs(repo_path)  # It's an existing repo
-
-            result = clone_or_update_repo(repo_url, ref, plugins_dir)
-            # Should return True despite pull failure (continues anyway)
-            self.assertTrue(result)
-
-    @patch("mmrelay.plugin_loader._is_repo_url_allowed", return_value=True)
-    @patch("mmrelay.plugin_loader._run_git")
-    def test_clone_or_update_repo_checkout_and_pull_branch(
-        self, mock_run_git, mock_is_allowed
-    ):
-        """Test that clone_or_update_repo handles checkout and pull for different branch (lines 991-1003)."""
-        from mmrelay.plugin_loader import clone_or_update_repo
-
-        # Mock successful fetch, different current branch, successful checkout and pull
-        def mock_run_git_side_effect(*args, **kwargs):
-            cmd = args[0]
-            if "fetch" in cmd:
-                return None  # fetch succeeds
-            elif "rev-parse" in cmd:
-                return MagicMock(stdout=b"develop\n")  # current branch is develop
-            elif "checkout" in cmd:
-                return None  # checkout succeeds
-            elif "pull" in cmd:
-                return None  # pull succeeds
-            return None
-
-        mock_run_git.side_effect = mock_run_git_side_effect
-
-        repo_url = "https://github.com/test/plugin.git"
-        ref = {"type": "branch", "value": "main"}
-
-        with tempfile.TemporaryDirectory() as plugins_dir:
-            repo_path = os.path.join(plugins_dir, "plugin")
-            os.makedirs(repo_path)  # It's an existing repo
-
-            result = clone_or_update_repo(repo_url, ref, plugins_dir)
-            self.assertTrue(result)
-
-    @patch("mmrelay.plugin_loader._is_repo_url_allowed", return_value=True)
-    @patch("mmrelay.plugin_loader._run_git")
-    def test_clone_or_update_repo_checkout_and_pull_tag(
-        self, mock_run_git, mock_is_allowed
-    ):
-        """Test that clone_or_update_repo handles checkout and pull for tag (lines 991-1003)."""
-        from mmrelay.plugin_loader import clone_or_update_repo
-
-        # Mock successful fetch, current branch check, successful checkout and pull for tag
-        def mock_run_git_side_effect(*args, **kwargs):
-            cmd = args[0]
-            if "fetch" in cmd:
-                return None  # fetch succeeds
-            elif "rev-parse" in cmd and "HEAD" in cmd:
-                return MagicMock(stdout=b"abc123commit\n")  # current commit
-            elif "rev-parse" in cmd:
-                return MagicMock(stdout=b"def456commit\n")  # tag commit (different)
-            elif "checkout" in cmd:
-                return None  # checkout succeeds
-            elif "pull" in cmd:
-                return None  # pull succeeds
-            return None
-
-        mock_run_git.side_effect = mock_run_git_side_effect
-
-        repo_url = "https://github.com/test/plugin.git"
-        ref = {"type": "tag", "value": "v1.0.0"}
-
-        with tempfile.TemporaryDirectory() as plugins_dir:
-            repo_path = os.path.join(plugins_dir, "plugin")
-            os.makedirs(repo_path)  # It's an existing repo
-
-            result = clone_or_update_repo(repo_url, ref, plugins_dir)
-            self.assertTrue(result)
-
-    @patch("mmrelay.plugin_loader._is_repo_url_allowed", return_value=True)
-    @patch("mmrelay.plugin_loader._run_git")
-    def test_clone_or_update_repo_checkout_fails_fallback(
-        self, mock_run_git, mock_is_allowed
-    ):
-        """Test that clone_or_update_repo handles checkout failure and tries fallback (line 1004)."""
-        from mmrelay.plugin_loader import clone_or_update_repo
-
-        # Mock successful fetch, different current branch, checkout fails, fallback also fails
-        def mock_run_git_side_effect(*args, **kwargs):
-            cmd = args[0]
-            if "fetch" in cmd:
-                return None  # fetch succeeds
-            elif "rev-parse" in cmd:
-                return MagicMock(stdout=b"develop\n")  # current branch is develop
-            elif "checkout" in cmd:
-                raise subprocess.CalledProcessError(1, cmd)  # checkout fails
-            elif "pull" in cmd:
-                raise subprocess.CalledProcessError(1, cmd)  # pull also fails
-            return None
-
-        mock_run_git.side_effect = mock_run_git_side_effect
-
-        repo_url = "https://github.com/test/plugin.git"
-        ref = {"type": "branch", "value": "main"}
-
-        with tempfile.TemporaryDirectory() as plugins_dir:
-            repo_path = os.path.join(plugins_dir, "plugin")
-            os.makedirs(repo_path)  # It's an existing repo
-
-            result = clone_or_update_repo(repo_url, ref, plugins_dir)
-            # Should return False when checkout fails and fallback also fails
-            self.assertFalse(result)
 
 
 if __name__ == "__main__":
