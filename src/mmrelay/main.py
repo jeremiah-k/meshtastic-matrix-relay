@@ -5,6 +5,7 @@ It uses Meshtastic-python and Matrix nio client library to interface with the ra
 
 import asyncio
 import concurrent.futures
+import functools
 import signal
 import sys
 
@@ -47,7 +48,7 @@ from mmrelay.message_queue import (
     start_message_queue,
     stop_message_queue,
 )
-from mmrelay.plugin_loader import load_plugins
+from mmrelay.plugin_loader import load_plugins, shutdown_plugins
 
 # Initialize logger
 logger = get_logger(name=APP_DISPLAY_NAME)
@@ -118,8 +119,10 @@ async def main(config):
         logger.debug("wipe_on_restart enabled. Wiping message_map now (startup).")
         wipe_message_map()
 
-    # Load plugins early
-    load_plugins(passed_config=config)
+    # Load plugins early (run in executor to avoid blocking event loop with time.sleep)
+    await loop.run_in_executor(
+        None, functools.partial(load_plugins, passed_config=config)
+    )
 
     # Start message queue with configured message delay
     message_delay = config.get("meshtastic", {}).get(
@@ -253,8 +256,10 @@ async def main(config):
         await shutdown()
     finally:
         # Cleanup
+        matrix_logger.info("Stopping plugins...")
+        await loop.run_in_executor(None, shutdown_plugins)
         matrix_logger.info("Stopping message queue...")
-        stop_message_queue()
+        await loop.run_in_executor(None, stop_message_queue)
 
         matrix_logger.info("Closing Matrix client...")
         await matrix_client.close()

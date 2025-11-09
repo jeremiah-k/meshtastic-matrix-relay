@@ -1,10 +1,9 @@
 import os
 import threading
-import time
 from abc import ABC, abstractmethod
+from typing import Any, Dict, Union
 
 import markdown
-import schedule
 
 from mmrelay.config import get_plugin_data_dir
 from mmrelay.constants.database import (
@@ -20,7 +19,13 @@ from mmrelay.db_utils import (
 )
 from mmrelay.log_utils import get_logger
 from mmrelay.message_queue import queue_message
+from mmrelay.plugin_loader import (
+    clear_plugin_jobs,
+)
 from mmrelay.plugin_loader import logger as plugins_logger
+from mmrelay.plugin_loader import (
+    schedule_job,
+)
 
 # Global config variable that will be set from main.py
 config = None
@@ -74,22 +79,30 @@ class BasePlugin(ABC):
 
     def __init__(self, plugin_name=None) -> None:
         """
-        Initialize plugin state including its name, logger, configuration, mapped channels, and response delay.
+        Initialize plugin state: name, logger, configuration, mapped channels, scheduling controls, and response delay.
 
         Parameters:
-            plugin_name (str, optional): Overrides the class-level plugin_name attribute when provided.
+            plugin_name (str, optional): Overrides the class-level `plugin_name` when provided.
+
+        Returns:
+            None
 
         Raises:
-            ValueError: If no plugin name is available from the parameter or the class attribute.
+            ValueError: If no plugin name is available from the parameter, instance, or class attribute.
 
-        Notes:
-            - Loads plugin configuration from the global `config` under "plugins", "community-plugins", or "custom-plugins".
-            - Maps Matrix rooms to Meshtastic channels and validates the plugin's configured channels, logging a warning for unmapped channels.
-            - Reads `meshtastic.message_delay` (or the deprecated `meshtastic.plugin_response_delay`) and enforces a minimum delay of MINIMUM_MESSAGE_DELAY; deprecated option emits a one-time warning and delays below the minimum are clamped.
+        Details:
+            - Loads per-plugin configuration from the global `config` by checking "plugins", "community-plugins", then "custom-plugins"; defaults to `{"active": False}` if not found.
+            - Builds `self.mapped_channels` from `config["matrix_rooms"]` supporting both dict and list formats.
+            - Determines `self.channels` from the plugin config (falls back to `self.mapped_channels`) and ensures it is a list; logs a warning for any configured channels not present in `mapped_channels`.
+            - Initializes scheduling controls (`self._stop_event`, `self._schedule_thread`) used by the plugin scheduler.
+            - Reads Meshtastic delay settings from `config["meshtastic"]`, preferring `message_delay` with fallback to deprecated `plugin_response_delay`. Emits a one-time deprecation warning when `plugin_response_delay` is used.
+            - Enforces a minimum delay of `MINIMUM_MESSAGE_DELAY`; values below the minimum are clamped and emit a one-time warning per unique delay value.
         """
         # Allow plugin_name to be passed as a parameter for simpler initialization
         # This maintains backward compatibility while providing a cleaner API
         super().__init__()
+
+        self._stop_event = threading.Event()
 
         # If plugin_name is provided as a parameter, use it
         if plugin_name is not None:
@@ -110,7 +123,7 @@ class BasePlugin(ABC):
                 )
 
         self.logger = get_logger(f"Plugin:{self.plugin_name}")
-        self.config = {"active": False}
+        self.config: Dict[str, Any] = {"active": False}
         global config
         plugin_levels = ["plugins", "community-plugins", "custom-plugins"]
 
@@ -123,7 +136,7 @@ class BasePlugin(ABC):
 
             # Get the list of mapped channels
             # Handle both list format and dict format for matrix_rooms
-            matrix_rooms = config.get("matrix_rooms", [])
+            matrix_rooms: Union[Dict[str, Any], list] = config.get("matrix_rooms", [])
             if isinstance(matrix_rooms, dict):
                 # Dict format: {"room_name": {"id": "...", "meshtastic_channel": 0}}
                 self.mapped_channels = [
@@ -206,53 +219,113 @@ class BasePlugin(ABC):
                         self.logger.debug(warning_message)
                     self.response_delay = MINIMUM_MESSAGE_DELAY
 
-    def start(self):
+    def start(self) -> None:
         """
         Starts the plugin and configures scheduled background tasks based on plugin settings.
 
-        If scheduling options are present in the plugin configuration, sets up periodic execution of the `background_job` method using the specified schedule. Runs scheduled jobs in a separate daemon thread. If no scheduling is configured, the plugin starts without background tasks.
+        If scheduling options are present in plugin configuration, sets up periodic execution of `background_job` method using the global scheduler. If no scheduling is configured, the plugin starts without background tasks.
         """
-        if "schedule" not in self.config or (
-            "at" not in self.config["schedule"]
-            and "hours" not in self.config["schedule"]
-            and "minutes" not in self.config["schedule"]
-        ):
+        schedule_config: Dict[str, Any] = self.config.get("schedule") or {}
+        if not isinstance(schedule_config, dict):
+            schedule_config = {}
+
+        # Always reset stop state on startup to ensure clean restart
+        if hasattr(self, "_stop_event") and self._stop_event is not None:
+            self._stop_event.clear()
+
+        # Clear any existing jobs for this plugin if we have a name
+        if self.plugin_name:
+            clear_plugin_jobs(self.plugin_name)
+
+        # Check if scheduling is configured
+        has_schedule = any(
+            key in schedule_config for key in ("at", "hours", "minutes", "seconds")
+        )
+
+        if not has_schedule:
             self.logger.debug(f"Started with priority={self.priority}")
             return
 
-        # Schedule the background job based on the configuration
-        if "at" in self.config["schedule"] and "hours" in self.config["schedule"]:
-            schedule.every(self.config["schedule"]["hours"]).hours.at(
-                self.config["schedule"]["at"]
-            ).do(self.background_job)
-        elif "at" in self.config["schedule"] and "minutes" in self.config["schedule"]:
-            schedule.every(self.config["schedule"]["minutes"]).minutes.at(
-                self.config["schedule"]["at"]
-            ).do(self.background_job)
-        elif "hours" in self.config["schedule"]:
-            schedule.every(self.config["schedule"]["hours"]).hours.do(
-                self.background_job
+        # Ensure plugin_name is set for scheduling operations
+        if not self.plugin_name:
+            self.logger.error("Plugin name not set, cannot schedule background jobs")
+            return
+
+        # Schedule background job based on configuration
+        job = None
+        try:
+            if "at" in schedule_config and "hours" in schedule_config:
+                job_obj = schedule_job(self.plugin_name, schedule_config["hours"])
+                if job_obj is not None:
+                    job = job_obj.hours.at(schedule_config["at"]).do(
+                        self.background_job
+                    )
+            elif "at" in schedule_config and "minutes" in schedule_config:
+                job_obj = schedule_job(self.plugin_name, schedule_config["minutes"])
+                if job_obj is not None:
+                    job = job_obj.minutes.at(schedule_config["at"]).do(
+                        self.background_job
+                    )
+            elif "hours" in schedule_config:
+                job_obj = schedule_job(self.plugin_name, schedule_config["hours"])
+                if job_obj is not None:
+                    job = job_obj.hours.do(self.background_job)
+            elif "minutes" in schedule_config:
+                job_obj = schedule_job(self.plugin_name, schedule_config["minutes"])
+                if job_obj is not None:
+                    job = job_obj.minutes.do(self.background_job)
+            elif "seconds" in schedule_config:
+                job_obj = schedule_job(self.plugin_name, schedule_config["seconds"])
+                if job_obj is not None:
+                    job = job_obj.seconds.do(self.background_job)
+        except (ValueError, TypeError) as e:
+            self.logger.warning(
+                "Invalid schedule configuration for plugin '%s': %s. Starting without background job.",
+                self.plugin_name,
+                e,
             )
-        elif "minutes" in self.config["schedule"]:
-            schedule.every(self.config["schedule"]["minutes"]).minutes.do(
-                self.background_job
+            job = None
+
+        if job is None:
+            self.logger.warning(
+                "Could not set up scheduled job for plugin '%s'. This may be due to an invalid configuration or a missing 'schedule' library. Starting without background job.",
+                self.plugin_name,
             )
+            self.logger.debug(f"Started with priority={self.priority}")
+            return
 
-        # Function to execute the scheduled tasks
-        def run_schedule():
-            while True:
-                schedule.run_pending()
-                time.sleep(1)
-
-        # Create a thread for executing the scheduled tasks
-        schedule_thread = threading.Thread(target=run_schedule)
-
-        # Start the thread
-        schedule_thread.start()
         self.logger.debug(f"Scheduled with priority={self.priority}")
 
+    def stop(self) -> None:
+        """
+        Stop scheduled background work and run the plugin's cleanup hook.
+
+        Clears any scheduled jobs tagged with the plugin name and then invokes on_stop() for plugin-specific cleanup. Exceptions raised by on_stop() are caught and logged.
+        """
+        # Signal stop event for any threads waiting on it
+        if hasattr(self, "_stop_event") and self._stop_event is not None:
+            self._stop_event.set()
+
+        if self.plugin_name:
+            clear_plugin_jobs(self.plugin_name)
+        try:
+            self.on_stop()
+        except Exception:
+            self.logger.exception(
+                "Error running on_stop for plugin %s", self.plugin_name or "unknown"
+            )
+        self.logger.debug(f"Stopped plugin '{self.plugin_name or 'unknown'}'")
+
+    def on_stop(self) -> None:
+        """
+        Hook for subclasses to clean up resources during shutdown.
+
+        Default implementation does nothing.
+        """
+        return None
+
     # trunk-ignore(ruff/B027)
-    def background_job(self):
+    def background_job(self) -> None:
         """Background task executed on schedule.
 
         Override this method in subclasses to implement scheduled functionality.
@@ -418,6 +491,10 @@ class BasePlugin(ABC):
 
         matrix_client = await connect_matrix()
 
+        if matrix_client is None:
+            self.logger.error("Failed to connect to Matrix client")
+            return None
+
         return await matrix_client.room_send(
             room_id=room_id,
             message_type="m.room.message",
@@ -451,11 +528,11 @@ class BasePlugin(ABC):
         and stores back to database. Use for accumulating time-series data.
         """
         data = self.get_node_data(meshtastic_id=meshtastic_id)
-        data = data[-self.max_data_rows_per_node :]
         if isinstance(node_data, list):
             data.extend(node_data)
         else:
             data.append(node_data)
+        data = data[-self.max_data_rows_per_node :]
         store_plugin_data(self.plugin_name, meshtastic_id, data)
 
     def set_node_data(self, meshtastic_id, node_data):

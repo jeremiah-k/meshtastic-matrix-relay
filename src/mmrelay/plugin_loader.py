@@ -9,10 +9,24 @@ import shutil
 import site
 import subprocess
 import sys
+import tempfile
+import threading
+import time
 from contextlib import contextmanager
 from typing import List, Set
+from urllib.parse import urlparse
+
+try:
+    import schedule
+except ImportError:
+    schedule = None
 
 from mmrelay.config import get_app_path, get_base_dir
+from mmrelay.constants.plugins import (
+    DEFAULT_ALLOWED_COMMUNITY_HOSTS,
+    PIP_SOURCE_FLAGS,
+    RISKY_REQUIREMENT_PREFIXES,
+)
 from mmrelay.log_utils import get_logger
 
 # Global config variable that will be set from main.py
@@ -21,6 +35,10 @@ config = None
 logger = get_logger(name="Plugins")
 sorted_active_plugins = []
 plugins_loaded = False
+
+# Global scheduler management
+_global_scheduler_thread = None
+_global_scheduler_stop_event = None
 
 
 try:
@@ -46,30 +64,19 @@ def _collect_requirements(
     requirements_file: str, visited: Set[str] | None = None
 ) -> List[str]:
     """
-    Parse a requirements.txt file and return a flattened list of installable requirement tokens.
+    Parse a requirements file into a flattened list of installable requirement lines.
 
-    The function reads the given requirements file, ignores blank lines and comments (including inline
-    comments after " #"), and resolves nested includes and constraint files. Supported include forms:
+    Ignores blank lines and full-line or inline comments, preserves PEP 508 requirement syntax,
+    and resolves nested includes and constraint files. Supported include forms:
       - "-r <file>" or "--requirement <file>"
       - "-c <file>" or "--constraint <file>"
       - "--requirement=<file>" and "--constraint=<file>"
-
-    Lines beginning with "-" are tokenized with shlex.split (posix mode) so flags and compound entries
-    are preserved; other non-directive lines are returned verbatim.
-
-    Parameters:
-        requirements_file (str): Path to a requirements file. Relative includes are resolved
-            relative to this file's directory.
+    Relative include paths are resolved relative to the directory containing the given file.
 
     Returns:
-        List[str]: A flattened list of requirement tokens suitable for passing to pip.
-        Returns an empty list if the file does not exist or if recursion is detected for a nested include.
-
-    Notes:
-        - The optional `visited` parameter (used internally) tracks normalized file paths to detect
-          and prevent recursive includes; recursion results in a logged warning and the include is skipped.
-        - The function logs warnings for missing files and malformed include/constraint directives but
-          does not raise exceptions for those conditions.
+        A list of requirement lines suitable for passing to pip. Returns an empty list if the
+        file cannot be read or if a nested include recursion is detected (the latter is logged
+        and the duplicate include is skipped).
     """
     normalized_path = os.path.abspath(requirements_file)
     visited = visited or set()
@@ -135,12 +142,17 @@ def _collect_requirements(
                         )
                     continue
 
-                if line.startswith("-"):
-                    requirements.extend(shlex.split(line, posix=True))
-                else:
-                    requirements.append(line)
-    except FileNotFoundError:
-        logger.warning("Requirements file not found: %s", normalized_path)
+                # Check for malformed standalone directives
+                if lower_line in ("-r", "-c", "--requirement", "--constraint"):
+                    logger.warning(
+                        "Malformed directive, missing file: %s",
+                        raw_line.rstrip(),
+                    )
+                    continue
+
+                requirements.append(line)
+    except (FileNotFoundError, OSError) as e:
+        logger.warning("Error reading requirements file %s: %s", normalized_path, e)
         return []
 
     return requirements
@@ -165,6 +177,255 @@ def _temp_sys_path(path: str):
             sys.path.remove(path)
         except ValueError:
             pass
+
+
+def _get_security_settings() -> dict:
+    """
+    Return the security settings mapping from the global configuration.
+
+    If the global `config` is unset or does not contain a `"security"` mapping, or if `"security"` exists but is not a dict, this returns an empty dict.
+
+    Returns:
+        dict: The security configuration dictionary, or an empty dict when unavailable or invalid.
+    """
+    if not config:
+        return {}
+    security_config = config.get("security", {})
+    return security_config if isinstance(security_config, dict) else {}
+
+
+def _get_allowed_repo_hosts() -> list[str]:
+    """
+    Determine the normalized allowlist of community plugin repository hosts.
+
+    Reads the security configuration's "community_repo_hosts" value and returns a list
+    of lowercase host strings with surrounding whitespace removed. If the setting is
+    missing or not a list, returns a copy of DEFAULT_ALLOWED_COMMUNITY_HOSTS. Non-string
+    or empty entries in the configured list are ignored.
+
+    Returns:
+        list[str]: A list of allowed repository hostnames in lowercase.
+    """
+    security_config = _get_security_settings()
+    hosts = security_config.get("community_repo_hosts")
+
+    if hosts is None:
+        return list(DEFAULT_ALLOWED_COMMUNITY_HOSTS)
+
+    if isinstance(hosts, str):
+        hosts = [hosts]
+
+    if not isinstance(hosts, list):
+        return list(DEFAULT_ALLOWED_COMMUNITY_HOSTS)
+
+    return [
+        host.strip().lower() for host in hosts if isinstance(host, str) and host.strip()
+    ]
+
+
+def _allow_local_plugin_paths() -> bool:
+    """
+    Determine whether local filesystem plugin paths are permitted for community plugins.
+
+    Returns:
+        True if the security setting `"allow_local_plugin_paths"` is enabled, False otherwise.
+    """
+    return bool(_get_security_settings().get("allow_local_plugin_paths", False))
+
+
+def _host_in_allowlist(host: str, allowlist: list[str]) -> bool:
+    """
+    Determine whether a host matches or is a subdomain of any hostname in an allowlist.
+
+    Parameters:
+        host (str): Hostname to check.
+        allowlist (list[str]): List of allowed hostnames; comparison is case-insensitive.
+
+    Returns:
+        bool: `True` if `host` equals or is a subdomain of any entry in `allowlist`, `False` otherwise.
+    """
+    host = (host or "").lower()
+    if not host:
+        return False
+    for allowed in allowlist:
+        allowed = allowed.lower()
+        if host == allowed or host.endswith(f".{allowed}"):
+            return True
+    return False
+
+
+def _normalize_repo_target(repo_url: str) -> tuple[str, str]:
+    """
+    Normalize a repository URL or SSH spec into a tuple of (scheme, host).
+
+    Returns:
+        tuple[str, str]: `scheme` normalized to lowercase (uses "ssh" for `git@` SSH specs and `git+ssh`/`ssh+git` schemes), and `host` lowercased or an empty string if no host is present.
+    """
+    repo_url = (repo_url or "").strip()
+    if repo_url.startswith("git@"):
+        _, _, host_and_path = repo_url.partition("@")
+        host, _, _ = host_and_path.partition(":")
+        return "ssh", host.lower()
+    parsed = urlparse(repo_url)
+    scheme = (parsed.scheme or "").lower()
+    host = (parsed.hostname or "").lower()
+    if scheme in {"git+ssh", "ssh+git"}:
+        scheme = "ssh"
+    return scheme, host
+
+
+def _is_repo_url_allowed(repo_url: str) -> bool:
+    """
+    Determine whether a repository URL or local filesystem path is permitted for community plugins.
+
+    Accepts a repository specification (URL or local path). Rejects empty values and entries beginning with '-'. Local filesystem paths are permitted only when configured security settings allow local plugin paths and the path exists; `file://` schemes follow the same restriction. Plain `http://` URLs are disallowed. Only `https` and `ssh` repository URLs are permitted, and the repository host must be included in the configured allowlist.
+
+    Returns:
+        bool: `true` if the repository is allowed, `false` otherwise.
+    """
+    repo_url = (repo_url or "").strip()
+    if not repo_url:
+        return False
+
+    if repo_url.startswith("-"):
+        return False
+
+    scheme, host = _normalize_repo_target(repo_url)
+
+    if not scheme:
+        if _allow_local_plugin_paths():
+            if os.path.exists(repo_url):
+                return True
+            logger.error("Local repository path does not exist: %s", repo_url)
+            return False
+        logger.error(
+            "Invalid repository '%s'. Local paths are disabled, and remote URLs must include a scheme (e.g., 'https://').",
+            repo_url,
+        )
+        return False
+
+    if scheme == "file":
+        if _allow_local_plugin_paths():
+            return True
+        logger.error("file:// repositories are disabled for security reasons.")
+        return False
+
+    if scheme == "http":
+        logger.error("Plain HTTP community plugin URLs are not allowed: %s", repo_url)
+        return False
+
+    if scheme not in {"https", "ssh"}:
+        logger.error("Unsupported repository scheme '%s' for %s", scheme, repo_url)
+        return False
+
+    allowed_hosts = _get_allowed_repo_hosts()
+    if not _host_in_allowlist(host, allowed_hosts):
+        logger.error(
+            "Repository host '%s' is not in the allowed community host list %s",
+            host or "unknown",
+            allowed_hosts,
+        )
+        return False
+
+    return True
+
+
+def _is_requirement_risky(req_string: str) -> bool:
+    """
+    Determine whether a requirement line references a VCS or URL source and should be treated as risky.
+
+    Checks for known risky prefixes (VCS/URL specifiers) or the presence of both `@` and `://`, which indicate a URL-based requirement.
+
+    Returns:
+        `true` if the requirement references a VCS or URL source, `false` otherwise.
+    """
+    lowered = req_string.lower()
+    return any(lowered.startswith(prefix) for prefix in RISKY_REQUIREMENT_PREFIXES) or (
+        "@" in req_string and "://" in req_string
+    )
+
+
+# Pre-compute short-form flag characters for efficiency
+PIP_SHORT_SOURCE_FLAGS = {
+    f[1] for f in PIP_SOURCE_FLAGS if len(f) == 2 and f.startswith("-")
+}
+
+
+def _filter_risky_requirement_lines(
+    requirement_lines: List[str],
+) -> tuple[List[str], List[str]]:
+    """
+    Categorizes requirement lines into safe and flagged groups based on whether they reference VCS or URL sources.
+
+    This function purely classifies lines without checking configuration. The caller should decide
+    whether to install flagged requirements based on security settings.
+
+    Returns:
+        safe_lines (List[str]): Requirement lines considered safe for installation.
+        flagged_lines (List[str]): Requirement lines that reference VCS/URL sources and were flagged as risky.
+    """
+    safe_lines: List[str] = []
+    flagged_lines: List[str] = []
+
+    for line in requirement_lines:
+        # Tokenize line for validation
+        tokens = shlex.split(line, posix=True, comments=True)
+        if not tokens:
+            continue
+
+        # Check if any token in line is risky
+        line_is_risky = False
+        for token in tokens:
+            # Handle editable flags with values (--editable=url)
+            if token.startswith("-") and "=" in token:
+                flag_name, _, flag_value = token.partition("=")
+                if flag_name.lower() in PIP_SOURCE_FLAGS and _is_requirement_risky(
+                    flag_value
+                ):
+                    line_is_risky = True
+                continue
+
+            # Handle short-form flags with attached values (-iflagvalue, -ivalue)
+            if token.startswith("-") and not token.startswith("--") and len(token) > 2:
+                flag_char = token[1]
+                if flag_char in PIP_SHORT_SOURCE_FLAGS:
+                    flag_value = token[
+                        2:
+                    ]  # Extract everything after the flag character
+                    if _is_requirement_risky(flag_value):
+                        line_is_risky = True
+                    continue
+
+            # Handle flags that take values
+            if token.lower() in PIP_SOURCE_FLAGS:
+                continue  # Skip flag tokens, as they don't indicate risk by themselves
+
+            # Check if token itself is risky
+            if _is_requirement_risky(token):
+                line_is_risky = True
+
+        if line_is_risky:
+            flagged_lines.append(line)
+        else:
+            safe_lines.append(line)
+
+    return safe_lines, flagged_lines
+
+
+def _filter_risky_requirements(
+    requirements: List[str],
+) -> tuple[List[str], List[str], bool]:
+    """
+    Remove requirement tokens that point to VCS/URL sources unless explicitly allowed.
+
+    Deprecated: Use _filter_risky_requirement_lines for line-based filtering.
+    """
+    # For backward compatibility, assume requirements are lines
+    safe_lines, flagged_lines = _filter_risky_requirement_lines(requirements)
+    allow_untrusted = bool(
+        _get_security_settings().get("allow_untrusted_dependencies", False)
+    )
+    return safe_lines, flagged_lines, allow_untrusted
 
 
 def _clean_python_cache(directory: str) -> None:
@@ -326,25 +587,75 @@ def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
             for key in ("PIPX_HOME", "PIPX_LOCAL_VENVS", "PIPX_BIN_DIR")
         )
 
+        # Collect requirements as full lines to preserve PEP 508 compliance
+        # (version specifiers, environment markers, etc.)
+        requirements_lines = _collect_requirements(requirements_path)
+
+        safe_requirements, flagged_requirements = _filter_risky_requirement_lines(
+            requirements_lines
+        )
+
+        # Check security configuration for handling flagged requirements
+        allow_untrusted = bool(
+            _get_security_settings().get("allow_untrusted_dependencies", False)
+        )
+
+        if flagged_requirements:
+            if allow_untrusted:
+                logger.warning(
+                    "Allowing %d flagged dependency entries for %s due to security.allow_untrusted_dependencies=True",
+                    len(flagged_requirements),
+                    repo_name,
+                )
+                # Include flagged requirements when allowed
+                safe_requirements.extend(flagged_requirements)
+            else:
+                logger.warning(
+                    "Skipping %d flagged dependency entries for %s. Set security.allow_untrusted_dependencies=True to override.",
+                    len(flagged_requirements),
+                    repo_name,
+                )
+        else:
+            pass
+
+        installed_packages = False
+
         if in_pipx:
             logger.info("Installing requirements for plugin %s with pipx", repo_name)
             pipx_path = shutil.which("pipx")
             if not pipx_path:
                 raise FileNotFoundError("pipx executable not found on PATH")
-            requirements = _collect_requirements(requirements_path)
-            if requirements:
-                packages = [r for r in requirements if not r.startswith("-")]
-                pip_args = [r for r in requirements if r.startswith("-")]
-                if not packages:
-                    logger.info(
-                        "Requirements in %s only contained pip flags; skipping pipx injection.",
-                        requirements_path,
-                    )
-                else:
-                    cmd = [pipx_path, "inject", "mmrelay", *packages]
-                    if pip_args:
-                        cmd += ["--pip-args", " ".join(pip_args)]
+            # Check if there are actual packages to install (not just flags)
+            packages = [r for r in safe_requirements if not r.startswith("-")]
+            if packages:
+                # Write safe requirements to a temporary file to handle hashed requirements
+                # and environment markers properly
+                with tempfile.NamedTemporaryFile(
+                    mode="w", suffix=".txt", delete=False
+                ) as temp_file:
+                    temp_path = temp_file.name
+                    for entry in safe_requirements:
+                        temp_file.write(entry + "\n")
+
+                try:
+                    cmd = [
+                        pipx_path,
+                        "inject",
+                        "mmrelay",
+                        "--requirement",
+                        temp_path,
+                    ]
                     _run(cmd, timeout=600)
+                    installed_packages = True
+                finally:
+                    # Clean up the temporary file
+                    try:
+                        os.unlink(temp_path)
+                    except OSError:
+                        logger.debug(
+                            "Failed to clean up temporary requirements file: %s",
+                            temp_path,
+                        )
             else:
                 logger.info(
                     "No dependencies listed in %s; skipping pipx injection.",
@@ -355,22 +666,51 @@ def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
                 "VIRTUAL_ENV" in os.environ
             )
             logger.info("Installing requirements for plugin %s with pip", repo_name)
-            cmd = [
-                sys.executable,
-                "-m",
-                "pip",
-                "install",
-                "-r",
-                requirements_path,
-                "--disable-pip-version-check",
-                "--no-input",
-            ]
-            if not in_venv:
-                cmd.append("--user")
-            _run(cmd, timeout=600)
+            packages = [r for r in safe_requirements if not r.startswith("-")]
+            if not packages:
+                logger.info(
+                    "Requirements in %s provided no installable packages; skipping pip install.",
+                    requirements_path,
+                )
+            else:
+                cmd = [
+                    sys.executable,
+                    "-m",
+                    "pip",
+                    "install",
+                    "--disable-pip-version-check",
+                    "--no-input",
+                ]
+                if not in_venv:
+                    cmd.append("--user")
 
-        logger.info("Successfully installed requirements for plugin %s", repo_name)
-        _refresh_dependency_paths()
+                # Write safe requirements to a temporary file to handle hashed requirements properly
+                with tempfile.NamedTemporaryFile(
+                    mode="w", suffix=".txt", delete=False
+                ) as temp_file:
+                    temp_path = temp_file.name
+                    for entry in safe_requirements:
+                        temp_file.write(entry + "\n")
+
+                try:
+                    cmd.extend(["-r", temp_path])
+                    _run(cmd, timeout=600)
+                    installed_packages = True
+                finally:
+                    # Clean up the temporary file
+                    try:
+                        os.unlink(temp_path)
+                    except OSError:
+                        logger.debug(
+                            "Failed to clean up temporary requirements file: %s",
+                            temp_path,
+                        )
+
+        if installed_packages:
+            logger.info("Successfully installed requirements for plugin %s", repo_name)
+            _refresh_dependency_paths()
+        else:
+            logger.info("No dependency installation run for plugin %s", repo_name)
     except (subprocess.CalledProcessError, FileNotFoundError):
         logger.exception(
             "Error installing requirements for plugin %s (requirements: %s)",
@@ -428,34 +768,37 @@ def get_custom_plugin_dirs():
 
 def get_community_plugin_dirs():
     """
-    Return the list of directories to search for community plugins, ordered by priority.
+    List community plugin directories in priority order.
 
-    The directories include the user-specific community plugins directory and a local directory for backward compatibility.
+    Includes the per-user community plugins directory and a legacy local application directory for backward compatibility; directories that cannot be accessed or created are omitted.
+
+    Returns:
+        list[str]: Filesystem paths to search for community plugins, ordered from highest to lowest priority.
     """
     return _get_plugin_dirs("community")
 
 
-def _run(cmd, timeout=120, **kwargs):
+def _run(cmd, timeout=120, retry_attempts=1, retry_delay=1, **kwargs):
     # Validate command to prevent shell injection
     """
-    Run a subprocess command safely with validated arguments and a configurable timeout.
+    Run a subprocess command with validated arguments, optional retries, and a configurable timeout.
 
-    Validates that `cmd` is a non-empty list of non-empty strings (to avoid shell-injection risks),
-    ensures text output by default, and executes the command via subprocess.run with check=True.
+    Validates that `cmd` is a non-empty list of non-empty strings, disallows `shell=True`, sets `text=True` by default, and optionally retries failed attempts with a delay.
 
     Parameters:
         cmd (list[str]): Command and arguments to execute; must be a non-empty list of non-empty strings.
-        timeout (int|float): Maximum seconds to allow the process to run before raising TimeoutExpired.
-        **kwargs: Additional keyword arguments forwarded to subprocess.run (e.g., cwd, env). `text=True`
-            is set by default if not provided.
+        timeout (int | float): Maximum seconds to allow the process to run before raising TimeoutExpired.
+        retry_attempts (int): Number of execution attempts (minimum 1).
+        retry_delay (int | float): Seconds to wait between retry attempts.
+        **kwargs: Additional keyword arguments forwarded to subprocess.run (e.g., cwd, env). `text=True` is used by default if not provided.
 
     Returns:
         subprocess.CompletedProcess: The completed process object returned by subprocess.run.
 
     Raises:
         TypeError: If `cmd` is not a list or any element of `cmd` is not a string.
-        ValueError: If `cmd` is empty or contains empty/whitespace-only arguments.
-        subprocess.CalledProcessError: If the subprocess exits with a non-zero status (check=True).
+        ValueError: If `cmd` is empty, contains empty/whitespace-only arguments, or if `shell=True` is provided.
+        subprocess.CalledProcessError: If the subprocess exits with a non-zero status.
         subprocess.TimeoutExpired: If the process exceeds the specified timeout.
     """
     if not isinstance(cmd, list):
@@ -470,15 +813,55 @@ def _run(cmd, timeout=120, **kwargs):
         raise ValueError("shell=True is not allowed in _run")
     # Ensure text mode by default
     kwargs.setdefault("text", True)
-    return subprocess.run(cmd, check=True, timeout=timeout, **kwargs)
+
+    attempts = max(int(retry_attempts or 1), 1)
+    delay = max(float(retry_delay or 0), 0.0)
+
+    for attempt in range(1, attempts + 1):
+        try:
+            return subprocess.run(cmd, check=True, timeout=timeout, **kwargs)
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+            if attempt >= attempts:
+                raise
+            logger.warning(
+                "Command %s failed on attempt %d/%d: %s",
+                cmd[0],
+                attempt,
+                attempts,
+                exc,
+            )
+            if delay:
+                time.sleep(delay)
+
+
+def _run_git(cmd, timeout=120, **kwargs):
+    """
+    Run a git command using the module's safe subprocess runner with conservative retry defaults.
+
+    Parameters:
+        cmd (list[str]): Command and arguments to run (e.g., ['git', 'clone', '...']).
+        timeout (int): Maximum seconds to wait for each attempt.
+        **kwargs: Additional options forwarded to `_run` (can override retries).
+
+    Returns:
+        subprocess.CompletedProcess: The completed process result containing `returncode`, `stdout`, and `stderr`.
+    """
+    kwargs.setdefault("retry_attempts", 3)
+    kwargs.setdefault("retry_delay", 2)
+    return _run(cmd, timeout=timeout, **kwargs)
 
 
 def _check_auto_install_enabled(config):
     """
-    Return whether automatic dependency installation is enabled.
+    Determine if automatic dependency installation is enabled in the provided configuration.
 
-    Reads the value at config["security"]["auto_install_deps"] and returns its truthiness.
-    If `config` is None or falsy, or the key is missing, this function returns True (auto-install enabled by default).
+    Parameters:
+        config (dict|None): Configuration mapping; expected to contain a "security" dict with an
+            optional boolean "auto_install_deps" key.
+
+    Returns:
+        bool: `True` if automatic installation is enabled, `False` otherwise. If `config` is falsy
+        or the key is missing, automatic installation is enabled by default.
     """
     if not config:
         return True
@@ -503,12 +886,12 @@ def _raise_install_error(pkg_name):
 
 def clone_or_update_repo(repo_url, ref, plugins_dir):
     """
-    Clone or update a community plugin Git repository into plugins_dir/<repo_name>.
+    Ensure a community plugin git repository exists under plugins_dir and is checked out at the specified ref.
 
-    Attempts to ensure the repository identified by repo_url exists under plugins_dir and is checked out at the specified ref (a dict with keys "type" set to "tag" or "branch", and "value" set to the tag or branch name). If the repository already exists the function attempts to fetch and switch to the requested ref, falling back to common default branches ("main", "master") when appropriate.
+    Attempts to clone the repository into plugins_dir/<repo_name> or update an existing clone so that it is on the requested ref. The ref argument must be a dict with keys `"type"` (either `"tag"` or `"branch"`) and `"value"` (the tag or branch name). Falls back to common default branches ("main", "master") when appropriate.
 
     Parameters:
-        repo_url (str): URL of the Git repository to clone or update.
+        repo_url (str): URL or SSH spec of the git repository to clone or update.
         ref (dict): Reference specification with keys:
             - type (str): "tag" or "branch".
             - value (str): The tag or branch name to check out.
@@ -521,8 +904,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
     ref_type = ref.get("type")  # expected: "tag" or "branch"
     ref_value = (ref.get("value") or "").strip()
 
-    if not repo_url or repo_url.startswith("-"):
-        logger.error("Repository URL looks invalid or dangerous: %r", repo_url)
+    if not _is_repo_url_allowed(repo_url):
         return False
     allowed_ref_types = {"tag", "branch"}
     if ref_type not in allowed_ref_types:
@@ -559,7 +941,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
         try:
             # Fetch all branches but don't fetch tags to avoid conflicts
             try:
-                _run(["git", "-C", repo_path, "fetch", "origin"], timeout=120)
+                _run_git(["git", "-C", repo_path, "fetch", "origin"], timeout=120)
             except subprocess.CalledProcessError as e:
                 logger.warning(f"Error fetching from remote: {e}")
                 # Continue anyway, we'll try to use what we have
@@ -568,7 +950,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
             if is_default_branch:
                 try:
                     # Check if we're already on the right branch
-                    current_branch = _run(
+                    current_branch = _run_git(
                         ["git", "-C", repo_path, "rev-parse", "--abbrev-ref", "HEAD"],
                         capture_output=True,
                     ).stdout.strip()
@@ -576,7 +958,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                     if current_branch == ref_value:
                         # We're on the right branch, just pull
                         try:
-                            _run(
+                            _run_git(
                                 ["git", "-C", repo_path, "pull", "origin", ref_value],
                                 timeout=120,
                             )
@@ -590,11 +972,11 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                             return True
                     else:
                         # Switch to the right branch
-                        _run(
+                        _run_git(
                             ["git", "-C", repo_path, "checkout", ref_value],
                             timeout=120,
                         )
-                        _run(
+                        _run_git(
                             ["git", "-C", repo_path, "pull", "origin", ref_value],
                             timeout=120,
                         )
@@ -610,11 +992,11 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                         logger.warning(
                             f"Branch {ref_value} not found, trying {other_default}"
                         )
-                        _run(
+                        _run_git(
                             ["git", "-C", repo_path, "checkout", other_default],
                             timeout=120,
                         )
-                        _run(
+                        _run_git(
                             ["git", "-C", repo_path, "pull", "origin", other_default],
                             timeout=120,
                         )
@@ -631,11 +1013,11 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
             else:
                 if ref_type == "branch":
                     try:
-                        _run(
+                        _run_git(
                             ["git", "-C", repo_path, "checkout", ref_value],
                             timeout=120,
                         )
-                        _run(
+                        _run_git(
                             ["git", "-C", repo_path, "pull", "origin", ref_value],
                             timeout=120,
                         )
@@ -656,7 +1038,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                 # Check if we're already on the correct tag/commit
                 try:
                     # Get the current commit hash
-                    current_commit = _run(
+                    current_commit = _run_git(
                         ["git", "-C", repo_path, "rev-parse", "HEAD"],
                         capture_output=True,
                     ).stdout.strip()
@@ -664,7 +1046,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                     # Get the commit hash for the tag
                     tag_commit = None
                     try:
-                        tag_commit = _run(
+                        tag_commit = _run_git(
                             ["git", "-C", repo_path, "rev-parse", ref_value],
                             capture_output=True,
                         ).stdout.strip()
@@ -680,7 +1062,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                         return True
 
                     # Otherwise, try to checkout the tag or branch
-                    _run(
+                    _run_git(
                         ["git", "-C", repo_path, "checkout", ref_value],
                         timeout=120,
                     )
@@ -695,7 +1077,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                         # Try to fetch the specific tag, but first remove any existing tag with the same name
                         try:
                             # Delete the local tag if it exists to avoid conflicts
-                            _run(
+                            _run_git(
                                 ["git", "-C", repo_path, "tag", "-d", ref_value],
                                 timeout=120,
                             )
@@ -706,7 +1088,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                         # Now fetch the tag from remote
                         try:
                             # Try to fetch the tag
-                            _run(
+                            _run_git(
                                 [
                                     "git",
                                     "-C",
@@ -719,7 +1101,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                             )
                         except subprocess.CalledProcessError:
                             # If that fails, try to fetch the tag without the refs/tags/ prefix
-                            _run(
+                            _run_git(
                                 [
                                     "git",
                                     "-C",
@@ -731,7 +1113,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                                 timeout=120,
                             )
 
-                        _run(
+                        _run_git(
                             ["git", "-C", repo_path, "checkout", ref_value],
                             timeout=120,
                         )
@@ -745,15 +1127,15 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                             f"Could not fetch tag {ref_value}, trying as a branch"
                         )
                         try:
-                            _run(
+                            _run_git(
                                 ["git", "-C", repo_path, "fetch", "origin", ref_value],
                                 timeout=120,
                             )
-                            _run(
+                            _run_git(
                                 ["git", "-C", repo_path, "checkout", ref_value],
                                 timeout=120,
                             )
-                            _run(
+                            _run_git(
                                 ["git", "-C", repo_path, "pull", "origin", ref_value],
                                 timeout=120,
                             )
@@ -768,7 +1150,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                             )
                             for default_branch in default_branches:
                                 try:
-                                    _run(
+                                    _run_git(
                                         [
                                             "git",
                                             "-C",
@@ -778,7 +1160,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                                         ],
                                         timeout=120,
                                     )
-                                    _run(
+                                    _run_git(
                                         [
                                             "git",
                                             "-C",
@@ -822,7 +1204,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
             if is_default_branch:
                 try:
                     # Try to clone with the specified branch
-                    _run(
+                    _run_git(
                         ["git", "clone", "--branch", ref_value, repo_url],
                         cwd=plugins_dir,
                         timeout=120,
@@ -843,7 +1225,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                         logger.warning(
                             f"Could not clone with branch {ref_value}, trying {other_default}"
                         )
-                        _run(
+                        _run_git(
                             ["git", "clone", "--branch", other_default, repo_url],
                             cwd=plugins_dir,
                             timeout=120,
@@ -857,7 +1239,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                         logger.warning(
                             f"Could not clone with branch {other_default}, cloning default branch"
                         )
-                        _run(
+                        _run_git(
                             ["git", "clone", repo_url],
                             cwd=plugins_dir,
                             timeout=120,
@@ -870,7 +1252,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                 # It's a tag, try to clone with the tag
                 try:
                     # Try to clone with the specified tag
-                    _run(
+                    _run_git(
                         ["git", "clone", "--branch", ref_value, repo_url],
                         cwd=plugins_dir,
                         timeout=120,
@@ -889,7 +1271,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                     logger.warning(
                         f"Could not clone with tag {ref_value}, cloning default branch"
                     )
-                    _run(
+                    _run_git(
                         ["git", "clone", repo_url],
                         cwd=plugins_dir,
                         timeout=120,
@@ -899,7 +1281,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                     try:
                         # Try to fetch the tag
                         try:
-                            _run(
+                            _run_git(
                                 [
                                     "git",
                                     "-C",
@@ -911,7 +1293,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                             )
                         except subprocess.CalledProcessError:
                             # If that fails, try to fetch the tag without the refs/tags/ prefix
-                            _run(
+                            _run_git(
                                 [
                                     "git",
                                     "-C",
@@ -923,7 +1305,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                             )
 
                         # Now checkout the tag
-                        _run(
+                        _run_git(
                             ["git", "-C", repo_path, "checkout", ref_value],
                             timeout=120,
                         )
@@ -942,11 +1324,11 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                             logger.warning(
                                 f"Could not checkout {ref_value} as a tag, trying as a branch"
                             )
-                            _run(
+                            _run_git(
                                 ["git", "-C", repo_path, "fetch", "origin", ref_value],
                                 timeout=120,
                             )
-                            _run(
+                            _run_git(
                                 ["git", "-C", repo_path, "checkout", ref_value],
                                 timeout=120,
                             )
@@ -1138,30 +1520,118 @@ def load_plugins_from_directory(directory, recursive=False):
                         logger.exception(f"Error loading plugin {plugin_path}")
             if not recursive:
                 break
-    else:
-        if not plugins_loaded:  # Only log the missing directory once
-            logger.debug(f"Directory {directory} does not exist.")
+
     return plugins
+
+
+def schedule_job(plugin_name: str, interval: int = 1):
+    """
+    Create a job that runs every specified interval for a plugin.
+
+    Parameters:
+        plugin_name (str): Name of the plugin for job tagging
+        interval (int): Interval for job execution
+
+    Returns:
+        Job object that can be configured with time units and actions
+    """
+    if schedule is None:
+        return None
+
+    job = schedule.every(interval)
+    job.tag(plugin_name)
+    return job
+
+
+def clear_plugin_jobs(plugin_name: str) -> None:
+    """Clear all jobs for a specific plugin."""
+    if schedule is not None:
+        schedule.clear(plugin_name)
+
+
+def start_global_scheduler():
+    """
+    Start the global scheduler thread for all plugins.
+
+    Creates and starts a single daemon thread that runs schedule.run_pending()
+    for all plugins. This eliminates race conditions from multiple threads
+    accessing the schedule library's global state.
+    """
+    global _global_scheduler_thread, _global_scheduler_stop_event
+
+    if schedule is None:
+        logger.warning(
+            "Schedule library not available, plugin background jobs disabled"
+        )
+        return
+
+    if _global_scheduler_thread is not None and _global_scheduler_thread.is_alive():
+        logger.debug("Global scheduler thread already running")
+        return
+
+    _global_scheduler_stop_event = threading.Event()
+
+    def scheduler_loop():
+        """Main scheduler loop that runs pending jobs."""
+        logger.debug("Global scheduler thread started")
+        while not _global_scheduler_stop_event.is_set():
+            if schedule:
+                schedule.run_pending()
+            # Wait up to 1 second or until stop is requested
+            _global_scheduler_stop_event.wait(1)
+        logger.debug("Global scheduler thread stopped")
+
+    _global_scheduler_thread = threading.Thread(
+        target=scheduler_loop, name="global-plugin-scheduler", daemon=True
+    )
+    _global_scheduler_thread.start()
+    logger.info("Global plugin scheduler started")
+
+
+def stop_global_scheduler():
+    """
+    Stop the global scheduler thread.
+
+    Signals the scheduler thread to stop and waits for it to terminate.
+    Clears all scheduled jobs to prevent memory leaks.
+    """
+    global _global_scheduler_thread, _global_scheduler_stop_event
+
+    if _global_scheduler_thread is None:
+        return
+
+    logger.debug("Stopping global scheduler thread")
+
+    # Signal the thread to stop
+    if _global_scheduler_stop_event:
+        _global_scheduler_stop_event.set()
+
+    # Wait for thread to finish
+    if _global_scheduler_thread.is_alive():
+        _global_scheduler_thread.join(timeout=5)
+        if _global_scheduler_thread.is_alive():
+            logger.warning("Global scheduler thread did not stop within timeout")
+
+    # Clear all scheduled jobs
+    if schedule:
+        schedule.clear()
+
+    _global_scheduler_thread = None
+    _global_scheduler_stop_event = None
+    logger.info("Global plugin scheduler stopped")
 
 
 def load_plugins(passed_config=None):
     """
-    Discovers, loads, and initializes all active plugins based on the provided or global configuration.
+    Load, initialize, and return the application's active plugins according to the given or global configuration.
 
-    This function orchestrates the full plugin lifecycle, including:
-    - Loading core, custom, and community plugins as specified in the configuration.
-    - Cloning or updating community plugin repositories and installing their dependencies.
-    - Dynamically loading plugin classes from discovered directories.
-    - Filtering and sorting plugins by their configured priority.
-    - Starting each active plugin.
-
-    If plugins have already been loaded, returns the cached sorted list.
+    Loads core, custom, and community plugins (cloning/updating community repositories and installing their dependencies as needed), starts each plugin that is configured active, and returns the resulting list sorted by plugin priority. Uses the global configuration when no configuration is passed and returns a cached result if plugins were already loaded.
 
     Parameters:
-        passed_config (dict, optional): Configuration dictionary to use instead of the global configuration.
+        passed_config (dict, optional): Configuration to use instead of the module-global config.
 
     Returns:
-        list: Active plugin instances, sorted by priority.
+        list: Active plugin instances sorted by their `priority` attribute.
     """
     global sorted_active_plugins
     global plugins_loaded
@@ -1369,6 +1839,9 @@ def load_plugins(passed_config=None):
                 plugin_name,
             )
 
+    # Start global scheduler for all plugins
+    start_global_scheduler()
+
     # Filter and sort active plugins by priority
     active_plugins = []
     for plugin in plugins:
@@ -1394,11 +1867,21 @@ def load_plugins(passed_config=None):
             plugin.priority = plugin_config.get(
                 "priority", getattr(plugin, "priority", 100)
             )
-            active_plugins.append(plugin)
             try:
                 plugin.start()
             except Exception:
                 logger.exception(f"Error starting plugin {plugin_name}")
+                stop_callable = getattr(plugin, "stop", None)
+                if callable(stop_callable):
+                    try:
+                        stop_callable()
+                    except Exception:
+                        logger.debug(
+                            "Error while running stop() for failed plugin %s",
+                            plugin_name,
+                        )
+                continue
+            active_plugins.append(plugin)
 
     sorted_active_plugins = sorted(active_plugins, key=lambda plugin: plugin.priority)
 
@@ -1414,3 +1897,37 @@ def load_plugins(passed_config=None):
 
     plugins_loaded = True  # Set the flag to indicate that plugins have been loaded
     return sorted_active_plugins
+
+
+def shutdown_plugins() -> None:
+    """
+    Stop all active plugins and reset loader state to allow a clean reload.
+
+    Calls each plugin's stop() method if present; exceptions from stop() are caught and logged. Plugins that do not implement stop() are skipped. After attempting to stop all plugins, clears the active plugin list and marks plugins as not loaded.
+    """
+    global sorted_active_plugins, plugins_loaded
+
+    if not sorted_active_plugins:
+        plugins_loaded = False
+        return
+
+    logger.info("Stopping %d plugin(s)...", len(sorted_active_plugins))
+    for plugin in list(sorted_active_plugins):
+        plugin_name = getattr(plugin, "plugin_name", plugin.__class__.__name__)
+        stop_callable = getattr(plugin, "stop", None)
+        if callable(stop_callable):
+            try:
+                stop_callable()
+            except Exception:
+                logger.exception("Error stopping plugin %s", plugin_name)
+        else:
+            logger.debug(
+                "Plugin %s does not implement stop(); skipping lifecycle cleanup",
+                plugin_name,
+            )
+
+    # Stop global scheduler after all plugins are stopped
+    stop_global_scheduler()
+
+    sorted_active_plugins = []
+    plugins_loaded = False

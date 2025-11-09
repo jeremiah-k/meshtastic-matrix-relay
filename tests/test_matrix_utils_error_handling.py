@@ -245,6 +245,34 @@ class TestDetailedSyncErrorMessage(unittest.TestCase):
             "Network connectivity issue or server unreachable",
         )
 
+    def test_message_bytes_decode_error(self):
+        """Test handling of message attribute that is bytes but fails UTF-8 decode (lines 431-432)."""
+        # Create object with message that is bytes but not valid UTF-8
+        mock_response = MagicMock()
+        mock_response.message = b"\xff\xfe\xfd"  # Invalid UTF-8 bytes
+        mock_response.status_code = None
+
+        result = _get_detailed_sync_error_message(mock_response)
+
+        self.assertEqual(
+            result,
+            "Network connectivity issue or server unreachable",
+        )
+
+    def test_status_code_conversion_error(self):
+        """Test handling of status_code that cannot be converted to int (lines 439-440)."""
+        # Create object with status_code that raises exception when converted to int
+        mock_response = MagicMock()
+        mock_response.message = None
+        mock_response.status_code = "not_a_number"
+
+        result = _get_detailed_sync_error_message(mock_response)
+
+        self.assertEqual(
+            result,
+            "Network connectivity issue or server unreachable",
+        )
+
 
 class TestMatrixLoginErrorHandling(unittest.TestCase):
     """Test cases for enhanced Matrix login error handling."""
@@ -289,10 +317,11 @@ class TestMatrixLoginErrorHandling(unittest.TestCase):
         mock_client.login.return_value = mock_response
         mock_client.close = AsyncMock()
 
-        with patch("mmrelay.matrix_utils.AsyncClient", return_value=mock_client), patch(
-            "mmrelay.cli_utils._create_ssl_context", return_value=None
-        ), patch("mmrelay.matrix_utils.save_credentials"), patch(
-            "mmrelay.matrix_utils.load_credentials", return_value=None
+        with (
+            patch("mmrelay.matrix_utils.AsyncClient", return_value=mock_client),
+            patch("mmrelay.cli_utils._create_ssl_context", return_value=None),
+            patch("mmrelay.matrix_utils.save_credentials"),
+            patch("mmrelay.matrix_utils.load_credentials", return_value=None),
         ):
             import asyncio
 
@@ -332,10 +361,11 @@ class TestMatrixLoginErrorHandling(unittest.TestCase):
         mock_client.login.return_value = mock_response
         mock_client.close = AsyncMock()
 
-        with patch("mmrelay.matrix_utils.AsyncClient", return_value=mock_client), patch(
-            "mmrelay.cli_utils._create_ssl_context", return_value=None
-        ), patch("mmrelay.matrix_utils.save_credentials"), patch(
-            "mmrelay.matrix_utils.load_credentials", return_value=None
+        with (
+            patch("mmrelay.matrix_utils.AsyncClient", return_value=mock_client),
+            patch("mmrelay.cli_utils._create_ssl_context", return_value=None),
+            patch("mmrelay.matrix_utils.save_credentials"),
+            patch("mmrelay.matrix_utils.load_credentials", return_value=None),
         ):
             import asyncio
 
@@ -372,10 +402,11 @@ class TestMatrixLoginErrorHandling(unittest.TestCase):
         mock_client.login.return_value = mock_response
         mock_client.close = AsyncMock()
 
-        with patch("mmrelay.matrix_utils.AsyncClient", return_value=mock_client), patch(
-            "mmrelay.cli_utils._create_ssl_context", return_value=None
-        ), patch("mmrelay.matrix_utils.save_credentials"), patch(
-            "mmrelay.matrix_utils.load_credentials", return_value=None
+        with (
+            patch("mmrelay.matrix_utils.AsyncClient", return_value=mock_client),
+            patch("mmrelay.cli_utils._create_ssl_context", return_value=None),
+            patch("mmrelay.matrix_utils.save_credentials"),
+            patch("mmrelay.matrix_utils.load_credentials", return_value=None),
         ):
             import asyncio
 
@@ -410,10 +441,11 @@ class TestMatrixLoginErrorHandling(unittest.TestCase):
         mock_client.login.return_value = mock_response
         mock_client.close = AsyncMock()
 
-        with patch("mmrelay.matrix_utils.AsyncClient", return_value=mock_client), patch(
-            "mmrelay.cli_utils._create_ssl_context", return_value=None
-        ), patch("mmrelay.matrix_utils.save_credentials"), patch(
-            "mmrelay.matrix_utils.load_credentials", return_value=None
+        with (
+            patch("mmrelay.matrix_utils.AsyncClient", return_value=mock_client),
+            patch("mmrelay.cli_utils._create_ssl_context", return_value=None),
+            patch("mmrelay.matrix_utils.save_credentials"),
+            patch("mmrelay.matrix_utils.load_credentials", return_value=None),
         ):
             import asyncio
 

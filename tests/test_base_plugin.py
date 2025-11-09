@@ -22,6 +22,7 @@ import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import schedule
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -36,16 +37,16 @@ class MockPlugin(BasePlugin):
 
     async def handle_meshtastic_message(
         self, packet, formatted_message, longname, meshnet_name
-    ):
+    ) -> None:
         """
         Handle an incoming Meshtastic message.
 
         Returns:
-            bool: Always returns False, indicating the message was not handled.
+            None: Always returns None, indicating the message was not handled.
         """
-        return False
+        return None
 
-    async def handle_room_message(self, room, event, full_message):
+    async def handle_room_message(self, room, event, full_message) -> None:
         """
         Handle a Matrix room message event.
 
@@ -55,9 +56,9 @@ class MockPlugin(BasePlugin):
             full_message: The full message content.
 
         Returns:
-            bool: Always returns False, indicating the message was not handled.
+            None: Always returns None, indicating the message was not handled.
         """
-        return False
+        return None
 
 
 @pytest.mark.usefixtures("mock_event_loop")
@@ -66,7 +67,9 @@ class TestBasePlugin(unittest.TestCase):
 
     def setUp(self):
         """
-        Prepare the test environment by mocking configuration and database functions for plugin tests.
+        Prepare the test environment for BasePlugin unit tests.
+
+        Resets BasePlugin global warning state, installs a mocked global configuration, patches plugin database helper functions, clears any scheduled jobs, and registers cleanup handlers so patches and schedule state are restored after each test. Also stores a reference to the shared warned-delay values set for use by tests.
         """
         # Reset global warning state for clean test isolation between test cases
         import mmrelay.plugins.base_plugin as base_plugin_module
@@ -109,6 +112,9 @@ class TestBasePlugin(unittest.TestCase):
             "mmrelay.plugins.base_plugin.delete_plugin_data"
         ).start()
 
+        schedule.clear()
+        self.addCleanup(schedule.clear)
+
         self.addCleanup(patch.stopall)
 
     def test_plugin_initialization_with_class_name(self):
@@ -140,16 +146,16 @@ class TestBasePlugin(unittest.TestCase):
         class NoNamePlugin(BasePlugin):
             async def handle_meshtastic_message(
                 self, packet, formatted_message, longname, meshnet_name
-            ):
+            ) -> None:
                 """
                 Handle an incoming Meshtastic message.
 
                 Returns:
-                    bool: Always returns False, indicating the message was not handled.
+                    None: Always returns None, indicating the message was not handled.
                 """
-                return False
+                return None
 
-            async def handle_room_message(self, room, event, full_message):
+            async def handle_room_message(self, room, event, full_message) -> None:
                 """
                 Handle a Matrix room message event.
 
@@ -159,9 +165,9 @@ class TestBasePlugin(unittest.TestCase):
                         full_message: The full message content.
 
                 Returns:
-                        bool: Always returns False, indicating the message was not handled.
+                        None: Always returns None, indicating the message was not handled.
                 """
-                return False
+                return None
 
         with self.assertRaises(ValueError) as context:
             NoNamePlugin()
@@ -200,6 +206,21 @@ class TestBasePlugin(unittest.TestCase):
             self.assertFalse(plugin.config["active"])
             self.assertEqual(plugin.response_delay, 2.5)  # DEFAULT_MESSAGE_DELAY
             self.assertEqual(plugin.channels, [])
+
+    def test_start_stop_schedule_thread(self):
+        """Plugins should register and clear scheduled jobs via start/stop."""
+        with (
+            patch("mmrelay.plugins.base_plugin.schedule_job") as mock_schedule_job,
+            patch("schedule.clear") as mock_clear,
+        ):
+            plugin = MockPlugin()
+            plugin.config["schedule"] = {"minutes": 1}
+
+            plugin.start()
+            mock_schedule_job.assert_called_once_with("test_plugin", 1)
+
+            plugin.stop()
+            mock_clear.assert_called_with(plugin.plugin_name)
 
     def test_response_delay_minimum_enforcement(self):
         """
@@ -831,6 +852,385 @@ class TestBasePlugin(unittest.TestCase):
                 await plugin.send_matrix_message("!room:matrix.org", "Test message")
 
         asyncio.run(run_test())
+
+    def test_store_node_data_json_serialization_error(self):
+        """Test store_node_data handles JSON serialization errors gracefully."""
+        plugin = MockPlugin()
+        unserializable_data = {"key": set([1, 2, 3])}  # sets are not JSON serializable
+
+        with patch("mmrelay.plugins.base_plugin.get_plugin_data_for_node") as mock_get:
+            mock_get.return_value = []
+            # Should not raise - error handling is in db_utils
+            plugin.store_node_data("!node123", unserializable_data)
+
+    @patch("mmrelay.plugins.base_plugin.store_plugin_data")
+    def test_store_node_data_database_error(self, mock_store):
+        """Test store_node_data propagates database errors (line 143)."""
+        plugin = MockPlugin()
+        test_data = {"key": "value"}
+
+        # Mock get_plugin_data_for_node to return existing data
+        with patch("mmrelay.plugins.base_plugin.get_plugin_data_for_node") as mock_get:
+            mock_get.return_value = []
+
+            # Mock store_plugin_data to raise database error
+            mock_store.side_effect = sqlite3.Error("Database connection failed")
+
+            # Should propagate the database error
+            with self.assertRaisesRegex(sqlite3.Error, "Database connection failed"):
+                plugin.store_node_data("!node123", test_data)
+
+    def test_store_node_data_max_data_rows_enforcement(self):
+        """Test store_node_data enforces max_data_rows_per_node limit."""
+        plugin = MockPlugin()
+        plugin.max_data_rows_per_node = 2  # Set low limit for testing
+
+        # Mock existing data at the limit
+        existing_data = [{"data": "item1"}, {"data": "item2"}]
+
+        with patch("mmrelay.plugins.base_plugin.get_plugin_data_for_node") as mock_get:
+            with patch("mmrelay.plugins.base_plugin.store_plugin_data") as mock_store:
+                mock_get.return_value = existing_data
+
+                # Adding new data should trigger truncation
+                new_data = {"data": "item3"}
+                plugin.store_node_data("!node123", new_data)
+
+                # The logic is: append new data first, then truncate to max_data_rows_per_node
+                # So existing_data + [new_data], then take last 2 items
+                expected_data = [{"data": "item2"}, {"data": "item3"}]
+                mock_store.assert_called_once_with(
+                    "test_plugin", "!node123", expected_data
+                )
+
+    def test_store_node_data_circular_reference_handling(self):
+        """Test store_node_data handles circular references gracefully."""
+        plugin = MockPlugin()
+        circular_data: dict = {"key": "value"}
+        circular_data["self_ref"] = circular_data
+
+        with patch("mmrelay.plugins.base_plugin.get_plugin_data_for_node") as mock_get:
+            mock_get.return_value = []
+            # Should not raise - JSON error handling is in db_utils
+            plugin.store_node_data("!node123", circular_data)
+
+    def test_plugin_initialization_class_level_fallback(self):
+        """Test plugin initialization using class-level plugin_name fallback (line 118)."""
+
+        # Create a plugin class without instance-level plugin_name
+        class TestClassLevelPlugin(BasePlugin):
+            plugin_name = "class_level_plugin"
+
+            async def handle_meshtastic_message(
+                self, packet, formatted_message, longname, meshnet_name
+            ):
+                return None
+
+            async def handle_room_message(self, room, event, full_message):
+                return None
+
+        plugin = TestClassLevelPlugin()
+        self.assertEqual(plugin.plugin_name, "class_level_plugin")
+
+    @patch(
+        "mmrelay.plugins.base_plugin.config",
+        {
+            "matrix_rooms": {
+                "room1": {"id": "!room1:matrix.org", "meshtastic_channel": 0},
+                "room2": {"id": "!room2:matrix.org", "meshtastic_channel": 1},
+            }
+        },
+    )
+    def test_plugin_initialization_dict_matrix_rooms(self):
+        """Test plugin initialization with dict format matrix_rooms (line 143)."""
+        plugin = MockPlugin()
+        self.assertEqual(plugin.mapped_channels, [0, 1])
+
+    @patch(
+        "mmrelay.plugins.base_plugin.config",
+        {
+            "matrix_rooms": [
+                {"id": "!room1:matrix.org", "meshtastic_channel": 0},
+                {"id": "!room2:matrix.org", "meshtastic_channel": 1},
+            ]
+        },
+    )
+    def test_plugin_initialization_list_matrix_rooms(self):
+        """Test plugin initialization with list format matrix_rooms (line 163)."""
+        plugin = MockPlugin()
+        self.assertEqual(plugin.mapped_channels, [0, 1])
+
+    @patch(
+        "mmrelay.plugins.base_plugin.config",
+        {"meshtastic": {"plugin_response_delay": 0.5}},  # Below minimum
+    )
+    @patch("mmrelay.plugins.base_plugin.plugins_logger")
+    def test_response_delay_deprecated_warning(self, mock_plugins_logger):
+        """Test deprecated plugin_response_delay warning (lines 186-195)."""
+        # Reset global warning flag
+        import mmrelay.plugins.base_plugin as bp
+
+        bp._deprecated_warning_shown = False
+
+        plugin = MockPlugin()
+        self.assertEqual(plugin.response_delay, bp.MINIMUM_MESSAGE_DELAY)
+        mock_plugins_logger.warning.assert_called()
+
+    @patch(
+        "mmrelay.plugins.base_plugin.config",
+        {"meshtastic": {"message_delay": 0.3}},  # Below minimum
+    )
+    @patch("mmrelay.plugins.base_plugin.plugins_logger")
+    def test_response_delay_minimum_enforcement_with_warning(self, mock_plugins_logger):
+        """Test minimum delay enforcement with warning (lines 200-221)."""
+        # Reset global warning flags
+        import mmrelay.plugins.base_plugin as bp
+
+        bp._warned_delay_values.clear()
+        bp._plugins_low_delay_warned = False
+
+        plugin = MockPlugin()
+        self.assertEqual(plugin.response_delay, bp.MINIMUM_MESSAGE_DELAY)
+        mock_plugins_logger.warning.assert_called()
+
+    @patch("mmrelay.plugins.base_plugin.schedule_job")
+    @patch("mmrelay.plugins.base_plugin.clear_plugin_jobs")
+    def test_start_schedule_config_not_dict(self, mock_clear, mock_schedule):
+        """Test start with non-dict schedule config (line 231)."""
+        plugin = MockPlugin()
+        plugin.config = {"schedule": "invalid"}  # String instead of dict
+
+        plugin.start()
+        # clear_plugin_jobs SHOULD be called to ensure clean restart
+        mock_clear.assert_called_once_with("test_plugin")
+
+    @patch("mmrelay.plugins.base_plugin.schedule_job")
+    @patch("mmrelay.plugins.base_plugin.clear_plugin_jobs")
+    def test_start_no_schedule_config(self, mock_clear, mock_schedule):
+        """Test start with no schedule configuration (lines 239-240)."""
+        plugin = MockPlugin()
+        plugin.config = {"schedule": {}}  # Empty dict
+
+        plugin.start()
+        # clear_plugin_jobs SHOULD be called to ensure clean restart even with no schedule
+        mock_clear.assert_called_once_with("test_plugin")
+
+    @patch("mmrelay.plugins.base_plugin.schedule_job")
+    @patch("mmrelay.plugins.base_plugin.clear_plugin_jobs")
+    def test_start_no_plugin_name_error(self, mock_clear, mock_schedule):
+        """Test start error when plugin_name is missing (lines 244-245)."""
+
+        # Create a plugin without a name
+        class NoNamePlugin(BasePlugin):
+            plugin_name = None  # Explicitly set to None
+
+            async def handle_meshtastic_message(
+                self, packet, formatted_message, longname, meshnet_name
+            ):
+                return None
+
+            async def handle_room_message(self, room, event, full_message):
+                return None
+
+        with self.assertRaises(ValueError) as cm:
+            NoNamePlugin()
+
+        self.assertIn("missing plugin_name definition", str(cm.exception))
+
+    @patch("mmrelay.plugins.base_plugin.schedule_job")
+    @patch("mmrelay.plugins.base_plugin.clear_plugin_jobs")
+    def test_start_schedule_with_hours_and_at(self, mock_clear, mock_schedule):
+        """Test start schedule with hours and at configuration (lines 258-260)."""
+        mock_job_obj = MagicMock()
+        mock_schedule.return_value = mock_job_obj
+
+        plugin = MockPlugin()
+        plugin.config = {"schedule": {"hours": 2, "at": "10:30"}}
+
+        plugin.start()
+        mock_schedule.assert_called_once_with("test_plugin", 2)
+        mock_job_obj.hours.at.assert_called_once_with("10:30")
+
+    @patch("mmrelay.plugins.base_plugin.schedule_job")
+    @patch("mmrelay.plugins.base_plugin.clear_plugin_jobs")
+    def test_start_schedule_with_minutes_and_at(self, mock_clear, mock_schedule):
+        """Test start schedule with minutes and at configuration (lines 264-266)."""
+        mock_job_obj = MagicMock()
+        mock_schedule.return_value = mock_job_obj
+
+        plugin = MockPlugin()
+        plugin.config = {"schedule": {"minutes": 15, "at": "30"}}
+
+        plugin.start()
+        mock_schedule.assert_called_once_with("test_plugin", 15)
+        mock_job_obj.minutes.at.assert_called_once_with("30")
+
+    @patch("mmrelay.plugins.base_plugin.schedule_job")
+    @patch("mmrelay.plugins.base_plugin.clear_plugin_jobs")
+    def test_start_schedule_with_hours_only(self, mock_clear, mock_schedule):
+        """Test start schedule with hours only (lines 270-272)."""
+        mock_job_obj = MagicMock()
+        mock_schedule.return_value = mock_job_obj
+
+        plugin = MockPlugin()
+        plugin.config = {"schedule": {"hours": 3}}
+
+        plugin.start()
+        mock_schedule.assert_called_once_with("test_plugin", 3)
+        mock_job_obj.hours.do.assert_called_once()
+
+    @patch("mmrelay.plugins.base_plugin.schedule_job")
+    @patch("mmrelay.plugins.base_plugin.clear_plugin_jobs")
+    def test_start_schedule_with_minutes_only(self, mock_clear, mock_schedule):
+        """Test start schedule with minutes only (lines 274-276)."""
+        mock_job_obj = MagicMock()
+        mock_schedule.return_value = mock_job_obj
+
+        plugin = MockPlugin()
+        plugin.config = {"schedule": {"minutes": 30}}
+
+        plugin.start()
+        mock_schedule.assert_called_once_with("test_plugin", 30)
+        mock_job_obj.minutes.do.assert_called_once()
+
+    @patch("mmrelay.plugins.base_plugin.schedule_job")
+    @patch("mmrelay.plugins.base_plugin.clear_plugin_jobs")
+    def test_start_schedule_with_seconds_only(self, mock_clear, mock_schedule):
+        """Test start schedule with seconds only (lines 278-280)."""
+        mock_job_obj = MagicMock()
+        mock_schedule.return_value = mock_job_obj
+
+        plugin = MockPlugin()
+        plugin.config = {"schedule": {"seconds": 45}}
+
+        plugin.start()
+        mock_schedule.assert_called_once_with("test_plugin", 45)
+        mock_job_obj.seconds.do.assert_called_once()
+
+    @patch("mmrelay.plugins.base_plugin.schedule_job")
+    @patch("mmrelay.plugins.base_plugin.clear_plugin_jobs")
+    def test_start_schedule_invalid_config(self, mock_clear, mock_schedule):
+        """Test start with invalid schedule configuration (lines 281-287)."""
+        mock_schedule.side_effect = ValueError("Invalid schedule")
+
+        plugin = MockPlugin()
+        plugin.config = {"schedule": {"hours": "invalid"}}
+
+        plugin.start()
+        # Should log warning but not raise exception
+
+    @patch("mmrelay.plugins.base_plugin.schedule_job")
+    @patch("mmrelay.plugins.base_plugin.clear_plugin_jobs")
+    def test_start_schedule_job_none(self, mock_clear, mock_schedule):
+        """Test start when schedule_job returns None (lines 289-295)."""
+        mock_schedule.return_value = None
+
+        plugin = MockPlugin()
+        plugin.config = {"schedule": {"hours": 1}}
+
+        plugin.start()
+        # Should log warning about unable to set up scheduled job
+
+    @patch("mmrelay.plugins.base_plugin.clear_plugin_jobs")
+    def test_stop_with_stop_event(self, mock_clear):
+        """Test stop method with existing stop event (lines 306-309)."""
+        plugin = MockPlugin()
+        plugin._stop_event = MagicMock()
+
+        plugin.stop()
+
+        plugin._stop_event.set.assert_called_once()
+        mock_clear.assert_called_once_with("test_plugin")
+
+    @patch("mmrelay.plugins.base_plugin.clear_plugin_jobs")
+    def test_stop_on_stop_exception(self, mock_clear):
+        """Test stop method when on_stop raises exception (lines 312-314)."""
+        plugin = MockPlugin()
+
+        # Override on_stop to raise exception
+        def failing_on_stop():
+            raise RuntimeError("Stop failed")
+
+        plugin.on_stop = failing_on_stop
+
+        with patch.object(plugin.logger, "exception") as mock_logger_exception:
+            plugin.stop()
+            mock_logger_exception.assert_called_once()
+
+    def test_background_job_default_implementation(self):
+        """Test background_job default implementation (line 336)."""
+        plugin = MockPlugin()
+        # Should not raise and should do nothing
+        result = plugin.background_job()
+        self.assertIsNone(result)
+
+    def test_strip_raw_comprehensive(self):
+        """Test strip_raw method functionality (line 355)."""
+        plugin = MockPlugin()
+
+        # Test dict with raw key
+        data_with_raw = {"key": "value", "raw": b"binary_data"}
+        result = plugin.strip_raw(data_with_raw)
+        self.assertEqual(result, {"key": "value"})
+
+        # Test nested structure
+        nested_data = {"data": {"raw": b"binary", "other": "value"}, "normal": "data"}
+        result = plugin.strip_raw(nested_data)
+        self.assertEqual(result, {"data": {"other": "value"}, "normal": "data"})
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    @patch("mmrelay.plugins.base_plugin.queue_message")
+    def test_send_message_no_client(self, mock_queue, mock_connect):
+        """Test send_message when no meshtastic client available (lines 431-432)."""
+        mock_connect.return_value = None
+
+        plugin = MockPlugin()
+        result = plugin.send_message("test", channel=0)
+
+        self.assertFalse(result)
+        mock_connect.assert_called_once()
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    @patch("mmrelay.plugins.base_plugin.queue_message")
+    def test_send_message_with_destination(self, mock_queue, mock_connect):
+        """Test send_message with destination_id (lines 440-443)."""
+        mock_client = MagicMock()
+        mock_connect.return_value = mock_client
+        mock_queue.return_value = True
+
+        plugin = MockPlugin()
+        result = plugin.send_message("test", channel=0, destination_id="!node123")
+
+        self.assertTrue(result)
+        # Check that destinationId was included in the call
+        call_args = mock_queue.call_args[1]
+        self.assertEqual(call_args["destinationId"], "!node123")
+
+    @patch("mmrelay.plugins.base_plugin.get_plugin_data_for_node")
+    @patch("mmrelay.plugins.base_plugin.store_plugin_data")
+    def test_store_node_data_with_list(self, mock_store, mock_get):
+        """Test store_node_data with list input (line 532)."""
+        mock_get.return_value = [{"existing": "data"}]
+
+        plugin = MockPlugin()
+        plugin.store_node_data("!node123", [{"new": "data1"}, {"new": "data2"}])
+
+        # Should extend existing data with list
+        expected_data = [{"existing": "data"}, {"new": "data1"}, {"new": "data2"}]
+        mock_store.assert_called_once_with("test_plugin", "!node123", expected_data)
+
+    @patch("mmrelay.plugins.base_plugin.get_plugin_data_dir")
+    @patch("os.makedirs")
+    def test_get_plugin_data_dir_with_subdir(self, mock_makedirs, mock_get_dir):
+        """Test get_plugin_data_dir with subdirectory (lines 607-609)."""
+        mock_get_dir.return_value = "/base/plugin/dir"
+
+        plugin = MockPlugin()
+        result = plugin.get_plugin_data_dir("subdir")
+
+        expected_path = "/base/plugin/dir/subdir"
+        self.assertEqual(result, expected_path)
+        mock_makedirs.assert_called_once_with(expected_path, exist_ok=True)
 
 
 if __name__ == "__main__":
