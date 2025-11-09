@@ -38,7 +38,7 @@ class Plugin(BasePlugin):
     def description(self):
         return """Show mesh radios and node data
 
-$shortname $longname / $devicemodel / $battery $voltage / $snr / $lastseen
+$shortname $longname / $devicemodel / $battery $voltage / $snr / $hops / $lastseen
 """
 
     def generate_response(self):
@@ -49,6 +49,15 @@ $shortname $longname / $devicemodel / $battery $voltage / $snr / $lastseen
         response = f"Nodes: {len(meshtastic_client.nodes)}\n"
 
         for _node, info in meshtastic_client.nodes.items():
+            hops = "? hops away"
+            if "hopsAway" in info and info["hopsAway"] is not None:
+                if info["hopsAway"] == 0:
+                    hops = "direct"
+                elif info["hopsAway"] == 1:
+                    hops = "1 hop away"
+                else:
+                    hops = f"{info['hopsAway']} hops away"
+
             snr = ""
             if "snr" in info and info["snr"] is not None:
                 snr = f"{info['snr']} dB "
@@ -71,7 +80,7 @@ $shortname $longname / $devicemodel / $battery $voltage / $snr / $lastseen
                 ):
                     battery = f"{info['deviceMetrics']['batteryLevel']}% "
 
-            response += f"{info['user']['shortName']} {info['user']['longName']} / {info['user']['hwModel']} / {battery} {voltage} / {snr} / {last_heard}\n"
+            response += f"{info['user']['shortName']} {info['user']['longName']} / {info['user']['hwModel']} / {battery} {voltage} / {snr} / {hops} / {last_heard}\n"
 
         return response
 

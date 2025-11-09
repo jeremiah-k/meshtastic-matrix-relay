@@ -380,6 +380,197 @@ class TestNodesPlugin(unittest.TestCase):
 
         asyncio.run(run_test())
 
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    def test_generate_response_hop_count_zero(self, mock_connect):
+        """
+        Test that generate_response displays 'direct' for nodes with hopsAway: 0.
+        """
+        hop_client = MagicMock()
+        hop_client.nodes = {
+            "node_direct": {
+                "user": {
+                    "shortName": "DIR",
+                    "longName": "Direct Node",
+                    "hwModel": "TEST",
+                },
+                "hopsAway": 0,
+            }
+        }
+        mock_connect.return_value = hop_client
+
+        response = self.plugin.generate_response()
+
+        self.assertIn("Nodes: 1", response)
+        self.assertIn("DIR Direct Node", response)
+        self.assertIn("direct", response)
+        self.assertNotIn("? hops away", response)
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    def test_generate_response_hop_count_one(self, mock_connect):
+        """
+        Test that generate_response displays '1 hop away' for nodes with hopsAway: 1.
+        """
+        hop_client = MagicMock()
+        hop_client.nodes = {
+            "node_one_hop": {
+                "user": {
+                    "shortName": "ONE",
+                    "longName": "One Hop Node",
+                    "hwModel": "TEST",
+                },
+                "hopsAway": 1,
+            }
+        }
+        mock_connect.return_value = hop_client
+
+        response = self.plugin.generate_response()
+
+        self.assertIn("Nodes: 1", response)
+        self.assertIn("ONE One Hop Node", response)
+        self.assertIn("1 hop away", response)
+        self.assertNotIn("? hops away", response)
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    def test_generate_response_hop_count_multiple(self, mock_connect):
+        """
+        Test that generate_response displays 'N hops away' for nodes with hopsAway > 1.
+        """
+        hop_client = MagicMock()
+        hop_client.nodes = {
+            "node_four_hops": {
+                "user": {
+                    "shortName": "FOUR",
+                    "longName": "Four Hops Node",
+                    "hwModel": "TEST",
+                },
+                "hopsAway": 4,
+            }
+        }
+        mock_connect.return_value = hop_client
+
+        response = self.plugin.generate_response()
+
+        self.assertIn("Nodes: 1", response)
+        self.assertIn("FOUR Four Hops Node", response)
+        self.assertIn("4 hops away", response)
+        self.assertNotIn("? hops away", response)
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    def test_generate_response_hop_count_missing(self, mock_connect):
+        """
+        Test that generate_response displays '? hops away' for nodes without hopsAway field.
+        """
+        hop_client = MagicMock()
+        hop_client.nodes = {
+            "node_no_hops": {
+                "user": {
+                    "shortName": "NOP",
+                    "longName": "No Hops Node",
+                    "hwModel": "TEST",
+                }
+                # No hopsAway field
+            }
+        }
+        mock_connect.return_value = hop_client
+
+        response = self.plugin.generate_response()
+
+        self.assertIn("Nodes: 1", response)
+        self.assertIn("NOP No Hops Node", response)
+        self.assertIn("? hops away", response)
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    def test_generate_response_hop_count_null(self, mock_connect):
+        """
+        Test that generate_response displays '? hops away' for nodes with hopsAway: None.
+        """
+        hop_client = MagicMock()
+        hop_client.nodes = {
+            "node_null_hops": {
+                "user": {
+                    "shortName": "NUL",
+                    "longName": "Null Hops Node",
+                    "hwModel": "TEST",
+                },
+                "hopsAway": None,
+            }
+        }
+        mock_connect.return_value = hop_client
+
+        response = self.plugin.generate_response()
+
+        self.assertIn("Nodes: 1", response)
+        self.assertIn("NUL Null Hops Node", response)
+        self.assertIn("? hops away", response)
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    def test_generate_response_mixed_hop_counts(self, mock_connect):
+        """
+        Test that generate_response correctly handles a mix of different hop count scenarios.
+        """
+        mixed_client = MagicMock()
+        mixed_client.nodes = {
+            "node_direct": {
+                "user": {
+                    "shortName": "DIR",
+                    "longName": "Direct Node",
+                    "hwModel": "TEST",
+                },
+                "hopsAway": 0,
+            },
+            "node_one_hop": {
+                "user": {
+                    "shortName": "ONE",
+                    "longName": "One Hop Node",
+                    "hwModel": "TEST",
+                },
+                "hopsAway": 1,
+            },
+            "node_multi_hop": {
+                "user": {
+                    "shortName": "MUL",
+                    "longName": "Multi Hop Node",
+                    "hwModel": "TEST",
+                },
+                "hopsAway": 3,
+            },
+            "node_missing": {
+                "user": {
+                    "shortName": "MIS",
+                    "longName": "Missing Hops Node",
+                    "hwModel": "TEST",
+                }
+                # No hopsAway field
+            },
+            "node_null": {
+                "user": {
+                    "shortName": "NUL",
+                    "longName": "Null Hops Node",
+                    "hwModel": "TEST",
+                },
+                "hopsAway": None,
+            },
+        }
+        mock_connect.return_value = mixed_client
+
+        response = self.plugin.generate_response()
+
+        self.assertIn("Nodes: 5", response)
+        # Check each hop scenario
+        self.assertIn("DIR Direct Node", response)
+        self.assertIn("direct", response)
+
+        self.assertIn("ONE One Hop Node", response)
+        self.assertIn("1 hop away", response)
+
+        self.assertIn("MUL Multi Hop Node", response)
+        self.assertIn("3 hops away", response)
+
+        self.assertIn("MIS Missing Hops Node", response)
+        self.assertIn("NUL Null Hops Node", response)
+        # Should have two instances of "? hops away"
+        self.assertEqual(response.count("? hops away"), 2)
+
 
 if __name__ == "__main__":
     unittest.main()
