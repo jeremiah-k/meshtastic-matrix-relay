@@ -3036,7 +3036,6 @@ class TestDependencyInstallation(unittest.TestCase):
         # Clone with tag fails, then fetch and checkout succeed
         mock_run_git.side_effect = [
             subprocess.CalledProcessError(1, "git"),  # clone --branch fails
-            None,  # clone succeeds
             None,  # fetch succeeds
             None,  # checkout succeeds
         ]
@@ -3052,18 +3051,15 @@ class TestDependencyInstallation(unittest.TestCase):
         )
 
         self.assertTrue(result)
-        # Should clone, fetch, checkout
+        # Should fetch, checkout (no second clone)
         calls = mock_run_git.call_args_list
-        self.assertEqual(len(calls), 4)
+        self.assertEqual(len(calls), 3)
         self.assertEqual(
-            calls[1][0][0], ["git", "clone", "https://github.com/user/repo.git"]
-        )
-        self.assertEqual(
-            calls[2][0][0],
+            calls[1][0][0],
             ["git", "-C", "/tmp/repo", "fetch", "origin", "refs/tags/v1.0.0"],
         )
         self.assertEqual(
-            calls[3][0][0], ["git", "-C", "/tmp/repo", "checkout", "v1.0.0"]
+            calls[2][0][0], ["git", "-C", "/tmp/repo", "checkout", "v1.0.0"]
         )
 
     @patch("mmrelay.plugin_loader._run_git")
@@ -3072,10 +3068,9 @@ class TestDependencyInstallation(unittest.TestCase):
         self, mock_logger, mock_run_git
     ):
         """Test _clone_new_repo_to_branch_or_tag with alternative tag fetch."""
-        # Clone with tag fails, fetch fails, alternative fetch succeeds, checkout succeeds
+        # Clone with tag fails, first fetch fails, alternative fetch succeeds, checkout succeeds
         mock_run_git.side_effect = [
             subprocess.CalledProcessError(1, "git"),  # clone --branch fails
-            None,  # clone succeeds
             subprocess.CalledProcessError(1, "git"),  # first fetch fails
             None,  # alternative fetch succeeds
             None,  # checkout succeeds
@@ -3095,7 +3090,7 @@ class TestDependencyInstallation(unittest.TestCase):
         # Should try alternative fetch format
         calls = mock_run_git.call_args_list
         self.assertEqual(
-            calls[3][0][0],
+            calls[2][0][0],
             [
                 "git",
                 "-C",
@@ -3112,10 +3107,9 @@ class TestDependencyInstallation(unittest.TestCase):
         self, mock_logger, mock_run_git
     ):
         """Test _clone_new_repo_to_branch_or_tag with tag as branch fallback."""
-        # Clone fails, clone succeeds, fetch fails, fetch as branch succeeds, checkout succeeds
+        # Clone fails, fetch fails, alt fetch fails, fetch as branch succeeds, checkout succeeds
         mock_run_git.side_effect = [
             subprocess.CalledProcessError(1, "git"),  # clone --branch fails
-            None,  # clone succeeds
             subprocess.CalledProcessError(1, "git"),  # fetch tag fails
             subprocess.CalledProcessError(1, "git"),  # alt fetch fails
             None,  # fetch as branch succeeds
@@ -3136,7 +3130,7 @@ class TestDependencyInstallation(unittest.TestCase):
         # Should fetch as branch
         calls = mock_run_git.call_args_list
         self.assertEqual(
-            calls[4][0][0], ["git", "-C", "/tmp/repo", "fetch", "origin", "v1.0.0"]
+            calls[3][0][0], ["git", "-C", "/tmp/repo", "fetch", "origin", "v1.0.0"]
         )
 
     @patch("mmrelay.plugin_loader._run_git")

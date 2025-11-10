@@ -1406,14 +1406,11 @@ def _clone_new_repo_to_branch_or_tag(
                     )
                 return True
             except subprocess.CalledProcessError:
-                # If that fails, clone without specifying a tag
+                # If cloning with the specific ref fails, the repository directory may have been
+                # created with the default branch. We'll proceed with that and attempt to
+                # fetch and checkout the desired ref.
                 logger.warning(
-                    f"Could not clone with tag {ref_value}, cloning default branch"
-                )
-                _run_git(
-                    ["git", "clone", repo_url],
-                    cwd=plugins_dir,
-                    timeout=120,
+                    f"Could not clone with ref '{ref_value}' directly. Attempting to fetch and checkout."
                 )
 
             # Then try to fetch and checkout the tag
@@ -1431,7 +1428,7 @@ def _clone_new_repo_to_branch_or_tag(
                         ]
                     )
                 except subprocess.CalledProcessError:
-                    # If that fails, try to fetch the tag without the refs/tags/ prefix
+                    # If that fails, try fetching with a more explicit refspec to force updating the local tag
                     _run_git(
                         [
                             "git",
