@@ -598,9 +598,9 @@ class Plugin:
     @patch("mmrelay.plugin_loader.get_community_plugin_dirs")
     @patch("mmrelay.plugin_loader.get_custom_plugin_dirs")
     @patch("mmrelay.plugin_loader.start_global_scheduler")
-    def test_load_plugins_tag_priority_over_branch(
+    def test_load_plugins_tag_priority_over_branch(  # noqa: ARG002
         self,
-        mock_start_scheduler,
+        _mock_start_scheduler,
         mock_get_custom_dirs,
         mock_get_community_dirs,
         mock_load_from_dir,
@@ -648,10 +648,10 @@ class Plugin:
     @patch("mmrelay.plugin_loader.get_custom_plugin_dirs")
     @patch("mmrelay.plugin_loader.start_global_scheduler")
     @patch("mmrelay.plugin_loader.logger")
-    def test_load_plugins_commit_with_tag_and_branch_warning(
+    def test_load_plugins_commit_with_tag_and_branch_warning(  # noqa: ARG002
         self,
         mock_logger,
-        mock_start_scheduler,
+        _mock_start_scheduler,
         mock_get_custom_dirs,
         mock_get_community_dirs,
         mock_load_from_dir,
@@ -697,9 +697,9 @@ class Plugin:
     @patch("mmrelay.plugin_loader.get_community_plugin_dirs")
     @patch("mmrelay.plugin_loader.get_custom_plugin_dirs")
     @patch("mmrelay.plugin_loader.start_global_scheduler")
-    def test_load_plugins_default_to_main_branch(
+    def test_load_plugins_default_to_main_branch(  # noqa: ARG002
         self,
-        mock_start_scheduler,
+        _mock_start_scheduler,
         mock_get_custom_dirs,
         mock_get_community_dirs,
         mock_load_from_dir,
@@ -1035,7 +1035,7 @@ class Plugin:
             """
             Test helper that simulates subprocess responses for git commands in tests.
 
-            Simulates a failing `git fetch` for the exact command ["git", "-C", "/tmp/repo", "fetch", "origin", "cdef5678"] and a failing git "cat-file" invocation; for all other calls it returns a successful CompletedProcess with empty stdout/stderr.
+            Simulates a failing `git fetch` for the exact command ["git", "-C", self.temp_repo_path, "fetch", "origin", "cdef5678"] and a failing git "cat-file" invocation; for all other calls it returns a successful CompletedProcess with empty stdout/stderr.
 
             Returns:
                 subprocess.CompletedProcess: Successful result for non-matching commands.
@@ -3096,11 +3096,11 @@ class TestDependencyInstallation(unittest.TestCase):
 
         result = _clone_new_repo_to_branch_or_tag(
             "https://github.com/user/repo.git",
-            "/tmp/repo",
+            self.temp_repo_path,
             "branch",
             "main",
             "repo",
-            "/tmp",
+            self.temp_plugins_dir,
             True,  # is_default_branch
         )
 
@@ -3132,11 +3132,11 @@ class TestDependencyInstallation(unittest.TestCase):
 
         result = _clone_new_repo_to_branch_or_tag(
             "https://github.com/user/repo.git",
-            "/tmp/repo",
+            self.temp_repo_path,
             "branch",
             "main",
             "repo",
-            "/tmp",
+            self.temp_plugins_dir,
             True,  # is_default_branch
         )
 
@@ -3156,11 +3156,11 @@ class TestDependencyInstallation(unittest.TestCase):
         """Test _clone_new_repo_to_branch_or_tag with tag success."""
         result = _clone_new_repo_to_branch_or_tag(
             "https://github.com/user/repo.git",
-            "/tmp/repo",
+            self.temp_repo_path,
             "tag",
             "v1.0.0",
             "repo",
-            "/tmp",
+            self.temp_plugins_dir,
             False,  # not default branch
         )
 
@@ -3168,7 +3168,7 @@ class TestDependencyInstallation(unittest.TestCase):
         # Should clone with --branch v1.0.0
         mock_run_git.assert_called_with(
             ["git", "clone", "--branch", "v1.0.0", "https://github.com/user/repo.git"],
-            cwd="/tmp",
+            cwd=self.temp_plugins_dir,
             timeout=120,
         )
         mock_logger.info.assert_called_with(
@@ -3191,11 +3191,11 @@ class TestDependencyInstallation(unittest.TestCase):
 
         result = _clone_new_repo_to_branch_or_tag(
             "https://github.com/user/repo.git",
-            "/tmp/repo",
+            self.temp_repo_path,
             "tag",
             "v1.0.0",
             "repo",
-            "/tmp",
+            self.temp_plugins_dir,
             False,  # not default branch
         )
 
@@ -3205,10 +3205,10 @@ class TestDependencyInstallation(unittest.TestCase):
         self.assertEqual(len(calls), 4)
         self.assertEqual(
             calls[2][0][0],
-            ["git", "-C", "/tmp/repo", "fetch", "origin", "refs/tags/v1.0.0"],
+            ["git", "-C", self.temp_repo_path, "fetch", "origin", "refs/tags/v1.0.0"],
         )
         self.assertEqual(
-            calls[3][0][0], ["git", "-C", "/tmp/repo", "checkout", "v1.0.0"]
+            calls[3][0][0], ["git", "-C", self.temp_repo_path, "checkout", "v1.0.0"]
         )
 
     @patch("mmrelay.plugin_loader._run_git")
@@ -3228,11 +3228,11 @@ class TestDependencyInstallation(unittest.TestCase):
 
         result = _clone_new_repo_to_branch_or_tag(
             "https://github.com/user/repo.git",
-            "/tmp/repo",
+            self.temp_repo_path,
             "tag",
             "v1.0.0",
             "repo",
-            "/tmp",
+            self.temp_plugins_dir,
             False,  # not default branch
         )
 
@@ -3244,7 +3244,7 @@ class TestDependencyInstallation(unittest.TestCase):
             [
                 "git",
                 "-C",
-                "/tmp/repo",
+                self.temp_repo_path,
                 "fetch",
                 "origin",
                 "refs/tags/v1.0.0:refs/tags/v1.0.0",
@@ -3269,11 +3269,11 @@ class TestDependencyInstallation(unittest.TestCase):
 
         result = _clone_new_repo_to_branch_or_tag(
             "https://github.com/user/repo.git",
-            "/tmp/repo",
+            self.temp_repo_path,
             "tag",
             "v1.0.0",
             "repo",
-            "/tmp",
+            self.temp_plugins_dir,
             False,  # not default branch
         )
 
@@ -3281,7 +3281,8 @@ class TestDependencyInstallation(unittest.TestCase):
         # Should fetch as branch
         calls = mock_run_git.call_args_list
         self.assertEqual(
-            calls[4][0][0], ["git", "-C", "/tmp/repo", "fetch", "origin", "v1.0.0"]
+            calls[4][0][0],
+            ["git", "-C", self.temp_repo_path, "fetch", "origin", "v1.0.0"],
         )
 
     @patch("mmrelay.plugin_loader._run_git")
@@ -3295,11 +3296,11 @@ class TestDependencyInstallation(unittest.TestCase):
 
         result = _clone_new_repo_to_branch_or_tag(
             "https://github.com/user/repo.git",
-            "/tmp/repo",
+            self.temp_repo_path,
             "branch",
             "main",
             "repo",
-            "/tmp",
+            self.temp_plugins_dir,
             True,  # is_default_branch
         )
 
@@ -3319,11 +3320,11 @@ class TestDependencyInstallation(unittest.TestCase):
 
         result = _clone_new_repo_to_branch_or_tag(
             "https://github.com/user/repo.git",
-            "/tmp/repo",
+            self.temp_repo_path,
             "branch",
             "main",
             "repo",
-            "/tmp",
+            self.temp_plugins_dir,
             True,  # is_default_branch
         )
 
@@ -3344,7 +3345,7 @@ class TestDependencyInstallation(unittest.TestCase):
         ]
 
         result = _update_existing_repo_to_branch_or_tag(
-            "/tmp/repo",
+            self.temp_repo_path,
             "branch",
             "main",
             "repo",
@@ -3370,7 +3371,7 @@ class TestDependencyInstallation(unittest.TestCase):
         ]
 
         result = _update_existing_repo_to_branch_or_tag(
-            "/tmp/repo",
+            self.temp_repo_path,
             "branch",
             "main",
             "repo",
@@ -3394,7 +3395,7 @@ class TestDependencyInstallation(unittest.TestCase):
         ]
 
         result = _update_existing_repo_to_branch_or_tag(
-            "/tmp/repo",
+            self.temp_repo_path,
             "branch",
             "main",
             "repo",
@@ -3424,7 +3425,7 @@ class TestDependencyInstallation(unittest.TestCase):
         ]
 
         result = _update_existing_repo_to_branch_or_tag(
-            "/tmp/repo",
+            self.temp_repo_path,
             "branch",
             "main",
             "repo",
@@ -3446,7 +3447,7 @@ class TestDependencyInstallation(unittest.TestCase):
         )  # all git operations fail
 
         result = _update_existing_repo_to_branch_or_tag(
-            "/tmp/repo",
+            self.temp_repo_path,
             "branch",
             "main",
             "repo",

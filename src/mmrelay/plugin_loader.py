@@ -274,6 +274,26 @@ def _normalize_repo_target(repo_url: str) -> tuple[str, str]:
     return scheme, host
 
 
+def _redact_url(url: str) -> str:
+    """
+    Redact credentials from a URL for safe logging.
+
+    If the URL contains username or password, they are replaced with '***'.
+    """
+    try:
+        from urllib.parse import urlsplit, urlunsplit
+
+        s = urlsplit(url)
+        if s.username or s.password:
+            netloc = f"{'***' if s.username else ''}{':***' if s.password else ''}@{s.hostname}"
+            if s.port:
+                netloc += f":{s.port}"
+            return urlunsplit((s.scheme, netloc, s.path, s.query, s.fragment))
+    except Exception:
+        pass
+    return url
+
+
 def _is_repo_url_allowed(repo_url: str) -> bool:
     """
     Determine whether a repository URL or local filesystem path is permitted for community plugins.
@@ -296,7 +316,9 @@ def _is_repo_url_allowed(repo_url: str) -> bool:
         if _allow_local_plugin_paths():
             if os.path.exists(repo_url):
                 return True
-            logger.error("Local repository path does not exist: %s", repo_url)
+            logger.error(
+                "Local repository path does not exist: %s", _redact_url(repo_url)
+            )
             return False
         logger.error(
             "Invalid repository '%s'. Local paths are disabled, and remote URLs must include a scheme (e.g., 'https://').",
@@ -311,11 +333,16 @@ def _is_repo_url_allowed(repo_url: str) -> bool:
         return False
 
     if scheme == "http":
-        logger.error("Plain HTTP community plugin URLs are not allowed: %s", repo_url)
+        logger.error(
+            "Plain HTTP community plugin URLs are not allowed: %s",
+            _redact_url(repo_url),
+        )
         return False
 
     if scheme not in {"https", "ssh"}:
-        logger.error("Unsupported repository scheme '%s' for %s", scheme, repo_url)
+        logger.error(
+            "Unsupported repository scheme '%s' for %s", scheme, _redact_url(repo_url)
+        )
         return False
 
     allowed_hosts = _get_allowed_repo_hosts()
@@ -884,7 +911,9 @@ def _raise_install_error(pkg_name):
     raise subprocess.CalledProcessError(1, "pip/pipx")
 
 
-def _update_existing_repo_to_commit(repo_path, ref_value, repo_name):
+def _update_existing_repo_to_commit(
+    repo_path: str, ref_value: str, repo_name: str
+) -> bool:
     """
     Update the repository at the given path to the specified commit.
 
@@ -902,11 +931,22 @@ def _update_existing_repo_to_commit(repo_path, ref_value, repo_name):
             current = _run_git(
                 ["git", "-C", repo_path, "rev-parse", "HEAD"], capture_output=True
             ).stdout.strip()
-            if current == ref_value:
-                logger.info("Repository %s already at commit %s", repo_name, ref_value)
-                return True
         except subprocess.CalledProcessError:
-            pass  # fall through
+            current = ""
+
+        target = None
+        try:
+            # Resolve short SHA to full commit id if available locally
+            target = _run_git(
+                ["git", "-C", repo_path, "rev-parse", f"{ref_value}^{{commit}}"],
+                capture_output=True,
+            ).stdout.strip()
+        except subprocess.CalledProcessError:
+            pass
+
+        if target and current == target:
+            logger.info("Repository %s already at commit %s", repo_name, target)
+            return True
 
         # First check if the commit exists locally before fetching
         try:
@@ -917,7 +957,7 @@ def _update_existing_repo_to_commit(repo_path, ref_value, repo_name):
                     repo_path,
                     "cat-file",
                     "-e",
-                    f"{ref_value}^{{commit}}",
+                    f"{(target or ref_value)}^{{commit}}",
                 ],
                 timeout=120,
             )
@@ -956,7 +996,9 @@ def _update_existing_repo_to_commit(repo_path, ref_value, repo_name):
         return False
 
 
-def _clone_new_repo_to_commit(repo_url, repo_path, ref_value, repo_name, plugins_dir):
+def _clone_new_repo_to_commit(
+    repo_url: str, repo_path: str, ref_value: str, repo_name: str, plugins_dir: str
+) -> bool:
     """
     Clone a new repository and checkout a specific commit.
 
@@ -979,8 +1021,12 @@ def _clone_new_repo_to_commit(repo_url, repo_path, ref_value, repo_name, plugins
 
     try:
         # First clone the repository (default branch)
-        _run_git(["git", "clone", repo_url], cwd=plugins_dir, timeout=120)
-        logger.info(f"Cloned repository {repo_name} from {repo_url}")
+        _run_git(
+            ["git", "clone", "--filter=blob:none", repo_url],
+            cwd=plugins_dir,
+            timeout=120,
+        )
+        logger.info(f"Cloned repository {repo_name} from {_redact_url(repo_url)}")
 
         # Then checkout the specific commit
         try:
@@ -1018,7 +1064,9 @@ def _clone_new_repo_to_commit(repo_url, repo_path, ref_value, repo_name, plugins
         return False
 
 
-def _try_checkout_and_pull_ref(repo_path, ref_value, repo_name, ref_type="branch"):
+def _try_checkout_and_pull_ref(
+    repo_path: str, ref_value: str, repo_name: str, ref_type: str = "branch"
+) -> bool:
     """
     Attempt to checkout a ref and pull from origin.
 
@@ -1046,7 +1094,7 @@ def _try_checkout_and_pull_ref(repo_path, ref_value, repo_name, ref_type="branch
         return False
 
 
-def _try_fetch_and_checkout_tag(repo_path, ref_value, repo_name):
+def _try_fetch_and_checkout_tag(repo_path: str, ref_value: str, repo_name: str) -> bool:
     """
     Attempt to fetch the given tag from origin and check it out.
 
@@ -1089,7 +1137,7 @@ def _try_fetch_and_checkout_tag(repo_path, ref_value, repo_name):
         return False
 
 
-def _try_checkout_as_branch(repo_path, ref_value, repo_name):
+def _try_checkout_as_branch(repo_path: str, ref_value: str, repo_name: str) -> bool:
     """
     Attempt to fetch and switch the repository to the given branch name.
 
@@ -1111,7 +1159,9 @@ def _try_checkout_as_branch(repo_path, ref_value, repo_name):
         return False
 
 
-def _fallback_to_default_branches(repo_path, default_branches, ref_value, repo_name):
+def _fallback_to_default_branches(
+    repo_path: str, default_branches: list[str], ref_value: str, repo_name: str
+) -> bool:
     """
     Attempt to checkout and pull each branch in `default_branches` for the repository, falling back to the repository's current state if none succeed.
 
@@ -1299,7 +1349,7 @@ def _validate_clone_inputs(repo_url, ref):
             - repo_name (str|None): Derived repository name (basename without extension) on success, `None` on failure.
 
     Notes:
-        - Commit `value` must be 7–40 hexadecimal characters.
+        - Commit `value` must be 7-40 hexadecimal characters.
         - Branch and tag `value` must start with an alphanumeric character and may contain alphanumerics, dot, underscore, slash, or hyphen.
         - A `value` that starts with "-" is considered invalid.
     """
@@ -1318,7 +1368,7 @@ def _validate_clone_inputs(repo_url, ref):
         )
         return False, None, None, None, None
     if not ref_value:
-        logger.error("Missing ref value for %s on %r", ref_type, repo_url)
+        logger.error("Missing ref value for %s on %r", ref_type, _redact_url(repo_url))
         return False, None, None, None, None
     if ref_value.startswith("-"):
         logger.error("Ref value looks invalid (starts with '-'): %r", ref_value)
