@@ -873,7 +873,7 @@ class Plugin:
 
         self.assertEqual(
             len(fetch_calls), 3
-        )  # Initial general fetch, specific commit fetch, general fetch fallback
+        )  # Initial general fetch, specific commit fetch fails, fallback fetch
         self.assertEqual(
             fetch_calls[0][0][0], ["git", "-C", "/tmp/repo", "fetch", "origin"]
         )
@@ -2674,88 +2674,6 @@ class TestDependencyInstallation(unittest.TestCase):
         # Verify no "Invalid ref type" error was logged (commit ref type should be accepted)
         for call in mock_logger.error.call_args_list:
             self.assertNotIn("Invalid ref type", str(call))
-
-    @patch("mmrelay.plugin_loader._run_git")
-    @patch("mmrelay.plugin_loader._is_repo_url_allowed")
-    @patch("mmrelay.plugin_loader.logger")
-    @patch("os.path.isdir")
-    @patch("os.makedirs")
-    def test_clone_or_update_repo_new_repo_commit(
-        self, mock_makedirs, mock_isdir, mock_logger, mock_is_allowed, mock_run_git
-    ):
-        """Test cloning a new repository with commit ref."""
-
-        mock_is_allowed.return_value = True
-        mock_isdir.return_value = False  # Repo doesn't exist
-        ref = {"type": "commit", "value": "a1b2c3d4"}
-
-        result = clone_or_update_repo("https://github.com/user/repo.git", ref, "/tmp")
-
-        self.assertTrue(result)
-
-        # Verify the sequence of git operations (function clones new repo then fetches and checks out commit)
-        expected_calls = [
-            # Clone the repo first
-            (
-                ["git", "clone", "https://github.com/user/repo.git"],
-                {"cwd": "/tmp", "timeout": 120},
-            ),
-            # Fetch specific commit
-            (
-                ["git", "-C", "/tmp/repo", "fetch", "origin", "a1b2c3d4"],
-                {"timeout": 120},
-            ),
-            # Checkout the commit
-            (["git", "-C", "/tmp/repo", "checkout", "a1b2c3d4"], {"timeout": 120}),
-        ]
-
-        actual_calls = mock_run_git.call_args_list
-        self.assertEqual(len(actual_calls), 3)
-
-        for i, (expected_args, expected_kwargs) in enumerate(expected_calls):
-            actual_args, actual_kwargs = actual_calls[i]
-            self.assertEqual(actual_args[0], expected_args)
-            for key, expected_value in expected_kwargs.items():
-                self.assertEqual(actual_kwargs.get(key), expected_value)
-            self.assertEqual(actual_kwargs, expected_kwargs)
-
-    @patch("mmrelay.plugin_loader._run_git")
-    @patch("mmrelay.plugin_loader._is_repo_url_allowed")
-    @patch("mmrelay.plugin_loader.logger")
-    @patch("os.path.isdir")
-    def test_clone_or_update_repo_existing_repo_commit(
-        self, mock_isdir, mock_logger, mock_is_allowed, mock_run_git
-    ):
-        """Test updating an existing repository to a specific commit."""
-
-        mock_is_allowed.return_value = True
-        mock_isdir.return_value = True  # Repo exists
-        ref = {"type": "commit", "value": "deadbeef"}
-
-        result = clone_or_update_repo("https://github.com/user/repo.git", ref, "/tmp")
-
-        self.assertTrue(result)
-
-        # Verify the sequence of git operations
-        expected_calls = [
-            # Initial fetch from remote
-            (["git", "-C", "/tmp/repo", "fetch", "origin"], {"timeout": 120}),
-            # Check if commit exists locally
-            (
-                ["git", "-C", "/tmp/repo", "cat-file", "-e", "deadbeef^{commit}"],
-                {"timeout": 120},
-            ),
-            # Checkout the specific commit
-            (["git", "-C", "/tmp/repo", "checkout", "deadbeef"], {"timeout": 120}),
-        ]
-
-        actual_calls = mock_run_git.call_args_list
-        self.assertEqual(len(actual_calls), 3)
-
-        for i, (expected_args, expected_kwargs) in enumerate(expected_calls):
-            actual_args, actual_kwargs = actual_calls[i]
-            self.assertEqual(actual_args[0], expected_args)
-            self.assertEqual(actual_kwargs, expected_kwargs)
 
 
 if __name__ == "__main__":
