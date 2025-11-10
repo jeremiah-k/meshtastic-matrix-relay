@@ -2662,24 +2662,38 @@ class TestDependencyInstallation(unittest.TestCase):
 
         mock_threading.Event.assert_not_called()
 
+    @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader._is_repo_url_allowed")
     @patch("mmrelay.plugin_loader.logger")
+    @patch("os.makedirs")
+    @patch("os.path.isdir")
     def test_clone_or_update_repo_commit_ref_type_validation(
-        self, mock_logger, mock_is_allowed
+        self, mock_isdir, mock_makedirs, mock_logger, mock_is_allowed, mock_run_git
     ):
         """Test that 'commit' is accepted as a valid ref type."""
+        import subprocess
+
         from mmrelay.plugin_loader import clone_or_update_repo
 
         mock_is_allowed.return_value = True
+        mock_isdir.return_value = False  # Repo doesn't exist
+        mock_run_git.side_effect = subprocess.CalledProcessError(
+            1, "git"
+        )  # Git operations fail
         ref = {"type": "commit", "value": "deadbeef"}
 
         result = clone_or_update_repo("https://github.com/user/repo.git", ref, "/tmp")
 
         self.assertFalse(
             result
-        )  # Will fail due to missing git operations, but ref type validation should pass
-        # Should not log error about invalid ref type
-        mock_logger.error.assert_not_called()
+        )  # Will fail due to git operations failing, but ref type validation should pass
+        # Should not log error about invalid ref type (but may log other errors)
+        mock_logger.error.assert_any_call(
+            "Please manually git clone the repository https://github.com/user/repo.git into /tmp/repo"
+        )
+        # Verify no "Invalid ref type" error was logged
+        for call in mock_logger.error.call_args_list:
+            self.assertNotIn("Invalid ref type", str(call))
 
     @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader._is_repo_url_allowed")
