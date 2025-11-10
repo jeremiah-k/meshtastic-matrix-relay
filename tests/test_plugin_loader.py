@@ -1035,7 +1035,7 @@ class Plugin:
 
         # Verify manual clone instruction was logged
         mock_logger.error.assert_called_once_with(
-            "Please manually git clone the repository https://github.com/user/repo.git into /tmp/repo"
+            "Please manually git clone repository https://github.com/user/repo.git into /tmp/repo"
         )
 
 
