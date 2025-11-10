@@ -284,7 +284,7 @@ Common issues:
 
 ### Parametrized Tests with Patch Decorators
 
-When using `@pytest.mark.parametrize` with `@patch` decorators in `unittest.TestCase` classes, the parameterized arguments may not be passed correctly, causing `TypeError: missing 1 required positional argument`.
+When using `@pytest.mark.parametrize` with `@patch` decorators in `unittest.TestCase` classes, the parametrized arguments may not be passed correctly, causing `TypeError: missing 1 required positional argument`.
 
 **Problem**: Decorator ordering conflicts between parametrize and patch decorators.
 

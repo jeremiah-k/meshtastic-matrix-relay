@@ -47,6 +47,17 @@ class ValidationResult(NamedTuple):
     repo_name: str | None
 
 
+# Precompiled regex patterns for validation
+COMMIT_HASH_PATTERN = re.compile(r"[0-9a-fA-F]{7,40}")
+REF_NAME_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]*")
+
+# Default branch names to try when ref is not specified
+DEFAULT_BRANCHES = ["main", "master"]
+
+# Environment keys that indicate pipx is being used (for security/testability)
+PIPX_ENVIRONMENT_KEYS = ("PIPX_HOME", "PIPX_LOCAL_VENVS", "PIPX_BIN_DIR")
+
+
 # Global scheduler management
 _global_scheduler_thread = None
 _global_scheduler_stop_event = None
@@ -628,10 +639,7 @@ def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
         return
 
     try:
-        in_pipx = any(
-            key in os.environ
-            for key in ("PIPX_HOME", "PIPX_LOCAL_VENVS", "PIPX_BIN_DIR")
-        )
+        in_pipx = any(key in os.environ for key in PIPX_ENVIRONMENT_KEYS)
 
         # Collect requirements as full lines to preserve PEP 508 compliance
         # (version specifiers, environment markers, etc.)
@@ -947,7 +955,7 @@ def _fetch_commit_with_fallback(repo_path: str, ref_value: str, repo_name: str) 
     """
     try:
         _run_git(
-            ["git", "-C", repo_path, "fetch", "origin", ref_value],
+            ["git", "-C", repo_path, "fetch", "--depth=1", "origin", ref_value],
             timeout=120,
         )
     except subprocess.CalledProcessError:
@@ -1127,18 +1135,21 @@ def _try_fetch_and_checkout_tag(repo_path: str, ref_value: str, repo_name: str) 
                 timeout=120,
             )
         except subprocess.CalledProcessError:
-            # If that fails, try fetching with an explicit refspec to force updating the local tag
-            _run_git(
-                [
-                    "git",
-                    "-C",
-                    repo_path,
-                    "fetch",
-                    "origin",
-                    f"refs/tags/{ref_value}:refs/tags/{ref_value}",
-                ],
-                timeout=120,
-            )
+            try:
+                _run_git(["git", "-C", repo_path, "fetch", "--tags"], timeout=120)
+            except subprocess.CalledProcessError:
+                # If that fails, try fetching with an explicit refspec to force updating the local tag
+                _run_git(
+                    [
+                        "git",
+                        "-C",
+                        repo_path,
+                        "fetch",
+                        "origin",
+                        f"refs/tags/{ref_value}:refs/tags/{ref_value}",
+                    ],
+                    timeout=120,
+                )
 
         # Checkout the tag
         _run_git(["git", "-C", repo_path, "checkout", ref_value], timeout=120)
@@ -1327,7 +1338,7 @@ def _validate_clone_inputs(repo_url: str, ref: dict[str, str]) -> ValidationResu
     # Validate ref value based on type
     if ref_type == "commit":
         # Commit hashes should be 7-40 hex characters
-        if not re.fullmatch(r"[0-9a-fA-F]{7,40}", ref_value):
+        if not COMMIT_HASH_PATTERN.fullmatch(ref_value):
             logger.error(
                 "Invalid commit hash supplied: %r (must be 7-40 hex characters)",
                 ref_value,
@@ -1335,7 +1346,7 @@ def _validate_clone_inputs(repo_url: str, ref: dict[str, str]) -> ValidationResu
             return ValidationResult(False, None, None, None, None)
     else:
         # For tag and branch, use existing validation
-        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]*", ref_value):
+        if not REF_NAME_PATTERN.fullmatch(ref_value):
             logger.error("Invalid %s name supplied: %r", ref_type, ref_value)
             return ValidationResult(False, None, None, None, None)
 
@@ -1376,26 +1387,82 @@ def _clone_new_repo_to_branch_or_tag(
 
     if is_default_branch:
         clone_commands.append(
-            (["git", "clone", "--branch", ref_value, repo_url, repo_name], ref_value)
+            (
+                [
+                    "git",
+                    "clone",
+                    "--filter=blob:none",
+                    "--branch",
+                    ref_value,
+                    repo_url,
+                    repo_name,
+                ],
+                ref_value,
+            )
         )
         other_default = "main" if ref_value == "master" else "master"
         clone_commands.append(
             (
-                ["git", "clone", "--branch", other_default, repo_url, repo_name],
+                [
+                    "git",
+                    "clone",
+                    "--filter=blob:none",
+                    "--branch",
+                    other_default,
+                    repo_url,
+                    repo_name,
+                ],
                 other_default,
             )
         )
-        clone_commands.append((["git", "clone", repo_url, repo_name], "default branch"))
+        clone_commands.append(
+            (
+                ["git", "clone", "--filter=blob:none", repo_url, repo_name],
+                "default branch",
+            )
+        )
     elif ref_type == "branch":
         clone_commands.append(
-            (["git", "clone", "--branch", ref_value, repo_url, repo_name], ref_value)
+            (
+                [
+                    "git",
+                    "clone",
+                    "--filter=blob:none",
+                    "--branch",
+                    ref_value,
+                    repo_url,
+                    repo_name,
+                ],
+                ref_value,
+            )
         )
-        clone_commands.append((["git", "clone", repo_url, repo_name], "default branch"))
+        clone_commands.append(
+            (
+                ["git", "clone", "--filter=blob:none", repo_url, repo_name],
+                "default branch",
+            )
+        )
     else:  # tag
         clone_commands.append(
-            (["git", "clone", "--branch", ref_value, repo_url, repo_name], ref_value)
+            (
+                [
+                    "git",
+                    "clone",
+                    "--filter=blob:none",
+                    "--branch",
+                    ref_value,
+                    repo_url,
+                    repo_name,
+                ],
+                ref_value,
+            )
         )
-        clone_commands.append((["git", "clone", repo_url, repo_name], "default branch"))
+        clone_commands.append(
+            (
+                ["git", "clone", "--filter=blob:none", repo_url, repo_name],
+                "default branch",
+            )
+        )
 
     for command, branch_name in clone_commands:
         try:
@@ -1456,8 +1523,8 @@ def clone_or_update_repo(repo_url: str, ref: dict[str, str], plugins_dir: str) -
 
     repo_path = os.path.join(plugins_dir, repo_name)
 
-    # Default branch names to try if ref is not specified
-    default_branches = ["main", "master"]
+    # Use module-level constant for default branch names
+    default_branches = DEFAULT_BRANCHES
 
     # Log what we're trying to do
     logger.info(f"Using {ref_type} '{ref_value}' for repository {repo_name}")

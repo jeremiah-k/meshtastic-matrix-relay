@@ -123,8 +123,6 @@ class BaseGitTest(unittest.TestCase):
         Removes the temporary plugins directory used by the test and delegates further teardown to the superclass.
         """
         super().tearDown()
-        import shutil
-
         shutil.rmtree(self.temp_plugins_dir, ignore_errors=True)
 
 
@@ -895,7 +893,15 @@ class Plugin:
             ),
             # Fetch specific commit
             (
-                ["git", "-C", self.temp_repo_path, "fetch", "origin", "deadbeef"],
+                [
+                    "git",
+                    "-C",
+                    self.temp_repo_path,
+                    "fetch",
+                    "--depth=1",
+                    "origin",
+                    "deadbeef",
+                ],
                 {"timeout": 120},
             ),
             # Checkout specific commit
@@ -939,6 +945,7 @@ class Plugin:
                 "-C",
                 self.temp_repo_path,
                 "fetch",
+                "--depth=1",
                 "origin",
                 "cafebabe",
             ]:
@@ -965,7 +972,15 @@ class Plugin:
         )  # Specific commit fetch fails, fallback fetch
         self.assertEqual(
             fetch_calls[0][0][0],
-            ["git", "-C", self.temp_repo_path, "fetch", "origin", "cafebabe"],
+            [
+                "git",
+                "-C",
+                self.temp_repo_path,
+                "fetch",
+                "--depth=1",
+                "origin",
+                "cafebabe",
+            ],
         )
         self.assertEqual(
             fetch_calls[1][0][0],
@@ -1070,6 +1085,7 @@ class Plugin:
                 "-C",
                 self.temp_repo_path,
                 "fetch",
+                "--depth=1",
                 "origin",
                 "cdef5678",
             ]:
@@ -1094,7 +1110,15 @@ class Plugin:
         self.assertEqual(len(fetch_calls), 2)
         self.assertEqual(
             fetch_calls[0][0][0],
-            ["git", "-C", self.temp_repo_path, "fetch", "origin", "cdef5678"],
+            [
+                "git",
+                "-C",
+                self.temp_repo_path,
+                "fetch",
+                "--depth=1",
+                "origin",
+                "cdef5678",
+            ],
         )
         self.assertEqual(
             fetch_calls[1][0][0],
@@ -1132,6 +1156,7 @@ class Plugin:
                 "-C",
                 self.temp_repo_path,
                 "fetch",
+                "--depth=1",
                 "origin",
                 "abcd1234",
             ]:
@@ -1845,7 +1870,8 @@ class TestGitOperations(BaseGitTest):
         """Test clone with empty URL."""
         mock_is_allowed.return_value = False
         ref = {"type": "branch", "value": "main"}
-        result = clone_or_update_repo("", ref, "/tmp")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = clone_or_update_repo("", ref, tmpdir)
         self.assertFalse(result)
 
     @patch("mmrelay.plugin_loader._is_repo_url_allowed")
@@ -1856,7 +1882,8 @@ class TestGitOperations(BaseGitTest):
         """Test clone with whitespace-only URL."""
         mock_is_allowed.return_value = False
         ref = {"type": "branch", "value": "main"}
-        result = clone_or_update_repo("   ", ref, "/tmp")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = clone_or_update_repo("   ", ref, tmpdir)
         self.assertFalse(result)
 
     @patch("mmrelay.plugin_loader._is_repo_url_allowed", return_value=True)
@@ -1883,7 +1910,7 @@ class TestGitOperations(BaseGitTest):
     def test_clone_or_update_repo_checkout_and_pull_branch(
         self, mock_run_git, mock_is_allowed
     ):
-        """Test that clone_or_update_repo handles checkout and pull for different branch (lines 991-1003)."""
+        """Test that clone_or_update_repo handles checkout and pull for a different branch."""
 
         # Mock successful fetch, different current branch, successful checkout and pull
         mock_run_git.side_effect = [
@@ -1908,7 +1935,7 @@ class TestGitOperations(BaseGitTest):
     def test_clone_or_update_repo_checkout_and_pull_tag(
         self, mock_run_git, mock_is_allowed
     ):
-        """Test that clone_or_update_repo handles checkout and pull for tag (lines 991-1003)."""
+        """Test that clone_or_update_repo handles checkout and pull for a tag."""
 
         def mock_run_git_side_effect(*args, **kwargs):
             """
@@ -3085,11 +3112,12 @@ class TestDependencyInstallation(BaseGitTest):
         )
 
         self.assertTrue(result)
-        # Should clone with --branch main
+        # Should clone with --branch main and --filter=blob:none
         mock_run_git.assert_called_with(
             [
                 "git",
                 "clone",
+                "--filter=blob:none",
                 "--branch",
                 "main",
                 "https://github.com/user/repo.git",
@@ -3133,6 +3161,7 @@ class TestDependencyInstallation(BaseGitTest):
             [
                 "git",
                 "clone",
+                "--filter=blob:none",
                 "--branch",
                 "main",
                 "https://github.com/user/repo.git",
@@ -3144,6 +3173,7 @@ class TestDependencyInstallation(BaseGitTest):
             [
                 "git",
                 "clone",
+                "--filter=blob:none",
                 "--branch",
                 "master",
                 "https://github.com/user/repo.git",
@@ -3179,7 +3209,14 @@ class TestDependencyInstallation(BaseGitTest):
         calls = mock_run_git.call_args_list
         self.assertEqual(len(calls), 3)
         self.assertEqual(
-            calls[2][0][0], ["git", "clone", "https://github.com/user/repo.git", "repo"]
+            calls[2][0][0],
+            [
+                "git",
+                "clone",
+                "--filter=blob:none",
+                "https://github.com/user/repo.git",
+                "repo",
+            ],
         )
 
     @patch("mmrelay.plugin_loader._run_git")
@@ -3205,6 +3242,7 @@ class TestDependencyInstallation(BaseGitTest):
                 [
                     "git",
                     "clone",
+                    "--filter=blob:none",
                     "--branch",
                     "v1.0.0",
                     "https://github.com/user/repo.git",
@@ -3308,8 +3346,7 @@ class TestDependencyInstallation(BaseGitTest):
                 "-C",
                 self.temp_repo_path,
                 "fetch",
-                "origin",
-                "refs/tags/v1.0.0:refs/tags/v1.0.0",
+                "--tags",
             ],
         )
 
