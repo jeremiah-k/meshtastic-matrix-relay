@@ -906,10 +906,10 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
 
     if not _is_repo_url_allowed(repo_url):
         return False
-    allowed_ref_types = {"tag", "branch"}
+    allowed_ref_types = {"tag", "branch", "commit"}
     if ref_type not in allowed_ref_types:
         logger.error(
-            "Invalid ref type %r (expected 'tag' or 'branch') for %r",
+            "Invalid ref type %r (expected 'tag', 'branch', or 'commit') for %r",
             ref_type,
             repo_url,
         )
@@ -920,9 +920,21 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
     if ref_value.startswith("-"):
         logger.error("Ref value looks invalid (starts with '-'): %r", ref_value)
         return False
-    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]*", ref_value):
-        logger.error("Invalid %s name supplied: %r", ref_type, ref_value)
-        return False
+
+    # Validate ref value based on type
+    if ref_type == "commit":
+        # Commit hashes should be 7-40 hex characters
+        if not re.fullmatch(r"[0-9a-fA-F]{7,40}", ref_value):
+            logger.error(
+                "Invalid commit hash supplied: %r (must be 7-40 hex characters)",
+                ref_value,
+            )
+            return False
+    else:
+        # For tag and branch, use existing validation
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]*", ref_value):
+            logger.error("Invalid %s name supplied: %r", ref_type, ref_value)
+            return False
 
     # Extract the repository name from the URL
     repo_name = os.path.splitext(os.path.basename(repo_url.rstrip("/")))[0]
@@ -937,6 +949,9 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
     # If it's a branch and one of the default branches, we'll handle it specially
     is_default_branch = ref_type == "branch" and ref_value in default_branches
 
+    # Commits are handled differently from branches and tags
+    is_commit = ref_type == "commit"
+
     if os.path.isdir(repo_path):
         try:
             # Fetch all branches but don't fetch tags to avoid conflicts
@@ -946,8 +961,64 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                 logger.warning(f"Error fetching from remote: {e}")
                 # Continue anyway, we'll try to use what we have
 
+            # Handle commits differently from branches and tags
+            if is_commit:
+                try:
+                    # For commits, we need to fetch and checkout the specific commit
+                    # First, fetch all from remote to ensure we have the commit
+                    try:
+                        _run_git(
+                            ["git", "-C", repo_path, "fetch", "origin"], timeout=120
+                        )
+                    except subprocess.CalledProcessError as e:
+                        logger.warning(f"Error fetching from remote: {e}")
+                        # Continue anyway, we'll try to use what we have
+
+                    # Check if the commit exists locally
+                    try:
+                        _run_git(
+                            [
+                                "git",
+                                "-C",
+                                repo_path,
+                                "cat-file",
+                                "-e",
+                                f"{ref_value}^{{commit}}",
+                            ],
+                            timeout=120,
+                        )
+                    except subprocess.CalledProcessError:
+                        # Commit doesn't exist locally, try to fetch it specifically
+                        logger.info(
+                            f"Commit {ref_value} not found locally, attempting to fetch"
+                        )
+                        try:
+                            _run_git(
+                                ["git", "-C", repo_path, "fetch", "origin", ref_value],
+                                timeout=120,
+                            )
+                        except subprocess.CalledProcessError:
+                            logger.warning(
+                                f"Could not fetch commit {ref_value} from remote"
+                            )
+                            return False
+
+                    # Checkout the specific commit
+                    _run_git(
+                        ["git", "-C", repo_path, "checkout", ref_value], timeout=120
+                    )
+                    logger.info(f"Updated repository {repo_name} to commit {ref_value}")
+                    return True
+                except subprocess.CalledProcessError as exc:
+                    logger.warning(
+                        "Failed to checkout commit %s for %s: %s",
+                        ref_value,
+                        repo_name,
+                        exc,
+                    )
+                    return False
             # If it's a default branch, handle it differently
-            if is_default_branch:
+            elif is_default_branch:
                 try:
                     # Check if we're already on the right branch
                     current_branch = _run_git(
@@ -1200,8 +1271,29 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
 
         # Now try to clone the repository
         try:
+            # For commits, we need to clone and then checkout the specific commit
+            if is_commit:
+                # First clone the repository (default branch)
+                _run_git(["git", "clone", repo_url], cwd=plugins_dir, timeout=120)
+                logger.info(f"Cloned repository {repo_name} from {repo_url}")
+
+                # Then checkout the specific commit
+                try:
+                    # Fetch the specific commit if needed
+                    _run_git(
+                        ["git", "-C", repo_path, "fetch", "origin", ref_value],
+                        timeout=120,
+                    )
+                except subprocess.CalledProcessError:
+                    # If specific commit fetch fails, try fetching all
+                    _run_git(["git", "-C", repo_path, "fetch", "origin"], timeout=120)
+
+                # Checkout the specific commit
+                _run_git(["git", "-C", repo_path, "checkout", ref_value], timeout=120)
+                logger.info(f"Checked out repository {repo_name} to commit {ref_value}")
+                return True
             # If it's a default branch, just clone it directly
-            if is_default_branch:
+            elif is_default_branch:
                 try:
                     # Try to clone with the specified branch
                     _run_git(
@@ -1762,12 +1854,20 @@ def load_plugins(passed_config=None):
 
             repo_url = plugin_info.get("repository")
 
-            # Support both tag and branch parameters
+            # Support commit, tag, and branch parameters
+            commit = plugin_info.get("commit")
             tag = plugin_info.get("tag")
             branch = plugin_info.get("branch")
 
-            # Determine what to use (tag, branch, or default)
-            if tag and branch:
+            # Determine what to use (commit, tag, branch, or default)
+            # Priority: commit > tag > branch
+            if commit:
+                if tag or branch:
+                    logger.warning(
+                        f"Commit specified along with tag/branch for plugin {plugin_name}, using commit"
+                    )
+                ref = {"type": "commit", "value": commit}
+            elif tag and branch:
                 logger.warning(
                     f"Both tag and branch specified for plugin {plugin_name}, using tag"
                 )
