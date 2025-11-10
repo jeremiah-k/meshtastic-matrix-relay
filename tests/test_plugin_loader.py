@@ -24,11 +24,13 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.plugin_loader import (
     _clean_python_cache,
+    _clone_new_repo_to_branch_or_tag,
     _collect_requirements,
     _filter_risky_requirements,
     _install_requirements_for_repo,
     _is_repo_url_allowed,
     _run,
+    _validate_clone_inputs,
     clear_plugin_jobs,
     clone_or_update_repo,
     get_community_plugin_dirs,
@@ -2839,6 +2841,348 @@ class TestDependencyInstallation(unittest.TestCase):
         # Verify no "Invalid ref type" error was logged (commit ref type should be accepted)
         for call in mock_logger.error.call_args_list:
             self.assertNotIn("Invalid ref type", str(call))
+
+    def test_validate_clone_inputs_valid_branch(self):
+        """Test _validate_clone_inputs with valid branch ref."""
+        ref = {"type": "branch", "value": "main"}
+        result = _validate_clone_inputs("https://github.com/user/repo.git", ref)
+
+        is_valid, repo_url, ref_type, ref_value, repo_name = result
+        self.assertTrue(is_valid)
+        self.assertEqual(repo_url, "https://github.com/user/repo.git")
+        self.assertEqual(ref_type, "branch")
+        self.assertEqual(ref_value, "main")
+        self.assertEqual(repo_name, "repo")
+
+    def test_validate_clone_inputs_valid_tag(self):
+        """Test _validate_clone_inputs with valid tag ref."""
+        ref = {"type": "tag", "value": "v1.0.0"}
+        result = _validate_clone_inputs("https://github.com/user/repo.git", ref)
+
+        is_valid, repo_url, ref_type, ref_value, repo_name = result
+        self.assertTrue(is_valid)
+        self.assertEqual(repo_url, "https://github.com/user/repo.git")
+        self.assertEqual(ref_type, "tag")
+        self.assertEqual(ref_value, "v1.0.0")
+        self.assertEqual(repo_name, "repo")
+
+    def test_validate_clone_inputs_valid_commit(self):
+        """Test _validate_clone_inputs with valid commit ref."""
+        ref = {"type": "commit", "value": "a1b2c3d4"}
+        result = _validate_clone_inputs("https://github.com/user/repo.git", ref)
+
+        is_valid, repo_url, ref_type, ref_value, repo_name = result
+        self.assertTrue(is_valid)
+        self.assertEqual(repo_url, "https://github.com/user/repo.git")
+        self.assertEqual(ref_type, "commit")
+        self.assertEqual(ref_value, "a1b2c3d4")
+        self.assertEqual(repo_name, "repo")
+
+    def test_validate_clone_inputs_invalid_ref_type(self):
+        """Test _validate_clone_inputs with invalid ref type."""
+        ref = {"type": "invalid", "value": "main"}
+        result = _validate_clone_inputs("https://github.com/user/repo.git", ref)
+
+        self.assertEqual(result, (False, None, None, None, None))
+
+    def test_validate_clone_inputs_missing_ref_value(self):
+        """Test _validate_clone_inputs with missing ref value."""
+        ref = {"type": "branch"}
+        result = _validate_clone_inputs("https://github.com/user/repo.git", ref)
+
+        self.assertEqual(result, (False, None, None, None, None))
+
+    def test_validate_clone_inputs_empty_url(self):
+        """Test _validate_clone_inputs with empty URL."""
+        ref = {"type": "branch", "value": "main"}
+        result = _validate_clone_inputs("", ref)
+
+        self.assertEqual(result, (False, None, None, None, None))
+
+    def test_validate_clone_inputs_none_url(self):
+        """Test _validate_clone_inputs with None URL."""
+        ref = {"type": "branch", "value": "main"}
+        result = _validate_clone_inputs(None, ref)
+
+        self.assertEqual(result, (False, None, None, None, None))
+
+    @patch("mmrelay.plugin_loader._run_git")
+    @patch("mmrelay.plugin_loader.logger")
+    def test_clone_new_repo_to_branch_or_tag_default_branch_success(
+        self, mock_logger, mock_run_git
+    ):
+        """Test _clone_new_repo_to_branch_or_tag with default branch success."""
+        result = _clone_new_repo_to_branch_or_tag(
+            "https://github.com/user/repo.git",
+            "/tmp/repo",
+            "branch",
+            "main",
+            "repo",
+            "/tmp",
+            True,  # is_default_branch
+        )
+
+        self.assertTrue(result)
+        # Should clone with --branch main
+        mock_run_git.assert_called_with(
+            ["git", "clone", "--branch", "main", "https://github.com/user/repo.git"],
+            cwd="/tmp",
+            timeout=120,
+        )
+        mock_logger.info.assert_called_with(
+            "Cloned repository repo from https://github.com/user/repo.git at branch main"
+        )
+
+    @patch("mmrelay.plugin_loader._run_git")
+    @patch("mmrelay.plugin_loader.logger")
+    def test_clone_new_repo_to_branch_or_tag_default_branch_fallback(
+        self, mock_logger, mock_run_git
+    ):
+        """Test _clone_new_repo_to_branch_or_tag with default branch fallback."""
+        # First call fails, second succeeds
+        mock_run_git.side_effect = [
+            subprocess.CalledProcessError(1, "git"),  # main fails
+            None,  # master succeeds
+        ]
+
+        result = _clone_new_repo_to_branch_or_tag(
+            "https://github.com/user/repo.git",
+            "/tmp/repo",
+            "branch",
+            "main",
+            "repo",
+            "/tmp",
+            True,  # is_default_branch
+        )
+
+        self.assertTrue(result)
+        # Should try main first, then master
+        calls = mock_run_git.call_args_list
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(
+            calls[0][0][0],
+            ["git", "clone", "--branch", "main", "https://github.com/user/repo.git"],
+        )
+        self.assertEqual(
+            calls[1][0][0],
+            ["git", "clone", "--branch", "master", "https://github.com/user/repo.git"],
+        )
+
+    @patch("mmrelay.plugin_loader._run_git")
+    @patch("mmrelay.plugin_loader.logger")
+    def test_clone_new_repo_to_branch_or_tag_default_branch_final_fallback(
+        self, mock_logger, mock_run_git
+    ):
+        """Test _clone_new_repo_to_branch_or_tag with final fallback to default branch."""
+        # Both main and master fail, fallback to clone without branch
+        mock_run_git.side_effect = [
+            subprocess.CalledProcessError(1, "git"),  # main fails
+            subprocess.CalledProcessError(1, "git"),  # master fails
+            None,  # clone succeeds
+        ]
+
+        result = _clone_new_repo_to_branch_or_tag(
+            "https://github.com/user/repo.git",
+            "/tmp/repo",
+            "branch",
+            "main",
+            "repo",
+            "/tmp",
+            True,  # is_default_branch
+        )
+
+        self.assertTrue(result)
+        # Should try main, master, then clone without branch
+        calls = mock_run_git.call_args_list
+        self.assertEqual(len(calls), 3)
+        self.assertEqual(
+            calls[2][0][0], ["git", "clone", "https://github.com/user/repo.git"]
+        )
+
+    @patch("mmrelay.plugin_loader._run_git")
+    @patch("mmrelay.plugin_loader.logger")
+    def test_clone_new_repo_to_branch_or_tag_tag_success(
+        self, mock_logger, mock_run_git
+    ):
+        """Test _clone_new_repo_to_branch_or_tag with tag success."""
+        result = _clone_new_repo_to_branch_or_tag(
+            "https://github.com/user/repo.git",
+            "/tmp/repo",
+            "tag",
+            "v1.0.0",
+            "repo",
+            "/tmp",
+            False,  # not default branch
+        )
+
+        self.assertTrue(result)
+        # Should clone with --branch v1.0.0
+        mock_run_git.assert_called_with(
+            ["git", "clone", "--branch", "v1.0.0", "https://github.com/user/repo.git"],
+            cwd="/tmp",
+            timeout=120,
+        )
+        mock_logger.info.assert_called_with(
+            "Cloned repository repo from https://github.com/user/repo.git at tag v1.0.0"
+        )
+
+    @patch("mmrelay.plugin_loader._run_git")
+    @patch("mmrelay.plugin_loader.logger")
+    def test_clone_new_repo_to_branch_or_tag_tag_fetch_fallback(
+        self, mock_logger, mock_run_git
+    ):
+        """Test _clone_new_repo_to_branch_or_tag with tag fetch fallback."""
+        # Clone with tag fails, then fetch and checkout succeed
+        mock_run_git.side_effect = [
+            subprocess.CalledProcessError(1, "git"),  # clone --branch fails
+            None,  # clone succeeds
+            None,  # fetch succeeds
+            None,  # checkout succeeds
+        ]
+
+        result = _clone_new_repo_to_branch_or_tag(
+            "https://github.com/user/repo.git",
+            "/tmp/repo",
+            "tag",
+            "v1.0.0",
+            "repo",
+            "/tmp",
+            False,  # not default branch
+        )
+
+        self.assertTrue(result)
+        # Should clone, fetch, checkout
+        calls = mock_run_git.call_args_list
+        self.assertEqual(len(calls), 4)
+        self.assertEqual(
+            calls[1][0][0], ["git", "clone", "https://github.com/user/repo.git"]
+        )
+        self.assertEqual(
+            calls[2][0][0],
+            ["git", "-C", "/tmp/repo", "fetch", "origin", "refs/tags/v1.0.0"],
+        )
+        self.assertEqual(
+            calls[3][0][0], ["git", "-C", "/tmp/repo", "checkout", "v1.0.0"]
+        )
+
+    @patch("mmrelay.plugin_loader._run_git")
+    @patch("mmrelay.plugin_loader.logger")
+    def test_clone_new_repo_to_branch_or_tag_tag_fetch_fallback_alt(
+        self, mock_logger, mock_run_git
+    ):
+        """Test _clone_new_repo_to_branch_or_tag with alternative tag fetch."""
+        # Clone with tag fails, fetch fails, alternative fetch succeeds, checkout succeeds
+        mock_run_git.side_effect = [
+            subprocess.CalledProcessError(1, "git"),  # clone --branch fails
+            None,  # clone succeeds
+            subprocess.CalledProcessError(1, "git"),  # first fetch fails
+            None,  # alternative fetch succeeds
+            None,  # checkout succeeds
+        ]
+
+        result = _clone_new_repo_to_branch_or_tag(
+            "https://github.com/user/repo.git",
+            "/tmp/repo",
+            "tag",
+            "v1.0.0",
+            "repo",
+            "/tmp",
+            False,  # not default branch
+        )
+
+        self.assertTrue(result)
+        # Should try alternative fetch format
+        calls = mock_run_git.call_args_list
+        self.assertEqual(
+            calls[3][0][0],
+            [
+                "git",
+                "-C",
+                "/tmp/repo",
+                "fetch",
+                "origin",
+                "refs/tags/v1.0.0:refs/tags/v1.0.0",
+            ],
+        )
+
+    @patch("mmrelay.plugin_loader._run_git")
+    @patch("mmrelay.plugin_loader.logger")
+    def test_clone_new_repo_to_branch_or_tag_tag_as_branch_fallback(
+        self, mock_logger, mock_run_git
+    ):
+        """Test _clone_new_repo_to_branch_or_tag with tag as branch fallback."""
+        # Clone fails, clone succeeds, fetch fails, fetch as branch succeeds, checkout succeeds
+        mock_run_git.side_effect = [
+            subprocess.CalledProcessError(1, "git"),  # clone --branch fails
+            None,  # clone succeeds
+            subprocess.CalledProcessError(1, "git"),  # fetch tag fails
+            subprocess.CalledProcessError(1, "git"),  # alt fetch fails
+            None,  # fetch as branch succeeds
+            None,  # checkout succeeds
+        ]
+
+        result = _clone_new_repo_to_branch_or_tag(
+            "https://github.com/user/repo.git",
+            "/tmp/repo",
+            "tag",
+            "v1.0.0",
+            "repo",
+            "/tmp",
+            False,  # not default branch
+        )
+
+        self.assertTrue(result)
+        # Should fetch as branch
+        calls = mock_run_git.call_args_list
+        self.assertEqual(
+            calls[4][0][0], ["git", "-C", "/tmp/repo", "fetch", "origin", "v1.0.0"]
+        )
+
+    @patch("mmrelay.plugin_loader._run_git")
+    @patch("mmrelay.plugin_loader.logger")
+    def test_clone_new_repo_to_branch_or_tag_clone_failure(
+        self, mock_logger, mock_run_git
+    ):
+        """Test _clone_new_repo_to_branch_or_tag with clone failure."""
+        # All clone attempts fail
+        mock_run_git.side_effect = subprocess.CalledProcessError(1, "git")
+
+        result = _clone_new_repo_to_branch_or_tag(
+            "https://github.com/user/repo.git",
+            "/tmp/repo",
+            "branch",
+            "main",
+            "repo",
+            "/tmp",
+            True,  # is_default_branch
+        )
+
+        self.assertFalse(result)
+        mock_logger.exception.assert_called_with("Error cloning repository repo")
+        mock_logger.error.assert_called_with(
+            "Please manually git clone the repository https://github.com/user/repo.git into /tmp/repo"
+        )
+
+    @patch("mmrelay.plugin_loader._run_git")
+    @patch("mmrelay.plugin_loader.logger")
+    def test_clone_new_repo_to_branch_or_tag_file_not_found(
+        self, mock_logger, mock_run_git
+    ):
+        """Test _clone_new_repo_to_branch_or_tag with FileNotFoundError."""
+        mock_run_git.side_effect = FileNotFoundError("git not found")
+
+        result = _clone_new_repo_to_branch_or_tag(
+            "https://github.com/user/repo.git",
+            "/tmp/repo",
+            "branch",
+            "main",
+            "repo",
+            "/tmp",
+            True,  # is_default_branch
+        )
+
+        self.assertFalse(result)
+        mock_logger.exception.assert_called_with("Error cloning repository repo")
 
 
 if __name__ == "__main__":
