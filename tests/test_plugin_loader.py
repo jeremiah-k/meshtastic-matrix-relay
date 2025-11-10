@@ -107,6 +107,8 @@ class TestPluginLoader(unittest.TestCase):
         self.test_dir = tempfile.mkdtemp()
         self.custom_dir = os.path.join(self.test_dir, "plugins", "custom")
         self.community_dir = os.path.join(self.test_dir, "plugins", "community")
+        self.temp_plugins_dir = tempfile.mkdtemp()
+        self.temp_repo_path = os.path.join(self.temp_plugins_dir, "repo")
 
         os.makedirs(self.custom_dir, exist_ok=True)
         os.makedirs(self.community_dir, exist_ok=True)
@@ -125,6 +127,7 @@ class TestPluginLoader(unittest.TestCase):
         import shutil
 
         shutil.rmtree(self.test_dir, ignore_errors=True)
+        shutil.rmtree(self.temp_plugins_dir, ignore_errors=True)
 
     @patch("mmrelay.plugin_loader.get_base_dir")
     @patch("mmrelay.plugin_loader.get_app_path")
@@ -748,7 +751,9 @@ class Plugin:
         mock_run_git.side_effect = subprocess.CalledProcessError(1, "git")
         ref = {"type": "commit", "value": "a1b2c3d"}
 
-        result = clone_or_update_repo("https://github.com/user/repo.git", ref, "/tmp")
+        result = clone_or_update_repo(
+            "https://github.com/user/repo.git", ref, self.temp_plugins_dir
+        )
 
         # The function is designed to be resilient and may return True even when git operations fail
         # The important part is that validation passes (no "Invalid commit hash" error)
@@ -775,7 +780,9 @@ class Plugin:
         mock_isdir.return_value = False  # Repo doesn't exist
         ref = {"type": "commit", "value": "a1b2c3d4"}
 
-        result = clone_or_update_repo("https://github.com/user/repo.git", ref, "/tmp")
+        result = clone_or_update_repo(
+            "https://github.com/user/repo.git", ref, self.temp_plugins_dir
+        )
 
         self.assertTrue(result)
 
@@ -784,10 +791,13 @@ class Plugin:
             # Clone repository
             (
                 ["git", "clone", "https://github.com/user/repo.git"],
-                {"cwd": "/tmp", "timeout": 120},
+                {"cwd": self.temp_plugins_dir, "timeout": 120},
             ),
             # Direct checkout succeeds (no fetch needed)
-            (["git", "-C", "/tmp/repo", "checkout", "a1b2c3d4"], {"timeout": 120}),
+            (
+                ["git", "-C", self.temp_repo_path, "checkout", "a1b2c3d4"],
+                {"timeout": 120},
+            ),
         ]
 
         actual_calls = mock_run_git.call_args_list
@@ -815,14 +825,14 @@ class Plugin:
         def side_effect(*args, **kwargs):
             """
             Simulates a git subprocess side effect for tests: succeeds for most commands but fails when checking for a commit object.
-            
+
             Parameters:
                 *args: Positional arguments forwarded from subprocess.run/called invocation; the first element is expected to be the git command sequence (list or str).
                 **kwargs: Ignored.
-            
+
             Returns:
                 subprocess.CompletedProcess: A successful result with return code 0 and empty output.
-            
+
             Raises:
                 subprocess.CalledProcessError: If the provided git command attempts a `cat-file` check (simulates "commit not found locally").
             """
@@ -834,31 +844,45 @@ class Plugin:
 
         mock_run_git.side_effect = side_effect
 
-        result = clone_or_update_repo("https://github.com/user/repo.git", ref, "/tmp")
+        result = clone_or_update_repo(
+            "https://github.com/user/repo.git", ref, self.temp_plugins_dir
+        )
 
         self.assertTrue(result)
 
         # Verify sequence of git operations (optimized behavior)
         expected_calls = [
+            # Check current commit (fails)
+            (
+                ["git", "-C", self.temp_repo_path, "rev-parse", "HEAD"],
+                {"capture_output": True},
+            ),
             # Check if commit exists locally (fails)
             (
-                ["git", "-C", "/tmp/repo", "cat-file", "-e", "deadbeef^{commit}"],
+                [
+                    "git",
+                    "-C",
+                    self.temp_repo_path,
+                    "cat-file",
+                    "-e",
+                    "deadbeef^{commit}",
+                ],
                 {"timeout": 120},
             ),
             # Fetch specific commit
             (
-                ["git", "-C", "/tmp/repo", "fetch", "origin", "deadbeef"],
+                ["git", "-C", self.temp_repo_path, "fetch", "origin", "deadbeef"],
                 {"timeout": 120},
             ),
             # Checkout specific commit
             (
-                ["git", "-C", "/tmp/repo", "checkout", "deadbeef"],
+                ["git", "-C", self.temp_repo_path, "checkout", "deadbeef"],
                 {"timeout": 120},
             ),
         ]
 
         actual_calls = mock_run_git.call_args_list
-        self.assertEqual(len(actual_calls), 3)
+        self.assertEqual(len(actual_calls), 4)
 
         for i, (expected_args, expected_kwargs) in enumerate(expected_calls):
             actual_args, actual_kwargs = actual_calls[i]
@@ -882,14 +906,21 @@ class Plugin:
         def side_effect(*args, **kwargs):
             """
             Simulate subprocess behavior for git commands used in tests.
-            
+
             Returns:
                 subprocess.CompletedProcess: A successful completed process with exit code 0 for most commands.
-            
+
             Raises:
                 subprocess.CalledProcessError: If the command is a fetch for commit "cafebabe" in /tmp/repo or any command containing "cat-file".
             """
-            if args[0] == ["git", "-C", "/tmp/repo", "fetch", "origin", "cafebabe"]:
+            if args[0] == [
+                "git",
+                "-C",
+                self.temp_repo_path,
+                "fetch",
+                "origin",
+                "cafebabe",
+            ]:
                 raise subprocess.CalledProcessError(1, "git")
             if "cat-file" in args[0]:
                 raise subprocess.CalledProcessError(1, "git")
@@ -897,7 +928,9 @@ class Plugin:
 
         mock_run_git.side_effect = side_effect
 
-        result = clone_or_update_repo("https://github.com/user/repo.git", ref, "/tmp")
+        result = clone_or_update_repo(
+            "https://github.com/user/repo.git", ref, self.temp_plugins_dir
+        )
 
         self.assertTrue(result)
 
@@ -911,11 +944,11 @@ class Plugin:
         )  # Specific commit fetch fails, fallback fetch
         self.assertEqual(
             fetch_calls[0][0][0],
-            ["git", "-C", "/tmp/repo", "fetch", "origin", "cafebabe"],
+            ["git", "-C", self.temp_repo_path, "fetch", "origin", "cafebabe"],
         )
         self.assertEqual(
             fetch_calls[1][0][0],
-            ["git", "-C", "/tmp/repo", "fetch", "origin"],
+            ["git", "-C", self.temp_repo_path, "fetch", "origin"],
         )
 
     @patch("mmrelay.plugin_loader._run_git")
@@ -935,39 +968,50 @@ class Plugin:
         def mock_run_git_side_effect(*args, **kwargs):
             """
             Mock side effect for git command calls used in tests.
-            
-            Simulates successful git operations: a fetch for the specific commit "abcd1234" (when command length is 4 and last arg is "abcd1234"), any general fetch (when command length is 3), a commit existence check via `cat-file`, and a checkout; all other inputs are treated as successful no-ops. Accepts arbitrary positional and keyword arguments and always returns None.
+
+            Simulates successful git operations: a fetch for the specific commit "abcd1234" (when command length is 4 and last arg is "abcd1234"), any general fetch (when command length is 3), a commit existence check via `cat-file`, and a checkout; all other inputs are treated as successful no-ops. Accepts arbitrary positional and keyword arguments and always returns a CompletedProcess.
             """
             cmd = args[0]
-            if "fetch" in cmd and len(cmd) == 4 and cmd[3] == "abcd1234":
-                return None  # Specific fetch succeeds
-            elif "fetch" in cmd and len(cmd) == 3:
-                return None  # General fetch succeeds
-            elif "cat-file" in cmd:
-                return None  # Commit check succeeds
-            elif "checkout" in cmd:
-                return None  # Checkout succeeds
-            return None
+            if "rev-parse" in cmd:
+                raise subprocess.CalledProcessError(1, "git")  # Fail to get current
+            return subprocess.CompletedProcess(args[0], 0, "", "")
 
         mock_run_git.side_effect = mock_run_git_side_effect
 
-        result = clone_or_update_repo("https://github.com/user/repo.git", ref, "/tmp")
+        result = clone_or_update_repo(
+            "https://github.com/user/repo.git", ref, self.temp_plugins_dir
+        )
 
         self.assertTrue(result)
 
-        # Verify only cat-file check and checkout (no fetch needed)
+        # Verify rev-parse, cat-file check and checkout (no fetch needed)
         expected_calls = [
+            # Check current commit (fails)
+            (
+                ["git", "-C", self.temp_repo_path, "rev-parse", "HEAD"],
+                {"capture_output": True},
+            ),
             # Check if commit exists locally (succeeds)
             (
-                ["git", "-C", "/tmp/repo", "cat-file", "-e", "abcd1234^{commit}"],
+                [
+                    "git",
+                    "-C",
+                    self.temp_repo_path,
+                    "cat-file",
+                    "-e",
+                    "abcd1234^{commit}",
+                ],
                 {"timeout": 120},
             ),
             # Checkout specific commit
-            (["git", "-C", "/tmp/repo", "checkout", "abcd1234"], {"timeout": 120}),
+            (
+                ["git", "-C", self.temp_repo_path, "checkout", "abcd1234"],
+                {"timeout": 120},
+            ),
         ]
 
         actual_calls = mock_run_git.call_args_list
-        self.assertEqual(len(actual_calls), 2)
+        self.assertEqual(len(actual_calls), 3)
 
         for i, (expected_args, expected_kwargs) in enumerate(expected_calls):
             actual_args, actual_kwargs = actual_calls[i]
@@ -990,16 +1034,23 @@ class Plugin:
         def side_effect(*args, **kwargs):
             """
             Test helper that simulates subprocess responses for git commands in tests.
-            
+
             Simulates a failing `git fetch` for the exact command ["git", "-C", "/tmp/repo", "fetch", "origin", "cdef5678"] and a failing git "cat-file" invocation; for all other calls it returns a successful CompletedProcess with empty stdout/stderr.
-            
+
             Returns:
                 subprocess.CompletedProcess: Successful result for non-matching commands.
-            
+
             Raises:
                 subprocess.CalledProcessError: When the command matches the specific fetch case or contains "cat-file".
             """
-            if args[0] == ["git", "-C", "/tmp/repo", "fetch", "origin", "cdef5678"]:
+            if args[0] == [
+                "git",
+                "-C",
+                self.temp_repo_path,
+                "fetch",
+                "origin",
+                "cdef5678",
+            ]:
                 raise subprocess.CalledProcessError(1, "git")
             if "cat-file" in args[0]:
                 raise subprocess.CalledProcessError(1, "git")
@@ -1007,7 +1058,9 @@ class Plugin:
 
         mock_run_git.side_effect = side_effect
 
-        result = clone_or_update_repo("https://github.com/user/repo.git", ref, "/tmp")
+        result = clone_or_update_repo(
+            "https://github.com/user/repo.git", ref, self.temp_plugins_dir
+        )
 
         self.assertTrue(result)
 
@@ -1019,11 +1072,11 @@ class Plugin:
         self.assertEqual(len(fetch_calls), 2)
         self.assertEqual(
             fetch_calls[0][0][0],
-            ["git", "-C", "/tmp/repo", "fetch", "origin", "cdef5678"],
+            ["git", "-C", self.temp_repo_path, "fetch", "origin", "cdef5678"],
         )
         self.assertEqual(
             fetch_calls[1][0][0],
-            ["git", "-C", "/tmp/repo", "fetch", "origin"],
+            ["git", "-C", self.temp_repo_path, "fetch", "origin"],
         )
 
     @patch("mmrelay.plugin_loader._run_git")
@@ -1042,18 +1095,25 @@ class Plugin:
         def side_effect(*args, **kwargs):
             """
             Simulates subprocess behavior for git commands used in tests.
-            
+
             Raises subprocess.CalledProcessError for specific failing git invocations:
-            - ["git", "-C", "/tmp/repo", "fetch", "origin", "abcd1234"]
-            - ["git", "-C", "/tmp/repo", "fetch", "origin"] (fallback fetch)
+            - ["git", "-C", self.temp_repo_path, "fetch", "origin", "abcd1234"]
+            - ["git", "-C", self.temp_repo_path, "fetch", "origin"] (fallback fetch)
             - any invocation whose argument list contains "cat-file"
-            
+
             Returns:
                 subprocess.CompletedProcess: A successful CompletedProcess with returncode 0 and empty stdout/stderr for all other commands.
             """
-            if args[0] == ["git", "-C", "/tmp/repo", "fetch", "origin", "abcd1234"]:
+            if args[0] == [
+                "git",
+                "-C",
+                self.temp_repo_path,
+                "fetch",
+                "origin",
+                "abcd1234",
+            ]:
                 raise subprocess.CalledProcessError(1, "git")
-            if args[0] == ["git", "-C", "/tmp/repo", "fetch", "origin"]:
+            if args[0] == ["git", "-C", self.temp_repo_path, "fetch", "origin"]:
                 # Fail fallback fetch too
                 raise subprocess.CalledProcessError(1, "git")
             if "cat-file" in args[0]:
@@ -1062,7 +1122,9 @@ class Plugin:
 
         mock_run_git.side_effect = side_effect
 
-        result = clone_or_update_repo("https://github.com/user/repo.git", ref, "/tmp")
+        result = clone_or_update_repo(
+            "https://github.com/user/repo.git", ref, self.temp_plugins_dir
+        )
 
         self.assertFalse(result)  # Should return False when fallback fails
 
@@ -1096,7 +1158,9 @@ class Plugin:
         # Configure mock to fail on git clone
         mock_run_git.side_effect = subprocess.CalledProcessError(1, "git")
 
-        result = clone_or_update_repo("https://github.com/user/repo.git", ref, "/tmp")
+        result = clone_or_update_repo(
+            "https://github.com/user/repo.git", ref, self.temp_plugins_dir
+        )
 
         self.assertFalse(result)
 
@@ -1107,7 +1171,7 @@ class Plugin:
 
         # Verify manual clone instruction was logged
         mock_logger.error.assert_called_once_with(
-            "Please manually git clone repository https://github.com/user/repo.git into /tmp/repo"
+            f"Please manually git clone repository https://github.com/user/repo.git into {self.temp_repo_path}"
         )
 
 
@@ -1119,6 +1183,8 @@ class TestPluginSecurityGuards(unittest.TestCase):
 
         self.pl = pl
         self.original_config = getattr(pl, "config", None)
+        self.temp_plugins_dir = tempfile.mkdtemp()
+        self.temp_repo_path = os.path.join(self.temp_plugins_dir, "repo")
 
     def tearDown(self):
         """
@@ -1127,6 +1193,9 @@ class TestPluginSecurityGuards(unittest.TestCase):
         Reassigns the saved original configuration back to the plugin loader's `config` attribute to restore global state modified during the test.
         """
         self.pl.config = self.original_config
+        import shutil
+
+        shutil.rmtree(self.temp_plugins_dir, ignore_errors=True)
 
     def test_repo_url_allowed_https_known_host(self):
         self.pl.config = {}
@@ -1589,6 +1658,8 @@ class TestGitOperations(unittest.TestCase):
 
         self.pl = pl
         self.original_config = getattr(pl, "config", None)
+        self.temp_plugins_dir = tempfile.mkdtemp()
+        self.temp_repo_path = os.path.join(self.temp_plugins_dir, "repo")
 
     def tearDown(self):
         """
@@ -1597,6 +1668,9 @@ class TestGitOperations(unittest.TestCase):
         Reassigns the saved original configuration back to the plugin loader's `config` attribute to restore global state modified during the test.
         """
         self.pl.config = self.original_config
+        import shutil
+
+        shutil.rmtree(self.temp_plugins_dir, ignore_errors=True)
 
     @patch("mmrelay.plugin_loader._run")
     def test_run_git_with_defaults(self, mock_run):
@@ -1683,7 +1757,9 @@ class TestGitOperations(unittest.TestCase):
         mock_is_allowed.return_value = True
         ref = {"type": "invalid", "value": "main"}
 
-        result = clone_or_update_repo("https://github.com/user/repo.git", ref, "/tmp")
+        result = clone_or_update_repo(
+            "https://github.com/user/repo.git", ref, self.temp_plugins_dir
+        )
 
         self.assertFalse(result)
         mock_logger.error.assert_called_with(
@@ -1704,7 +1780,9 @@ class TestGitOperations(unittest.TestCase):
         mock_is_allowed.return_value = True
         ref = {"type": "branch", "value": ""}
 
-        result = clone_or_update_repo("https://github.com/user/repo.git", ref, "/tmp")
+        result = clone_or_update_repo(
+            "https://github.com/user/repo.git", ref, self.temp_plugins_dir
+        )
 
         self.assertFalse(result)
         mock_logger.error.assert_called_with(
@@ -1724,7 +1802,9 @@ class TestGitOperations(unittest.TestCase):
         mock_is_allowed.return_value = True
         ref = {"type": "branch", "value": "-evil"}
 
-        result = clone_or_update_repo("https://github.com/user/repo.git", ref, "/tmp")
+        result = clone_or_update_repo(
+            "https://github.com/user/repo.git", ref, self.temp_plugins_dir
+        )
 
         self.assertFalse(result)
         mock_logger.error.assert_called_with(
@@ -1739,7 +1819,9 @@ class TestGitOperations(unittest.TestCase):
         mock_is_allowed.return_value = True
         ref = {"type": "branch", "value": "invalid@branch"}
 
-        result = clone_or_update_repo("https://github.com/user/repo.git", ref, "/tmp")
+        result = clone_or_update_repo(
+            "https://github.com/user/repo.git", ref, self.temp_plugins_dir
+        )
 
         self.assertFalse(result)
         mock_logger.error.assert_called_with(
@@ -1805,7 +1887,7 @@ class TestGitOperations(unittest.TestCase):
         # Mock successful fetch, different current branch, successful checkout and pull
         mock_run_git.side_effect = [
             None,  # fetch succeeds
-            MagicMock(stdout=b"develop\n"),  # current branch is develop
+            MagicMock(stdout="develop\n"),  # current branch is develop
             None,  # checkout succeeds
             None,  # pull succeeds
         ]
@@ -1831,12 +1913,12 @@ class TestGitOperations(unittest.TestCase):
             """
             Simulate subprocess/git call side effects for tests by returning success (None) for most commands
             and a MagicMock with a stdout containing a commit hash for `rev-parse` commands.
-            
+
             Parameters:
                 *args: Positional arguments passed to the mocked runner; the first positional argument is
                     expected to be the git command (string or sequence) inspected by this helper.
                 **kwargs: Additional keyword arguments forwarded by the mock (ignored by this helper).
-            
+
             Returns:
                 None for commands treated as successful (`fetch`, `checkout`, `pull`), or a MagicMock
                 whose `stdout` contains a bytes-encoded commit hash for `rev-parse` commands.
@@ -1845,9 +1927,9 @@ class TestGitOperations(unittest.TestCase):
             if "fetch" in cmd:
                 return None  # fetch succeeds
             elif "rev-parse" in cmd and "HEAD" in cmd:
-                return MagicMock(stdout=b"abc123commit\n")  # current commit
+                return MagicMock(stdout="abc123commit\n")  # current commit
             elif "rev-parse" in cmd:
-                return MagicMock(stdout=b"def456commit\n")  # tag commit (different)
+                return MagicMock(stdout="def456commit\n")  # tag commit (different)
             elif "checkout" in cmd:
                 return None  # checkout succeeds
             elif "pull" in cmd:
@@ -1963,7 +2045,7 @@ class TestCommandRunner(unittest.TestCase):
         """Test _run preserves existing text setting."""
         with patch("subprocess.run") as mock_subprocess:
             mock_subprocess.return_value = subprocess.CompletedProcess(
-                args=["echo", "test"], returncode=0, stdout=b"test"
+                args=["echo", "test"], returncode=0, stdout="test"
             )
             _run(["echo", "test"], text=False)
             # Check that text=False was preserved
@@ -2385,6 +2467,8 @@ class TestDependencyInstallation(unittest.TestCase):
         self.temp_dir = tempfile.mkdtemp()
         self.repo_path = os.path.join(self.temp_dir, "test-plugin")
         self.requirements_path = os.path.join(self.repo_path, "requirements.txt")
+        self.temp_plugins_dir = tempfile.mkdtemp()
+        self.temp_repo_path = os.path.join(self.temp_plugins_dir, "repo")
         os.makedirs(self.repo_path, exist_ok=True)
         with open(self.requirements_path, "w") as f:
             f.write("requests==2.28.0\n")
@@ -2397,6 +2481,7 @@ class TestDependencyInstallation(unittest.TestCase):
     def tearDown(self):
         """Clean up temporary directory."""
         shutil.rmtree(self.temp_dir)
+        shutil.rmtree(self.temp_plugins_dir, ignore_errors=True)
 
     @patch("mmrelay.plugin_loader.logger")
     @patch("mmrelay.plugin_loader._check_auto_install_enabled")
@@ -2896,7 +2981,9 @@ class TestDependencyInstallation(unittest.TestCase):
         )  # Git operations fail
         ref = {"type": "commit", "value": "deadbeef"}
 
-        result = clone_or_update_repo("https://github.com/user/repo.git", ref, "/tmp")
+        result = clone_or_update_repo(
+            "https://github.com/user/repo.git", ref, self.temp_plugins_dir
+        )
 
         self.assertFalse(
             result
@@ -2977,11 +3064,11 @@ class TestDependencyInstallation(unittest.TestCase):
         """Test _clone_new_repo_to_branch_or_tag with default branch success."""
         result = _clone_new_repo_to_branch_or_tag(
             "https://github.com/user/repo.git",
-            "/tmp/repo",
+            self.temp_repo_path,
             "branch",
             "main",
             "repo",
-            "/tmp",
+            self.temp_plugins_dir,
             True,  # is_default_branch
         )
 
@@ -2989,7 +3076,7 @@ class TestDependencyInstallation(unittest.TestCase):
         # Should clone with --branch main
         mock_run_git.assert_called_with(
             ["git", "clone", "--branch", "main", "https://github.com/user/repo.git"],
-            cwd="/tmp",
+            cwd=self.temp_plugins_dir,
             timeout=120,
         )
         mock_logger.info.assert_called_with(

@@ -281,7 +281,7 @@ def _is_repo_url_allowed(repo_url: str) -> bool:
     Accepts a repository specification (URL or local path). Rejects empty values and entries beginning with '-'. Local filesystem paths are permitted only when configured security settings allow local plugin paths and the path exists; `file://` schemes follow the same restriction. Plain `http://` URLs are disallowed. Only `https` and `ssh` repository URLs are permitted, and the repository host must be included in the configured allowlist.
 
     Returns:
-        bool: `true` if the repository is allowed, `false` otherwise.
+        bool: `True` if the repository is allowed, `False` otherwise.
     """
     repo_url = (repo_url or "").strip()
     if not repo_url:
@@ -337,7 +337,7 @@ def _is_requirement_risky(req_string: str) -> bool:
     Checks for known risky prefixes (VCS/URL specifiers) or the presence of both `@` and `://`, which indicate a URL-based requirement.
 
     Returns:
-        `true` if the requirement references a VCS or URL source, `false` otherwise.
+        `True` if the requirement references a VCS or URL source, `False` otherwise.
     """
     lowered = req_string.lower()
     return any(lowered.startswith(prefix) for prefix in RISKY_REQUIREMENT_PREFIXES) or (
@@ -871,10 +871,10 @@ def _check_auto_install_enabled(config):
 def _raise_install_error(pkg_name):
     """
     Warn that automatic dependency installation is disabled and raise a CalledProcessError.
-    
+
     Parameters:
         pkg_name (str): Package name shown in the warning message.
-    
+
     Raises:
         subprocess.CalledProcessError: Always raised to indicate installation cannot proceed when auto-install is disabled.
     """
@@ -887,16 +887,27 @@ def _raise_install_error(pkg_name):
 def _update_existing_repo_to_commit(repo_path, ref_value, repo_name):
     """
     Update the repository at the given path to the specified commit.
-    
+
     Parameters:
         repo_path (str): Filesystem path to the existing git repository.
         ref_value (str): Commit hash to checkout.
         repo_name (str): Repository name used for logging.
-    
+
     Returns:
-        bool: `true` if the repository was updated to the commit, `false` otherwise.
+        bool: `True` if the repository was updated to the commit, `False` otherwise.
     """
     try:
+        # If already at the requested commit, skip work
+        try:
+            current = _run_git(
+                ["git", "-C", repo_path, "rev-parse", "HEAD"], capture_output=True
+            ).stdout.strip()
+            if current == ref_value:
+                logger.info("Repository %s already at commit %s", repo_name, ref_value)
+                return True
+        except subprocess.CalledProcessError:
+            pass  # fall through
+
         # First check if the commit exists locally before fetching
         try:
             _run_git(
@@ -936,12 +947,11 @@ def _update_existing_repo_to_commit(repo_path, ref_value, repo_name):
         _run_git(["git", "-C", repo_path, "checkout", ref_value], timeout=120)
         logger.info(f"Updated repository {repo_name} to commit {ref_value}")
         return True
-    except subprocess.CalledProcessError as exc:
-        logger.warning(
-            "Failed to checkout commit %s for %s: %s",
+    except subprocess.CalledProcessError:
+        logger.exception(
+            "Failed to checkout commit %s for %s",
             ref_value,
             repo_name,
-            exc,
         )
         return False
 
@@ -1028,13 +1038,12 @@ def _try_checkout_and_pull_ref(repo_path, ref_value, repo_name, ref_type="branch
         _run_git(["git", "-C", repo_path, "pull", "origin", ref_value], timeout=120)
         logger.info(f"Updated repository {repo_name} to {ref_type} {ref_value}")
         return True
-    except subprocess.CalledProcessError as exc:
-        logger.warning(
-            "Failed to update %s %s for %s: %s",
+    except subprocess.CalledProcessError:
+        logger.exception(
+            "Failed to update %s %s for %s",
             ref_type,
             ref_value,
             repo_name,
-            exc,
         )
         return False
 
@@ -1042,12 +1051,12 @@ def _try_checkout_and_pull_ref(repo_path, ref_value, repo_name, ref_type="branch
 def _try_fetch_and_checkout_tag(repo_path, ref_value, repo_name):
     """
     Attempt to fetch the given tag from origin and check it out.
-    
+
     Parameters:
         repo_path (str): Filesystem path of the git repository.
         ref_value (str): Tag name to fetch and checkout.
         repo_name (str): Repository name used for logging context.
-    
+
     Returns:
         bool: `True` if the tag was fetched and checked out successfully, `False` otherwise.
     """
@@ -1059,7 +1068,7 @@ def _try_fetch_and_checkout_tag(repo_path, ref_value, repo_name):
                 timeout=120,
             )
         except subprocess.CalledProcessError:
-            # If that fails, try to fetch the tag without the refs/tags/ prefix
+            # If that fails, try fetching with an explicit refspec to force updating the local tag
             _run_git(
                 [
                     "git",
@@ -1074,7 +1083,9 @@ def _try_fetch_and_checkout_tag(repo_path, ref_value, repo_name):
 
         # Checkout the tag
         _run_git(["git", "-C", repo_path, "checkout", ref_value], timeout=120)
-        logger.info(f"Successfully fetched and checked out tag {ref_value}")
+        logger.info(
+            "Successfully fetched and checked out tag %s for %s", ref_value, repo_name
+        )
         return True
     except subprocess.CalledProcessError:
         return False
@@ -1083,12 +1094,12 @@ def _try_fetch_and_checkout_tag(repo_path, ref_value, repo_name):
 def _try_checkout_as_branch(repo_path, ref_value, repo_name):
     """
     Attempt to fetch and switch the repository to the given branch name.
-    
+
     Parameters:
         repo_path (str): Filesystem path to the local git repository.
         ref_value (str): Branch name to fetch and check out.
         repo_name (str): Human-readable repository name used in logs.
-    
+
     Returns:
         bool: `True` if the repository was successfully fetched, checked out, and pulled to the specified branch; `False` otherwise.
     """
@@ -1105,13 +1116,13 @@ def _try_checkout_as_branch(repo_path, ref_value, repo_name):
 def _fallback_to_default_branches(repo_path, default_branches, ref_value, repo_name):
     """
     Attempt to checkout and pull each branch in `default_branches` for the repository, falling back to the repository's current state if none succeed.
-    
+
     Parameters:
         repo_path (str): Filesystem path to the git repository.
         default_branches (list[str]): Ordered branch names to try (e.g., ["main", "master"]).
         ref_value (str): Original ref that failed (used for log messages).
         repo_name (str): Repository name used in logging.
-    
+
     Returns:
         bool: `True` if a default branch was successfully checked out and pulled, or `True` if no branch could be checked out and the repository's current state is retained.
     """
@@ -1121,12 +1132,16 @@ def _fallback_to_default_branches(repo_path, default_branches, ref_value, repo_n
             _run_git(
                 ["git", "-C", repo_path, "pull", "origin", default_branch], timeout=120
             )
-            logger.info(f"Using {default_branch} instead of {ref_value}")
+            logger.info(
+                f"Using {default_branch} instead of {ref_value} for {repo_name}"
+            )
             return True
         except subprocess.CalledProcessError:
             continue
 
-    logger.warning("Could not checkout any branch, using current state")
+    logger.warning(
+        "Could not checkout any branch for %s, using current state", repo_name
+    )
     return True
 
 
@@ -1273,13 +1288,13 @@ def _update_existing_repo_to_branch_or_tag(
 def _validate_clone_inputs(repo_url, ref):
     """
     Validate repository URL and reference selection for cloning or updating.
-    
+
     Parameters:
         repo_url (str): Repository URL or SSH spec to validate.
         ref (dict): Reference specification with keys:
             - "type": one of "tag", "branch", or "commit".
             - "value": the ref identifier (tag name, branch name, or commit hash).
-    
+
     Returns:
         tuple: (is_valid, repo_url, ref_type, ref_value, repo_name)
             - is_valid (bool): `True` if inputs are valid, `False` otherwise.
@@ -1287,7 +1302,7 @@ def _validate_clone_inputs(repo_url, ref):
             - ref_type (str|None): One of "tag", "branch", or "commit" on success, `None` on failure.
             - ref_value (str|None): The validated ref value on success, `None` on failure.
             - repo_name (str|None): Derived repository name (basename without extension) on success, `None` on failure.
-    
+
     Notes:
         - Commit `value` must be 7–40 hexadecimal characters.
         - Branch and tag `value` must start with an alphanumeric character and may contain alphanumerics, dot, underscore, slash, or hyphen.
@@ -1518,14 +1533,14 @@ def _clone_new_repo_to_branch_or_tag(
 def clone_or_update_repo(repo_url, ref, plugins_dir):
     """
     Ensure a repository exists under plugins_dir and is checked out to the specified ref.
-    
+
     Parameters:
         repo_url (str): URL or SSH spec of the git repository to clone or update.
         ref (dict): Reference specification with keys:
             - type (str): One of "branch", "tag", or "commit".
             - value (str): The branch name, tag name, or commit hash to check out.
         plugins_dir (str): Directory under which the repository should be placed.
-    
+
     Returns:
         bool: `True` if the repository was successfully cloned or updated to the requested ref, `False` otherwise.
     """
@@ -1877,12 +1892,12 @@ def stop_global_scheduler():
 def load_plugins(passed_config=None):
     """
     Load and start the application's configured plugins and return the active instances sorted by priority.
-    
+
     Loads core, custom, and community plugins according to the provided configuration (or the module-global config if none is provided), ensures community repositories and their dependencies are prepared as configured, starts plugins marked active, and caches the loaded set so subsequent calls return the same active instances.
-    
+
     Parameters:
         passed_config (dict, optional): Configuration to use instead of the module-global config; when omitted the module-global `config` is used.
-    
+
     Returns:
         list: Active plugin instances sorted by their `priority` attribute.
     """
