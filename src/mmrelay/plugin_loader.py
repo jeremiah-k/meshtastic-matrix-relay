@@ -212,6 +212,9 @@ def _get_allowed_repo_hosts() -> list[str]:
     if hosts is None:
         return list(DEFAULT_ALLOWED_COMMUNITY_HOSTS)
 
+    if isinstance(hosts, str):
+        hosts = [hosts]
+
     if not isinstance(hosts, list):
         return list(DEFAULT_ALLOWED_COMMUNITY_HOSTS)
 

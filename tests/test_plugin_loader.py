@@ -1271,14 +1271,14 @@ class TestPluginSecurityGuards(unittest.TestCase):
         expected = ["github.com", "gitlab.com", "codeberg.org", "bitbucket.org"]
         self.assertEqual(result, expected)
 
-    def test_get_allowed_repo_hosts_string_falls_back_to_default(self):
-        """String value falls back to default hosts."""
+    def test_get_allowed_repo_hosts_string_is_accepted(self):
+        """String value coerces to a single host entry."""
         self.pl.config = {"security": {"community_repo_hosts": "invalid"}}
         from mmrelay.plugin_loader import _get_allowed_repo_hosts
 
         result = _get_allowed_repo_hosts()
-        # String is invalid, so falls back to default
-        expected = ["github.com", "gitlab.com", "codeberg.org", "bitbucket.org"]
+        # String gets converted to list, then filtered
+        expected = ["invalid"]
         self.assertEqual(result, expected)
 
     def test_get_allowed_repo_filters_empty_strings(self):
