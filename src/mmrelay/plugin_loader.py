@@ -13,8 +13,8 @@ import tempfile
 import threading
 import time
 from contextlib import contextmanager
-from typing import List, Set
-from urllib.parse import urlparse
+from typing import List, NamedTuple, Set
+from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 
 try:
     import schedule
@@ -35,6 +35,17 @@ config = None
 logger = get_logger(name="Plugins")
 sorted_active_plugins = []
 plugins_loaded = False
+
+
+class ValidationResult(NamedTuple):
+    """Result of validating clone inputs with normalized values."""
+
+    is_valid: bool
+    repo_url: str | None
+    ref_type: str | None
+    ref_value: str | None
+    repo_name: str | None
+
 
 # Global scheduler management
 _global_scheduler_thread = None
@@ -278,12 +289,10 @@ def _redact_url(url: str) -> str:
     """
     Redact credentials from a URL for safe logging.
 
-    If the URL contains username or password, they are replaced with '***'.
+    If URL contains username or password, they are replaced with '***'.
     Also redacts sensitive query parameters.
     """
     try:
-        from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
-
         s = urlsplit(url)
         # Build netloc (only redact credentials if present)
         if s.username or s.password:
@@ -1271,9 +1280,7 @@ def _update_existing_repo_to_branch_or_tag(
     )
 
 
-def _validate_clone_inputs(
-    repo_url: str, ref: dict[str, str]
-) -> tuple[bool, str | None, str | None, str | None, str | None]:
+def _validate_clone_inputs(repo_url: str, ref: dict[str, str]) -> ValidationResult:
     """
     Validate a repository URL and a ref specification for cloning or updating.
 
@@ -1284,7 +1291,7 @@ def _validate_clone_inputs(
             - "value": the ref identifier (tag name, branch name, or commit hash).
 
     Returns:
-        tuple: (is_valid, repo_url, ref_type, ref_value, repo_name)
+        ValidationResult: NamedTuple with fields:
             - is_valid (bool): `True` if inputs are valid, `False` otherwise.
             - repo_url (str|None): The normalized repository URL on success, `None` on failure.
             - ref_type (str|None): One of "tag", "branch", or "commit" on success, `None` on failure.
@@ -1301,7 +1308,7 @@ def _validate_clone_inputs(
     ref_value = (ref.get("value") or "").strip()
 
     if not _is_repo_url_allowed(repo_url):
-        return False, None, None, None, None
+        return ValidationResult(False, None, None, None, None)
     allowed_ref_types = {"tag", "branch", "commit"}
     if ref_type not in allowed_ref_types:
         logger.error(
@@ -1309,13 +1316,13 @@ def _validate_clone_inputs(
             ref_type,
             _redact_url(repo_url),
         )
-        return False, None, None, None, None
+        return ValidationResult(False, None, None, None, None)
     if not ref_value:
         logger.error("Missing ref value for %s on %r", ref_type, _redact_url(repo_url))
-        return False, None, None, None, None
+        return ValidationResult(False, None, None, None, None)
     if ref_value.startswith("-"):
         logger.error("Ref value looks invalid (starts with '-'): %r", ref_value)
-        return False, None, None, None, None
+        return ValidationResult(False, None, None, None, None)
 
     # Validate ref value based on type
     if ref_type == "commit":
@@ -1325,17 +1332,17 @@ def _validate_clone_inputs(
                 "Invalid commit hash supplied: %r (must be 7-40 hex characters)",
                 ref_value,
             )
-            return False, None, None, None, None
+            return ValidationResult(False, None, None, None, None)
     else:
         # For tag and branch, use existing validation
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]*", ref_value):
             logger.error("Invalid %s name supplied: %r", ref_type, ref_value)
-            return False, None, None, None, None
+            return ValidationResult(False, None, None, None, None)
 
     # Extract repository name for later use
     repo_name = os.path.splitext(os.path.basename(repo_url.rstrip("/")))[0]
 
-    return True, repo_url, ref_type, ref_value, repo_name
+    return ValidationResult(True, repo_url, ref_type, ref_value, repo_name)
 
 
 def _clone_new_repo_to_branch_or_tag(
