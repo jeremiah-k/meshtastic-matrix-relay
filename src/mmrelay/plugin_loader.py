@@ -1109,12 +1109,12 @@ def _try_checkout_and_pull_ref(
         logger.info(f"Updated repository {repo_name} to {ref_type} {ref_value}")
         return True
     except subprocess.CalledProcessError:
-        logger.exception(
-            "Failed to update %s %s for %s",
-            ref_type,
-            ref_value,
-            repo_name,
+        logger.warning(
+            f"Failed to update {ref_type} {ref_value} for {repo_name}",
         )
+        return False
+    except FileNotFoundError:
+        logger.exception(f"Error updating repository {repo_name}; git not found.")
         return False
 
 
@@ -1212,7 +1212,7 @@ def _fallback_to_default_branches(
             continue
 
     logger.warning(
-        "Could not checkout any branch for %s, using current state", repo_name
+        f"Could not checkout any branch for {repo_name}, using current state"
     )
     return True
 
@@ -1240,121 +1240,55 @@ def _update_existing_repo_to_branch_or_tag(
         bool: True if successful, False otherwise.
     """
     try:
-        # Fetch from remote
-        try:
-            _run_git(["git", "-C", repo_path, "fetch", "origin"], timeout=120)
-        except subprocess.CalledProcessError as e:
-            logger.warning(f"Error fetching from remote: {e}")
-            # Continue anyway, we'll try to use what we have
+        _run_git(["git", "-C", repo_path, "fetch", "origin"], timeout=120)
+    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+        logger.warning(f"Error fetching from remote: {e}")
+        if isinstance(e, FileNotFoundError):
+            logger.exception(f"Error updating repository {repo_name}; git not found.")
+            return False
 
-        if is_default_branch:
-            # Handle default branches
-            try:
-                current_branch = _run_git(
-                    ["git", "-C", repo_path, "rev-parse", "--abbrev-ref", "HEAD"],
-                    capture_output=True,
-                ).stdout.strip()
-
-                if current_branch == ref_value:
-                    # Already on the right branch, just pull
-                    try:
-                        _run_git(
-                            ["git", "-C", repo_path, "pull", "origin", ref_value],
-                            timeout=120,
-                        )
-                        logger.info(
-                            f"Updated repository {repo_name} branch {ref_value}"
-                        )
-                        return True
-                    except subprocess.CalledProcessError as e:
-                        logger.warning(f"Error pulling branch {ref_value}: {e}")
-                        return True
-                else:
-                    # Switch to the right branch
-                    return _try_checkout_and_pull_ref(
-                        repo_path, ref_value, repo_name, ref_type
-                    )
-            except subprocess.CalledProcessError:
-                # Try the other default branch
-                other_default = "main" if ref_value == "master" else "master"
-                logger.warning(f"Branch {ref_value} not found, trying {other_default}")
-                if _try_checkout_and_pull_ref(
-                    repo_path, other_default, repo_name, "branch"
-                ):
-                    return True
-                logger.warning(
-                    "Could not checkout any default branch, repository update failed"
-                )
-                return False
-        else:
-            # Handle non-default branches
-            if ref_type == "branch":
-                return _try_checkout_and_pull_ref(
-                    repo_path, ref_value, repo_name, "branch"
-                )
-
-            # Handle tags
-            try:
-                # Check if we're already at the tag
-                current_commit = _run_git(
-                    ["git", "-C", repo_path, "rev-parse", "HEAD"],
-                    capture_output=True,
-                ).stdout.strip()
-
-                try:
-                    tag_commit = _run_git(
-                        ["git", "-C", repo_path, "rev-parse", ref_value],
-                        capture_output=True,
-                    ).stdout.strip()
-                    if current_commit == tag_commit:
-                        logger.info(
-                            f"Repository {repo_name} is already at tag {ref_value}"
-                        )
-                        return True
-                except subprocess.CalledProcessError:
-                    pass  # Tag doesn't exist locally
-
-                # Try to checkout the tag directly
-                _run_git(["git", "-C", repo_path, "checkout", ref_value], timeout=120)
-                logger.info(f"Updated repository {repo_name} to tag {ref_value}")
-                return True
-            except subprocess.CalledProcessError:
-                # Tag not found locally, try to fetch it
-                logger.warning(
-                    f"Tag {ref_value} not found locally, trying to fetch it specifically"
-                )
-
-                # Clean up any existing local tag that might conflict
-                try:
-                    _run_git(
-                        ["git", "-C", repo_path, "tag", "-d", ref_value], timeout=120
-                    )
-                except subprocess.CalledProcessError:
-                    pass  # Tag doesn't exist locally, which is fine
-
-                if _try_fetch_and_checkout_tag(repo_path, ref_value, repo_name):
-                    return True
-
-                # If fetching as tag fails, try as branch
-                logger.warning(f"Could not fetch tag {ref_value}, trying as a branch")
-                if _try_checkout_as_branch(repo_path, ref_value, repo_name):
-                    return True
-
-                # Final fallback to default branches
-                logger.warning(
-                    f"Could not checkout {ref_value} as tag or branch, trying default branches"
-                )
-                return _fallback_to_default_branches(
-                    repo_path, default_branches, ref_value, repo_name
-                )
-
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        logger.exception(
-            "Error updating repository %s; please check or update %s manually",
-            repo_name,
-            repo_path,
+    if is_default_branch:
+        if _try_checkout_and_pull_ref(repo_path, ref_value, repo_name, ref_type):
+            return True
+        other_default = "main" if ref_value == "master" else "master"
+        logger.warning(f"Branch {ref_value} not found, trying {other_default}")
+        if _try_checkout_and_pull_ref(repo_path, other_default, repo_name, "branch"):
+            return True
+        logger.warning(
+            "Could not checkout any default branch, repository update failed"
         )
         return False
+
+    if ref_type == "branch":
+        return _try_checkout_and_pull_ref(repo_path, ref_value, repo_name, "branch")
+
+    # Handle tags
+    try:
+        current_commit = _run_git(
+            ["git", "-C", repo_path, "rev-parse", "HEAD"], capture_output=True
+        ).stdout.strip()
+        tag_commit = _run_git(
+            ["git", "-C", repo_path, "rev-parse", ref_value], capture_output=True
+        ).stdout.strip()
+        if current_commit == tag_commit:
+            logger.info(f"Repository {repo_name} is already at tag {ref_value}")
+            return True
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pass  # Tag doesn't exist locally or git not found
+
+    if _try_fetch_and_checkout_tag(repo_path, ref_value, repo_name):
+        return True
+
+    logger.warning(f"Could not fetch tag {ref_value}, trying as a branch")
+    if _try_checkout_as_branch(repo_path, ref_value, repo_name):
+        return True
+
+    logger.warning(
+        f"Could not checkout {ref_value} as tag or branch, trying default branches"
+    )
+    return _fallback_to_default_branches(
+        repo_path, default_branches, ref_value, repo_name
+    )
 
 
 def _validate_clone_inputs(
@@ -1449,202 +1383,60 @@ def _clone_new_repo_to_branch_or_tag(
         bool: True if successful, False otherwise.
     """
     redacted_url = _redact_url(repo_url)
-    try:
-        # If it's a default branch, just clone it directly
-        if is_default_branch:
-            try:
-                # Try to clone with the specified branch
-                _run_git(
-                    [
-                        "git",
-                        "clone",
-                        "--branch",
-                        ref_value,
-                        repo_url,
-                        repo_name,
-                    ],
-                    cwd=plugins_dir,
-                    timeout=120,
-                )
-                if ref_type == "branch":
-                    logger.info(
-                        f"Cloned repository {repo_name} from {redacted_url} at branch {ref_value}"
-                    )
-                else:
-                    logger.info(
-                        f"Cloned repository {repo_name} from {redacted_url} at tag {ref_value}"
-                    )
-                return True
-            except subprocess.CalledProcessError:
-                # If that fails, try the other default branch
-                other_default = "main" if ref_value == "master" else "master"
-                try:
-                    logger.warning(
-                        f"Could not clone with branch {ref_value}, trying {other_default}"
-                    )
-                    if os.path.isdir(repo_path):
-                        shutil.rmtree(repo_path, ignore_errors=True)
-                    _run_git(
-                        [
-                            "git",
-                            "clone",
-                            "--branch",
-                            other_default,
-                            repo_url,
-                            repo_name,
-                        ],
-                        cwd=plugins_dir,
-                        timeout=120,
-                    )
-                    logger.info(
-                        f"Cloned repository {repo_name} from {redacted_url} at branch {other_default}"
-                    )
-                    return True
-                except subprocess.CalledProcessError:
-                    # If that fails too, clone without specifying a branch
-                    logger.warning(
-                        f"Could not clone with branch {other_default}, cloning default branch"
-                    )
-                    if os.path.isdir(repo_path):
-                        shutil.rmtree(repo_path, ignore_errors=True)
-                    _run_git(
-                        ["git", "clone", repo_url, repo_name],
-                        cwd=plugins_dir,
-                        timeout=120,
-                    )
-                    logger.info(
-                        f"Cloned repository {repo_name} from {redacted_url} (default branch)"
-                    )
-                    return True
-        else:
-            if ref_type == "branch":
-                # Non-default branch
-                try:
-                    _run_git(
-                        [
-                            "git",
-                            "clone",
-                            "--branch",
-                            ref_value,
-                            repo_url,
-                            repo_name,
-                        ],
-                        cwd=plugins_dir,
-                        timeout=120,
-                    )
-                    logger.info(
-                        f"Cloned repository {repo_name} from {redacted_url} at branch {ref_value}"
-                    )
-                    return True
-                except subprocess.CalledProcessError:
-                    logger.warning(
-                        f"Could not clone with branch {ref_value}, cloning default branch"
-                    )
-                    if os.path.isdir(repo_path):
-                        shutil.rmtree(repo_path, ignore_errors=True)
-                    _run_git(["git", "clone", repo_url], cwd=plugins_dir, timeout=120)
-                # Fetch/checkout the branch post-clone
-                try:
-                    _run_git(
-                        ["git", "-C", repo_path, "fetch", "origin", ref_value],
-                        timeout=120,
-                    )
-                except subprocess.CalledProcessError:
-                    pass
-                _run_git(["git", "-C", repo_path, "checkout", ref_value], timeout=120)
-                logger.info(
-                    f"Cloned repository {repo_name} and checked out branch {ref_value}"
-                )
-                return True
-            else:
-                # Tag flow (existing logic)
-                try:
-                    _run_git(
-                        [
-                            "git",
-                            "clone",
-                            "--branch",
-                            ref_value,
-                            repo_url,
-                            repo_name,
-                        ],
-                        cwd=plugins_dir,
-                        timeout=120,
-                    )
-                    logger.info(
-                        f"Cloned repository {repo_name} from {redacted_url} at tag {ref_value}"
-                    )
-                    return True
-                except subprocess.CalledProcessError:
-                    logger.warning(
-                        f"Could not clone with ref '{ref_value}' directly. Attempting to fetch and checkout."
-                    )
-                    if os.path.isdir(repo_path):
-                        shutil.rmtree(repo_path, ignore_errors=True)
-                    _run_git(["git", "clone", repo_url], cwd=plugins_dir, timeout=120)
-                try:
-                    try:
-                        _run_git(
-                            [
-                                "git",
-                                "-C",
-                                repo_path,
-                                "fetch",
-                                "origin",
-                                f"refs/tags/{ref_value}",
-                            ]
-                        )
-                    except subprocess.CalledProcessError:
-                        _run_git(
-                            [
-                                "git",
-                                "-C",
-                                repo_path,
-                                "fetch",
-                                "origin",
-                                f"refs/tags/{ref_value}:refs/tags/{ref_value}",
-                            ]
-                        )
-                    _run_git(
-                        ["git", "-C", repo_path, "checkout", ref_value], timeout=120
-                    )
-                    logger.info(
-                        f"Cloned repository {repo_name} and checked out tag {ref_value}"
-                    )
-                    return True
-                except subprocess.CalledProcessError:
-                    # If that fails, try as a branch
-                    try:
-                        logger.warning(
-                            f"Could not checkout {ref_value} as a tag, trying as a branch"
-                        )
-                        _run_git(
-                            ["git", "-C", repo_path, "fetch", "origin", ref_value],
-                            timeout=120,
-                        )
-                        _run_git(
-                            ["git", "-C", repo_path, "checkout", ref_value],
-                            timeout=120,
-                        )
-                        logger.info(
-                            f"Cloned repository {repo_name} and checked out branch {ref_value}"
-                        )
-                        return True
-                    except subprocess.CalledProcessError:
-                        logger.warning(
-                            f"Could not checkout {ref_value}, using default branch"
-                        )
-                        logger.info(
-                            f"Cloned repository {repo_name} from {redacted_url} (default branch)"
-                        )
-                        return True
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        logger.exception(
-            "Error cloning repository %s; please manually clone into %s",
-            repo_name,
-            repo_path,
+    clone_commands = []
+
+    if is_default_branch:
+        clone_commands.append(
+            (["git", "clone", "--branch", ref_value, repo_url, repo_name], ref_value)
         )
-        return False
+        other_default = "main" if ref_value == "master" else "master"
+        clone_commands.append(
+            (
+                ["git", "clone", "--branch", other_default, repo_url, repo_name],
+                other_default,
+            )
+        )
+        clone_commands.append((["git", "clone", repo_url, repo_name], "default branch"))
+    elif ref_type == "branch":
+        clone_commands.append(
+            (["git", "clone", "--branch", ref_value, repo_url, repo_name], ref_value)
+        )
+        clone_commands.append((["git", "clone", repo_url, repo_name], "default branch"))
+    else:  # tag
+        clone_commands.append(
+            (["git", "clone", "--branch", ref_value, repo_url, repo_name], ref_value)
+        )
+        clone_commands.append((["git", "clone", repo_url, repo_name], "default branch"))
+
+    for command, branch_name in clone_commands:
+        try:
+            if os.path.isdir(repo_path):
+                shutil.rmtree(repo_path, ignore_errors=True)
+            _run_git(command, cwd=plugins_dir, timeout=120)
+            logger.info(
+                f"Cloned repository {repo_name} from {redacted_url} at {ref_type} {branch_name}"
+            )
+
+            if ref_type != "branch" or not is_default_branch:
+                # Post-clone operations for tags and non-default branches
+                if ref_type == "tag":
+                    _try_fetch_and_checkout_tag(repo_path, ref_value, repo_name)
+                elif ref_type == "branch":
+                    _try_checkout_as_branch(repo_path, ref_value, repo_name)
+            return True
+        except subprocess.CalledProcessError:
+            logger.warning(
+                f"Could not clone with {ref_type} {branch_name}, trying next option."
+            )
+            continue
+        except FileNotFoundError:
+            logger.exception(f"Error cloning repository {repo_name}; git not found.")
+            return False
+
+    logger.exception(
+        f"Error cloning repository {repo_name}; please manually clone into {repo_path}"
+    )
+    return False
 
 
 def clone_or_update_repo(repo_url: str, ref: dict[str, str], plugins_dir: str) -> bool:

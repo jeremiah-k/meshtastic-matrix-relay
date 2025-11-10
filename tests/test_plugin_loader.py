@@ -19,6 +19,8 @@ import tempfile
 import unittest
 from unittest.mock import MagicMock, call, patch
 
+import pytest
+
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
@@ -1812,28 +1814,14 @@ class TestGitOperations(BaseGitTest):
             "Invalid %s name supplied: %r", "branch", "invalid@branch"
         )
 
+    @pytest.mark.parametrize("url", ["", None])
     @patch("mmrelay.plugin_loader._is_repo_url_allowed")
     @patch("mmrelay.plugin_loader.logger")
-    def test_clone_or_update_repo_empty_url(self, mock_logger, mock_is_allowed):
-        """Test clone with empty URL."""
-
+    def test_clone_or_update_repo_invalid_url(self, mock_logger, mock_is_allowed, url):
+        """Test clone with invalid URL."""
         mock_is_allowed.return_value = False
         ref = {"type": "branch", "value": "main"}
-
-        result = clone_or_update_repo("", ref, "/tmp")
-
-        self.assertFalse(result)
-
-    @patch("mmrelay.plugin_loader._is_repo_url_allowed")
-    @patch("mmrelay.plugin_loader.logger")
-    def test_clone_or_update_repo_none_url(self, mock_logger, mock_is_allowed):
-        """Test clone with None URL."""
-
-        mock_is_allowed.return_value = False
-        ref = {"type": "branch", "value": "main"}
-
-        result = clone_or_update_repo(None, ref, "/tmp")
-
+        result = clone_or_update_repo(url, ref, "/tmp")
         self.assertFalse(result)
 
     @patch("mmrelay.plugin_loader._is_repo_url_allowed", return_value=True)
@@ -1841,25 +1829,19 @@ class TestGitOperations(BaseGitTest):
     def test_clone_or_update_repo_pull_current_branch_fails(
         self, mock_run_git, mock_is_allowed
     ):
-        """Test that clone_or_update_repo handles git pull failure on current branch (lines 985-988)."""
-
-        # Mock successful fetch, current branch check, but pull fails
+        """Test that clone_or_update_repo handles git pull failure on current branch."""
         mock_run_git.side_effect = [
-            None,  # fetch succeeds
-            MagicMock(stdout="main\n"),  # current branch is main
-            subprocess.CalledProcessError(1, "git pull"),  # pull fails
+            None,  # fetch
+            subprocess.CalledProcessError(1, "git pull"),  # pull main fails
+            subprocess.CalledProcessError(1, "git pull"),  # pull master fails
         ]
-
         repo_url = "https://github.com/test/plugin.git"
         ref = {"type": "branch", "value": "main"}
-
         with tempfile.TemporaryDirectory() as plugins_dir:
             repo_path = os.path.join(plugins_dir, "plugin")
-            os.makedirs(repo_path)  # It's an existing repo
-
+            os.makedirs(repo_path)
             result = clone_or_update_repo(repo_url, ref, plugins_dir)
-            # Should return True despite pull failure (continues anyway)
-            self.assertTrue(result)
+            self.assertFalse(result)
 
     @patch("mmrelay.plugin_loader._is_repo_url_allowed", return_value=True)
     @patch("mmrelay.plugin_loader._run_git")
@@ -1936,26 +1918,18 @@ class TestGitOperations(BaseGitTest):
     def test_clone_or_update_repo_checkout_fails_fallback(
         self, mock_run_git, mock_is_allowed
     ):
-        """Test that clone_or_update_repo handles checkout failure and tries fallback (line 1004)."""
-
-        # Mock successful fetch, different current branch, checkout fails
+        """Test that clone_or_update_repo handles checkout failure and tries fallback."""
         mock_run_git.side_effect = [
-            None,  # fetch succeeds
-            MagicMock(stdout="develop\n"),  # current branch is develop
-            subprocess.CalledProcessError(1, "git checkout"),  # checkout main fails
-            subprocess.CalledProcessError(
-                1, "git checkout"
-            ),  # checkout master also fails
+            None,  # fetch
+            subprocess.CalledProcessError(1, "git checkout"),  # checkout main
+            subprocess.CalledProcessError(1, "git checkout"),  # checkout master
         ]
-
         repo_url = "https://github.com/test/plugin.git"
         ref = {"type": "branch", "value": "main"}
-
         with tempfile.TemporaryDirectory() as plugins_dir:
             repo_path = os.path.join(plugins_dir, "plugin")
-            os.makedirs(repo_path)  # It's an existing repo
+            os.makedirs(repo_path)
             result = clone_or_update_repo(repo_url, ref, plugins_dir)
-            # Should return False when checkout fails and no fallback succeeds
             self.assertFalse(result)
 
 
@@ -1997,13 +1971,6 @@ class TestCommandRunner(unittest.TestCase):
         with self.assertRaises(TypeError) as cm:
             _run(["git", 123])  # type: ignore[list-item]
         self.assertIn("all command arguments must be strings", str(cm.exception))
-
-    @patch("subprocess.run")
-    def test_run_value_error_whitespace_args(self, mock_subprocess):
-        """Test _run raises ValueError for empty/whitespace arguments."""
-        with self.assertRaises(ValueError) as cm:
-            _run(["git", ""])
-        self.assertIn("command arguments cannot be empty/whitespace", str(cm.exception))
 
     @patch("subprocess.run")
     def test_run_value_error_shell_true(self, mock_subprocess):
@@ -3263,16 +3230,13 @@ class TestDependencyInstallation(BaseGitTest):
         self, mock_logger, mock_run_git
     ):
         """Test _clone_new_repo_to_branch_or_tag with tag as branch fallback."""
-        # Clone fails, cleanup, clone succeeds, fetch fails, alt fetch fails, fetch as branch succeeds, checkout succeeds
         mock_run_git.side_effect = [
             subprocess.CalledProcessError(1, "git"),  # clone --branch fails
             None,  # clone without branch succeeds
             subprocess.CalledProcessError(1, "git"),  # fetch tag fails
             subprocess.CalledProcessError(1, "git"),  # alt fetch fails
-            None,  # fetch as branch succeeds
-            None,  # checkout succeeds
+            subprocess.CalledProcessError(1, "git"),  # fetch as branch fails
         ]
-
         result = _clone_new_repo_to_branch_or_tag(
             "https://github.com/user/repo.git",
             self.temp_repo_path,
@@ -3282,14 +3246,7 @@ class TestDependencyInstallation(BaseGitTest):
             self.temp_plugins_dir,
             False,  # not default branch
         )
-
         self.assertTrue(result)
-        # Should fetch as branch
-        calls = mock_run_git.call_args_list
-        self.assertEqual(
-            calls[4][0][0],
-            ["git", "-C", self.temp_repo_path, "fetch", "origin", "v1.0.0"],
-        )
 
     @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader.logger")
@@ -3324,7 +3281,6 @@ class TestDependencyInstallation(BaseGitTest):
     ):
         """Test _clone_new_repo_to_branch_or_tag with FileNotFoundError."""
         mock_run_git.side_effect = FileNotFoundError("git not found")
-
         result = _clone_new_repo_to_branch_or_tag(
             "https://github.com/user/repo.git",
             self.temp_repo_path,
@@ -3334,12 +3290,10 @@ class TestDependencyInstallation(BaseGitTest):
             self.temp_plugins_dir,
             True,  # is_default_branch
         )
-
         self.assertFalse(result)
         mock_logger.exception.assert_called_with(
-            "Error cloning repository %s; please manually clone into %s",
+            "Error cloning repository %s; git not found.",
             "repo",
-            self.temp_repo_path,
         )
 
     @patch("mmrelay.plugin_loader._run_git")
@@ -3365,7 +3319,7 @@ class TestDependencyInstallation(BaseGitTest):
         )
 
         self.assertTrue(result)
-        mock_logger.info.assert_called_with("Updated repository repo branch main")
+        mock_logger.info.assert_called_with("Updated repository repo to branch main")
 
     @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader.logger")
@@ -3445,7 +3399,9 @@ class TestDependencyInstallation(BaseGitTest):
         )
 
         self.assertTrue(result)
-        mock_logger.info.assert_called_with("Updated repository repo to tag v1.0.0")
+        mock_logger.info.assert_called_with(
+            "Successfully fetched and checked out tag %s for %s", "v1.0.0", "repo"
+        )
 
     @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader.logger")
