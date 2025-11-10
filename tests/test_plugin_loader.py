@@ -747,7 +747,6 @@ class Plugin:
 
         result = clone_or_update_repo("https://github.com/user/repo.git", ref, "/tmp")
 
-        print(f"DEBUG: result={result}, type={type(result)}")
         # The function is designed to be resilient and may return True even when git operations fail
         # The important part is that validation passes (no "Invalid commit hash" error)
         self.assertIsInstance(result, bool)  # Just verify it returns a boolean
@@ -1645,7 +1644,7 @@ class TestGitOperations(unittest.TestCase):
     @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader._is_repo_url_allowed")
     @patch("mmrelay.plugin_loader.logger")
-    def test_clone_or_update_repo_invalid_commit_hash_non_hex(
+    def test_clone_or_update_repo_ref_starts_with_dash(
         self, mock_logger, mock_is_allowed, mock_run_git
     ):
         """Test clone with ref value starting with dash."""
@@ -1778,9 +1777,6 @@ class TestGitOperations(unittest.TestCase):
         with tempfile.TemporaryDirectory() as plugins_dir:
             repo_path = os.path.join(plugins_dir, "plugin")
             os.makedirs(repo_path)  # It's an existing repo
-            print(f"Created repo_path: {repo_path}")
-            print(f"Directory exists: {os.path.isdir(repo_path)}")
-
             result = clone_or_update_repo(repo_url, ref, plugins_dir)
             self.assertTrue(result)
 
@@ -1807,11 +1803,7 @@ class TestGitOperations(unittest.TestCase):
         with tempfile.TemporaryDirectory() as plugins_dir:
             repo_path = os.path.join(plugins_dir, "plugin")
             os.makedirs(repo_path)  # It's an existing repo
-            print(f"Test: Created repo_path: {repo_path}")
-            print(f"Test: Directory exists: {os.path.isdir(repo_path)}")
-
             result = clone_or_update_repo(repo_url, ref, plugins_dir)
-            print(f"Test: Result: {result}")
             # Should return False when checkout fails and no fallback succeeds
             self.assertFalse(result)
 
