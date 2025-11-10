@@ -735,8 +735,8 @@ class Plugin:
     @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader._is_repo_url_allowed")
     @patch("mmrelay.plugin_loader.logger")
-    def test_clone_or_update_repo_valid_commit_hash(
-        self, mock_run_git, mock_logger, mock_is_allowed
+    def test_clone_or_update_repo_valid_full_commit_hash(
+        self, mock_logger, mock_is_allowed, mock_run_git
     ):
         """Test clone with valid commit hash (7 characters)."""
         from mmrelay.plugin_loader import clone_or_update_repo
@@ -748,10 +748,17 @@ class Plugin:
 
         result = clone_or_update_repo("https://github.com/user/repo.git", ref, "/tmp")
 
+        print(f"DEBUG: result={result}, type={type(result)}")
         self.assertFalse(
             result
         )  # Will fail due to missing git operations, but validation should pass
-        mock_logger.error.assert_not_called()
+        # Check that no validation error was logged for the valid commit hash
+        validation_errors = [
+            call
+            for call in mock_logger.error.call_args_list
+            if "Invalid commit hash" in str(call)
+        ]
+        self.assertEqual(len(validation_errors), 0)
 
     @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader._is_repo_url_allowed")
@@ -1465,7 +1472,7 @@ class TestGitOperations(unittest.TestCase):
 
         self.assertFalse(result)
         mock_logger.error.assert_called_with(
-            "Invalid ref type %r (expected 'tag' or 'branch') for %r",
+            "Invalid ref type %r (expected 'tag', 'branch', or 'commit') for %r",
             "invalid",
             "https://github.com/user/repo.git",
         )
@@ -1496,7 +1503,7 @@ class TestGitOperations(unittest.TestCase):
     @patch("mmrelay.plugin_loader._is_repo_url_allowed")
     @patch("mmrelay.plugin_loader.logger")
     def test_clone_or_update_repo_invalid_commit_hash_non_hex(
-        self, mock_run_git, mock_logger, mock_is_allowed
+        self, mock_logger, mock_is_allowed, mock_run_git
     ):
         """Test clone with ref value starting with dash."""
         from mmrelay.plugin_loader import clone_or_update_repo
