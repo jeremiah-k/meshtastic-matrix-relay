@@ -958,16 +958,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
             if is_commit:
                 try:
                     # For commits, we need to fetch and checkout the specific commit
-                    # First, fetch all from remote to ensure we have the commit
-                    try:
-                        _run_git(
-                            ["git", "-C", repo_path, "fetch", "origin"], timeout=120
-                        )
-                    except subprocess.CalledProcessError as e:
-                        logger.warning(f"Error fetching from remote: {e}")
-                        # Continue anyway, we'll try to use what we have
-
-                    # Check if the commit exists locally
+                    # First check if the commit exists locally before fetching
                     try:
                         _run_git(
                             [
@@ -1303,7 +1294,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                                 )
                                 return True
     except (subprocess.CalledProcessError, FileNotFoundError) as e:
-        logger.exception(f"Error updating repository {repo_name}: {e}")
+        logger.exception(f"Error updating repository {repo_name}")
         logger.error(
             f"Please manually git clone the repository {repo_url} into {repo_path}"
         )

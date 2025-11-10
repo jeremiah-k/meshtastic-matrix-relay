@@ -1772,7 +1772,7 @@ class TestGitOperations(unittest.TestCase):
         mock_run_git.side_effect = mock_run_git_side_effect
 
         repo_url = "https://github.com/test/plugin.git"
-        ref = {"type": "branch", "value": "main"}
+        ref = {"type": "tag", "value": "v1.0.0"}
 
         with tempfile.TemporaryDirectory() as plugins_dir:
             repo_path = os.path.join(plugins_dir, "plugin")
