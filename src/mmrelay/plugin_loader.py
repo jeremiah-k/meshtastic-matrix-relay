@@ -1305,7 +1305,7 @@ def _update_existing_repo_to_branch_or_tag(
                             "Could not checkout any branch, using current state"
                         )
                         return True
-    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+    except (subprocess.CalledProcessError, FileNotFoundError):
         logger.exception(f"Error updating repository {repo_name}")
         logger.error(
             f"Please manually git clone the repository {repo_url} into {repo_path}"
@@ -1415,7 +1415,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                     default_branches,
                     repo_url,
                 )
-    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+    except (subprocess.CalledProcessError, FileNotFoundError):
         logger.exception(f"Error updating repository {repo_name}")
         logger.error(
             f"Please manually git clone the repository {repo_url} into {repo_path}"
