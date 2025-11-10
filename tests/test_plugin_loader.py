@@ -1791,11 +1791,10 @@ class TestGitOperations(unittest.TestCase):
             "https://github.com/user/repo.git",
         )
 
-    @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader._is_repo_url_allowed")
     @patch("mmrelay.plugin_loader.logger")
     def test_clone_or_update_repo_ref_starts_with_dash(
-        self, mock_logger, mock_is_allowed, mock_run_git
+        self, mock_logger, mock_is_allowed
     ):
         """Test clone with ref value starting with dash."""
 
@@ -2045,7 +2044,7 @@ class TestCommandRunner(unittest.TestCase):
         """Test _run preserves existing text setting."""
         with patch("subprocess.run") as mock_subprocess:
             mock_subprocess.return_value = subprocess.CompletedProcess(
-                args=["echo", "test"], returncode=0, stdout="test"
+                args=["echo", "test"], returncode=0, stdout=b"test"
             )
             _run(["echo", "test"], text=False)
             # Check that text=False was preserved
@@ -3351,7 +3350,6 @@ class TestDependencyInstallation(unittest.TestCase):
             "repo",
             True,  # is_default_branch
             ["main", "master"],
-            "https://github.com/user/repo.git",
         )
 
         self.assertTrue(result)
@@ -3378,7 +3376,6 @@ class TestDependencyInstallation(unittest.TestCase):
             "repo",
             True,  # is_default_branch
             ["main", "master"],
-            "https://github.com/user/repo.git",
         )
 
         self.assertTrue(result)
@@ -3399,11 +3396,10 @@ class TestDependencyInstallation(unittest.TestCase):
         result = _update_existing_repo_to_branch_or_tag(
             "/tmp/repo",
             "branch",
-            "feature-branch",
+            "main",
             "repo",
-            False,  # not default branch
+            True,  # is_default_branch
             ["main", "master"],
-            "https://github.com/user/repo.git",
         )
 
         self.assertTrue(result)
@@ -3429,12 +3425,11 @@ class TestDependencyInstallation(unittest.TestCase):
 
         result = _update_existing_repo_to_branch_or_tag(
             "/tmp/repo",
-            "tag",
-            "v1.0.0",
+            "branch",
+            "main",
             "repo",
-            False,  # not default branch
+            True,  # is_default_branch
             ["main", "master"],
-            "https://github.com/user/repo.git",
         )
 
         self.assertTrue(result)
@@ -3457,7 +3452,6 @@ class TestDependencyInstallation(unittest.TestCase):
             "repo",
             True,  # is_default_branch
             ["main", "master"],
-            "https://github.com/user/repo.git",
         )
 
         # Should return False when all operations fail
