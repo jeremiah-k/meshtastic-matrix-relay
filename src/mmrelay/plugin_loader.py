@@ -967,9 +967,6 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                         logger.warning(f"Error fetching from remote: {e}")
                         # Continue anyway, we'll try to use what we have
 
-                    # Second fetch for commits
-                    _run_git(["git", "-C", repo_path, "fetch", "origin"], timeout=120)
-
                     # Check if the commit exists locally
                     try:
                         _run_git(

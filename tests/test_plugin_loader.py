@@ -822,8 +822,6 @@ class Plugin:
         expected_calls = [
             # Initial fetch from remote
             (["git", "-C", "/tmp/repo", "fetch", "origin"], {"timeout": 120}),
-            # Second fetch for commits
-            (["git", "-C", "/tmp/repo", "fetch", "origin"], {"timeout": 120}),
             # Check if commit exists locally
             (
                 ["git", "-C", "/tmp/repo", "cat-file", "-e", "deadbeef^{commit}"],
@@ -834,7 +832,7 @@ class Plugin:
         ]
 
         actual_calls = mock_run_git.call_args_list
-        self.assertEqual(len(actual_calls), 4)
+        self.assertEqual(len(actual_calls), 3)
 
         for i, (expected_args, expected_kwargs) in enumerate(expected_calls):
             actual_args, actual_kwargs = actual_calls[i]
@@ -874,21 +872,17 @@ class Plugin:
         ]
 
         self.assertEqual(
-            len(fetch_calls), 4
-        )  # Initial general fetch, second general fetch, specific commit fetch, general fetch fallback
+            len(fetch_calls), 3
+        )  # Initial general fetch, specific commit fetch, general fetch fallback
         self.assertEqual(
             fetch_calls[0][0][0], ["git", "-C", "/tmp/repo", "fetch", "origin"]
         )
         self.assertEqual(
             fetch_calls[1][0][0],
-            ["git", "-C", "/tmp/repo", "fetch", "origin"],
-        )
-        self.assertEqual(
-            fetch_calls[2][0][0],
             ["git", "-C", "/tmp/repo", "fetch", "origin", "cafebabe"],
         )
         self.assertEqual(
-            fetch_calls[3][0][0],
+            fetch_calls[2][0][0],
             ["git", "-C", "/tmp/repo", "fetch", "origin"],
         )
 
@@ -2746,8 +2740,6 @@ class TestDependencyInstallation(unittest.TestCase):
         expected_calls = [
             # Initial fetch from remote
             (["git", "-C", "/tmp/repo", "fetch", "origin"], {"timeout": 120}),
-            # Second fetch from remote
-            (["git", "-C", "/tmp/repo", "fetch", "origin"], {"timeout": 120}),
             # Check if commit exists locally
             (
                 ["git", "-C", "/tmp/repo", "cat-file", "-e", "deadbeef^{commit}"],
@@ -2758,7 +2750,7 @@ class TestDependencyInstallation(unittest.TestCase):
         ]
 
         actual_calls = mock_run_git.call_args_list
-        self.assertEqual(len(actual_calls), 4)
+        self.assertEqual(len(actual_calls), 3)
 
         for i, (expected_args, expected_kwargs) in enumerate(expected_calls):
             actual_args, actual_kwargs = actual_calls[i]
