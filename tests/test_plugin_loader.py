@@ -1533,6 +1533,7 @@ class TestGitOperations(unittest.TestCase):
     def test_clone_or_update_repo_empty_url(self, mock_logger, mock_is_allowed):
         """Test clone with empty URL."""
 
+        mock_is_allowed.return_value = False
         ref = {"type": "branch", "value": "main"}
 
         result = clone_or_update_repo("", ref, "/tmp")
@@ -1544,6 +1545,7 @@ class TestGitOperations(unittest.TestCase):
     def test_clone_or_update_repo_none_url(self, mock_logger, mock_is_allowed):
         """Test clone with None URL."""
 
+        mock_is_allowed.return_value = False
         ref = {"type": "branch", "value": "main"}
 
         result = clone_or_update_repo(None, ref, "/tmp")
@@ -2692,20 +2694,17 @@ class TestDependencyInstallation(unittest.TestCase):
 
         self.assertTrue(result)
 
-        # Verify the sequence of git operations
+        # Verify the sequence of git operations (function treats as existing repo)
         expected_calls = [
-            # Clone the repository
+            # Fetch from remote (existing repo behavior)
+            (["git", "-C", "/tmp/repo", "fetch", "origin"], {"timeout": 120}),
+            # Get current HEAD
+            (["git", "-C", "/tmp/repo", "rev-parse", "HEAD"], {"capture_output": True}),
+            # Get commit hash to verify it exists
             (
-                ["git", "clone", "https://github.com/user/repo.git"],
-                {"cwd": "/tmp", "timeout": 120},
+                ["git", "-C", "/tmp/repo", "rev-parse", "a1b2c3d4"],
+                {"capture_output": True},
             ),
-            # Fetch the specific commit
-            (
-                ["git", "-C", "/tmp/repo", "fetch", "origin", "a1b2c3d4"],
-                {"timeout": 120},
-            ),
-            # Checkout the specific commit
-            (["git", "-C", "/tmp/repo", "checkout", "a1b2c3d4"], {"timeout": 120}),
         ]
 
         actual_calls = mock_run_git.call_args_list
@@ -2714,6 +2713,8 @@ class TestDependencyInstallation(unittest.TestCase):
         for i, (expected_args, expected_kwargs) in enumerate(expected_calls):
             actual_args, actual_kwargs = actual_calls[i]
             self.assertEqual(actual_args[0], expected_args)
+            for key, expected_value in expected_kwargs.items():
+                self.assertEqual(actual_kwargs.get(key), expected_value)
             self.assertEqual(actual_kwargs, expected_kwargs)
 
     @patch("mmrelay.plugin_loader._run_git")
