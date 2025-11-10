@@ -843,7 +843,7 @@ class Plugin:
         mock_isdir.return_value = True  # Repo exists
         ref = {"type": "commit", "value": "deadbeef"}
 
-        # Configure mock to fail on cat-file (commit not found locally) but succeed on fetch and checkout
+        # Configure mock to fail on rev-parse (commit not found locally) but succeed on fetch and checkout
         def side_effect(*args, **kwargs):
             """
             Create a fake git subprocess side effect used in tests.
@@ -856,9 +856,10 @@ class Plugin:
                 subprocess.CompletedProcess: A successful result with returncode 0 and empty stdout/stderr.
 
             Raises:
-                subprocess.CalledProcessError: If the git command contains "cat-file", to simulate a missing commit object.
+                subprocess.CalledProcessError: If the git command contains "rev-parse" for the target commit, to simulate a missing commit object.
             """
-            if "cat-file" in args[0]:
+            # Fail on rev-parse for the target commit (not found locally), but succeed on HEAD rev-parse
+            if "rev-parse" in args[0] and "deadbeef^{commit}" in args[0]:
                 raise subprocess.CalledProcessError(
                     1, "git"
                 )  # Commit not found locally
@@ -879,17 +880,16 @@ class Plugin:
                 ["git", "-C", self.temp_repo_path, "rev-parse", "HEAD"],
                 {"capture_output": True},
             ),
-            # Check if commit exists locally (fails)
+            # Check if commit exists locally (fails with new rev-parse logic)
             (
                 [
                     "git",
                     "-C",
                     self.temp_repo_path,
-                    "cat-file",
-                    "-e",
+                    "rev-parse",
                     "deadbeef^{commit}",
                 ],
-                {"timeout": 120},
+                {"capture_output": True},
             ),
             # Fetch specific commit
             (
@@ -950,7 +950,7 @@ class Plugin:
                 "cafebabe",
             ]:
                 raise subprocess.CalledProcessError(1, "git")
-            if "cat-file" in args[0]:
+            if "rev-parse" in args[0] and "cafebabe^{commit}" in args[0]:
                 raise subprocess.CalledProcessError(1, "git")
             return subprocess.CompletedProcess(args[0], 0, "", "")
 
@@ -1000,20 +1000,19 @@ class Plugin:
         mock_isdir.return_value = True  # Repo exists
         ref = {"type": "commit", "value": "abcd1234"}
 
-        # Configure mock to succeed on all git operations
+        # Configure mock to succeed on all git operations (no fallback needed)
         def mock_run_git_side_effect(*args, **kwargs):
             """
             Simulate git subprocess calls for tests with deterministic successful outcomes.
 
             Returns:
                 subprocess.CompletedProcess: A successful CompletedProcess for the invoked git command.
-
-            Raises:
-                subprocess.CalledProcessError: If the invoked command includes "rev-parse", to simulate failure obtaining the current revision.
             """
             cmd = args[0]
-            if "rev-parse" in cmd:
-                raise subprocess.CalledProcessError(1, "git")  # Fail to get current
+            # For rev-parse calls, return same commit hash to simulate "already at target"
+            if "rev-parse" in cmd and "capture_output" in kwargs:
+                return subprocess.CompletedProcess(args[0], 0, "abcd1234fullhash", "")
+            # All other operations succeed
             return subprocess.CompletedProcess(args[0], 0, "", "")
 
         mock_run_git.side_effect = mock_run_git_side_effect
@@ -1024,29 +1023,23 @@ class Plugin:
 
         self.assertTrue(result)
 
-        # Verify rev-parse, cat-file check and checkout (no fetch needed)
+        # Verify rev-parse calls only (no fetch/checkout needed - already at target)
         expected_calls = [
-            # Check current commit (fails)
+            # Check current commit (succeeds)
             (
                 ["git", "-C", self.temp_repo_path, "rev-parse", "HEAD"],
                 {"capture_output": True},
             ),
-            # Check if commit exists locally (succeeds)
+            # Check if target commit exists locally (succeeds with new rev-parse logic)
             (
                 [
                     "git",
                     "-C",
                     self.temp_repo_path,
-                    "cat-file",
-                    "-e",
+                    "rev-parse",
                     "abcd1234^{commit}",
                 ],
-                {"timeout": 120},
-            ),
-            # Checkout specific commit
-            (
-                ["git", "-C", self.temp_repo_path, "checkout", "abcd1234"],
-                {"timeout": 120},
+                {"capture_output": True},
             ),
         ]
 
@@ -1072,13 +1065,13 @@ class Plugin:
             """
             Test helper that simulates subprocess responses for git commands in tests.
 
-            Simulates a failing `git fetch` for the exact command ["git", "-C", self.temp_repo_path, "fetch", "origin", "cdef5678"] and a failing git "cat-file" invocation; for all other calls it returns a successful CompletedProcess with empty stdout/stderr.
+            Simulates a failing `git fetch` for exact command ["git", "-C", self.temp_repo_path, "fetch", "origin", "cdef5678"] and a failing git "rev-parse" for target commit; for all other calls it returns a successful CompletedProcess with empty stdout/stderr.
 
             Returns:
                 subprocess.CompletedProcess: Successful result for non-matching commands.
 
             Raises:
-                subprocess.CalledProcessError: When the command matches the specific fetch case or contains "cat-file".
+                subprocess.CalledProcessError: When the command matches the specific fetch case or rev-parse for target commit.
             """
             if args[0] == [
                 "git",
@@ -1090,7 +1083,8 @@ class Plugin:
                 "cdef5678",
             ]:
                 raise subprocess.CalledProcessError(1, "git")
-            if "cat-file" in args[0]:
+            # Fail on rev-parse for target commit to trigger fetch
+            if "rev-parse" in args[0] and "cdef5678^{commit}" in args[0]:
                 raise subprocess.CalledProcessError(1, "git")
             return subprocess.CompletedProcess(args[0], 0, "", "")
 
@@ -1164,7 +1158,7 @@ class Plugin:
             if args[0] == ["git", "-C", self.temp_repo_path, "fetch", "origin"]:
                 # Fail fallback fetch too
                 raise subprocess.CalledProcessError(1, "git")
-            if "cat-file" in args[0]:
+            if "rev-parse" in args[0] and "abcd1234^{commit}" in args[0]:
                 raise subprocess.CalledProcessError(1, "git")
             return subprocess.CompletedProcess(args[0], 0, "", "")
 
@@ -3236,15 +3230,13 @@ class TestDependencyInstallation(BaseGitTest):
         )
 
         self.assertTrue(result)
-        # Should clone with --branch v1.0.0, then fetch and checkout tag
+        # Should clone default branch, then fetch and checkout tag
         expected_calls = [
             call(
                 [
                     "git",
                     "clone",
                     "--filter=blob:none",
-                    "--branch",
-                    "v1.0.0",
                     "https://github.com/user/repo.git",
                     "repo",
                 ],
@@ -3269,7 +3261,7 @@ class TestDependencyInstallation(BaseGitTest):
         ]
         mock_run_git.assert_has_calls(expected_calls)
         mock_logger.info.assert_any_call(
-            "Cloned repository repo from https://github.com/user/repo.git at tag v1.0.0"
+            "Cloned repository repo from https://github.com/user/repo.git at tag default branch"
         )
         mock_logger.info.assert_any_call(
             "Successfully fetched and checked out tag %s for %s", "v1.0.0", "repo"
@@ -3281,10 +3273,9 @@ class TestDependencyInstallation(BaseGitTest):
         self, mock_logger, mock_run_git
     ):
         """Test _clone_new_repo_to_branch_or_tag with tag fetch fallback."""
-        # Clone with tag fails, cleanup, clone succeeds, then fetch and checkout succeed
+        # Clone succeeds, then fetch and checkout succeed
         mock_run_git.side_effect = [
-            subprocess.CalledProcessError(1, "git"),  # clone --branch fails
-            None,  # clone without branch succeeds
+            None,  # clone succeeds
             None,  # fetch succeeds
             None,  # checkout succeeds
         ]
@@ -3300,15 +3291,15 @@ class TestDependencyInstallation(BaseGitTest):
         )
 
         self.assertTrue(result)
-        # Should fetch, checkout after cleanup and re-clone
+        # Should fetch and checkout after clone
         calls = mock_run_git.call_args_list
-        self.assertEqual(len(calls), 4)
+        self.assertEqual(len(calls), 3)
         self.assertEqual(
-            calls[2][0][0],
+            calls[1][0][0],
             ["git", "-C", self.temp_repo_path, "fetch", "origin", "refs/tags/v1.0.0"],
         )
         self.assertEqual(
-            calls[3][0][0], ["git", "-C", self.temp_repo_path, "checkout", "v1.0.0"]
+            calls[2][0][0], ["git", "-C", self.temp_repo_path, "checkout", "v1.0.0"]
         )
 
     @patch("mmrelay.plugin_loader._run_git")
@@ -3317,10 +3308,9 @@ class TestDependencyInstallation(BaseGitTest):
         self, mock_logger, mock_run_git
     ):
         """Test _clone_new_repo_to_branch_or_tag with alternative tag fetch."""
-        # Clone with tag fails, cleanup, clone succeeds, first fetch fails, alternative fetch succeeds, checkout succeeds
+        # Clone succeeds, first fetch fails, alternative fetch succeeds, checkout succeeds
         mock_run_git.side_effect = [
-            subprocess.CalledProcessError(1, "git"),  # clone --branch fails
-            None,  # clone without branch succeeds
+            None,  # clone succeeds
             subprocess.CalledProcessError(1, "git"),  # first fetch fails
             None,  # alternative fetch succeeds
             None,  # checkout succeeds
@@ -3340,7 +3330,7 @@ class TestDependencyInstallation(BaseGitTest):
         # Should try alternative fetch format
         calls = mock_run_git.call_args_list
         self.assertEqual(
-            calls[3][0][0],
+            calls[2][0][0],
             [
                 "git",
                 "-C",

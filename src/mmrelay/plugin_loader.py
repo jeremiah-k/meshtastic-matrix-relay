@@ -996,37 +996,31 @@ def _update_existing_repo_to_commit(
     try:
         # If already at the requested commit, skip work (support short hashes)
         try:
-            current = _run_git(
+            # Resolve both HEAD and the ref_value to full commit hashes for a safe comparison.
+            current_full = _run_git(
                 ["git", "-C", repo_path, "rev-parse", "HEAD"], capture_output=True
             ).stdout.strip()
-            if current and (
-                current.startswith(ref_value) or ref_value.startswith(current)
-            ):
+            # Using ^{commit} ensures we're resolving to a commit object.
+            target_full = _run_git(
+                ["git", "-C", repo_path, "rev-parse", f"{ref_value}^{{commit}}"],
+                capture_output=True,
+            ).stdout.strip()
+
+            if current_full == target_full:
                 logger.info(
                     "Repository %s is already at commit %s", repo_name, ref_value
                 )
                 return True
         except subprocess.CalledProcessError:
-            current = ""
+            # This can happen if ref_value is not a local commit.
+            # We can proceed to the more robust checking and fetching logic below.
+            pass
 
-        # First check if the commit exists locally before fetching
-        try:
-            _run_git(
-                [
-                    "git",
-                    "-C",
-                    repo_path,
-                    "cat-file",
-                    "-e",
-                    f"{ref_value}^{{commit}}",
-                ],
-                timeout=120,
-            )
-        except subprocess.CalledProcessError:
-            # Commit doesn't exist locally, try to fetch it specifically
-            logger.info(f"Commit {ref_value} not found locally, attempting to fetch")
-            if not _fetch_commit_with_fallback(repo_path, ref_value, repo_name):
-                return False
+        # If we get here, the rev-parse failed above, so commit doesn't exist locally
+        # Try to fetch it specifically
+        logger.info(f"Commit {ref_value} not found locally, attempting to fetch")
+        if not _fetch_commit_with_fallback(repo_path, ref_value, repo_name):
+            return False
 
         # Checkout the specific commit
         _run_git(["git", "-C", repo_path, "checkout", ref_value], timeout=120)
@@ -1443,20 +1437,8 @@ def _clone_new_repo_to_branch_or_tag(
             )
         )
     else:  # tag
-        clone_commands.append(
-            (
-                [
-                    "git",
-                    "clone",
-                    "--filter=blob:none",
-                    "--branch",
-                    ref_value,
-                    repo_url,
-                    repo_name,
-                ],
-                ref_value,
-            )
-        )
+        # For tags, it's simpler to just clone default branch
+        # and then handle tag checkout in post-clone step.
         clone_commands.append(
             (
                 ["git", "clone", "--filter=blob:none", repo_url, repo_name],
