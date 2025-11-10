@@ -30,6 +30,7 @@ from mmrelay.plugin_loader import (
     _install_requirements_for_repo,
     _is_repo_url_allowed,
     _run,
+    _update_existing_repo_to_branch_or_tag,
     _validate_clone_inputs,
     clear_plugin_jobs,
     clone_or_update_repo,
@@ -3183,6 +3184,139 @@ class TestDependencyInstallation(unittest.TestCase):
 
         self.assertFalse(result)
         mock_logger.exception.assert_called_with("Error cloning repository repo")
+
+    @patch("mmrelay.plugin_loader._run_git")
+    @patch("mmrelay.plugin_loader.logger")
+    def test_update_existing_repo_to_branch_or_tag_default_branch_already_on_branch(
+        self, mock_logger, mock_run_git
+    ):
+        """Test updating when already on the correct default branch."""
+        # Mock current branch check
+        mock_run_git.side_effect = [
+            None,  # fetch succeeds
+            MagicMock(stdout="main\n"),  # current branch is main
+            None,  # pull succeeds
+        ]
+
+        result = _update_existing_repo_to_branch_or_tag(
+            "/tmp/repo",
+            "branch",
+            "main",
+            "repo",
+            True,  # is_default_branch
+            ["main", "master"],
+            "https://github.com/user/repo.git",
+        )
+
+        self.assertTrue(result)
+        mock_logger.info.assert_called_with("Updated repository repo branch main")
+
+    @patch("mmrelay.plugin_loader._run_git")
+    @patch("mmrelay.plugin_loader.logger")
+    def test_update_existing_repo_to_branch_or_tag_default_branch_switch(
+        self, mock_logger, mock_run_git
+    ):
+        """Test switching to a different default branch."""
+        # Mock current branch check and checkout
+        mock_run_git.side_effect = [
+            None,  # fetch succeeds
+            MagicMock(stdout="master\n"),  # current branch is master
+            None,  # checkout main succeeds
+            None,  # pull succeeds
+        ]
+
+        result = _update_existing_repo_to_branch_or_tag(
+            "/tmp/repo",
+            "branch",
+            "main",
+            "repo",
+            True,  # is_default_branch
+            ["main", "master"],
+            "https://github.com/user/repo.git",
+        )
+
+        self.assertTrue(result)
+        mock_logger.info.assert_called_with("Switched to and updated branch main")
+
+    @patch("mmrelay.plugin_loader._run_git")
+    @patch("mmrelay.plugin_loader.logger")
+    def test_update_existing_repo_to_branch_or_tag_non_default_branch(
+        self, mock_logger, mock_run_git
+    ):
+        """Test updating a non-default branch."""
+        mock_run_git.side_effect = [
+            None,  # fetch succeeds
+            None,  # checkout succeeds
+            None,  # pull succeeds
+        ]
+
+        result = _update_existing_repo_to_branch_or_tag(
+            "/tmp/repo",
+            "branch",
+            "feature-branch",
+            "repo",
+            False,  # not default branch
+            ["main", "master"],
+            "https://github.com/user/repo.git",
+        )
+
+        self.assertTrue(result)
+        mock_logger.info.assert_called_with(
+            "Updated repository repo to branch feature-branch"
+        )
+
+    @patch("mmrelay.plugin_loader._run_git")
+    @patch("mmrelay.plugin_loader.logger")
+    def test_update_existing_repo_to_branch_or_tag_tag_update(
+        self, mock_logger, mock_run_git
+    ):
+        """Test updating to a tag."""
+        mock_run_git.side_effect = [
+            None,  # fetch succeeds
+            MagicMock(stdout="abc123\n"),  # current commit
+            subprocess.CalledProcessError(
+                1, "git"
+            ),  # rev-parse tag fails (tag not local)
+            None,  # fetch tag succeeds
+            None,  # checkout succeeds
+        ]
+
+        result = _update_existing_repo_to_branch_or_tag(
+            "/tmp/repo",
+            "tag",
+            "v1.0.0",
+            "repo",
+            False,  # not default branch
+            ["main", "master"],
+            "https://github.com/user/repo.git",
+        )
+
+        self.assertTrue(result)
+        mock_logger.info.assert_called_with("Updated repository repo to tag v1.0.0")
+
+    @patch("mmrelay.plugin_loader._run_git")
+    @patch("mmrelay.plugin_loader.logger")
+    def test_update_existing_repo_to_branch_or_tag_fetch_failure(
+        self, mock_logger, mock_run_git
+    ):
+        """Test handling of fetch failure."""
+        mock_run_git.side_effect = subprocess.CalledProcessError(
+            1, "git"
+        )  # all git operations fail
+
+        result = _update_existing_repo_to_branch_or_tag(
+            "/tmp/repo",
+            "branch",
+            "main",
+            "repo",
+            True,  # is_default_branch
+            ["main", "master"],
+            "https://github.com/user/repo.git",
+        )
+
+        # Should return False when all operations fail
+        self.assertFalse(result)
+        mock_logger.warning.assert_called()
 
 
 if __name__ == "__main__":
