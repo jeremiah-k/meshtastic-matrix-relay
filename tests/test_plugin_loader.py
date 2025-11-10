@@ -1975,6 +1975,17 @@ class TestCommandRunner(unittest.TestCase):
             _run(["git", "status"], shell=True)  # noqa: S604 - intentional for test
         self.assertIn("shell=True is not allowed in _run", str(cm.exception))
 
+    @patch("subprocess.run")
+    def test_run_value_error_empty_args(self, mock_subprocess):
+        """Test _run raises ValueError for empty/whitespace arguments."""
+        with self.assertRaises(ValueError) as cm:
+            _run(["git", ""])
+        self.assertIn("command arguments cannot be empty/whitespace", str(cm.exception))
+
+        with self.assertRaises(ValueError) as cm:
+            _run(["git", "   "])
+        self.assertIn("command arguments cannot be empty/whitespace", str(cm.exception))
+
     def test_run_sets_text_default(self):
         """Test _run sets text=True by default."""
         with patch("subprocess.run") as mock_subprocess:
