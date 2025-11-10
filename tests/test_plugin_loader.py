@@ -1660,8 +1660,11 @@ class TestGitOperations(unittest.TestCase):
         with tempfile.TemporaryDirectory() as plugins_dir:
             repo_path = os.path.join(plugins_dir, "plugin")
             os.makedirs(repo_path)  # It's an existing repo
+            print(f"Test: Created repo_path: {repo_path}")
+            print(f"Test: Directory exists: {os.path.isdir(repo_path)}")
 
             result = clone_or_update_repo(repo_url, ref, plugins_dir)
+            print(f"Test: Result: {result}")
             # Should return False when checkout fails and no fallback succeeds
             self.assertFalse(result)
 
