@@ -289,7 +289,7 @@ def _redact_url(url: str) -> str:
             if s.port:
                 netloc += f":{s.port}"
             return urlunsplit((s.scheme, netloc, s.path, s.query, s.fragment))
-    except Exception:
+    except (ValueError, TypeError, AttributeError):
         pass
     return url
 
@@ -1594,8 +1594,9 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
     # Commits are handled differently from branches and tags
     is_commit = ref_type == "commit"
 
-    try:
-        if os.path.isdir(repo_path):
+    if os.path.isdir(repo_path):
+        # Repository exists, update it
+        try:
             # Handle commits differently from branches and tags
             if is_commit:
                 return _update_existing_repo_to_commit(repo_path, ref_value, repo_name)
@@ -1608,10 +1609,10 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                     is_default_branch,
                     default_branches,
                 )
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        logger.exception(f"Error updating repository {repo_name}")
-        logger.error(f"Please manually update the repository at {repo_path}")
-        return False
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            logger.exception(f"Error updating repository {repo_name}")
+            logger.error(f"Please manually update the repository at {repo_path}")
+            return False
     else:
         # Repository doesn't exist yet, clone it
         try:

@@ -1655,16 +1655,30 @@ class TestRequirementFiltering(unittest.TestCase):
         self.assertFalse(_allow)
 
 
-class TestGitOperations(unittest.TestCase):
+class BaseGitTest(unittest.TestCase):
+    """Base class for tests that need temporary Git repository directories."""
+
+    def setUp(self):
+        super().setUp()
+        self.temp_plugins_dir = tempfile.mkdtemp()
+        self.temp_repo_path = os.path.join(self.temp_plugins_dir, "repo")
+
+    def tearDown(self):
+        super().tearDown()
+        import shutil
+
+        shutil.rmtree(self.temp_plugins_dir, ignore_errors=True)
+
+
+class TestGitOperations(BaseGitTest):
     """Test cases for Git operations and repository management."""
 
     def setUp(self):
+        super().setUp()
         import mmrelay.plugin_loader as pl
 
         self.pl = pl
         self.original_config = getattr(pl, "config", None)
-        self.temp_plugins_dir = tempfile.mkdtemp()
-        self.temp_repo_path = os.path.join(self.temp_plugins_dir, "repo")
 
     def tearDown(self):
         """
@@ -1673,9 +1687,7 @@ class TestGitOperations(unittest.TestCase):
         Reassigns the saved original configuration back to the plugin loader's `config` attribute to restore global state modified during the test.
         """
         self.pl.config = self.original_config
-        import shutil
-
-        shutil.rmtree(self.temp_plugins_dir, ignore_errors=True)
+        super().tearDown()
 
     @patch("mmrelay.plugin_loader._run")
     def test_run_git_with_defaults(self, mock_run):
@@ -2463,16 +2475,15 @@ class TestPluginDirectories(unittest.TestCase):
         mock_logger.debug.assert_called()
 
 
-class TestDependencyInstallation(unittest.TestCase):
+class TestDependencyInstallation(BaseGitTest):
     """Test cases for dependency installation functionality."""
 
     def setUp(self):
         """Set up mocks and temporary directory."""
+        super().setUp()
         self.temp_dir = tempfile.mkdtemp()
         self.repo_path = os.path.join(self.temp_dir, "test-plugin")
         self.requirements_path = os.path.join(self.repo_path, "requirements.txt")
-        self.temp_plugins_dir = tempfile.mkdtemp()
-        self.temp_repo_path = os.path.join(self.temp_plugins_dir, "repo")
         os.makedirs(self.repo_path, exist_ok=True)
         with open(self.requirements_path, "w") as f:
             f.write("requests==2.28.0\n")
@@ -2485,7 +2496,7 @@ class TestDependencyInstallation(unittest.TestCase):
     def tearDown(self):
         """Clean up temporary directory."""
         shutil.rmtree(self.temp_dir)
-        shutil.rmtree(self.temp_plugins_dir, ignore_errors=True)
+        super().tearDown()
 
     @patch("mmrelay.plugin_loader.logger")
     @patch("mmrelay.plugin_loader._check_auto_install_enabled")
