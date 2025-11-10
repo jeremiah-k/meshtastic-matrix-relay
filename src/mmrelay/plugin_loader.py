@@ -1555,13 +1555,31 @@ def _clone_new_repo_to_branch_or_tag(
                     )
                     return True
                 except subprocess.CalledProcessError:
-                    logger.warning(
-                        f"Could not checkout {ref_value}, using default branch"
-                    )
-                    logger.info(
-                        f"Cloned repository {repo_name} from {redacted_url} (default branch)"
-                    )
-                    return True
+                    # If that fails, try as a branch
+                    try:
+                        logger.warning(
+                            f"Could not checkout {ref_value} as a tag, trying as a branch"
+                        )
+                        _run_git(
+                            ["git", "-C", repo_path, "fetch", "origin", ref_value],
+                            timeout=120,
+                        )
+                        _run_git(
+                            ["git", "-C", repo_path, "checkout", ref_value],
+                            timeout=120,
+                        )
+                        logger.info(
+                            f"Cloned repository {repo_name} and checked out tag {ref_value}"
+                        )
+                        return True
+                    except subprocess.CalledProcessError:
+                        logger.warning(
+                            f"Could not checkout {ref_value}, using default branch"
+                        )
+                        logger.info(
+                            f"Cloned repository {repo_name} from {redacted_url} (default branch)"
+                        )
+                        return True
     except (subprocess.CalledProcessError, FileNotFoundError):
         logger.exception(f"Error cloning repository {repo_name}")
         logger.error(f"Please manually clone the repository at {repo_path}")
