@@ -934,20 +934,6 @@ def _update_existing_repo_to_commit(
         except subprocess.CalledProcessError:
             current = ""
 
-        target = None
-        try:
-            # Resolve short SHA to full commit id if available locally
-            target = _run_git(
-                ["git", "-C", repo_path, "rev-parse", f"{ref_value}^{{commit}}"],
-                capture_output=True,
-            ).stdout.strip()
-        except subprocess.CalledProcessError:
-            pass
-
-        if target and current == target:
-            logger.info("Repository %s already at commit %s", repo_name, target)
-            return True
-
         # First check if the commit exists locally before fetching
         try:
             _run_git(
@@ -957,7 +943,7 @@ def _update_existing_repo_to_commit(
                     repo_path,
                     "cat-file",
                     "-e",
-                    f"{(target or ref_value)}^{{commit}}",
+                    f"{ref_value}^{{commit}}",
                 ],
                 timeout=120,
             )
@@ -1059,8 +1045,8 @@ def _clone_new_repo_to_commit(
         logger.info(f"Checked out repository {repo_name} to commit {ref_value}")
         return True
     except (subprocess.CalledProcessError, FileNotFoundError):
-        logger.exception(f"Error updating repository {repo_name}")
-        logger.error(f"Please manually update the repository at {repo_path}")
+        logger.exception(f"Error cloning repository {repo_name}")
+        logger.error(f"Please manually clone the repository at {repo_path}")
         return False
 
 
@@ -1568,8 +1554,8 @@ def _clone_new_repo_to_branch_or_tag(
                     )
                     return True
     except (subprocess.CalledProcessError, FileNotFoundError):
-        logger.exception(f"Error updating repository {repo_name}")
-        logger.error(f"Please manually update the repository at {repo_path}")
+        logger.exception(f"Error cloning repository {repo_name}")
+        logger.error(f"Please manually clone the repository at {repo_path}")
         return False
 
 
@@ -1654,7 +1640,7 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                 )
         except (subprocess.CalledProcessError, FileNotFoundError):
             logger.exception(f"Error cloning repository {repo_name}")
-            logger.error(f"Please manually update the repository at {repo_path}")
+            logger.error(f"Please manually clone the repository at {repo_path}")
             return False
 
 

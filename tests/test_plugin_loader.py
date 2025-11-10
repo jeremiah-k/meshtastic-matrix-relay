@@ -790,7 +790,12 @@ class Plugin:
         expected_calls = [
             # Clone repository
             (
-                ["git", "clone", "https://github.com/user/repo.git"],
+                [
+                    "git",
+                    "clone",
+                    "--filter=blob:none",
+                    "https://github.com/user/repo.git",
+                ],
                 {"cwd": self.temp_plugins_dir, "timeout": 120},
             ),
             # Direct checkout succeeds (no fetch needed)
@@ -1171,7 +1176,7 @@ class Plugin:
 
         # Verify manual clone instruction was logged
         mock_logger.error.assert_called_once_with(
-            f"Please manually git clone repository https://github.com/user/repo.git into {self.temp_repo_path}"
+            f"Please manually clone the repository at {self.temp_repo_path}"
         )
 
 
@@ -3389,17 +3394,17 @@ class TestDependencyInstallation(unittest.TestCase):
     ):
         """Test updating a non-default branch."""
         mock_run_git.side_effect = [
-            None,  # fetch succeeds
-            None,  # checkout succeeds
-            None,  # pull succeeds
+            subprocess.CompletedProcess([], 0),  # fetch succeeds
+            subprocess.CompletedProcess([], 0),  # checkout succeeds
+            subprocess.CompletedProcess([], 0),  # pull succeeds
         ]
 
         result = _update_existing_repo_to_branch_or_tag(
             self.temp_repo_path,
             "branch",
-            "main",
+            "feature-branch",
             "repo",
-            True,  # is_default_branch
+            False,  # is_default_branch
             ["main", "master"],
         )
 
@@ -3415,21 +3420,21 @@ class TestDependencyInstallation(unittest.TestCase):
     ):
         """Test updating to a tag."""
         mock_run_git.side_effect = [
-            None,  # fetch succeeds
+            subprocess.CompletedProcess([], 0),  # fetch succeeds
             MagicMock(stdout="abc123\n"),  # current commit
             subprocess.CalledProcessError(
                 1, "git"
             ),  # rev-parse tag fails (tag not local)
-            None,  # fetch tag succeeds
-            None,  # checkout succeeds
+            subprocess.CompletedProcess([], 0),  # fetch tag succeeds
+            subprocess.CompletedProcess([], 0),  # checkout succeeds
         ]
 
         result = _update_existing_repo_to_branch_or_tag(
             self.temp_repo_path,
-            "branch",
-            "main",
+            "tag",
+            "v1.0.0",
             "repo",
-            True,  # is_default_branch
+            False,  # is_default_branch (tags are not default branches)
             ["main", "master"],
         )
 
