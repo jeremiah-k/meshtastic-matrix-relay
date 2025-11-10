@@ -1313,28 +1313,20 @@ def _update_existing_repo_to_branch_or_tag(
         return False
 
 
-def clone_or_update_repo(repo_url, ref, plugins_dir):
+def _validate_clone_inputs(repo_url, ref):
     """
-    Ensure a community plugin git repository exists under plugins_dir and is checked out at the specified ref.
-
-    Attempts to clone the repository into plugins_dir/<repo_name> or update an existing clone so that it is on the requested ref. The ref argument must be a dict with keys `"type"` (either `"tag"` or `"branch"`) and `"value"` (the tag or branch name). Falls back to common default branches ("main", "master") when appropriate.
-
-    Parameters:
-        repo_url (str): URL or SSH spec of the git repository to clone or update.
-        ref (dict): Reference specification with keys:
-            - type (str): "tag" or "branch".
-            - value (str): The tag or branch name to check out.
-        plugins_dir (str): Directory under which the repository should be placed.
+    Validate inputs for clone_or_update_repo function.
 
     Returns:
-        bool: `True` if the repository was successfully cloned or updated, `False` otherwise.
+        tuple: (is_valid, repo_url, ref_type, ref_value, repo_name, repo_path)
+        or (False, None, None, None, None, None) if validation fails.
     """
     repo_url = (repo_url or "").strip()
-    ref_type = ref.get("type")  # expected: "tag" or "branch"
+    ref_type = ref.get("type")  # expected: "tag", "branch", or "commit"
     ref_value = (ref.get("value") or "").strip()
 
     if not _is_repo_url_allowed(repo_url):
-        return False
+        return False, None, None, None, None
     allowed_ref_types = {"tag", "branch", "commit"}
     if ref_type not in allowed_ref_types:
         logger.error(
@@ -1342,13 +1334,13 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
             ref_type,
             repo_url,
         )
-        return False
+        return False, None, None, None, None
     if not ref_value:
         logger.error("Missing ref value for %s on %r", ref_type, repo_url)
-        return False
+        return False, None, None, None, None
     if ref_value.startswith("-"):
         logger.error("Ref value looks invalid (starts with '-'): %r", ref_value)
-        return False
+        return False, None, None, None, None
 
     # Validate ref value based on type
     if ref_type == "commit":
@@ -1358,15 +1350,42 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                 "Invalid commit hash supplied: %r (must be 7-40 hex characters)",
                 ref_value,
             )
-            return False
+            return False, None, None, None, None
     else:
         # For tag and branch, use existing validation
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]*", ref_value):
             logger.error("Invalid %s name supplied: %r", ref_type, ref_value)
-            return False
+            return False, None, None, None, None
 
-    # Extract the repository name from the URL
+    # Extract repository name for later use
     repo_name = os.path.splitext(os.path.basename(repo_url.rstrip("/")))[0]
+
+    return True, repo_url, ref_type, ref_value, repo_name
+
+
+def clone_or_update_repo(repo_url, ref, plugins_dir):
+    """
+    Ensure a community plugin git repository exists under plugins_dir and is checked out at the specified ref.
+
+    Attempts to clone the repository into plugins_dir/<repo_name> or update an existing clone so that it is on the requested ref. The ref argument must be a dict with keys `"type"` (either `"tag"` or `"branch"`) and `"value"` (the tag or branch name). Falls back to common default branches ("main", "master") when appropriate.
+
+    Parameters:
+        repo_url (str): URL or SSH spec of the git repository to clone or update.
+        ref (dict): Reference specification with keys:
+            - type (str): "tag", "branch", or "commit".
+            - value (str): The tag, branch, or commit hash to check out.
+        plugins_dir (str): Directory under which the repository should be placed.
+
+    Returns:
+        bool: `True` if the repository was successfully cloned or updated, `False` otherwise.
+    """
+    # Validate inputs
+    is_valid, repo_url, ref_type, ref_value, repo_name = _validate_clone_inputs(
+        repo_url, ref
+    )
+    if not is_valid:
+        return False
+
     repo_path = os.path.join(plugins_dir, repo_name)
 
     # Default branch names to try if ref is not specified
