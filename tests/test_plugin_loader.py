@@ -2005,7 +2005,7 @@ class TestCommandRunner(unittest.TestCase):
         self.assertIn("all command arguments must be strings", str(cm.exception))
 
     @patch("subprocess.run")
-    def test_run_value_error_empty_args(self, mock_subprocess):
+    def test_run_value_error_whitespace_args(self, mock_subprocess):
         """Test _run raises ValueError for empty/whitespace arguments."""
         with self.assertRaises(ValueError) as cm:
             _run(["git", ""])
@@ -2972,8 +2972,8 @@ class TestDependencyInstallation(BaseGitTest):
             result
         )  # Function should return False on git operation failures
         # Verify no "Invalid ref type" error was logged (commit ref type should be accepted)
-        for call in mock_logger.error.call_args_list:
-            self.assertNotIn("Invalid ref type", str(call))
+        for call_args in mock_logger.error.call_args_list:
+            self.assertNotIn("Invalid ref type", str(call_args))
 
     def test_validate_clone_inputs_valid_branch(self):
         """Test _validate_clone_inputs with valid branch ref."""
