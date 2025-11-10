@@ -886,6 +886,159 @@ class Plugin:
             ["git", "-C", "/tmp/repo", "fetch", "origin"],
         )
 
+    @patch("mmrelay.plugin_loader._run_git")
+    @patch("mmrelay.plugin_loader._is_repo_url_allowed")
+    @patch("mmrelay.plugin_loader.logger")
+    @patch("os.path.isdir")
+    def test_clone_or_update_repo_commit_fetch_success_no_fallback(
+        self, mock_isdir, mock_logger, mock_is_allowed, mock_run_git
+    ):
+        """Test successful commit fetch without needing fallback."""
+        mock_is_allowed.return_value = True
+        mock_isdir.return_value = True  # Repo exists
+        ref = {"type": "commit", "value": "abcd1234"}
+
+        result = clone_or_update_repo("https://github.com/user/repo.git", ref, "/tmp")
+
+        self.assertTrue(result)
+
+        # Verify only initial fetch and specific commit fetch (no fallback)
+        expected_calls = [
+            # Initial fetch from remote
+            (["git", "-C", "/tmp/repo", "fetch", "origin"], {"timeout": 120}),
+            # Check if commit exists locally (succeeds)
+            (
+                ["git", "-C", "/tmp/repo", "cat-file", "-e", "abcd1234^{commit}"],
+                {"timeout": 120},
+            ),
+            # Checkout the specific commit
+            (["git", "-C", "/tmp/repo", "checkout", "abcd1234"], {"timeout": 120}),
+        ]
+
+        actual_calls = mock_run_git.call_args_list
+        self.assertEqual(len(actual_calls), 3)
+
+        for i, (expected_args, expected_kwargs) in enumerate(expected_calls):
+            actual_args, actual_kwargs = actual_calls[i]
+            self.assertEqual(actual_args[0], expected_args)
+            self.assertEqual(actual_kwargs, expected_kwargs)
+
+    @patch("mmrelay.plugin_loader._run_git")
+    @patch("mmrelay.plugin_loader._is_repo_url_allowed")
+    @patch("mmrelay.plugin_loader.logger")
+    @patch("os.path.isdir")
+    def test_clone_or_update_repo_commit_fetch_fallback_success(
+        self, mock_isdir, mock_logger, mock_is_allowed, mock_run_git
+    ):
+        """Test commit fetch that fails specific but succeeds with fallback."""
+        mock_is_allowed.return_value = True
+        mock_isdir.return_value = True  # Repo exists
+        ref = {"type": "commit", "value": "cdef5678"}
+
+        # Configure mock to fail on specific commit fetch but succeed on fallback
+        def side_effect(*args, **kwargs):
+            if args[0] == ["git", "-C", "/tmp/repo", "fetch", "origin", "cdef5678"]:
+                raise subprocess.CalledProcessError(1, "git")
+            if "cat-file" in args[0]:
+                raise subprocess.CalledProcessError(1, "git")
+            return subprocess.CompletedProcess(args[0], 0, "", "")
+
+        mock_run_git.side_effect = side_effect
+
+        result = clone_or_update_repo("https://github.com/user/repo.git", ref, "/tmp")
+
+        self.assertTrue(result)
+
+        # Verify initial fetch, failed specific fetch, successful fallback, and checkout
+        fetch_calls = [
+            call for call in mock_run_git.call_args_list if "fetch" in call[0][0]
+        ]
+
+        self.assertEqual(len(fetch_calls), 3)
+        self.assertEqual(
+            fetch_calls[0][0][0], ["git", "-C", "/tmp/repo", "fetch", "origin"]
+        )
+        self.assertEqual(
+            fetch_calls[1][0][0],
+            ["git", "-C", "/tmp/repo", "fetch", "origin", "cdef5678"],
+        )
+        self.assertEqual(
+            fetch_calls[2][0][0], ["git", "-C", "/tmp/repo", "fetch", "origin"]
+        )
+
+    @patch("mmrelay.plugin_loader._run_git")
+    @patch("mmrelay.plugin_loader._is_repo_url_allowed")
+    @patch("mmrelay.plugin_loader.logger")
+    @patch("os.path.isdir")
+    def test_clone_or_update_repo_commit_fetch_fallback_failure(
+        self, mock_isdir, mock_logger, mock_is_allowed, mock_run_git
+    ):
+        """Test commit fetch where both specific and fallback fetch fail."""
+        mock_is_allowed.return_value = True
+        mock_isdir.return_value = True  # Repo exists
+        ref = {"type": "commit", "value": "abcd1234"}
+
+        # Configure mock to fail on both specific and fallback fetch
+        def side_effect(*args, **kwargs):
+            if args[0] == ["git", "-C", "/tmp/repo", "fetch", "origin", "abcd1234"]:
+                raise subprocess.CalledProcessError(1, "git")
+            if args[0] == ["git", "-C", "/tmp/repo", "fetch", "origin"]:
+                # Fail fallback fetch too
+                raise subprocess.CalledProcessError(1, "git")
+            if "cat-file" in args[0]:
+                raise subprocess.CalledProcessError(1, "git")
+            return subprocess.CompletedProcess(args[0], 0, "", "")
+
+        mock_run_git.side_effect = side_effect
+
+        result = clone_or_update_repo("https://github.com/user/repo.git", ref, "/tmp")
+
+        self.assertFalse(result)  # Should return False when fallback fails
+
+        # Verify warning messages were logged
+        mock_logger.warning.assert_any_call(
+            "Could not fetch commit abcd1234 from remote, trying general fetch"
+        )
+        # Verify fallback failure was logged
+        self.assertTrue(mock_logger.warning.called)
+        warning_calls = [
+            call[0][0]
+            for call in mock_logger.warning.call_args_list
+            if "Fallback fetch also failed" in call[0][0]
+        ]
+        self.assertTrue(len(warning_calls) > 0)
+
+    @patch("mmrelay.plugin_loader._run_git")
+    @patch("mmrelay.plugin_loader._is_repo_url_allowed")
+    @patch("mmrelay.plugin_loader.logger")
+    @patch("os.path.isdir")
+    @patch("os.makedirs")
+    def test_clone_or_update_repo_logger_exception_on_error(
+        self, mock_makedirs, mock_isdir, mock_logger, mock_is_allowed, mock_run_git
+    ):
+        """Test that logger.exception is called for repository update errors."""
+        mock_is_allowed.return_value = True
+        mock_isdir.return_value = False  # Repo doesn't exist, will try to clone
+        mock_makedirs.return_value = None
+        ref = {"type": "commit", "value": "1234abcd"}
+
+        # Configure mock to fail on git clone
+        mock_run_git.side_effect = subprocess.CalledProcessError(1, "git")
+
+        result = clone_or_update_repo("https://github.com/user/repo.git", ref, "/tmp")
+
+        self.assertFalse(result)
+
+        # Verify logger.exception was called (not just logger.error)
+        mock_logger.exception.assert_called_once()
+        exception_call = mock_logger.exception.call_args[0][0]
+        self.assertIn("Error cloning repository", exception_call)
+
+        # Verify manual clone instruction was logged
+        mock_logger.error.assert_called_once_with(
+            "Please manually git clone the repository https://github.com/user/repo.git into /tmp/repo"
+        )
+
 
 class TestPluginSecurityGuards(unittest.TestCase):
     """Tests for plugin security helper utilities."""
