@@ -967,6 +967,9 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                         logger.warning(f"Error fetching from remote: {e}")
                         # Continue anyway, we'll try to use what we have
 
+                    # Second fetch for commits
+                    _run_git(["git", "-C", repo_path, "fetch", "origin"], timeout=120)
+
                     # Check if the commit exists locally
                     try:
                         _run_git(
@@ -985,15 +988,15 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                         logger.info(
                             f"Commit {ref_value} not found locally, attempting to fetch"
                         )
-                    try:
-                        _run_git(
-                            ["git", "-C", repo_path, "fetch", "origin", ref_value],
-                            timeout=120,
-                        )
-                    except subprocess.CalledProcessError:
-                        logger.warning(
-                            f"Could not fetch commit {ref_value} from remote, trying general fetch"
-                        )
+                        try:
+                            _run_git(
+                                ["git", "-C", repo_path, "fetch", "origin", ref_value],
+                                timeout=120,
+                            )
+                        except subprocess.CalledProcessError:
+                            logger.warning(
+                                f"Could not fetch commit {ref_value} from remote, trying general fetch"
+                            )
                         # Fall back to fetching everything
                         try:
                             _run_git(
@@ -1305,82 +1308,83 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                 _run_git(["git", "-C", repo_path, "checkout", ref_value], timeout=120)
                 logger.info(f"Checked out repository {repo_name} to commit {ref_value}")
                 return True
-            # If it's a default branch, just clone it directly
-            elif is_default_branch:
-                try:
-                    # Try to clone with the specified branch
-                    _run_git(
-                        ["git", "clone", "--branch", ref_value, repo_url],
-                        cwd=plugins_dir,
-                        timeout=120,
-                    )
-                    if ref_type == "branch":
-                        logger.info(
-                            f"Cloned repository {repo_name} from {repo_url} at branch {ref_value}"
-                        )
-                    else:
-                        logger.info(
-                            f"Cloned repository {repo_name} from {repo_url} at tag {ref_value}"
-                        )
-                    return True
-                except subprocess.CalledProcessError:
-                    # If that fails, try the other default branch
-                    other_default = "main" if ref_value == "master" else "master"
+            else:
+                # If it's a default branch, just clone it directly
+                if is_default_branch:
                     try:
-                        logger.warning(
-                            f"Could not clone with branch {ref_value}, trying {other_default}"
-                        )
+                        # Try to clone with the specified branch
                         _run_git(
-                            ["git", "clone", "--branch", other_default, repo_url],
+                            ["git", "clone", "--branch", ref_value, repo_url],
                             cwd=plugins_dir,
                             timeout=120,
                         )
-                        logger.info(
-                            f"Cloned repository {repo_name} from {repo_url} at branch {other_default}"
-                        )
+                        if ref_type == "branch":
+                            logger.info(
+                                f"Cloned repository {repo_name} from {repo_url} at branch {ref_value}"
+                            )
+                        else:
+                            logger.info(
+                                f"Cloned repository {repo_name} from {repo_url} at tag {ref_value}"
+                            )
                         return True
                     except subprocess.CalledProcessError:
-                        # If that fails too, clone without specifying a branch
+                        # If that fails, try the other default branch
+                        other_default = "main" if ref_value == "master" else "master"
+                        try:
+                            logger.warning(
+                                f"Could not clone with branch {ref_value}, trying {other_default}"
+                            )
+                            _run_git(
+                                ["git", "clone", "--branch", other_default, repo_url],
+                                cwd=plugins_dir,
+                                timeout=120,
+                            )
+                            logger.info(
+                                f"Cloned repository {repo_name} from {repo_url} at branch {other_default}"
+                            )
+                            return True
+                        except subprocess.CalledProcessError:
+                            # If that fails too, clone without specifying a branch
+                            logger.warning(
+                                f"Could not clone with branch {other_default}, cloning default branch"
+                            )
+                            _run_git(
+                                ["git", "clone", repo_url],
+                                cwd=plugins_dir,
+                                timeout=120,
+                            )
+                            logger.info(
+                                f"Cloned repository {repo_name} from {repo_url} (default branch)"
+                            )
+                            return True
+                else:
+                    # It's a tag, try to clone with the tag
+                    try:
+                        # Try to clone with the specified tag
+                        _run_git(
+                            ["git", "clone", "--branch", ref_value, repo_url],
+                            cwd=plugins_dir,
+                            timeout=120,
+                        )
+                        if ref_type == "branch":
+                            logger.info(
+                                f"Cloned repository {repo_name} from {repo_url} at branch {ref_value}"
+                            )
+                        else:
+                            logger.info(
+                                f"Cloned repository {repo_name} from {repo_url} at tag {ref_value}"
+                            )
+                        return True
+                    except subprocess.CalledProcessError:
+                        # If that fails, clone without specifying a tag
                         logger.warning(
-                            f"Could not clone with branch {other_default}, cloning default branch"
+                            f"Could not clone with tag {ref_value}, cloning default branch"
                         )
                         _run_git(
                             ["git", "clone", repo_url],
                             cwd=plugins_dir,
                             timeout=120,
                         )
-                        logger.info(
-                            f"Cloned repository {repo_name} from {repo_url} (default branch)"
-                        )
-                        return True
-            else:
-                # It's a tag, try to clone with the tag
-                try:
-                    # Try to clone with the specified tag
-                    _run_git(
-                        ["git", "clone", "--branch", ref_value, repo_url],
-                        cwd=plugins_dir,
-                        timeout=120,
-                    )
-                    if ref_type == "branch":
-                        logger.info(
-                            f"Cloned repository {repo_name} from {repo_url} at branch {ref_value}"
-                        )
-                    else:
-                        logger.info(
-                            f"Cloned repository {repo_name} from {repo_url} at tag {ref_value}"
-                        )
-                    return True
-                except subprocess.CalledProcessError:
-                    # If that fails, clone without specifying a tag
-                    logger.warning(
-                        f"Could not clone with tag {ref_value}, cloning default branch"
-                    )
-                    _run_git(
-                        ["git", "clone", repo_url],
-                        cwd=plugins_dir,
-                        timeout=120,
-                    )
 
                     # Then try to fetch and checkout the tag
                     try:
