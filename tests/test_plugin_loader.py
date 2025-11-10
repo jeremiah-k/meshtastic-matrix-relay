@@ -143,7 +143,6 @@ class TestPluginLoader(BaseGitTest):
         import shutil
 
         shutil.rmtree(self.test_dir, ignore_errors=True)
-        shutil.rmtree(self.temp_plugins_dir, ignore_errors=True)
 
     @patch("mmrelay.plugin_loader.get_base_dir")
     @patch("mmrelay.plugin_loader.get_app_path")
@@ -564,11 +563,11 @@ class Plugin:
     @patch("mmrelay.plugin_loader.start_global_scheduler")
     def test_load_plugins_commit_priority_over_tag_and_branch(
         self,
-        mock_start_scheduler,
+        _,
         mock_get_custom_dirs,
         mock_get_community_dirs,
         mock_load_from_dir,
-        mock_install_reqs,
+        __,
         mock_clone_repo,
     ):
         """Test that commit ref takes priority over tag and branch in plugin config."""
@@ -766,9 +765,9 @@ class Plugin:
         self.assertIsInstance(result, bool)  # Just verify it returns a boolean
         # Check that no validation error was logged for the valid commit hash
         validation_errors = [
-            call
-            for call in mock_logger.error.call_args_list
-            if "Invalid commit hash" in str(call)
+            log_call
+            for log_call in mock_logger.error.call_args_list
+            if "Invalid commit hash" in str(log_call)
         ]
         self.assertEqual(len(validation_errors), 0)
 
@@ -1132,7 +1131,9 @@ class Plugin:
 
         # Verify warning messages were logged
         mock_logger.warning.assert_any_call(
-            "Could not fetch commit abcd1234 from remote, trying general fetch"
+            "Could not fetch commit %s for %s from remote; trying general fetch",
+            "abcd1234",
+            "repo",
         )
         # Verify fallback failure was logged
         self.assertTrue(mock_logger.warning.called)
@@ -3292,9 +3293,10 @@ class TestDependencyInstallation(BaseGitTest):
         )
 
         self.assertFalse(result)
-        mock_logger.exception.assert_called_with("Error cloning repository repo")
-        mock_logger.error.assert_called_with(
-            f"Please manually clone the repository at {self.temp_repo_path}"
+        mock_logger.exception.assert_called_with(
+            "Error cloning repository %s; please manually clone into %s",
+            "repo",
+            self.temp_repo_path,
         )
 
     @patch("mmrelay.plugin_loader._run_git")
@@ -3316,7 +3318,11 @@ class TestDependencyInstallation(BaseGitTest):
         )
 
         self.assertFalse(result)
-        mock_logger.exception.assert_called_with("Error cloning repository repo")
+        mock_logger.exception.assert_called_with(
+            "Error cloning repository %s; please manually clone into %s",
+            "repo",
+            self.temp_repo_path,
+        )
 
     @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader.logger")

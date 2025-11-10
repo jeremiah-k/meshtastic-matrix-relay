@@ -282,16 +282,23 @@ def _redact_url(url: str) -> str:
         from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
         s = urlsplit(url)
+        # Build netloc (only redact credentials if present)
         if s.username or s.password:
-            netloc = f"{'***' if s.username else ''}{':***' if s.password else ''}@{s.hostname}"
+            host = s.hostname or ""
+            netloc = (
+                f"{'***' if s.username else ''}{':***' if s.password else ''}@{host}"
+            )
             if s.port:
                 netloc += f":{s.port}"
-            # Redact sensitive query parameters
-            sensitive = {"token", "access_token", "auth", "key", "password", "pwd"}
-            q = parse_qsl(s.query, keep_blank_values=True)
-            redacted = [(k, "***" if k.lower() in sensitive else v) for k, v in q]
-            query = urlencode(redacted)
-            return urlunsplit((s.scheme, netloc, s.path, query, s.fragment))
+        else:
+            netloc = s.netloc
+
+        # Always redact sensitive query parameters
+        sensitive = {"token", "access_token", "auth", "key", "password", "pwd"}
+        q = parse_qsl(s.query, keep_blank_values=True)
+        redacted = [(k, "***" if k.lower() in sensitive else v) for k, v in q]
+        query = urlencode(redacted)
+        return urlunsplit((s.scheme, netloc, s.path, query, s.fragment))
     except (ValueError, TypeError, AttributeError) as exc:
         logger.debug("URL redaction failed for %r: %s", url, exc)
     return url
@@ -933,7 +940,9 @@ def _fetch_commit_with_fallback(repo_path: str, ref_value: str, repo_name: str) 
         )
     except subprocess.CalledProcessError:
         logger.warning(
-            f"Could not fetch commit {ref_value} from remote, trying general fetch"
+            "Could not fetch commit %s for %s from remote; trying general fetch",
+            ref_value,
+            repo_name,
         )
         # Fall back to fetching everything
         try:
@@ -942,7 +951,7 @@ def _fetch_commit_with_fallback(repo_path: str, ref_value: str, repo_name: str) 
                 timeout=120,
             )
         except subprocess.CalledProcessError as e:
-            logger.warning(f"Fallback fetch also failed: {e}")
+            logger.warning("Fallback fetch also failed for %s: %s", repo_name, e)
             return False
     return True
 
@@ -1321,8 +1330,11 @@ def _update_existing_repo_to_branch_or_tag(
                 )
 
     except (subprocess.CalledProcessError, FileNotFoundError):
-        logger.exception(f"Error updating repository {repo_name}")
-        logger.error(f"Please manually update the repository at {repo_path}")
+        logger.exception(
+            "Error updating repository %s; please check or update %s manually",
+            repo_name,
+            repo_path,
+        )
         return False
 
 
@@ -1362,7 +1374,7 @@ def _validate_clone_inputs(
         logger.error(
             "Invalid ref type %r (expected 'tag', 'branch', or 'commit') for %r",
             ref_type,
-            repo_url,
+            _redact_url(repo_url),
         )
         return False, None, None, None, None
     if not ref_value:
@@ -1568,7 +1580,7 @@ def _clone_new_repo_to_branch_or_tag(
                             timeout=120,
                         )
                         logger.info(
-                            f"Cloned repository {repo_name} and checked out tag {ref_value}"
+                            f"Cloned repository {repo_name} and checked out branch {ref_value}"
                         )
                         return True
                     except subprocess.CalledProcessError:
@@ -1580,8 +1592,11 @@ def _clone_new_repo_to_branch_or_tag(
                         )
                         return True
     except (subprocess.CalledProcessError, FileNotFoundError):
-        logger.exception(f"Error cloning repository {repo_name}")
-        logger.error(f"Please manually clone the repository at {repo_path}")
+        logger.exception(
+            "Error cloning repository %s; please manually clone into %s",
+            repo_name,
+            repo_path,
+        )
         return False
 
 
@@ -1636,8 +1651,11 @@ def clone_or_update_repo(repo_url: str, ref: dict[str, str], plugins_dir: str) -
                     default_branches,
                 )
         except (subprocess.CalledProcessError, FileNotFoundError):
-            logger.exception(f"Error updating repository {repo_name}")
-            logger.error(f"Please manually update the repository at {repo_path}")
+            logger.exception(
+                "Error updating repository %s; please check or update %s manually",
+                repo_name,
+                repo_path,
+            )
             return False
     else:
         # Repository doesn't exist yet, clone it
@@ -1666,8 +1684,11 @@ def clone_or_update_repo(repo_url: str, ref: dict[str, str], plugins_dir: str) -
                     is_default_branch,
                 )
         except (subprocess.CalledProcessError, FileNotFoundError):
-            logger.exception(f"Error cloning repository {repo_name}")
-            logger.error(f"Please manually clone the repository at {repo_path}")
+            logger.exception(
+                "Error cloning repository %s; please manually clone into %s",
+                repo_name,
+                repo_path,
+            )
             return False
 
 
