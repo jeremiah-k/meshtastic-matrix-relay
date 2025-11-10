@@ -323,9 +323,9 @@ def _redact_url(url: str) -> str:
 def _is_repo_url_allowed(repo_url: str) -> bool:
     """
     Determine whether a repository URL or local filesystem path is permitted for community plugins.
-    
+
     Validates the repository target against security policy: empty or dash-prefixed values are rejected; local filesystem paths (and file:// URLs) are allowed only when configured and the path exists; plain http URLs are disallowed; only https and ssh schemes are permitted and the repository host must be present in the configured allowlist.
-    
+
     Returns:
         True if the repository is allowed, False otherwise.
     """
@@ -386,7 +386,7 @@ def _is_repo_url_allowed(repo_url: str) -> bool:
 def _is_requirement_risky(req_string: str) -> bool:
     """
     Determine if a requirement line references a version-control or URL-based source.
-    
+
     Returns:
         True if the requirement references a VCS or URL source, False otherwise.
     """
@@ -596,12 +596,12 @@ def _refresh_dependency_paths() -> None:
 def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
     """
     Install dependencies listed in repo_path/requirements.txt for a community plugin and refresh import paths.
-    
+
     This function is a no-op if no requirements file exists or if automatic installation is disabled by configuration.
     When enabled, it will install allowed dependency entries either into the application's pipx environment (when pipx is in use)
     or into the current Python environment (using pip). After a successful installation the interpreter import/search paths are refreshed
     so newly installed packages become importable. Failures are logged and do not raise from this function.
-    
+
     Parameters:
         repo_path: Filesystem path to the plugin repository (looks for a requirements.txt file at this location).
         repo_name: Human-readable repository name used in log messages and warnings.
@@ -763,15 +763,15 @@ def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
 def _get_plugin_dirs(plugin_type: str) -> list[str]:
     """
     Get an ordered list of existing plugin directories for the given plugin type.
-    
+
     Prefers the per-user directory (base_dir/plugins/<type>) and also includes the local
     application directory (app_path/plugins/<type>) for backward compatibility. The function
     attempts to create each directory if missing and omits any paths that cannot be created
     or accessed.
-    
+
     Parameters:
         plugin_type (str): Plugin category, e.g. "custom" or "community".
-    
+
     Returns:
         list[str]: Ordered list of plugin directories to search (user directory first when available, then local directory).
     """
@@ -911,10 +911,10 @@ def _check_auto_install_enabled(config):
 def _raise_install_error(pkg_name):
     """
     Emit a warning that automatic dependency installation is disabled and raise a subprocess.CalledProcessError.
-    
+
     Parameters:
         pkg_name (str): Package name referenced in the warning message.
-    
+
     Raises:
         subprocess.CalledProcessError: Always raised to indicate installation cannot proceed because auto-install is disabled.
     """
@@ -927,12 +927,12 @@ def _raise_install_error(pkg_name):
 def _fetch_commit_with_fallback(repo_path: str, ref_value: str, repo_name: str) -> bool:
     """
     Ensure a specific commit is fetched from the repository's origin, falling back to a general fetch if the targeted fetch fails.
-    
+
     Parameters:
         repo_path (str): Filesystem path to the git repository.
         ref_value (str): Commit hash to fetch from origin.
         repo_name (str): Human-readable repository name used for logging.
-    
+
     Returns:
         bool: `True` if the targeted fetch succeeded or a subsequent general fetch succeeded, `False` otherwise.
     """
@@ -964,15 +964,15 @@ def _update_existing_repo_to_commit(
 ) -> bool:
     """
     Update the repository at repo_path to the specified commit.
-    
+
     If the repository is already at the commit (supports short hashes) this is a no-op.
     If the commit is not present locally, attempts to fetch it from remotes before checking it out.
-    
+
     Parameters:
         repo_path (str): Filesystem path to the existing git repository.
         ref_value (str): Commit hash to checkout.
         repo_name (str): Repository name used for logging.
-    
+
     Returns:
         bool: `True` if the repository was updated (or already at) the commit, `False` otherwise.
     """
@@ -1029,7 +1029,7 @@ def _clone_new_repo_to_commit(
 ) -> bool:
     """
     Clone a repository into the plugins directory and ensure the repository is checked out to the specified commit.
-    
+
     Creates the plugins_dir if necessary, clones the repository into plugins_dir/repo_name, and checks out ref_value; if the commit is not present after clone it will attempt to fetch it. Returns False if any filesystem, cloning, or git operations fail.
     Returns:
         `True` if the repository exists at the target path and is checked out to ref_value, `False` otherwise.
@@ -1074,12 +1074,12 @@ def _try_checkout_and_pull_ref(
 ) -> bool:
     """
     Checkout the given ref and pull updates from origin (branch-oriented).
-    
+
     This helper runs `git checkout <ref_value>` followed by `git pull origin <ref_value>` and is intended for updating branches rather than tags.
-    
+
     Parameters:
         ref_type (str): Type of ref to update — `"branch"` or `"tag"`. Defaults to `"branch"`.
-    
+
     Returns:
         True if the checkout and pull succeeded, False otherwise.
     """
@@ -1168,13 +1168,13 @@ def _fallback_to_default_branches(
 ) -> bool:
     """
     Try each name in `default_branches` in order to check out and pull that branch in the repository; leave the repository unchanged if none succeed.
-    
+
     Parameters:
         repo_path (str): Filesystem path to the git repository.
         default_branches (list[str]): Ordered branch names to try (e.g., ["main", "master"]).
         ref_value (str): Original ref that failed (used for context in messages).
         repo_name (str): Repository name used for context.
-    
+
     Returns:
         bool: `True` if a default branch was successfully checked out and pulled, `False` otherwise.
     """
@@ -1207,7 +1207,7 @@ def _update_existing_repo_to_branch_or_tag(
 ) -> bool:
     """
     Update an existing Git repository to the specified branch or tag.
-    
+
     Parameters:
         repo_path (str): Filesystem path to the existing repository.
         ref_type (str): Either "branch" or "tag".
@@ -1215,7 +1215,7 @@ def _update_existing_repo_to_branch_or_tag(
         repo_name (str): Repository name used for logging.
         is_default_branch (bool): True when the requested branch is a default branch (e.g., "main" or "master"); enables fallback between default names.
         default_branches (list[str]): Ordered list of branch names to try as fallbacks if the requested ref cannot be checked out.
-    
+
     Returns:
         bool: `True` if the repository was updated to the requested ref (or an accepted fallback), `False` otherwise.
     """
@@ -1276,13 +1276,13 @@ def _validate_clone_inputs(
 ) -> tuple[bool, str | None, str | None, str | None, str | None]:
     """
     Validate a repository URL and a ref specification for cloning or updating.
-    
+
     Parameters:
         repo_url (str): Repository URL or SSH spec to validate.
         ref (dict): Reference specification with keys:
             - "type": one of "tag", "branch", or "commit".
             - "value": the ref identifier (tag name, branch name, or commit hash).
-    
+
     Returns:
         tuple: (is_valid, repo_url, ref_type, ref_value, repo_name)
             - is_valid (bool): `True` if inputs are valid, `False` otherwise.
@@ -1290,7 +1290,7 @@ def _validate_clone_inputs(
             - ref_type (str|None): One of "tag", "branch", or "commit" on success, `None` on failure.
             - ref_value (str|None): The validated ref value on success, `None` on failure.
             - repo_name (str|None): Derived repository name (basename without extension) on success, `None` on failure.
-    
+
     Notes:
         - Commit `value` must be 7–40 hexadecimal characters.
         - Branch and tag `value` must start with an alphanumeric character and may contain letters, digits, dot, underscore, slash, or hyphen.
@@ -1349,9 +1349,9 @@ def _clone_new_repo_to_branch_or_tag(
 ) -> bool:
     """
     Clone a repository into the plugins directory and ensure it is checked out to the specified branch or tag.
-    
+
     Attempts clone strategies that prefer the given ref and falls back to alternate/default branches when appropriate; performs post-clone checkout for tags or non-default branches.
-    
+
     Parameters:
         repo_url: Repository URL to clone.
         repo_path: Full filesystem path where the repository should be created.
@@ -1360,7 +1360,7 @@ def _clone_new_repo_to_branch_or_tag(
         repo_name: Short repository directory name used under plugins_dir.
         plugins_dir: Parent directory under which the repository directory will be created.
         is_default_branch: True when ref_value should be treated as a repository's default branch (e.g., "main" or "master"); this enables attempting alternate default branch names.
-    
+
     Returns:
         True if the repository was successfully cloned and placed on the requested ref, False otherwise.
     """
