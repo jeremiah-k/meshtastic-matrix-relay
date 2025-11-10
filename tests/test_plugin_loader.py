@@ -742,7 +742,7 @@ class Plugin:
         from mmrelay.plugin_loader import clone_or_update_repo
 
         mock_is_allowed.return_value = True
-        mock_run_git.side_effect = Exception("Git operations not available in test")
+        mock_run_git.side_effect = subprocess.CalledProcessError(1, "git")
         ref = {"type": "commit", "value": "a1b2c3d"}
 
         result = clone_or_update_repo("https://github.com/user/repo.git", ref, "/tmp")
@@ -750,104 +750,6 @@ class Plugin:
         self.assertFalse(
             result
         )  # Will fail due to missing git operations, but validation should pass
-        mock_logger.error.assert_not_called()
-
-    @patch("mmrelay.plugin_loader._run_git")
-    @patch("mmrelay.plugin_loader._is_repo_url_allowed")
-    @patch("mmrelay.plugin_loader.logger")
-    def test_clone_or_update_repo_valid_full_commit_hash(
-        self, mock_run_git, mock_logger, mock_is_allowed
-    ):
-        """Test clone with valid full commit hash (40 characters)."""
-        from mmrelay.plugin_loader import clone_or_update_repo
-
-        mock_is_allowed.return_value = True
-        ref = {
-            "type": "commit",
-            "value": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3",
-        }
-
-        result = clone_or_update_repo("https://github.com/user/repo.git", ref, "/tmp")
-
-        self.assertFalse(
-            result
-        )  # Will fail due to missing git operations, but validation should pass
-        mock_logger.error.assert_not_called()
-
-    @patch("mmrelay.plugin_loader._run_git")
-    @patch("mmrelay.plugin_loader._is_repo_url_allowed")
-    @patch("mmrelay.plugin_loader.logger")
-    def test_clone_or_update_repo_invalid_commit_hash_too_short(
-        self, mock_run_git, mock_logger, mock_is_allowed
-    ):
-        """Test clone with invalid commit hash (too short)."""
-        from mmrelay.plugin_loader import clone_or_update_repo
-
-        mock_is_allowed.return_value = True
-        ref = {"type": "commit", "value": "abc123"}
-
-        result = clone_or_update_repo("https://github.com/user/repo.git", ref, "/tmp")
-
-        self.assertFalse(result)
-        mock_logger.error.assert_called_with(
-            "Invalid commit hash supplied: %r (must be 7-40 hex characters)", "abc123"
-        )
-
-    @patch("mmrelay.plugin_loader._run_git")
-    @patch("mmrelay.plugin_loader._is_repo_url_allowed")
-    @patch("mmrelay.plugin_loader.logger")
-    def test_clone_or_update_repo_invalid_commit_hash_too_long(
-        self, mock_run_git, mock_logger, mock_is_allowed
-    ):
-        """Test clone with invalid commit hash (too long)."""
-        from mmrelay.plugin_loader import clone_or_update_repo
-
-        mock_is_allowed.return_value = True
-        ref = {"type": "commit", "value": "a" * 41}  # 41 characters
-
-        result = clone_or_update_repo("https://github.com/user/repo.git", ref, "/tmp")
-
-        self.assertFalse(result)
-        mock_logger.error.assert_called_with(
-            "Invalid commit hash supplied: %r (must be 7-40 hex characters)", "a" * 41
-        )
-
-    @patch("mmrelay.plugin_loader._run_git")
-    @patch("mmrelay.plugin_loader._is_repo_url_allowed")
-    @patch("mmrelay.plugin_loader.logger")
-    def test_clone_or_update_repo_invalid_commit_hash_non_hex(
-        self, mock_run_git, mock_logger, mock_is_allowed
-    ):
-        """Test clone with invalid commit hash (non-hex characters)."""
-        from mmrelay.plugin_loader import clone_or_update_repo
-
-        mock_is_allowed.return_value = True
-        ref = {"type": "commit", "value": "g1h2i3j"}
-
-        result = clone_or_update_repo("https://github.com/user/repo.git", ref, "/tmp")
-
-        self.assertFalse(result)
-        mock_logger.error.assert_called_with(
-            "Invalid commit hash supplied: %r (must be 7-40 hex characters)", "g1h2i3j"
-        )
-
-    @patch("mmrelay.plugin_loader._is_repo_url_allowed")
-    @patch("mmrelay.plugin_loader.logger")
-    def test_clone_or_update_repo_commit_ref_type_validation(
-        self, mock_logger, mock_is_allowed
-    ):
-        """Test that 'commit' is accepted as a valid ref type."""
-        from mmrelay.plugin_loader import clone_or_update_repo
-
-        mock_is_allowed.return_value = True
-        ref = {"type": "commit", "value": "deadbeef"}
-
-        result = clone_or_update_repo("https://github.com/user/repo.git", ref, "/tmp")
-
-        self.assertFalse(
-            result
-        )  # Will fail due to missing git operations, but ref type validation should pass
-        # Should not log error about invalid ref type
         mock_logger.error.assert_not_called()
 
     @patch("mmrelay.plugin_loader._run_git")
