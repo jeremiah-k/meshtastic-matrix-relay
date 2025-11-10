@@ -1006,10 +1006,6 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                         except subprocess.CalledProcessError as e:
                             logger.warning(f"Fallback fetch also failed: {e}")
                             return False
-                    except subprocess.CalledProcessError:
-                        # Commit doesn't exist locally or couldn't be fetched
-                        logger.warning(f"Commit {ref_value} validation failed")
-                        return False
 
                     # Checkout the specific commit
                     _run_git(
