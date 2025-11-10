@@ -3312,7 +3312,7 @@ class TestDependencyInstallation(unittest.TestCase):
         self.assertFalse(result)
         mock_logger.exception.assert_called_with("Error cloning repository repo")
         mock_logger.error.assert_called_with(
-            "Please manually git clone the repository https://github.com/user/repo.git into /tmp/repo"
+            f"Please manually clone the repository at {self.temp_repo_path}"
         )
 
     @patch("mmrelay.plugin_loader._run_git")
