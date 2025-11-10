@@ -2674,9 +2674,9 @@ class TestDependencyInstallation(unittest.TestCase):
 
         result = clone_or_update_repo("https://github.com/user/repo.git", ref, "/tmp")
 
-        self.assertTrue(
+        self.assertFalse(
             result
-        )  # Function should handle git errors gracefully and return True
+        )  # Function should return False on git operation failures
         # Verify no "Invalid ref type" error was logged (commit ref type should be accepted)
         for call in mock_logger.error.call_args_list:
             self.assertNotIn("Invalid ref type", str(call))
@@ -2699,21 +2699,23 @@ class TestDependencyInstallation(unittest.TestCase):
 
         self.assertTrue(result)
 
-        # Verify the sequence of git operations (function treats as existing repo)
+        # Verify the sequence of git operations (function clones new repo then fetches and checks commit)
         expected_calls = [
-            # Fetch from remote (existing repo behavior)
+            # Clone the repo first
+            (["git", "clone", "https://github.com/user/repo.git", "/tmp/repo"], {}),
+            # Fetch from remote
             (["git", "-C", "/tmp/repo", "fetch", "origin"], {"timeout": 120}),
-            # Get current HEAD
-            (["git", "-C", "/tmp/repo", "rev-parse", "HEAD"], {"capture_output": True}),
-            # Get commit hash to verify it exists
+            # Check if commit exists
             (
-                ["git", "-C", "/tmp/repo", "rev-parse", "a1b2c3d4"],
-                {"capture_output": True},
+                ["git", "-C", "/tmp/repo", "cat-file", "-e", "a1b2c3d4^{commit}"],
+                {"timeout": 120},
             ),
+            # Checkout the commit
+            (["git", "-C", "/tmp/repo", "checkout", "a1b2c3d4"], {"timeout": 120}),
         ]
 
         actual_calls = mock_run_git.call_args_list
-        self.assertEqual(len(actual_calls), 3)
+        self.assertEqual(len(actual_calls), 4)
 
         for i, (expected_args, expected_kwargs) in enumerate(expected_calls):
             actual_args, actual_kwargs = actual_calls[i]
