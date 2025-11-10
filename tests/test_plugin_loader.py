@@ -30,6 +30,7 @@ from mmrelay.plugin_loader import (
     _is_repo_url_allowed,
     _run,
     clear_plugin_jobs,
+    clone_or_update_repo,
     get_community_plugin_dirs,
     get_custom_plugin_dirs,
     load_plugins,
