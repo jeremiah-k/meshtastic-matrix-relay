@@ -30,7 +30,6 @@ from mmrelay.plugin_loader import (
     _is_repo_url_allowed,
     _run,
     clear_plugin_jobs,
-    clone_or_update_repo,
     get_community_plugin_dirs,
     get_custom_plugin_dirs,
     load_plugins,
@@ -739,7 +738,6 @@ class Plugin:
         self, mock_logger, mock_is_allowed, mock_run_git
     ):
         """Test clone with valid commit hash (7 characters)."""
-        from mmrelay.plugin_loader import clone_or_update_repo
 
         mock_is_allowed.return_value = True
         # Mock git operations to fail by raising exception on first call
@@ -769,7 +767,6 @@ class Plugin:
         self, mock_makedirs, mock_isdir, mock_logger, mock_is_allowed, mock_run_git
     ):
         """Test cloning a new repository with commit ref."""
-        from mmrelay.plugin_loader import clone_or_update_repo
 
         mock_is_allowed.return_value = True
         mock_isdir.return_value = False  # Repo doesn't exist
@@ -811,7 +808,6 @@ class Plugin:
         self, mock_isdir, mock_logger, mock_is_allowed, mock_run_git
     ):
         """Test updating an existing repository to a specific commit."""
-        from mmrelay.plugin_loader import clone_or_update_repo
 
         mock_is_allowed.return_value = True
         mock_isdir.return_value = True  # Repo exists
@@ -852,7 +848,6 @@ class Plugin:
         self, mock_isdir, mock_logger, mock_is_allowed, mock_run_git
     ):
         """Test that when specific commit fetch fails, it falls back to fetching all."""
-        from mmrelay.plugin_loader import clone_or_update_repo
 
         mock_is_allowed.return_value = True
         mock_isdir.return_value = True  # Repo exists
@@ -1453,7 +1448,6 @@ class TestGitOperations(unittest.TestCase):
     @patch("mmrelay.plugin_loader.logger")
     def test_clone_or_update_repo_invalid_url(self, mock_logger, mock_is_allowed):
         """Test clone with invalid URL."""
-        from mmrelay.plugin_loader import clone_or_update_repo
 
         mock_is_allowed.return_value = False
         ref = {"type": "branch", "value": "main"}
@@ -1466,7 +1460,6 @@ class TestGitOperations(unittest.TestCase):
     @patch("mmrelay.plugin_loader.logger")
     def test_clone_or_update_repo_invalid_ref_type(self, mock_logger, mock_is_allowed):
         """Test clone with invalid ref type."""
-        from mmrelay.plugin_loader import clone_or_update_repo
 
         mock_is_allowed.return_value = True
         ref = {"type": "invalid", "value": "main"}
@@ -1488,7 +1481,6 @@ class TestGitOperations(unittest.TestCase):
 
         Asserts that the function rejects a ref with an empty 'value' field, returns False, and logs an error mentioning the ref type and repository URL.
         """
-        from mmrelay.plugin_loader import clone_or_update_repo
 
         mock_is_allowed.return_value = True
         ref = {"type": "branch", "value": ""}
@@ -1509,7 +1501,6 @@ class TestGitOperations(unittest.TestCase):
         self, mock_logger, mock_is_allowed, mock_run_git
     ):
         """Test clone with ref value starting with dash."""
-        from mmrelay.plugin_loader import clone_or_update_repo
 
         mock_is_allowed.return_value = True
         ref = {"type": "branch", "value": "-evil"}
@@ -1525,7 +1516,6 @@ class TestGitOperations(unittest.TestCase):
     @patch("mmrelay.plugin_loader.logger")
     def test_clone_or_update_repo_invalid_ref_chars(self, mock_logger, mock_is_allowed):
         """Test clone with invalid characters in ref value."""
-        from mmrelay.plugin_loader import clone_or_update_repo
 
         mock_is_allowed.return_value = True
         ref = {"type": "branch", "value": "invalid@branch"}
@@ -1541,7 +1531,6 @@ class TestGitOperations(unittest.TestCase):
     @patch("mmrelay.plugin_loader.logger")
     def test_clone_or_update_repo_empty_url(self, mock_logger, mock_is_allowed):
         """Test clone with empty URL."""
-        from mmrelay.plugin_loader import clone_or_update_repo
 
         ref = {"type": "branch", "value": "main"}
 
@@ -1553,7 +1542,6 @@ class TestGitOperations(unittest.TestCase):
     @patch("mmrelay.plugin_loader.logger")
     def test_clone_or_update_repo_none_url(self, mock_logger, mock_is_allowed):
         """Test clone with None URL."""
-        from mmrelay.plugin_loader import clone_or_update_repo
 
         ref = {"type": "branch", "value": "main"}
 
@@ -1567,7 +1555,6 @@ class TestGitOperations(unittest.TestCase):
         self, mock_run_git, mock_is_allowed
     ):
         """Test that clone_or_update_repo handles git pull failure on current branch (lines 985-988)."""
-        from mmrelay.plugin_loader import clone_or_update_repo
 
         # Mock successful fetch, current branch check, but pull fails
         mock_run_git.side_effect = [
@@ -1593,7 +1580,6 @@ class TestGitOperations(unittest.TestCase):
         self, mock_run_git, mock_is_allowed
     ):
         """Test that clone_or_update_repo handles checkout and pull for different branch (lines 991-1003)."""
-        from mmrelay.plugin_loader import clone_or_update_repo
 
         # Mock successful fetch, different current branch, successful checkout and pull
         mock_run_git.side_effect = [
@@ -1619,7 +1605,6 @@ class TestGitOperations(unittest.TestCase):
         self, mock_run_git, mock_is_allowed
     ):
         """Test that clone_or_update_repo handles checkout and pull for tag (lines 991-1003)."""
-        from mmrelay.plugin_loader import clone_or_update_repo
 
         def mock_run_git_side_effect(*args, **kwargs):
             cmd = args[0]
@@ -1653,7 +1638,6 @@ class TestGitOperations(unittest.TestCase):
         self, mock_run_git, mock_is_allowed
     ):
         """Test that clone_or_update_repo handles checkout failure and tries fallback (line 1004)."""
-        from mmrelay.plugin_loader import clone_or_update_repo
 
         # Mock successful fetch, different current branch, checkout fails
         mock_run_git.side_effect = [
@@ -2673,8 +2657,6 @@ class TestDependencyInstallation(unittest.TestCase):
         """Test that 'commit' is accepted as a valid ref type."""
         import subprocess
 
-        from mmrelay.plugin_loader import clone_or_update_repo
-
         mock_is_allowed.return_value = True
         mock_isdir.return_value = False  # Repo doesn't exist
         mock_run_git.side_effect = subprocess.CalledProcessError(
@@ -2704,7 +2686,6 @@ class TestDependencyInstallation(unittest.TestCase):
         self, mock_makedirs, mock_isdir, mock_logger, mock_is_allowed, mock_run_git
     ):
         """Test cloning a new repository with commit ref."""
-        from mmrelay.plugin_loader import clone_or_update_repo
 
         mock_is_allowed.return_value = True
         mock_isdir.return_value = False  # Repo doesn't exist
@@ -2746,7 +2727,6 @@ class TestDependencyInstallation(unittest.TestCase):
         self, mock_isdir, mock_logger, mock_is_allowed, mock_run_git
     ):
         """Test updating an existing repository to a specific commit."""
-        from mmrelay.plugin_loader import clone_or_update_repo
 
         mock_is_allowed.return_value = True
         mock_isdir.return_value = True  # Repo exists
