@@ -776,24 +776,19 @@ class Plugin:
 
         self.assertTrue(result)
 
-        # Verify sequence of git operations
+        # Verify sequence of git operations (optimized: direct checkout succeeds)
         expected_calls = [
             # Clone repository
             (
                 ["git", "clone", "https://github.com/user/repo.git"],
                 {"cwd": "/tmp", "timeout": 120},
             ),
-            # Fetch specific commit
-            (
-                ["git", "-C", "/tmp/repo", "fetch", "origin", "a1b2c3d4"],
-                {"timeout": 120},
-            ),
-            # Checkout specific commit
+            # Direct checkout succeeds (no fetch needed)
             (["git", "-C", "/tmp/repo", "checkout", "a1b2c3d4"], {"timeout": 120}),
         ]
 
         actual_calls = mock_run_git.call_args_list
-        self.assertEqual(len(actual_calls), 3)
+        self.assertEqual(len(actual_calls), 2)
 
         for i, (expected_args, expected_kwargs) in enumerate(expected_calls):
             actual_args, actual_kwargs = actual_calls[i]
