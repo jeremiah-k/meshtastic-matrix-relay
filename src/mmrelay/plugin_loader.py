@@ -1364,6 +1364,8 @@ def _clone_new_repo_to_branch_or_tag(
                     logger.warning(
                         f"Could not clone with branch {ref_value}, trying {other_default}"
                     )
+                    if os.path.isdir(repo_path):
+                        shutil.rmtree(repo_path, ignore_errors=True)
                     _run_git(
                         ["git", "clone", "--branch", other_default, repo_url],
                         cwd=plugins_dir,
@@ -1378,6 +1380,8 @@ def _clone_new_repo_to_branch_or_tag(
                     logger.warning(
                         f"Could not clone with branch {other_default}, cloning default branch"
                     )
+                    if os.path.isdir(repo_path):
+                        shutil.rmtree(repo_path, ignore_errors=True)
                     _run_git(
                         ["git", "clone", repo_url],
                         cwd=plugins_dir,
@@ -1406,11 +1410,19 @@ def _clone_new_repo_to_branch_or_tag(
                     )
                 return True
             except subprocess.CalledProcessError:
-                # If cloning with the specific ref fails, the repository directory may have been
-                # created with the default branch. We'll proceed with that and attempt to
-                # fetch and checkout the desired ref.
+                # If cloning with the specific ref fails, clean up any partial directory and
+                # clone without specifying branch/tag to get default branch, then fetch/checkout.
                 logger.warning(
                     f"Could not clone with ref '{ref_value}' directly. Attempting to fetch and checkout."
+                )
+                # Clean up any partial directory from failed clone
+                if os.path.isdir(repo_path):
+                    shutil.rmtree(repo_path, ignore_errors=True)
+                # Clone without specifying branch/tag to get default branch
+                _run_git(
+                    ["git", "clone", repo_url],
+                    cwd=plugins_dir,
+                    timeout=120,
                 )
 
             # Then try to fetch and checkout the tag
