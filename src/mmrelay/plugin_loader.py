@@ -1530,7 +1530,7 @@ def _clone_new_repo_to_branch_or_tag(
                 # Tag flow (existing logic)
                 try:
                     _run_git(
-                        ["git", "clone", "--branch", ref_value, repo_url],
+                        ["git", "clone", "--branch", ref_value, repo_url, repo_name],
                         cwd=plugins_dir,
                         timeout=120,
                     )
