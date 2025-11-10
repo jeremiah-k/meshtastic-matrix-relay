@@ -90,9 +90,14 @@ class MockPlugin:
 
     async def handle_room_message(self, room, event, full_message):
         """
-        Asynchronously handles a room message event for testing purposes.
-
-        This mock method is implemented to satisfy interface requirements and prevent warnings during tests.
+        Handle an incoming room message event for the mock plugin used in tests.
+        
+        This method is a no-op stub that satisfies the plugin interface during testing and intentionally performs no action.
+        
+        Parameters:
+            room: Identifier or object representing the destination room for the message.
+            event: Payload object or mapping describing the message event (metadata, sender, etc.).
+            full_message: The full message text content received.
         """
         pass
 
@@ -101,11 +106,22 @@ class BaseGitTest(unittest.TestCase):
     """Base class for tests that need temporary Git repository directories."""
 
     def setUp(self):
+        """
+        Prepare temporary directories for plugin tests.
+        
+        Creates a temporary directory and assigns its path to `self.temp_plugins_dir`,
+        then sets `self.temp_repo_path` to a `repo` subdirectory path inside it.
+        """
         super().setUp()
         self.temp_plugins_dir = tempfile.mkdtemp()
         self.temp_repo_path = os.path.join(self.temp_plugins_dir, "repo")
 
     def tearDown(self):
+        """
+        Cleans up test resources created in setUp.
+        
+        Removes the temporary plugins directory used by the test and delegates further teardown to the superclass.
+        """
         super().tearDown()
         import shutil
 
@@ -832,17 +848,17 @@ class Plugin:
         # Configure mock to fail on cat-file (commit not found locally) but succeed on fetch and checkout
         def side_effect(*args, **kwargs):
             """
-            Simulates a git subprocess side effect for tests: succeeds for most commands but fails when checking for a commit object.
-
+            Create a fake git subprocess side effect used in tests.
+            
             Parameters:
-                *args: Positional arguments forwarded from subprocess.run/called invocation; the first element is expected to be the git command sequence (list or str).
+                *args: Positional arguments forwarded from subprocess.run or similar; the first element is expected to be the git command sequence (list or str).
                 **kwargs: Ignored.
-
+            
             Returns:
-                subprocess.CompletedProcess: A successful result with return code 0 and empty output.
-
+                subprocess.CompletedProcess: A successful result with returncode 0 and empty stdout/stderr.
+            
             Raises:
-                subprocess.CalledProcessError: If the provided git command attempts a `cat-file` check (simulates "commit not found locally").
+                subprocess.CalledProcessError: If the git command contains "cat-file", to simulate a missing commit object.
             """
             if "cat-file" in args[0]:
                 raise subprocess.CalledProcessError(
@@ -911,12 +927,12 @@ class Plugin:
         def side_effect(*args, **kwargs):
             """
             Simulate subprocess behavior for git commands used in tests.
-
+            
             Returns:
-                subprocess.CompletedProcess: A successful completed process with exit code 0 for most commands.
-
+                subprocess.CompletedProcess: A successful completed process with exit code 0 for commands that do not trigger error conditions.
+            
             Raises:
-                subprocess.CalledProcessError: If the command is a fetch for commit "cafebabe" in /tmp/repo or any command containing "cat-file".
+                subprocess.CalledProcessError: If the command is a fetch for commit "cafebabe" in the test repository path (self.temp_repo_path) or if the command contains "cat-file".
             """
             if args[0] == [
                 "git",
@@ -972,9 +988,13 @@ class Plugin:
         # Configure mock to succeed on all git operations
         def mock_run_git_side_effect(*args, **kwargs):
             """
-            Mock side effect for git command calls used in tests.
-
-            Simulates successful git operations: a fetch for the specific commit "abcd1234" (when command length is 4 and last arg is "abcd1234"), any general fetch (when command length is 3), a commit existence check via `cat-file`, and a checkout; all other inputs are treated as successful no-ops. Accepts arbitrary positional and keyword arguments and always returns a CompletedProcess.
+            Simulate git subprocess calls for tests with deterministic successful outcomes.
+            
+            Returns:
+                subprocess.CompletedProcess: A successful CompletedProcess for the invoked git command.
+            
+            Raises:
+                subprocess.CalledProcessError: If the invoked command includes "rev-parse", to simulate failure obtaining the current revision.
             """
             cmd = args[0]
             if "rev-parse" in cmd:
@@ -1096,15 +1116,16 @@ class Plugin:
         # Configure mock to fail on both specific and fallback fetch
         def side_effect(*args, **kwargs):
             """
-            Simulates subprocess behavior for git commands used in tests.
-
-            Raises subprocess.CalledProcessError for specific failing git invocations:
-            - ["git", "-C", self.temp_repo_path, "fetch", "origin", "abcd1234"]
-            - ["git", "-C", self.temp_repo_path, "fetch", "origin"] (fallback fetch)
-            - any invocation whose argument list contains "cat-file"
-
+            Simulate git subprocess behavior for tests by returning a successful CompletedProcess for most commands and raising CalledProcessError for specific failing invocations.
+            
+            Raises:
+                subprocess.CalledProcessError: For these git invocations:
+                  - ["git", "-C", <temp_repo_path>, "fetch", "origin", "abcd1234"]
+                  - ["git", "-C", <temp_repo_path>, "fetch", "origin"]
+                  - any invocation whose argument list contains "cat-file"
+            
             Returns:
-                subprocess.CompletedProcess: A successful CompletedProcess with returncode 0 and empty stdout/stderr for all other commands.
+                subprocess.CompletedProcess: A CompletedProcess with returncode 0 and empty stdout/stderr for commands that do not match the failing cases.
             """
             if args[0] == [
                 "git",
@@ -1183,11 +1204,17 @@ class TestPluginSecurityGuards(BaseGitTest):
     """Tests for plugin security helper utilities."""
 
     def setUp(self):
+        """
+        Prepare test fixture by invoking the superclass setup, attaching the module-level plugin loader to `self.pl`, and saving its current `config` attribute (or `None`) to `self.original_config` for later restoration.
+        """
         super().setUp()
         self.pl = pl
         self.original_config = getattr(pl, "config", None)
 
     def tearDown(self):
+        """
+        Cleans up temporary test directories and resources created for Git-related tests.
+        """
         super().tearDown()
 
     def test_repo_url_allowed_https_known_host(self):
@@ -1300,6 +1327,12 @@ class TestURLValidation(unittest.TestCase):
     """Test cases for URL validation and security functions."""
 
     def setUp(self):
+        """
+        Set up the test by attaching the plugin loader and saving its original configuration.
+        
+        Stores the supplied plugin loader instance on self.pl and records its current
+        `config` attribute (or `None` if absent) in `self.original_config` for later restoration.
+        """
         self.pl = pl
         self.original_config = getattr(pl, "config", None)
 
@@ -1479,6 +1512,12 @@ class TestRequirementFiltering(unittest.TestCase):
     """Test cases for requirement filtering security functions."""
 
     def setUp(self):
+        """
+        Set up the test by attaching the plugin loader and saving its original configuration.
+        
+        Stores the supplied plugin loader instance on self.pl and records its current
+        `config` attribute (or `None` if absent) in `self.original_config` for later restoration.
+        """
         self.pl = pl
         self.original_config = getattr(pl, "config", None)
 
@@ -1650,9 +1689,9 @@ class TestGitOperations(BaseGitTest):
 
     def tearDown(self):
         """
-        Restore the original plugin loader configuration after a test.
-
-        Reassigns the saved original configuration back to the plugin loader's `config` attribute to restore global state modified during the test.
+        Restore the plugin loader's configuration saved before the test.
+        
+        Reassigns the original configuration back to the plugin loader instance and invokes the base class tearDown to complete cleanup.
         """
         self.pl.config = self.original_config
         super().tearDown()
@@ -1873,17 +1912,14 @@ class TestGitOperations(BaseGitTest):
 
         def mock_run_git_side_effect(*args, **kwargs):
             """
-            Simulate subprocess/git call side effects for tests by returning success (None) for most commands
-            and a MagicMock with a stdout containing a commit hash for `rev-parse` commands.
-
+            Simulate git subprocess responses for tests, returning success for common commands and a commit-containing result for `rev-parse`.
+            
             Parameters:
-                *args: Positional arguments passed to the mocked runner; the first positional argument is
-                    expected to be the git command (string or sequence) inspected by this helper.
-                **kwargs: Additional keyword arguments forwarded by the mock (ignored by this helper).
-
+                *args: Positional arguments forwarded from the mocked runner; the first positional argument is expected to be the git command (string or sequence) inspected by this helper.
+                **kwargs: Ignored keyword arguments forwarded by the mock.
+            
             Returns:
-                None for commands treated as successful (`fetch`, `checkout`, `pull`), or a MagicMock
-                whose `stdout` contains a string commit hash for `rev-parse` commands.
+                None for successful commands such as `fetch`, `checkout`, and `pull`; otherwise an object whose `stdout` is a string commit hash for `rev-parse` invocations.
             """
             cmd = args[0]
             if "fetch" in cmd:
