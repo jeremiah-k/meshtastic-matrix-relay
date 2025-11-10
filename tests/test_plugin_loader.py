@@ -837,7 +837,7 @@ class Plugin:
         ]
 
         actual_calls = mock_run_git.call_args_list
-        self.assertEqual(len(actual_calls), 3)
+        self.assertEqual(len(actual_calls), 4)
 
         for i, (expected_args, expected_kwargs) in enumerate(expected_calls):
             actual_args, actual_kwargs = actual_calls[i]

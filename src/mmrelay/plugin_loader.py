@@ -952,15 +952,8 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
     # Commits are handled differently from branches and tags
     is_commit = ref_type == "commit"
 
-    if os.path.isdir(repo_path):
-        try:
-            # Fetch all branches but don't fetch tags to avoid conflicts
-            try:
-                _run_git(["git", "-C", repo_path, "fetch", "origin"], timeout=120)
-            except subprocess.CalledProcessError as e:
-                logger.warning(f"Error fetching from remote: {e}")
-                # Continue anyway, we'll try to use what we have
-
+    try:
+        if os.path.isdir(repo_path):
             # Handle commits differently from branches and tags
             if is_commit:
                 try:
@@ -992,24 +985,28 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                         logger.info(
                             f"Commit {ref_value} not found locally, attempting to fetch"
                         )
+                    try:
+                        _run_git(
+                            ["git", "-C", repo_path, "fetch", "origin", ref_value],
+                            timeout=120,
+                        )
+                    except subprocess.CalledProcessError:
+                        logger.warning(
+                            f"Could not fetch commit {ref_value} from remote, trying general fetch"
+                        )
+                        # Fall back to fetching everything
                         try:
                             _run_git(
-                                ["git", "-C", repo_path, "fetch", "origin", ref_value],
+                                ["git", "-C", repo_path, "fetch", "origin"],
                                 timeout=120,
                             )
-                        except subprocess.CalledProcessError:
-                            logger.warning(
-                                f"Could not fetch commit {ref_value} from remote, trying general fetch"
-                            )
-                            # Fall back to fetching everything
-                            try:
-                                _run_git(
-                                    ["git", "-C", repo_path, "fetch", "origin"],
-                                    timeout=120,
-                                )
-                            except subprocess.CalledProcessError as e:
-                                logger.warning(f"Fallback fetch also failed: {e}")
-                                return False
+                        except subprocess.CalledProcessError as e:
+                            logger.warning(f"Fallback fetch also failed: {e}")
+                            return False
+                    except subprocess.CalledProcessError:
+                        # Commit doesn't exist locally or couldn't be fetched
+                        logger.warning(f"Commit {ref_value} validation failed")
+                        return False
 
                     # Checkout the specific commit
                     _run_git(
@@ -1025,8 +1022,16 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                         exc,
                     )
                     return False
+        else:
+            # For branches and tags, fetch all branches but don't fetch tags to avoid conflicts
+            try:
+                _run_git(["git", "-C", repo_path, "fetch", "origin"], timeout=120)
+            except subprocess.CalledProcessError as e:
+                logger.warning(f"Error fetching from remote: {e}")
+                # Continue anyway, we'll try to use what we have
+
             # If it's a default branch, handle it differently
-            elif is_default_branch:
+            if is_default_branch:
                 try:
                     # Check if we're already on the right branch
                     current_branch = _run_git(
@@ -1262,12 +1267,12 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                                 "Could not checkout any branch, using current state"
                             )
                             return True
-        except (subprocess.CalledProcessError, FileNotFoundError) as e:
-            logger.error(f"Error updating repository {repo_name}: {e}")
-            logger.error(
-                f"Please manually git clone the repository {repo_url} into {repo_path}"
-            )
-            return False
+    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+        logger.error(f"Error updating repository {repo_name}: {e}")
+        logger.error(
+            f"Please manually git clone the repository {repo_url} into {repo_path}"
+        )
+        return False
     else:
         # Repository doesn't exist yet, clone it
         try:
