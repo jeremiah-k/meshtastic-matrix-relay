@@ -2699,15 +2699,16 @@ class TestDependencyInstallation(unittest.TestCase):
 
         self.assertTrue(result)
 
-        # Verify the sequence of git operations (function clones new repo then fetches and checks commit)
+        # Verify the sequence of git operations (function clones new repo then fetches and checks out commit)
         expected_calls = [
             # Clone the repo first
-            (["git", "clone", "https://github.com/user/repo.git", "/tmp/repo"], {}),
-            # Fetch from remote
-            (["git", "-C", "/tmp/repo", "fetch", "origin"], {"timeout": 120}),
-            # Check if commit exists
             (
-                ["git", "-C", "/tmp/repo", "cat-file", "-e", "a1b2c3d4^{commit}"],
+                ["git", "clone", "https://github.com/user/repo.git"],
+                {"cwd": "/tmp", "timeout": 120},
+            ),
+            # Fetch specific commit
+            (
+                ["git", "-C", "/tmp/repo", "fetch", "origin", "a1b2c3d4"],
                 {"timeout": 120},
             ),
             # Checkout the commit
@@ -2715,7 +2716,7 @@ class TestDependencyInstallation(unittest.TestCase):
         ]
 
         actual_calls = mock_run_git.call_args_list
-        self.assertEqual(len(actual_calls), 4)
+        self.assertEqual(len(actual_calls), 3)
 
         for i, (expected_args, expected_kwargs) in enumerate(expected_calls):
             actual_args, actual_kwargs = actual_calls[i]
