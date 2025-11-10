@@ -1047,7 +1047,7 @@ def _clone_new_repo_to_commit(
     try:
         # First clone the repository (default branch)
         _run_git(
-            ["git", "clone", "--filter=blob:none", repo_url],
+            ["git", "clone", "--filter=blob:none", repo_url, repo_name],
             cwd=plugins_dir,
             timeout=120,
         )
@@ -1439,7 +1439,7 @@ def _clone_new_repo_to_branch_or_tag(
             try:
                 # Try to clone with the specified branch
                 _run_git(
-                    ["git", "clone", "--branch", ref_value, repo_url],
+                    ["git", "clone", "--branch", ref_value, repo_url, repo_name],
                     cwd=plugins_dir,
                     timeout=120,
                 )
@@ -1462,7 +1462,14 @@ def _clone_new_repo_to_branch_or_tag(
                     if os.path.isdir(repo_path):
                         shutil.rmtree(repo_path, ignore_errors=True)
                     _run_git(
-                        ["git", "clone", "--branch", other_default, repo_url],
+                        [
+                            "git",
+                            "clone",
+                            "--branch",
+                            other_default,
+                            repo_url,
+                            repo_name,
+                        ],
                         cwd=plugins_dir,
                         timeout=120,
                     )
@@ -1478,7 +1485,7 @@ def _clone_new_repo_to_branch_or_tag(
                     if os.path.isdir(repo_path):
                         shutil.rmtree(repo_path, ignore_errors=True)
                     _run_git(
-                        ["git", "clone", repo_url],
+                        ["git", "clone", repo_url, repo_name],
                         cwd=plugins_dir,
                         timeout=120,
                     )

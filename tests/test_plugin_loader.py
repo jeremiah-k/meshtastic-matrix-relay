@@ -800,6 +800,7 @@ class Plugin:
                     "clone",
                     "--filter=blob:none",
                     "https://github.com/user/repo.git",
+                    "repo",
                 ],
                 {"cwd": self.temp_plugins_dir, "timeout": 120},
             ),
@@ -1178,25 +1179,16 @@ class Plugin:
         )
 
 
-class TestPluginSecurityGuards(unittest.TestCase):
+class TestPluginSecurityGuards(BaseGitTest):
     """Tests for plugin security helper utilities."""
 
     def setUp(self):
+        super().setUp()
         self.pl = pl
         self.original_config = getattr(pl, "config", None)
-        self.temp_plugins_dir = tempfile.mkdtemp()
-        self.temp_repo_path = os.path.join(self.temp_plugins_dir, "repo")
 
     def tearDown(self):
-        """
-        Restore the original plugin loader configuration after a test.
-
-        Reassigns the saved original configuration back to the plugin loader's `config` attribute to restore global state modified during the test.
-        """
-        self.pl.config = self.original_config
-        import shutil
-
-        shutil.rmtree(self.temp_plugins_dir, ignore_errors=True)
+        super().tearDown()
 
     def test_repo_url_allowed_https_known_host(self):
         self.pl.config = {}
@@ -3062,7 +3054,14 @@ class TestDependencyInstallation(BaseGitTest):
         self.assertTrue(result)
         # Should clone with --branch main
         mock_run_git.assert_called_with(
-            ["git", "clone", "--branch", "main", "https://github.com/user/repo.git"],
+            [
+                "git",
+                "clone",
+                "--branch",
+                "main",
+                "https://github.com/user/repo.git",
+                "repo",
+            ],
             cwd=self.temp_plugins_dir,
             timeout=120,
         )
@@ -3098,11 +3097,25 @@ class TestDependencyInstallation(BaseGitTest):
         self.assertEqual(len(calls), 2)
         self.assertEqual(
             calls[0][0][0],
-            ["git", "clone", "--branch", "main", "https://github.com/user/repo.git"],
+            [
+                "git",
+                "clone",
+                "--branch",
+                "main",
+                "https://github.com/user/repo.git",
+                "repo",
+            ],
         )
         self.assertEqual(
             calls[1][0][0],
-            ["git", "clone", "--branch", "master", "https://github.com/user/repo.git"],
+            [
+                "git",
+                "clone",
+                "--branch",
+                "master",
+                "https://github.com/user/repo.git",
+                "repo",
+            ],
         )
 
     @patch("mmrelay.plugin_loader._run_git")
@@ -3133,7 +3146,7 @@ class TestDependencyInstallation(BaseGitTest):
         calls = mock_run_git.call_args_list
         self.assertEqual(len(calls), 3)
         self.assertEqual(
-            calls[2][0][0], ["git", "clone", "https://github.com/user/repo.git"]
+            calls[2][0][0], ["git", "clone", "https://github.com/user/repo.git", "repo"]
         )
 
     @patch("mmrelay.plugin_loader._run_git")
@@ -3155,7 +3168,14 @@ class TestDependencyInstallation(BaseGitTest):
         self.assertTrue(result)
         # Should clone with --branch v1.0.0
         mock_run_git.assert_called_with(
-            ["git", "clone", "--branch", "v1.0.0", "https://github.com/user/repo.git"],
+            [
+                "git",
+                "clone",
+                "--branch",
+                "v1.0.0",
+                "https://github.com/user/repo.git",
+                "repo",
+            ],
             cwd=self.temp_plugins_dir,
             timeout=120,
         )
