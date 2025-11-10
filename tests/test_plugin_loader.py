@@ -813,21 +813,37 @@ class Plugin:
         mock_isdir.return_value = True  # Repo exists
         ref = {"type": "commit", "value": "deadbeef"}
 
+        # Configure mock to fail on cat-file (commit not found locally) but succeed on fetch and checkout
+        def side_effect(*args, **kwargs):
+            if "cat-file" in args[0]:
+                raise subprocess.CalledProcessError(
+                    1, "git"
+                )  # Commit not found locally
+            return subprocess.CompletedProcess(args[0], 0, "", "")
+
+        mock_run_git.side_effect = side_effect
+
         result = clone_or_update_repo("https://github.com/user/repo.git", ref, "/tmp")
 
         self.assertTrue(result)
 
-        # Verify sequence of git operations
+        # Verify sequence of git operations (optimized behavior)
         expected_calls = [
-            # Initial fetch from remote
-            (["git", "-C", "/tmp/repo", "fetch", "origin"], {"timeout": 120}),
-            # Check if commit exists locally
+            # Check if commit exists locally (fails)
             (
                 ["git", "-C", "/tmp/repo", "cat-file", "-e", "deadbeef^{commit}"],
                 {"timeout": 120},
             ),
+            # Fetch specific commit
+            (
+                ["git", "-C", "/tmp/repo", "fetch", "origin", "deadbeef"],
+                {"timeout": 120},
+            ),
             # Checkout specific commit
-            (["git", "-C", "/tmp/repo", "checkout", "deadbeef"], {"timeout": 120}),
+            (
+                ["git", "-C", "/tmp/repo", "checkout", "deadbeef"],
+                {"timeout": 120},
+            ),
         ]
 
         actual_calls = mock_run_git.call_args_list
@@ -871,17 +887,14 @@ class Plugin:
         ]
 
         self.assertEqual(
-            len(fetch_calls), 3
-        )  # Initial general fetch, specific commit fetch fails, fallback fetch
+            len(fetch_calls), 2
+        )  # Specific commit fetch fails, fallback fetch
         self.assertEqual(
-            fetch_calls[0][0][0], ["git", "-C", "/tmp/repo", "fetch", "origin"]
-        )
-        self.assertEqual(
-            fetch_calls[1][0][0],
+            fetch_calls[0][0][0],
             ["git", "-C", "/tmp/repo", "fetch", "origin", "cafebabe"],
         )
         self.assertEqual(
-            fetch_calls[2][0][0],
+            fetch_calls[1][0][0],
             ["git", "-C", "/tmp/repo", "fetch", "origin"],
         )
 
@@ -892,30 +905,44 @@ class Plugin:
     def test_clone_or_update_repo_commit_fetch_success_no_fallback(
         self, mock_isdir, mock_logger, mock_is_allowed, mock_run_git
     ):
-        """Test successful commit fetch without needing fallback."""
+        """Test successful commit fetch without fallback."""
+
         mock_is_allowed.return_value = True
         mock_isdir.return_value = True  # Repo exists
         ref = {"type": "commit", "value": "abcd1234"}
+
+        # Configure mock to succeed on all git operations
+        def mock_run_git_side_effect(*args, **kwargs):
+            cmd = args[0]
+            if "fetch" in cmd and len(cmd) == 4 and cmd[3] == "abcd1234":
+                return None  # Specific fetch succeeds
+            elif "fetch" in cmd and len(cmd) == 3:
+                return None  # General fetch succeeds
+            elif "cat-file" in cmd:
+                return None  # Commit check succeeds
+            elif "checkout" in cmd:
+                return None  # Checkout succeeds
+            return None
+
+        mock_run_git.side_effect = mock_run_git_side_effect
 
         result = clone_or_update_repo("https://github.com/user/repo.git", ref, "/tmp")
 
         self.assertTrue(result)
 
-        # Verify only initial fetch and specific commit fetch (no fallback)
+        # Verify only cat-file check and checkout (no fetch needed)
         expected_calls = [
-            # Initial fetch from remote
-            (["git", "-C", "/tmp/repo", "fetch", "origin"], {"timeout": 120}),
             # Check if commit exists locally (succeeds)
             (
                 ["git", "-C", "/tmp/repo", "cat-file", "-e", "abcd1234^{commit}"],
                 {"timeout": 120},
             ),
-            # Checkout the specific commit
+            # Checkout specific commit
             (["git", "-C", "/tmp/repo", "checkout", "abcd1234"], {"timeout": 120}),
         ]
 
         actual_calls = mock_run_git.call_args_list
-        self.assertEqual(len(actual_calls), 3)
+        self.assertEqual(len(actual_calls), 2)
 
         for i, (expected_args, expected_kwargs) in enumerate(expected_calls):
             actual_args, actual_kwargs = actual_calls[i]
@@ -948,21 +975,19 @@ class Plugin:
 
         self.assertTrue(result)
 
-        # Verify initial fetch, failed specific fetch, successful fallback, and checkout
+        # Verify cat-file check, failed specific fetch, successful fallback, and checkout
         fetch_calls = [
             call for call in mock_run_git.call_args_list if "fetch" in call[0][0]
         ]
 
-        self.assertEqual(len(fetch_calls), 3)
+        self.assertEqual(len(fetch_calls), 2)
         self.assertEqual(
-            fetch_calls[0][0][0], ["git", "-C", "/tmp/repo", "fetch", "origin"]
-        )
-        self.assertEqual(
-            fetch_calls[1][0][0],
+            fetch_calls[0][0][0],
             ["git", "-C", "/tmp/repo", "fetch", "origin", "cdef5678"],
         )
         self.assertEqual(
-            fetch_calls[2][0][0], ["git", "-C", "/tmp/repo", "fetch", "origin"]
+            fetch_calls[1][0][0],
+            ["git", "-C", "/tmp/repo", "fetch", "origin"],
         )
 
     @patch("mmrelay.plugin_loader._run_git")
