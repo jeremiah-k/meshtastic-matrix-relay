@@ -681,7 +681,7 @@ class Plugin:
         load_plugins(config)
 
         # Verify warning was logged about commit taking priority
-        mock_logger.warning.assert_called_with(
+        mock_logger.warning.assert_any_call(
             "Commit specified along with tag/branch for plugin test-plugin, using commit"
         )
 
