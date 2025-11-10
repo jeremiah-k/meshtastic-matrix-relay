@@ -1991,12 +1991,6 @@ class TestCommandRunner(unittest.TestCase):
             _run([])
         self.assertIn("Command list cannot be empty", str(cm.exception))
 
-    def test_run_value_error_empty_args(self):
-        """Test _run raises ValueError for empty command list."""
-        with self.assertRaises(ValueError) as cm:
-            _run([])
-        self.assertIn("Command list cannot be empty", str(cm.exception))
-
     @patch("subprocess.run")
     def test_run_type_error_non_string_args(self, mock_subprocess):
         """Test _run raises TypeError for non-string arguments."""
