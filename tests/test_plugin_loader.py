@@ -732,13 +732,17 @@ class Plugin:
             self.community_dir,
         )
 
+    @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader._is_repo_url_allowed")
     @patch("mmrelay.plugin_loader.logger")
-    def test_clone_or_update_repo_valid_commit_hash(self, mock_logger, mock_is_allowed):
+    def test_clone_or_update_repo_valid_commit_hash(
+        self, mock_run_git, mock_logger, mock_is_allowed
+    ):
         """Test clone with valid commit hash (7 characters)."""
         from mmrelay.plugin_loader import clone_or_update_repo
 
         mock_is_allowed.return_value = True
+        mock_run_git.side_effect = Exception("Git operations not available in test")
         ref = {"type": "commit", "value": "a1b2c3d"}
 
         result = clone_or_update_repo("https://github.com/user/repo.git", ref, "/tmp")
@@ -748,10 +752,11 @@ class Plugin:
         )  # Will fail due to missing git operations, but validation should pass
         mock_logger.error.assert_not_called()
 
+    @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader._is_repo_url_allowed")
     @patch("mmrelay.plugin_loader.logger")
     def test_clone_or_update_repo_valid_full_commit_hash(
-        self, mock_logger, mock_is_allowed
+        self, mock_run_git, mock_logger, mock_is_allowed
     ):
         """Test clone with valid full commit hash (40 characters)."""
         from mmrelay.plugin_loader import clone_or_update_repo
@@ -769,10 +774,11 @@ class Plugin:
         )  # Will fail due to missing git operations, but validation should pass
         mock_logger.error.assert_not_called()
 
+    @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader._is_repo_url_allowed")
     @patch("mmrelay.plugin_loader.logger")
     def test_clone_or_update_repo_invalid_commit_hash_too_short(
-        self, mock_logger, mock_is_allowed
+        self, mock_run_git, mock_logger, mock_is_allowed
     ):
         """Test clone with invalid commit hash (too short)."""
         from mmrelay.plugin_loader import clone_or_update_repo
@@ -787,10 +793,11 @@ class Plugin:
             "Invalid commit hash supplied: %r (must be 7-40 hex characters)", "abc123"
         )
 
+    @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader._is_repo_url_allowed")
     @patch("mmrelay.plugin_loader.logger")
     def test_clone_or_update_repo_invalid_commit_hash_too_long(
-        self, mock_logger, mock_is_allowed
+        self, mock_run_git, mock_logger, mock_is_allowed
     ):
         """Test clone with invalid commit hash (too long)."""
         from mmrelay.plugin_loader import clone_or_update_repo
@@ -805,10 +812,11 @@ class Plugin:
             "Invalid commit hash supplied: %r (must be 7-40 hex characters)", "a" * 41
         )
 
+    @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader._is_repo_url_allowed")
     @patch("mmrelay.plugin_loader.logger")
     def test_clone_or_update_repo_invalid_commit_hash_non_hex(
-        self, mock_logger, mock_is_allowed
+        self, mock_run_git, mock_logger, mock_is_allowed
     ):
         """Test clone with invalid commit hash (non-hex characters)."""
         from mmrelay.plugin_loader import clone_or_update_repo
@@ -1581,10 +1589,11 @@ class TestGitOperations(unittest.TestCase):
             "https://github.com/user/repo.git",
         )
 
+    @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader._is_repo_url_allowed")
     @patch("mmrelay.plugin_loader.logger")
-    def test_clone_or_update_repo_ref_starts_with_dash(
-        self, mock_logger, mock_is_allowed
+    def test_clone_or_update_repo_invalid_commit_hash_non_hex(
+        self, mock_run_git, mock_logger, mock_is_allowed
     ):
         """Test clone with ref value starting with dash."""
         from mmrelay.plugin_loader import clone_or_update_repo
@@ -2734,42 +2743,6 @@ class TestDependencyInstallation(unittest.TestCase):
         # Should not call any threading methods
 
         mock_threading.Event.assert_not_called()
-
-    @patch("mmrelay.plugin_loader._is_repo_url_allowed")
-    @patch("mmrelay.plugin_loader.logger")
-    def test_clone_or_update_repo_invalid_commit_hash_too_long(
-        self, mock_logger, mock_is_allowed
-    ):
-        """Test clone with invalid commit hash (too long)."""
-        from mmrelay.plugin_loader import clone_or_update_repo
-
-        mock_is_allowed.return_value = True
-        ref = {"type": "commit", "value": "a" * 41}  # 41 characters
-
-        result = clone_or_update_repo("https://github.com/user/repo.git", ref, "/tmp")
-
-        self.assertFalse(result)
-        mock_logger.error.assert_called_with(
-            "Invalid commit hash supplied: %r (must be 7-40 hex characters)", "a" * 41
-        )
-
-    @patch("mmrelay.plugin_loader._is_repo_url_allowed")
-    @patch("mmrelay.plugin_loader.logger")
-    def test_clone_or_update_repo_invalid_commit_hash_non_hex(
-        self, mock_logger, mock_is_allowed
-    ):
-        """Test clone with invalid commit hash (non-hex characters)."""
-        from mmrelay.plugin_loader import clone_or_update_repo
-
-        mock_is_allowed.return_value = True
-        ref = {"type": "commit", "value": "g1h2i3j"}
-
-        result = clone_or_update_repo("https://github.com/user/repo.git", ref, "/tmp")
-
-        self.assertFalse(result)
-        mock_logger.error.assert_called_with(
-            "Invalid commit hash supplied: %r (must be 7-40 hex characters)", "g1h2i3j"
-        )
 
     @patch("mmrelay.plugin_loader._is_repo_url_allowed")
     @patch("mmrelay.plugin_loader.logger")
