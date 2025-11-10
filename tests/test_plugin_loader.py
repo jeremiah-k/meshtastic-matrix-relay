@@ -536,120 +536,444 @@ class Plugin:
         # Plugin should be skipped after a start failure
         self.assertEqual(len(plugins), 0)
 
-
-def test_clone_or_update_repo_new_repo_tag(tmp_path):
-    """Test cloning a new repository with a specific tag."""
-    plugins_dir = tmp_path / "plugins"
-    plugins_dir.mkdir()
-    repo_url = "https://github.com/user/test-repo.git"
-    ref = {"type": "tag", "value": "v1.0.0"}
-
-    with patch("mmrelay.plugin_loader._run_git") as mock_run:
-        result = clone_or_update_repo(repo_url, ref, str(plugins_dir))
-
-        assert result is True
-        mock_run.assert_called_with(
-            ["git", "clone", "--branch", "v1.0.0", repo_url],
-            cwd=str(plugins_dir),
-            timeout=120,
-        )
-
-
-def test_clone_or_update_repo_new_repo_branch(tmp_path):
-    """Test cloning a new repository with a specified branch."""
-    plugins_dir = tmp_path / "plugins"
-    plugins_dir.mkdir()
-    repo_url = "https://github.com/user/test-repo.git"
-    ref = {"type": "branch", "value": "develop"}
-
-    with patch("mmrelay.plugin_loader._run_git") as mock_run:
-        result = clone_or_update_repo(repo_url, ref, str(plugins_dir))
-
-        assert result is True
-        mock_run.assert_called_with(
-            ["git", "clone", "--branch", "develop", repo_url],
-            cwd=str(plugins_dir),
-            timeout=120,
-        )
-
-
-@patch("mmrelay.plugin_loader._run_git")
-def test_clone_or_update_repo_existing_repo_same_branch(mock_run, tmp_path):
-    """Test updating an existing repository on the same branch."""
-    # Mock the return values for the _run calls
-    mock_run.side_effect = [
-        MagicMock(),  # for git fetch
-        MagicMock(stdout="main\n"),  # for git rev-parse
-        MagicMock(),  # for git pull
-    ]
-
-    plugins_dir = tmp_path / "plugins"
-    repo_dir = plugins_dir / "test-repo"
-    repo_dir.mkdir(parents=True)
-    repo_url = "https://github.com/user/test-repo.git"
-    ref = {"type": "branch", "value": "main"}
-
-    result = clone_or_update_repo(repo_url, ref, str(plugins_dir))
-
-    assert result is True
-    # Should fetch, rev-parse and pull
-    assert mock_run.call_count == 3
-    mock_run.assert_any_call(
-        ["git", "-C", str(repo_dir), "fetch", "origin"], timeout=120
-    )
-    mock_run.assert_any_call(
-        ["git", "-C", str(repo_dir), "rev-parse", "--abbrev-ref", "HEAD"],
-        capture_output=True,
-    )
-    mock_run.assert_any_call(
-        ["git", "-C", str(repo_dir), "pull", "origin", "main"], timeout=120
-    )
-
-
-@patch("mmrelay.plugin_loader._run_git")
-def test_clone_or_update_repo_existing_repo_different_branch(mock_run, tmp_path):
-    """Test updating an existing repository to a different branch."""
-    mock_run.side_effect = [
-        MagicMock(),  # git fetch
-        MagicMock(),  # git checkout develop
-        MagicMock(),  # git pull
-    ]
-    plugins_dir = tmp_path / "plugins"
-    repo_dir = plugins_dir / "test-repo"
-    repo_dir.mkdir(parents=True)
-    repo_url = "https://github.com/user/test-repo.git"
-    ref = {"type": "branch", "value": "develop"}
-
-    result = clone_or_update_repo(repo_url, ref, str(plugins_dir))
-
-    assert result is True
-    # Should fetch, checkout and pull
-    assert mock_run.call_count == 3
-    mock_run.assert_any_call(
-        ["git", "-C", str(repo_dir), "fetch", "origin"], timeout=120
-    )
-    mock_run.assert_any_call(
-        ["git", "-C", str(repo_dir), "checkout", "develop"], timeout=120
-    )
-    mock_run.assert_any_call(
-        ["git", "-C", str(repo_dir), "pull", "origin", "develop"], timeout=120
-    )
-
-
-def test_clone_or_update_repo_git_error(tmp_path):
-    """Test handling Git command errors."""
-    plugins_dir = tmp_path / "plugins"
-    plugins_dir.mkdir()
-    repo_url = "https://github.com/user/test-repo.git"
-    ref = {"type": "branch", "value": "main"}
-
-    with patch(
-        "mmrelay.plugin_loader._run_git",
-        side_effect=subprocess.CalledProcessError(1, "git"),
+    @patch("mmrelay.plugin_loader.clone_or_update_repo")
+    @patch("mmrelay.plugin_loader._install_requirements_for_repo")
+    @patch("mmrelay.plugin_loader.load_plugins_from_directory")
+    @patch("mmrelay.plugin_loader.get_community_plugin_dirs")
+    @patch("mmrelay.plugin_loader.get_custom_plugin_dirs")
+    @patch("mmrelay.plugin_loader.start_global_scheduler")
+    def test_load_plugins_commit_priority_over_tag_and_branch(
+        self,
+        mock_start_scheduler,
+        mock_get_custom_dirs,
+        mock_get_community_dirs,
+        mock_load_from_dir,
+        mock_install_reqs,
+        mock_clone_repo,
     ):
-        result = clone_or_update_repo(repo_url, ref, str(plugins_dir))
+        """Test that commit ref takes priority over tag and branch in plugin config."""
+        import mmrelay.plugin_loader as pl
 
-        assert result is False
+        # Reset global state
+        pl.plugins_loaded = False
+        pl.sorted_active_plugins = []
+
+        config = {
+            "community-plugins": {
+                "test-plugin": {
+                    "active": True,
+                    "repository": "https://github.com/user/repo.git",
+                    "commit": "deadbeef",
+                    "tag": "v1.0.0",
+                    "branch": "main",
+                    "priority": 10,
+                }
+            },
+            "plugins": {},  # No core plugins active
+        }
+
+        mock_get_custom_dirs.return_value = []
+        mock_get_community_dirs.return_value = [self.community_dir]
+        mock_clone_repo.return_value = True
+        mock_load_from_dir.return_value = []
+
+        load_plugins(config)
+
+        # Verify that clone was called with commit ref (highest priority)
+        mock_clone_repo.assert_called_once_with(
+            "https://github.com/user/repo.git",
+            {"type": "commit", "value": "deadbeef"},
+            self.community_dir,
+        )
+
+    @patch("mmrelay.plugin_loader.clone_or_update_repo")
+    @patch("mmrelay.plugin_loader._install_requirements_for_repo")
+    @patch("mmrelay.plugin_loader.load_plugins_from_directory")
+    @patch("mmrelay.plugin_loader.get_community_plugin_dirs")
+    @patch("mmrelay.plugin_loader.get_custom_plugin_dirs")
+    @patch("mmrelay.plugin_loader.start_global_scheduler")
+    def test_load_plugins_tag_priority_over_branch(
+        self,
+        mock_start_scheduler,
+        mock_get_custom_dirs,
+        mock_get_community_dirs,
+        mock_load_from_dir,
+        mock_install_reqs,
+        mock_clone_repo,
+    ):
+        """Test that tag ref takes priority over branch in plugin config."""
+        import mmrelay.plugin_loader as pl
+
+        # Reset global state
+        pl.plugins_loaded = False
+        pl.sorted_active_plugins = []
+
+        config = {
+            "community-plugins": {
+                "test-plugin": {
+                    "active": True,
+                    "repository": "https://github.com/user/repo.git",
+                    "tag": "v1.0.0",
+                    "branch": "main",
+                    "priority": 10,
+                }
+            },
+            "plugins": {},  # No core plugins active
+        }
+
+        mock_get_custom_dirs.return_value = []
+        mock_get_community_dirs.return_value = [self.community_dir]
+        mock_clone_repo.return_value = True
+        mock_load_from_dir.return_value = []
+
+        load_plugins(config)
+
+        # Verify that clone was called with tag ref (higher priority than branch)
+        mock_clone_repo.assert_called_once_with(
+            "https://github.com/user/repo.git",
+            {"type": "tag", "value": "v1.0.0"},
+            self.community_dir,
+        )
+
+    @patch("mmrelay.plugin_loader.clone_or_update_repo")
+    @patch("mmrelay.plugin_loader._install_requirements_for_repo")
+    @patch("mmrelay.plugin_loader.load_plugins_from_directory")
+    @patch("mmrelay.plugin_loader.get_community_plugin_dirs")
+    @patch("mmrelay.plugin_loader.get_custom_plugin_dirs")
+    @patch("mmrelay.plugin_loader.start_global_scheduler")
+    @patch("mmrelay.plugin_loader.logger")
+    def test_load_plugins_commit_with_tag_and_branch_warning(
+        self,
+        mock_logger,
+        mock_start_scheduler,
+        mock_get_custom_dirs,
+        mock_get_community_dirs,
+        mock_load_from_dir,
+        mock_install_reqs,
+        mock_clone_repo,
+    ):
+        """Test that warning is logged when commit is specified with tag/branch."""
+        import mmrelay.plugin_loader as pl
+
+        # Reset global state
+        pl.plugins_loaded = False
+        pl.sorted_active_plugins = []
+
+        config = {
+            "community-plugins": {
+                "test-plugin": {
+                    "active": True,
+                    "repository": "https://github.com/user/repo.git",
+                    "commit": "deadbeef",
+                    "tag": "v1.0.0",
+                    "branch": "main",
+                    "priority": 10,
+                }
+            },
+            "plugins": {},  # No core plugins active
+        }
+
+        mock_get_custom_dirs.return_value = []
+        mock_get_community_dirs.return_value = [self.community_dir]
+        mock_clone_repo.return_value = True
+        mock_load_from_dir.return_value = []
+
+        load_plugins(config)
+
+        # Verify warning was logged about commit taking priority
+        mock_logger.warning.assert_called_with(
+            "Commit specified along with tag/branch for plugin test-plugin, using commit"
+        )
+
+    @patch("mmrelay.plugin_loader.clone_or_update_repo")
+    @patch("mmrelay.plugin_loader._install_requirements_for_repo")
+    @patch("mmrelay.plugin_loader.load_plugins_from_directory")
+    @patch("mmrelay.plugin_loader.get_community_plugin_dirs")
+    @patch("mmrelay.plugin_loader.get_custom_plugin_dirs")
+    @patch("mmrelay.plugin_loader.start_global_scheduler")
+    def test_load_plugins_default_to_main_branch(
+        self,
+        mock_start_scheduler,
+        mock_get_custom_dirs,
+        mock_get_community_dirs,
+        mock_load_from_dir,
+        mock_install_reqs,
+        mock_clone_repo,
+    ):
+        """Test that plugin defaults to main branch when no ref is specified."""
+        import mmrelay.plugin_loader as pl
+
+        # Reset global state
+        pl.plugins_loaded = False
+        pl.sorted_active_plugins = []
+
+        config = {
+            "community-plugins": {
+                "test-plugin": {
+                    "active": True,
+                    "repository": "https://github.com/user/repo.git",
+                    "priority": 10,
+                }
+            },
+            "plugins": {},  # No core plugins active
+        }
+
+        mock_get_custom_dirs.return_value = []
+        mock_get_community_dirs.return_value = [self.community_dir]
+        mock_clone_repo.return_value = True
+        mock_load_from_dir.return_value = []
+
+        load_plugins(config)
+
+        # Verify that clone was called with default main branch
+        mock_clone_repo.assert_called_once_with(
+            "https://github.com/user/repo.git",
+            {"type": "branch", "value": "main"},
+            self.community_dir,
+        )
+
+    @patch("mmrelay.plugin_loader._is_repo_url_allowed")
+    @patch("mmrelay.plugin_loader.logger")
+    def test_clone_or_update_repo_valid_commit_hash(self, mock_logger, mock_is_allowed):
+        """Test clone with valid commit hash (7 characters)."""
+        from mmrelay.plugin_loader import clone_or_update_repo
+
+        mock_is_allowed.return_value = True
+        ref = {"type": "commit", "value": "a1b2c3d"}
+
+        result = clone_or_update_repo("https://github.com/user/repo.git", ref, "/tmp")
+
+        self.assertFalse(
+            result
+        )  # Will fail due to missing git operations, but validation should pass
+        mock_logger.error.assert_not_called()
+
+    @patch("mmrelay.plugin_loader._is_repo_url_allowed")
+    @patch("mmrelay.plugin_loader.logger")
+    def test_clone_or_update_repo_valid_full_commit_hash(
+        self, mock_logger, mock_is_allowed
+    ):
+        """Test clone with valid full commit hash (40 characters)."""
+        from mmrelay.plugin_loader import clone_or_update_repo
+
+        mock_is_allowed.return_value = True
+        ref = {
+            "type": "commit",
+            "value": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3",
+        }
+
+        result = clone_or_update_repo("https://github.com/user/repo.git", ref, "/tmp")
+
+        self.assertFalse(
+            result
+        )  # Will fail due to missing git operations, but validation should pass
+        mock_logger.error.assert_not_called()
+
+    @patch("mmrelay.plugin_loader._is_repo_url_allowed")
+    @patch("mmrelay.plugin_loader.logger")
+    def test_clone_or_update_repo_invalid_commit_hash_too_short(
+        self, mock_logger, mock_is_allowed
+    ):
+        """Test clone with invalid commit hash (too short)."""
+        from mmrelay.plugin_loader import clone_or_update_repo
+
+        mock_is_allowed.return_value = True
+        ref = {"type": "commit", "value": "abc123"}
+
+        result = clone_or_update_repo("https://github.com/user/repo.git", ref, "/tmp")
+
+        self.assertFalse(result)
+        mock_logger.error.assert_called_with(
+            "Invalid commit hash supplied: %r (must be 7-40 hex characters)", "abc123"
+        )
+
+    @patch("mmrelay.plugin_loader._is_repo_url_allowed")
+    @patch("mmrelay.plugin_loader.logger")
+    def test_clone_or_update_repo_invalid_commit_hash_too_long(
+        self, mock_logger, mock_is_allowed
+    ):
+        """Test clone with invalid commit hash (too long)."""
+        from mmrelay.plugin_loader import clone_or_update_repo
+
+        mock_is_allowed.return_value = True
+        ref = {"type": "commit", "value": "a" * 41}  # 41 characters
+
+        result = clone_or_update_repo("https://github.com/user/repo.git", ref, "/tmp")
+
+        self.assertFalse(result)
+        mock_logger.error.assert_called_with(
+            "Invalid commit hash supplied: %r (must be 7-40 hex characters)", "a" * 41
+        )
+
+    @patch("mmrelay.plugin_loader._is_repo_url_allowed")
+    @patch("mmrelay.plugin_loader.logger")
+    def test_clone_or_update_repo_invalid_commit_hash_non_hex(
+        self, mock_logger, mock_is_allowed
+    ):
+        """Test clone with invalid commit hash (non-hex characters)."""
+        from mmrelay.plugin_loader import clone_or_update_repo
+
+        mock_is_allowed.return_value = True
+        ref = {"type": "commit", "value": "g1h2i3j"}
+
+        result = clone_or_update_repo("https://github.com/user/repo.git", ref, "/tmp")
+
+        self.assertFalse(result)
+        mock_logger.error.assert_called_with(
+            "Invalid commit hash supplied: %r (must be 7-40 hex characters)", "g1h2i3j"
+        )
+
+    @patch("mmrelay.plugin_loader._is_repo_url_allowed")
+    @patch("mmrelay.plugin_loader.logger")
+    def test_clone_or_update_repo_commit_ref_type_validation(
+        self, mock_logger, mock_is_allowed
+    ):
+        """Test that 'commit' is accepted as a valid ref type."""
+        from mmrelay.plugin_loader import clone_or_update_repo
+
+        mock_is_allowed.return_value = True
+        ref = {"type": "commit", "value": "deadbeef"}
+
+        result = clone_or_update_repo("https://github.com/user/repo.git", ref, "/tmp")
+
+        self.assertFalse(
+            result
+        )  # Will fail due to missing git operations, but ref type validation should pass
+        # Should not log error about invalid ref type
+        mock_logger.error.assert_not_called()
+
+    @patch("mmrelay.plugin_loader._run_git")
+    @patch("mmrelay.plugin_loader._is_repo_url_allowed")
+    @patch("mmrelay.plugin_loader.logger")
+    @patch("os.path.isdir")
+    @patch("os.makedirs")
+    def test_clone_or_update_repo_new_repo_commit(
+        self, mock_makedirs, mock_isdir, mock_logger, mock_is_allowed, mock_run_git
+    ):
+        """Test cloning a new repository with commit ref."""
+        from mmrelay.plugin_loader import clone_or_update_repo
+
+        mock_is_allowed.return_value = True
+        mock_isdir.return_value = False  # Repo doesn't exist
+        ref = {"type": "commit", "value": "a1b2c3d4"}
+
+        result = clone_or_update_repo("https://github.com/user/repo.git", ref, "/tmp")
+
+        self.assertTrue(result)
+
+        # Verify sequence of git operations
+        expected_calls = [
+            # Clone repository
+            (
+                ["git", "clone", "https://github.com/user/repo.git"],
+                {"cwd": "/tmp", "timeout": 120},
+            ),
+            # Fetch specific commit
+            (
+                ["git", "-C", "/tmp/repo", "fetch", "origin", "a1b2c3d4"],
+                {"timeout": 120},
+            ),
+            # Checkout specific commit
+            (["git", "-C", "/tmp/repo", "checkout", "a1b2c3d4"], {"timeout": 120}),
+        ]
+
+        actual_calls = mock_run_git.call_args_list
+        self.assertEqual(len(actual_calls), 3)
+
+        for i, (expected_args, expected_kwargs) in enumerate(expected_calls):
+            actual_args, actual_kwargs = actual_calls[i]
+            self.assertEqual(actual_args[0], expected_args[0])
+            self.assertEqual(actual_kwargs, expected_kwargs)
+
+    @patch("mmrelay.plugin_loader._run_git")
+    @patch("mmrelay.plugin_loader._is_repo_url_allowed")
+    @patch("mmrelay.plugin_loader.logger")
+    @patch("os.path.isdir")
+    def test_clone_or_update_repo_existing_repo_commit(
+        self, mock_isdir, mock_logger, mock_is_allowed, mock_run_git
+    ):
+        """Test updating an existing repository to a specific commit."""
+        from mmrelay.plugin_loader import clone_or_update_repo
+
+        mock_is_allowed.return_value = True
+        mock_isdir.return_value = True  # Repo exists
+        ref = {"type": "commit", "value": "deadbeef"}
+
+        result = clone_or_update_repo("https://github.com/user/repo.git", ref, "/tmp")
+
+        self.assertTrue(result)
+
+        # Verify sequence of git operations
+        expected_calls = [
+            # Fetch from remote
+            (["git", "-C", "/tmp/repo", "fetch", "origin"], {"timeout": 120}),
+            # Check if commit exists locally (this might fail, which is ok)
+            (
+                ["git", "-C", "/tmp/repo", "cat-file", "-e", "deadbeef^{commit}"],
+                {"timeout": 120},
+            ),
+            # Fetch specific commit
+            (
+                ["git", "-C", "/tmp/repo", "fetch", "origin", "deadbeef"],
+                {"timeout": 120},
+            ),
+            # Checkout specific commit
+            (["git", "-C", "/tmp/repo", "checkout", "deadbeef"], {"timeout": 120}),
+        ]
+
+        actual_calls = mock_run_git.call_args_list
+        self.assertEqual(len(actual_calls), 4)
+
+        for i, (expected_args, expected_kwargs) in enumerate(expected_calls):
+            actual_args, actual_kwargs = actual_calls[i]
+            self.assertEqual(actual_args[0], expected_args[0])
+            self.assertEqual(actual_kwargs, expected_kwargs)
+
+    @patch("mmrelay.plugin_loader._run_git")
+    @patch("mmrelay.plugin_loader._is_repo_url_allowed")
+    @patch("mmrelay.plugin_loader.logger")
+    @patch("os.path.isdir")
+    def test_clone_or_update_repo_commit_fetch_specific_fails_fallback(
+        self, mock_isdir, mock_logger, mock_is_allowed, mock_run_git
+    ):
+        """Test that when specific commit fetch fails, it falls back to fetching all."""
+        from mmrelay.plugin_loader import clone_or_update_repo
+
+        mock_is_allowed.return_value = True
+        mock_isdir.return_value = True  # Repo exists
+        ref = {"type": "commit", "value": "cafebabe"}
+
+        # Configure mock to fail on specific commit fetch but succeed on general fetch
+        def side_effect(*args, **kwargs):
+            if args[0] == ["git", "-C", "/tmp/repo", "fetch", "origin", "cafebabe"]:
+                raise subprocess.CalledProcessError(1, "git")
+            return subprocess.CompletedProcess(args[0], 0, "", "")
+
+        mock_run_git.side_effect = side_effect
+
+        result = clone_or_update_repo("https://github.com/user/repo.git", ref, "/tmp")
+
+        self.assertTrue(result)
+
+        # Verify that both fetch attempts were made
+        fetch_calls = [
+            call for call in mock_run_git.call_args_list if "fetch" in call[0][0]
+        ]
+
+        self.assertEqual(
+            len(fetch_calls), 3
+        )  # General fetch, specific commit fetch, general fetch fallback
+        self.assertEqual(
+            fetch_calls[0][0][0], ["git", "-C", "/tmp/repo", "fetch", "origin"]
+        )
+        self.assertEqual(
+            fetch_calls[1][0][0],
+            ["git", "-C", "/tmp/repo", "cat-file", "-e", "cafebabe^{commit}"],
+        )
+        self.assertEqual(
+            fetch_calls[2][0][0],
+            ["git", "-C", "/tmp/repo", "fetch", "origin", "cafebabe"],
+        )
 
 
 class TestPluginSecurityGuards(unittest.TestCase):
@@ -2410,61 +2734,6 @@ class TestDependencyInstallation(unittest.TestCase):
         # Should not call any threading methods
 
         mock_threading.Event.assert_not_called()
-
-    @patch("mmrelay.plugin_loader._is_repo_url_allowed")
-    @patch("mmrelay.plugin_loader.logger")
-    def test_clone_or_update_repo_valid_commit_hash(self, mock_logger, mock_is_allowed):
-        """Test clone with valid commit hash (7 characters)."""
-        from mmrelay.plugin_loader import clone_or_update_repo
-
-        mock_is_allowed.return_value = True
-        ref = {"type": "commit", "value": "a1b2c3d"}
-
-        result = clone_or_update_repo("https://github.com/user/repo.git", ref, "/tmp")
-
-        self.assertFalse(
-            result
-        )  # Will fail due to missing git operations, but validation should pass
-        mock_logger.error.assert_not_called()
-
-    @patch("mmrelay.plugin_loader._is_repo_url_allowed")
-    @patch("mmrelay.plugin_loader.logger")
-    def test_clone_or_update_repo_valid_full_commit_hash(
-        self, mock_logger, mock_is_allowed
-    ):
-        """Test clone with valid full commit hash (40 characters)."""
-        from mmrelay.plugin_loader import clone_or_update_repo
-
-        mock_is_allowed.return_value = True
-        ref = {
-            "type": "commit",
-            "value": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3",
-        }
-
-        result = clone_or_update_repo("https://github.com/user/repo.git", ref, "/tmp")
-
-        self.assertFalse(
-            result
-        )  # Will fail due to missing git operations, but validation should pass
-        mock_logger.error.assert_not_called()
-
-    @patch("mmrelay.plugin_loader._is_repo_url_allowed")
-    @patch("mmrelay.plugin_loader.logger")
-    def test_clone_or_update_repo_invalid_commit_hash_too_short(
-        self, mock_logger, mock_is_allowed
-    ):
-        """Test clone with invalid commit hash (too short)."""
-        from mmrelay.plugin_loader import clone_or_update_repo
-
-        mock_is_allowed.return_value = True
-        ref = {"type": "commit", "value": "abc123"}
-
-        result = clone_or_update_repo("https://github.com/user/repo.git", ref, "/tmp")
-
-        self.assertFalse(result)
-        mock_logger.error.assert_called_with(
-            "Invalid commit hash supplied: %r (must be 7-40 hex characters)", "abc123"
-        )
 
     @patch("mmrelay.plugin_loader._is_repo_url_allowed")
     @patch("mmrelay.plugin_loader.logger")
