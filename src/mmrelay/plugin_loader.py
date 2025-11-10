@@ -1417,13 +1417,18 @@ def _clone_new_repo_to_branch_or_tag(
                 f"Cloned repository {repo_name} from {redacted_url} at {ref_type} {branch_name}"
             )
 
+            success = True
             if ref_type != "branch" or not is_default_branch:
                 # Post-clone operations for tags and non-default branches
                 if ref_type == "tag":
-                    _try_fetch_and_checkout_tag(repo_path, ref_value, repo_name)
+                    success = _try_fetch_and_checkout_tag(
+                        repo_path, ref_value, repo_name
+                    )
                 elif ref_type == "branch":
-                    _try_checkout_as_branch(repo_path, ref_value, repo_name)
-            return True
+                    success = _try_checkout_as_branch(repo_path, ref_value, repo_name)
+
+            if success:
+                return True
         except subprocess.CalledProcessError:
             logger.warning(
                 f"Could not clone with {ref_type} {branch_name}, trying next option."

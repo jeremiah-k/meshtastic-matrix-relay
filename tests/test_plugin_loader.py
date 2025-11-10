@@ -2997,6 +2997,30 @@ class TestDependencyInstallation(BaseGitTest):
 
         self.assertEqual(result, (False, None, None, None, None))
 
+    def test_validate_clone_inputs_invalid_commit_too_short(self):
+        """Test _validate_clone_inputs with commit hash too short (< 7 chars)."""
+        ref = {"type": "commit", "value": "abc123"}  # 6 chars
+        result = _validate_clone_inputs("https://github.com/user/repo.git", ref)
+
+        self.assertEqual(result, (False, None, None, None, None))
+
+    def test_validate_clone_inputs_invalid_commit_too_long(self):
+        """Test _validate_clone_inputs with commit hash too long (> 40 chars)."""
+        ref = {
+            "type": "commit",
+            "value": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4",
+        }  # 41 chars
+        result = _validate_clone_inputs("https://github.com/user/repo.git", ref)
+
+        self.assertEqual(result, (False, None, None, None, None))
+
+    def test_validate_clone_inputs_invalid_commit_non_hex(self):
+        """Test _validate_clone_inputs with commit hash containing non-hex characters."""
+        ref = {"type": "commit", "value": "g1b2c3d"}  # contains 'g'
+        result = _validate_clone_inputs("https://github.com/user/repo.git", ref)
+
+        self.assertEqual(result, (False, None, None, None, None))
+
     @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader.logger")
     def test_clone_new_repo_to_branch_or_tag_default_branch_success(
@@ -3264,7 +3288,9 @@ class TestDependencyInstallation(BaseGitTest):
             self.temp_plugins_dir,
             False,  # not default branch
         )
-        self.assertTrue(result)
+        self.assertFalse(
+            result
+        )  # Tag checkout should fail, so overall operation should fail
 
     @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader.logger")

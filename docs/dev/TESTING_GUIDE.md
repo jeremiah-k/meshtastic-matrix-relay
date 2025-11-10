@@ -306,6 +306,7 @@ def test_clone_or_update_repo_invalid_url(self, mock_logger, mock_some_func, url
 @patch("mmrelay.module.logger")
 def test_clone_or_update_repo_invalid_url_empty(self, mock_logger, mock_some_func):
     """Test clone with empty URL."""
+    ref = {"type": "branch", "value": "main"}
     result = clone_or_update_repo("", ref, "/tmp")
     self.assertFalse(result)
 
@@ -313,6 +314,7 @@ def test_clone_or_update_repo_invalid_url_empty(self, mock_logger, mock_some_fun
 @patch("mmrelay.module.logger")
 def test_clone_or_update_repo_invalid_url_whitespace(self, mock_logger, mock_some_func):
     """Test clone with whitespace-only URL."""
+    ref = {"type": "branch", "value": "main"}
     result = clone_or_update_repo("   ", ref, "/tmp")
     self.assertFalse(result)
 ```
