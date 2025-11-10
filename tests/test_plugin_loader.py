@@ -813,6 +813,19 @@ class Plugin:
 
         # Configure mock to fail on cat-file (commit not found locally) but succeed on fetch and checkout
         def side_effect(*args, **kwargs):
+            """
+            Simulates a git subprocess side effect for tests: succeeds for most commands but fails when checking for a commit object.
+            
+            Parameters:
+                *args: Positional arguments forwarded from subprocess.run/called invocation; the first element is expected to be the git command sequence (list or str).
+                **kwargs: Ignored.
+            
+            Returns:
+                subprocess.CompletedProcess: A successful result with return code 0 and empty output.
+            
+            Raises:
+                subprocess.CalledProcessError: If the provided git command attempts a `cat-file` check (simulates "commit not found locally").
+            """
             if "cat-file" in args[0]:
                 raise subprocess.CalledProcessError(
                     1, "git"
@@ -867,6 +880,15 @@ class Plugin:
 
         # Configure mock to fail on specific commit fetch and cat-file but succeed on general fetch
         def side_effect(*args, **kwargs):
+            """
+            Simulate subprocess behavior for git commands used in tests.
+            
+            Returns:
+                subprocess.CompletedProcess: A successful completed process with exit code 0 for most commands.
+            
+            Raises:
+                subprocess.CalledProcessError: If the command is a fetch for commit "cafebabe" in /tmp/repo or any command containing "cat-file".
+            """
             if args[0] == ["git", "-C", "/tmp/repo", "fetch", "origin", "cafebabe"]:
                 raise subprocess.CalledProcessError(1, "git")
             if "cat-file" in args[0]:
@@ -911,6 +933,11 @@ class Plugin:
 
         # Configure mock to succeed on all git operations
         def mock_run_git_side_effect(*args, **kwargs):
+            """
+            Mock side effect for git command calls used in tests.
+            
+            Simulates successful git operations: a fetch for the specific commit "abcd1234" (when command length is 4 and last arg is "abcd1234"), any general fetch (when command length is 3), a commit existence check via `cat-file`, and a checkout; all other inputs are treated as successful no-ops. Accepts arbitrary positional and keyword arguments and always returns None.
+            """
             cmd = args[0]
             if "fetch" in cmd and len(cmd) == 4 and cmd[3] == "abcd1234":
                 return None  # Specific fetch succeeds
@@ -961,6 +988,17 @@ class Plugin:
 
         # Configure mock to fail on specific commit fetch but succeed on fallback
         def side_effect(*args, **kwargs):
+            """
+            Test helper that simulates subprocess responses for git commands in tests.
+            
+            Simulates a failing `git fetch` for the exact command ["git", "-C", "/tmp/repo", "fetch", "origin", "cdef5678"] and a failing git "cat-file" invocation; for all other calls it returns a successful CompletedProcess with empty stdout/stderr.
+            
+            Returns:
+                subprocess.CompletedProcess: Successful result for non-matching commands.
+            
+            Raises:
+                subprocess.CalledProcessError: When the command matches the specific fetch case or contains "cat-file".
+            """
             if args[0] == ["git", "-C", "/tmp/repo", "fetch", "origin", "cdef5678"]:
                 raise subprocess.CalledProcessError(1, "git")
             if "cat-file" in args[0]:
@@ -1002,6 +1040,17 @@ class Plugin:
 
         # Configure mock to fail on both specific and fallback fetch
         def side_effect(*args, **kwargs):
+            """
+            Simulates subprocess behavior for git commands used in tests.
+            
+            Raises subprocess.CalledProcessError for specific failing git invocations:
+            - ["git", "-C", "/tmp/repo", "fetch", "origin", "abcd1234"]
+            - ["git", "-C", "/tmp/repo", "fetch", "origin"] (fallback fetch)
+            - any invocation whose argument list contains "cat-file"
+            
+            Returns:
+                subprocess.CompletedProcess: A successful CompletedProcess with returncode 0 and empty stdout/stderr for all other commands.
+            """
             if args[0] == ["git", "-C", "/tmp/repo", "fetch", "origin", "abcd1234"]:
                 raise subprocess.CalledProcessError(1, "git")
             if args[0] == ["git", "-C", "/tmp/repo", "fetch", "origin"]:
@@ -1779,6 +1828,19 @@ class TestGitOperations(unittest.TestCase):
         """Test that clone_or_update_repo handles checkout and pull for tag (lines 991-1003)."""
 
         def mock_run_git_side_effect(*args, **kwargs):
+            """
+            Simulate subprocess/git call side effects for tests by returning success (None) for most commands
+            and a MagicMock with a stdout containing a commit hash for `rev-parse` commands.
+            
+            Parameters:
+                *args: Positional arguments passed to the mocked runner; the first positional argument is
+                    expected to be the git command (string or sequence) inspected by this helper.
+                **kwargs: Additional keyword arguments forwarded by the mock (ignored by this helper).
+            
+            Returns:
+                None for commands treated as successful (`fetch`, `checkout`, `pull`), or a MagicMock
+                whose `stdout` contains a bytes-encoded commit hash for `rev-parse` commands.
+            """
             cmd = args[0]
             if "fetch" in cmd:
                 return None  # fetch succeeds
