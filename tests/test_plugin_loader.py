@@ -3236,7 +3236,7 @@ class TestDependencyInstallation(unittest.TestCase):
         )
 
         self.assertTrue(result)
-        mock_logger.info.assert_called_with("Switched to and updated branch main")
+        mock_logger.info.assert_called_with("Updated repository repo to branch main")
 
     @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader.logger")
