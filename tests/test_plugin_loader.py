@@ -742,6 +742,7 @@ class Plugin:
         from mmrelay.plugin_loader import clone_or_update_repo
 
         mock_is_allowed.return_value = True
+        # Mock git operations to fail by raising exception on first call
         mock_run_git.side_effect = subprocess.CalledProcessError(1, "git")
         ref = {"type": "commit", "value": "a1b2c3d"}
 
@@ -1686,31 +1687,36 @@ class TestCommandRunner(unittest.TestCase):
                 _run(["git"], retry_attempts=2, retry_delay=0)
             self.assertEqual(mock_subprocess.call_count, 2)
 
-    def test_run_type_error_not_list(self):
+    @patch("subprocess.run")
+    def test_run_type_error_not_list(self, mock_subprocess):
         """Test _run raises TypeError for non-list command."""
         with self.assertRaises(TypeError) as cm:
             _run("git status")  # type: ignore[arg-type]
         self.assertIn("cmd must be a list of str", str(cm.exception))
 
-    def test_run_value_error_empty_list(self):
+    @patch("subprocess.run")
+    def test_run_value_error_empty_list(self, mock_subprocess):
         """Test _run raises ValueError for empty command list."""
         with self.assertRaises(ValueError) as cm:
             _run([])
         self.assertIn("Command list cannot be empty", str(cm.exception))
 
-    def test_run_type_error_non_string_args(self):
+    @patch("subprocess.run")
+    def test_run_type_error_non_string_args(self, mock_subprocess):
         """Test _run raises TypeError for non-string arguments."""
         with self.assertRaises(TypeError) as cm:
             _run(["git", 123])  # type: ignore[list-item]
         self.assertIn("all command arguments must be strings", str(cm.exception))
 
-    def test_run_value_error_empty_args(self):
+    @patch("subprocess.run")
+    def test_run_value_error_empty_args(self, mock_subprocess):
         """Test _run raises ValueError for empty/whitespace arguments."""
         with self.assertRaises(ValueError) as cm:
             _run(["git", ""])
         self.assertIn("command arguments cannot be empty/whitespace", str(cm.exception))
 
-    def test_run_value_error_shell_true(self):
+    @patch("subprocess.run")
+    def test_run_value_error_shell_true(self, mock_subprocess):
         """Test _run raises ValueError for shell=True."""
         with self.assertRaises(ValueError) as cm:
             _run(["git", "status"], shell=True)  # noqa: S604 - intentional for test
