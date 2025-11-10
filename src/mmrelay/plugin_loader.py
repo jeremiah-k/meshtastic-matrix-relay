@@ -1214,7 +1214,7 @@ def _fallback_to_default_branches(
     logger.warning(
         f"Could not checkout any branch for {repo_name}, using current state"
     )
-    return True
+    return False
 
 
 def _update_existing_repo_to_branch_or_tag(
