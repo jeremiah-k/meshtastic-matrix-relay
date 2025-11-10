@@ -328,7 +328,7 @@ def _is_repo_url_allowed(repo_url: str) -> bool:
             return False
         logger.error(
             "Invalid repository '%s'. Local paths are disabled, and remote URLs must include a scheme (e.g., 'https://').",
-            repo_url,
+            _redact_url(repo_url),
         )
         return False
 
@@ -756,7 +756,7 @@ def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
         )
 
 
-def _get_plugin_dirs(plugin_type):
+def _get_plugin_dirs(plugin_type: str) -> list[str]:
     """
     Return a prioritized list of existing plugin directories for the given plugin type.
 
@@ -1395,8 +1395,14 @@ def _validate_clone_inputs(repo_url, ref):
 
 
 def _clone_new_repo_to_branch_or_tag(
-    repo_url, repo_path, ref_type, ref_value, repo_name, plugins_dir, is_default_branch
-):
+    repo_url: str,
+    repo_path: str,
+    ref_type: str,
+    ref_value: str,
+    repo_name: str,
+    plugins_dir: str,
+    is_default_branch: bool,
+) -> bool:
     """
     Clone a new repository and checkout a specific branch or tag.
 
@@ -1467,96 +1473,85 @@ def _clone_new_repo_to_branch_or_tag(
                     )
                     return True
         else:
-            # It's a tag, try to clone with the tag
-            try:
-                # Try to clone with the specified tag
-                _run_git(
-                    ["git", "clone", "--branch", ref_value, repo_url],
-                    cwd=plugins_dir,
-                    timeout=120,
-                )
-                if ref_type == "branch":
+            if ref_type == "branch":
+                # Non-default branch
+                try:
+                    _run_git(
+                        ["git", "clone", "--branch", ref_value, repo_url],
+                        cwd=plugins_dir,
+                        timeout=120,
+                    )
                     logger.info(
                         f"Cloned repository {repo_name} from {redacted_url} at branch {ref_value}"
                     )
-                else:
-                    logger.info(
-                        f"Cloned repository {repo_name} from {redacted_url} at tag {ref_value}"
-                    )
-                return True
-            except subprocess.CalledProcessError:
-                # If cloning with the specific ref fails, clean up any partial directory and
-                # clone without specifying branch/tag to get default branch, then fetch/checkout.
-                logger.warning(
-                    f"Could not clone with ref '{ref_value}' directly. Attempting to fetch and checkout."
-                )
-                # Clean up any partial directory from failed clone
-                if os.path.isdir(repo_path):
-                    shutil.rmtree(repo_path, ignore_errors=True)
-                # Clone without specifying branch/tag to get default branch
-                _run_git(
-                    ["git", "clone", repo_url],
-                    cwd=plugins_dir,
-                    timeout=120,
-                )
-
-            # Then try to fetch and checkout the tag
-            try:
-                # Try to fetch the tag
-                try:
-                    _run_git(
-                        [
-                            "git",
-                            "-C",
-                            repo_path,
-                            "fetch",
-                            "origin",
-                            f"refs/tags/{ref_value}",
-                        ]
-                    )
+                    return True
                 except subprocess.CalledProcessError:
-                    # If that fails, try fetching with a more explicit refspec to force updating the local tag
-                    _run_git(
-                        [
-                            "git",
-                            "-C",
-                            repo_path,
-                            "fetch",
-                            "origin",
-                            f"refs/tags/{ref_value}:refs/tags/{ref_value}",
-                        ]
-                    )
-
-                # Now checkout the tag
-                _run_git(
-                    ["git", "-C", repo_path, "checkout", ref_value],
-                    timeout=120,
-                )
-                if ref_type == "branch":
-                    logger.info(
-                        f"Cloned repository {repo_name} and checked out branch {ref_value}"
-                    )
-                else:
-                    logger.info(
-                        f"Cloned repository {repo_name} and checked out tag {ref_value}"
-                    )
-                return True
-            except subprocess.CalledProcessError:
-                # If that fails, try as a branch
-                try:
                     logger.warning(
-                        f"Could not checkout {ref_value} as a tag, trying as a branch"
+                        f"Could not clone with branch {ref_value}, cloning default branch"
                     )
+                    if os.path.isdir(repo_path):
+                        shutil.rmtree(repo_path, ignore_errors=True)
+                    _run_git(["git", "clone", repo_url], cwd=plugins_dir, timeout=120)
+                # Fetch/checkout the branch post-clone
+                try:
                     _run_git(
                         ["git", "-C", repo_path, "fetch", "origin", ref_value],
                         timeout=120,
                     )
+                except subprocess.CalledProcessError:
+                    pass
+                _run_git(["git", "-C", repo_path, "checkout", ref_value], timeout=120)
+                logger.info(
+                    f"Cloned repository {repo_name} and checked out branch {ref_value}"
+                )
+                return True
+            else:
+                # Tag flow (existing logic)
+                try:
                     _run_git(
-                        ["git", "-C", repo_path, "checkout", ref_value],
+                        ["git", "clone", "--branch", ref_value, repo_url],
+                        cwd=plugins_dir,
                         timeout=120,
                     )
                     logger.info(
-                        f"Cloned repository {repo_name} and checked out branch {ref_value}"
+                        f"Cloned repository {repo_name} from {redacted_url} at tag {ref_value}"
+                    )
+                    return True
+                except subprocess.CalledProcessError:
+                    logger.warning(
+                        f"Could not clone with ref '{ref_value}' directly. Attempting to fetch and checkout."
+                    )
+                    if os.path.isdir(repo_path):
+                        shutil.rmtree(repo_path, ignore_errors=True)
+                    _run_git(["git", "clone", repo_url], cwd=plugins_dir, timeout=120)
+                try:
+                    try:
+                        _run_git(
+                            [
+                                "git",
+                                "-C",
+                                repo_path,
+                                "fetch",
+                                "origin",
+                                f"refs/tags/{ref_value}",
+                            ]
+                        )
+                    except subprocess.CalledProcessError:
+                        _run_git(
+                            [
+                                "git",
+                                "-C",
+                                repo_path,
+                                "fetch",
+                                "origin",
+                                f"refs/tags/{ref_value}:refs/tags/{ref_value}",
+                            ]
+                        )
+                    _run_git(
+                        ["git", "-C", repo_path, "checkout", ref_value], timeout=120
+                    )
+                    logger.info(
+                        f"Cloned repository {repo_name} and checked out tag {ref_value}"
                     )
                     return True
                 except subprocess.CalledProcessError:

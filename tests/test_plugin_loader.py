@@ -17,7 +17,7 @@ import subprocess  # nosec B404 - Used for controlled test environment operation
 import sys
 import tempfile
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -96,7 +96,22 @@ class MockPlugin:
         pass
 
 
-class TestPluginLoader(unittest.TestCase):
+class BaseGitTest(unittest.TestCase):
+    """Base class for tests that need temporary Git repository directories."""
+
+    def setUp(self):
+        super().setUp()
+        self.temp_plugins_dir = tempfile.mkdtemp()
+        self.temp_repo_path = os.path.join(self.temp_plugins_dir, "repo")
+
+    def tearDown(self):
+        super().tearDown()
+        import shutil
+
+        shutil.rmtree(self.temp_plugins_dir, ignore_errors=True)
+
+
+class TestPluginLoader(BaseGitTest):
     """Test cases for plugin loading functionality."""
 
     def setUp(self):
@@ -805,20 +820,17 @@ class Plugin:
             ),
         ]
 
-        actual_calls = mock_run_git.call_args_list
-        self.assertEqual(len(actual_calls), 2)
-
-        for i, (expected_args, expected_kwargs) in enumerate(expected_calls):
-            actual_args, actual_kwargs = actual_calls[i]
-            self.assertEqual(actual_args[0], expected_args)
-            self.assertEqual(actual_kwargs, expected_kwargs)
+        mock_run_git.assert_has_calls(
+            [call(args, **kwargs) for args, kwargs in expected_calls],
+            any_order=False,
+        )
 
     @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader._is_repo_url_allowed")
     @patch("mmrelay.plugin_loader.logger")
     @patch("os.path.isdir")
     def test_clone_or_update_repo_existing_repo_commit(
-        self, mock_isdir, mock_logger, mock_is_allowed, mock_run_git
+        self, mock_isdir, _mock_logger, mock_is_allowed, mock_run_git
     ):
         """Test updating an existing repository to a specific commit."""
 
@@ -886,20 +898,17 @@ class Plugin:
             ),
         ]
 
-        actual_calls = mock_run_git.call_args_list
-        self.assertEqual(len(actual_calls), 4)
-
-        for i, (expected_args, expected_kwargs) in enumerate(expected_calls):
-            actual_args, actual_kwargs = actual_calls[i]
-            self.assertEqual(actual_args[0], expected_args)
-            self.assertEqual(actual_kwargs, expected_kwargs)
+        mock_run_git.assert_has_calls(
+            [call(args, **kwargs) for args, kwargs in expected_calls],
+            any_order=False,
+        )
 
     @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader._is_repo_url_allowed")
     @patch("mmrelay.plugin_loader.logger")
     @patch("os.path.isdir")
     def test_clone_or_update_repo_commit_fetch_specific_fails_fallback(
-        self, mock_isdir, mock_logger, mock_is_allowed, mock_run_git
+        self, mock_isdir, _mock_logger, mock_is_allowed, mock_run_git
     ):
         """Test that when specific commit fetch fails, it falls back to fetching all."""
 
@@ -961,7 +970,7 @@ class Plugin:
     @patch("mmrelay.plugin_loader.logger")
     @patch("os.path.isdir")
     def test_clone_or_update_repo_commit_fetch_success_no_fallback(
-        self, mock_isdir, mock_logger, mock_is_allowed, mock_run_git
+        self, mock_isdir, _mock_logger, mock_is_allowed, mock_run_git
     ):
         """Test successful commit fetch without fallback."""
 
@@ -1015,20 +1024,17 @@ class Plugin:
             ),
         ]
 
-        actual_calls = mock_run_git.call_args_list
-        self.assertEqual(len(actual_calls), 3)
-
-        for i, (expected_args, expected_kwargs) in enumerate(expected_calls):
-            actual_args, actual_kwargs = actual_calls[i]
-            self.assertEqual(actual_args[0], expected_args)
-            self.assertEqual(actual_kwargs, expected_kwargs)
+        mock_run_git.assert_has_calls(
+            [call(args, **kwargs) for args, kwargs in expected_calls],
+            any_order=False,
+        )
 
     @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader._is_repo_url_allowed")
     @patch("mmrelay.plugin_loader.logger")
     @patch("os.path.isdir")
     def test_clone_or_update_repo_commit_fetch_fallback_success(
-        self, mock_isdir, mock_logger, mock_is_allowed, mock_run_git
+        self, mock_isdir, _mock_logger, mock_is_allowed, mock_run_git
     ):
         """Test commit fetch that fails specific but succeeds with fallback."""
         mock_is_allowed.return_value = True
@@ -1653,21 +1659,6 @@ class TestRequirementFiltering(unittest.TestCase):
         self.assertIn("-ihttps://malicious.example.com/simple", flagged)
         self.assertIn("-egit+https://github.com/user/repo.git", flagged)
         self.assertFalse(_allow)
-
-
-class BaseGitTest(unittest.TestCase):
-    """Base class for tests that need temporary Git repository directories."""
-
-    def setUp(self):
-        super().setUp()
-        self.temp_plugins_dir = tempfile.mkdtemp()
-        self.temp_repo_path = os.path.join(self.temp_plugins_dir, "repo")
-
-    def tearDown(self):
-        super().tearDown()
-        import shutil
-
-        shutil.rmtree(self.temp_plugins_dir, ignore_errors=True)
 
 
 class TestGitOperations(BaseGitTest):
