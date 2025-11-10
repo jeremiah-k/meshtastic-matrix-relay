@@ -746,10 +746,10 @@ class Plugin:
     @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader._is_repo_url_allowed")
     @patch("mmrelay.plugin_loader.logger")
-    def test_clone_or_update_repo_valid_full_commit_hash(
+    def test_clone_or_update_repo_valid_short_commit_hash(
         self, mock_logger, mock_is_allowed, mock_run_git
     ):
-        """Test clone with valid commit hash (7 characters)."""
+        """Test clone with valid short commit hash (7 characters)."""
 
         mock_is_allowed.return_value = True
         # Mock git operations to fail by raising exception on first call
@@ -1139,9 +1139,9 @@ class Plugin:
         # Verify fallback failure was logged
         self.assertTrue(mock_logger.warning.called)
         warning_calls = [
-            call[0][0]
-            for call in mock_logger.warning.call_args_list
-            if "Fallback fetch also failed" in call[0][0]
+            warn_call[0][0]
+            for warn_call in mock_logger.warning.call_args_list
+            if "Fallback fetch also failed" in warn_call[0][0]
         ]
         self.assertTrue(len(warning_calls) > 0)
 
@@ -1979,15 +1979,25 @@ class TestCommandRunner(unittest.TestCase):
                 _run(["git"], retry_attempts=2, retry_delay=0)
             self.assertEqual(mock_subprocess.call_count, 2)
 
-    @patch("subprocess.run")
-    def test_run_type_error_not_list(self, mock_subprocess):
+    def test_run_type_error_not_list(self):
         """Test _run raises TypeError for non-list command."""
         with self.assertRaises(TypeError) as cm:
             _run("git status")  # type: ignore[arg-type]
         self.assertIn("cmd must be a list of str", str(cm.exception))
 
-    @patch("subprocess.run")
-    def test_run_value_error_empty_list(self, mock_subprocess):
+    def test_run_value_error_empty_list(self):
+        """Test _run raises ValueError for empty command list."""
+        with self.assertRaises(ValueError) as cm:
+            _run([])
+        self.assertIn("Command list cannot be empty", str(cm.exception))
+
+    def test_run_type_error_non_string_args(self):
+        """Test _run raises TypeError for non-string arguments."""
+        with self.assertRaises(TypeError) as cm:
+            _run(["git", 123])  # type: ignore[list-item]
+        self.assertIn("Command list cannot be empty", str(cm.exception))
+
+    def test_run_value_error_empty_args(self):
         """Test _run raises ValueError for empty command list."""
         with self.assertRaises(ValueError) as cm:
             _run([])

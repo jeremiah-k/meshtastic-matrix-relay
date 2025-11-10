@@ -288,6 +288,9 @@ def _redact_url(url: str) -> str:
         # Build netloc (only redact credentials if present)
         if s.username or s.password:
             host = s.hostname or ""
+            # Bracket IPv6 literals in netloc to keep URL valid
+            if ":" in host and not host.startswith("["):
+                host = f"[{host}]"
             netloc = (
                 f"{'***' if s.username else ''}{':***' if s.password else ''}@{host}"
             )
@@ -297,7 +300,17 @@ def _redact_url(url: str) -> str:
             netloc = s.netloc
 
         # Always redact sensitive query parameters
-        sensitive = {"token", "access_token", "auth", "key", "password", "pwd"}
+        sensitive = {
+            "token",
+            "access_token",
+            "auth",
+            "key",
+            "password",
+            "pwd",
+            "private_token",
+            "oauth_token",
+            "x-access-token",
+        }
         q = parse_qsl(s.query, keep_blank_values=True)
         redacted = [(k, "***" if k.lower() in sensitive else v) for k, v in q]
         query = urlencode(redacted)
@@ -1076,11 +1089,14 @@ def _try_checkout_and_pull_ref(
     repo_path: str, ref_value: str, repo_name: str, ref_type: str = "branch"
 ) -> bool:
     """
-    Attempt to checkout a ref and pull from origin.
+    Attempt to checkout a branch ref and pull from origin.
+
+    This helper is branch-oriented; it always executes git pull origin <ref_value>,
+    which is meaningful for branches, not tags.
 
     Parameters:
         repo_path (str): Path to the repository.
-        ref_value (str): The ref to checkout and pull.
+        ref_value (str): The branch ref to checkout and pull.
         repo_name (str): Name of the repository for logging.
         ref_type (str): Type of ref ("branch" or "tag").
 
@@ -1439,7 +1455,14 @@ def _clone_new_repo_to_branch_or_tag(
             try:
                 # Try to clone with the specified branch
                 _run_git(
-                    ["git", "clone", "--branch", ref_value, repo_url, repo_name],
+                    [
+                        "git",
+                        "clone",
+                        "--branch",
+                        ref_value,
+                        repo_url,
+                        repo_name,
+                    ],
                     cwd=plugins_dir,
                     timeout=120,
                 )
@@ -1498,7 +1521,14 @@ def _clone_new_repo_to_branch_or_tag(
                 # Non-default branch
                 try:
                     _run_git(
-                        ["git", "clone", "--branch", ref_value, repo_url],
+                        [
+                            "git",
+                            "clone",
+                            "--branch",
+                            ref_value,
+                            repo_url,
+                            repo_name,
+                        ],
                         cwd=plugins_dir,
                         timeout=120,
                     )
@@ -1530,7 +1560,14 @@ def _clone_new_repo_to_branch_or_tag(
                 # Tag flow (existing logic)
                 try:
                     _run_git(
-                        ["git", "clone", "--branch", ref_value, repo_url, repo_name],
+                        [
+                            "git",
+                            "clone",
+                            "--branch",
+                            ref_value,
+                            repo_url,
+                            repo_name,
+                        ],
                         cwd=plugins_dir,
                         timeout=120,
                     )
