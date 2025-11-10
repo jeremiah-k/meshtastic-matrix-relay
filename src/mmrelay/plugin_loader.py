@@ -999,9 +999,17 @@ def clone_or_update_repo(repo_url, ref, plugins_dir):
                             )
                         except subprocess.CalledProcessError:
                             logger.warning(
-                                f"Could not fetch commit {ref_value} from remote"
+                                f"Could not fetch commit {ref_value} from remote, trying general fetch"
                             )
-                            return False
+                            # Fall back to fetching everything
+                            try:
+                                _run_git(
+                                    ["git", "-C", repo_path, "fetch", "origin"],
+                                    timeout=120,
+                                )
+                            except subprocess.CalledProcessError as e:
+                                logger.warning(f"Fallback fetch also failed: {e}")
+                                return False
 
                     # Checkout the specific commit
                     _run_git(

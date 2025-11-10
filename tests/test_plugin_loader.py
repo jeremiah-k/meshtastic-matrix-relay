@@ -800,7 +800,7 @@ class Plugin:
 
         for i, (expected_args, expected_kwargs) in enumerate(expected_calls):
             actual_args, actual_kwargs = actual_calls[i]
-            self.assertEqual(actual_args[0], expected_args[0])
+            self.assertEqual(actual_args[0], expected_args)
             self.assertEqual(actual_kwargs, expected_kwargs)
 
     @patch("mmrelay.plugin_loader._run_git")
@@ -823,16 +823,13 @@ class Plugin:
 
         # Verify sequence of git operations
         expected_calls = [
-            # Fetch from remote
+            # Initial fetch from remote
             (["git", "-C", "/tmp/repo", "fetch", "origin"], {"timeout": 120}),
-            # Check if commit exists locally (this might fail, which is ok)
+            # Second fetch for commits
+            (["git", "-C", "/tmp/repo", "fetch", "origin"], {"timeout": 120}),
+            # Check if commit exists locally
             (
                 ["git", "-C", "/tmp/repo", "cat-file", "-e", "deadbeef^{commit}"],
-                {"timeout": 120},
-            ),
-            # Fetch specific commit
-            (
-                ["git", "-C", "/tmp/repo", "fetch", "origin", "deadbeef"],
                 {"timeout": 120},
             ),
             # Checkout specific commit
@@ -840,11 +837,11 @@ class Plugin:
         ]
 
         actual_calls = mock_run_git.call_args_list
-        self.assertEqual(len(actual_calls), 4)
+        self.assertEqual(len(actual_calls), 3)
 
         for i, (expected_args, expected_kwargs) in enumerate(expected_calls):
             actual_args, actual_kwargs = actual_calls[i]
-            self.assertEqual(actual_args[0], expected_args[0])
+            self.assertEqual(actual_args[0], expected_args)
             self.assertEqual(actual_kwargs, expected_kwargs)
 
     @patch("mmrelay.plugin_loader._run_git")
@@ -861,9 +858,11 @@ class Plugin:
         mock_isdir.return_value = True  # Repo exists
         ref = {"type": "commit", "value": "cafebabe"}
 
-        # Configure mock to fail on specific commit fetch but succeed on general fetch
+        # Configure mock to fail on specific commit fetch and cat-file but succeed on general fetch
         def side_effect(*args, **kwargs):
             if args[0] == ["git", "-C", "/tmp/repo", "fetch", "origin", "cafebabe"]:
+                raise subprocess.CalledProcessError(1, "git")
+            if "cat-file" in args[0]:
                 raise subprocess.CalledProcessError(1, "git")
             return subprocess.CompletedProcess(args[0], 0, "", "")
 
@@ -879,18 +878,22 @@ class Plugin:
         ]
 
         self.assertEqual(
-            len(fetch_calls), 3
-        )  # General fetch, specific commit fetch, general fetch fallback
+            len(fetch_calls), 4
+        )  # Initial general fetch, second general fetch, specific commit fetch, general fetch fallback
         self.assertEqual(
             fetch_calls[0][0][0], ["git", "-C", "/tmp/repo", "fetch", "origin"]
         )
         self.assertEqual(
             fetch_calls[1][0][0],
-            ["git", "-C", "/tmp/repo", "cat-file", "-e", "cafebabe^{commit}"],
+            ["git", "-C", "/tmp/repo", "fetch", "origin"],
         )
         self.assertEqual(
             fetch_calls[2][0][0],
             ["git", "-C", "/tmp/repo", "fetch", "origin", "cafebabe"],
+        )
+        self.assertEqual(
+            fetch_calls[3][0][0],
+            ["git", "-C", "/tmp/repo", "fetch", "origin"],
         )
 
 
@@ -2718,7 +2721,7 @@ class TestDependencyInstallation(unittest.TestCase):
 
         for i, (expected_args, expected_kwargs) in enumerate(expected_calls):
             actual_args, actual_kwargs = actual_calls[i]
-            self.assertEqual(actual_args[0], expected_args[0])
+            self.assertEqual(actual_args[0], expected_args)
             self.assertEqual(actual_kwargs, expected_kwargs)
 
     @patch("mmrelay.plugin_loader._run_git")
@@ -2741,16 +2744,13 @@ class TestDependencyInstallation(unittest.TestCase):
 
         # Verify the sequence of git operations
         expected_calls = [
-            # Fetch from remote
+            # Initial fetch from remote
             (["git", "-C", "/tmp/repo", "fetch", "origin"], {"timeout": 120}),
-            # Check if commit exists locally (this might fail, which is ok)
+            # Second fetch from remote
+            (["git", "-C", "/tmp/repo", "fetch", "origin"], {"timeout": 120}),
+            # Check if commit exists locally
             (
                 ["git", "-C", "/tmp/repo", "cat-file", "-e", "deadbeef^{commit}"],
-                {"timeout": 120},
-            ),
-            # Fetch the specific commit
-            (
-                ["git", "-C", "/tmp/repo", "fetch", "origin", "deadbeef"],
                 {"timeout": 120},
             ),
             # Checkout the specific commit
@@ -2762,54 +2762,8 @@ class TestDependencyInstallation(unittest.TestCase):
 
         for i, (expected_args, expected_kwargs) in enumerate(expected_calls):
             actual_args, actual_kwargs = actual_calls[i]
-            self.assertEqual(actual_args[0], expected_args[0])
+            self.assertEqual(actual_args[0], expected_args)
             self.assertEqual(actual_kwargs, expected_kwargs)
-
-    @patch("mmrelay.plugin_loader._run_git")
-    @patch("mmrelay.plugin_loader._is_repo_url_allowed")
-    @patch("mmrelay.plugin_loader.logger")
-    @patch("os.path.isdir")
-    def test_clone_or_update_repo_commit_fetch_specific_fails_fallback(
-        self, mock_isdir, mock_logger, mock_is_allowed, mock_run_git
-    ):
-        """Test that when specific commit fetch fails, it falls back to fetching all."""
-        from mmrelay.plugin_loader import clone_or_update_repo
-
-        mock_is_allowed.return_value = True
-        mock_isdir.return_value = True  # Repo exists
-        ref = {"type": "commit", "value": "cafebabe"}
-
-        # Configure mock to fail on specific commit fetch but succeed on general fetch
-        def side_effect(*args, **kwargs):
-            if args[0] == ["git", "-C", "/tmp/repo", "fetch", "origin", "cafebabe"]:
-                raise subprocess.CalledProcessError(1, "git")
-            return subprocess.CompletedProcess(args[0], 0, "", "")
-
-        mock_run_git.side_effect = side_effect
-
-        result = clone_or_update_repo("https://github.com/user/repo.git", ref, "/tmp")
-
-        self.assertTrue(result)
-
-        # Verify that both fetch attempts were made
-        fetch_calls = [
-            call for call in mock_run_git.call_args_list if "fetch" in call[0][0]
-        ]
-
-        self.assertEqual(
-            len(fetch_calls), 3
-        )  # General fetch, specific commit fetch, general fetch fallback
-        self.assertEqual(
-            fetch_calls[0][0][0], ["git", "-C", "/tmp/repo", "fetch", "origin"]
-        )
-        self.assertEqual(
-            fetch_calls[1][0][0],
-            ["git", "-C", "/tmp/repo", "cat-file", "-e", "cafebabe^{commit}"],
-        )
-        self.assertEqual(
-            fetch_calls[2][0][0],
-            ["git", "-C", "/tmp/repo", "fetch", "origin", "cafebabe"],
-        )
 
 
 if __name__ == "__main__":
