@@ -22,6 +22,7 @@ from unittest.mock import MagicMock, call, patch
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+import mmrelay.plugin_loader as pl
 from mmrelay.plugin_loader import (
     _clean_python_cache,
     _clone_new_repo_to_branch_or_tag,
@@ -118,12 +119,11 @@ class TestPluginLoader(BaseGitTest):
         """
         Prepares a temporary test environment with isolated plugin directories and resets plugin loader state before each test.
         """
+        super().setUp()
         # Create temporary directories for testing
         self.test_dir = tempfile.mkdtemp()
         self.custom_dir = os.path.join(self.test_dir, "plugins", "custom")
         self.community_dir = os.path.join(self.test_dir, "plugins", "community")
-        self.temp_plugins_dir = tempfile.mkdtemp()
-        self.temp_repo_path = os.path.join(self.temp_plugins_dir, "repo")
 
         os.makedirs(self.custom_dir, exist_ok=True)
         os.makedirs(self.community_dir, exist_ok=True)
@@ -138,6 +138,7 @@ class TestPluginLoader(BaseGitTest):
         """
         Remove temporary directories and clean up resources after each test.
         """
+        super().tearDown()
         # Clean up temporary directories
         import shutil
 
@@ -521,8 +522,6 @@ class Plugin:
         mock_plugin = MockPlugin("cleanup_plugin")
         mock_plugin.stop = MagicMock()
 
-        import mmrelay.plugin_loader as pl
-
         pl.sorted_active_plugins = [mock_plugin]
         pl.plugins_loaded = True
 
@@ -573,8 +572,6 @@ class Plugin:
         mock_clone_repo,
     ):
         """Test that commit ref takes priority over tag and branch in plugin config."""
-        import mmrelay.plugin_loader as pl
-
         # Reset global state
         pl.plugins_loaded = False
         pl.sorted_active_plugins = []
@@ -623,8 +620,6 @@ class Plugin:
         mock_clone_repo,
     ):
         """Test that tag ref takes priority over branch in plugin config."""
-        import mmrelay.plugin_loader as pl
-
         # Reset global state
         pl.plugins_loaded = False
         pl.sorted_active_plugins = []
@@ -674,8 +669,6 @@ class Plugin:
         mock_clone_repo,
     ):
         """Test that warning is logged when commit is specified with tag/branch."""
-        import mmrelay.plugin_loader as pl
-
         # Reset global state
         pl.plugins_loaded = False
         pl.sorted_active_plugins = []
@@ -722,8 +715,6 @@ class Plugin:
         mock_clone_repo,
     ):
         """Test that plugin defaults to main branch when no ref is specified."""
-        import mmrelay.plugin_loader as pl
-
         # Reset global state
         pl.plugins_loaded = False
         pl.sorted_active_plugins = []
@@ -1190,8 +1181,6 @@ class TestPluginSecurityGuards(unittest.TestCase):
     """Tests for plugin security helper utilities."""
 
     def setUp(self):
-        import mmrelay.plugin_loader as pl
-
         self.pl = pl
         self.original_config = getattr(pl, "config", None)
         self.temp_plugins_dir = tempfile.mkdtemp()
@@ -1281,14 +1270,14 @@ class TestPluginSecurityGuards(unittest.TestCase):
         expected = ["github.com", "gitlab.com", "codeberg.org", "bitbucket.org"]
         self.assertEqual(result, expected)
 
-    def test_get_allowed_repo_hosts_string_is_accepted(self):
-        """String value coerces to a single host entry."""
+    def test_get_allowed_repo_hosts_string_falls_back_to_default(self):
+        """String value falls back to default hosts."""
         self.pl.config = {"security": {"community_repo_hosts": "invalid"}}
         from mmrelay.plugin_loader import _get_allowed_repo_hosts
 
         result = _get_allowed_repo_hosts()
-        # String gets converted to list, then filtered
-        expected = ["invalid"]
+        # String is invalid, so falls back to default
+        expected = ["github.com", "gitlab.com", "codeberg.org", "bitbucket.org"]
         self.assertEqual(result, expected)
 
     def test_get_allowed_repo_filters_empty_strings(self):
@@ -1318,8 +1307,6 @@ class TestURLValidation(unittest.TestCase):
     """Test cases for URL validation and security functions."""
 
     def setUp(self):
-        import mmrelay.plugin_loader as pl
-
         self.pl = pl
         self.original_config = getattr(pl, "config", None)
 
@@ -1499,8 +1486,6 @@ class TestRequirementFiltering(unittest.TestCase):
     """Test cases for requirement filtering security functions."""
 
     def setUp(self):
-        import mmrelay.plugin_loader as pl
-
         self.pl = pl
         self.original_config = getattr(pl, "config", None)
 
@@ -1666,7 +1651,6 @@ class TestGitOperations(BaseGitTest):
 
     def setUp(self):
         super().setUp()
-        import mmrelay.plugin_loader as pl
 
         self.pl = pl
         self.original_config = getattr(pl, "config", None)
@@ -2888,7 +2872,6 @@ class TestDependencyInstallation(BaseGitTest):
     @patch("mmrelay.plugin_loader.schedule")
     def test_start_global_scheduler_starts_thread(self, mock_schedule, mock_threading):
         """Test that start_global_scheduler creates and starts a daemon thread."""
-        import mmrelay.plugin_loader as pl
 
         # Reset global state before test
         pl._global_scheduler_thread = None
@@ -2924,7 +2907,6 @@ class TestDependencyInstallation(BaseGitTest):
         self, mock_schedule, mock_threading
     ):
         """Test that start_global_scheduler exits early when already running."""
-        import mmrelay.plugin_loader as pl
 
         # Simulate already running thread
         pl._global_scheduler_thread = MagicMock()
@@ -2939,7 +2921,6 @@ class TestDependencyInstallation(BaseGitTest):
     @patch("mmrelay.plugin_loader.schedule")
     def test_stop_global_scheduler_stops_thread(self, mock_schedule, mock_threading):
         """Test that stop_global_scheduler stops the scheduler thread."""
-        import mmrelay.plugin_loader as pl
 
         # Setup running thread
         mock_event = MagicMock()
@@ -2958,7 +2939,6 @@ class TestDependencyInstallation(BaseGitTest):
     @patch("mmrelay.plugin_loader.threading")
     def test_stop_global_scheduler_no_thread(self, mock_threading):
         """Test that stop_global_scheduler exits early when no thread exists."""
-        import mmrelay.plugin_loader as pl
 
         # Ensure no thread is running
         pl._global_scheduler_thread = None

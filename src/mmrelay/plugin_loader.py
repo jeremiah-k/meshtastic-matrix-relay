@@ -212,9 +212,6 @@ def _get_allowed_repo_hosts() -> list[str]:
     if hosts is None:
         return list(DEFAULT_ALLOWED_COMMUNITY_HOSTS)
 
-    if isinstance(hosts, str):
-        hosts = [hosts]
-
     if not isinstance(hosts, list):
         return list(DEFAULT_ALLOWED_COMMUNITY_HOSTS)
 
@@ -1193,13 +1190,13 @@ def _fallback_to_default_branches(
 
 
 def _update_existing_repo_to_branch_or_tag(
-    repo_path,
-    ref_type,
-    ref_value,
-    repo_name,
-    is_default_branch,
-    default_branches,
-):
+    repo_path: str,
+    ref_type: str,
+    ref_value: str,
+    repo_name: str,
+    is_default_branch: bool,
+    default_branches: list[str],
+) -> bool:
     """
     Update an existing repository to a specific branch or tag.
 
@@ -1329,7 +1326,9 @@ def _update_existing_repo_to_branch_or_tag(
         return False
 
 
-def _validate_clone_inputs(repo_url, ref):
+def _validate_clone_inputs(
+    repo_url: str, ref: dict[str, str]
+) -> tuple[bool, str | None, str | None, str | None, str | None]:
     """
     Validate repository URL and reference selection for cloning or updating.
 
