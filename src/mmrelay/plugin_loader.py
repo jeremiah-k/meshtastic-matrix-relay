@@ -279,18 +279,24 @@ def _redact_url(url: str) -> str:
     Redact credentials from a URL for safe logging.
 
     If the URL contains username or password, they are replaced with '***'.
+    Also redacts sensitive query parameters.
     """
     try:
-        from urllib.parse import urlsplit, urlunsplit
+        from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
         s = urlsplit(url)
         if s.username or s.password:
             netloc = f"{'***' if s.username else ''}{':***' if s.password else ''}@{s.hostname}"
             if s.port:
                 netloc += f":{s.port}"
-            return urlunsplit((s.scheme, netloc, s.path, s.query, s.fragment))
-    except (ValueError, TypeError, AttributeError):
-        pass
+            # Redact sensitive query parameters
+            sensitive = {"token", "access_token", "auth", "key", "password", "pwd"}
+            q = parse_qsl(s.query, keep_blank_values=True)
+            redacted = [(k, "***" if k.lower() in sensitive else v) for k, v in q]
+            query = urlencode(redacted)
+            return urlunsplit((s.scheme, netloc, s.path, query, s.fragment))
+    except (ValueError, TypeError, AttributeError) as exc:
+        logger.debug("URL redaction failed for %r: %s", url, exc)
     return url
 
 
@@ -926,11 +932,18 @@ def _update_existing_repo_to_commit(
         bool: `True` if the repository was updated to the commit, `False` otherwise.
     """
     try:
-        # If already at the requested commit, skip work
+        # If already at the requested commit, skip work (support short hashes)
         try:
             current = _run_git(
                 ["git", "-C", repo_path, "rev-parse", "HEAD"], capture_output=True
             ).stdout.strip()
+            if current and (
+                current.startswith(ref_value) or ref_value.startswith(current)
+            ):
+                logger.info(
+                    "Repository %s is already at commit %s", repo_name, ref_value
+                )
+                return True
         except subprocess.CalledProcessError:
             current = ""
 
@@ -1399,6 +1412,7 @@ def _clone_new_repo_to_branch_or_tag(
     Returns:
         bool: True if successful, False otherwise.
     """
+    redacted_url = _redact_url(repo_url)
     try:
         # If it's a default branch, just clone it directly
         if is_default_branch:
@@ -1411,11 +1425,11 @@ def _clone_new_repo_to_branch_or_tag(
                 )
                 if ref_type == "branch":
                     logger.info(
-                        f"Cloned repository {repo_name} from {repo_url} at branch {ref_value}"
+                        f"Cloned repository {repo_name} from {redacted_url} at branch {ref_value}"
                     )
                 else:
                     logger.info(
-                        f"Cloned repository {repo_name} from {repo_url} at tag {ref_value}"
+                        f"Cloned repository {repo_name} from {redacted_url} at tag {ref_value}"
                     )
                 return True
             except subprocess.CalledProcessError:
@@ -1433,7 +1447,7 @@ def _clone_new_repo_to_branch_or_tag(
                         timeout=120,
                     )
                     logger.info(
-                        f"Cloned repository {repo_name} from {repo_url} at branch {other_default}"
+                        f"Cloned repository {repo_name} from {redacted_url} at branch {other_default}"
                     )
                     return True
                 except subprocess.CalledProcessError:
@@ -1449,7 +1463,7 @@ def _clone_new_repo_to_branch_or_tag(
                         timeout=120,
                     )
                     logger.info(
-                        f"Cloned repository {repo_name} from {repo_url} (default branch)"
+                        f"Cloned repository {repo_name} from {redacted_url} (default branch)"
                     )
                     return True
         else:
@@ -1463,11 +1477,11 @@ def _clone_new_repo_to_branch_or_tag(
                 )
                 if ref_type == "branch":
                     logger.info(
-                        f"Cloned repository {repo_name} from {repo_url} at branch {ref_value}"
+                        f"Cloned repository {repo_name} from {redacted_url} at branch {ref_value}"
                     )
                 else:
                     logger.info(
-                        f"Cloned repository {repo_name} from {repo_url} at tag {ref_value}"
+                        f"Cloned repository {repo_name} from {redacted_url} at tag {ref_value}"
                     )
                 return True
             except subprocess.CalledProcessError:
@@ -1550,7 +1564,7 @@ def _clone_new_repo_to_branch_or_tag(
                         f"Could not checkout {ref_value}, using default branch"
                     )
                     logger.info(
-                        f"Cloned repository {repo_name} from {repo_url} (default branch)"
+                        f"Cloned repository {repo_name} from {redacted_url} (default branch)"
                     )
                     return True
     except (subprocess.CalledProcessError, FileNotFoundError):
@@ -1559,7 +1573,7 @@ def _clone_new_repo_to_branch_or_tag(
         return False
 
 
-def clone_or_update_repo(repo_url, ref, plugins_dir):
+def clone_or_update_repo(repo_url: str, ref: dict[str, str], plugins_dir: str) -> bool:
     """
     Ensure a repository exists under plugins_dir and is checked out to the specified ref.
 

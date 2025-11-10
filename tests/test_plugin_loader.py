@@ -598,13 +598,13 @@ class Plugin:
     @patch("mmrelay.plugin_loader.get_community_plugin_dirs")
     @patch("mmrelay.plugin_loader.get_custom_plugin_dirs")
     @patch("mmrelay.plugin_loader.start_global_scheduler")
-    def test_load_plugins_tag_priority_over_branch(  # noqa: ARG002
+    def test_load_plugins_tag_priority_over_branch(
         self,
         _mock_start_scheduler,
         mock_get_custom_dirs,
         mock_get_community_dirs,
         mock_load_from_dir,
-        mock_install_reqs,
+        _mock_install_reqs,
         mock_clone_repo,
     ):
         """Test that tag ref takes priority over branch in plugin config."""
@@ -648,14 +648,14 @@ class Plugin:
     @patch("mmrelay.plugin_loader.get_custom_plugin_dirs")
     @patch("mmrelay.plugin_loader.start_global_scheduler")
     @patch("mmrelay.plugin_loader.logger")
-    def test_load_plugins_commit_with_tag_and_branch_warning(  # noqa: ARG002
+    def test_load_plugins_commit_with_tag_and_branch_warning(
         self,
         mock_logger,
         _mock_start_scheduler,
         mock_get_custom_dirs,
         mock_get_community_dirs,
         mock_load_from_dir,
-        mock_install_reqs,
+        _mock_install_reqs,
         mock_clone_repo,
     ):
         """Test that warning is logged when commit is specified with tag/branch."""
@@ -697,13 +697,13 @@ class Plugin:
     @patch("mmrelay.plugin_loader.get_community_plugin_dirs")
     @patch("mmrelay.plugin_loader.get_custom_plugin_dirs")
     @patch("mmrelay.plugin_loader.start_global_scheduler")
-    def test_load_plugins_default_to_main_branch(  # noqa: ARG002
+    def test_load_plugins_default_to_main_branch(
         self,
         _mock_start_scheduler,
         mock_get_custom_dirs,
         mock_get_community_dirs,
         mock_load_from_dir,
-        mock_install_reqs,
+        _mock_install_reqs,
         mock_clone_repo,
     ):
         """Test that plugin defaults to main branch when no ref is specified."""
@@ -772,7 +772,7 @@ class Plugin:
     @patch("os.path.isdir")
     @patch("os.makedirs")
     def test_clone_or_update_repo_new_repo_commit(
-        self, mock_makedirs, mock_isdir, mock_logger, mock_is_allowed, mock_run_git
+        self, _mock_makedirs, mock_isdir, _mock_logger, mock_is_allowed, mock_run_git
     ):
         """Test cloning a new repository with commit ref."""
 
@@ -1275,8 +1275,8 @@ class TestPluginSecurityGuards(unittest.TestCase):
         expected = ["github.com", "gitlab.com", "codeberg.org", "bitbucket.org"]
         self.assertEqual(result, expected)
 
-    def test_get_allowed_repo_hosts_invalid_type_uses_default(self):
-        """Invalid type should use default hosts."""
+    def test_get_allowed_repo_hosts_string_is_accepted(self):
+        """String value coerces to a single host entry."""
         self.pl.config = {"security": {"community_repo_hosts": "invalid"}}
         from mmrelay.plugin_loader import _get_allowed_repo_hosts
 
