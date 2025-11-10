@@ -917,6 +917,39 @@ def _raise_install_error(pkg_name):
     raise subprocess.CalledProcessError(1, "pip/pipx")
 
 
+def _fetch_commit_with_fallback(repo_path: str, ref_value: str, repo_name: str) -> bool:
+    """
+    Fetch a specific commit with fallback to general fetch if needed.
+
+    Parameters:
+        repo_path (str): Filesystem path to the git repository.
+        ref_value (str): Commit hash to fetch.
+        repo_name (str): Repository name used for logging.
+
+    Returns:
+        bool: `True` if the commit was successfully fetched, `False` otherwise.
+    """
+    try:
+        _run_git(
+            ["git", "-C", repo_path, "fetch", "origin", ref_value],
+            timeout=120,
+        )
+    except subprocess.CalledProcessError:
+        logger.warning(
+            f"Could not fetch commit {ref_value} from remote, trying general fetch"
+        )
+        # Fall back to fetching everything
+        try:
+            _run_git(
+                ["git", "-C", repo_path, "fetch", "origin"],
+                timeout=120,
+            )
+        except subprocess.CalledProcessError as e:
+            logger.warning(f"Fallback fetch also failed: {e}")
+            return False
+    return True
+
+
 def _update_existing_repo_to_commit(
     repo_path: str, ref_value: str, repo_name: str
 ) -> bool:
@@ -963,24 +996,8 @@ def _update_existing_repo_to_commit(
         except subprocess.CalledProcessError:
             # Commit doesn't exist locally, try to fetch it specifically
             logger.info(f"Commit {ref_value} not found locally, attempting to fetch")
-            try:
-                _run_git(
-                    ["git", "-C", repo_path, "fetch", "origin", ref_value],
-                    timeout=120,
-                )
-            except subprocess.CalledProcessError:
-                logger.warning(
-                    f"Could not fetch commit {ref_value} from remote, trying general fetch"
-                )
-                # Fall back to fetching everything
-                try:
-                    _run_git(
-                        ["git", "-C", repo_path, "fetch", "origin"],
-                        timeout=120,
-                    )
-                except subprocess.CalledProcessError as e:
-                    logger.warning(f"Fallback fetch also failed: {e}")
-                    return False
+            if not _fetch_commit_with_fallback(repo_path, ref_value, repo_name):
+                return False
 
         # Checkout the specific commit
         _run_git(["git", "-C", repo_path, "checkout", ref_value], timeout=120)
@@ -1034,27 +1051,10 @@ def _clone_new_repo_to_commit(
         except subprocess.CalledProcessError:
             # If direct checkout fails, try to fetch the specific commit
             logger.info(f"Commit {ref_value} not available, attempting to fetch")
-            try:
-                _run_git(
-                    ["git", "-C", repo_path, "fetch", "origin", ref_value],
-                    timeout=120,
-                )
-                # Try checkout again after fetch
-                _run_git(["git", "-C", repo_path, "checkout", ref_value], timeout=120)
-            except subprocess.CalledProcessError:
-                # If specific commit fetch fails, try fetching all
-                logger.warning(
-                    f"Could not fetch commit {ref_value} from remote, trying general fetch"
-                )
-                try:
-                    _run_git(["git", "-C", repo_path, "fetch", "origin"], timeout=120)
-                    # Try checkout again after general fetch
-                    _run_git(
-                        ["git", "-C", repo_path, "checkout", ref_value], timeout=120
-                    )
-                except subprocess.CalledProcessError as e:
-                    logger.warning(f"Fallback fetch also failed: {e}")
-                    return False
+            if not _fetch_commit_with_fallback(repo_path, ref_value, repo_name):
+                return False
+            # Try checkout again after fetch
+            _run_git(["git", "-C", repo_path, "checkout", ref_value], timeout=120)
         logger.info(f"Checked out repository {repo_name} to commit {ref_value}")
         return True
     except (subprocess.CalledProcessError, FileNotFoundError):

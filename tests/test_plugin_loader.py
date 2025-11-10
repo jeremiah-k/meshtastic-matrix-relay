@@ -1937,7 +1937,7 @@ class TestGitOperations(BaseGitTest):
 
             Returns:
                 None for commands treated as successful (`fetch`, `checkout`, `pull`), or a MagicMock
-                whose `stdout` contains a bytes-encoded commit hash for `rev-parse` commands.
+                whose `stdout` contains a string commit hash for `rev-parse` commands.
             """
             cmd = args[0]
             if "fetch" in cmd:
