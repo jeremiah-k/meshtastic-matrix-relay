@@ -3332,7 +3332,13 @@ class TestDependencyInstallation(BaseGitTest):
                 capture_output=True,
             ),
             call(
-                ["git", "-C", f"{self.temp_plugins_dir}/repo", "rev-parse", "v1.0.0"],
+                [
+                    "git",
+                    "-C",
+                    f"{self.temp_plugins_dir}/repo",
+                    "rev-parse",
+                    "v1.0.0^{commit}",
+                ],
                 capture_output=True,
             ),
             call(

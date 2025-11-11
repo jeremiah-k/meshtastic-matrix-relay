@@ -13,7 +13,7 @@ import tempfile
 import threading
 import time
 from contextlib import contextmanager
-from typing import Any, List, NamedTuple, Set
+from typing import Any, NamedTuple
 from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 
 try:
@@ -83,8 +83,8 @@ else:
 
 
 def _collect_requirements(
-    requirements_file: str, visited: Set[str] | None = None
-) -> List[str]:
+    requirements_file: str, visited: set[str] | None = None
+) -> list[str]:
     """
     Parse a requirements file into a flattened list of installable requirement lines.
 
@@ -111,7 +111,7 @@ def _collect_requirements(
         return []
 
     visited.add(normalized_path)
-    requirements: List[str] = []
+    requirements: list[str] = []
     base_dir = os.path.dirname(normalized_path)
 
     try:
@@ -423,8 +423,8 @@ PIP_SHORT_SOURCE_FLAGS = {
 
 
 def _filter_risky_requirement_lines(
-    requirement_lines: List[str],
-) -> tuple[List[str], List[str]]:
+    requirement_lines: list[str],
+) -> tuple[list[str], list[str]]:
     """
     Categorizes requirement lines into safe and flagged groups based on whether they reference VCS or URL sources.
 
@@ -432,11 +432,11 @@ def _filter_risky_requirement_lines(
     whether to install flagged requirements based on security settings.
 
     Returns:
-        safe_lines (List[str]): Requirement lines considered safe for installation.
-        flagged_lines (List[str]): Requirement lines that reference VCS/URL sources and were flagged as risky.
+        safe_lines (list[str]): Requirement lines considered safe for installation.
+        flagged_lines (list[str]): Requirement lines that reference VCS/URL sources and were flagged as risky.
     """
-    safe_lines: List[str] = []
-    flagged_lines: List[str] = []
+    safe_lines: list[str] = []
+    flagged_lines: list[str] = []
 
     for line in requirement_lines:
         # Tokenize line for validation
@@ -484,8 +484,8 @@ def _filter_risky_requirement_lines(
 
 
 def _filter_risky_requirements(
-    requirements: List[str],
-) -> tuple[List[str], List[str], bool]:
+    requirements: list[str],
+) -> tuple[list[str], list[str], bool]:
     """
     Remove requirement tokens that point to VCS/URL sources unless explicitly allowed.
 
@@ -814,7 +814,7 @@ def _get_plugin_dirs(plugin_type: str) -> list[str]:
     return dirs
 
 
-def get_custom_plugin_dirs():
+def get_custom_plugin_dirs() -> list[str]:
     """
     Return the list of directories to search for custom plugins, ordered by priority.
 
@@ -823,7 +823,7 @@ def get_custom_plugin_dirs():
     return _get_plugin_dirs("custom")
 
 
-def get_community_plugin_dirs():
+def get_community_plugin_dirs() -> list[str]:
     """
     List community plugin directories in priority order.
 
@@ -1205,6 +1205,9 @@ def _try_checkout_as_branch(repo_path: str, ref_value: str, repo_name: str) -> b
         return True
     except subprocess.CalledProcessError:
         return False
+    except FileNotFoundError:
+        logger.exception("Error updating repository %s; git not found.", repo_name)
+        return False
 
 
 def _fallback_to_default_branches(
@@ -1569,7 +1572,7 @@ def clone_or_update_repo(repo_url: str, ref: dict[str, str], plugins_dir: str) -
     default_branches = DEFAULT_BRANCHES
 
     # Log what we're trying to do
-    logger.info(f"Using {ref_type} '{ref_value}' for repository {repo_name}")
+    logger.info("Using %s '%s' for repository %s", ref_type, ref_value, repo_name)
 
     # If it's a branch and one of the default branches, we'll handle it specially
     is_default_branch = ref_type == "branch" and ref_value in default_branches
