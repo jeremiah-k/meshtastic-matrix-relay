@@ -855,7 +855,7 @@ class Plugin:
         ref = {"type": "commit", "value": "deadbeef"}
 
         # Configure mock to fail on rev-parse (commit not found locally) but succeed on fetch and checkout
-        def side_effect(*args, **kwargs):
+        def side_effect(*args, **_kwargs):
             """
             Create a fake git subprocess side effect used in tests.
 
@@ -941,7 +941,7 @@ class Plugin:
         ref = {"type": "commit", "value": "cafebabe"}
 
         # Configure mock to fail on specific commit fetch and cat-file but succeed on general fetch
-        def side_effect(*args, **kwargs):
+        def side_effect(*args, **_kwargs):
             """
             Simulate subprocess behavior for git commands used in tests.
 
@@ -1072,7 +1072,7 @@ class Plugin:
         ref = {"type": "commit", "value": "cdef5678"}
 
         # Configure mock to fail on specific commit fetch but succeed on fallback
-        def side_effect(*args, **kwargs):
+        def side_effect(*args, **_kwargs):
             """
             Test helper that simulates subprocess responses for git commands in tests.
 
@@ -1143,7 +1143,7 @@ class Plugin:
         ref = {"type": "commit", "value": "abcd1234"}
 
         # Configure mock to fail on both specific and fallback fetch
-        def side_effect(*args, **kwargs):
+        def side_effect(*args, **_kwargs):
             """
             Simulate git subprocess behavior for tests by returning a successful CompletedProcess for most commands and raising CalledProcessError for specific failing invocations.
 

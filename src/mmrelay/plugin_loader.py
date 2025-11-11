@@ -900,19 +900,14 @@ def _run(
 def _run_git(
     cmd: list[str], timeout: float = 120, **kwargs: Any
 ) -> subprocess.CompletedProcess:
-    """
-    Run a git command using the module's safe subprocess runner with conservative retry defaults.
-
-    Parameters:
-        cmd (list[str]): Command and arguments to run (e.g., ['git', 'clone', '...']).
-        timeout (int): Maximum seconds to wait for each attempt.
-        **kwargs: Additional options forwarded to `_run` (can override retries).
-
-    Returns:
-        subprocess.CompletedProcess: The completed process result containing `returncode`, `stdout`, and `stderr`.
-    """
     kwargs.setdefault("retry_attempts", 3)
     kwargs.setdefault("retry_delay", 2)
+    # Ensure non-interactive git by default
+    env = dict(os.environ)
+    if "env" in kwargs:
+        env.update(kwargs["env"])
+    env.setdefault("GIT_TERMINAL_PROMPT", "0")
+    kwargs["env"] = env
     return _run(cmd, timeout=timeout, **kwargs)
 
 
@@ -1024,14 +1019,14 @@ def _update_existing_repo_to_commit(
             # We can proceed to the more robust checking and fetching logic below.
             pass
 
-        # If we get here, the rev-parse failed above, so commit doesn't exist locally
-        # Try to fetch it specifically
-        logger.info(f"Commit {ref_value} not found locally, attempting to fetch")
-        if not _fetch_commit_with_fallback(repo_path, ref_value, repo_name):
-            return False
-
-        # Checkout the specific commit
-        _run_git(["git", "-C", repo_path, "checkout", ref_value], timeout=120)
+        # Try a direct checkout first (commit may already be available locally)
+        try:
+            _run_git(["git", "-C", repo_path, "checkout", ref_value], timeout=120)
+        except subprocess.CalledProcessError:
+            logger.info("Commit %s not found locally, attempting to fetch", ref_value)
+            if not _fetch_commit_with_fallback(repo_path, ref_value, repo_name):
+                return False
+            _run_git(["git", "-C", repo_path, "checkout", ref_value], timeout=120)
         logger.info(f"Updated repository {repo_name} to commit {ref_value}")
         return True
     except subprocess.CalledProcessError:
@@ -1069,20 +1064,16 @@ def _clone_new_repo_to_commit(
         )
         logger.info(f"Cloned repository {repo_name} from {_redact_url(repo_url)}")
 
-        # If we're already at the requested commit, skip extra work (support short hashes)
+        # If we're already at the requested commit, skip extra work
         try:
-            _cp = _run_git(
+            current_full = _run_git(
                 ["git", "-C", repo_path, "rev-parse", "HEAD"], capture_output=True
-            )
-            raw = _cp.stdout
-            current = (
-                raw.decode("utf-8", "replace")
-                if isinstance(raw, (bytes, bytearray))
-                else str(raw)
-            ).strip()
-            if current and (
-                current.startswith(ref_value) or ref_value.startswith(current)
-            ):
+            ).stdout.strip()
+            target_full = _run_git(
+                ["git", "-C", repo_path, "rev-parse", f"{ref_value}^{{commit}}"],
+                capture_output=True,
+            ).stdout.strip()
+            if current_full == target_full:
                 logger.info(
                     "Repository %s is already at commit %s", repo_name, ref_value
                 )
@@ -1291,7 +1282,8 @@ def _update_existing_repo_to_branch_or_tag(
             ["git", "-C", repo_path, "rev-parse", "HEAD"], capture_output=True
         ).stdout.strip()
         tag_commit = _run_git(
-            ["git", "-C", repo_path, "rev-parse", ref_value], capture_output=True
+            ["git", "-C", repo_path, "rev-parse", f"{ref_value}^{{commit}}"],
+            capture_output=True,
         ).stdout.strip()
         if current_commit == tag_commit:
             logger.info(f"Repository {repo_name} is already at tag {ref_value}")
