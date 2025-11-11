@@ -1276,8 +1276,7 @@ class Plugin:
         exception_call = mock_logger.exception.call_args[0][0]
         self.assertIn("Error cloning repository", exception_call)
         self.assertIn(
-            f"Please manually clone the repository at {self.temp_repo_path}",
-            exception_call,
+            f"please manually clone into {self.temp_repo_path}", exception_call
         )
 
 
