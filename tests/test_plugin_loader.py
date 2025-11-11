@@ -800,12 +800,12 @@ class Plugin:
         import subprocess
 
         def mock_git_func(*args, **kwargs):
-            if "rev-parse" in args:
-                if "HEAD" in args:
+            if "rev-parse" in args[0]:
+                if "HEAD" in args[0]:
                     return subprocess.CompletedProcess(
-                        args[0], 0, stdout="a1b2c3d4\n", stderr=""
+                        args[0], 0, stdout="different_commit\n", stderr=""
                     )
-                elif "a1b2c3d4^{commit}" in args:
+                elif "a1b2c3d4^{commit}" in args[0]:
                     return subprocess.CompletedProcess(
                         args[0], 0, stdout="a1b2c3d4\n", stderr=""
                     )
@@ -974,6 +974,8 @@ class Plugin:
         ref = {"type": "commit", "value": "cafebabe"}
 
         # Configure mock to fail on specific commit fetch and cat-file but succeed on general fetch
+        checkout_attempts = []
+
         def side_effect(*args, **_kwargs):
             """
             Simulate subprocess behavior for git commands used in tests.
@@ -996,6 +998,11 @@ class Plugin:
                 raise subprocess.CalledProcessError(1, "git")
             if "rev-parse" in args[0] and "cafebabe^{commit}" in args[0]:
                 raise subprocess.CalledProcessError(1, "git")
+            # Fail first checkout to trigger fetch, succeed second checkout
+            if args[0] == ["git", "-C", self.temp_repo_path, "checkout", "cafebabe"]:
+                checkout_attempts.append(1)
+                if len(checkout_attempts) == 1:
+                    raise subprocess.CalledProcessError(1, "git")
             return subprocess.CompletedProcess(args[0], 0, "", "")
 
         mock_run_git.side_effect = side_effect
@@ -1105,6 +1112,8 @@ class Plugin:
         ref = {"type": "commit", "value": "cdef5678"}
 
         # Configure mock to fail on specific commit fetch but succeed on fallback
+        checkout_attempts = []
+
         def side_effect(*args, **_kwargs):
             """
             Test helper that simulates subprocess responses for git commands in tests.
@@ -1130,6 +1139,11 @@ class Plugin:
             # Fail on rev-parse for target commit to trigger fetch
             if "rev-parse" in args[0] and "cdef5678^{commit}" in args[0]:
                 raise subprocess.CalledProcessError(1, "git")
+            # Fail first checkout to trigger fetch, succeed second checkout
+            if args[0] == ["git", "-C", self.temp_repo_path, "checkout", "cdef5678"]:
+                checkout_attempts.append(1)
+                if len(checkout_attempts) == 1:
+                    raise subprocess.CalledProcessError(1, "git")
             return subprocess.CompletedProcess(args[0], 0, "", "")
 
         mock_run_git.side_effect = side_effect
@@ -1203,6 +1217,9 @@ class Plugin:
                 # Fail fallback fetch too
                 raise subprocess.CalledProcessError(1, "git")
             if "rev-parse" in args[0] and "abcd1234^{commit}" in args[0]:
+                raise subprocess.CalledProcessError(1, "git")
+            # Fail checkout to trigger fetch
+            if args[0] == ["git", "-C", self.temp_repo_path, "checkout", "abcd1234"]:
                 raise subprocess.CalledProcessError(1, "git")
             return subprocess.CompletedProcess(args[0], 0, "", "")
 
