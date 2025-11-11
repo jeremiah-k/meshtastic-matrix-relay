@@ -1065,8 +1065,9 @@ def _clone_new_repo_to_commit(
     try:
         os.makedirs(plugins_dir, exist_ok=True)
     except (OSError, PermissionError):
-        logger.exception(f"Cannot create plugin directory {plugins_dir}")
-        logger.error(f"Skipping repository {repo_name} due to permission error")
+        logger.exception(
+            f"Cannot create plugin directory {plugins_dir}; skipping repository {repo_name}"
+        )
         return False
 
     try:
@@ -1109,8 +1110,9 @@ def _clone_new_repo_to_commit(
         logger.info(f"Checked out repository {repo_name} to commit {ref_value}")
         return True
     except (subprocess.CalledProcessError, FileNotFoundError):
-        logger.exception(f"Error cloning repository {repo_name}")
-        logger.error(f"Please manually clone the repository at {repo_path}")
+        logger.exception(
+            f"Error cloning repository {repo_name}; please manually clone into {repo_path}"
+        )
         return False
 
 

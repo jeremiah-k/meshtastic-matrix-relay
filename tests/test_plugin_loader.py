@@ -1062,7 +1062,9 @@ class Plugin:
             cmd = args[0]
             # For rev-parse calls, return same commit hash to simulate "already at target"
             if "rev-parse" in cmd and "capture_output" in kwargs:
-                return subprocess.CompletedProcess(args[0], 0, "abcd1234fullhash", "")
+                return subprocess.CompletedProcess(
+                    args[0], 0, stdout="abcd1234fullhash\n", stderr=""
+                )
             # All other operations succeed
             return subprocess.CompletedProcess(args[0], 0, "", "")
 
@@ -1953,7 +1955,7 @@ class TestGitOperations(BaseGitTest):
     def test_clone_or_update_repo_pull_current_branch_fails(
         self, mock_run_git, _mock_is_allowed
     ):
-        """Test that clone_or_update_repo handles checkout and pull failure on current branch."""
+        """Test that clone_or_update_repo handles checkout failure on default branches."""
         mock_run_git.side_effect = [
             None,  # fetch
             subprocess.CalledProcessError(1, "git checkout"),  # checkout main fails
