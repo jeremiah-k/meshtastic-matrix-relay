@@ -2086,8 +2086,7 @@ class TestCommandRunner(unittest.TestCase):
             _run([])
         self.assertIn("Command list cannot be empty", str(cm.exception))
 
-    @patch("subprocess.run")
-    def test_run_type_error_non_string_args(self, mock_subprocess):
+    def test_run_type_error_non_string_args(self):
         """Test _run raises TypeError for non-string arguments."""
         with self.assertRaises(TypeError) as cm:
             _run(["git", 123])  # type: ignore[list-item]
