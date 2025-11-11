@@ -1394,6 +1394,33 @@ def _validate_clone_inputs(repo_url: str, ref: dict[str, str]) -> ValidationResu
     return ValidationResult(True, repo_url, ref_type, ref_value, repo_name)
 
 
+def _get_repo_name_from_url(repo_url: str) -> str | None:
+    """
+    Extract repository name from a URL or SSH spec without validation.
+
+    This is a lightweight function that only extracts the repository name
+    from URLs and SSH specs. It performs no security validation.
+
+    Parameters:
+        repo_url (str): Repository URL or SSH spec.
+
+    Returns:
+        str | None: Repository name (basename without .git extension) or None if extraction fails.
+    """
+    if not repo_url:
+        return None
+
+    # Support both https URLs and git@host:owner/repo.git SCP-like specs
+    parsed = urlsplit(repo_url)
+    raw_path = parsed.path or (
+        repo_url.split(":", 1)[1]
+        if repo_url.startswith("git@") and ":" in repo_url
+        else repo_url
+    )
+    repo_name = os.path.splitext(os.path.basename(raw_path.rstrip("/")))[0]
+    return repo_name if repo_name else None
+
+
 def _clone_new_repo_to_branch_or_tag(
     repo_url: str,
     repo_path: str,
@@ -1552,6 +1579,88 @@ def _clone_new_repo_to_branch_or_tag(
     return False
 
 
+def _clone_or_update_repo_validated(
+    repo_url: str, ref_type: str, ref_value: str, repo_name: str, plugins_dir: str
+) -> bool:
+    """
+    Internal clone/update function that assumes inputs are already validated.
+
+    This is the core logic of clone_or_update_repo, but skips validation
+    to avoid redundant checks when inputs are pre-validated.
+
+    Parameters:
+        repo_url (str): Validated repository URL or SSH spec.
+        ref_type (str): Validated ref type: "branch", "tag", or "commit".
+        ref_value (str): Validated ref value (branch name, tag name, or commit hash).
+        repo_name (str): Validated repository name.
+        plugins_dir (str): Directory under which repository should be placed.
+
+    Returns:
+        bool: `True` if repository was successfully cloned or updated to the requested ref, `False` otherwise.
+    """
+    repo_path = os.path.join(plugins_dir, repo_name)
+
+    # Use module-level constant for default branch names
+    default_branches = DEFAULT_BRANCHES
+
+    # Log what we're trying to do
+    logger.info("Using %s '%s' for repository %s", ref_type, ref_value, repo_name)
+
+    # If it's a branch and one of the default branches, we'll handle it specially
+    is_default_branch = ref_type == "branch" and ref_value in default_branches
+
+    # Commits are handled differently from branches and tags
+    is_commit = ref_type == "commit"
+
+    if os.path.isdir(repo_path):
+        # Repository exists, update it
+        try:
+            # Handle commits differently from branches and tags
+            if is_commit:
+                return _update_existing_repo_to_commit(repo_path, ref_value, repo_name)
+            else:
+                return _update_existing_repo_to_branch_or_tag(
+                    repo_path,
+                    ref_type,
+                    ref_value,
+                    repo_name,
+                    is_default_branch,
+                    default_branches,
+                )
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            logger.exception(
+                "Error updating repository %s; please check or update %s manually",
+                repo_name,
+                repo_path,
+            )
+            return False
+    else:
+        # Repository doesn't exist, clone it
+        try:
+            # Handle commits differently from branches and tags
+            if is_commit:
+                return _clone_new_repo_to_commit(
+                    repo_url, repo_path, ref_value, repo_name, plugins_dir
+                )
+            else:
+                return _clone_new_repo_to_branch_or_tag(
+                    repo_url,
+                    repo_path,
+                    ref_type,
+                    ref_value,
+                    repo_name,
+                    plugins_dir,
+                    is_default_branch,
+                )
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            logger.exception(
+                "Error cloning repository %s; please manually clone into %s",
+                repo_name,
+                repo_path,
+            )
+            return False
+
+
 def clone_or_update_repo(repo_url: str, ref: dict[str, str], plugins_dir: str) -> bool:
     """
     Ensure a repository exists under plugins_dir and is checked out to the specified ref.
@@ -1567,11 +1676,22 @@ def clone_or_update_repo(repo_url: str, ref: dict[str, str], plugins_dir: str) -
         bool: `True` if the repository was successfully cloned or updated to the requested ref, `False` otherwise.
     """
     # Validate inputs
-    is_valid, repo_url, ref_type, ref_value, repo_name = _validate_clone_inputs(
-        repo_url, ref
-    )
-    if not is_valid:
+    validation_result = _validate_clone_inputs(repo_url, ref)
+    if not validation_result.is_valid:
         return False
+
+    # Delegate to internal function that assumes inputs are already validated
+    assert validation_result.repo_url is not None
+    assert validation_result.ref_type is not None
+    assert validation_result.ref_value is not None
+    assert validation_result.repo_name is not None
+    return _clone_or_update_repo_validated(
+        validation_result.repo_url,
+        validation_result.ref_type,
+        validation_result.ref_value,
+        validation_result.repo_name,
+        plugins_dir,
+    )
 
     repo_path = os.path.join(plugins_dir, repo_name)
 
@@ -2120,17 +2240,14 @@ def load_plugins(passed_config=None):
         plugin_info = community_plugins_config[plugin_name]
         repo_url = plugin_info.get("repository")
         if repo_url:
-            # Derive repo_name using the same normalization as clone/update
-            validation_result = _validate_clone_inputs(
-                repo_url, {"type": "branch", "value": "main"}
-            )
-            if not validation_result.is_valid or not validation_result.repo_name:
+            # Extract repo name using lightweight function (no validation needed for loading)
+            repo_name = _get_repo_name_from_url(repo_url)
+            if not repo_name:
                 logger.error(
                     "Invalid repository URL for community plugin: %s",
                     _redact_url(repo_url),
                 )
                 continue
-            repo_name = validation_result.repo_name
 
             # Try each directory in order
             plugin_found = False
