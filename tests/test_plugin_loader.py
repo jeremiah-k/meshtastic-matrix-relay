@@ -95,9 +95,9 @@ class MockPlugin:
         This method is a no-op stub that satisfies the plugin interface during testing and intentionally performs no action.
 
         Parameters:
-            room: Identifier or object representing the destination room for the message.
-            event: Payload object or mapping describing the message event (metadata, sender, etc.).
-            full_message: The full message text content received.
+            room (Any): Identifier or object representing the destination room for the message.
+            event (Any): Payload object or mapping describing the message event (metadata, sender, etc.).
+            full_message (str): The full message text content received.
         """
         pass
 

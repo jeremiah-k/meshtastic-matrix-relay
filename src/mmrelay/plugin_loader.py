@@ -1382,14 +1382,9 @@ def _validate_clone_inputs(repo_url: str, ref: dict[str, str]) -> ValidationResu
             return ValidationResult(False, None, None, None, None)
 
     # Extract repository name for later use
-    # Support both https URLs and git@host:owner/repo.git SCP-like specs
-    parsed = urlsplit(repo_url)
-    raw_path = parsed.path or (
-        repo_url.split(":", 1)[1]
-        if repo_url.startswith("git@") and ":" in repo_url
-        else repo_url
-    )
-    repo_name = os.path.splitext(os.path.basename(raw_path.rstrip("/")))[0]
+    repo_name = _get_repo_name_from_url(repo_url)
+    if not repo_name:
+        return ValidationResult(False, None, None, None, None)
 
     return ValidationResult(True, repo_url, ref_type, ref_value, repo_name)
 
@@ -1692,76 +1687,6 @@ def clone_or_update_repo(repo_url: str, ref: dict[str, str], plugins_dir: str) -
         validation_result.repo_name,
         plugins_dir,
     )
-
-    repo_path = os.path.join(plugins_dir, repo_name)
-
-    # Use module-level constant for default branch names
-    default_branches = DEFAULT_BRANCHES
-
-    # Log what we're trying to do
-    logger.info("Using %s '%s' for repository %s", ref_type, ref_value, repo_name)
-
-    # If it's a branch and one of the default branches, we'll handle it specially
-    is_default_branch = ref_type == "branch" and ref_value in default_branches
-
-    # Commits are handled differently from branches and tags
-    is_commit = ref_type == "commit"
-
-    if os.path.isdir(repo_path):
-        # Repository exists, update it
-        try:
-            # Handle commits differently from branches and tags
-            if is_commit:
-                return _update_existing_repo_to_commit(repo_path, ref_value, repo_name)
-            else:
-                return _update_existing_repo_to_branch_or_tag(
-                    repo_path,
-                    ref_type,
-                    ref_value,
-                    repo_name,
-                    is_default_branch,
-                    default_branches,
-                )
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            logger.exception(
-                "Error updating repository %s; please check or update %s manually",
-                repo_name,
-                repo_path,
-            )
-            return False
-    else:
-        # Repository doesn't exist yet, clone it
-        try:
-            os.makedirs(plugins_dir, exist_ok=True)
-        except (OSError, PermissionError):
-            logger.exception(f"Cannot create plugin directory {plugins_dir}")
-            logger.error(f"Skipping repository {repo_name} due to permission error")
-            return False
-
-        # Now try to clone the repository
-        try:
-            # For commits, we need to clone and then checkout the specific commit
-            if is_commit:
-                return _clone_new_repo_to_commit(
-                    repo_url, repo_path, ref_value, repo_name, plugins_dir
-                )
-            else:
-                return _clone_new_repo_to_branch_or_tag(
-                    repo_url,
-                    repo_path,
-                    ref_type,
-                    ref_value,
-                    repo_name,
-                    plugins_dir,
-                    is_default_branch,
-                )
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            logger.exception(
-                "Error cloning repository %s; please manually clone into %s",
-                repo_name,
-                repo_path,
-            )
-            return False
 
 
 def load_plugins_from_directory(directory, recursive=False):

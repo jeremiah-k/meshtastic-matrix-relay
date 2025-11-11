@@ -286,7 +286,7 @@ Common issues:
 
 When using `@pytest.mark.parametrize` with `@patch` decorators in `unittest.TestCase` classes, the parametrized arguments may not be passed correctly, causing `TypeError: missing 1 required positional argument`.
 
-**Problem**: Decorator ordering conflicts between parametrize and patch decorators.
+**Problem**: pytest.mark.parametrize injects its arguments after `self` in unittest.TestCase methods, which shifts the positions of @patch injected mocks. This causes mock_logger to receive the url value, leading to TypeError.
 
 ```python
 # ❌ PROBLEMATIC - May cause TypeError about missing arguments
