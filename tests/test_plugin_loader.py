@@ -154,8 +154,6 @@ class TestPluginLoader(BaseGitTest):
         """
         super().tearDown()
         # Clean up temporary directories
-        import shutil
-
         shutil.rmtree(self.test_dir, ignore_errors=True)
 
     @patch("mmrelay.plugin_loader.get_base_dir")
@@ -1860,7 +1858,9 @@ class TestGitOperations(BaseGitTest):
 
     @patch("mmrelay.plugin_loader._is_repo_url_allowed")
     @patch("mmrelay.plugin_loader.logger")
-    def test_clone_or_update_repo_invalid_url_empty(self, mock_logger, mock_is_allowed):
+    def test_clone_or_update_repo_invalid_url_empty(
+        self, _mock_logger, mock_is_allowed
+    ):
         """Test clone with empty URL."""
         mock_is_allowed.return_value = False
         ref = {"type": "branch", "value": "main"}
@@ -1871,7 +1871,7 @@ class TestGitOperations(BaseGitTest):
     @patch("mmrelay.plugin_loader._is_repo_url_allowed")
     @patch("mmrelay.plugin_loader.logger")
     def test_clone_or_update_repo_invalid_url_whitespace(
-        self, mock_logger, mock_is_allowed
+        self, _mock_logger, mock_is_allowed
     ):
         """Test clone with whitespace-only URL."""
         mock_is_allowed.return_value = False
@@ -2977,7 +2977,7 @@ class TestDependencyInstallation(BaseGitTest):
     @patch("os.makedirs")
     @patch("os.path.isdir")
     def test_clone_or_update_repo_commit_ref_type_validation(
-        self, mock_isdir, mock_makedirs, mock_logger, mock_is_allowed, mock_run_git
+        self, mock_isdir, _mock_makedirs, mock_logger, mock_is_allowed, mock_run_git
     ):
         """Test that 'commit' is accepted as a valid ref type."""
         import subprocess

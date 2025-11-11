@@ -337,7 +337,7 @@ def _redact_url(url: str) -> str:
         return urlunsplit((s.scheme, netloc, s.path, query, s.fragment))
     except (ValueError, TypeError, AttributeError) as exc:
         logger.debug("URL redaction failed for %r: %s", url, exc)
-    return url
+        return "<URL redaction failed>"
 
 
 def _is_repo_url_allowed(repo_url: str) -> bool:
@@ -1061,6 +1061,21 @@ def _clone_new_repo_to_commit(
         )
         logger.info(f"Cloned repository {repo_name} from {_redact_url(repo_url)}")
 
+        # If we're already at the requested commit, skip extra work (support short hashes)
+        try:
+            current = _run_git(
+                ["git", "-C", repo_path, "rev-parse", "HEAD"], capture_output=True
+            ).stdout.strip()
+            if current and (
+                current.startswith(ref_value) or ref_value.startswith(current)
+            ):
+                logger.info(
+                    "Repository %s is already at commit %s", repo_name, ref_value
+                )
+                return True
+        except subprocess.CalledProcessError:
+            pass
+
         # Then checkout the specific commit
         try:
             # Try direct checkout first (commit might be available from clone)
@@ -1304,7 +1319,7 @@ def _validate_clone_inputs(repo_url: str, ref: dict[str, str]) -> ValidationResu
             - repo_name (str|None): Derived repository name (basename without extension) on success, `None` on failure.
 
     Notes:
-        - Commit `value` must be 7–40 hexadecimal characters.
+        - Commit `value` must be 7-40 hexadecimal characters.
         - Branch and tag `value` must start with an alphanumeric character and may contain letters, digits, dot, underscore, slash, or hyphen.
         - A `value` that starts with "-" is considered invalid.
     """
@@ -1459,6 +1474,20 @@ def _clone_new_repo_to_branch_or_tag(
             if ref_type != "branch" or not is_default_branch:
                 # Post-clone operations for tags and non-default branches
                 if ref_type == "tag":
+                    # If already at the tag's commit, skip extra work
+                    try:
+                        current = _run_git(
+                            ["git", "-C", repo_path, "rev-parse", "HEAD"],
+                            capture_output=True,
+                        ).stdout.strip()
+                        tag_commit = _run_git(
+                            ["git", "-C", repo_path, "rev-parse", ref_value],
+                            capture_output=True,
+                        ).stdout.strip()
+                        if current == tag_commit:
+                            return True
+                    except subprocess.CalledProcessError:
+                        pass
                     success = _try_fetch_and_checkout_tag(
                         repo_path, ref_value, repo_name
                     )
