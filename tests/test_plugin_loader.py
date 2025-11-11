@@ -797,6 +797,14 @@ class Plugin:
         mock_isdir.return_value = False  # Repo doesn't exist
         ref = {"type": "commit", "value": "a1b2c3d4"}
 
+        import subprocess
+
+        mock_run_git.side_effect = lambda *args, **kwargs: (
+            subprocess.CompletedProcess(args[0], 0, stdout=b"some_commit\n", stderr=b"")
+            if "rev-parse" in str(args)
+            else None
+        )
+
         result = clone_or_update_repo(
             "https://github.com/user/repo.git", ref, self.temp_plugins_dir
         )
@@ -815,6 +823,11 @@ class Plugin:
                     "repo",
                 ],
                 {"cwd": self.temp_plugins_dir, "timeout": 120},
+            ),
+            # Check if already at the commit
+            (
+                ["git", "-C", self.temp_repo_path, "rev-parse", "HEAD"],
+                {"capture_output": True},
             ),
             # Direct checkout succeeds (no fetch needed)
             (
@@ -3219,6 +3232,19 @@ class TestDependencyInstallation(BaseGitTest):
         self, mock_logger, mock_run_git
     ):
         """Test _clone_new_repo_to_branch_or_tag with tag success."""
+        import subprocess
+
+        mock_run_git.side_effect = lambda *args, **kwargs: (
+            subprocess.CompletedProcess(args[0], 0, stdout=b"some_commit\n", stderr=b"")
+            if "rev-parse" in str(args) and "HEAD" in str(args)
+            else (
+                subprocess.CompletedProcess(
+                    args[0], 0, stdout=b"tag_commit\n", stderr=b""
+                )
+                if "rev-parse" in str(args)
+                else None
+            )
+        )
         result = _clone_new_repo_to_branch_or_tag(
             "https://github.com/user/repo.git",
             self.temp_repo_path,
@@ -3242,6 +3268,15 @@ class TestDependencyInstallation(BaseGitTest):
                 ],
                 cwd=self.temp_plugins_dir,
                 timeout=120,
+            ),
+            # Check if already at the tag's commit
+            call(
+                ["git", "-C", f"{self.temp_plugins_dir}/repo", "rev-parse", "HEAD"],
+                capture_output=True,
+            ),
+            call(
+                ["git", "-C", f"{self.temp_plugins_dir}/repo", "rev-parse", "v1.0.0"],
+                capture_output=True,
             ),
             call(
                 [
@@ -3273,9 +3308,15 @@ class TestDependencyInstallation(BaseGitTest):
         self, mock_logger, mock_run_git
     ):
         """Test _clone_new_repo_to_branch_or_tag with tag fetch fallback."""
-        # Clone succeeds, then fetch and checkout succeed
+        # Clone succeeds, rev-parse succeed but don't match, then fetch and checkout succeed
         mock_run_git.side_effect = [
             None,  # clone succeeds
+            MagicMock(
+                stdout=MagicMock(strip=MagicMock(return_value="different_commit"))
+            ),  # rev-parse HEAD
+            MagicMock(
+                stdout=MagicMock(strip=MagicMock(return_value="tag_commit"))
+            ),  # rev-parse tag
             None,  # fetch succeeds
             None,  # checkout succeeds
         ]
@@ -3293,13 +3334,13 @@ class TestDependencyInstallation(BaseGitTest):
         self.assertTrue(result)
         # Should fetch and checkout after clone
         calls = mock_run_git.call_args_list
-        self.assertEqual(len(calls), 3)
+        self.assertEqual(len(calls), 5)
         self.assertEqual(
-            calls[1][0][0],
+            calls[3][0][0],
             ["git", "-C", self.temp_repo_path, "fetch", "origin", "refs/tags/v1.0.0"],
         )
         self.assertEqual(
-            calls[2][0][0], ["git", "-C", self.temp_repo_path, "checkout", "v1.0.0"]
+            calls[4][0][0], ["git", "-C", self.temp_repo_path, "checkout", "v1.0.0"]
         )
 
     @patch("mmrelay.plugin_loader._run_git")
@@ -3308,9 +3349,15 @@ class TestDependencyInstallation(BaseGitTest):
         self, mock_logger, mock_run_git
     ):
         """Test _clone_new_repo_to_branch_or_tag with alternative tag fetch."""
-        # Clone succeeds, first fetch fails, alternative fetch succeeds, checkout succeeds
+        # Clone succeeds, rev-parse succeed but don't match, first fetch fails, alternative fetch succeeds, checkout succeeds
         mock_run_git.side_effect = [
             None,  # clone succeeds
+            MagicMock(
+                stdout=MagicMock(strip=MagicMock(return_value="different_commit"))
+            ),  # rev-parse HEAD
+            MagicMock(
+                stdout=MagicMock(strip=MagicMock(return_value="tag_commit"))
+            ),  # rev-parse tag
             subprocess.CalledProcessError(1, "git"),  # first fetch fails
             None,  # alternative fetch succeeds
             None,  # checkout succeeds
@@ -3330,7 +3377,7 @@ class TestDependencyInstallation(BaseGitTest):
         # Should try alternative fetch format
         calls = mock_run_git.call_args_list
         self.assertEqual(
-            calls[2][0][0],
+            calls[4][0][0],
             [
                 "git",
                 "-C",
