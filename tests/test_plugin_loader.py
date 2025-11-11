@@ -3380,15 +3380,13 @@ class TestDependencyInstallation(BaseGitTest):
         """Test _clone_new_repo_to_branch_or_tag with tag fetch fallback."""
         # Clone succeeds, rev-parse succeed but don't match, then fetch and checkout succeed
         mock_run_git.side_effect = [
-            None,  # clone succeeds
-            MagicMock(
-                stdout=MagicMock(strip=MagicMock(return_value="different_commit"))
+            subprocess.CompletedProcess([], 0),  # clone succeeds
+            subprocess.CompletedProcess(
+                [], 0, stdout="different_commit\n"
             ),  # rev-parse HEAD
-            MagicMock(
-                stdout=MagicMock(strip=MagicMock(return_value="tag_commit"))
-            ),  # rev-parse tag
-            None,  # fetch succeeds
-            None,  # checkout succeeds
+            subprocess.CompletedProcess([], 0, stdout="tag_commit\n"),  # rev-parse tag
+            subprocess.CompletedProcess([], 0),  # fetch succeeds
+            subprocess.CompletedProcess([], 0),  # checkout succeeds
         ]
 
         result = _clone_new_repo_to_branch_or_tag(
@@ -3421,16 +3419,14 @@ class TestDependencyInstallation(BaseGitTest):
         """Test _clone_new_repo_to_branch_or_tag with alternative tag fetch."""
         # Clone succeeds, rev-parse succeed but don't match, first fetch fails, alternative fetch succeeds, checkout succeeds
         mock_run_git.side_effect = [
-            None,  # clone succeeds
-            MagicMock(
-                stdout=MagicMock(strip=MagicMock(return_value="different_commit"))
+            subprocess.CompletedProcess([], 0),  # clone succeeds
+            subprocess.CompletedProcess(
+                [], 0, stdout="different_commit\n"
             ),  # rev-parse HEAD
-            MagicMock(
-                stdout=MagicMock(strip=MagicMock(return_value="tag_commit"))
-            ),  # rev-parse tag
+            subprocess.CompletedProcess([], 0, stdout="tag_commit\n"),  # rev-parse tag
             subprocess.CalledProcessError(1, "git"),  # first fetch fails
-            None,  # alternative fetch succeeds
-            None,  # checkout succeeds
+            subprocess.CompletedProcess([], 0),  # alternative fetch succeeds
+            subprocess.CompletedProcess([], 0),  # checkout succeeds
         ]
 
         result = _clone_new_repo_to_branch_or_tag(
@@ -3534,11 +3530,11 @@ class TestDependencyInstallation(BaseGitTest):
         self, mock_logger, mock_run_git
     ):
         """Test updating when already on the correct default branch."""
-        # Mock current branch check
+        # Mock fetch, checkout, and pull sequence
         mock_run_git.side_effect = [
-            None,  # fetch succeeds
-            MagicMock(stdout="main\n"),  # current branch is main
-            None,  # pull succeeds
+            subprocess.CompletedProcess([], 0),  # fetch succeeds
+            subprocess.CompletedProcess([], 0),  # checkout succeeds
+            subprocess.CompletedProcess([], 0),  # pull succeeds
         ]
 
         result = _update_existing_repo_to_branch_or_tag(
@@ -3561,12 +3557,11 @@ class TestDependencyInstallation(BaseGitTest):
         self, mock_logger, mock_run_git
     ):
         """Test switching to a different default branch."""
-        # Mock current branch check and checkout
+        # Mock fetch, checkout, and pull sequence
         mock_run_git.side_effect = [
-            None,  # fetch succeeds
-            MagicMock(stdout="master\n"),  # current branch is master
-            None,  # checkout main succeeds
-            None,  # pull succeeds
+            subprocess.CompletedProcess([], 0),  # fetch succeeds
+            subprocess.CompletedProcess([], 0),  # checkout main succeeds
+            subprocess.CompletedProcess([], 0),  # pull succeeds
         ]
 
         result = _update_existing_repo_to_branch_or_tag(
