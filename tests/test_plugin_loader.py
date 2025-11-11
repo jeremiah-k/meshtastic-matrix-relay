@@ -1951,7 +1951,7 @@ class TestGitOperations(BaseGitTest):
     @patch("mmrelay.plugin_loader._is_repo_url_allowed", return_value=True)
     @patch("mmrelay.plugin_loader._run_git")
     def test_clone_or_update_repo_pull_current_branch_fails(
-        self, mock_run_git, mock_is_allowed
+        self, mock_run_git, _mock_is_allowed
     ):
         """Test that clone_or_update_repo handles checkout and pull failure on current branch."""
         mock_run_git.side_effect = [
@@ -1970,7 +1970,7 @@ class TestGitOperations(BaseGitTest):
     @patch("mmrelay.plugin_loader._is_repo_url_allowed", return_value=True)
     @patch("mmrelay.plugin_loader._run_git")
     def test_clone_or_update_repo_checkout_and_pull_branch(
-        self, mock_run_git, mock_is_allowed
+        self, mock_run_git, _mock_is_allowed
     ):
         """Test that clone_or_update_repo handles checkout and pull for a different branch."""
 
@@ -1994,7 +1994,7 @@ class TestGitOperations(BaseGitTest):
     @patch("mmrelay.plugin_loader._is_repo_url_allowed", return_value=True)
     @patch("mmrelay.plugin_loader._run_git")
     def test_clone_or_update_repo_checkout_and_pull_tag(
-        self, mock_run_git, mock_is_allowed
+        self, mock_run_git, _mock_is_allowed
     ):
         """Test that clone_or_update_repo handles checkout and pull for a tag."""
 
@@ -2040,7 +2040,7 @@ class TestGitOperations(BaseGitTest):
     @patch("mmrelay.plugin_loader._is_repo_url_allowed", return_value=True)
     @patch("mmrelay.plugin_loader._run_git")
     def test_clone_or_update_repo_checkout_fails_fallback(
-        self, mock_run_git, mock_is_allowed
+        self, mock_run_git, _mock_is_allowed
     ):
         """Test that clone_or_update_repo handles checkout failure and tries fallback."""
         mock_run_git.side_effect = [
@@ -3190,7 +3190,11 @@ class TestDependencyInstallation(BaseGitTest):
             timeout=120,
         )
         mock_logger.info.assert_called_with(
-            "Cloned repository repo from https://github.com/user/repo.git at branch main"
+            "Cloned repository %s from %s at %s %s",
+            "repo",
+            "https://github.com/user/repo.git",
+            "branch",
+            "main",
         )
 
     @patch("mmrelay.plugin_loader._run_git")
@@ -3358,7 +3362,11 @@ class TestDependencyInstallation(BaseGitTest):
         ]
         mock_run_git.assert_has_calls(expected_calls)
         mock_logger.info.assert_any_call(
-            "Cloned repository repo from https://github.com/user/repo.git at tag default branch"
+            "Cloned repository %s from %s at %s %s",
+            "repo",
+            "https://github.com/user/repo.git",
+            "tag",
+            "default branch",
         )
         mock_logger.info.assert_any_call(
             "Successfully fetched and checked out tag %s for %s", "v1.0.0", "repo"
@@ -3543,7 +3551,9 @@ class TestDependencyInstallation(BaseGitTest):
         )
 
         self.assertTrue(result)
-        mock_logger.info.assert_called_with("Updated repository repo to branch main")
+        mock_logger.info.assert_called_with(
+            "Updated repository %s to %s %s", "repo", "branch", "main"
+        )
 
     @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader.logger")
@@ -3569,7 +3579,9 @@ class TestDependencyInstallation(BaseGitTest):
         )
 
         self.assertTrue(result)
-        mock_logger.info.assert_called_with("Updated repository repo to branch main")
+        mock_logger.info.assert_called_with(
+            "Updated repository %s to %s %s", "repo", "branch", "main"
+        )
 
     @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader.logger")
@@ -3594,7 +3606,7 @@ class TestDependencyInstallation(BaseGitTest):
 
         self.assertTrue(result)
         mock_logger.info.assert_called_with(
-            "Updated repository repo to branch feature-branch"
+            "Updated repository %s to %s %s", "repo", "branch", "feature-branch"
         )
 
     @patch("mmrelay.plugin_loader._run_git")

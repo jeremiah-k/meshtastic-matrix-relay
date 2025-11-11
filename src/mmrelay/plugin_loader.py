@@ -1027,7 +1027,7 @@ def _update_existing_repo_to_commit(
             if not _fetch_commit_with_fallback(repo_path, ref_value, repo_name):
                 return False
             _run_git(["git", "-C", repo_path, "checkout", ref_value], timeout=120)
-        logger.info(f"Updated repository {repo_name} to commit {ref_value}")
+        logger.info("Updated repository %s to commit %s", repo_name, ref_value)
         return True
     except subprocess.CalledProcessError:
         logger.exception(
@@ -1120,11 +1120,14 @@ def _try_checkout_and_pull_ref(
     try:
         _run_git(["git", "-C", repo_path, "checkout", ref_value], timeout=120)
         _run_git(["git", "-C", repo_path, "pull", "origin", ref_value], timeout=120)
-        logger.info(f"Updated repository {repo_name} to {ref_type} {ref_value}")
+        logger.info("Updated repository %s to %s %s", repo_name, ref_type, ref_value)
         return True
     except subprocess.CalledProcessError:
         logger.warning(
-            f"Failed to update {ref_type} {ref_value} for {repo_name}",
+            "Failed to update %s %s for %s",
+            ref_type,
+            ref_value,
+            repo_name,
         )
         return False
     except FileNotFoundError:
@@ -1271,7 +1274,7 @@ def _update_existing_repo_to_branch_or_tag(
     except (subprocess.CalledProcessError, FileNotFoundError) as e:
         logger.warning(f"Error fetching from remote: {e}")
         if isinstance(e, FileNotFoundError):
-            logger.exception(f"Error updating repository {repo_name}; git not found.")
+            logger.exception("Error updating repository %s; git not found.", repo_name)
             return False
 
     if is_default_branch:
@@ -1493,7 +1496,11 @@ def _clone_new_repo_to_branch_or_tag(
                 shutil.rmtree(repo_path, ignore_errors=True)
             _run_git(command, cwd=plugins_dir, timeout=120)
             logger.info(
-                f"Cloned repository {repo_name} from {redacted_url} at {ref_type} {branch_name}"
+                "Cloned repository %s from %s at %s %s",
+                repo_name,
+                redacted_url,
+                ref_type,
+                branch_name,
             )
 
             success = True
@@ -2081,9 +2088,21 @@ def load_plugins(passed_config=None):
                     )
                     continue
 
-                # Clone to the user directory by default
-                repo_name = os.path.splitext(os.path.basename(repo_url.rstrip("/")))[0]
-                success = clone_or_update_repo(repo_url, ref, community_plugins_dir)
+                # Clone to the user directory by default (derive name using the same logic as the clone path)
+                validation_result = _validate_clone_inputs(repo_url, ref)
+                if not validation_result.is_valid or not validation_result.repo_name:
+                    logger.error(
+                        "Invalid repository URL for community plugin %s: %s",
+                        plugin_name,
+                        _redact_url(repo_url),
+                    )
+                    continue
+                repo_name = validation_result.repo_name
+                # validation_result.repo_url is guaranteed to be non-None when is_valid is True
+                assert validation_result.repo_url is not None
+                success = clone_or_update_repo(
+                    validation_result.repo_url, ref, community_plugins_dir
+                )
                 if not success:
                     logger.warning(
                         f"Failed to clone/update plugin {plugin_name}, skipping"
@@ -2101,8 +2120,17 @@ def load_plugins(passed_config=None):
         plugin_info = community_plugins_config[plugin_name]
         repo_url = plugin_info.get("repository")
         if repo_url:
-            # Extract repository name from URL
-            repo_name = os.path.splitext(os.path.basename(repo_url.rstrip("/")))[0]
+            # Derive repo_name using the same normalization as clone/update
+            validation_result = _validate_clone_inputs(
+                repo_url, {"type": "branch", "value": "main"}
+            )
+            if not validation_result.is_valid or not validation_result.repo_name:
+                logger.error(
+                    "Invalid repository URL for community plugin: %s",
+                    _redact_url(repo_url),
+                )
+                continue
+            repo_name = validation_result.repo_name
 
             # Try each directory in order
             plugin_found = False
