@@ -1271,14 +1271,13 @@ class Plugin:
 
         self.assertFalse(result)
 
-        # Verify logger.exception was called (not just logger.error)
+        # Verify logger.exception was called with consolidated error message
         mock_logger.exception.assert_called_once()
         exception_call = mock_logger.exception.call_args[0][0]
         self.assertIn("Error cloning repository", exception_call)
-
-        # Verify manual clone instruction was logged
-        mock_logger.error.assert_called_once_with(
-            f"Please manually clone the repository at {self.temp_repo_path}"
+        self.assertIn(
+            f"Please manually clone the repository at {self.temp_repo_path}",
+            exception_call,
         )
 
 
