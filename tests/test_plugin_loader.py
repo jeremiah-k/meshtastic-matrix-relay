@@ -799,7 +799,7 @@ class Plugin:
 
         import subprocess
 
-        mock_run_git.side_effect = lambda *args, **kwargs: (
+        mock_run_git.side_effect = lambda *args, **_: (
             subprocess.CompletedProcess(args[0], 0, stdout="some_commit\n", stderr="")
             if "rev-parse" in str(args)
             else None
@@ -2038,8 +2038,7 @@ class TestCommandRunner(unittest.TestCase):
             _run(["git", 123])  # type: ignore[list-item]
         self.assertIn("all command arguments must be strings", str(cm.exception))
 
-    @patch("subprocess.run")
-    def test_run_value_error_shell_true(self, mock_subprocess):
+    def test_run_value_error_shell_true(self):
         """Test _run raises ValueError for shell=True."""
         with self.assertRaises(ValueError) as cm:
             _run(["git", "status"], shell=True)  # noqa: S604 - intentional for test
@@ -3234,7 +3233,7 @@ class TestDependencyInstallation(BaseGitTest):
         """Test _clone_new_repo_to_branch_or_tag with tag success."""
         import subprocess
 
-        mock_run_git.side_effect = lambda *args, **kwargs: (
+        mock_run_git.side_effect = lambda *args, **_: (
             subprocess.CompletedProcess(args[0], 0, stdout="some_commit\n", stderr="")
             if "rev-parse" in str(args) and "HEAD" in str(args)
             else (

@@ -13,7 +13,7 @@ import tempfile
 import threading
 import time
 from contextlib import contextmanager
-from typing import List, NamedTuple, Set
+from typing import Any, List, NamedTuple, Set
 from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 
 try:
@@ -835,7 +835,13 @@ def get_community_plugin_dirs():
     return _get_plugin_dirs("community")
 
 
-def _run(cmd, timeout=120, retry_attempts=1, retry_delay=1, **kwargs):
+def _run(
+    cmd: list[str],
+    timeout: float = 120,
+    retry_attempts: int = 1,
+    retry_delay: float = 1,
+    **kwargs: Any,
+) -> subprocess.CompletedProcess:
     # Validate command to prevent shell injection
     """
     Run a subprocess command with validated arguments, optional retries, and a configurable timeout.
@@ -891,7 +897,9 @@ def _run(cmd, timeout=120, retry_attempts=1, retry_delay=1, **kwargs):
                 time.sleep(delay)
 
 
-def _run_git(cmd, timeout=120, **kwargs):
+def _run_git(
+    cmd: list[str], timeout: float = 120, **kwargs: Any
+) -> subprocess.CompletedProcess:
     """
     Run a git command using the module's safe subprocess runner with conservative retry defaults.
 
@@ -1063,9 +1071,15 @@ def _clone_new_repo_to_commit(
 
         # If we're already at the requested commit, skip extra work (support short hashes)
         try:
-            current = _run_git(
+            _cp = _run_git(
                 ["git", "-C", repo_path, "rev-parse", "HEAD"], capture_output=True
-            ).stdout.strip()
+            )
+            raw = _cp.stdout
+            current = (
+                raw.decode("utf-8", "replace")
+                if isinstance(raw, (bytes, bytearray))
+                else str(raw)
+            ).strip()
             if current and (
                 current.startswith(ref_value) or ref_value.startswith(current)
             ):
@@ -1476,14 +1490,26 @@ def _clone_new_repo_to_branch_or_tag(
                 if ref_type == "tag":
                     # If already at the tag's commit, skip extra work
                     try:
-                        current = _run_git(
+                        _cp = _run_git(
                             ["git", "-C", repo_path, "rev-parse", "HEAD"],
                             capture_output=True,
-                        ).stdout.strip()
-                        tag_commit = _run_git(
+                        )
+                        raw = _cp.stdout
+                        current = (
+                            raw.decode("utf-8", "replace")
+                            if isinstance(raw, (bytes, bytearray))
+                            else str(raw)
+                        ).strip()
+                        _cp = _run_git(
                             ["git", "-C", repo_path, "rev-parse", ref_value],
                             capture_output=True,
-                        ).stdout.strip()
+                        )
+                        raw = _cp.stdout
+                        tag_commit = (
+                            raw.decode("utf-8", "replace")
+                            if isinstance(raw, (bytes, bytearray))
+                            else str(raw)
+                        ).strip()
                         if current == tag_commit:
                             return True
                     except subprocess.CalledProcessError:
