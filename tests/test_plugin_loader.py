@@ -799,11 +799,24 @@ class Plugin:
 
         import subprocess
 
-        mock_run_git.side_effect = lambda *args, **_: (
-            subprocess.CompletedProcess(args[0], 0, stdout="some_commit\n", stderr="")
-            if "rev-parse" in str(args)
-            else None
-        )
+        def mock_git_func(*args, **kwargs):
+            if "rev-parse" in args:
+                if "HEAD" in args:
+                    return subprocess.CompletedProcess(
+                        args[0], 0, stdout="a1b2c3d4\n", stderr=""
+                    )
+                elif "a1b2c3d4^{commit}" in args:
+                    return subprocess.CompletedProcess(
+                        args[0], 0, stdout="a1b2c3d4\n", stderr=""
+                    )
+                else:
+                    return subprocess.CompletedProcess(
+                        args[0], 0, stdout="some_commit\n", stderr=""
+                    )
+            else:
+                return subprocess.CompletedProcess(args[0], 0, stdout="", stderr="")
+
+        mock_run_git.side_effect = mock_git_func
 
         result = clone_or_update_repo(
             "https://github.com/user/repo.git", ref, self.temp_plugins_dir
@@ -827,6 +840,11 @@ class Plugin:
             # Check if already at the commit
             (
                 ["git", "-C", self.temp_repo_path, "rev-parse", "HEAD"],
+                {"capture_output": True},
+            ),
+            # Check target commit hash
+            (
+                ["git", "-C", self.temp_repo_path, "rev-parse", "a1b2c3d4^{commit}"],
                 {"capture_output": True},
             ),
             # Direct checkout succeeds (no fetch needed)
@@ -855,6 +873,8 @@ class Plugin:
         ref = {"type": "commit", "value": "deadbeef"}
 
         # Configure mock to fail on rev-parse (commit not found locally) but succeed on fetch and checkout
+        checkout_call_count = 0
+
         def side_effect(*args, **_kwargs):
             """
             Create a fake git subprocess side effect used in tests.
@@ -869,11 +889,19 @@ class Plugin:
             Raises:
                 subprocess.CalledProcessError: If the git command contains "rev-parse" for the target commit, to simulate a missing commit object.
             """
+            nonlocal checkout_call_count
             # Fail on rev-parse for the target commit (not found locally), but succeed on HEAD rev-parse
             if "rev-parse" in args[0] and "deadbeef^{commit}" in args[0]:
                 raise subprocess.CalledProcessError(
                     1, "git"
                 )  # Commit not found locally
+            # Fail on first checkout to force fetch, but succeed on second checkout
+            if "checkout" in args[0] and "deadbeef" in args[0]:
+                checkout_call_count += 1
+                if checkout_call_count == 1:
+                    raise subprocess.CalledProcessError(
+                        1, "git"
+                    )  # First checkout fails, need to fetch
             return subprocess.CompletedProcess(args[0], 0, "", "")
 
         mock_run_git.side_effect = side_effect
@@ -902,6 +930,11 @@ class Plugin:
                 ],
                 {"capture_output": True},
             ),
+            # Try direct checkout (fails to trigger fetch)
+            (
+                ["git", "-C", self.temp_repo_path, "checkout", "deadbeef"],
+                {"timeout": 120},
+            ),
             # Fetch specific commit
             (
                 [
@@ -915,7 +948,7 @@ class Plugin:
                 ],
                 {"timeout": 120},
             ),
-            # Checkout specific commit
+            # Checkout specific commit (succeeds after fetch)
             (
                 ["git", "-C", self.temp_repo_path, "checkout", "deadbeef"],
                 {"timeout": 120},
@@ -1733,9 +1766,14 @@ class TestGitOperations(BaseGitTest):
 
         _run_git(["git", "status"])
 
-        mock_run.assert_called_once_with(
-            ["git", "status"], timeout=120, retry_attempts=3, retry_delay=2
-        )
+        # Check that _run was called with the right parameters, including env
+        call_args = mock_run.call_args
+        self.assertEqual(call_args[0][0], ["git", "status"])
+        self.assertEqual(call_args[1]["timeout"], 120)
+        self.assertEqual(call_args[1]["retry_attempts"], 3)
+        self.assertEqual(call_args[1]["retry_delay"], 2)
+        self.assertIn("env", call_args[1])
+        self.assertEqual(call_args[1]["env"]["GIT_TERMINAL_PROMPT"], "0")
 
     @patch("mmrelay.plugin_loader._run_git")
     def test_run_git_with_custom_settings(self, mock_run):
@@ -3233,15 +3271,15 @@ class TestDependencyInstallation(BaseGitTest):
         """Test _clone_new_repo_to_branch_or_tag with tag success."""
         import subprocess
 
-        mock_run_git.side_effect = lambda *args, **_: (
+        mock_run_git.side_effect = lambda *args, **kwargs: (
             subprocess.CompletedProcess(args[0], 0, stdout="some_commit\n", stderr="")
-            if "rev-parse" in str(args) and "HEAD" in str(args)
+            if "rev-parse" in args[0] and "HEAD" in args[0]
             else (
                 subprocess.CompletedProcess(
                     args[0], 0, stdout="tag_commit\n", stderr=""
                 )
-                if "rev-parse" in str(args)
-                else None
+                if "rev-parse" in args[0]
+                else subprocess.CompletedProcess(args[0], 0, stdout="", stderr="")
             )
         )
         result = _clone_new_repo_to_branch_or_tag(

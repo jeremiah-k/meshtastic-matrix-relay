@@ -1486,22 +1486,12 @@ def _clone_new_repo_to_branch_or_tag(
                             ["git", "-C", repo_path, "rev-parse", "HEAD"],
                             capture_output=True,
                         )
-                        raw = _cp.stdout
-                        current = (
-                            raw.decode("utf-8", "replace")
-                            if isinstance(raw, (bytes, bytearray))
-                            else str(raw)
-                        ).strip()
+                        current = _cp.stdout.strip()
                         _cp = _run_git(
                             ["git", "-C", repo_path, "rev-parse", ref_value],
                             capture_output=True,
                         )
-                        raw = _cp.stdout
-                        tag_commit = (
-                            raw.decode("utf-8", "replace")
-                            if isinstance(raw, (bytes, bytearray))
-                            else str(raw)
-                        ).strip()
+                        tag_commit = _cp.stdout.strip()
                         if current == tag_commit:
                             return True
                     except subprocess.CalledProcessError:
