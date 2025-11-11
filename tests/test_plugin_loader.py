@@ -1953,11 +1953,11 @@ class TestGitOperations(BaseGitTest):
     def test_clone_or_update_repo_pull_current_branch_fails(
         self, mock_run_git, mock_is_allowed
     ):
-        """Test that clone_or_update_repo handles git pull failure on current branch."""
+        """Test that clone_or_update_repo handles checkout and pull failure on current branch."""
         mock_run_git.side_effect = [
             None,  # fetch
-            subprocess.CalledProcessError(1, "git pull"),  # pull main fails
-            subprocess.CalledProcessError(1, "git pull"),  # pull master fails
+            subprocess.CalledProcessError(1, "git checkout"),  # checkout main fails
+            subprocess.CalledProcessError(1, "git checkout"),  # checkout master fails
         ]
         repo_url = "https://github.com/test/plugin.git"
         ref = {"type": "branch", "value": "main"}
@@ -1974,10 +1974,9 @@ class TestGitOperations(BaseGitTest):
     ):
         """Test that clone_or_update_repo handles checkout and pull for a different branch."""
 
-        # Mock successful fetch, different current branch, successful checkout and pull
+        # Mock successful fetch, checkout and pull
         mock_run_git.side_effect = [
             None,  # fetch succeeds
-            MagicMock(stdout="develop\n"),  # current branch is develop
             None,  # checkout succeeds
             None,  # pull succeeds
         ]
