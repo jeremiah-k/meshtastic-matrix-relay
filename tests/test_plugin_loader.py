@@ -799,7 +799,7 @@ class Plugin:
 
         import subprocess
 
-        def mock_git_func(*args, **kwargs):
+        def mock_git_func(*args, **_kwargs):
             if "rev-parse" in args[0]:
                 if "HEAD" in args[0]:
                     return subprocess.CompletedProcess(
@@ -1998,13 +1998,13 @@ class TestGitOperations(BaseGitTest):
     ):
         """Test that clone_or_update_repo handles checkout and pull for a tag."""
 
-        def mock_run_git_side_effect(*args, **kwargs):
+        def mock_run_git_side_effect(*args, **_kwargs):
             """
             Simulate git subprocess responses for tests, returning success for common commands and a commit-containing result for `rev-parse`.
 
             Parameters:
                 *args: Positional arguments forwarded from the mocked runner; the first positional argument is expected to be the git command (string or sequence) inspected by this helper.
-                **kwargs: Ignored keyword arguments forwarded by the mock.
+                **_kwargs: Ignored keyword arguments forwarded by the mock.
 
             Returns:
                 None for successful commands such as `fetch`, `checkout`, and `pull`; otherwise an object whose `stdout` is a string commit hash for `rev-parse` invocations.
@@ -2101,8 +2101,7 @@ class TestCommandRunner(unittest.TestCase):
             _run(["git", "status"], shell=True)  # noqa: S604 - intentional for test
         self.assertIn("shell=True is not allowed in _run", str(cm.exception))
 
-    @patch("subprocess.run")
-    def test_run_value_error_empty_args(self, mock_subprocess):
+    def test_run_value_error_empty_args(self):
         """Test _run raises ValueError for empty/whitespace arguments."""
         with self.assertRaises(ValueError) as cm:
             _run(["git", ""])
@@ -3200,7 +3199,7 @@ class TestDependencyInstallation(BaseGitTest):
     @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader.logger")
     def test_clone_new_repo_to_branch_or_tag_default_branch_fallback(
-        self, mock_logger, mock_run_git
+        self, _mock_logger, mock_run_git
     ):
         """Test _clone_new_repo_to_branch_or_tag with default branch fallback."""
         # First call fails, second succeeds
@@ -3251,7 +3250,7 @@ class TestDependencyInstallation(BaseGitTest):
     @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader.logger")
     def test_clone_new_repo_to_branch_or_tag_default_branch_final_fallback(
-        self, mock_logger, mock_run_git
+        self, _mock_logger, mock_run_git
     ):
         """Test _clone_new_repo_to_branch_or_tag with final fallback to default branch."""
         # Both main and master fail, fallback to clone without branch
@@ -3294,7 +3293,7 @@ class TestDependencyInstallation(BaseGitTest):
         """Test _clone_new_repo_to_branch_or_tag with tag success."""
         import subprocess
 
-        mock_run_git.side_effect = lambda *args, **kwargs: (
+        mock_run_git.side_effect = lambda *args, **_kwargs: (
             subprocess.CompletedProcess(args[0], 0, stdout="some_commit\n", stderr="")
             if "rev-parse" in args[0] and "HEAD" in args[0]
             else (
@@ -3375,7 +3374,7 @@ class TestDependencyInstallation(BaseGitTest):
     @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader.logger")
     def test_clone_new_repo_to_branch_or_tag_tag_fetch_fallback(
-        self, mock_logger, mock_run_git
+        self, _mock_logger, mock_run_git
     ):
         """Test _clone_new_repo_to_branch_or_tag with tag fetch fallback."""
         # Clone succeeds, rev-parse succeed but don't match, then fetch and checkout succeed
@@ -3414,7 +3413,7 @@ class TestDependencyInstallation(BaseGitTest):
     @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader.logger")
     def test_clone_new_repo_to_branch_or_tag_tag_fetch_fallback_alt(
-        self, mock_logger, mock_run_git
+        self, _mock_logger, mock_run_git
     ):
         """Test _clone_new_repo_to_branch_or_tag with alternative tag fetch."""
         # Clone succeeds, rev-parse succeed but don't match, first fetch fails, alternative fetch succeeds, checkout succeeds
@@ -3456,7 +3455,7 @@ class TestDependencyInstallation(BaseGitTest):
     @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader.logger")
     def test_clone_new_repo_to_branch_or_tag_tag_as_branch_fallback(
-        self, mock_logger, mock_run_git
+        self, _mock_logger, mock_run_git
     ):
         """Test _clone_new_repo_to_branch_or_tag with tag as branch fallback."""
         mock_run_git.side_effect = [
