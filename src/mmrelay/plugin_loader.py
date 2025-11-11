@@ -900,6 +900,17 @@ def _run(
 def _run_git(
     cmd: list[str], timeout: float = 120, **kwargs: Any
 ) -> subprocess.CompletedProcess:
+    """
+    Run a git command using the module's safe subprocess runner with conservative retry defaults.
+
+    Parameters:
+        cmd (list[str]): Command and arguments to run (e.g., ['git', 'clone', '...']).
+        timeout (float): Maximum seconds to wait for each attempt.
+        **kwargs: Additional options forwarded to `_run` (can override retries).
+
+    Returns:
+        subprocess.CompletedProcess: The completed process result containing `returncode`, `stdout`, and `stderr`.
+    """
     kwargs.setdefault("retry_attempts", 3)
     kwargs.setdefault("retry_delay", 2)
     # Ensure non-interactive git by default
