@@ -1063,13 +1063,9 @@ def _clone_new_repo_to_commit(
 
         # If we're already at the requested commit, skip extra work (support short hashes)
         try:
-            current = (
-                _run_git(
-                    ["git", "-C", repo_path, "rev-parse", "HEAD"], capture_output=True
-                )
-                .stdout.decode("utf-8")
-                .strip()
-            )
+            current = _run_git(
+                ["git", "-C", repo_path, "rev-parse", "HEAD"], capture_output=True
+            ).stdout.strip()
             if current and (
                 current.startswith(ref_value) or ref_value.startswith(current)
             ):
@@ -1480,22 +1476,14 @@ def _clone_new_repo_to_branch_or_tag(
                 if ref_type == "tag":
                     # If already at the tag's commit, skip extra work
                     try:
-                        current = (
-                            _run_git(
-                                ["git", "-C", repo_path, "rev-parse", "HEAD"],
-                                capture_output=True,
-                            )
-                            .stdout.decode("utf-8")
-                            .strip()
-                        )
-                        tag_commit = (
-                            _run_git(
-                                ["git", "-C", repo_path, "rev-parse", ref_value],
-                                capture_output=True,
-                            )
-                            .stdout.decode("utf-8")
-                            .strip()
-                        )
+                        current = _run_git(
+                            ["git", "-C", repo_path, "rev-parse", "HEAD"],
+                            capture_output=True,
+                        ).stdout.strip()
+                        tag_commit = _run_git(
+                            ["git", "-C", repo_path, "rev-parse", ref_value],
+                            capture_output=True,
+                        ).stdout.strip()
                         if current == tag_commit:
                             return True
                     except subprocess.CalledProcessError:

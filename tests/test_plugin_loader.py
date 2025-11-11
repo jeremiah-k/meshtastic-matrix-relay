@@ -800,7 +800,7 @@ class Plugin:
         import subprocess
 
         mock_run_git.side_effect = lambda *args, **kwargs: (
-            subprocess.CompletedProcess(args[0], 0, stdout=b"some_commit\n", stderr=b"")
+            subprocess.CompletedProcess(args[0], 0, stdout="some_commit\n", stderr="")
             if "rev-parse" in str(args)
             else None
         )
@@ -3235,11 +3235,11 @@ class TestDependencyInstallation(BaseGitTest):
         import subprocess
 
         mock_run_git.side_effect = lambda *args, **kwargs: (
-            subprocess.CompletedProcess(args[0], 0, stdout=b"some_commit\n", stderr=b"")
+            subprocess.CompletedProcess(args[0], 0, stdout="some_commit\n", stderr="")
             if "rev-parse" in str(args) and "HEAD" in str(args)
             else (
                 subprocess.CompletedProcess(
-                    args[0], 0, stdout=b"tag_commit\n", stderr=b""
+                    args[0], 0, stdout="tag_commit\n", stderr=""
                 )
                 if "rev-parse" in str(args)
                 else None
