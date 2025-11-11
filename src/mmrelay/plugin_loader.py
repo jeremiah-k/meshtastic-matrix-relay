@@ -336,7 +336,7 @@ def _redact_url(url: str) -> str:
         query = urlencode(redacted)
         return urlunsplit((s.scheme, netloc, s.path, query, s.fragment))
     except (ValueError, TypeError, AttributeError) as exc:
-        logger.debug("URL redaction failed for %r: %s", url, exc)
+        logger.debug("URL redaction failed: %s", exc)
         return "<URL redaction failed>"
 
 
@@ -1036,6 +1036,9 @@ def _update_existing_repo_to_commit(
             repo_name,
         )
         return False
+    except FileNotFoundError:
+        logger.exception("Error updating repository %s; git not found.", repo_name)
+        return False
 
 
 def _clone_new_repo_to_commit(
@@ -1172,6 +1175,13 @@ def _try_fetch_and_checkout_tag(repo_path: str, ref_value: str, repo_name: str) 
         )
         return True
     except subprocess.CalledProcessError:
+        return False
+    except FileNotFoundError:
+        logger.exception(
+            "Error fetching/checking out tag %s for %s; git not found.",
+            ref_value,
+            repo_name,
+        )
         return False
 
 
@@ -1366,7 +1376,14 @@ def _validate_clone_inputs(repo_url: str, ref: dict[str, str]) -> ValidationResu
             return ValidationResult(False, None, None, None, None)
 
     # Extract repository name for later use
-    repo_name = os.path.splitext(os.path.basename(repo_url.rstrip("/")))[0]
+    # Support both https URLs and git@host:owner/repo.git SCP-like specs
+    parsed = urlsplit(repo_url)
+    raw_path = parsed.path or (
+        repo_url.split(":", 1)[1]
+        if repo_url.startswith("git@") and ":" in repo_url
+        else repo_url
+    )
+    repo_name = os.path.splitext(os.path.basename(raw_path.rstrip("/")))[0]
 
     return ValidationResult(True, repo_url, ref_type, ref_value, repo_name)
 
@@ -1488,7 +1505,13 @@ def _clone_new_repo_to_branch_or_tag(
                         )
                         current = _cp.stdout.strip()
                         _cp = _run_git(
-                            ["git", "-C", repo_path, "rev-parse", ref_value],
+                            [
+                                "git",
+                                "-C",
+                                repo_path,
+                                "rev-parse",
+                                f"{ref_value}^{{commit}}",
+                            ],
                             capture_output=True,
                         )
                         tag_commit = _cp.stdout.strip()

@@ -2014,9 +2014,13 @@ class TestGitOperations(BaseGitTest):
             if "fetch" in cmd:
                 return None  # fetch succeeds
             elif "rev-parse" in cmd and "HEAD" in cmd:
-                return MagicMock(stdout="abc123commit\n")  # current commit
+                return subprocess.CompletedProcess(
+                    cmd, 0, stdout="abc123commit\n", stderr=""
+                )  # current commit
             elif "rev-parse" in cmd:
-                return MagicMock(stdout="def456commit\n")  # tag commit (different)
+                return subprocess.CompletedProcess(
+                    cmd, 0, stdout="def456commit\n", stderr=""
+                )  # tag commit (different)
             elif "checkout" in cmd:
                 return None  # checkout succeeds
             elif "pull" in cmd:
@@ -3127,7 +3131,7 @@ class TestDependencyInstallation(BaseGitTest):
         """Test _validate_clone_inputs with None URL."""
         ref = {"type": "branch", "value": "main"}
         # The function handles None by converting to empty string internally
-        result = _validate_clone_inputs("", ref)
+        result = _validate_clone_inputs(None, ref)  # type: ignore[arg-type]
 
         self.assertEqual(result, (False, None, None, None, None))
 
