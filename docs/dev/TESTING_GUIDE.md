@@ -282,6 +282,45 @@ Common issues:
 - Mock applied in wrong order (decorators apply bottom-to-top)
 - Function not actually calling the mocked dependency
 
+### Parametrized Tests with Patch Decorators
+
+When using `@pytest.mark.parametrize` with `@patch` decorators in `unittest.TestCase` classes, the parametrized arguments may not be passed correctly, causing `TypeError: missing 1 required positional argument`.
+
+**Problem**: pytest.mark.parametrize injects its arguments after `self` in unittest.TestCase methods, which shifts the positions of @patch injected mocks. This causes mock_logger to receive the url value, leading to TypeError.
+
+```python
+# ❌ PROBLEMATIC - May cause TypeError about missing arguments
+@pytest.mark.parametrize("url", ["", "   "])
+@patch("mmrelay.module._some_function")
+@patch("mmrelay.module.logger")
+def test_clone_or_update_repo_invalid_url(self, mock_logger, mock_some_func, url):
+    # This may fail with "missing 1 required positional argument: 'url'"
+    pass
+```
+
+**Solution**: Use separate test methods instead of parametrization:
+
+```python
+# ✅ CORRECT - Separate test methods avoid decorator conflicts
+@patch("mmrelay.module._some_function")
+@patch("mmrelay.module.logger")
+def test_clone_or_update_repo_invalid_url_empty(self, mock_logger, mock_some_func):
+    """Test clone with empty URL."""
+    ref = {"type": "branch", "value": "main"}
+    result = clone_or_update_repo("", ref, "/tmp")
+    self.assertFalse(result)
+
+@patch("mmrelay.module._some_function")
+@patch("mmrelay.module.logger")
+def test_clone_or_update_repo_invalid_url_whitespace(self, mock_logger, mock_some_func):
+    """Test clone with whitespace-only URL."""
+    ref = {"type": "branch", "value": "main"}
+    result = clone_or_update_repo("   ", ref, "/tmp")
+    self.assertFalse(result)
+```
+
+**Note**: Parametrized tests work fine with pytest functions (not unittest.TestCase), as shown in the Test Organization section.
+
 ### Hanging Tests Due to `run_in_executor`
 
 Some tests may hang due to the use of `asyncio.run_in_executor` in the application code. This is because the default executor uses a thread pool that may not be properly shut down during test teardown.
