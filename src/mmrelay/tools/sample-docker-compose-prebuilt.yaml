@@ -28,3 +28,16 @@ services:
     # privileged: true # Alternative if apparmor=unconfined is not acceptable
 
     # Tip: For correct permissions and paths, ensure UID, GID, and MMRELAY_HOME are set in a .env file or exported
+
+  # Optional: Watchtower for automatic updates (Recommended)
+  # Uncomment to check for updates daily at 2 AM
+  # watchtower:
+  #   image: containrrr/watchtower:latest
+  #   container_name: watchtower-mmrelay
+  #   restart: unless-stopped
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock
+  #   environment:
+  #     - WATCHTOWER_CLEANUP=true
+  #     - WATCHTOWER_SCHEDULE=0 2 * * *  # Daily at 2 AM
+  #   command: meshtastic-matrix-relay

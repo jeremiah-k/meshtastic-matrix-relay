@@ -51,6 +51,18 @@ docker compose logs -f
 
 **That's it!** Your MMRelay is now running with the official prebuilt image.
 
+**Optional: Enable Automatic Updates**
+To keep MMRelay updated automatically, uncomment the Watchtower section in your docker-compose.yaml file:
+
+```bash
+# Edit the compose file to enable automatic updates
+nano docker-compose.yaml
+# Uncomment the watchtower section (lines at the bottom)
+docker compose up -d  # Restart to apply changes
+```
+
+This will check for updates daily at 2 AM and automatically restart with new versions.
+
 ```bash
 chmod 600 ~/.mmrelay/config.yaml
 ```
@@ -518,8 +530,15 @@ Look for messages like:
 
 **Prebuilt images:**
 
-- Pull latest: `docker compose pull && docker compose up -d`
-- Or use Watchtower for automatic updates (see sample-docker-compose-prebuilt.yaml)
+- **Automatic updates (Recommended):** Uncomment the Watchtower service in your docker-compose.yaml file to get daily updates at 2 AM
+- **Manual updates:** `docker compose pull && docker compose up -d`
+
+**Watchtower Benefits:**
+
+- Automatic security updates
+- No manual intervention required
+- Cleans up old images to save space
+- Only updates MMRelay container (safe for other services)
 
 **Built from source:**
 
