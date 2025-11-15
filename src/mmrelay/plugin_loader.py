@@ -13,7 +13,7 @@ import tempfile
 import threading
 import time
 from contextlib import contextmanager
-from typing import Any, NamedTuple
+from typing import Any, Mapping, NamedTuple
 from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 
 try:
@@ -833,6 +833,93 @@ def get_community_plugin_dirs() -> list[str]:
         list[str]: Filesystem paths to search for community plugins, ordered from highest to lowest priority.
     """
     return _get_plugin_dirs("community")
+
+
+def _resolve_community_plugin_ref(
+    plugin_name: str, plugin_info: Mapping[str, Any] | None
+) -> tuple[str | None, dict[str, str] | None]:
+    """Resolve repository URL and reference specification for a community plugin.
+
+    Supports three formats:
+      1. Legacy top-level keys (`branch`, `tag`, `commit`).
+      2. A `revision` string treated as a commit hash.
+      3. A `revision` mapping with explicit `type` (branch/tag/commit) and `value`.
+
+    Preference order remains commit > tag > branch; absent values default to the
+    main branch. Returns ``(None, None)`` when no repository URL is configured.
+    """
+
+    if not isinstance(plugin_info, Mapping):
+        return None, None
+
+    repo_url = plugin_info.get("repository")
+    if not repo_url:
+        return None, None
+
+    revision = plugin_info.get("revision")
+    rev_type = None
+    rev_value: str | None = None
+
+    if isinstance(revision, str):
+        rev_type = "commit"
+        rev_value = revision.strip()
+    elif isinstance(revision, Mapping):
+        candidate_type = (revision.get("type") or "").strip().lower()
+        candidate_value = revision.get("value")
+        if candidate_value is not None:
+            candidate_value = str(candidate_value).strip()
+        if candidate_type in {"commit", "branch", "tag"} and candidate_value:
+            rev_type = candidate_type
+            rev_value = candidate_value
+        else:
+            logger.warning(
+                "Invalid revision configuration for community plugin %s; expected keys 'type' and 'value'",
+                plugin_name,
+            )
+
+    if rev_type and rev_value:
+        if rev_type == "commit":
+            logger.info(
+                "Pinning community plugin %s to commit %s", plugin_name, rev_value
+            )
+        return repo_url, {"type": rev_type, "value": rev_value}
+
+    def _clean(value: Any) -> str | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text if text else None
+
+    commit = _clean(plugin_info.get("commit"))
+    tag = _clean(plugin_info.get("tag"))
+    branch = _clean(plugin_info.get("branch"))
+
+    if commit:
+        if tag:
+            logger.warning(
+                "Commit specified along with tag for plugin %s, using commit",
+                plugin_name,
+            )
+        if branch:
+            logger.warning(
+                "Commit specified along with branch for plugin %s, using commit",
+                plugin_name,
+            )
+        logger.info("Pinning community plugin %s to commit %s", plugin_name, commit)
+        return repo_url, {"type": "commit", "value": commit}
+
+    if tag and branch:
+        logger.warning(
+            "Both tag and branch specified for plugin %s, using tag", plugin_name
+        )
+
+    if tag:
+        return repo_url, {"type": "tag", "value": tag}
+
+    if branch:
+        return repo_url, {"type": "branch", "value": branch}
+
+    return repo_url, {"type": "branch", "value": "main"}
 
 
 def _run(
@@ -2110,68 +2197,48 @@ def load_plugins(passed_config=None):
                 )
                 continue
 
-            repo_url = plugin_info.get("repository")
-
-            # Support commit, tag, and branch parameters
-            commit = plugin_info.get("commit")
-            tag = plugin_info.get("tag")
-            branch = plugin_info.get("branch")
-
-            # Determine what to use (commit, tag, branch, or default)
-            # Priority: commit > tag > branch
-            if commit:
-                if tag or branch:
-                    logger.warning(
-                        f"Commit specified along with tag/branch for plugin {plugin_name}, using commit"
-                    )
-                ref = {"type": "commit", "value": commit}
-            elif tag and branch:
-                logger.warning(
-                    f"Both tag and branch specified for plugin {plugin_name}, using tag"
+            repo_url, ref = _resolve_community_plugin_ref(plugin_name, plugin_info)
+            if repo_url is None or ref is None:
+                logger.error(
+                    "Repository configuration missing or invalid for community plugin %s",
+                    plugin_name,
                 )
-                ref = {"type": "tag", "value": tag}
-            elif tag:
-                ref = {"type": "tag", "value": tag}
-            elif branch:
-                ref = {"type": "branch", "value": branch}
-            else:
-                # Default to main branch if neither is specified
-                ref = {"type": "branch", "value": "main"}
-
-            if repo_url:
-                if community_plugins_dir is None:
-                    logger.warning(
-                        "Skipping community plugin %s: no accessible plugin directory",
-                        plugin_name,
-                    )
-                    continue
-
-                # Clone to the user directory by default (derive name using the same logic as the clone path)
-                validation_result = _validate_clone_inputs(repo_url, ref)
-                if not validation_result.is_valid or not validation_result.repo_name:
-                    logger.error(
-                        "Invalid repository URL for community plugin %s: %s",
-                        plugin_name,
-                        _redact_url(repo_url),
-                    )
-                    continue
-                repo_name = validation_result.repo_name
-                # validation_result.repo_url is guaranteed to be non-None when is_valid is True
-                assert validation_result.repo_url is not None
-                success = clone_or_update_repo(
-                    validation_result.repo_url, ref, community_plugins_dir
-                )
-                if not success:
-                    logger.warning(
-                        f"Failed to clone/update plugin {plugin_name}, skipping"
-                    )
-                    continue
-                repo_path = os.path.join(community_plugins_dir, repo_name)
-                _install_requirements_for_repo(repo_path, repo_name)
-            else:
-                logger.error("Repository URL not specified for a community plugin")
-                logger.error("Please specify the repository URL in config.yaml")
                 continue
+
+            if community_plugins_dir is None:
+                logger.warning(
+                    "Skipping community plugin %s: no accessible plugin directory",
+                    plugin_name,
+                )
+                continue
+
+            validation_result = _validate_clone_inputs(repo_url, ref)
+            if not validation_result.is_valid or not validation_result.repo_name:
+                logger.error(
+                    "Invalid repository URL for community plugin %s: %s",
+                    plugin_name,
+                    _redact_url(repo_url),
+                )
+                continue
+
+            assert validation_result.repo_url is not None
+            assert validation_result.ref_type is not None
+            assert validation_result.ref_value is not None
+            repo_name = validation_result.repo_name
+
+            success = _clone_or_update_repo_validated(
+                validation_result.repo_url,
+                validation_result.ref_type,
+                validation_result.ref_value,
+                repo_name,
+                community_plugins_dir,
+            )
+            if not success:
+                logger.warning(f"Failed to clone/update plugin {plugin_name}, skipping")
+                continue
+
+            repo_path = os.path.join(community_plugins_dir, repo_name)
+            _install_requirements_for_repo(repo_path, repo_name)
 
     # Only load community plugins that are explicitly enabled
     for plugin_name in active_community_plugins:

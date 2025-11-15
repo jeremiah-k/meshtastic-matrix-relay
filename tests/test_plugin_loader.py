@@ -30,6 +30,7 @@ from mmrelay.plugin_loader import (
     _filter_risky_requirements,
     _install_requirements_for_repo,
     _is_repo_url_allowed,
+    _resolve_community_plugin_ref,
     _run,
     _update_existing_repo_to_branch_or_tag,
     _validate_clone_inputs,
@@ -3156,6 +3157,57 @@ class TestDependencyInstallation(BaseGitTest):
         result = _validate_clone_inputs("https://github.com/user/repo.git", ref)
 
         self.assertEqual(result, (False, None, None, None, None))
+
+    def test_resolve_plugin_ref_revision_mapping_commit(self):
+        """Revision mapping with commit type should pin plugin to commit."""
+        plugin_info = {
+            "repository": "https://github.com/example/repo.git",
+            "revision": {"type": "commit", "value": "abc1234"},
+            "branch": "dev",
+        }
+
+        repo_url, ref = _resolve_community_plugin_ref("sample_plugin", plugin_info)
+
+        self.assertEqual(repo_url, "https://github.com/example/repo.git")
+        self.assertEqual(ref, {"type": "commit", "value": "abc1234"})
+
+    def test_resolve_plugin_ref_string_revision_defaults_to_commit(self):
+        """A string revision value should be treated as a commit hash."""
+        plugin_info = {
+            "repository": "https://github.com/example/repo.git",
+            "revision": "deadbeefcafebabe",
+        }
+
+        repo_url, ref = _resolve_community_plugin_ref("pinned", plugin_info)
+
+        self.assertEqual(ref, {"type": "commit", "value": "deadbeefcafebabe"})
+        self.assertEqual(repo_url, "https://github.com/example/repo.git")
+
+    def test_resolve_plugin_ref_commit_precedence(self):
+        """Commit takes precedence over tag and branch values."""
+        plugin_info = {
+            "repository": "https://github.com/example/repo.git",
+            "commit": "cafebabe",
+            "tag": "v1.0.0",
+            "branch": "main",
+        }
+
+        repo_url, ref = _resolve_community_plugin_ref("mixed", plugin_info)
+
+        self.assertEqual(ref, {"type": "commit", "value": "cafebabe"})
+        self.assertEqual(repo_url, "https://github.com/example/repo.git")
+
+    def test_resolve_plugin_ref_invalid_revision_falls_back(self):
+        """Invalid revision dict should fall back to defaults."""
+        plugin_info = {
+            "repository": "https://github.com/example/repo.git",
+            "revision": {"type": "weird", "value": "something"},
+        }
+
+        repo_url, ref = _resolve_community_plugin_ref("fallback", plugin_info)
+
+        self.assertEqual(repo_url, "https://github.com/example/repo.git")
+        self.assertEqual(ref, {"type": "branch", "value": "main"})
 
     @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader.logger")

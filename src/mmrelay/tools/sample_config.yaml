@@ -107,7 +107,11 @@ plugins:
 #  sample_plugin:
 #    active: true
 #    repository: https://github.com/username/sample_plugin.git
-#    tag: master
+#    branch: main
+#  pinned_plugin:
+#    active: true
+#    repository: https://github.com/username/another_plugin.git
+#    commit: deadbeefcafebabe1234567890abcdef12345678
 #  advanced_plugin:
 #    active: false
 #    repository: https://github.com/username/advanced_plugin.git

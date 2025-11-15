@@ -68,8 +68,15 @@ community-plugins:
   example-plugin:
     active: true
     repository: https://github.com/jeremiah-k/mmr-plugin-template.git
-    tag: main
+    branch: main
+
+  gpxtracker-pinned:
+    active: true
+    repository: https://github.com/fernandodpr/MMR-GPXTRacker.git
+    commit: 4f3a6b8c5d9e1a2b3c4d5e6f7a8b9c0d1e2f3a4b
 ```
+
+Use `branch` for tracking tips during development, `tag` for published releases, and `commit` when you want to pin to a specific revision. When `commit` is provided it takes priority over any tag or branch values so the plugin stays on that exact SHA.
 
 ### Plugin System
 
