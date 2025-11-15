@@ -30,43 +30,29 @@ You need Docker installed on your system. Follow the [official Docker installati
 **Most users should start here** - prebuilt images without cloning the repository:
 
 ```bash
-# 1. Create directories and get config
+# Create directories and download config
 mkdir -p ~/.mmrelay/data ~/.mmrelay/logs
 curl -Lo ~/.mmrelay/config.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/src/mmrelay/tools/sample_config.yaml
 
-# 2. Edit your config
+# Adjust permissions and edit the file
+chmod 600 ~/.mmrelay/config.yaml
 nano ~/.mmrelay/config.yaml
 
-# 3. Set up environment and get docker-compose file
-# The following commands set up your environment to prevent permission issues
+# Set up environment and get docker-compose file
 grep -q '^MMRELAY_HOME=' .env 2>/dev/null || echo 'MMRELAY_HOME=$HOME' >> .env
 grep -q '^UID=' .env 2>/dev/null || echo "UID=$(id -u)" >> .env
 grep -q '^GID=' .env 2>/dev/null || echo "GID=$(id -g)" >> .env
 curl -o docker-compose.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/src/mmrelay/tools/sample-docker-compose-prebuilt.yaml
-docker compose up -d
 
-# 4. View logs
+# Optional: Enable automatic updates before first startup
+nano docker-compose.yaml  # Uncomment the watchtower section
+
+# Start containers and view logs
+docker compose up -d
 docker compose logs -f
 ```
 
 **That's it!** Your MMRelay is now running with the official prebuilt image.
-
-**Optional: Enable Automatic Updates**
-To keep MMRelay updated automatically, uncomment the Watchtower section in your docker-compose.yaml file:
-
-```bash
-# Optional: For automatic updates, edit the compose file and uncomment the watchtower section
-nano docker-compose.yaml
-
-# Note: Do this before running 'docker compose up -d' for the first time
-docker compose up -d  # Restart to apply changes
-```
-
-This will check for updates daily at 2 AM and automatically restart with new versions.
-
-```bash
-chmod 600 ~/.mmrelay/config.yaml
-```
 
 ## Deployment Methods
 
