@@ -55,9 +55,10 @@ docker compose logs -f
 To keep MMRelay updated automatically, uncomment the Watchtower section in your docker-compose.yaml file:
 
 ```bash
-# Edit the compose file to enable automatic updates
+# Optional: For automatic updates, edit the compose file and uncomment the watchtower section
 nano docker-compose.yaml
-# Uncomment the watchtower section (lines at the bottom)
+
+# Note: Do this before running 'docker compose up -d' for the first time
 docker compose up -d  # Restart to apply changes
 ```
 
