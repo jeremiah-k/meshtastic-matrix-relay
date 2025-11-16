@@ -44,5 +44,5 @@ services:
   #    - /var/run/docker.sock:/var/run/docker.sock
   #  environment:
   #    - WATCHTOWER_CLEANUP=true
-  #    - WATCHTOWER_SCHEDULE="0 2 * * *"  # Daily at 2 AM
+  #    - WATCHTOWER_SCHEDULE=0 2 * * *  # Daily at 2 AM
   #  command: --label-enable
