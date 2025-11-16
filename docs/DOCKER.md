@@ -30,30 +30,29 @@ You need Docker installed on your system. Follow the [official Docker installati
 **Most users should start here** - prebuilt images without cloning the repository:
 
 ```bash
-# 1. Create directories and get config
+# Create directories and download config
 mkdir -p ~/.mmrelay/data ~/.mmrelay/logs
 curl -Lo ~/.mmrelay/config.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/src/mmrelay/tools/sample_config.yaml
 
-# 2. Edit your config
+# Adjust permissions and edit the file
+chmod 600 ~/.mmrelay/config.yaml
 nano ~/.mmrelay/config.yaml
 
-# 3. Set up environment and get docker-compose file
-# The following commands set up your environment to prevent permission issues
+# Set up environment and get docker-compose file
 grep -q '^MMRELAY_HOME=' .env 2>/dev/null || echo 'MMRELAY_HOME=$HOME' >> .env
 grep -q '^UID=' .env 2>/dev/null || echo "UID=$(id -u)" >> .env
 grep -q '^GID=' .env 2>/dev/null || echo "GID=$(id -g)" >> .env
 curl -o docker-compose.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/src/mmrelay/tools/sample-docker-compose-prebuilt.yaml
-docker compose up -d
 
-# 4. View logs
+# Optional: Enable automatic updates before first startup
+nano docker-compose.yaml  # Uncomment the watchtower section
+
+# Start containers and view logs
+docker compose up -d
 docker compose logs -f
 ```
 
 **That's it!** Your MMRelay is now running with the official prebuilt image.
-
-```bash
-chmod 600 ~/.mmrelay/config.yaml
-```
 
 ## Deployment Methods
 
@@ -518,8 +517,15 @@ Look for messages like:
 
 **Prebuilt images:**
 
-- Pull latest: `docker compose pull && docker compose up -d`
-- Or use Watchtower for automatic updates (see sample-docker-compose-prebuilt.yaml)
+- **Automatic updates (Recommended):** Uncomment the Watchtower service in your docker-compose.yaml file to get daily updates at 2 AM
+- **Manual updates:** `docker compose pull && docker compose up -d`
+
+**Watchtower Benefits:**
+
+- Automatic security updates
+- No manual intervention required
+- Cleans up old images to save space
+- Only updates MMRelay container (safe for other services)
 
 **Built from source:**
 

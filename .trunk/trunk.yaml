@@ -7,7 +7,7 @@ cli:
 plugins:
   sources:
     - id: trunk
-      ref: v1.7.3
+      ref: v1.7.4
       uri: https://github.com/trunk-io/plugins
 # Many linters and tools depend on runtimes - configure them here. (https://docs.trunk.io/runtimes)
 runtimes:
@@ -17,20 +17,20 @@ runtimes:
 # This is the section where you manage your linters. (https://docs.trunk.io/check/configuration)
 lint:
   enabled:
-    - dotenv-linter@3.3.0
+    - dotenv-linter@4.0.0
     - hadolint@2.14.0
     - taplo@0.10.0
     - actionlint@1.7.8
     - bandit@1.8.6
     - black@25.11.0
-    - checkov@3.2.492
+    - checkov@3.2.493
     - git-diff-check
     - isort@7.0.0
     - markdownlint@0.45.0
     - osv-scanner@2.2.4
     - prettier@3.6.2
-    - ruff@0.14.4
-    - trufflehog@3.90.13
+    - ruff@0.14.5
+    - trufflehog@3.91.0
     - yamllint@1.37.1
   # Remove map_plugin.py after staticmaps is updated and we're able to work on it again
   # For more info: https://github.com/geoffwhittington/meshtastic-matrix-relay/issues/117
