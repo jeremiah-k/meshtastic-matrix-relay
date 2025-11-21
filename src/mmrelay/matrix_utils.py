@@ -5,7 +5,7 @@ import importlib
 import io
 import json
 import logging
-import mimetypes
+import mimetypes  # For dynamic content type detection
 import os
 import re
 import ssl
@@ -25,6 +25,7 @@ from nio import (
     RoomMessageEmote,
     RoomMessageNotice,
     RoomMessageText,
+    UploadError,
     UploadResponse,
 )
 from nio.events.room_events import RoomMemberEvent
@@ -431,8 +432,9 @@ def _get_detailed_sync_error_message(sync_response) -> str:
                 return "Network connectivity issue or server unreachable (binary data)"
 
         # Try to extract specific error information
-        if hasattr(sync_response, "message") and sync_response.message:
-            message = sync_response.message
+        message_attr = getattr(sync_response, "message", None)
+        if message_attr:
+            message = message_attr
             # Handle if message is bytes/bytearray
             if isinstance(message, (bytes, bytearray)):
                 try:
@@ -440,8 +442,9 @@ def _get_detailed_sync_error_message(sync_response) -> str:
                 except UnicodeDecodeError:
                     return "Network connectivity issue or server unreachable"
             return message
-        elif hasattr(sync_response, "status_code") and sync_response.status_code:
-            status_code = sync_response.status_code
+        status_code_attr = getattr(sync_response, "status_code", None)
+        if status_code_attr:
+            status_code = status_code_attr
             # Handle if status_code is not an int
             try:
                 status_code = int(status_code)
@@ -462,8 +465,8 @@ def _get_detailed_sync_error_message(sync_response) -> str:
                 return f"HTTP error {status_code}"
         elif hasattr(sync_response, "transport_response"):
             # Check for transport-level errors
-            transport = sync_response.transport_response
-            if hasattr(transport, "status_code"):
+            transport = getattr(sync_response, "transport_response", None)
+            if transport and hasattr(transport, "status_code"):
                 try:
                     status_code = int(transport.status_code)
                     return f"Transport error: HTTP {status_code}"
@@ -777,17 +780,27 @@ def bot_command(command, event):
         return True
 
     # Check if the message starts with bot_user_id or bot_user_name
-    if full_message.startswith(bot_user_id) or text_content.startswith(bot_user_id):
+    if bot_user_id and (
+        full_message.startswith(bot_user_id) or text_content.startswith(bot_user_id)
+    ):
         # Construct a regex pattern to match variations of bot mention and command
-        pattern = rf"^(?:{re.escape(bot_user_id)}|{re.escape(bot_user_name)}|[#@].+?)[,:;]?\s*!{command}"
+        escaped_user_id = re.escape(bot_user_id) if bot_user_id else ""
+        escaped_user_name = re.escape(bot_user_name) if bot_user_name else ""
+        pattern = (
+            rf"^(?:{escaped_user_id}|{escaped_user_name}|[#@].+?)[,:;]?\s*!{command}"
+        )
         return bool(re.match(pattern, full_message)) or bool(
             re.match(pattern, text_content)
         )
-    elif full_message.startswith(bot_user_name) or text_content.startswith(
-        bot_user_name
+    elif bot_user_name and (
+        full_message.startswith(bot_user_name) or text_content.startswith(bot_user_name)
     ):
         # Construct a regex pattern to match variations of bot mention and command
-        pattern = rf"^(?:{re.escape(bot_user_id)}|{re.escape(bot_user_name)}|[#@].+?)[,:;]?\s*!{command}"
+        escaped_user_id = re.escape(bot_user_id) if bot_user_id else ""
+        escaped_user_name = re.escape(bot_user_name) if bot_user_name else ""
+        pattern = (
+            rf"^(?:{escaped_user_id}|{escaped_user_name}|[#@].+?)[,:;]?\s*!{command}"
+        )
         return bool(re.match(pattern, full_message)) or bool(
             re.match(pattern, text_content)
         )
@@ -1115,7 +1128,7 @@ async def connect_matrix(passed_config=None):
         device_id=e2ee_device_id,  # Will be None if not specified in config or credentials
         store_path=e2ee_store_path if e2ee_enabled else None,
         config=client_config,
-        ssl=ssl_context,
+        ssl=ssl_context is not None,  # Convert SSLContext to bool for nio
     )
 
     # Set the access_token and user_id using restore_login for better session management
@@ -1125,7 +1138,7 @@ async def connect_matrix(passed_config=None):
         # to the client constructor.
         matrix_client.restore_login(
             user_id=bot_user_id,
-            device_id=e2ee_device_id,
+            device_id=e2ee_device_id or "",  # Convert None to empty string
             access_token=matrix_access_token,
         )
         logger.info(
@@ -1215,7 +1228,7 @@ async def connect_matrix(passed_config=None):
             )
 
             # Get comprehensive E2EE status
-            e2ee_status = get_e2ee_status(config, config_path)
+            e2ee_status = get_e2ee_status(config or {}, config_path)
 
             # Resolve room aliases in config (supports list[str|dict] and dict[str->str|dict])
             async def _resolve_alias(alias: str) -> Optional[str]:
@@ -1224,12 +1237,19 @@ async def connect_matrix(passed_config=None):
 
                 Attempts to resolve the provided room alias using the module's Matrix client. Returns the resolved room ID string on success; returns None if the alias cannot be resolved or if an error/timeout occurs (errors from the underlying nio client are caught and handled internally).
                 """
+                if not matrix_client:
+                    logger.warning(
+                        f"Cannot resolve alias {alias}: Matrix client is not available"
+                    )
+                    return None
+
                 logger.debug(f"Resolving alias from config: {alias}")
                 try:
                     response = await matrix_client.room_resolve_alias(alias)
-                    if hasattr(response, "room_id") and response.room_id:
-                        logger.debug(f"Resolved alias {alias} to {response.room_id}")
-                        return response.room_id
+                    room_id = getattr(response, "room_id", None)
+                    if room_id:
+                        logger.debug(f"Resolved alias {alias} to {room_id}")
+                        return room_id
                     logger.warning(
                         f"Could not resolve alias {alias}: {getattr(response, 'message', response)}"
                     )
@@ -1240,17 +1260,21 @@ async def connect_matrix(passed_config=None):
                     NioLocalTransportError,
                     NioRemoteTransportError,
                     asyncio.TimeoutError,
-                ):
+                ) as e:
                     logger.exception(f"Error resolving alias {alias}")
                 return None
 
             await _resolve_aliases_in_mapping(matrix_rooms, _resolve_alias)
 
             # Display rooms with channel mappings
-            _display_room_channel_mappings(matrix_client.rooms, config, e2ee_status)
+            _display_room_channel_mappings(
+                matrix_client.rooms, config, dict(e2ee_status)
+            )
 
             # Show warnings for encrypted rooms when E2EE is not ready
-            warnings = get_room_encryption_warnings(matrix_client.rooms, e2ee_status)
+            warnings = get_room_encryption_warnings(
+                matrix_client.rooms, dict(e2ee_status)
+            )
             for warning in warnings:
                 logger.warning(warning)
 
@@ -1285,7 +1309,8 @@ async def connect_matrix(passed_config=None):
             "4. Consider using a different Matrix homeserver if the problem persists"
         )
         try:
-            await matrix_client.close()
+            if matrix_client:
+                await matrix_client.close()
         except Exception:
             logger.debug("Ignoring error while closing client after sync timeout")
         finally:
@@ -1310,13 +1335,15 @@ async def connect_matrix(passed_config=None):
 
     # Fetch the bot's display name
     response = await matrix_client.get_displayname(bot_user_id)
-    if hasattr(response, "displayname"):
-        bot_user_name = response.displayname
+    displayname = getattr(response, "displayname", None)
+    if displayname:
+        bot_user_name = displayname
     else:
         bot_user_name = bot_user_id  # Fallback if display name is not set
 
     # Set E2EE status on the client for other functions to access
-    matrix_client.e2ee_enabled = e2ee_enabled
+    # Note: e2ee_enabled is a custom attribute we set on the client
+    setattr(matrix_client, "e2ee_enabled", e2ee_enabled)
 
     return matrix_client
 
@@ -1372,7 +1399,7 @@ async def login_matrix_bot(
             logger.debug(f"SSL context verify_mode: {ssl_context.verify_mode}")
 
         # Create a temporary client for discovery
-        temp_client = AsyncClient(homeserver, "", ssl=ssl_context)
+        temp_client = AsyncClient(homeserver, "", ssl=ssl_context is not None)
         try:
             discovery_response = await asyncio.wait_for(
                 temp_client.discovery_info(), timeout=MATRIX_LOGIN_TIMEOUT
@@ -1525,7 +1552,7 @@ async def login_matrix_bot(
             device_id=existing_device_id,
             store_path=store_path,
             config=client_config,
-            ssl=ssl_context,
+            ssl=ssl_context is not None,
         )
 
         logger.debug("AsyncClient created successfully")
@@ -1680,14 +1707,16 @@ async def login_matrix_bot(
             return False
 
         # Handle login response - check for access_token first (most reliable indicator)
-        if hasattr(response, "access_token") and response.access_token:
+        access_token = getattr(response, "access_token", None)
+        if access_token:
             logger.info("Login successful!")
 
             # Get the actual user_id from whoami() - this is the proper way
             try:
                 whoami_response = await client.whoami()
-                if hasattr(whoami_response, "user_id"):
-                    actual_user_id = whoami_response.user_id
+                user_id = getattr(whoami_response, "user_id", None)
+                if user_id:
+                    actual_user_id = user_id
                     logger.debug(f"Got user_id from whoami: {actual_user_id}")
                 else:
                     # Fallback to response user_id or username
@@ -1703,7 +1732,7 @@ async def login_matrix_bot(
             credentials = {
                 "homeserver": homeserver,
                 "user_id": actual_user_id,
-                "access_token": response.access_token,
+                "access_token": getattr(response, "access_token", None),
                 "device_id": getattr(response, "device_id", existing_device_id),
             }
 
@@ -1774,7 +1803,8 @@ async def login_matrix_bot(
     except Exception:
         logger.exception("Error during login")
         try:
-            await client.close()
+            if "client" in locals():
+                await client.close()
         except Exception as e:
             # Ignore errors during client cleanup - connection may already be closed
             logger.debug(f"Ignoring error during client cleanup: {e}")
@@ -1818,7 +1848,7 @@ async def join_matrix_room(matrix_client, room_id_or_alias: str) -> None:
             NioLocalTransportError,
             NioRemoteTransportError,
             asyncio.TimeoutError,
-        ):
+        ) as e:
             logger.exception("Error resolving alias '%s'", room_id_or_alias)
             return
 
@@ -2042,7 +2072,11 @@ async def matrix_relay(
                     _, _, original_text, original_meshnet = orig
 
                     # Use the relay bot's user ID for attribution (this is correct for relay messages)
-                    bot_user_id = matrix_client.user_id
+                    bot_user_id = (
+                        getattr(matrix_client, "user_id", None)
+                        if matrix_client
+                        else None
+                    )
                     original_sender_display = f"{longname}/{original_meshnet}"
 
                     # Create the quoted reply format
@@ -2123,7 +2157,7 @@ async def matrix_relay(
                 and not getattr(matrix_client, "e2ee_enabled", False)
             ):
                 room_name = getattr(room, "display_name", room_id)
-                error_message = _get_e2ee_error_message()
+                error_message = _get_e2ee_error_message(e2ee_status)
                 logger.error(
                     f"🔒 BLOCKED: Cannot send message to encrypted room '{room_name}' ({room_id})"
                 )
@@ -2146,8 +2180,9 @@ async def matrix_relay(
             # Log at info level, matching one-point-oh pattern
             logger.info(f"Sent inbound radio message to matrix room: {room_id}")
             # Additional details at debug level
-            if hasattr(response, "event_id"):
-                logger.debug(f"Message event_id: {response.event_id}")
+            event_id = getattr(response, "event_id", None)
+            if event_id:
+                logger.debug(f"Message event_id: {event_id}")
 
         except asyncio.TimeoutError:
             logger.error(f"Timeout sending message to Matrix room {room_id}")
@@ -2234,7 +2269,7 @@ async def get_user_display_name(room, event):
         return room_display_name
 
     display_name_response = await matrix_client.get_displayname(event.sender)
-    return display_name_response.displayname or event.sender
+    return getattr(display_name_response, "displayname", None) or event.sender
 
 
 def format_reply_message(
@@ -2592,7 +2627,11 @@ async def on_room_message(
 
     # Find the room_config that matches this room, if any
     room_config = None
-    iterable = matrix_rooms.values() if isinstance(matrix_rooms, dict) else matrix_rooms
+    iterable = (
+        matrix_rooms.values()
+        if matrix_rooms and isinstance(matrix_rooms, dict)
+        else (matrix_rooms or [])
+    )
     for room_conf in iterable:
         if isinstance(room_conf, dict) and room_conf.get("id") == room.room_id:
             room_config = room_conf
@@ -2641,11 +2680,15 @@ async def on_room_message(
         # For RoomMessageEmote, treat as remote reaction if meshtastic_replyId exists
         is_reaction = True
         # We need to manually extract the reaction emoji from the body
-        reaction_body = event.source["content"].get("body", "")
+        content = event.source.get("content", {})
+        reaction_body = content.get("body", "")
         reaction_match = re.search(r"reacted (.+?) to", reaction_body)
         reaction_emoji = reaction_match.group(1).strip() if reaction_match else "?"
-
-    text = event.body.strip() if (not is_reaction and hasattr(event, "body")) else ""
+        text = (
+            getattr(event, "body", "").strip()
+            if (not is_reaction and hasattr(event, "body"))
+            else ""
+        )
 
     # Some Matrix relays (especially Meshtastic bridges) provide the raw mesh
     # payload alongside the formatted body. Prefer that when available so we do
@@ -2782,7 +2825,9 @@ async def on_room_message(
                 display_name_response = await matrix_client.get_displayname(
                     event.sender
                 )
-                full_display_name = display_name_response.displayname or event.sender
+                full_display_name = (
+                    getattr(display_name_response, "displayname", None) or event.sender
+                )
 
             # If not from a remote meshnet, proceed as normal to relay back to the originating meshnet
             prefix = get_meshtastic_prefix(config, full_display_name)
@@ -2904,7 +2949,9 @@ async def on_room_message(
         else:
             # Fallback to global display name if room-specific name is not available
             display_name_response = await matrix_client.get_displayname(event.sender)
-            full_display_name = display_name_response.displayname or event.sender
+            full_display_name = (
+                getattr(display_name_response, "displayname", None) or event.sender
+            )
         prefix = get_meshtastic_prefix(config, full_display_name, event.sender)
         logger.debug(f"Processing matrix message from [{full_display_name}]: {text}")
         full_message = f"{prefix}{text}"
@@ -3054,7 +3101,7 @@ async def on_room_message(
 
 async def upload_image(
     client: AsyncClient, image: Image.Image, filename: str
-) -> UploadResponse:
+) -> Union[UploadResponse, UploadError]:
     """
     Uploads an image to Matrix and returns the UploadResponse containing the content URI.
     """
@@ -3063,8 +3110,15 @@ async def upload_image(
     if image_format == "JPG":
         image_format = "JPEG"
 
-    content_type, _ = mimetypes.guess_type(filename)
-    if not content_type or not content_type.startswith("image/"):
+    content_type_guess = mimetypes.guess_type(filename)
+    content_type = (
+        content_type_guess[0]
+        if content_type_guess
+        and content_type_guess[0]
+        and content_type_guess[0].startswith("image/")
+        else None
+    )
+    if not content_type:
         content_type = "image/png"
 
     buffer = io.BytesIO()
@@ -3081,7 +3135,9 @@ async def upload_image(
 
     response, maybe_keys = await client.upload(
         io.BytesIO(image_data),
-        content_type=content_type,
+        content_type=(
+            content_type if content_type else "image/png"
+        ),  # Fallback to image/png
         filename=filename,
         filesize=len(image_data),
     )
@@ -3092,7 +3148,7 @@ async def upload_image(
 async def send_room_image(
     client: AsyncClient,
     room_id: str,
-    upload_response: UploadResponse,
+    upload_response: Union[UploadResponse, UploadError],
     filename: str = "image.png",
 ):
     """
@@ -3104,15 +3160,24 @@ async def send_room_image(
         upload_response: Upload response from upload_image
         filename: Filename to use in message body (default: "image.png")
     """
-    await client.room_send(
-        room_id=room_id,
-        message_type="m.room.message",
-        content={
-            "msgtype": "m.image",
-            "url": upload_response.content_uri,
-            "body": filename,
-        },
-    )
+    content_uri = getattr(upload_response, "content_uri", None)
+    if content_uri:
+        await client.room_send(
+            room_id=room_id,
+            message_type="m.room.message",
+            content={
+                "msgtype": "m.image",
+                "url": content_uri,
+                "body": filename,
+            },
+        )
+    else:
+        logger.error(
+            f"Upload failed: {getattr(upload_response, 'message', 'Unknown error')}"
+        )
+        raise Exception(
+            f"Image upload failed: {getattr(upload_response, 'message', 'Unknown error')}"
+        )
 
 
 async def send_image(
