@@ -2293,8 +2293,8 @@ async def test_send_image():
 
             # Verify send_room_image was called with correct parameters
             mock_send.assert_awaited_once_with(
-                client=mock_client,
-                room_id="!room:matrix.org",
+                mock_client,
+                "!room:matrix.org",
                 upload_response=mock_upload_response,
                 filename="test.png",
             )

@@ -5,6 +5,7 @@ import importlib
 import io
 import json
 import logging
+import mimetypes
 import os
 import re
 import ssl
@@ -3057,13 +3058,30 @@ async def upload_image(
     """
     Uploads an image to Matrix and returns the UploadResponse containing the content URI.
     """
+    # Determine image format and content type from filename
+    image_format = os.path.splitext(filename)[1][1:].upper() or "PNG"
+    if image_format == "JPG":
+        image_format = "JPEG"
+
+    content_type, _ = mimetypes.guess_type(filename)
+    if not content_type or not content_type.startswith("image/"):
+        content_type = "image/png"
+
     buffer = io.BytesIO()
-    image.save(buffer, format="PNG")
+    try:
+        image.save(buffer, format=image_format)
+    except ValueError:
+        # Fallback to PNG if format is unsupported
+        buffer.seek(0)
+        buffer.truncate(0)
+        image.save(buffer, format="PNG")
+        content_type = "image/png"
+
     image_data = buffer.getvalue()
 
     response, maybe_keys = await client.upload(
         io.BytesIO(image_data),
-        content_type="image/png",
+        content_type=content_type,
         filename=filename,
         filesize=len(image_data),
     )

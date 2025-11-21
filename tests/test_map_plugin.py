@@ -449,7 +449,7 @@ class TestMapPlugin(unittest.TestCase):
         commands = self.plugin.get_mesh_commands()
         self.assertEqual(commands, [])
 
-    @patch("mmrelay.plugins.map_plugin.send_image", new_callable=AsyncMock)
+    @patch("mmrelay.matrix_utils.send_image")
     @patch("mmrelay.plugins.map_plugin.get_map")
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     @patch("mmrelay.matrix_utils.connect_matrix")
@@ -504,12 +504,12 @@ class TestMapPlugin(unittest.TestCase):
             self.assertTrue(result)
             mock_get_map.assert_called_once()
             mock_send_image.assert_called_once_with(
-                mock_matrix_client, mock_room.room_id, mock_image
+                mock_matrix_client, mock_room.room_id, mock_image, "location.png"
             )
 
         asyncio.run(run_test())
 
-    @patch("mmrelay.plugins.map_plugin.send_image", new_callable=AsyncMock)
+    @patch("mmrelay.matrix_utils.send_image")
     @patch("mmrelay.plugins.map_plugin.get_map")
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     @patch("mmrelay.matrix_utils.connect_matrix")
@@ -561,7 +561,7 @@ class TestMapPlugin(unittest.TestCase):
 
         asyncio.run(run_test())
 
-    @patch("mmrelay.plugins.map_plugin.send_image", new_callable=AsyncMock)
+    @patch("mmrelay.matrix_utils.send_image")
     @patch("mmrelay.plugins.map_plugin.get_map")
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     @patch("mmrelay.matrix_utils.connect_matrix")
@@ -637,7 +637,7 @@ class TestMapPlugin(unittest.TestCase):
 
         asyncio.run(run_test())
 
-    @patch("mmrelay.plugins.map_plugin.send_image", new_callable=AsyncMock)
+    @patch("mmrelay.matrix_utils.send_image")
     @patch("mmrelay.plugins.map_plugin.get_map")
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     @patch("mmrelay.matrix_utils.connect_matrix")
@@ -689,7 +689,7 @@ class TestMapPlugin(unittest.TestCase):
 
         asyncio.run(run_test())
 
-    @patch("mmrelay.plugins.map_plugin.send_image", new_callable=AsyncMock)
+    @patch("mmrelay.matrix_utils.send_image")
     @patch("mmrelay.plugins.map_plugin.get_map")
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     @patch("mmrelay.matrix_utils.connect_matrix")
