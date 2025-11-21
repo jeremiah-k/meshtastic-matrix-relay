@@ -211,40 +211,6 @@ def get_map(locations, zoom=None, image_size=None, anonymize=True, radius=10000)
         return context.render_pillow(1000, 1000)
 
 
-async def upload_image(client: AsyncClient, image: Image.Image) -> UploadResponse:
-    buffer = io.BytesIO()
-    image.save(buffer, format="PNG")
-    image_data = buffer.getvalue()
-
-    response, maybe_keys = await client.upload(
-        io.BytesIO(image_data),
-        content_type="image/png",
-        filename="location.png",
-        filesize=len(image_data),
-    )
-
-    return response
-
-
-async def send_room_image(
-    client: AsyncClient, room_id: str, upload_response: UploadResponse
-):
-    await client.room_send(
-        room_id=room_id,
-        message_type="m.room.message",
-        content={
-            "msgtype": "m.image",
-            "url": upload_response.content_uri,
-            "body": "image.png",
-        },
-    )
-
-
-async def send_image(client: AsyncClient, room_id: str, image: Image.Image):
-    response = await upload_image(client=client, image=image)
-    await send_room_image(client, room_id, upload_response=response)
-
-
 class Plugin(BasePlugin):
     """Static map generation plugin for mesh node locations.
 
@@ -264,6 +230,7 @@ class Plugin(BasePlugin):
 
     Uploads generated maps as images to Matrix rooms.
     """
+
     plugin_name = "map"
 
     # No __init__ method needed with the simplified plugin system
@@ -291,7 +258,7 @@ class Plugin(BasePlugin):
         if not self.matches(event):
             return False
 
-        from mmrelay.matrix_utils import connect_matrix
+        from mmrelay.matrix_utils import connect_matrix, send_image
         from mmrelay.meshtastic_utils import connect_meshtastic
 
         matrix_client = await connect_matrix()
@@ -348,6 +315,6 @@ class Plugin(BasePlugin):
             radius=radius,
         )
 
-        await send_image(matrix_client, room.room_id, pillow_image)
+        await send_image(matrix_client, room.room_id, pillow_image, "location.png")
 
         return True

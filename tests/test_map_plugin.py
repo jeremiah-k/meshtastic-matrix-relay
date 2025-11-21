@@ -22,15 +22,17 @@ import s2sphere
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from mmrelay.matrix_utils import (
+    send_image,
+    send_room_image,
+    upload_image,
+)
 from mmrelay.plugins.map_plugin import (
     Plugin,
     TextLabel,
     anonymize_location,
     get_map,
-    send_image,
-    send_room_image,
     textsize,
-    upload_image,
 )
 
 
@@ -304,7 +306,9 @@ class TestImageUploadAndSend(unittest.TestCase):
             with patch("io.BytesIO", return_value=mock_buffer):
                 self.mock_client.upload.return_value = (self.mock_upload_response, None)
 
-                result = await upload_image(self.mock_client, self.mock_image)
+                result = await upload_image(
+                    self.mock_client, self.mock_image, "test.png"
+                )
 
                 self.assertEqual(result, self.mock_upload_response)
                 self.mock_client.upload.assert_awaited_once()
@@ -322,7 +326,9 @@ class TestImageUploadAndSend(unittest.TestCase):
             """
             room_id = "!test:example.com"
 
-            await send_room_image(self.mock_client, room_id, self.mock_upload_response)
+            await send_room_image(
+                self.mock_client, room_id, self.mock_upload_response, "test.png"
+            )
 
             self.mock_client.room_send.assert_awaited_once_with(
                 room_id=room_id,
@@ -330,14 +336,14 @@ class TestImageUploadAndSend(unittest.TestCase):
                 content={
                     "msgtype": "m.image",
                     "url": "mxc://example.com/test123",
-                    "body": "image.png",
+                    "body": "test.png",
                 },
             )
 
         asyncio.run(run_test())
 
-    @patch("mmrelay.plugins.map_plugin.upload_image")
-    @patch("mmrelay.plugins.map_plugin.send_room_image")
+    @patch("mmrelay.matrix_utils.upload_image")
+    @patch("mmrelay.matrix_utils.send_room_image")
     def test_send_image(self, mock_send_room_image, mock_upload_image):
         """
         Test that the image sending workflow uploads an image and sends it to a room.
@@ -352,13 +358,16 @@ class TestImageUploadAndSend(unittest.TestCase):
             room_id = "!test:example.com"
             mock_upload_image.return_value = self.mock_upload_response
 
-            await send_image(self.mock_client, room_id, self.mock_image)
+            await send_image(self.mock_client, room_id, self.mock_image, "test.png")
 
             mock_upload_image.assert_awaited_once_with(
-                client=self.mock_client, image=self.mock_image
+                client=self.mock_client, image=self.mock_image, filename="test.png"
             )
             mock_send_room_image.assert_awaited_once_with(
-                self.mock_client, room_id, upload_response=self.mock_upload_response
+                self.mock_client,
+                room_id,
+                upload_response=self.mock_upload_response,
+                filename="test.png",
             )
 
         asyncio.run(run_test())

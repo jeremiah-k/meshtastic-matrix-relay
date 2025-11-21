@@ -127,22 +127,30 @@ def _iter_room_alias_entries(mapping):
     if isinstance(mapping, list):
         for index, entry in enumerate(mapping):
             if isinstance(entry, dict):
-                yield entry.get(
-                    "id", ""
-                ), lambda new_id, target=entry: target.__setitem__("id", new_id)
+                yield (
+                    entry.get("id", ""),
+                    lambda new_id, target=entry: target.__setitem__("id", new_id),
+                )
             else:
-                yield entry, lambda new_id, idx=index, collection=mapping: collection.__setitem__(
-                    idx, new_id
+                yield (
+                    entry,
+                    lambda new_id, idx=index, collection=mapping: collection.__setitem__(
+                        idx, new_id
+                    ),
                 )
     elif isinstance(mapping, dict):
         for key, entry in list(mapping.items()):
             if isinstance(entry, dict):
-                yield entry.get(
-                    "id", ""
-                ), lambda new_id, target=entry: target.__setitem__("id", new_id)
+                yield (
+                    entry.get("id", ""),
+                    lambda new_id, target=entry: target.__setitem__("id", new_id),
+                )
             else:
-                yield entry, lambda new_id, target_key=key, collection=mapping: collection.__setitem__(
-                    target_key, new_id
+                yield (
+                    entry,
+                    lambda new_id, target_key=key, collection=mapping: collection.__setitem__(
+                        target_key, new_id
+                    ),
                 )
 
 
@@ -3064,16 +3072,47 @@ async def upload_image(
 
 
 async def send_room_image(
-    client: AsyncClient, room_id: str, upload_response: UploadResponse
+    client: AsyncClient,
+    room_id: str,
+    upload_response: UploadResponse,
+    filename: str = "image.png",
 ):
     """
-    Sends an already uploaded image to the specified room.
+    Sends an already uploaded image to specified room.
+
+    Args:
+        client: Matrix AsyncClient instance
+        room_id: Target room ID
+        upload_response: Upload response from upload_image
+        filename: Filename to use in message body (default: "image.png")
     """
     await client.room_send(
         room_id=room_id,
         message_type="m.room.message",
-        content={"msgtype": "m.image", "url": upload_response.content_uri, "body": ""},
+        content={
+            "msgtype": "m.image",
+            "url": upload_response.content_uri,
+            "body": filename,
+        },
     )
+
+
+async def send_image(
+    client: AsyncClient, room_id: str, image: Image.Image, filename: str = "image.png"
+):
+    """
+    Upload and send an image to a Matrix room.
+
+    This is a convenience function that combines upload_image and send_room_image.
+
+    Args:
+        client: Matrix AsyncClient instance
+        room_id: Target room ID
+        image: PIL Image to send
+        filename: Filename to use for upload and message body (default: "image.png")
+    """
+    response = await upload_image(client=client, image=image, filename=filename)
+    await send_room_image(client, room_id, upload_response=response, filename=filename)
 
 
 async def on_room_member(room: MatrixRoom, event: RoomMemberEvent) -> None:

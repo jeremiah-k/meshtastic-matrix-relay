@@ -37,6 +37,7 @@ from mmrelay.matrix_utils import (
     on_decryption_failure,
     on_room_member,
     on_room_message,
+    send_image,
     send_reply_to_meshtastic,
     send_room_image,
     strip_quoted_lines,
@@ -178,26 +179,25 @@ async def test_on_room_message_simple_text(
             """
             return func(*args)
 
-    with patch("mmrelay.plugin_loader.load_plugins", return_value=[]), patch(
-        "mmrelay.matrix_utils.asyncio.get_running_loop",
-        return_value=DummyLoop(real_loop),
-    ), patch(
-        "mmrelay.matrix_utils.get_user_display_name",
-        side_effect=mock_get_user_display_name_func,
-    ), patch(
-        "mmrelay.matrix_utils.get_message_queue", return_value=dummy_queue
-    ), patch(
-        "mmrelay.matrix_utils.queue_message", return_value=True
-    ) as mock_queue_message, patch(
-        "mmrelay.matrix_utils.connect_meshtastic", return_value=MagicMock()
-    ), patch(
-        "mmrelay.matrix_utils.bot_start_time", 1234567880
-    ), patch(
-        "mmrelay.matrix_utils.config", test_config
-    ), patch(
-        "mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]
-    ), patch(
-        "mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]
+    with (
+        patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
+        patch(
+            "mmrelay.matrix_utils.asyncio.get_running_loop",
+            return_value=DummyLoop(real_loop),
+        ),
+        patch(
+            "mmrelay.matrix_utils.get_user_display_name",
+            side_effect=mock_get_user_display_name_func,
+        ),
+        patch("mmrelay.matrix_utils.get_message_queue", return_value=dummy_queue),
+        patch(
+            "mmrelay.matrix_utils.queue_message", return_value=True
+        ) as mock_queue_message,
+        patch("mmrelay.matrix_utils.connect_meshtastic", return_value=MagicMock()),
+        patch("mmrelay.matrix_utils.bot_start_time", 1234567880),
+        patch("mmrelay.matrix_utils.config", test_config),
+        patch("mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]),
+        patch("mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]),
     ):
         await on_room_message(mock_room, mock_event)
 
@@ -277,21 +277,21 @@ async def test_on_room_message_remote_prefers_meshtastic_text(
             """
             return func(*args)
 
-    with patch("mmrelay.plugin_loader.load_plugins", return_value=[]), patch(
-        "mmrelay.matrix_utils.asyncio.get_running_loop",
-        return_value=DummyLoop(real_loop),
-    ), patch("mmrelay.matrix_utils.get_message_queue", return_value=dummy_queue), patch(
-        "mmrelay.matrix_utils.queue_message", return_value=True
-    ) as mock_queue_message, patch(
-        "mmrelay.matrix_utils.connect_meshtastic", return_value=MagicMock()
-    ), patch(
-        "mmrelay.matrix_utils.bot_start_time", 1234567880
-    ), patch(
-        "mmrelay.matrix_utils.config", test_config
-    ), patch(
-        "mmrelay.matrix_utils.matrix_rooms", matrix_rooms
-    ), patch(
-        "mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]
+    with (
+        patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
+        patch(
+            "mmrelay.matrix_utils.asyncio.get_running_loop",
+            return_value=DummyLoop(real_loop),
+        ),
+        patch("mmrelay.matrix_utils.get_message_queue", return_value=dummy_queue),
+        patch(
+            "mmrelay.matrix_utils.queue_message", return_value=True
+        ) as mock_queue_message,
+        patch("mmrelay.matrix_utils.connect_meshtastic", return_value=MagicMock()),
+        patch("mmrelay.matrix_utils.bot_start_time", 1234567880),
+        patch("mmrelay.matrix_utils.config", test_config),
+        patch("mmrelay.matrix_utils.matrix_rooms", matrix_rooms),
+        patch("mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]),
     ):
         await on_room_message(mock_room, mock_event)
 
@@ -311,16 +311,13 @@ async def test_on_room_message_ignore_bot(
     Ensures that when the event sender matches the configured bot user ID, the message is not queued for relay.
     """
     mock_event.sender = test_config["matrix"]["bot_user_id"]
-    with patch("mmrelay.matrix_utils.queue_message") as mock_queue_message, patch(
-        "mmrelay.matrix_utils.connect_meshtastic"
-    ) as mock_connect_meshtastic, patch(
-        "mmrelay.matrix_utils.bot_start_time", 1234567880
-    ), patch(
-        "mmrelay.matrix_utils.config", test_config
-    ), patch(
-        "mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]
-    ), patch(
-        "mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]
+    with (
+        patch("mmrelay.matrix_utils.queue_message") as mock_queue_message,
+        patch("mmrelay.matrix_utils.connect_meshtastic") as mock_connect_meshtastic,
+        patch("mmrelay.matrix_utils.bot_start_time", 1234567880),
+        patch("mmrelay.matrix_utils.config", test_config),
+        patch("mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]),
+        patch("mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]),
     ):
         await on_room_message(mock_room, mock_event)
 
@@ -353,9 +350,11 @@ async def test_on_room_message_reply_enabled(
         }
     }
 
-    with patch("mmrelay.matrix_utils.config", test_config), patch(
-        "mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]
-    ), patch("mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]):
+    with (
+        patch("mmrelay.matrix_utils.config", test_config),
+        patch("mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]),
+        patch("mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]),
+    ):
         await on_room_message(mock_room, mock_event)
         mock_handle_matrix_reply.assert_called_once()
 
@@ -403,9 +402,11 @@ async def test_on_room_message_reply_disabled(
         "> <@original_user:matrix.org> original message\n\nThis is a reply"
     )
 
-    with patch("mmrelay.matrix_utils.config", test_config), patch(
-        "mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]
-    ), patch("mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]):
+    with (
+        patch("mmrelay.matrix_utils.config", test_config),
+        patch("mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]),
+        patch("mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]),
+    ):
         # Mock the matrix client - use MagicMock to prevent coroutine warnings
         mock_matrix_client = MagicMock()
         with patch("mmrelay.matrix_utils.matrix_client", mock_matrix_client):
@@ -506,33 +507,31 @@ async def test_on_room_message_reaction_enabled(mock_room, test_config):
     dummy_queue = MagicMock()
     dummy_queue.get_queue_size.return_value = 0
 
-    with patch("mmrelay.plugin_loader.load_plugins", return_value=[]), patch(
-        "mmrelay.matrix_utils.get_user_display_name", return_value="MockUser"
-    ), patch(
-        "mmrelay.matrix_utils.get_message_map_by_matrix_event_id",
-        return_value=(
-            "meshtastic_id",
-            "!room:matrix.org",
-            "original_text",
-            "test_mesh",
+    with (
+        patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
+        patch("mmrelay.matrix_utils.get_user_display_name", return_value="MockUser"),
+        patch(
+            "mmrelay.matrix_utils.get_message_map_by_matrix_event_id",
+            return_value=(
+                "meshtastic_id",
+                "!room:matrix.org",
+                "original_text",
+                "test_mesh",
+            ),
         ),
-    ), patch(
-        "mmrelay.matrix_utils.asyncio.get_running_loop",
-        return_value=DummyLoop(real_loop),
-    ), patch(
-        "mmrelay.matrix_utils.get_message_queue", return_value=dummy_queue
-    ), patch(
-        "mmrelay.matrix_utils.queue_message", return_value=True
-    ) as mock_queue_message, patch(
-        "mmrelay.matrix_utils.connect_meshtastic", return_value=MagicMock()
-    ), patch(
-        "mmrelay.matrix_utils.bot_start_time", 1234567880
-    ), patch(
-        "mmrelay.matrix_utils.config", test_config
-    ), patch(
-        "mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]
-    ), patch(
-        "mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]
+        patch(
+            "mmrelay.matrix_utils.asyncio.get_running_loop",
+            return_value=DummyLoop(real_loop),
+        ),
+        patch("mmrelay.matrix_utils.get_message_queue", return_value=dummy_queue),
+        patch(
+            "mmrelay.matrix_utils.queue_message", return_value=True
+        ) as mock_queue_message,
+        patch("mmrelay.matrix_utils.connect_meshtastic", return_value=MagicMock()),
+        patch("mmrelay.matrix_utils.bot_start_time", 1234567880),
+        patch("mmrelay.matrix_utils.config", test_config),
+        patch("mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]),
+        patch("mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]),
     ):
         await on_room_message(mock_room, mock_event)
 
@@ -587,9 +586,11 @@ async def test_on_room_message_reaction_disabled(
 
     test_config["meshtastic"]["message_interactions"]["reactions"] = False
 
-    with patch("mmrelay.matrix_utils.config", test_config), patch(
-        "mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]
-    ), patch("mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]):
+    with (
+        patch("mmrelay.matrix_utils.config", test_config),
+        patch("mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]),
+        patch("mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]),
+    ):
         # Mock the matrix client - use MagicMock to prevent coroutine warnings
         mock_matrix_client = MagicMock()
         with patch("mmrelay.matrix_utils.matrix_client", mock_matrix_client):
@@ -612,9 +613,11 @@ async def test_on_room_message_unsupported_room(
     Verifies that when a message event originates from a Matrix room not listed in the configuration, it is not queued for Meshtastic relay.
     """
     mock_room.room_id = "!unsupported:matrix.org"
-    with patch("mmrelay.matrix_utils.config", test_config), patch(
-        "mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]
-    ), patch("mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]):
+    with (
+        patch("mmrelay.matrix_utils.config", test_config),
+        patch("mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]),
+        patch("mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]),
+    ):
         # Mock the matrix client - use MagicMock to prevent coroutine warnings
         mock_matrix_client = MagicMock()
         with patch("mmrelay.matrix_utils.matrix_client", mock_matrix_client):
@@ -694,21 +697,19 @@ async def test_on_room_message_detection_sensor_enabled(
             return func(*args)
 
     # Act - Process the detection sensor message
-    with patch(
-        "mmrelay.matrix_utils.queue_message", return_value=True
-    ) as mock_queue_message, patch(
-        "mmrelay.matrix_utils.connect_meshtastic", return_value=MagicMock()
-    ), patch(
-        "mmrelay.matrix_utils.bot_start_time", 1234567880
-    ), patch(
-        "mmrelay.matrix_utils.config", test_config
-    ), patch(
-        "mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]
-    ), patch(
-        "mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]
-    ), patch(
-        "mmrelay.matrix_utils.asyncio.get_running_loop",
-        return_value=DummyLoop(real_loop),
+    with (
+        patch(
+            "mmrelay.matrix_utils.queue_message", return_value=True
+        ) as mock_queue_message,
+        patch("mmrelay.matrix_utils.connect_meshtastic", return_value=MagicMock()),
+        patch("mmrelay.matrix_utils.bot_start_time", 1234567880),
+        patch("mmrelay.matrix_utils.config", test_config),
+        patch("mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]),
+        patch("mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]),
+        patch(
+            "mmrelay.matrix_utils.asyncio.get_running_loop",
+            return_value=DummyLoop(real_loop),
+        ),
     ):
         # Mock the room.user_name method to return our test display name
         mock_room.user_name.return_value = "TestUser"
@@ -745,18 +746,15 @@ async def test_on_room_message_detection_sensor_disabled(
     test_config["meshtastic"]["broadcast_enabled"] = True
 
     # Act - Process the detection sensor message
-    with patch(
-        "mmrelay.matrix_utils.queue_message", return_value=True
-    ) as mock_queue_message, patch(
-        "mmrelay.matrix_utils.connect_meshtastic", return_value=MagicMock()
-    ), patch(
-        "mmrelay.matrix_utils.bot_start_time", 1234567880
-    ), patch(
-        "mmrelay.matrix_utils.config", test_config
-    ), patch(
-        "mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]
-    ), patch(
-        "mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]
+    with (
+        patch(
+            "mmrelay.matrix_utils.queue_message", return_value=True
+        ) as mock_queue_message,
+        patch("mmrelay.matrix_utils.connect_meshtastic", return_value=MagicMock()),
+        patch("mmrelay.matrix_utils.bot_start_time", 1234567880),
+        patch("mmrelay.matrix_utils.config", test_config),
+        patch("mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]),
+        patch("mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]),
     ):
         await on_room_message(mock_room, mock_event)
 
@@ -1157,8 +1155,9 @@ class TestBotCommand:
     @pytest.fixture(autouse=True)
     def mock_bot_globals(self):
         """Fixture to mock bot user globals for all tests in this class."""
-        with patch("mmrelay.matrix_utils.bot_user_id", "@bot:matrix.org"), patch(
-            "mmrelay.matrix_utils.bot_user_name", "Bot"
+        with (
+            patch("mmrelay.matrix_utils.bot_user_id", "@bot:matrix.org"),
+            patch("mmrelay.matrix_utils.bot_user_name", "Bot"),
         ):
             yield
 
@@ -1230,12 +1229,12 @@ async def test_connect_matrix_success(matrix_config):
 
     Verifies that the client is instantiated, SSL context is created, and the client is authenticated and configured as expected.
     """
-    with patch("mmrelay.matrix_utils.matrix_client", None), patch(
-        "mmrelay.matrix_utils.AsyncClient"
-    ) as mock_async_client, patch("mmrelay.matrix_utils.logger") as _mock_logger, patch(
-        "mmrelay.matrix_utils._create_ssl_context"
-    ) as mock_ssl_context:
-
+    with (
+        patch("mmrelay.matrix_utils.matrix_client", None),
+        patch("mmrelay.matrix_utils.AsyncClient") as mock_async_client,
+        patch("mmrelay.matrix_utils.logger") as _mock_logger,
+        patch("mmrelay.matrix_utils._create_ssl_context") as mock_ssl_context,
+    ):
         # Mock SSL context creation
         mock_ssl_context.return_value = MagicMock()
 
@@ -1288,12 +1287,12 @@ async def test_connect_matrix_without_credentials(matrix_config):
     """
     Test that `connect_matrix` returns the Matrix client successfully when using legacy config without credentials.json.
     """
-    with patch("mmrelay.matrix_utils.matrix_client", None), patch(
-        "mmrelay.matrix_utils.AsyncClient"
-    ) as mock_async_client, patch("mmrelay.matrix_utils.logger") as _mock_logger, patch(
-        "mmrelay.matrix_utils._create_ssl_context"
-    ) as mock_ssl_context:
-
+    with (
+        patch("mmrelay.matrix_utils.matrix_client", None),
+        patch("mmrelay.matrix_utils.AsyncClient") as mock_async_client,
+        patch("mmrelay.matrix_utils.logger") as _mock_logger,
+        patch("mmrelay.matrix_utils._create_ssl_context") as mock_ssl_context,
+    ):
         # Mock SSL context creation
         mock_ssl_context.return_value = MagicMock()
 
@@ -2105,16 +2104,17 @@ async def test_send_reply_to_meshtastic_with_reply_id():
             """
             return func(*args)
 
-    with patch(
-        "mmrelay.matrix_utils.config", {"meshtastic": {"broadcast_enabled": True}}
-    ), patch(
-        "mmrelay.matrix_utils.asyncio.get_running_loop",
-        return_value=DummyLoop(real_loop),
-    ), patch(
-        "mmrelay.matrix_utils.connect_meshtastic", return_value=MagicMock()
-    ), patch(
-        "mmrelay.matrix_utils.queue_message", return_value=True
-    ) as mock_queue:
+    with (
+        patch(
+            "mmrelay.matrix_utils.config", {"meshtastic": {"broadcast_enabled": True}}
+        ),
+        patch(
+            "mmrelay.matrix_utils.asyncio.get_running_loop",
+            return_value=DummyLoop(real_loop),
+        ),
+        patch("mmrelay.matrix_utils.connect_meshtastic", return_value=MagicMock()),
+        patch("mmrelay.matrix_utils.queue_message", return_value=True) as mock_queue,
+    ):
         await send_reply_to_meshtastic(
             reply_message="Test reply",
             full_display_name="Alice",
@@ -2184,16 +2184,17 @@ async def test_send_reply_to_meshtastic_no_reply_id():
             """
             return func(*args)
 
-    with patch(
-        "mmrelay.matrix_utils.config", {"meshtastic": {"broadcast_enabled": True}}
-    ), patch(
-        "mmrelay.matrix_utils.asyncio.get_running_loop",
-        return_value=DummyLoop(real_loop),
-    ), patch(
-        "mmrelay.matrix_utils.connect_meshtastic", return_value=MagicMock()
-    ), patch(
-        "mmrelay.matrix_utils.queue_message", return_value=True
-    ) as mock_queue:
+    with (
+        patch(
+            "mmrelay.matrix_utils.config", {"meshtastic": {"broadcast_enabled": True}}
+        ),
+        patch(
+            "mmrelay.matrix_utils.asyncio.get_running_loop",
+            return_value=DummyLoop(real_loop),
+        ),
+        patch("mmrelay.matrix_utils.connect_meshtastic", return_value=MagicMock()),
+        patch("mmrelay.matrix_utils.queue_message", return_value=True) as mock_queue,
+    ):
         await send_reply_to_meshtastic(
             reply_message="Test reply",
             full_display_name="Alice",
@@ -2252,7 +2253,9 @@ async def test_send_room_image():
     mock_upload_response = MagicMock()
     mock_upload_response.content_uri = "mxc://matrix.org/test123"
 
-    await send_room_image(mock_client, "!room:matrix.org", mock_upload_response)
+    await send_room_image(
+        mock_client, "!room:matrix.org", mock_upload_response, "test.png"
+    )
 
     # Verify room_send was called with correct parameters
     mock_client.room_send.assert_called_once()
@@ -2262,6 +2265,39 @@ async def test_send_room_image():
     content = call_args[1]["content"]
     assert content["msgtype"] == "m.image"
     assert content["url"] == "mxc://matrix.org/test123"
+    assert content["body"] == "test.png"
+
+
+async def test_send_image():
+    """
+    Test that send_image combines upload_image and send_room_image correctly.
+    """
+    mock_client = MagicMock()
+    mock_client.room_send = AsyncMock()
+    mock_image = MagicMock()
+    mock_upload_response = MagicMock()
+    mock_upload_response.content_uri = "mxc://matrix.org/test123"
+
+    with patch(
+        "mmrelay.matrix_utils.upload_image", return_value=mock_upload_response
+    ) as mock_upload:
+        with patch(
+            "mmrelay.matrix_utils.send_room_image", return_value=None
+        ) as mock_send:
+            await send_image(mock_client, "!room:matrix.org", mock_image, "test.png")
+
+            # Verify upload_image was called with correct parameters
+            mock_upload.assert_awaited_once_with(
+                client=mock_client, image=mock_image, filename="test.png"
+            )
+
+            # Verify send_room_image was called with correct parameters
+            mock_send.assert_awaited_once_with(
+                client=mock_client,
+                room_id="!room:matrix.org",
+                upload_response=mock_upload_response,
+                filename="test.png",
+            )
 
 
 # E2EE Configuration Tests
@@ -2550,8 +2586,9 @@ async def test_login_matrix_bot_success(
 @patch("mmrelay.matrix_utils.input")
 async def test_login_matrix_bot_with_parameters(mock_input):
     """Test login_matrix_bot with provided parameters."""
-    with patch("mmrelay.matrix_utils.AsyncClient") as mock_async_client, patch(
-        "mmrelay.cli_utils._create_ssl_context", return_value=None
+    with (
+        patch("mmrelay.matrix_utils.AsyncClient") as mock_async_client,
+        patch("mmrelay.cli_utils._create_ssl_context", return_value=None),
     ):
         # Mock AsyncClient instance
         mock_client = AsyncMock()
@@ -2589,8 +2626,9 @@ async def test_login_matrix_bot_login_failure(mock_input, mock_getpass):
     ]
     mock_getpass.return_value = "wrongpass"  # password
 
-    with patch("mmrelay.matrix_utils.AsyncClient") as mock_async_client, patch(
-        "mmrelay.cli_utils._create_ssl_context", return_value=None
+    with (
+        patch("mmrelay.matrix_utils.AsyncClient") as mock_async_client,
+        patch("mmrelay.cli_utils._create_ssl_context", return_value=None),
     ):
         # Mock AsyncClient instance with login failure
         mock_client = AsyncMock()
@@ -2682,14 +2720,14 @@ async def test_logout_matrix_bot_password_verification_success():
         "device_id": "test_device",
     }
 
-    with patch(
-        "mmrelay.matrix_utils.load_credentials", return_value=mock_credentials
-    ), patch("mmrelay.cli_utils.AsyncClient") as mock_async_client, patch(
-        "mmrelay.cli_utils._cleanup_local_session_data", return_value=True
-    ) as mock_cleanup, patch(
-        "mmrelay.cli_utils._create_ssl_context", return_value=None
+    with (
+        patch("mmrelay.matrix_utils.load_credentials", return_value=mock_credentials),
+        patch("mmrelay.cli_utils.AsyncClient") as mock_async_client,
+        patch(
+            "mmrelay.cli_utils._cleanup_local_session_data", return_value=True
+        ) as mock_cleanup,
+        patch("mmrelay.cli_utils._create_ssl_context", return_value=None),
     ):
-
         # Mock temporary client for password verification
         mock_temp_client = AsyncMock()
         mock_temp_client.login.return_value = MagicMock(access_token="temp_token")
@@ -2724,12 +2762,11 @@ async def test_logout_matrix_bot_password_verification_failure():
         "device_id": "test_device",
     }
 
-    with patch(
-        "mmrelay.matrix_utils.load_credentials", return_value=mock_credentials
-    ), patch("mmrelay.cli_utils.AsyncClient") as mock_async_client, patch(
-        "mmrelay.cli_utils._create_ssl_context", return_value=None
+    with (
+        patch("mmrelay.matrix_utils.load_credentials", return_value=mock_credentials),
+        patch("mmrelay.cli_utils.AsyncClient") as mock_async_client,
+        patch("mmrelay.cli_utils._create_ssl_context", return_value=None),
     ):
-
         # Mock temporary client with login failure
         mock_temp_client = AsyncMock()
         mock_temp_client.login.side_effect = Exception("Invalid password")
@@ -2753,14 +2790,14 @@ async def test_logout_matrix_bot_server_logout_failure():
         "device_id": "test_device",
     }
 
-    with patch(
-        "mmrelay.matrix_utils.load_credentials", return_value=mock_credentials
-    ), patch("mmrelay.cli_utils.AsyncClient") as mock_async_client, patch(
-        "mmrelay.cli_utils._cleanup_local_session_data", return_value=True
-    ) as mock_cleanup, patch(
-        "mmrelay.cli_utils._create_ssl_context", return_value=None
+    with (
+        patch("mmrelay.matrix_utils.load_credentials", return_value=mock_credentials),
+        patch("mmrelay.cli_utils.AsyncClient") as mock_async_client,
+        patch(
+            "mmrelay.cli_utils._cleanup_local_session_data", return_value=True
+        ) as mock_cleanup,
+        patch("mmrelay.cli_utils._create_ssl_context", return_value=None),
     ):
-
         # Mock temporary client for password verification
         mock_temp_client = AsyncMock()
         mock_temp_client.login.return_value = MagicMock(access_token="temp_token")
@@ -2791,14 +2828,12 @@ async def test_logout_matrix_bot_timeout():
         "device_id": "test_device",
     }
 
-    with patch(
-        "mmrelay.matrix_utils.load_credentials", return_value=mock_credentials
-    ), patch("mmrelay.cli_utils.AsyncClient") as mock_async_client, patch(
-        "asyncio.wait_for"
-    ) as mock_wait_for, patch(
-        "mmrelay.cli_utils._create_ssl_context", return_value=None
+    with (
+        patch("mmrelay.matrix_utils.load_credentials", return_value=mock_credentials),
+        patch("mmrelay.cli_utils.AsyncClient") as mock_async_client,
+        patch("asyncio.wait_for") as mock_wait_for,
+        patch("mmrelay.cli_utils._create_ssl_context", return_value=None),
     ):
-
         mock_temp_client = AsyncMock()
         mock_temp_client.close = AsyncMock()
         mock_async_client.return_value = mock_temp_client
@@ -2844,16 +2879,18 @@ async def test_logout_matrix_bot_missing_user_id_fetch_success():
         # Note: user_id is intentionally missing
     }
 
-    with patch(
-        "mmrelay.matrix_utils.load_credentials", return_value=mock_credentials.copy()
-    ), patch("mmrelay.cli_utils.AsyncClient") as mock_async_client, patch(
-        "mmrelay.config.save_credentials"
-    ) as mock_save_credentials, patch(
-        "mmrelay.cli_utils._create_ssl_context", return_value=None
-    ), patch(
-        "mmrelay.cli_utils._cleanup_local_session_data", return_value=True
-    ) as mock_cleanup:
-
+    with (
+        patch(
+            "mmrelay.matrix_utils.load_credentials",
+            return_value=mock_credentials.copy(),
+        ),
+        patch("mmrelay.cli_utils.AsyncClient") as mock_async_client,
+        patch("mmrelay.config.save_credentials") as mock_save_credentials,
+        patch("mmrelay.cli_utils._create_ssl_context", return_value=None),
+        patch(
+            "mmrelay.cli_utils._cleanup_local_session_data", return_value=True
+        ) as mock_cleanup,
+    ):
         # Mock temporary client for whoami (first client)
         mock_whoami_client = AsyncMock()
         mock_whoami_client.close = AsyncMock()
@@ -2905,12 +2942,13 @@ async def test_logout_matrix_bot_missing_user_id_fetch_success():
 
 def test_cleanup_local_session_data_success():
     """Test successful cleanup of local session data."""
-    with patch("mmrelay.config.get_base_dir", return_value="/test/config"), patch(
-        "mmrelay.config.get_e2ee_store_dir", return_value="/test/store"
-    ), patch("os.path.exists") as mock_exists, patch("os.remove") as mock_remove, patch(
-        "shutil.rmtree"
-    ) as mock_rmtree:
-
+    with (
+        patch("mmrelay.config.get_base_dir", return_value="/test/config"),
+        patch("mmrelay.config.get_e2ee_store_dir", return_value="/test/store"),
+        patch("os.path.exists") as mock_exists,
+        patch("os.remove") as mock_remove,
+        patch("shutil.rmtree") as mock_rmtree,
+    ):
         # Mock files exist
         mock_exists.return_value = True
 
@@ -2923,10 +2961,11 @@ def test_cleanup_local_session_data_success():
 
 def test_cleanup_local_session_data_files_not_exist():
     """Test cleanup when files don't exist."""
-    with patch("mmrelay.config.get_base_dir", return_value="/test/config"), patch(
-        "mmrelay.config.get_e2ee_store_dir", return_value="/test/store"
-    ), patch("os.path.exists", return_value=False):
-
+    with (
+        patch("mmrelay.config.get_base_dir", return_value="/test/config"),
+        patch("mmrelay.config.get_e2ee_store_dir", return_value="/test/store"),
+        patch("os.path.exists", return_value=False),
+    ):
         result = _cleanup_local_session_data()
 
         assert result is True  # Should still succeed
@@ -2934,14 +2973,13 @@ def test_cleanup_local_session_data_files_not_exist():
 
 def test_cleanup_local_session_data_permission_error():
     """Test cleanup with permission errors."""
-    with patch("mmrelay.config.get_base_dir", return_value="/test/config"), patch(
-        "mmrelay.config.get_e2ee_store_dir", return_value="/test/store"
-    ), patch("os.path.exists", return_value=True), patch(
-        "os.remove", side_effect=PermissionError("Access denied")
-    ), patch(
-        "shutil.rmtree", side_effect=PermissionError("Access denied")
+    with (
+        patch("mmrelay.config.get_base_dir", return_value="/test/config"),
+        patch("mmrelay.config.get_e2ee_store_dir", return_value="/test/store"),
+        patch("os.path.exists", return_value=True),
+        patch("os.remove", side_effect=PermissionError("Access denied")),
+        patch("shutil.rmtree", side_effect=PermissionError("Access denied")),
     ):
-
         result = _cleanup_local_session_data()
 
         assert result is False  # Should fail due to permission errors
@@ -3038,14 +3076,13 @@ class TestMatrixE2EEHasAttrChecks:
 
     async def test_connect_matrix_hasattr_checks_success(self, e2ee_config):
         """Test hasattr checks for nio.crypto.OlmDevice and nio.store.SqliteStore when available"""
-        with patch("mmrelay.matrix_utils.matrix_client", None), patch(
-            "mmrelay.matrix_utils.AsyncClient"
-        ) as mock_async_client, patch("mmrelay.matrix_utils.logger"), patch(
-            "mmrelay.matrix_utils.importlib.import_module"
-        ) as mock_import, patch.dict(
-            os.environ, {"MMRELAY_TESTING": "0"}, clear=False
+        with (
+            patch("mmrelay.matrix_utils.matrix_client", None),
+            patch("mmrelay.matrix_utils.AsyncClient") as mock_async_client,
+            patch("mmrelay.matrix_utils.logger"),
+            patch("mmrelay.matrix_utils.importlib.import_module") as mock_import,
+            patch.dict(os.environ, {"MMRELAY_TESTING": "0"}, clear=False),
         ):
-
             # Mock AsyncClient instance with proper async methods
             mock_client_instance = MagicMock()
             mock_client_instance.rooms = {}
@@ -3101,16 +3138,13 @@ class TestMatrixE2EEHasAttrChecks:
 
     async def test_connect_matrix_hasattr_checks_missing_olmdevice(self, e2ee_config):
         """Test hasattr check failure when nio.crypto.OlmDevice is missing"""
-        with patch("mmrelay.matrix_utils.matrix_client", None), patch(
-            "mmrelay.matrix_utils.AsyncClient"
-        ) as mock_async_client, patch(
-            "mmrelay.matrix_utils.logger"
-        ) as mock_logger, patch(
-            "mmrelay.matrix_utils.importlib.import_module"
-        ) as mock_import, patch.dict(
-            os.environ, {"MMRELAY_TESTING": "0"}, clear=False
+        with (
+            patch("mmrelay.matrix_utils.matrix_client", None),
+            patch("mmrelay.matrix_utils.AsyncClient") as mock_async_client,
+            patch("mmrelay.matrix_utils.logger") as mock_logger,
+            patch("mmrelay.matrix_utils.importlib.import_module") as mock_import,
+            patch.dict(os.environ, {"MMRELAY_TESTING": "0"}, clear=False),
         ):
-
             # Mock AsyncClient instance with proper async methods
             mock_client_instance = MagicMock()
             mock_client_instance.rooms = {}
@@ -3170,16 +3204,13 @@ class TestMatrixE2EEHasAttrChecks:
 
     async def test_connect_matrix_hasattr_checks_missing_sqlitestore(self, e2ee_config):
         """Test hasattr check failure when nio.store.SqliteStore is missing"""
-        with patch("mmrelay.matrix_utils.matrix_client", None), patch(
-            "mmrelay.matrix_utils.AsyncClient"
-        ) as mock_async_client, patch(
-            "mmrelay.matrix_utils.logger"
-        ) as mock_logger, patch(
-            "mmrelay.matrix_utils.importlib.import_module"
-        ) as mock_import, patch.dict(
-            os.environ, {"MMRELAY_TESTING": "0"}, clear=False
+        with (
+            patch("mmrelay.matrix_utils.matrix_client", None),
+            patch("mmrelay.matrix_utils.AsyncClient") as mock_async_client,
+            patch("mmrelay.matrix_utils.logger") as mock_logger,
+            patch("mmrelay.matrix_utils.importlib.import_module") as mock_import,
+            patch.dict(os.environ, {"MMRELAY_TESTING": "0"}, clear=False),
         ):
-
             # Mock AsyncClient instance with proper async methods
             mock_client_instance = MagicMock()
             mock_client_instance.rooms = {}
@@ -3675,12 +3706,12 @@ def test_display_room_channel_mappings_no_config():
 
 def test_get_e2ee_error_message():
     """Test _get_e2ee_error_message returns appropriate error message."""
-    with patch("mmrelay.matrix_utils.config", {"test": "config"}), patch(
-        "mmrelay.config.config_path", "/test/path"
-    ), patch("mmrelay.e2ee_utils.get_e2ee_status") as mock_get_status, patch(
-        "mmrelay.e2ee_utils.get_e2ee_error_message"
-    ) as mock_get_error:
-
+    with (
+        patch("mmrelay.matrix_utils.config", {"test": "config"}),
+        patch("mmrelay.config.config_path", "/test/path"),
+        patch("mmrelay.e2ee_utils.get_e2ee_status") as mock_get_status,
+        patch("mmrelay.e2ee_utils.get_e2ee_error_message") as mock_get_error,
+    ):
         mock_get_status.return_value = {"status": "test"}
         mock_get_error.return_value = "Test E2EE error message"
 
@@ -3702,16 +3733,14 @@ async def test_handle_matrix_reply_success():
     mock_config = {"matrix_rooms": []}
 
     # Mock database lookup to return original message
-    with patch(
-        "mmrelay.matrix_utils.get_message_map_by_matrix_event_id"
-    ) as mock_db_lookup, patch(
-        "mmrelay.matrix_utils.send_reply_to_meshtastic"
-    ) as mock_send_reply, patch(
-        "mmrelay.matrix_utils.format_reply_message"
-    ) as mock_format_reply, patch(
-        "mmrelay.matrix_utils.get_user_display_name"
-    ) as mock_get_display_name:
-
+    with (
+        patch(
+            "mmrelay.matrix_utils.get_message_map_by_matrix_event_id"
+        ) as mock_db_lookup,
+        patch("mmrelay.matrix_utils.send_reply_to_meshtastic") as mock_send_reply,
+        patch("mmrelay.matrix_utils.format_reply_message") as mock_format_reply,
+        patch("mmrelay.matrix_utils.get_user_display_name") as mock_get_display_name,
+    ):
         # Set up successful database lookup
         mock_db_lookup.return_value = (
             "orig_mesh_id",
@@ -3754,10 +3783,12 @@ async def test_handle_matrix_reply_original_not_found():
     mock_room_config = {"meshtastic_channel": 0}
     mock_config = {"matrix_rooms": []}
 
-    with patch(
-        "mmrelay.matrix_utils.get_message_map_by_matrix_event_id"
-    ) as mock_db_lookup, patch("mmrelay.matrix_utils.logger") as mock_logger:
-
+    with (
+        patch(
+            "mmrelay.matrix_utils.get_message_map_by_matrix_event_id"
+        ) as mock_db_lookup,
+        patch("mmrelay.matrix_utils.logger") as mock_logger,
+    ):
         # Test when no original message found
         mock_db_lookup.return_value = None
         result = await handle_matrix_reply(
@@ -3786,9 +3817,10 @@ async def test_on_decryption_failure():
     mock_event.event_id = "$event123"
     mock_event.as_key_request.return_value = {"type": "m.room_key_request"}
 
-    with patch("mmrelay.matrix_utils.matrix_client") as mock_client, patch(
-        "mmrelay.matrix_utils.logger"
-    ) as mock_logger:
+    with (
+        patch("mmrelay.matrix_utils.matrix_client") as mock_client,
+        patch("mmrelay.matrix_utils.logger") as mock_logger,
+    ):
         mock_client.user_id = "@bot:matrix.org"
         mock_client.device_id = "DEVICE123"
         mock_client.to_device = AsyncMock()  # Make it async

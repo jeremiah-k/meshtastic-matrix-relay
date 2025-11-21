@@ -175,5 +175,5 @@ class Plugin(BasePlugin):
         from mmrelay.matrix_utils import send_room_image, upload_image
 
         upload_response = await upload_image(matrix_client, pil_image, "graph.png")
-        await send_room_image(matrix_client, room.room_id, upload_response)
+        await send_room_image(matrix_client, room.room_id, upload_response, "graph.png")
         return True
