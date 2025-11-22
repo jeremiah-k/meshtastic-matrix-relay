@@ -800,15 +800,25 @@ def bot_command(command, event):
 
     if is_mention:
         # Construct a regex pattern to match variations of bot mention and command
-        escaped_user_id = re.escape(bot_user_id) if bot_user_id else ""
-        escaped_user_name = re.escape(bot_user_name) if bot_user_name else ""
-        pattern = (
-            rf"^(?:{escaped_user_id}|{escaped_user_name}|[#@].+?)[,:;]?\s*!{command}"
-        )
+        parts = []
+        if bot_user_id:
+            parts.append(re.escape(bot_user_id))
+        if bot_user_name:
+            parts.append(re.escape(bot_user_name))
+        parts.append(r"[#@].+?")
+        pattern = rf"^(?:{'|'.join(parts)})[,:;]?\s*!{command}"
         return bool(re.match(pattern, full_message)) or bool(
             re.match(pattern, text_content)
         )
     return False
+
+
+async def _connect_meshtastic():
+    """Helper function to connect to Meshtastic, using executor in non-test environments."""
+    if os.getenv("MMRELAY_TESTING") == "1" or "PYTEST_CURRENT_TEST" in os.environ:
+        return connect_meshtastic()
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, connect_meshtastic)
 
 
 async def connect_matrix(passed_config=None):
@@ -2669,11 +2679,6 @@ async def on_room_message(
         reaction_body = content.get("body", "")
         reaction_match = re.search(r"reacted (.+?) to", reaction_body)
         reaction_emoji = reaction_match.group(1).strip() if reaction_match else "?"
-        text = (
-            getattr(event, "body", "").strip()
-            if (not is_reaction and hasattr(event, "body"))
-            else ""
-        )
 
     # Some Matrix relays (especially Meshtastic bridges) provide the raw mesh
     # payload alongside the formatted body. Prefer that when available so we do
@@ -2961,12 +2966,6 @@ async def on_room_message(
     portnum = event.source["content"].get("meshtastic_portnum")
     is_detection_packet = portnum == DETECTION_SENSOR_APP
 
-    async def _connect_meshtastic():
-        if os.getenv("MMRELAY_TESTING") == "1" or "PYTEST_CURRENT_TEST" in os.environ:
-            return connect_meshtastic()
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, connect_meshtastic)
-
     if is_detection_packet:
         detection_enabled = get_meshtastic_config_value(
             config, "detection_sensor", DEFAULT_DETECTION_SENSOR
@@ -3123,6 +3122,11 @@ async def on_room_message(
 class ImageUploadError(RuntimeError):
     """Raised when Matrix image upload fails."""
 
+    def __init__(self, upload_response: UploadError | UploadResponse | None):
+        message = getattr(upload_response, "message", "Unknown error")
+        super().__init__(f"Image upload failed: {message}")
+        self.upload_response = upload_response
+
 
 async def upload_image(
     client: AsyncClient, image: Image.Image, filename: str
@@ -3135,21 +3139,14 @@ async def upload_image(
     if image_format == "JPG":
         image_format = "JPEG"
 
-    content_type_guess = mimetypes.guess_type(filename)
-    content_type = (
-        content_type_guess[0]
-        if content_type_guess
-        and content_type_guess[0]
-        and content_type_guess[0].startswith("image/")
-        else None
-    )
-    if not content_type:
+    content_type, _ = mimetypes.guess_type(filename)
+    if not content_type or not content_type.startswith("image/"):
         content_type = "image/png"
 
     buffer = io.BytesIO()
     try:
         image.save(buffer, format=image_format)
-    except ValueError:
+    except (ValueError, KeyError):
         # Fallback to PNG if format is unsupported
         buffer.seek(0)
         buffer.truncate(0)
@@ -3198,9 +3195,7 @@ async def send_room_image(
         logger.error(
             f"Upload failed: {getattr(upload_response, 'message', 'Unknown error')}"
         )
-        raise ImageUploadError(
-            f"Image upload failed: {getattr(upload_response, 'message', 'Unknown error')}"
-        )
+        raise ImageUploadError(upload_response)
 
 
 async def send_image(
