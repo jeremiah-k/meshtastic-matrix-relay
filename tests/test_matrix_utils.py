@@ -2433,7 +2433,7 @@ async def test_upload_image_sets_content_type_and_uses_filename():
         def save(self, buffer, format=None):
             buffer.write(b"jpgbytes")
 
-    async def fake_upload(file_obj, content_type=None, filename=None, filesize=None):
+    async def fake_upload(_file_obj, content_type=None, filename=None, filesize=None):
         uploaded["content_type"] = content_type
         uploaded["filename"] = filename
         uploaded["filesize"] = filesize
@@ -2471,7 +2471,7 @@ async def test_upload_image_fallbacks_to_png_on_save_error():
 
     uploaded = {}
 
-    async def fake_upload(file_obj, content_type=None, filename=None, filesize=None):
+    async def fake_upload(_file_obj, content_type=None, filename=None, filesize=None):
         uploaded["content_type"] = content_type
         uploaded["filename"] = filename
         uploaded["filesize"] = filesize
@@ -2498,7 +2498,7 @@ async def test_upload_image_defaults_to_png_when_mimetype_unknown():
 
     uploaded = {}
 
-    async def fake_upload(file_obj, content_type=None, filename=None, filesize=None):
+    async def fake_upload(_file_obj, content_type=None, filename=None, filesize=None):
         uploaded["content_type"] = content_type
         uploaded["filename"] = filename
         uploaded["filesize"] = filesize
@@ -2524,7 +2524,7 @@ async def test_upload_image_defaults_to_png_when_mimetype_unknown():
 @patch("mmrelay.matrix_utils.matrix_client", None)
 @patch("mmrelay.matrix_utils.AsyncClient")
 @patch("mmrelay.matrix_utils.logger")
-async def test_connect_matrix_restore_login_uses_none_device_id(
+async def test_connect_matrix_missing_device_id_uses_direct_assignment(
     _mock_logger,
     mock_async_client,
     mock_ssl_context,
@@ -2664,7 +2664,7 @@ async def test_connect_matrix_uses_ssl_context_object(monkeypatch):
     )
     monkeypatch.setattr(
         "mmrelay.matrix_utils._display_room_channel_mappings",
-        lambda *args, **kwargs: None,
+        lambda *_args, **_kwargs: None,
         raising=False,
     )
 
@@ -2819,7 +2819,7 @@ async def test_connect_matrix_uploads_keys_when_needed(monkeypatch):
     )
     monkeypatch.setattr(
         "mmrelay.matrix_utils._display_room_channel_mappings",
-        lambda *args, **kwargs: None,
+        lambda *_args, **_kwargs: None,
         raising=False,
     )
 
@@ -3703,7 +3703,7 @@ class TestMatrixE2EEHasAttrChecks:
             # Create mock modules where nio.crypto lacks OlmDevice
             mock_olm = MagicMock()
             mock_nio_crypto = MagicMock()
-            # Remove the OlmDevice attribute to simulate missing dependency
+            mock_nio_crypto.OlmDevice = object()
             del mock_nio_crypto.OlmDevice
             mock_nio_store = MagicMock()
             mock_nio_store.SqliteStore = MagicMock()
@@ -3771,7 +3771,7 @@ class TestMatrixE2EEHasAttrChecks:
             mock_nio_crypto = MagicMock()
             mock_nio_crypto.OlmDevice = MagicMock()
             mock_nio_store = MagicMock()
-            # Remove the SqliteStore attribute to simulate missing dependency
+            mock_nio_store.SqliteStore = object()
             del mock_nio_store.SqliteStore
 
             def import_side_effect(name):
