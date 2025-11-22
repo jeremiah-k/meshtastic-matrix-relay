@@ -133,6 +133,15 @@ def _is_room_alias(value: Any) -> bool:
     return isinstance(value, str) and value.startswith("#")
 
 
+def _get_valid_device_id(device_id_value: Any) -> Optional[str]:
+    """Return device_id if it's a non-empty string, else None."""
+    return (
+        device_id_value
+        if isinstance(device_id_value, str) and device_id_value.strip()
+        else None
+    )
+
+
 def _iter_room_alias_entries(mapping):
     """
     Yield (alias_or_id, setter) pairs for entries in a Matrix room mapping.
@@ -886,12 +895,7 @@ async def connect_matrix(passed_config=None):
         matrix_homeserver = credentials["homeserver"]
         matrix_access_token = credentials["access_token"]
         bot_user_id = credentials["user_id"]
-        device_id_value = credentials.get("device_id")
-        e2ee_device_id = (
-            device_id_value
-            if isinstance(device_id_value, str) and device_id_value.strip()
-            else None
-        )
+        e2ee_device_id = _get_valid_device_id(credentials.get("device_id"))
 
         # Log consolidated credentials info
         logger.debug(f"Using Matrix credentials (device: {e2ee_device_id})")
@@ -946,12 +950,7 @@ async def connect_matrix(passed_config=None):
                 matrix_homeserver = credentials["homeserver"]
                 matrix_access_token = credentials["access_token"]
                 bot_user_id = credentials["user_id"]
-                device_id_value = credentials.get("device_id")
-                e2ee_device_id = (
-                    device_id_value
-                    if isinstance(device_id_value, str) and device_id_value.strip()
-                    else None
-                )
+                e2ee_device_id = _get_valid_device_id(credentials.get("device_id"))
             else:
                 logger.error(
                     "Automatic login failed. Please check your credentials or use 'mmrelay auth login'"
@@ -3149,18 +3148,19 @@ async def upload_image(
     Returns:
         UploadResponse with content_uri on success, or UploadError on failure.
     """
-    # Determine image format and content type from filename
+    # Determine image format from filename
     image_format = os.path.splitext(filename)[1][1:].upper() or "PNG"
     if image_format == "JPG":
         image_format = "JPEG"
 
-    content_type, _ = mimetypes.guess_type(filename)
-    if not content_type or not content_type.startswith("image/"):
-        content_type = "image/png"
-
     buffer = io.BytesIO()
     try:
         image.save(buffer, format=image_format)
+        # If save succeeds, determine content type from the format we used
+        content_type, _ = mimetypes.guess_type(filename)
+        if not content_type or not content_type.startswith("image/"):
+            # Fallback for unknown mimetypes, but use the determined format
+            content_type = f"image/{image_format.lower()}"
     except (ValueError, KeyError):
         # Fallback to PNG if format is unsupported
         buffer.seek(0)
