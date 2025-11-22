@@ -2976,7 +2976,46 @@ async def on_room_message(
         full_message = f"{prefix}{text}"
         full_message = truncate_message(full_message)
 
+    # Extract portnum for potential detection sensor handling
     portnum = event.source["content"].get("meshtastic_portnum")
+
+    # Plugin functionality
+    from mmrelay.plugin_loader import load_plugins
+
+    plugins = load_plugins()
+
+    found_matching_plugin = False
+    for plugin in plugins:
+        if not found_matching_plugin:
+            try:
+                found_matching_plugin = await plugin.handle_room_message(
+                    room, event, full_message
+                )
+                if found_matching_plugin:
+                    logger.info(
+                        f"Processed command with plugin: {plugin.plugin_name} from {event.sender}"
+                    )
+            except Exception as e:
+                logger.error(
+                    f"Error processing message with plugin {plugin.plugin_name}: {e}"
+                )
+
+    # Check if the message is a command directed at the bot
+    is_command = False
+    for plugin in plugins:
+        for command in plugin.get_matrix_commands():
+            if bot_command(command, event):
+                is_command = True
+                break
+        if is_command:
+            break
+
+    # If this is a command, we do not send it to the mesh
+    if is_command:
+        logger.debug("Message is a command, not sending to mesh")
+        return
+
+    # Check if this is a detection sensor packet (before connecting to Meshtastic)
     is_detection_packet = portnum == DETECTION_SENSOR_APP
 
     if is_detection_packet:
@@ -3036,43 +3075,7 @@ async def on_room_message(
             )
         return
 
-    # Plugin functionality
-    from mmrelay.plugin_loader import load_plugins
-
-    plugins = load_plugins()
-
-    found_matching_plugin = False
-    for plugin in plugins:
-        if not found_matching_plugin:
-            try:
-                found_matching_plugin = await plugin.handle_room_message(
-                    room, event, full_message
-                )
-                if found_matching_plugin:
-                    logger.info(
-                        f"Processed command with plugin: {plugin.plugin_name} from {event.sender}"
-                    )
-            except Exception as e:
-                logger.error(
-                    f"Error processing message with plugin {plugin.plugin_name}: {e}"
-                )
-
-    # Check if the message is a command directed at the bot
-    is_command = False
-    for plugin in plugins:
-        for command in plugin.get_matrix_commands():
-            if bot_command(command, event):
-                is_command = True
-                break
-        if is_command:
-            break
-
-    # If this is a command, we do not send it to the mesh
-    if is_command:
-        logger.debug("Message is a command, not sending to mesh")
-        return
-
-    # Connect to Meshtastic
+    # Connect to Meshtastic for regular messages
     meshtastic_interface = await _connect_meshtastic()
     from mmrelay.meshtastic_utils import logger as meshtastic_logger
 
