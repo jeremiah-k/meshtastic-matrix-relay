@@ -2425,7 +2425,7 @@ async def test_send_image():
             )
 
 
-async def test_upload_image_sets_content_type_and_uses_filename(monkeypatch):
+async def test_upload_image_sets_content_type_and_uses_filename():
     """Upload should honor detected image content type from filename."""
     uploaded = {}
 
@@ -2449,7 +2449,7 @@ async def test_upload_image_sets_content_type_and_uses_filename(monkeypatch):
     assert uploaded["filesize"] == len(b"jpgbytes")
 
 
-async def test_upload_image_fallbacks_to_png_on_save_error(monkeypatch):
+async def test_upload_image_fallbacks_to_png_on_save_error():
     """Upload should fall back to PNG and set content_type accordingly when initial save fails."""
     calls = []
 
@@ -2484,7 +2484,7 @@ async def test_upload_image_fallbacks_to_png_on_save_error(monkeypatch):
     assert uploaded["filesize"] == len(b"pngbytes")
 
 
-async def test_upload_image_defaults_to_png_when_mimetype_unknown(monkeypatch):
+async def test_upload_image_defaults_to_png_when_mimetype_unknown():
     """Unknown extensions should default to image/png even when save succeeds."""
 
     class FakeImage:

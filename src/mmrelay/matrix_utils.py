@@ -1166,30 +1166,38 @@ async def connect_matrix(passed_config=None):
 
     # Set the access_token and user_id using restore_login for better session management
     if credentials:
-        # Use restore_login method for proper session restoration.
+        # Use restore_login method for proper session restoration only when we have a valid device_id.
         # nio will handle loading the store automatically if store_path was provided
         # to the client constructor.
-        device_id_for_restore = cast(Any, e2ee_device_id)
-        matrix_client.restore_login(
-            user_id=bot_user_id,
-            device_id=device_id_for_restore,
-            access_token=matrix_access_token,
-        )
-        logger.info(
-            f"Restored login session for {bot_user_id} with device {e2ee_device_id}"
-        )
+        if e2ee_device_id:
+            device_id_for_restore = cast(Any, e2ee_device_id)
+            matrix_client.restore_login(
+                user_id=bot_user_id,
+                device_id=device_id_for_restore,
+                access_token=matrix_access_token,
+            )
+            logger.info(
+                f"Restored login session for {bot_user_id} with device {e2ee_device_id}"
+            )
+        else:
+            # First-run E2EE setup: use direct assignment and let nio generate device_id
+            logger.info("First-run E2EE setup: using direct token assignment")
+            matrix_client.access_token = matrix_access_token
+            matrix_client.user_id = bot_user_id
 
-        # If the device_id was not known up-front, capture what nio has after restore.
-        if not e2ee_device_id and getattr(matrix_client, "device_id", None):
-            e2ee_device_id = matrix_client.device_id
-            logger.debug(f"Device ID established after restore_login: {e2ee_device_id}")
-            try:
-                if credentials is not None:
-                    credentials["device_id"] = e2ee_device_id
-                    save_credentials(credentials)
-                    logger.info("Updated credentials.json with discovered device_id")
-            except Exception as e:
-                logger.debug(f"Failed to persist discovered device_id: {e}")
+            # Try to get device_id after client setup
+            if getattr(matrix_client, "device_id", None):
+                e2ee_device_id = matrix_client.device_id
+                logger.debug(f"Device ID established after setup: {e2ee_device_id}")
+                try:
+                    if credentials is not None:
+                        credentials["device_id"] = e2ee_device_id
+                        save_credentials(credentials)
+                        logger.info(
+                            "Updated credentials.json with discovered device_id"
+                        )
+                except Exception as e:
+                    logger.debug(f"Failed to persist discovered device_id: {e}")
     else:
         # Fallback to direct assignment for legacy token-based auth
         matrix_client.access_token = matrix_access_token
@@ -1361,12 +1369,16 @@ async def connect_matrix(passed_config=None):
         await asyncio.sleep(E2EE_KEY_SHARING_DELAY_SECONDS)
 
     # Fetch the bot's display name
-    response = await matrix_client.get_displayname(bot_user_id)
-    displayname = getattr(response, "displayname", None)
-    if displayname:
-        bot_user_name = displayname
-    else:
-        bot_user_name = bot_user_id  # Fallback if display name is not set
+    try:
+        response = await matrix_client.get_displayname(bot_user_id)
+        displayname = getattr(response, "displayname", None)
+        if displayname:
+            bot_user_name = displayname
+        else:
+            bot_user_name = bot_user_id  # Fallback if display name is not set
+    except NIO_COMM_EXCEPTIONS as e:
+        logger.debug(f"Failed to get bot display name for {bot_user_id}: {e}")
+        bot_user_name = bot_user_id  # Fallback on network error
 
     # Store E2EE status on the client for other functions to access
     matrix_client.e2ee_enabled = e2ee_enabled
@@ -2285,8 +2297,12 @@ async def get_user_display_name(room, event):
         return room_display_name
 
     if matrix_client:
-        display_name_response = await matrix_client.get_displayname(event.sender)
-        return getattr(display_name_response, "displayname", None) or event.sender
+        try:
+            display_name_response = await matrix_client.get_displayname(event.sender)
+            return getattr(display_name_response, "displayname", None) or event.sender
+        except NIO_COMM_EXCEPTIONS as e:
+            logger.debug(f"Failed to get display name for {event.sender}: {e}")
+            return event.sender
     return event.sender
 
 
@@ -2387,8 +2403,7 @@ async def send_reply_to_meshtastic(
         local_meshnet_name (str | None): Local meshnet name included in mapping metadata when present.
         reply_id (int | None): If provided, send as a structured Meshtastic reply targeting this Meshtastic message ID; otherwise send a regular broadcast.
     """
-    loop = asyncio.get_running_loop()
-    meshtastic_interface = await loop.run_in_executor(None, connect_meshtastic)
+    meshtastic_interface = await _connect_meshtastic()
     from mmrelay.meshtastic_utils import logger as meshtastic_logger
 
     meshtastic_channel = room_config["meshtastic_channel"]
@@ -2588,9 +2603,13 @@ async def on_decryption_failure(room: MatrixRoom, event: MegolmEvent) -> None:
         # Monkey-patch the event object with the correct room_id
         event.room_id = room.room_id
 
-        request = event.as_key_request(
-            matrix_client.user_id, matrix_client.device_id or ""
-        )
+        if not matrix_client.device_id:
+            logger.error(
+                "Cannot request keys for event %s: client has no device_id",
+                event.event_id,
+            )
+            return
+        request = event.as_key_request(matrix_client.user_id, matrix_client.device_id)
         await matrix_client.to_device(request)
         logger.info(f"Requested keys for failed decryption of event {event.event_id}")
     except Exception:
@@ -2787,8 +2806,7 @@ async def on_room_message(
             reaction_message = f'{shortname}/{short_meshnet_name} reacted {reaction_emoji} to "{abbreviated_text}"'
 
             # Relay the remote reaction to the local meshnet.
-            loop = asyncio.get_running_loop()
-            meshtastic_interface = await loop.run_in_executor(None, connect_meshtastic)
+            meshtastic_interface = await _connect_meshtastic()
             if not meshtastic_interface:
                 logger.error(
                     "Failed to connect to Meshtastic for remote reaction relay"
@@ -2839,21 +2857,7 @@ async def on_room_message(
                 orig
             )
             # Get room-specific display name if available, fallback to global display name
-            room_display_name = room.user_name(event.sender)
-            if room_display_name:
-                full_display_name = room_display_name
-            else:
-                # Fallback to global display name if room-specific name is not available
-                if matrix_client:
-                    display_name_response = await matrix_client.get_displayname(
-                        event.sender
-                    )
-                    full_display_name = (
-                        getattr(display_name_response, "displayname", None)
-                        or event.sender
-                    )
-                else:
-                    full_display_name = event.sender
+            full_display_name = await get_user_display_name(room, event)
 
             # If not from a remote meshnet, proceed as normal to relay back to the originating meshnet
             prefix = get_meshtastic_prefix(config, full_display_name)
@@ -2875,7 +2879,7 @@ async def on_room_message(
                 f'{prefix}reacted {reaction_emoji} to "{abbreviated_text}"'
             )
             loop = asyncio.get_running_loop()
-            meshtastic_interface = await loop.run_in_executor(None, connect_meshtastic)
+            meshtastic_interface = await _connect_meshtastic()
             if not meshtastic_interface:
                 logger.error("Failed to connect to Meshtastic for local reaction relay")
                 return
@@ -3168,16 +3172,31 @@ async def upload_image(
         image.save(buffer, format="PNG")
         content_type = "image/png"
 
-    image_data = buffer.getvalue()
+        image_data = buffer.getvalue()
 
-    response, _maybe_keys = await client.upload(
-        io.BytesIO(image_data),
-        content_type=content_type,
-        filename=filename,
-        filesize=len(image_data),
-    )
-
-    return response
+    try:
+        response, _maybe_keys = await client.upload(
+            io.BytesIO(image_data),
+            content_type=content_type,
+            filename=filename,
+            filesize=len(image_data),
+        )
+        return response
+    except NIO_COMM_EXCEPTIONS as e:
+        # Convert nio communication exceptions to ImageUploadError
+        # Create a mock UploadError for the ImageUploadError constructor
+        mock_upload_error = UploadError(message=str(e))
+        raise ImageUploadError(mock_upload_error) from e
+    except asyncio.TimeoutError as e:
+        # Convert timeout exceptions to ImageUploadError
+        mock_upload_error = UploadError(message=f"Upload timeout: {e}")
+        raise ImageUploadError(mock_upload_error) from e
+    except asyncio.TimeoutError as e:
+        # Convert timeout exceptions to ImageUploadError
+        mock_upload_error = type(
+            "UploadError", (), {"message": f"Upload timeout: {e}"}
+        )()
+        raise ImageUploadError(mock_upload_error) from e
 
 
 async def send_room_image(
