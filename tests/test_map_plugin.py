@@ -354,7 +354,7 @@ class TestImageUploadAndSend(unittest.TestCase):
         async def run_test():
             """
             Verify image upload and room-send functions are invoked with the expected arguments during the image sending workflow.
-            
+
             Sets up a mock upload response, calls send_image with a test filename, and asserts that upload_image and send_room_image were awaited with the correct parameters.
             """
             room_id = "!test:example.com"
@@ -464,7 +464,7 @@ class TestMapPlugin(unittest.TestCase):
     ):
         """
         Test that a "!map" Matrix room message triggers map generation and sending of the resulting image.
-        
+
         Asserts that when the plugin matches a "!map" command it generates a map from node positions (calls get_map once) and sends the produced image to the originating Matrix room using the filename "location.png".
         """
 
@@ -524,7 +524,7 @@ class TestMapPlugin(unittest.TestCase):
     ):
         """
         Verifies that a "!map zoom=15" room command causes map generation to be invoked with zoom=15 and that the handler returns True.
-        
+
         Mocks Matrix and Meshtastic clients, simulates a room message containing "zoom=15", and asserts get_map was called with the zoom parameter set to 15 and the plugin handler returned True.
         """
 
@@ -652,7 +652,7 @@ class TestMapPlugin(unittest.TestCase):
     ):
         """
         Ensure invalid zoom values in '!map' commands are replaced by the default zoom when handling a room message.
-        
+
         Simulates receiving a "!map zoom=50" command and asserts that handle_room_message returns True and that the map generation function is called with the default zoom level (8).
         """
         """

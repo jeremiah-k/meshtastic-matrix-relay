@@ -91,16 +91,16 @@ class Plugin(BasePlugin):
         # Pass the event to matches()
         """
         Handle a room message that requests a telemetry graph and send the generated image to the Matrix room.
-        
+
         Processes messages matching commands "!batteryLevel", "!voltage", or "!airUtilTx" (optionally followed by a node identifier). Aggregates telemetry samples into hourly averages for the last 12 hours (per node or across the network), renders a line plot of those averages, uploads the image to Matrix, and sends it to the given room.
-        
+
         Parameters:
-        	room: The Matrix room object where the event originated; used to determine room.room_id for sending the image.
-        	event: The Matrix event to test for a matching bot command.
-        	full_message (str): Full plaintext message content to parse the command and optional node identifier.
-        
+                room: The Matrix room object where the event originated; used to determine room.room_id for sending the image.
+                event: The Matrix event to test for a matching bot command.
+                full_message (str): Full plaintext message content to parse the command and optional node identifier.
+
         Returns:
-        	processed (bool): `True` if the message matched a telemetry command and the graph was generated and sent; `False` if the message did not match or no action was taken.
+                processed (bool): `True` if the message matched a telemetry command and the graph was generated and sent; `False` if the message did not match or no action was taken.
         """
         if not self.matches(event):
             return False

@@ -131,7 +131,7 @@ logger = get_logger(name="Matrix")
 def _is_room_alias(value: Any) -> bool:
     """
     Determine whether a value is a Matrix room alias.
-    
+
     Returns:
         `True` if `value` is a string that begins with '#', `False` otherwise.
     """
@@ -142,10 +142,10 @@ def _is_room_alias(value: Any) -> bool:
 def _get_valid_device_id(device_id_value: Any) -> Optional[str]:
     """
     Validate the input and return it when it is a non-empty string.
-    
+
     Parameters:
         device_id_value (Any): Value to validate as a device identifier.
-    
+
     Returns:
         Optional[str]: The original string with surrounding whitespace removed if it is non-empty, otherwise `None`.
     """
@@ -159,16 +159,16 @@ def _get_valid_device_id(device_id_value: Any) -> Optional[str]:
 def _iter_room_alias_entries(mapping):
     """
     Yield (alias_or_id, setter) pairs for entries in a Matrix room mapping.
-    
+
     Each yielded tuple contains:
     - alias_or_id (str): the room alias or room ID found in the entry (may be an alias starting with '#' or a canonical room ID). If a dict entry has no "id" key, an empty string is yielded.
     - setter (callable): a single-argument function new_id -> None that updates the original mapping in-place to replace the entry with the resolved room ID.
-    
+
     Parameters:
         mapping (list|dict): A collection of room entries in one of two shapes:
             - list: items may be strings (alias or ID) or dicts with an "id" key.
             - dict: values may be strings (alias or ID) or dicts with an "id" key.
-    
+
     Yields:
         tuple[str, Callable[[str], None]]: (alias_or_id, setter) for each entry in the mapping.
     """
@@ -259,9 +259,9 @@ def _display_room_channel_mappings(
 ) -> None:
     """
     Log Matrix rooms grouped by Meshtastic channel and show encryption/E2EE status indicators.
-    
+
     Reads the "matrix_rooms" entry from config (accepting dict or list form), builds a mapping from room ID to its configured "meshtastic_channel", groups the provided rooms by channel, and logs each room with an icon indicating whether the room is encrypted and the supplied E2EE overall status.
-    
+
     Parameters:
         rooms (dict): Mapping of room_id -> room object. Room objects should expose `display_name` and `encrypted` attributes; falls back to the room_id when `display_name` is missing.
         config (dict): Configuration containing a "matrix_rooms" section with entries that include "id" and "meshtastic_channel".
@@ -458,10 +458,10 @@ def _get_msgs_to_keep_config():
 def _get_detailed_sync_error_message(sync_response) -> str:
     """
     Summarize a Matrix sync error or response into a short, user-facing message.
-    
+
     Parameters:
         sync_response: The sync response or error to summarize. May be bytes/bytearray, a nio ErrorResponse-like object, an HTTP/transport error, or any object exposing `message`, `status_code`, or `transport_response`.
-    
+
     Returns:
         A short, actionable error description (e.g., authentication failure, forbidden, rate limited, server error, or a generic network/connectivity message).
     """
@@ -808,13 +808,13 @@ matrix_client = None
 def bot_command(command, event):
     """
     Determine whether a Matrix event message is addressing the bot with the specified command.
-    
+
     The function returns True when the event's plain or HTML-formatted body either begins with `!<command>` or begins with an explicit bot mention (bot MXID or display name) followed optionally by punctuation and whitespace and then `!<command>`.
-    
+
     Parameters:
         command (str): The command name to detect (without the leading `!`).
         event: Matrix event object containing `body` (plain text) and `source`/`content` with optional `formatted_body` (HTML).
-    
+
     Returns:
         True if the message targets the bot with the given command, False otherwise.
     """
@@ -855,9 +855,9 @@ def bot_command(command, event):
 async def _connect_meshtastic():
     """
     Create and return a Meshtastic connection object.
-    
+
     Calls connect_meshtastic() directly in test environments; otherwise runs connect_meshtastic() in a thread executor to avoid blocking the event loop.
-    
+
     Returns:
         A Meshtastic interface or proxy object produced by connect_meshtastic().
     """
@@ -875,9 +875,9 @@ async def _handle_detection_sensor_packet(
 ) -> None:
     """
     Relay a detection-sensor message from Matrix to Meshtastic when detection and broadcast are enabled.
-    
+
     If broadcasting and detection processing are enabled in configuration, connects to Meshtastic and queues the given text as a detection-sensor app message for the room's configured Meshtastic channel; logs success or failure and does nothing if configuration or connection prevents sending.
-    
+
     Parameters:
         config (dict): Global configuration; used to read detection and broadcast flags.
         room_config (dict): Room-specific configuration; must contain the key "meshtastic_channel" indicating the target channel index.
@@ -939,15 +939,15 @@ async def _handle_detection_sensor_packet(
 async def connect_matrix(passed_config=None):
     """
     Initialize and connect a matrix-nio AsyncClient using available credentials and configuration.
-    
+
     Creates or restores client credentials (preferring credentials.json, then automatic login from config, then direct tokens in config), optionally enables End-to-End Encryption when configured and dependencies are available, performs an initial full-state sync to populate rooms, resolves room aliases found in configuration, updates module-level connection state used by the bridge, and returns the ready-to-use client.
-    
+
     Parameters:
         passed_config (dict | None): Optional configuration override for this connection attempt; when provided it replaces the module-level config for the scope of this call.
-    
+
     Returns:
         AsyncClient | None: A connected and initialized AsyncClient on success, or `None` if connection or credentials are unavailable.
-    
+
     Raises:
         ValueError: If the required top-level "matrix_rooms" configuration is missing.
         ConnectionError: If the initial Matrix sync fails or times out.
@@ -1508,15 +1508,15 @@ async def login_matrix_bot(
 ):
     """
     Interactively log in the bot to a Matrix homeserver and persist session credentials.
-    
+
     Performs server discovery for the provided homeserver, prompts for missing credentials, optionally initializes an E2EE store if enabled in configuration, reuses an existing device_id when available, and saves resulting credentials (homeserver, user_id, access_token, device_id) to credentials.json for non-interactive restoration.
-    
+
     Parameters:
         homeserver (str | None): Homeserver URL to use; if None the user is prompted.
         username (str | None): Matrix username (localpart or full MXID); if None the user is prompted.
         password (str | None): Account password; if None the user is prompted securely.
         logout_others (bool | None): If True, attempts to log out other sessions after login; if None the user is prompted. (Full "logout others" behavior may be limited.)
-    
+
     Returns:
         bool: `True` on successful login with credentials persisted, `False` on failure.
     """
@@ -2064,9 +2064,9 @@ async def join_matrix_room(matrix_client, room_id_or_alias: str) -> None:
 def _get_e2ee_error_message():
     """
     Provide a short, user-facing explanation for why End-to-End Encryption (E2EE) is not enabled.
-    
+
     Maps the unified E2EE status to a concise, human-readable message suitable for logging or UI display.
-    
+
     Returns:
         str: A short explanation of the current E2EE problem, or an empty string if no specific issue is detected.
     """
@@ -2444,7 +2444,7 @@ def format_reply_message(
 ):
     """
     Format a Meshtastic-style reply message by removing quoted lines, applying an appropriate sender prefix (local or remote meshnet), and truncating to the allowed length.
-    
+
     Parameters:
         config: Runtime configuration used to build prefix formats.
         full_display_name (str): Sender's full display name used when constructing the prefix.
@@ -2454,7 +2454,7 @@ def format_reply_message(
         meshnet_name (str | None): Remote meshnet name; if provided and different from local_meshnet_name, remote-prefix rules apply.
         local_meshnet_name (str | None): Local meshnet name used to detect remote vs local replies.
         mesh_text_override (str | None): Optional raw Meshtastic payload to prefer over `text` when generating the reply body.
-    
+
     Returns:
         str: The formatted reply message with quoted lines removed and prefixes applied, truncated to the configured maximum length.
     """
@@ -2708,9 +2708,9 @@ async def handle_matrix_reply(
 async def on_decryption_failure(room: MatrixRoom, event: MegolmEvent) -> None:
     """
     Handle a MegolmEvent that could not be decrypted by requesting missing session keys.
-    
+
     If the module-level Matrix client is available, this sets the event's room_id, constructs a to-device key request for the missing Megolm session, and sends it to the device that holds the keys. Logs outcomes and returns without action if no matrix client or device id is available.
-    
+
     Parameters:
         room (MatrixRoom): The room where the decryption failure occurred.
         event (MegolmEvent): The encrypted event that failed to decrypt; its `room_id` may be updated as part of the request side effect.
@@ -3228,7 +3228,7 @@ class ImageUploadError(RuntimeError):
     def __init__(self, upload_response: UploadError | UploadResponse | None):
         """
         Initialize the ImageUploadError with an optional upload response or error.
-        
+
         Parameters:
             upload_response (UploadError | UploadResponse | None): The underlying upload error or response object whose
                 `message` attribute will be included in the exception text. The value is also stored on the exception
@@ -3244,11 +3244,11 @@ async def upload_image(
 ) -> Union[UploadResponse, UploadError]:
     """
     Upload a Pillow Image to the Matrix content repository.
-    
+
     Parameters:
         image (PIL.Image.Image): The image to upload.
         filename (str): Filename used to infer the image MIME type and as the uploaded filename.
-    
+
     Returns:
         UploadResponse: Successful upload response containing a `content_uri`.
         UploadError: Error object when the upload fails (network or protocol error).
@@ -3309,15 +3309,15 @@ async def send_room_image(
 ):
     """
     Send an uploaded image to a Matrix room.
-    
+
     If `upload_response` contains a `content_uri` this sends an `m.image` message using that URI and the provided filename.
     If no `content_uri` is present, an error is logged and ImageUploadError is raised.
-    
+
     Parameters:
         room_id (str): Target Matrix room ID.
         upload_response (UploadResponse | UploadError | None): Result from upload_image; must expose `content_uri` on success.
         filename (str): Filename to include as the message body (defaults to "image.png").
-    
+
     Raises:
         ImageUploadError: If `upload_response` does not contain a `content_uri`.
     """
@@ -3344,7 +3344,7 @@ async def send_image(
 ):
     """
     Upload and send an image to a Matrix room.
-    
+
     Parameters:
         client (AsyncClient): Matrix client used to upload and send the file.
         room_id (str): Destination Matrix room ID.
