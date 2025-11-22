@@ -1293,9 +1293,12 @@ async def connect_matrix(passed_config=None):
                     if room_id:
                         logger.debug(f"Resolved alias {alias} to {room_id}")
                         return room_id
-                    logger.warning(
-                        f"Could not resolve alias {alias}: {getattr(response, 'message', response)}"
+                    error_details = (
+                        getattr(response, "message", response)
+                        if response
+                        else "No response from server"
                     )
+                    logger.warning(f"Could not resolve alias {alias}: {error_details}")
                 except NIO_COMM_EXCEPTIONS:
                     logger.exception(f"Error resolving alias {alias}")
                 return None
@@ -1382,7 +1385,7 @@ async def connect_matrix(passed_config=None):
         bot_user_name = bot_user_id  # Fallback on network error
 
     # Store E2EE status on the client for other functions to access
-    matrix_client.e2ee_enabled = e2ee_enabled
+    setattr(matrix_client, "e2ee_enabled", e2ee_enabled)  # type: ignore[attr-defined]
     return matrix_client
 
 
@@ -1885,10 +1888,15 @@ async def join_matrix_room(matrix_client, room_id_or_alias: str) -> None:
 
         room_id = getattr(response, "room_id", None) if response else None
         if not room_id:
+            error_details = (
+                getattr(response, "message", response)
+                if response
+                else "No response from server"
+            )
             logger.error(
                 "Failed to resolve alias '%s': %s",
                 room_id_or_alias,
-                getattr(response, "message", str(response)),
+                error_details,
             )
             return
 
@@ -1920,10 +1928,15 @@ async def join_matrix_room(matrix_client, room_id_or_alias: str) -> None:
             if joined_room_id:
                 logger.info(f"Joined room '{joined_room_id}' successfully")
             else:
+                error_details = (
+                    getattr(response, "message", response)
+                    if response
+                    else "No response from server"
+                )
                 logger.error(
                     "Failed to join room '%s': %s",
                     room_id,
-                    getattr(response, "message", str(response)),
+                    error_details,
                 )
         else:
             logger.debug(
