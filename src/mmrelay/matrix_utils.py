@@ -3210,10 +3210,10 @@ async def upload_image(
             filesize=len(image_data),
         )
     except NIO_COMM_EXCEPTIONS as e:
-        # Convert nio communication exceptions to ImageUploadError
-        # Create an UploadError for the ImageUploadError constructor
+        # Convert nio communication exceptions to an UploadError instance
+        logger.error(f"Image upload failed due to a network error: {e}")
         upload_error = UploadError(message=str(e))
-        raise ImageUploadError(upload_error) from e
+        return upload_error
     else:
         return response
 
