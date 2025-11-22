@@ -887,6 +887,7 @@ def test_create_mapping_info_defaults(mock_get_msgs):
         text="Hello world",
     )
 
+    assert result is not None
     assert result["msgs_to_keep"] == 500
     assert result["meshnet"] is None
 
@@ -1500,7 +1501,7 @@ async def test_join_matrix_room_rejects_non_string_identifier(mock_logger):
     mock_client.rooms = {}
     mock_client.join = AsyncMock()
 
-    await join_matrix_room(mock_client, 12345)
+    await join_matrix_room(mock_client, 12345)  # type: ignore[arg-type]
 
     mock_client.join.assert_not_called()
     mock_logger.error.assert_called_with(
@@ -2464,7 +2465,7 @@ async def test_upload_image_sets_content_type_and_uses_filename():
     mock_upload_response = MagicMock()
     mock_client.upload = AsyncMock(side_effect=fake_upload)
 
-    result = await upload_image(mock_client, FakeImage(), "photo.jpg")
+    result = await upload_image(mock_client, FakeImage(), "photo.jpg")  # type: ignore[arg-type]
 
     assert result == mock_upload_response
     assert mock_upload_response.content_type == "image/jpeg"
@@ -2527,7 +2528,7 @@ async def test_upload_image_fallbacks_to_png_on_save_error():
     mock_client = MagicMock()
     mock_client.upload = AsyncMock(side_effect=fake_upload)
 
-    await upload_image(mock_client, FakeImage(), "photo.webp")
+    await upload_image(mock_client, FakeImage(), "photo.webp")  # type: ignore[arg-type]
 
     # First attempt uses WEBP, then PNG fallback
     assert calls == ["WEBP", "PNG"]
@@ -2591,7 +2592,7 @@ async def test_upload_image_fallbacks_to_png_on_oserror():
     mock_client = MagicMock()
     mock_client.upload = AsyncMock(side_effect=fake_upload)
 
-    await upload_image(mock_client, FakeImage(), "photo.jpg")
+    await upload_image(mock_client, FakeImage(), "photo.jpg")  # type: ignore[arg-type]
 
     # First attempt uses JPEG, then PNG fallback
     assert calls == ["JPEG", "PNG"]
@@ -2638,7 +2639,7 @@ async def test_upload_image_defaults_to_png_when_mimetype_unknown():
     mock_client = MagicMock()
     mock_client.upload = AsyncMock(side_effect=fake_upload)
 
-    await upload_image(mock_client, FakeImage(), "noext")
+    await upload_image(mock_client, FakeImage(), "noext")  # type: ignore[arg-type]
 
     assert uploaded["content_type"] == "image/png"
     assert uploaded["filename"] == "noext"
@@ -3628,6 +3629,7 @@ class TestMatrixUtilityFunctions:
     def test_validate_prefix_format_missing_key(self):
         is_valid, error = validate_prefix_format("{missing}", {"display": "Alice"})
         assert is_valid is False
+        assert error is not None
         assert "missing" in error
 
 

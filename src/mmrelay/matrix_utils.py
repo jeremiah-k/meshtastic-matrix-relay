@@ -359,7 +359,7 @@ def _can_auto_create_credentials(matrix_config: dict) -> bool:
     return all(isinstance(v, str) and v.strip() for v in (homeserver, user, password))
 
 
-def _normalize_bot_user_id(homeserver: str, bot_user_id: str) -> str:
+def _normalize_bot_user_id(homeserver: str, bot_user_id: str | None) -> str | None:
     """
     Normalize a bot user identifier into a full Matrix MXID.
 
