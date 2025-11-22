@@ -3276,7 +3276,7 @@ async def upload_image(
         if not content_type or not content_type.startswith("image/"):
             # Use proper MIME type mapping for fallback
             content_type = MIME_TYPE_MAP.get(image_format, "image/png")
-    except (ValueError, KeyError):
+    except (ValueError, KeyError, OSError):
         # Fallback to PNG if format is unsupported
         buffer.seek(0)
         buffer.truncate(0)

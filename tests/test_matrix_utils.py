@@ -2536,6 +2536,70 @@ async def test_upload_image_fallbacks_to_png_on_save_error():
     assert uploaded["filesize"] == len(b"pngbytes")
 
 
+async def test_upload_image_fallbacks_to_png_on_oserror():
+    """Upload should fall back to PNG when Pillow raises OSError (e.g., RGBA as JPEG)."""
+    calls = []
+
+    class FakeImage:
+        def __init__(self):
+            """
+            Initialize the instance and mark it as the first-run.
+
+            Sets the internal `_first` attribute to True to indicate the instance has not
+            performed its primary action yet.
+            """
+            self._first = True
+
+        def save(self, buffer, format=None):
+            """
+            Write image data into a binary buffer; on the first call this implementation raises OSError, thereafter it writes PNG bytes.
+
+            Parameters:
+                buffer: A binary file-like object with a write(bytes) method that will receive the image data.
+                format (str | None): Optional format hint (ignored by this implementation).
+
+            Raises:
+                OSError: If this is the first invocation and the instance's `_first` flag is set.
+            """
+            calls.append(format)
+            if self._first:
+                self._first = False
+                raise OSError("cannot write mode RGBA as JPEG")
+            buffer.write(b"pngbytes")
+
+    uploaded = {}
+
+    async def fake_upload(_file_obj, content_type=None, filename=None, filesize=None):
+        """
+        Test helper that simulates uploading a file and records upload metadata.
+
+        Parameters:
+            _file_obj: Ignored file-like object (kept for signature compatibility).
+            content_type (str | None): MIME type recorded to the shared `uploaded` mapping.
+            filename (str | None): Filename recorded to the shared `uploaded` mapping.
+            filesize (int | None): File size recorded to the shared `uploaded` mapping.
+
+        Returns:
+            tuple: A pair (upload_result, content_uri) where `upload_result` is an empty
+            SimpleNamespace placeholder and `content_uri` is `None`.
+        """
+        uploaded["content_type"] = content_type
+        uploaded["filename"] = filename
+        uploaded["filesize"] = filesize
+        return SimpleNamespace(), None
+
+    mock_client = MagicMock()
+    mock_client.upload = AsyncMock(side_effect=fake_upload)
+
+    await upload_image(mock_client, FakeImage(), "photo.jpg")
+
+    # First attempt uses JPEG, then PNG fallback
+    assert calls == ["JPEG", "PNG"]
+    assert uploaded["content_type"] == "image/png"
+    assert uploaded["filename"] == "photo.jpg"
+    assert uploaded["filesize"] == len(b"pngbytes")
+
+
 async def test_upload_image_defaults_to_png_when_mimetype_unknown():
     """Unknown extensions should default to image/png even when save succeeds."""
 
