@@ -1181,24 +1181,34 @@ async def connect_matrix(passed_config=None):
                 f"Restored login session for {bot_user_id} with device {e2ee_device_id}"
             )
         else:
-            # First-run E2EE setup: use direct assignment and let nio generate device_id
-            logger.info("First-run E2EE setup: using direct token assignment")
+            # First-run E2EE setup: discover device_id using whoami
+            logger.info("First-run E2EE setup: discovering device_id via whoami")
             matrix_client.access_token = matrix_access_token
             matrix_client.user_id = bot_user_id
 
-            # Try to get device_id after client setup
-            if getattr(matrix_client, "device_id", None):
-                e2ee_device_id = matrix_client.device_id
-                logger.debug(f"Device ID established after setup: {e2ee_device_id}")
-                try:
-                    if credentials is not None:
-                        credentials["device_id"] = e2ee_device_id
-                        save_credentials(credentials)
-                        logger.info(
-                            "Updated credentials.json with discovered device_id"
-                        )
-                except Exception as e:
-                    logger.debug(f"Failed to persist discovered device_id: {e}")
+            # Call whoami to discover device_id from server
+            try:
+                whoami_response = await matrix_client.whoami()
+                discovered_device_id = getattr(whoami_response, "device_id", None)
+                if discovered_device_id:
+                    e2ee_device_id = discovered_device_id
+                    logger.info(f"Discovered device_id from whoami: {e2ee_device_id}")
+
+                    # Save the discovered device_id to credentials for future use
+                    try:
+                        if credentials is not None:
+                            credentials["device_id"] = e2ee_device_id
+                            save_credentials(credentials)
+                            logger.info(
+                                "Updated credentials.json with discovered device_id"
+                            )
+                    except Exception as e:
+                        logger.debug(f"Failed to persist discovered device_id: {e}")
+                else:
+                    logger.warning("whoami response did not contain device_id")
+            except Exception as e:
+                logger.warning(f"Failed to discover device_id via whoami: {e}")
+                logger.warning("E2EE may not work properly without a device_id")
     else:
         # Fallback to direct assignment for legacy token-based auth
         matrix_client.access_token = matrix_access_token
