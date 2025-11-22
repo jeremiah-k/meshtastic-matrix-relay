@@ -1395,7 +1395,7 @@ async def connect_matrix(passed_config=None):
         bot_user_name = bot_user_id  # Fallback on network error
 
     # Store E2EE status on the client for other functions to access
-    setattr(matrix_client, "e2ee_enabled", e2ee_enabled)  # type: ignore[attr-defined]
+    matrix_client.e2ee_enabled = e2ee_enabled  # type: ignore[attr-defined]
     return matrix_client
 
 
