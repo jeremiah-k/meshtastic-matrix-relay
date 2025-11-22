@@ -3173,7 +3173,7 @@ async def upload_image(
     image_data = buffer.getvalue()
 
     try:
-        response, _maybe_keys = await client.upload(
+        response = await client.upload(
             io.BytesIO(image_data),
             content_type=content_type,
             filename=filename,
@@ -3194,7 +3194,7 @@ async def upload_image(
 async def send_room_image(
     client: AsyncClient,
     room_id: str,
-    upload_response: Union[UploadResponse, UploadError],
+    upload_response: Union[UploadResponse, UploadError, None],
     filename: str = "image.png",
 ):
     """
