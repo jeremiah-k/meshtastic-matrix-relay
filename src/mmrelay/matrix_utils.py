@@ -842,6 +842,73 @@ async def _connect_meshtastic():
     return await loop.run_in_executor(None, connect_meshtastic)
 
 
+async def _handle_detection_sensor_packet(
+    config: dict,
+    room_config: dict,
+    full_display_name: str,
+    text: str,
+) -> None:
+    """
+    Handle detection sensor packet processing and relay to Meshtastic.
+
+    Args:
+        config: Global configuration dictionary
+        room_config: Room-specific configuration
+        full_display_name: Display name of the sender
+        text: Message text content to relay
+    """
+    detection_enabled = get_meshtastic_config_value(
+        config, "detection_sensor", DEFAULT_DETECTION_SENSOR
+    )
+    broadcast_enabled = get_meshtastic_config_value(
+        config, "broadcast_enabled", DEFAULT_BROADCAST_ENABLED, required=False
+    )
+    from mmrelay.meshtastic_utils import logger as meshtastic_logger
+
+    if not broadcast_enabled:
+        meshtastic_logger.debug(
+            f"Detection sensor packet received from {full_display_name}, but broadcast is disabled."
+        )
+        return
+
+    if not detection_enabled:
+        meshtastic_logger.debug(
+            f"Detection sensor packet received from {full_display_name}, but detection sensor processing is disabled."
+        )
+        return
+
+    meshtastic_interface = await _connect_meshtastic()
+
+    if not meshtastic_interface:
+        logger.error("Failed to connect to Meshtastic. Cannot relay detection data.")
+        return
+
+    meshtastic_channel = room_config["meshtastic_channel"]
+
+    import meshtastic.protobuf.portnums_pb2  # type: ignore[import-untyped]
+
+    success = queue_message(
+        meshtastic_interface.sendData,
+        data=text.encode("utf-8"),
+        channelIndex=meshtastic_channel,
+        portNum=meshtastic.protobuf.portnums_pb2.PortNum.DETECTION_SENSOR_APP,
+        description=f"Detection sensor data from {full_display_name}",
+    )
+
+    if success:
+        queue_size = get_message_queue().get_queue_size()
+        if queue_size > 1:
+            meshtastic_logger.info(
+                f"Relaying detection sensor data from {full_display_name} to radio broadcast (queued: {queue_size} messages)"
+            )
+        else:
+            meshtastic_logger.info(
+                f"Relaying detection sensor data from {full_display_name} to radio broadcast"
+            )
+    else:
+        meshtastic_logger.error("Failed to relay detection sensor data to Meshtastic")
+
+
 async def connect_matrix(passed_config=None):
     """
     Initialize and return a configured matrix-nio AsyncClient connected to the configured Matrix homeserver.
@@ -1202,8 +1269,8 @@ async def connect_matrix(passed_config=None):
                             logger.info(
                                 "Updated credentials.json with discovered device_id"
                             )
-                    except Exception as e:
-                        logger.debug(f"Failed to persist discovered device_id: {e}")
+                    except (IOError, OSError) as e:
+                        logger.warning(f"Failed to persist discovered device_id: {e}")
                 else:
                     logger.warning("whoami response did not contain device_id")
             except Exception as e:
@@ -3052,60 +3119,9 @@ async def on_room_message(
     is_detection_packet = portnum == DETECTION_SENSOR_APP
 
     if is_detection_packet:
-        detection_enabled = get_meshtastic_config_value(
-            config, "detection_sensor", DEFAULT_DETECTION_SENSOR
+        await _handle_detection_sensor_packet(
+            config, room_config, full_display_name, text
         )
-        broadcast_enabled = get_meshtastic_config_value(
-            config, "broadcast_enabled", DEFAULT_BROADCAST_ENABLED, required=False
-        )
-        from mmrelay.meshtastic_utils import logger as meshtastic_logger
-
-        if not broadcast_enabled:
-            meshtastic_logger.debug(
-                f"Detection sensor packet received from {full_display_name}, but broadcast is disabled."
-            )
-            return
-
-        if not detection_enabled:
-            meshtastic_logger.debug(
-                f"Detection sensor packet received from {full_display_name}, but detection sensor processing is disabled."
-            )
-            return
-
-        meshtastic_interface = await _connect_meshtastic()
-
-        if not meshtastic_interface:
-            logger.error(
-                "Failed to connect to Meshtastic. Cannot relay detection data."
-            )
-            return
-
-        meshtastic_channel = room_config["meshtastic_channel"]
-
-        import meshtastic.protobuf.portnums_pb2  # type: ignore[import-untyped]
-
-        success = queue_message(
-            meshtastic_interface.sendData,
-            data=text.encode("utf-8"),
-            channelIndex=meshtastic_channel,
-            portNum=meshtastic.protobuf.portnums_pb2.PortNum.DETECTION_SENSOR_APP,
-            description=f"Detection sensor data from {full_display_name}",
-        )
-
-        if success:
-            queue_size = get_message_queue().get_queue_size()
-            if queue_size > 1:
-                meshtastic_logger.info(
-                    f"Relaying detection sensor data from {full_display_name} to radio broadcast (queued: {queue_size} messages)"
-                )
-            else:
-                meshtastic_logger.info(
-                    f"Relaying detection sensor data from {full_display_name} to radio broadcast"
-                )
-        else:
-            meshtastic_logger.error(
-                "Failed to relay detection sensor data to Meshtastic"
-            )
         return
 
     # Connect to Meshtastic for regular messages
@@ -3227,7 +3243,7 @@ async def upload_image(
         )
     except NIO_COMM_EXCEPTIONS as e:
         # Convert nio communication exceptions to an UploadError instance
-        logger.error(f"Image upload failed due to a network error: {e}")
+        logger.exception(f"Image upload failed due to a network error: {e}")
         upload_error = UploadError(message=str(e))
         return upload_error
     else:
