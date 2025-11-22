@@ -1475,6 +1475,29 @@ async def test_join_matrix_room_resolve_alias_handles_nio_errors(
 
 
 @patch("mmrelay.matrix_utils.logger")
+async def test_join_matrix_room_resolve_alias_missing_room_id(mock_logger, monkeypatch):
+    """If alias resolution returns no room_id, the function should log and return without joining."""
+    mock_client = MagicMock()
+    mock_client.rooms = {}
+    mock_client.room_resolve_alias = AsyncMock(
+        return_value=SimpleNamespace(message="no room")
+    )
+    mock_client.join = AsyncMock()
+    matrix_rooms_config = [{"id": "#alias:matrix.org"}]
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.matrix_rooms", matrix_rooms_config, raising=False
+    )
+
+    await join_matrix_room(mock_client, "#alias:matrix.org")
+
+    mock_client.room_resolve_alias.assert_awaited_once_with("#alias:matrix.org")
+    mock_client.join.assert_not_awaited()
+    mock_logger.error.assert_any_call(
+        "Failed to resolve alias '%s': %s", "#alias:matrix.org", "no room"
+    )
+
+
+@patch("mmrelay.matrix_utils.logger")
 async def test_join_matrix_room_rejects_non_string_identifier(mock_logger):
     mock_client = MagicMock()
     mock_client.rooms = {}
@@ -2459,6 +2482,31 @@ async def test_upload_image_fallbacks_to_png_on_save_error(monkeypatch):
     assert uploaded["content_type"] == "image/png"
     assert uploaded["filename"] == "photo.webp"
     assert uploaded["filesize"] == len(b"pngbytes")
+
+
+async def test_upload_image_defaults_to_png_when_mimetype_unknown(monkeypatch):
+    """Unknown extensions should default to image/png even when save succeeds."""
+
+    class FakeImage:
+        def save(self, buffer, format=None):
+            buffer.write(b"defaultbytes")
+
+    uploaded = {}
+
+    async def fake_upload(file_obj, content_type=None, filename=None, filesize=None):
+        uploaded["content_type"] = content_type
+        uploaded["filename"] = filename
+        uploaded["filesize"] = filesize
+        return SimpleNamespace(), None
+
+    mock_client = MagicMock()
+    mock_client.upload = AsyncMock(side_effect=fake_upload)
+
+    await upload_image(mock_client, FakeImage(), "noext")
+
+    assert uploaded["content_type"] == "image/png"
+    assert uploaded["filename"] == "noext"
+    assert uploaded["filesize"] == len(b"defaultbytes")
 
 
 # E2EE Configuration Tests
