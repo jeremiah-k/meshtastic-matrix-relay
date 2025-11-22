@@ -925,6 +925,11 @@ async def _handle_detection_sensor_packet(
             "Room config missing 'meshtastic_channel'; cannot relay detection data."
         )
         return
+    if not isinstance(meshtastic_channel, int) or meshtastic_channel < 0:
+        meshtastic_logger.error(
+            f"Invalid meshtastic_channel value {meshtastic_channel!r} in room config; must be a non-negative integer."
+        )
+        return
 
     import meshtastic.protobuf.portnums_pb2  # type: ignore[import-untyped]
 
@@ -2879,6 +2884,8 @@ async def on_room_message(
             # We need to manually extract the reaction emoji from the body
             reaction_match = re.search(r"reacted (.+?) to", reaction_body)
             reaction_emoji = reaction_match.group(1).strip() if reaction_match else "?"
+            if emote_relates_to and "event_id" in emote_relates_to:
+                original_matrix_event_id = emote_relates_to["event_id"]
 
     # Some Matrix relays (especially Meshtastic bridges) provide the raw mesh
     # payload alongside the formatted body. Prefer that when available so we do

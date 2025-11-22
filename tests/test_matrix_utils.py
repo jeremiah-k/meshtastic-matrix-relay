@@ -2682,6 +2682,102 @@ async def test_upload_image_returns_upload_error_on_network_exception():
 
 
 @pytest.mark.asyncio
+async def test_on_room_message_emote_reaction_uses_original_event_id(monkeypatch):
+    """Emote reactions with m.relates_to should populate original_matrix_event_id for reaction handling."""
+    from mmrelay.matrix_utils import RoomMessageEmote
+
+    room_id = "!room:example"
+    sender_id = "@user:example"
+
+    # Minimal RoomMessageEmote-like object
+    class MockEmote(RoomMessageEmote):  # type: ignore[misc]
+        def __init__(self):
+            self.source = {
+                "content": {
+                    "body": 'reacted 👍 to "something"',
+                    "m.relates_to": {
+                        "event_id": "orig_evt",
+                        "key": "👍",
+                        "rel_type": "m.annotation",
+                    },
+                }
+            }
+            self.sender = sender_id
+            self.server_timestamp = 1
+
+    mock_event = MockEmote()
+    mock_room = SimpleNamespace(room_id=room_id)
+
+    # Patch globals/config for the handler
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.bot_user_id", "@bot:example", raising=False
+    )
+    monkeypatch.setattr("mmrelay.matrix_utils.bot_start_time", 0, raising=False)
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.config",
+        {
+            "meshtastic": {
+                "meshnet_name": "local",
+                "message_interactions": {"reactions": True},
+            },
+            "matrix_rooms": [{"id": room_id, "meshtastic_channel": 0}],
+        },
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.matrix_rooms",
+        [{"id": room_id, "meshtastic_channel": 0}],
+        raising=False,
+    )
+
+    # Stub dependencies
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.get_meshtastic_prefix",
+        lambda *_args, **_kwargs: "prefix ",
+        raising=False,
+    )
+
+    mapping = ("mesh_id", room_id, "text", "meshnet")
+    get_map_mock = MagicMock(return_value=mapping)
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.get_message_map_by_matrix_event_id",
+        get_map_mock,
+        raising=False,
+    )
+
+    class DummyQueue:
+        def get_queue_size(self):
+            return 1
+
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.get_message_queue", lambda: DummyQueue(), raising=False
+    )
+
+    queue_mock = MagicMock(return_value=True)
+    monkeypatch.setattr("mmrelay.matrix_utils.queue_message", queue_mock, raising=False)
+
+    class DummyInterface:
+        def __init__(self):
+            self.sendText = MagicMock()
+
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils._connect_meshtastic",
+        AsyncMock(return_value=DummyInterface()),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.get_user_display_name",
+        AsyncMock(return_value="User"),
+        raising=False,
+    )
+
+    await on_room_message(mock_room, mock_event)
+
+    get_map_mock.assert_called_once_with("orig_evt")
+    queue_mock.assert_called()
+
+
+@pytest.mark.asyncio
 @patch("mmrelay.matrix_utils.os.makedirs")
 @patch("mmrelay.matrix_utils.os.listdir")
 @patch("mmrelay.matrix_utils.os.path.exists")
