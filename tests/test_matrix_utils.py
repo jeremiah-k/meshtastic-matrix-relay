@@ -725,8 +725,8 @@ async def test_on_room_message_detection_sensor_enabled(
     assert "portNum" in call_args.kwargs
     # The portNum should be the DETECTION_SENSOR_APP enum value from protobuf
     assert call_args.kwargs["description"] == "Detection sensor data from TestUser"
-    # The data should be the full_message with prefix (as per current implementation)
-    assert call_args.kwargs["data"] == b"TestU[M]: Detection data"
+    # The data should be raw text without prefix for detection sensor packets
+    assert call_args.kwargs["data"] == b"Detection data"
 
 
 async def test_on_room_message_detection_sensor_disabled(
