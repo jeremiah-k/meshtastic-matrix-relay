@@ -11,10 +11,10 @@ import re
 import ssl
 import sys
 import time
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional, Union, cast
 from urllib.parse import urlparse
 
-from nio import (
+from nio import (  # type: ignore[import-untyped]
     AsyncClient,
     AsyncClientConfig,
     DiscoveryInfoError,
@@ -28,30 +28,39 @@ from nio import (
     UploadError,
     UploadResponse,
 )
-from nio.events.room_events import RoomMemberEvent
+from nio.events.room_events import RoomMemberEvent  # type: ignore[import-untyped]
 from PIL import Image
 
 # Import nio exception types with error handling for test environments
 try:
-    from nio.exceptions import LocalProtocolError as NioLocalProtocolError
-    from nio.exceptions import LocalTransportError as NioLocalTransportError
-    from nio.exceptions import RemoteProtocolError as NioRemoteProtocolError
-    from nio.exceptions import RemoteTransportError as NioRemoteTransportError
-    from nio.responses import ErrorResponse as NioErrorResponse
-    from nio.responses import LoginError as NioLoginError
-    from nio.responses import LogoutError as NioLogoutError
+    from nio.exceptions import (
+        LocalProtocolError as NioLocalProtocolError,  # type: ignore[import-untyped]
+    )
+    from nio.exceptions import (
+        LocalTransportError as NioLocalTransportError,  # type: ignore[import-untyped]
+    )
+    from nio.exceptions import (
+        RemoteProtocolError as NioRemoteProtocolError,  # type: ignore[import-untyped]
+    )
+    from nio.exceptions import (
+        RemoteTransportError as NioRemoteTransportError,  # type: ignore[import-untyped]
+    )
+    from nio.responses import (
+        LoginError as NioLoginError,  # type: ignore[import-untyped]
+    )
+    from nio.responses import (
+        LogoutError as NioLogoutError,  # type: ignore[import-untyped]
+    )
 except ImportError:
     # Fallback for test environments where nio imports might fail
     NioLoginError = Exception
     NioLogoutError = Exception
-    NioErrorResponse = Exception
     NioLocalProtocolError = Exception
     NioRemoteProtocolError = Exception
     NioLocalTransportError = Exception
     NioRemoteTransportError = Exception
 
-NIO_COMM_EXCEPTIONS = (
-    NioErrorResponse,
+NIO_COMM_EXCEPTIONS: tuple[type[BaseException], ...] = (
     NioLocalProtocolError,
     NioRemoteProtocolError,
     NioLocalTransportError,
@@ -262,7 +271,7 @@ def _display_room_channel_mappings(
                 room_to_channel[room_id] = channel
 
     # Group rooms by channel
-    channels = {}
+    channels: dict[int, list[tuple[str, Any]]] = {}
 
     for room_id, room in rooms.items():
         if room_id in room_to_channel:
@@ -373,7 +382,7 @@ def _normalize_bot_user_id(homeserver: str, bot_user_id: str) -> str:
         host = homeserver.split("://")[-1].split("/", 1)[0]
         domain = re.sub(r":\d+$", "", host)
 
-    domain = _canonical_server(domain)
+    domain = _canonical_server(domain) or ""
 
     # Normalize user ID
     localpart, *serverpart = bot_user_id.lstrip("@").split(":", 1)
@@ -385,8 +394,8 @@ def _normalize_bot_user_id(homeserver: str, bot_user_id: str) -> str:
             "",
             raw_server,
         )
-        server = _canonical_server(server)
-        return f"@{localpart}:{server}"
+        canonical_server = _canonical_server(server)
+        return f"@{localpart}:{canonical_server or domain}"
 
     # No server part, add the derived domain
     return f"@{localpart.rstrip(':')}:{domain}"
@@ -854,6 +863,7 @@ async def connect_matrix(passed_config=None):
 
     # Check for credentials.json first
     credentials = None
+    e2ee_device_id: Optional[str] = None
     credentials_path = None
 
     # Try to find credentials.json in the config directory
@@ -874,17 +884,21 @@ async def connect_matrix(passed_config=None):
         matrix_homeserver = credentials["homeserver"]
         matrix_access_token = credentials["access_token"]
         bot_user_id = credentials["user_id"]
-        e2ee_device_id = credentials.get("device_id")
+        device_id_value = credentials.get("device_id")
+        e2ee_device_id = (
+            device_id_value
+            if isinstance(device_id_value, str) and device_id_value.strip()
+            else None
+        )
 
         # Log consolidated credentials info
         logger.debug(f"Using Matrix credentials (device: {e2ee_device_id})")
 
         # If device_id is missing, warn but proceed; we'll learn and persist it after restore_login().
-        if not isinstance(e2ee_device_id, str) or not e2ee_device_id.strip():
+        if e2ee_device_id is None:
             logger.warning(
                 "credentials.json has no valid device_id; proceeding to restore session and discover device_id."
             )
-            e2ee_device_id = None
 
         # If config also has Matrix login info, let the user know we're ignoring it
         if config and "matrix" in config and "access_token" in config["matrix"]:
@@ -930,7 +944,12 @@ async def connect_matrix(passed_config=None):
                 matrix_homeserver = credentials["homeserver"]
                 matrix_access_token = credentials["access_token"]
                 bot_user_id = credentials["user_id"]
-                e2ee_device_id = credentials.get("device_id")
+                device_id_value = credentials.get("device_id")
+                e2ee_device_id = (
+                    device_id_value
+                    if isinstance(device_id_value, str) and device_id_value.strip()
+                    else None
+                )
             else:
                 logger.error(
                     "Automatic login failed. Please check your credentials or use 'mmrelay auth login'"
@@ -1141,7 +1160,7 @@ async def connect_matrix(passed_config=None):
         device_id=e2ee_device_id,  # Will be None if not specified in config or credentials
         store_path=e2ee_store_path if e2ee_enabled else None,
         config=client_config,
-        ssl=ssl_context,
+        ssl=cast(Any, ssl_context),
     )
 
     # Set the access_token and user_id using restore_login for better session management
@@ -1149,9 +1168,10 @@ async def connect_matrix(passed_config=None):
         # Use restore_login method for proper session restoration.
         # nio will handle loading the store automatically if store_path was provided
         # to the client constructor.
+        device_id_for_restore = e2ee_device_id or ""
         matrix_client.restore_login(
             user_id=bot_user_id,
-            device_id=e2ee_device_id,  # Pass through None so nio can load stored device_id
+            device_id=device_id_for_restore,
             access_token=matrix_access_token,
         )
         logger.info(
@@ -1405,7 +1425,7 @@ async def login_matrix_bot(
             logger.debug(f"SSL context verify_mode: {ssl_context.verify_mode}")
 
         # Create a temporary client for discovery
-        temp_client = AsyncClient(homeserver, "", ssl=ssl_context)
+        temp_client = AsyncClient(homeserver, "", ssl=cast(Any, ssl_context))
         try:
             discovery_response = await asyncio.wait_for(
                 temp_client.discovery_info(), timeout=MATRIX_LOGIN_TIMEOUT
@@ -1558,7 +1578,7 @@ async def login_matrix_bot(
             device_id=existing_device_id,
             store_path=store_path,
             config=client_config,
-            ssl=ssl_context,
+            ssl=cast(Any, ssl_context),
         )
 
         logger.debug("AsyncClient created successfully")
@@ -1582,7 +1602,7 @@ async def login_matrix_bot(
 
             # Test the API call that matrix-nio will make
             try:
-                from nio.api import Api
+                from nio.api import Api  # type: ignore[import-untyped]
 
                 method, path, data = Api.login(
                     user=username,
@@ -1841,7 +1861,7 @@ async def join_matrix_room(matrix_client, room_id_or_alias: str) -> None:
         )
         return
 
-    room_id = room_id_or_alias
+    room_id: Optional[str] = room_id_or_alias
 
     if room_id_or_alias.startswith("#"):
         try:
@@ -1875,6 +1895,10 @@ async def join_matrix_room(matrix_client, room_id_or_alias: str) -> None:
                 )
 
         logger.info("Resolved alias '%s' -> '%s'", room_id_or_alias, room_id)
+
+    if room_id is None:
+        logger.error("Resolved room_id is None, cannot join room.")
+        return
 
     try:
         if room_id not in matrix_client.rooms:
@@ -1997,8 +2021,8 @@ async def matrix_relay(
         # Process markdown/HTML if available; otherwise, safe fallback
         if has_markdown or has_html:
             try:
-                import bleach  # lazy import
-                import markdown  # lazy import
+                import bleach  # type: ignore[import-untyped]  # lazy import
+                import markdown  # type: ignore[import-untyped]  # lazy import
 
                 raw_html = markdown.markdown(message)
                 formatted_body = bleach.clean(
@@ -2983,7 +3007,7 @@ async def on_room_message(
 
         meshtastic_channel = room_config["meshtastic_channel"]
 
-        import meshtastic.protobuf.portnums_pb2
+        import meshtastic.protobuf.portnums_pb2  # type: ignore[import-untyped]
 
         success = queue_message(
             meshtastic_interface.sendData,
