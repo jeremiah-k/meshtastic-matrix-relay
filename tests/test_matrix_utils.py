@@ -3944,6 +3944,7 @@ class TestMatrixE2EEHasAttrChecks:
             mock_olm = MagicMock()
             mock_nio_crypto = MagicMock()
             mock_nio_crypto.OlmDevice = object()
+            # Simulate missing OlmDevice attribute to exercise hasattr failure
             del mock_nio_crypto.OlmDevice
             mock_nio_store = MagicMock()
             mock_nio_store.SqliteStore = MagicMock()
@@ -4012,6 +4013,7 @@ class TestMatrixE2EEHasAttrChecks:
             mock_nio_crypto.OlmDevice = MagicMock()
             mock_nio_store = MagicMock()
             mock_nio_store.SqliteStore = object()
+            # Simulate missing SqliteStore attribute to exercise hasattr failure
             del mock_nio_store.SqliteStore
 
             def import_side_effect(name):

@@ -157,11 +157,10 @@ def _get_valid_device_id(device_id_value: Any) -> Optional[str]:
     Returns:
         Optional[str]: The original string with surrounding whitespace removed if it is non-empty, otherwise `None`.
     """
-    return (
-        device_id_value
-        if isinstance(device_id_value, str) and device_id_value.strip()
-        else None
-    )
+    if isinstance(device_id_value, str):
+        value = device_id_value.strip()
+        return value or None
+    return None
 
 
 def _iter_room_alias_entries(mapping):
@@ -915,10 +914,17 @@ async def _handle_detection_sensor_packet(
     meshtastic_interface = await _connect_meshtastic()
 
     if not meshtastic_interface:
-        logger.error("Failed to connect to Meshtastic. Cannot relay detection data.")
+        meshtastic_logger.error(
+            "Failed to connect to Meshtastic. Cannot relay detection data."
+        )
         return
 
-    meshtastic_channel = room_config["meshtastic_channel"]
+    meshtastic_channel = room_config.get("meshtastic_channel")
+    if meshtastic_channel is None:
+        meshtastic_logger.error(
+            "Room config missing 'meshtastic_channel'; cannot relay detection data."
+        )
+        return
 
     import meshtastic.protobuf.portnums_pb2  # type: ignore[import-untyped]
 
@@ -2546,7 +2552,16 @@ async def send_reply_to_meshtastic(
     meshtastic_interface = await _connect_meshtastic()
     from mmrelay.meshtastic_utils import logger as meshtastic_logger
 
-    meshtastic_channel = room_config["meshtastic_channel"]
+    if not meshtastic_interface:
+        meshtastic_logger.error("Failed to connect to Meshtastic. Cannot relay reply.")
+        return
+
+    meshtastic_channel = room_config.get("meshtastic_channel")
+    if meshtastic_channel is None:
+        meshtastic_logger.error(
+            "Room config missing 'meshtastic_channel'; cannot relay reply."
+        )
+        return
 
     broadcast_enabled = get_meshtastic_config_value(
         config, "broadcast_enabled", DEFAULT_BROADCAST_ENABLED, required=False
