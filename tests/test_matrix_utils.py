@@ -171,11 +171,10 @@ async def test_on_room_message_simple_text(
         async def run_in_executor(self, _executor, func, *args):
             """
             Invoke a callable synchronously and return its result.
-
-            _executor: Ignored; present for API compatibility.
-            func: Callable to invoke.
-            *args: Positional arguments forwarded to `func`.
-
+            
+            _executor is accepted for API compatibility but ignored.
+            func is the callable to invoke; any positional args are forwarded to it.
+            
             Returns:
                 The value returned by `func(*args)`.
             """
@@ -269,11 +268,10 @@ async def test_on_room_message_remote_prefers_meshtastic_text(
         async def run_in_executor(self, _executor, func, *args):
             """
             Invoke a callable synchronously and return its result.
-
-            _executor: Ignored; present for API compatibility.
-            func: Callable to invoke.
-            *args: Positional arguments forwarded to `func`.
-
+            
+            _executor is accepted for API compatibility but ignored.
+            func is the callable to invoke; any positional args are forwarded to it.
+            
             Returns:
                 The value returned by `func(*args)`.
             """
@@ -688,11 +686,10 @@ async def test_on_room_message_detection_sensor_enabled(
         async def run_in_executor(self, _executor, func, *args):
             """
             Invoke a callable synchronously and return its result.
-
-            _executor: Ignored; present for API compatibility.
-            func: Callable to invoke.
-            *args: Positional arguments forwarded to `func`.
-
+            
+            _executor is accepted for API compatibility but ignored.
+            func is the callable to invoke; any positional args are forwarded to it.
+            
             Returns:
                 The value returned by `func(*args)`.
             """
@@ -2204,11 +2201,10 @@ async def test_send_reply_to_meshtastic_with_reply_id():
         async def run_in_executor(self, _executor, func, *args):
             """
             Invoke a callable synchronously and return its result.
-
-            _executor: Ignored; present for API compatibility.
-            func: Callable to invoke.
-            *args: Positional arguments forwarded to `func`.
-
+            
+            _executor is accepted for API compatibility but ignored.
+            func is the callable to invoke; any positional args are forwarded to it.
+            
             Returns:
                 The value returned by `func(*args)`.
             """
@@ -2284,11 +2280,10 @@ async def test_send_reply_to_meshtastic_no_reply_id():
         async def run_in_executor(self, _executor, func, *args):
             """
             Invoke a callable synchronously and return its result.
-
-            _executor: Ignored; present for API compatibility.
-            func: Callable to invoke.
-            *args: Positional arguments forwarded to `func`.
-
+            
+            _executor is accepted for API compatibility but ignored.
+            func is the callable to invoke; any positional args are forwarded to it.
+            
             Returns:
                 The value returned by `func(*args)`.
             """
@@ -2431,9 +2426,32 @@ async def test_upload_image_sets_content_type_and_uses_filename():
 
     class FakeImage:
         def save(self, buffer, format=None):
+            """
+            Write JPEG-encoded image data into a binary writable buffer.
+            
+            Parameters:
+                buffer: A binary writable file-like object that will receive the image bytes.
+                format: Optional image format hint; accepted but not used by this implementation.
+            """
             buffer.write(b"jpgbytes")
 
     async def fake_upload(_file_obj, content_type=None, filename=None, filesize=None):
+        """
+        Simulate a file upload for tests and record the provided metadata.
+        
+        Records the provided content_type, filename, and filesize into the shared `uploaded` mapping
+        and sets the same attributes on `mock_upload_response` to emulate an upload result.
+        
+        Parameters:
+            _file_obj: The file-like object to "upload" (ignored by this fake).
+            content_type (str|None): MIME type to assign to the upload result.
+            filename (str|None): Filename to assign to the upload result.
+            filesize (int|None): File size in bytes to assign to the upload result.
+        
+        Returns:
+            tuple: `(upload_response, None)` where `upload_response` has `content_type`, `filename`,
+            and `filesize` attributes set to the provided values.
+        """
         uploaded["content_type"] = content_type
         uploaded["filename"] = filename
         uploaded["filesize"] = filesize
@@ -2460,9 +2478,25 @@ async def test_upload_image_fallbacks_to_png_on_save_error():
 
     class FakeImage:
         def __init__(self):
+            """
+            Initialize the instance and mark it as the first-run.
+            
+            Sets the internal `_first` attribute to True to indicate the instance has not
+            performed its primary action yet.
+            """
             self._first = True
 
         def save(self, buffer, format=None):
+            """
+            Write image data into a binary buffer; on the first call this implementation raises a ValueError, thereafter it writes PNG bytes.
+            
+            Parameters:
+                buffer: A binary file-like object with a write(bytes) method that will receive the image data.
+                format (str | None): Optional format hint (ignored by this implementation).
+            
+            Raises:
+                ValueError: If this is the first invocation and the instance's `_first` flag is set.
+            """
             calls.append(format)
             if self._first:
                 self._first = False
@@ -2472,6 +2506,19 @@ async def test_upload_image_fallbacks_to_png_on_save_error():
     uploaded = {}
 
     async def fake_upload(_file_obj, content_type=None, filename=None, filesize=None):
+        """
+        Test helper that simulates uploading a file and records upload metadata.
+        
+        Parameters:
+            _file_obj: Ignored file-like object (kept for signature compatibility).
+            content_type (str | None): MIME type recorded to the shared `uploaded` mapping.
+            filename (str | None): Filename recorded to the shared `uploaded` mapping.
+            filesize (int | None): File size recorded to the shared `uploaded` mapping.
+        
+        Returns:
+            tuple: A pair (upload_result, content_uri) where `upload_result` is an empty
+            SimpleNamespace placeholder and `content_uri` is `None`.
+        """
         uploaded["content_type"] = content_type
         uploaded["filename"] = filename
         uploaded["filesize"] = filesize
@@ -2494,11 +2541,31 @@ async def test_upload_image_defaults_to_png_when_mimetype_unknown():
 
     class FakeImage:
         def save(self, buffer, format=None):
+            """
+            Write a default placeholder byte sequence into the provided writable binary buffer.
+            
+            Parameters:
+                buffer: A writable binary file-like object with a write(bytes) method; receives the placeholder bytes.
+                format (str, optional): Ignored by this implementation.
+            """
             buffer.write(b"defaultbytes")
 
     uploaded = {}
 
     async def fake_upload(_file_obj, content_type=None, filename=None, filesize=None):
+        """
+        Test helper that simulates uploading a file and records upload metadata.
+        
+        Parameters:
+            _file_obj: Ignored file-like object (kept for signature compatibility).
+            content_type (str | None): MIME type recorded to the shared `uploaded` mapping.
+            filename (str | None): Filename recorded to the shared `uploaded` mapping.
+            filesize (int | None): File size recorded to the shared `uploaded` mapping.
+        
+        Returns:
+            tuple: A pair (upload_result, content_uri) where `upload_result` is an empty
+            SimpleNamespace placeholder and `content_uri` is `None`.
+        """
         uploaded["content_type"] = content_type
         uploaded["filename"] = filename
         uploaded["filesize"] = filesize
@@ -2553,9 +2620,25 @@ async def test_connect_matrix_missing_device_id_uses_direct_assignment(
     mock_client_instance.rooms = {}
 
     async def mock_sync(*_args, **_kwargs):
+        """
+        Create and return a MagicMock to simulate a sync operation result.
+        
+        Any positional and keyword arguments are accepted and ignored.
+        
+        Returns:
+            MagicMock: A new MagicMock instance representing the mocked sync result.
+        """
         return MagicMock()
 
     def mock_restore_login(user_id, device_id, access_token):
+        """
+        Set the mocked Matrix client's login state by assigning user, device, and token attributes.
+        
+        Parameters:
+            user_id (str): Matrix user ID to set on the mock client.
+            device_id (str): Device ID to set on the mock client.
+            access_token (str): Access token to set on the mock client.
+        """
         mock_client_instance.access_token = access_token
         mock_client_instance.user_id = user_id
         mock_client_instance.device_id = device_id
@@ -2603,6 +2686,14 @@ async def test_connect_matrix_sync_timeout_closes_client(monkeypatch):
 
     # Capture AsyncClient ssl argument for separate test
     def fake_async_client(*_args, **_kwargs):
+        """
+        Provide a preconfigured mock Matrix client for use in tests.
+        
+        Ignores all positional and keyword arguments and always returns the shared test mock client.
+        
+        Returns:
+            mock_client: The preconfigured mock Matrix client instance used by tests.
+        """
         return mock_client
 
     monkeypatch.setattr("mmrelay.matrix_utils.AsyncClient", fake_async_client)
@@ -2649,6 +2740,16 @@ async def test_connect_matrix_uses_ssl_context_object(monkeypatch):
     client_calls = []
 
     def fake_async_client(*_args, **_kwargs):
+        """
+        Create a fake async Matrix client for tests that records the passed SSL value and returns a predefined mock client.
+        
+        Parameters:
+            *_args: Ignored positional arguments.
+            **_kwargs: Keyword arguments; the `ssl` key, if present, is recorded into `client_calls`.
+        
+        Returns:
+            mock_client: The predefined mock client object used by tests.
+        """
         client_calls.append(_kwargs.get("ssl"))
         return mock_client
 
@@ -2717,9 +2818,23 @@ async def test_on_room_message_command_short_circuits(
         plugin_name = "dummy"
 
         async def handle_room_message(self, *_args, **_kwargs):
+            """
+            Handle an incoming Matrix room message and indicate whether it was processed.
+            
+            This implementation does not process messages and always reports the message as not handled.
+            
+            Returns:
+                handled (bool): `False` indicating the message was not handled.
+            """
             return False
 
         def get_matrix_commands(self):
+            """
+            Return the list of Matrix commands supported by this handler.
+            
+            Returns:
+                list[str]: A list of command names; currently contains `"ping"`.
+            """
             return ["ping"]
 
     with (
@@ -2749,6 +2864,14 @@ async def test_connect_matrix_sync_error_closes_client(monkeypatch):
     )
 
     def fake_async_client(*_args, **_kwargs):
+        """
+        Provide a preconfigured mock Matrix client for use in tests.
+        
+        Ignores all positional and keyword arguments and always returns the shared test mock client.
+        
+        Returns:
+            mock_client: The preconfigured mock Matrix client instance used by tests.
+        """
         return mock_client
 
     monkeypatch.setattr("mmrelay.matrix_utils.AsyncClient", fake_async_client)
@@ -2789,6 +2912,14 @@ async def test_connect_matrix_uploads_keys_when_needed(monkeypatch):
     )
 
     def fake_async_client(*_args, **_kwargs):
+        """
+        Provide a preconfigured mock Matrix client for use in tests.
+        
+        Ignores all positional and keyword arguments and always returns the shared test mock client.
+        
+        Returns:
+            mock_client: The preconfigured mock Matrix client instance used by tests.
+        """
         return mock_client
 
     monkeypatch.setattr("mmrelay.matrix_utils.AsyncClient", fake_async_client)
@@ -2807,6 +2938,19 @@ async def test_connect_matrix_uploads_keys_when_needed(monkeypatch):
     )
 
     def fake_import(name):
+        """
+        Return a fake module-like object used to simulate imports of nio/olm modules in tests.
+        
+        Parameters:
+            name (str): Module name being imported.
+        
+        Returns:
+            object: A module-like object:
+              - For "nio.crypto": a SimpleNamespace with attribute `OlmDevice` set to True.
+              - For "nio.store": a SimpleNamespace with attribute `SqliteStore` set to True.
+              - For "olm": a MagicMock instance.
+              - For any other name: a MagicMock instance.
+        """
         if name == "nio.crypto":
             return SimpleNamespace(OlmDevice=True)
         if name == "nio.store":
@@ -3787,14 +3931,14 @@ class TestMatrixE2EEHasAttrChecks:
 
             def import_side_effect(name):
                 """
-                Return a mock module object for the specified import name to simulate E2EE dependencies in tests.
-
+                Provide a mock module for simulating E2EE dependencies during tests.
+                
                 Parameters:
-                    name (str): Fully qualified module name ('olm', 'nio.crypto', or 'nio.store').
-
+                    name (str): Fully qualified module name to mock (e.g., 'olm', 'nio.crypto', or 'nio.store').
+                
                 Returns:
                     object: The mock module corresponding to the requested name.
-
+                
                 Raises:
                     ImportError: If the requested name is not a supported mock module.
                 """
