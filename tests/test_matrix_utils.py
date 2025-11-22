@@ -797,6 +797,34 @@ async def test_on_room_message_detection_sensor_broadcast_disabled(
     mock_connect.assert_not_called()
 
 
+async def test_on_room_message_detection_sensor_connect_failure(
+    mock_room, mock_event, test_config
+):
+    """When detection sensor is enabled but connection fails, nothing should be queued."""
+    mock_event.source = {
+        "content": {
+            "body": "Detection data",
+            "meshtastic_portnum": "DETECTION_SENSOR_APP",
+        }
+    }
+    test_config["meshtastic"]["detection_sensor"] = True
+    test_config["meshtastic"]["broadcast_enabled"] = True
+
+    with (
+        patch(
+            "mmrelay.matrix_utils.queue_message", return_value=True
+        ) as mock_queue_message,
+        patch("mmrelay.matrix_utils.connect_meshtastic", return_value=None),
+        patch("mmrelay.matrix_utils.bot_start_time", 1234567880),
+        patch("mmrelay.matrix_utils.config", test_config),
+        patch("mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]),
+        patch("mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]),
+    ):
+        await on_room_message(mock_room, mock_event)
+
+    mock_queue_message.assert_not_called()
+
+
 # Matrix utility function tests - converted from unittest.TestCase to standalone pytest functions
 
 
@@ -2372,6 +2400,65 @@ async def test_send_image():
                 upload_response=mock_upload_response,
                 filename="test.png",
             )
+
+
+async def test_upload_image_sets_content_type_and_uses_filename(monkeypatch):
+    """Upload should honor detected image content type from filename."""
+    uploaded = {}
+
+    class FakeImage:
+        def save(self, buffer, format=None):
+            buffer.write(b"jpgbytes")
+
+    async def fake_upload(file_obj, content_type=None, filename=None, filesize=None):
+        uploaded["content_type"] = content_type
+        uploaded["filename"] = filename
+        uploaded["filesize"] = filesize
+        return SimpleNamespace(), None
+
+    mock_client = MagicMock()
+    mock_client.upload = AsyncMock(side_effect=fake_upload)
+
+    await upload_image(mock_client, FakeImage(), "photo.jpg")
+
+    assert uploaded["content_type"] == "image/jpeg"
+    assert uploaded["filename"] == "photo.jpg"
+    assert uploaded["filesize"] == len(b"jpgbytes")
+
+
+async def test_upload_image_fallbacks_to_png_on_save_error(monkeypatch):
+    """Upload should fall back to PNG and set content_type accordingly when initial save fails."""
+    calls = []
+
+    class FakeImage:
+        def __init__(self):
+            self._first = True
+
+        def save(self, buffer, format=None):
+            calls.append(format)
+            if self._first:
+                self._first = False
+                raise ValueError("bad format")
+            buffer.write(b"pngbytes")
+
+    uploaded = {}
+
+    async def fake_upload(file_obj, content_type=None, filename=None, filesize=None):
+        uploaded["content_type"] = content_type
+        uploaded["filename"] = filename
+        uploaded["filesize"] = filesize
+        return SimpleNamespace(), None
+
+    mock_client = MagicMock()
+    mock_client.upload = AsyncMock(side_effect=fake_upload)
+
+    await upload_image(mock_client, FakeImage(), "photo.webp")
+
+    # First attempt uses WEBP, then PNG fallback
+    assert calls == ["WEBP", "PNG"]
+    assert uploaded["content_type"] == "image/png"
+    assert uploaded["filename"] == "photo.webp"
+    assert uploaded["filesize"] == len(b"pngbytes")
 
 
 # E2EE Configuration Tests
