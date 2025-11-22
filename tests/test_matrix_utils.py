@@ -2437,13 +2437,16 @@ async def test_upload_image_sets_content_type_and_uses_filename():
         uploaded["content_type"] = content_type
         uploaded["filename"] = filename
         uploaded["filesize"] = filesize
-        return SimpleNamespace(), None
+        mock_upload_response.content_type = content_type
+        mock_upload_response.filename = filename
+        mock_upload_response.filesize = filesize
+        return mock_upload_response, None
 
     mock_client = MagicMock()
     mock_upload_response = MagicMock()
     mock_client.upload = AsyncMock(side_effect=fake_upload)
 
-    await upload_image(mock_client, FakeImage(), "photo.jpg")
+    result = await upload_image(mock_client, FakeImage(), "photo.jpg")
 
     assert result == (mock_upload_response, None)
     assert mock_upload_response.content_type == "image/jpeg"
