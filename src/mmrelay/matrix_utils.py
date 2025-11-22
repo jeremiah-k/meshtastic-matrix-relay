@@ -1381,8 +1381,6 @@ async def connect_matrix(passed_config=None):
         bot_user_name = bot_user_id  # Fallback on network error
 
     # Store E2EE status on the client for other functions to access
-    matrix_client.e2ee_enabled = e2ee_enabled
-
     return matrix_client
 
 
@@ -2225,12 +2223,12 @@ async def matrix_relay(
             storage_enabled
             and meshtastic_id is not None
             and not emote
-            and hasattr(response, "event_id")
+            and getattr(response, "event_id", None) is not None
         ):
             try:
                 await async_store_message_map(
                     meshtastic_id,
-                    response.event_id,
+                    getattr(response, "event_id", None),
                     room_id,
                     meshtastic_text if meshtastic_text else message,
                     meshtastic_meshnet=local_meshnet_name,
@@ -3190,12 +3188,6 @@ async def upload_image(
     except asyncio.TimeoutError as e:
         # Convert timeout exceptions to ImageUploadError
         mock_upload_error = UploadError(message=f"Upload timeout: {e}")
-        raise ImageUploadError(mock_upload_error) from e
-    except asyncio.TimeoutError as e:
-        # Convert timeout exceptions to ImageUploadError
-        mock_upload_error = type(
-            "UploadError", (), {"message": f"Upload timeout: {e}"}
-        )()
         raise ImageUploadError(mock_upload_error) from e
 
 
