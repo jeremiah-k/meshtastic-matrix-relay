@@ -2876,7 +2876,7 @@ async def on_room_message(
             reaction_message = (
                 f'{prefix}reacted {reaction_emoji} to "{abbreviated_text}"'
             )
-            loop = asyncio.get_running_loop()
+            asyncio.get_running_loop()
             meshtastic_interface = await _connect_meshtastic()
             if not meshtastic_interface:
                 logger.error("Failed to connect to Meshtastic for local reaction relay")
