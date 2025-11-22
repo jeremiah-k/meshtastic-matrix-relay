@@ -2536,8 +2536,9 @@ async def test_connect_matrix_missing_device_id_uses_direct_assignment(
     monkeypatch,
 ):
     """
-    When credentials are missing device_id, restore_login should NOT be called.
-    Instead, direct assignment should be used for first-run E2EE setup.
+    When credentials are missing device_id, restore_login should still be called
+    to load the existing E2EE store before discovering device_id via whoami.
+    This ensures existing encrypted sessions are preserved.
     """
     _mock_exists.return_value = True
     mock_json_load.return_value = {
@@ -2554,7 +2555,13 @@ async def test_connect_matrix_missing_device_id_uses_direct_assignment(
     async def mock_sync(*_args, **_kwargs):
         return MagicMock()
 
+    def mock_restore_login(user_id, device_id, access_token):
+        mock_client_instance.access_token = access_token
+        mock_client_instance.user_id = user_id
+        mock_client_instance.device_id = device_id
+
     mock_client_instance.sync = AsyncMock(side_effect=mock_sync)
+    mock_client_instance.restore_login = MagicMock(side_effect=mock_restore_login)
     mock_client_instance.should_upload_keys = False
     mock_client_instance.get_displayname = AsyncMock(
         return_value=SimpleNamespace(displayname="Bot")
@@ -2571,9 +2578,13 @@ async def test_connect_matrix_missing_device_id_uses_direct_assignment(
     client = await connect_matrix()
 
     assert client is mock_client_instance
-    # restore_login should NOT be called when device_id is None
-    mock_client_instance.restore_login.assert_not_called()
-    # Instead, direct assignment should be used
+    # restore_login SHOULD be called even when device_id is None to load E2EE store
+    mock_client_instance.restore_login.assert_called_once_with(
+        user_id="@bot:example.org",
+        device_id=None,
+        access_token="test_token",
+    )
+    # Access token should still be set via restore_login
     assert mock_client_instance.access_token == "test_token"
     assert mock_client_instance.user_id == "@bot:example.org"
 

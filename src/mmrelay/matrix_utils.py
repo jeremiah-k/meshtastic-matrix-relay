@@ -1234,9 +1234,10 @@ async def connect_matrix(passed_config=None):
 
     # Set the access_token and user_id using restore_login for better session management
     if credentials:
-        # Use restore_login method for proper session restoration only when we have a valid device_id.
+        # Use restore_login method for proper session restoration.
         # nio will handle loading the store automatically if store_path was provided
-        # to the client constructor.
+        # to the client constructor, even when device_id is None.
+        # This ensures existing E2EE stores are loaded before attempting device_id discovery.
         if e2ee_device_id:
             device_id_for_restore = cast(Any, e2ee_device_id)
             matrix_client.restore_login(
@@ -1248,10 +1249,19 @@ async def connect_matrix(passed_config=None):
                 f"Restored login session for {bot_user_id} with device {e2ee_device_id}"
             )
         else:
-            # First-run E2EE setup: discover device_id using whoami
-            logger.info("First-run E2EE setup: discovering device_id via whoami")
-            matrix_client.access_token = matrix_access_token
-            matrix_client.user_id = bot_user_id
+            # First-run E2EE setup: load existing store and discover device_id using whoami
+            logger.info(
+                "First-run E2EE setup: loading store and discovering device_id via whoami"
+            )
+
+            # Call restore_login with device_id=None to load existing E2EE store
+            # This ensures any existing encrypted sessions are preserved
+            matrix_client.restore_login(
+                user_id=bot_user_id,
+                device_id=None,
+                access_token=matrix_access_token,
+            )
+            logger.info("Loaded E2EE store for device_id discovery")
 
             # Call whoami to discover device_id from server
             try:
