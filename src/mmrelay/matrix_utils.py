@@ -3172,7 +3172,7 @@ async def upload_image(
         image.save(buffer, format="PNG")
         content_type = "image/png"
 
-        image_data = buffer.getvalue()
+    image_data = buffer.getvalue()
 
     try:
         response, _maybe_keys = await client.upload(
