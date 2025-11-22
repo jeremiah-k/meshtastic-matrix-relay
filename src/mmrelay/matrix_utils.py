@@ -2738,14 +2738,20 @@ async def on_room_message(
 
     # Check if this is a Matrix RoomMessageEmote (m.emote)
     if isinstance(event, RoomMessageEmote):
-        logger.debug(f"Processing Matrix reaction event: {event.source}")
-        # For RoomMessageEmote, treat as remote reaction if meshtastic_replyId exists
-        is_reaction = True
-        # We need to manually extract the reaction emoji from the body
+        logger.debug(f"Processing Matrix emote event: {event.source}")
+        # For RoomMessageEmote, treat as remote reaction only if it has reaction indicators
         content = event.source.get("content", {})
         reaction_body = content.get("body", "")
-        reaction_match = re.search(r"reacted (.+?) to", reaction_body)
-        reaction_emoji = reaction_match.group(1).strip() if reaction_match else "?"
+        meshtastic_replyId = content.get("meshtastic_replyId")
+        relates_to = event.source.get("relates_to", {})
+
+        # Only treat as reaction if it has meshtastic_replyId or relates_to metadata
+        is_reaction = bool(meshtastic_replyId or relates_to)
+
+        if is_reaction:
+            # We need to manually extract the reaction emoji from the body
+            reaction_match = re.search(r"reacted (.+?) to", reaction_body)
+            reaction_emoji = reaction_match.group(1).strip() if reaction_match else "?"
 
     # Some Matrix relays (especially Meshtastic bridges) provide the raw mesh
     # payload alongside the formatted body. Prefer that when available so we do
@@ -3185,14 +3191,24 @@ async def upload_image(
     if image_format == "JPG":
         image_format = "JPEG"
 
+    # Standard MIME type mapping for common image formats
+    MIME_TYPE_MAP = {
+        "PNG": "image/png",
+        "JPEG": "image/jpeg",
+        "GIF": "image/gif",
+        "WEBP": "image/webp",
+        "BMP": "image/bmp",
+        "TIFF": "image/tiff",
+    }
+
     buffer = io.BytesIO()
     try:
         image.save(buffer, format=image_format)
         # If save succeeds, determine content type from the format we used
         content_type, _ = mimetypes.guess_type(filename)
         if not content_type or not content_type.startswith("image/"):
-            # Fallback for unknown mimetypes, but use the determined format
-            content_type = f"image/{image_format.lower()}"
+            # Use proper MIME type mapping for fallback
+            content_type = MIME_TYPE_MAP.get(image_format, "image/png")
     except (ValueError, KeyError):
         # Fallback to PNG if format is unsupported
         buffer.seek(0)
