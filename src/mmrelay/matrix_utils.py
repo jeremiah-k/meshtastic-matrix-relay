@@ -33,45 +33,7 @@ from nio import (  # type: ignore[import-untyped]
 from nio.events.room_events import RoomMemberEvent  # type: ignore[import-untyped]
 from PIL import Image
 
-# Import nio exception types with error handling for test environments
-try:
-    from nio.exceptions import (
-        LocalProtocolError as NioLocalProtocolError,  # type: ignore[import-untyped]
-    )
-    from nio.exceptions import (
-        LocalTransportError as NioLocalTransportError,  # type: ignore[import-untyped]
-    )
-    from nio.exceptions import (
-        RemoteProtocolError as NioRemoteProtocolError,  # type: ignore[import-untyped]
-    )
-    from nio.exceptions import (
-        RemoteTransportError as NioRemoteTransportError,  # type: ignore[import-untyped]
-    )
-    from nio.responses import (
-        LoginError as NioLoginError,  # type: ignore[import-untyped]
-    )
-    from nio.responses import (
-        LogoutError as NioLogoutError,  # type: ignore[import-untyped]
-    )
-except ImportError:
-    # Fallback for test environments where nio imports might fail
-    NioLoginError = Exception
-    NioLogoutError = Exception
-    NioLocalProtocolError = Exception
-    NioRemoteProtocolError = Exception
-    NioLocalTransportError = Exception
-    NioRemoteTransportError = Exception
-
-NIO_COMM_EXCEPTIONS: tuple[type[BaseException], ...] = (
-    NioLocalProtocolError,
-    NioRemoteProtocolError,
-    NioLocalTransportError,
-    NioRemoteTransportError,
-    asyncio.TimeoutError,
-)
-# Exception handling strategy:
-# Catch only expected nio/network/timeouts so programming errors surface during testing.
-
+# Local imports
 from mmrelay.cli_utils import (
     _create_ssl_context,
     msg_require_auth_login,
@@ -123,6 +85,45 @@ from mmrelay.log_utils import get_logger
 # Do not import plugin_loader here to avoid circular imports
 from mmrelay.meshtastic_utils import connect_meshtastic, sendTextReply
 from mmrelay.message_queue import get_message_queue, queue_message
+
+# Import nio exception types with error handling for test environments
+try:
+    from nio.exceptions import (
+        LocalProtocolError as NioLocalProtocolError,  # type: ignore[import-untyped]
+    )
+    from nio.exceptions import (
+        LocalTransportError as NioLocalTransportError,  # type: ignore[import-untyped]
+    )
+    from nio.exceptions import (
+        RemoteProtocolError as NioRemoteProtocolError,  # type: ignore[import-untyped]
+    )
+    from nio.exceptions import (
+        RemoteTransportError as NioRemoteTransportError,  # type: ignore[import-untyped]
+    )
+    from nio.responses import (
+        LoginError as NioLoginError,  # type: ignore[import-untyped]
+    )
+    from nio.responses import (
+        LogoutError as NioLogoutError,  # type: ignore[import-untyped]
+    )
+except ImportError:
+    # Fallback for test environments where nio imports might fail
+    NioLoginError = Exception
+    NioLogoutError = Exception
+    NioLocalProtocolError = Exception
+    NioRemoteProtocolError = Exception
+    NioLocalTransportError = Exception
+    NioRemoteTransportError = Exception
+
+NIO_COMM_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    NioLocalProtocolError,
+    NioRemoteProtocolError,
+    NioLocalTransportError,
+    NioRemoteTransportError,
+    asyncio.TimeoutError,
+)
+# Exception handling strategy:
+# Catch only expected nio/network/timeouts so programming errors surface during testing.
 
 logger = get_logger(name="Matrix")
 
@@ -2876,7 +2877,6 @@ async def on_room_message(
             reaction_message = (
                 f'{prefix}reacted {reaction_emoji} to "{abbreviated_text}"'
             )
-            asyncio.get_running_loop()
             meshtastic_interface = await _connect_meshtastic()
             if not meshtastic_interface:
                 logger.error("Failed to connect to Meshtastic for local reaction relay")
@@ -3173,7 +3173,7 @@ async def upload_image(
     image_data = buffer.getvalue()
 
     try:
-        response = await client.upload(
+        response, _ = await client.upload(
             io.BytesIO(image_data),
             content_type=content_type,
             filename=filename,
@@ -3182,13 +3182,13 @@ async def upload_image(
         return response
     except NIO_COMM_EXCEPTIONS as e:
         # Convert nio communication exceptions to ImageUploadError
-        # Create a mock UploadError for the ImageUploadError constructor
-        mock_upload_error = UploadError(message=str(e))
-        raise ImageUploadError(mock_upload_error) from e
+        # Create an UploadError for the ImageUploadError constructor
+        upload_error = UploadError(message=str(e))
+        raise ImageUploadError(upload_error) from e
     except asyncio.TimeoutError as e:
         # Convert timeout exceptions to ImageUploadError
-        mock_upload_error = UploadError(message=f"Upload timeout: {e}")
-        raise ImageUploadError(mock_upload_error) from e
+        upload_error = UploadError(message=f"Upload timeout: {e}")
+        raise ImageUploadError(upload_error) from e
 
 
 async def send_room_image(

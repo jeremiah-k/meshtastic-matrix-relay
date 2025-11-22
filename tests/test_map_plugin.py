@@ -304,7 +304,7 @@ class TestImageUploadAndSend(unittest.TestCase):
             mock_buffer.getvalue.return_value = b"fake_image_data"
 
             with patch("io.BytesIO", return_value=mock_buffer):
-                self.mock_client.upload.return_value = self.mock_upload_response
+                self.mock_client.upload.return_value = (self.mock_upload_response, None)
 
                 result = await upload_image(
                     self.mock_client, self.mock_image, "test.png"

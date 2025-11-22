@@ -2350,7 +2350,7 @@ async def test_upload_image(mock_bytesio):
     # Verify image was saved and uploaded
     mock_image.save.assert_called_once()
     mock_client.upload.assert_called_once()
-    assert result == (mock_upload_response, None)
+    assert result == mock_upload_response
 
 
 async def test_send_room_image():
@@ -2448,7 +2448,7 @@ async def test_upload_image_sets_content_type_and_uses_filename():
 
     result = await upload_image(mock_client, FakeImage(), "photo.jpg")
 
-    assert result == (mock_upload_response, None)
+    assert result == mock_upload_response
     assert mock_upload_response.content_type == "image/jpeg"
     assert mock_upload_response.filename == "photo.jpg"
     assert mock_upload_response.filesize == len(b"jpgbytes")
