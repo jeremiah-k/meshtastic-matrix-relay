@@ -1141,7 +1141,7 @@ async def connect_matrix(passed_config=None):
         # to the client constructor.
         matrix_client.restore_login(
             user_id=bot_user_id,
-            device_id=e2ee_device_id or "",  # Convert None to empty string
+            device_id=e2ee_device_id,  # Pass through None so nio can load stored device_id
             access_token=matrix_access_token,
         )
         logger.info(
@@ -1883,7 +1883,7 @@ async def join_matrix_room(matrix_client, room_id_or_alias: str) -> None:
                 "Bot is already in room '%s', no action needed.",
                 room_id,
             )
-    except Exception:
+    except NIO_COMM_EXCEPTIONS:
         logger.exception(f"Error joining room '{room_id}'")
 
 

@@ -2509,6 +2509,67 @@ async def test_upload_image_defaults_to_png_when_mimetype_unknown(monkeypatch):
     assert uploaded["filesize"] == len(b"defaultbytes")
 
 
+@pytest.mark.asyncio
+@patch("mmrelay.matrix_utils.os.makedirs")
+@patch("mmrelay.matrix_utils.os.listdir")
+@patch("mmrelay.matrix_utils.os.path.exists")
+@patch("builtins.open")
+@patch("mmrelay.matrix_utils.json.load")
+@patch("mmrelay.matrix_utils._create_ssl_context")
+@patch("mmrelay.matrix_utils.matrix_client", None)
+@patch("mmrelay.matrix_utils.AsyncClient")
+@patch("mmrelay.matrix_utils.logger")
+async def test_connect_matrix_restore_login_uses_none_device_id(
+    _mock_logger,
+    mock_async_client,
+    mock_ssl_context,
+    mock_json_load,
+    mock_open,
+    mock_exists,
+    mock_listdir,
+    mock_makedirs,
+    monkeypatch,
+):
+    """
+    When credentials are missing device_id, restore_login should receive None (not an empty string).
+    """
+    mock_exists.return_value = True
+    mock_json_load.return_value = {
+        "homeserver": "https://matrix.example.org",
+        "user_id": "@bot:example.org",
+        "access_token": "test_token",
+    }
+    mock_listdir.return_value = []
+    mock_ssl_context.return_value = MagicMock()
+
+    mock_client_instance = MagicMock()
+    mock_client_instance.rooms = {}
+
+    async def mock_sync(*args, **kwargs):
+        return MagicMock()
+
+    mock_client_instance.sync = AsyncMock(side_effect=mock_sync)
+    mock_client_instance.should_upload_keys = False
+    mock_client_instance.get_displayname = AsyncMock(
+        return_value=SimpleNamespace(displayname="Bot")
+    )
+
+    mock_async_client.return_value = mock_client_instance
+    # Minimal config needed for matrix_rooms
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.config",
+        {"matrix_rooms": [{"id": "!room:example", "meshtastic_channel": 0}]},
+        raising=False,
+    )
+
+    client = await connect_matrix()
+
+    assert client is mock_client_instance
+    mock_client_instance.restore_login.assert_called_once_with(
+        user_id="@bot:example.org", device_id=None, access_token="test_token"
+    )
+
+
 # E2EE Configuration Tests
 
 
