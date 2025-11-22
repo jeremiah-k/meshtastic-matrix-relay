@@ -805,7 +805,7 @@ def bot_command(command, event):
             parts.append(re.escape(bot_user_id))
         if bot_user_name:
             parts.append(re.escape(bot_user_name))
-        parts.append(r"[#@].+?")
+        # Only include explicit bot identifiers to avoid false positives with any @mention or #reference
         pattern = rf"^(?:{'|'.join(parts)})[,:;]?\s*!{command}"
         return bool(re.match(pattern, full_message)) or bool(
             re.match(pattern, text_content)
@@ -2943,21 +2943,7 @@ async def on_room_message(
             return
     else:
         # Normal Matrix message from a Matrix user
-        # Get room-specific display name if available, fallback to global display name
-        room_display_name = room.user_name(event.sender)
-        if room_display_name:
-            full_display_name = room_display_name
-        else:
-            # Fallback to global display name if room-specific name is not available
-            if matrix_client:
-                display_name_response = await matrix_client.get_displayname(
-                    event.sender
-                )
-                full_display_name = (
-                    getattr(display_name_response, "displayname", None) or event.sender
-                )
-            else:
-                full_display_name = event.sender
+        full_display_name = await get_user_display_name(room, event)
         prefix = get_meshtastic_prefix(config, full_display_name, event.sender)
         logger.debug(f"Processing matrix message from [{full_display_name}]: {text}")
         full_message = f"{prefix}{text}"
@@ -3001,7 +2987,7 @@ async def on_room_message(
 
         success = queue_message(
             meshtastic_interface.sendData,
-            data=full_message.encode("utf-8"),
+            data=text.encode("utf-8"),
             channelIndex=meshtastic_channel,
             portNum=meshtastic.protobuf.portnums_pb2.PortNum.DETECTION_SENSOR_APP,
             description=f"Detection sensor data from {full_display_name}",
@@ -3132,7 +3118,10 @@ async def upload_image(
     client: AsyncClient, image: Image.Image, filename: str
 ) -> Union[UploadResponse, UploadError]:
     """
-    Uploads an image to Matrix and returns the UploadResponse containing the content URI.
+    Upload an image to Matrix and return response.
+
+    Returns:
+        UploadResponse with content_uri on success, or UploadError on failure.
     """
     # Determine image format and content type from filename
     image_format = os.path.splitext(filename)[1][1:].upper() or "PNG"
