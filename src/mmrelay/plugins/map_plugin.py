@@ -329,8 +329,8 @@ class Plugin(BasePlugin):
                     }
                 )
 
-        anonymize = self.config["anonymize"] if "anonymize" in self.config else True
-        radius = self.config["radius"] if "radius" in self.config else 1000
+        anonymize = self.config.get("anonymize", True)
+        radius = self.config.get("radius", 1000)
 
         pillow_image = get_map(
             locations=locations,

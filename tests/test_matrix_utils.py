@@ -12,6 +12,7 @@ from mmrelay.config import get_e2ee_store_dir, load_credentials, save_credential
 from mmrelay.matrix_utils import (
     ImageUploadError,
     NioLocalProtocolError,
+    UploadError,
     _add_truncated_vars,
     _can_auto_create_credentials,
     _create_mapping_info,
@@ -2650,6 +2651,36 @@ async def test_upload_image_defaults_to_png_when_mimetype_unknown():
     assert uploaded["filesize"] == len(b"defaultbytes")
 
 
+async def test_upload_image_returns_upload_error_on_network_exception():
+    """Network errors during upload should be wrapped in UploadError with a safe status_code."""
+
+    class FakeImage:
+        def save(self, buffer, _format=None, **kwargs):
+            buffer.write(b"pngbytes")
+
+    mock_client = MagicMock()
+    mock_client.upload = AsyncMock(side_effect=asyncio.TimeoutError("boom"))
+
+    class LocalUploadError:
+        def __init__(
+            self, message, status_code=None, retry_after_ms=None, soft_logout=False
+        ):
+            self.message = message
+            self.status_code = status_code
+            self.retry_after_ms = retry_after_ms
+            self.soft_logout = soft_logout
+
+    with patch("mmrelay.matrix_utils.UploadError", side_effect=LocalUploadError):
+        result = await upload_image(
+            mock_client, FakeImage(), "photo.png"  # type: ignore[arg-type]
+        )
+
+    assert isinstance(result, LocalUploadError)
+    assert result.message == "boom"
+    assert result.status_code is None
+    mock_client.upload.assert_awaited_once()
+
+
 @pytest.mark.asyncio
 @patch("mmrelay.matrix_utils.os.makedirs")
 @patch("mmrelay.matrix_utils.os.listdir")
@@ -3879,11 +3910,9 @@ class TestMatrixE2EEHasAttrChecks:
             mock_async_client.return_value = mock_client_instance
 
             # Create mock modules with required attributes
-            mock_olm = MagicMock()
-            mock_nio_crypto = MagicMock()
-            mock_nio_crypto.OlmDevice = MagicMock()
-            mock_nio_store = MagicMock()
-            mock_nio_store.SqliteStore = MagicMock()
+            mock_olm = SimpleNamespace()
+            mock_nio_crypto = SimpleNamespace(OlmDevice=MagicMock())
+            mock_nio_store = SimpleNamespace(SqliteStore=MagicMock())
 
             def import_side_effect(name):
                 """
@@ -3941,13 +3970,10 @@ class TestMatrixE2EEHasAttrChecks:
             mock_async_client.return_value = mock_client_instance
 
             # Create mock modules where nio.crypto lacks OlmDevice
-            mock_olm = MagicMock()
-            mock_nio_crypto = MagicMock()
-            mock_nio_crypto.OlmDevice = object()
+            mock_olm = SimpleNamespace()
+            mock_nio_crypto = SimpleNamespace()
             # Simulate missing OlmDevice attribute to exercise hasattr failure
-            del mock_nio_crypto.OlmDevice
-            mock_nio_store = MagicMock()
-            mock_nio_store.SqliteStore = MagicMock()
+            mock_nio_store = SimpleNamespace(SqliteStore=MagicMock())
 
             def import_side_effect(name):
                 """
@@ -4008,13 +4034,10 @@ class TestMatrixE2EEHasAttrChecks:
             mock_async_client.return_value = mock_client_instance
 
             # Create mock modules where nio.store lacks SqliteStore
-            mock_olm = MagicMock()
-            mock_nio_crypto = MagicMock()
-            mock_nio_crypto.OlmDevice = MagicMock()
-            mock_nio_store = MagicMock()
-            mock_nio_store.SqliteStore = object()
+            mock_olm = SimpleNamespace()
+            mock_nio_crypto = SimpleNamespace(OlmDevice=MagicMock())
             # Simulate missing SqliteStore attribute to exercise hasattr failure
-            del mock_nio_store.SqliteStore
+            mock_nio_store = SimpleNamespace()
 
             def import_side_effect(name):
                 """

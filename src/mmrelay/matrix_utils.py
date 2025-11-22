@@ -852,7 +852,7 @@ def bot_command(command, event):
         if bot_user_name:
             parts.append(re.escape(bot_user_name))
         # Only include explicit bot identifiers to avoid false positives with any @mention or #reference
-        pattern = rf"^(?:{'|'.join(parts)})[,:;]?\s*!{command}"
+        pattern = rf"^(?:{'|'.join(parts)})[,:;]?\s*!{re.escape(command)}"
         return bool(re.match(pattern, full_message)) or bool(
             re.match(pattern, text_content)
         )
@@ -1125,10 +1125,6 @@ async def connect_matrix(passed_config=None):
     # Check if E2EE is enabled
     e2ee_enabled = False
     e2ee_store_path = None
-    # Only initialize e2ee_device_id if not already set from credentials
-    if "e2ee_device_id" not in locals():
-        e2ee_device_id = None
-
     try:
         from mmrelay.config import is_e2ee_enabled
 
@@ -2874,10 +2870,10 @@ async def on_room_message(
         content = event.source.get("content", {})
         reaction_body = content.get("body", "")
         meshtastic_replyId = content.get("meshtastic_replyId")
-        relates_to = event.source.get("relates_to", {})
+        emote_relates_to = content.get("m.relates_to") or {}
 
         # Only treat as reaction if it has meshtastic_replyId or relates_to metadata
-        is_reaction = bool(meshtastic_replyId or relates_to)
+        is_reaction = bool(meshtastic_replyId or emote_relates_to)
 
         if is_reaction:
             # We need to manually extract the reaction emoji from the body
@@ -2977,7 +2973,12 @@ async def on_room_message(
                 return
             from mmrelay.meshtastic_utils import logger as meshtastic_logger
 
-            meshtastic_channel = room_config["meshtastic_channel"]
+            meshtastic_channel = room_config.get("meshtastic_channel")
+            if meshtastic_channel is None:
+                meshtastic_logger.error(
+                    "Room config missing 'meshtastic_channel'; cannot relay reaction."
+                )
+                return
 
             if get_meshtastic_config_value(
                 config, "broadcast_enabled", DEFAULT_BROADCAST_ENABLED, required=False
@@ -3047,7 +3048,12 @@ async def on_room_message(
                 return
             from mmrelay.meshtastic_utils import logger as meshtastic_logger
 
-            meshtastic_channel = room_config["meshtastic_channel"]
+            meshtastic_channel = room_config.get("meshtastic_channel")
+            if meshtastic_channel is None:
+                meshtastic_logger.error(
+                    "Room config missing 'meshtastic_channel'; cannot relay reaction."
+                )
+                return
 
             if get_meshtastic_config_value(
                 config, "broadcast_enabled", DEFAULT_BROADCAST_ENABLED, required=False
@@ -3307,7 +3313,7 @@ async def upload_image(
     except NIO_COMM_EXCEPTIONS as e:
         # Convert nio communication exceptions to an UploadError instance
         logger.exception("Image upload failed due to a network error")
-        upload_error = UploadError(message=str(e))
+        upload_error = UploadError(message=str(e), status_code=None)
         return upload_error
     else:
         return response
