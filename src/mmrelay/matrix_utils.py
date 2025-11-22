@@ -50,6 +50,17 @@ except ImportError:
     NioLocalTransportError = Exception
     NioRemoteTransportError = Exception
 
+NIO_COMM_EXCEPTIONS = (
+    NioErrorResponse,
+    NioLocalProtocolError,
+    NioRemoteProtocolError,
+    NioLocalTransportError,
+    NioRemoteTransportError,
+    asyncio.TimeoutError,
+)
+# Exception handling strategy:
+# Catch only expected nio/network/timeouts so programming errors surface during testing.
+
 from mmrelay.cli_utils import (
     _create_ssl_context,
     msg_require_auth_login,
@@ -1245,14 +1256,7 @@ async def connect_matrix(passed_config=None):
                     logger.warning(
                         f"Could not resolve alias {alias}: {getattr(response, 'message', response)}"
                     )
-                except (
-                    NioErrorResponse,
-                    NioLocalProtocolError,
-                    NioRemoteProtocolError,
-                    NioLocalTransportError,
-                    NioRemoteTransportError,
-                    asyncio.TimeoutError,
-                ):
+                except NIO_COMM_EXCEPTIONS:
                     logger.exception(f"Error resolving alias {alias}")
                 return None
 
@@ -1333,9 +1337,8 @@ async def connect_matrix(passed_config=None):
     else:
         bot_user_name = bot_user_id  # Fallback if display name is not set
 
-    # Set E2EE status on the client for other functions to access
-    # Note: e2ee_enabled is a custom attribute we set on the client
-    setattr(matrix_client, "e2ee_enabled", e2ee_enabled)
+    # Store E2EE status on the client for other functions to access
+    matrix_client.e2ee_enabled = e2ee_enabled
 
     return matrix_client
 
@@ -1833,7 +1836,7 @@ async def join_matrix_room(matrix_client, room_id_or_alias: str) -> None:
     if room_id_or_alias.startswith("#"):
         try:
             response = await matrix_client.room_resolve_alias(room_id_or_alias)
-        except Exception as e:
+        except NIO_COMM_EXCEPTIONS:
             logger.exception("Error resolving alias '%s'", room_id_or_alias)
             return
 
@@ -2691,7 +2694,7 @@ async def on_room_message(
 
     # Establish baseline text content for non-reaction messages
     if not is_reaction or mesh_text_override:
-        body_text = getattr(event, "body", "") if hasattr(event, "body") else ""
+        body_text = getattr(event, "body", "")
         content_body = event.source["content"].get("body", "")
         text = mesh_text_override or body_text or content_body or ""
         text = text.strip()
@@ -3117,6 +3120,10 @@ async def on_room_message(
             )
 
 
+class ImageUploadError(RuntimeError):
+    """Raised when Matrix image upload fails."""
+
+
 async def upload_image(
     client: AsyncClient, image: Image.Image, filename: str
 ) -> Union[UploadResponse, UploadError]:
@@ -3151,7 +3158,7 @@ async def upload_image(
 
     image_data = buffer.getvalue()
 
-    response, _ = await client.upload(
+    response, _maybe_keys = await client.upload(
         io.BytesIO(image_data),
         content_type=content_type,
         filename=filename,
@@ -3191,7 +3198,7 @@ async def send_room_image(
         logger.error(
             f"Upload failed: {getattr(upload_response, 'message', 'Unknown error')}"
         )
-        raise ValueError(
+        raise ImageUploadError(
             f"Image upload failed: {getattr(upload_response, 'message', 'Unknown error')}"
         )
 
