@@ -1,3 +1,5 @@
+# mypy: disable-error-code=import-untyped
+
 import asyncio
 import getpass
 import html
@@ -1168,7 +1170,7 @@ async def connect_matrix(passed_config=None):
         # Use restore_login method for proper session restoration.
         # nio will handle loading the store automatically if store_path was provided
         # to the client constructor.
-        device_id_for_restore = e2ee_device_id or ""
+        device_id_for_restore = cast(Any, e2ee_device_id)
         matrix_client.restore_login(
             user_id=bot_user_id,
             device_id=device_id_for_restore,
