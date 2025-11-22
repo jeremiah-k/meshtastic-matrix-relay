@@ -5,7 +5,7 @@ import importlib
 import io
 import json
 import logging
-import mimetypes  # For dynamic content type detection
+import mimetypes  # For dynamic content type detection and format handling
 import os
 import re
 import ssl
@@ -1215,98 +1215,12 @@ async def connect_matrix(passed_config=None):
             finally:
                 matrix_client = None
             raise ConnectionError(f"Matrix sync failed: {error_type} - {error_details}")
-        else:
-            logger.info(
-                f"Initial sync completed. Found {len(matrix_client.rooms)} rooms."
-            )
-
-            # List all rooms with unified E2EE status display
-            from mmrelay.config import config_path
-            from mmrelay.e2ee_utils import (
-                get_e2ee_status,
-                get_room_encryption_warnings,
-            )
-
-            # Get comprehensive E2EE status
-            e2ee_status = get_e2ee_status(config or {}, config_path)
-
-            # Resolve room aliases in config (supports list[str|dict] and dict[str->str|dict])
-            async def _resolve_alias(alias: str) -> Optional[str]:
-                """
-                Resolve a Matrix room alias to its canonical room ID.
-
-                Attempts to resolve the provided room alias using the module's Matrix client. Returns the resolved room ID string on success; returns None if the alias cannot be resolved or if an error/timeout occurs (errors from the underlying nio client are caught and handled internally).
-                """
-                if not matrix_client:
-                    logger.warning(
-                        f"Cannot resolve alias {alias}: Matrix client is not available"
-                    )
-                    return None
-
-                logger.debug(f"Resolving alias from config: {alias}")
-                try:
-                    response = await matrix_client.room_resolve_alias(alias)
-                    room_id = getattr(response, "room_id", None)
-                    if room_id:
-                        logger.debug(f"Resolved alias {alias} to {room_id}")
-                        return room_id
-                    logger.warning(
-                        f"Could not resolve alias {alias}: {getattr(response, 'message', response)}"
-                    )
-                except (
-                    NioErrorResponse,
-                    NioLocalProtocolError,
-                    NioRemoteProtocolError,
-                    NioLocalTransportError,
-                    NioRemoteTransportError,
-                    asyncio.TimeoutError,
-                ) as e:
-                    logger.exception(f"Error resolving alias {alias}")
-                return None
-
-            await _resolve_aliases_in_mapping(matrix_rooms, _resolve_alias)
-
-            # Display rooms with channel mappings
-            _display_room_channel_mappings(
-                matrix_client.rooms, config, dict(e2ee_status)
-            )
-
-            # Show warnings for encrypted rooms when E2EE is not ready
-            warnings = get_room_encryption_warnings(
-                matrix_client.rooms, dict(e2ee_status)
-            )
-            for warning in warnings:
-                logger.warning(warning)
-
-            # Debug information
-            encrypted_count = sum(
-                1
-                for room in matrix_client.rooms.values()
-                if getattr(room, "encrypted", False)
-            )
-            logger.debug(
-                f"Found {encrypted_count} encrypted rooms out of {len(matrix_client.rooms)} total rooms"
-            )
-            logger.debug(f"E2EE status: {e2ee_status['overall_status']}")
-
-            # Additional debugging for E2EE enabled case
-            if e2ee_enabled and encrypted_count == 0 and len(matrix_client.rooms) > 0:
-                logger.debug("No encrypted rooms detected - all rooms are plaintext")
     except asyncio.TimeoutError:
-        logger.exception(
-            f"Initial sync timed out after {MATRIX_SYNC_OPERATION_TIMEOUT} seconds"
+        logger.error(
+            f"Matrix sync timed out after {MATRIX_SYNC_OPERATION_TIMEOUT} seconds"
         )
         logger.error(
-            "This indicates a network connectivity issue or slow Matrix server."
-        )
-        logger.error("Troubleshooting steps:")
-        logger.error("1. Check your internet connection")
-        logger.error(f"2. Verify the homeserver is accessible: {matrix_homeserver}")
-        logger.error(
-            "3. Try again in a few minutes - the server may be temporarily overloaded"
-        )
-        logger.error(
-            "4. Consider using a different Matrix homeserver if the problem persists"
+            "This may indicate network connectivity issues or a slow Matrix server"
         )
         try:
             if matrix_client:
@@ -1317,35 +1231,46 @@ async def connect_matrix(passed_config=None):
             matrix_client = None
         raise ConnectionError(
             f"Matrix sync timed out after {MATRIX_SYNC_OPERATION_TIMEOUT} seconds - check network connectivity and server status"
-        ) from None
-
-    # Add a delay to allow for key sharing to complete
-    # This addresses a race condition where the client attempts to send encrypted messages
-    # before it has received and processed room key sharing messages from other devices.
-    # The initial sync() call triggers key sharing requests, but the actual key exchange
-    # happens asynchronously. Without this delay, outgoing messages may be sent unencrypted
-    # even to encrypted rooms. While not ideal, this timing-based approach is necessary
-    # because matrix-nio doesn't provide event-driven alternatives to detect when key
-    # sharing is complete.
-    if e2ee_enabled:
-        logger.debug(
-            f"Waiting for {E2EE_KEY_SHARING_DELAY_SECONDS} seconds to allow for key sharing..."
         )
-        await asyncio.sleep(E2EE_KEY_SHARING_DELAY_SECONDS)
-
-    # Fetch the bot's display name
-    response = await matrix_client.get_displayname(bot_user_id)
-    displayname = getattr(response, "displayname", None)
-    if displayname:
-        bot_user_name = displayname
     else:
-        bot_user_name = bot_user_id  # Fallback if display name is not set
+        logger.info(f"Initial sync completed. Found {len(matrix_client.rooms)} rooms.")
 
-    # Set E2EE status on the client for other functions to access
-    # Note: e2ee_enabled is a custom attribute we set on the client
-    setattr(matrix_client, "e2ee_enabled", e2ee_enabled)
+        # List all rooms with unified E2EE status display
+        from mmrelay.config import config_path
+        from mmrelay.e2ee_utils import (
+            get_e2ee_status,
+            get_room_encryption_warnings,
+        )
 
-    return matrix_client
+        # Get comprehensive E2EE status
+        e2ee_status = get_e2ee_status(config or {}, config_path)
+
+        # Resolve room aliases in config (supports list[str|dict] and dict[str->str|dict])
+        async def _resolve_alias(alias: str) -> Optional[str]:
+            """
+            Resolve a Matrix room alias to its canonical room ID.
+
+            Attempts to resolve the provided room alias using the module's Matrix client. Returns the resolved room ID string on success; returns None if the alias cannot be resolved or if an error/timeout occurs (errors from the underlying nio client are caught and handled internally).
+            """
+            if not matrix_client:
+                logger.warning(
+                    f"Cannot resolve alias {alias}: Matrix client is not available"
+                )
+                return None
+
+            logger.debug(f"Resolving alias from config: {alias}")
+            try:
+                response = await matrix_client.room_resolve_alias(alias)
+                room_id = getattr(response, "room_id", None)
+                if room_id:
+                    logger.debug(f"Resolved alias {alias} to {room_id}")
+                    return room_id
+                logger.warning(
+                    f"Could not resolve alias {alias}: {getattr(response, 'message', response)}"
+                )
+            except Exception as e:
+                logger.exception(f"Error resolving alias {alias}")
+                return None
 
 
 async def login_matrix_bot(
@@ -1365,6 +1290,7 @@ async def login_matrix_bot(
     Returns:
         bool: True on successful login and credentials persisted; False on failure. The function handles errors internally and returns False rather than raising.
     """
+    client = None  # Initialize to avoid unbound variable errors
     try:
         # Optionally enable verbose nio/aiohttp debug logging
         if os.getenv("MMRELAY_DEBUG_NIO") == "1":
@@ -1751,10 +1677,9 @@ async def login_matrix_bot(
             return True
         else:
             # Handle login failure
-            if hasattr(response, "status_code") and hasattr(response, "message"):
-                status_code = response.status_code
-                error_message = response.message
-
+            status_code = getattr(response, "status_code", None)
+            error_message = getattr(response, "message", None)
+            if status_code is not None and error_message is not None:
                 logger.error(f"Login failed: {type(response).__name__}")
                 logger.error(f"Error message: {error_message}")
                 logger.error(f"HTTP status code: {status_code}")
@@ -1803,7 +1728,7 @@ async def login_matrix_bot(
     except Exception:
         logger.exception("Error during login")
         try:
-            if "client" in locals():
+            if client:
                 await client.close()
         except Exception as e:
             # Ignore errors during client cleanup - connection may already be closed
@@ -1841,14 +1766,7 @@ async def join_matrix_room(matrix_client, room_id_or_alias: str) -> None:
     if room_id_or_alias.startswith("#"):
         try:
             response = await matrix_client.room_resolve_alias(room_id_or_alias)
-        except (
-            NioLocalProtocolError,
-            NioRemoteProtocolError,
-            NioErrorResponse,
-            NioLocalTransportError,
-            NioRemoteTransportError,
-            asyncio.TimeoutError,
-        ) as e:
+        except Exception as e:
             logger.exception("Error resolving alias '%s'", room_id_or_alias)
             return
 
@@ -1895,14 +1813,7 @@ async def join_matrix_room(matrix_client, room_id_or_alias: str) -> None:
                 "Bot is already in room '%s', no action needed.",
                 room_id,
             )
-    except (
-        NioLocalProtocolError,
-        NioRemoteProtocolError,
-        NioErrorResponse,
-        NioLocalTransportError,
-        NioRemoteTransportError,
-        asyncio.TimeoutError,
-    ):
+    except Exception:
         logger.exception(f"Error joining room '{room_id}'")
 
 
@@ -1921,10 +1832,10 @@ def _get_e2ee_error_message():
     from mmrelay.e2ee_utils import get_e2ee_error_message, get_e2ee_status
 
     # Get unified E2EE status
-    e2ee_status = get_e2ee_status(config, config_path)
+    e2ee_status = get_e2ee_status(config or {}, config_path)
 
     # Return unified error message
-    return get_e2ee_error_message(e2ee_status)
+    return get_e2ee_error_message(dict(e2ee_status))
 
 
 async def matrix_relay(
@@ -2157,7 +2068,7 @@ async def matrix_relay(
                 and not getattr(matrix_client, "e2ee_enabled", False)
             ):
                 room_name = getattr(room, "display_name", room_id)
-                error_message = _get_e2ee_error_message(e2ee_status)
+                error_message = _get_e2ee_error_message()
                 logger.error(
                     f"🔒 BLOCKED: Cannot send message to encrypted room '{room_name}' ({room_id})"
                 )
@@ -2268,8 +2179,10 @@ async def get_user_display_name(room, event):
     if room_display_name:
         return room_display_name
 
-    display_name_response = await matrix_client.get_displayname(event.sender)
-    return getattr(display_name_response, "displayname", None) or event.sender
+    if matrix_client:
+        display_name_response = await matrix_client.get_displayname(event.sender)
+        return getattr(display_name_response, "displayname", None) or event.sender
+    return event.sender
 
 
 def format_reply_message(
@@ -2570,7 +2483,9 @@ async def on_decryption_failure(room: MatrixRoom, event: MegolmEvent) -> None:
         # Monkey-patch the event object with the correct room_id
         event.room_id = room.room_id
 
-        request = event.as_key_request(matrix_client.user_id, matrix_client.device_id)
+        request = event.as_key_request(
+            matrix_client.user_id, matrix_client.device_id or ""
+        )
         await matrix_client.to_device(request)
         logger.info(f"Requested keys for failed decryption of event {event.event_id}")
     except Exception:
@@ -2597,6 +2512,9 @@ async def on_room_message(
     - May read and write persistent message mappings to support reply/reaction bridging.
     - May call Matrix APIs (e.g., to fetch display names) and connect to Meshtastic.
     """
+    # Initialize text variable to avoid "possibly unbound" errors
+    text = ""
+
     # DEBUG: Log all Matrix message events to trace reception
     logger.debug(
         f"Received Matrix event in room {room.room_id}: {type(event).__name__}"
@@ -2822,12 +2740,16 @@ async def on_room_message(
                 full_display_name = room_display_name
             else:
                 # Fallback to global display name if room-specific name is not available
-                display_name_response = await matrix_client.get_displayname(
-                    event.sender
-                )
-                full_display_name = (
-                    getattr(display_name_response, "displayname", None) or event.sender
-                )
+                if matrix_client:
+                    display_name_response = await matrix_client.get_displayname(
+                        event.sender
+                    )
+                    full_display_name = (
+                        getattr(display_name_response, "displayname", None)
+                        or event.sender
+                    )
+                else:
+                    full_display_name = event.sender
 
             # If not from a remote meshnet, proceed as normal to relay back to the originating meshnet
             prefix = get_meshtastic_prefix(config, full_display_name)
@@ -2948,10 +2870,15 @@ async def on_room_message(
             full_display_name = room_display_name
         else:
             # Fallback to global display name if room-specific name is not available
-            display_name_response = await matrix_client.get_displayname(event.sender)
-            full_display_name = (
-                getattr(display_name_response, "displayname", None) or event.sender
-            )
+            if matrix_client:
+                display_name_response = await matrix_client.get_displayname(
+                    event.sender
+                )
+                full_display_name = (
+                    getattr(display_name_response, "displayname", None) or event.sender
+                )
+            else:
+                full_display_name = event.sender
         prefix = get_meshtastic_prefix(config, full_display_name, event.sender)
         logger.debug(f"Processing matrix message from [{full_display_name}]: {text}")
         full_message = f"{prefix}{text}"
