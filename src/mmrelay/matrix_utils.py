@@ -1382,6 +1382,7 @@ async def connect_matrix(passed_config=None):
         bot_user_name = bot_user_id  # Fallback on network error
 
     # Store E2EE status on the client for other functions to access
+    matrix_client.e2ee_enabled = e2ee_enabled
     return matrix_client
 
 
@@ -3163,7 +3164,7 @@ async def upload_image(
 
     buffer = io.BytesIO()
     try:
-        image.save(buffer, _format=image_format)
+        image.save(buffer, format=image_format)
         # If save succeeds, determine content type from the format we used
         content_type, _ = mimetypes.guess_type(filename)
         if not content_type or not content_type.startswith("image/"):
@@ -3173,7 +3174,7 @@ async def upload_image(
         # Fallback to PNG if format is unsupported
         buffer.seek(0)
         buffer.truncate(0)
-        image.save(buffer, _format="PNG")
+        image.save(buffer, format="PNG")
         content_type = "image/png"
 
     image_data = buffer.getvalue()
@@ -3189,10 +3190,6 @@ async def upload_image(
         # Convert nio communication exceptions to ImageUploadError
         # Create an UploadError for the ImageUploadError constructor
         upload_error = UploadError(message=str(e))
-        raise ImageUploadError(upload_error) from e
-    except asyncio.TimeoutError as e:
-        # Convert timeout exceptions to ImageUploadError
-        upload_error = UploadError(message=f"Upload timeout: {e}")
         raise ImageUploadError(upload_error) from e
     else:
         return response

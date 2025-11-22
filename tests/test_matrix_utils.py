@@ -2430,7 +2430,7 @@ async def test_upload_image_sets_content_type_and_uses_filename():
     uploaded = {}
 
     class FakeImage:
-        def save(self, buffer, _format=None):
+        def save(self, buffer, format=None):
             buffer.write(b"jpgbytes")
 
     async def fake_upload(_file_obj, content_type=None, filename=None, filesize=None):
@@ -2462,8 +2462,8 @@ async def test_upload_image_fallbacks_to_png_on_save_error():
         def __init__(self):
             self._first = True
 
-        def save(self, buffer, _format=None):
-            calls.append(_format)
+        def save(self, buffer, format=None):
+            calls.append(format)
             if self._first:
                 self._first = False
                 raise ValueError("bad format")
@@ -2493,7 +2493,7 @@ async def test_upload_image_defaults_to_png_when_mimetype_unknown():
     """Unknown extensions should default to image/png even when save succeeds."""
 
     class FakeImage:
-        def save(self, buffer, _format=None):
+        def save(self, buffer, format=None):
             buffer.write(b"defaultbytes")
 
     uploaded = {}
