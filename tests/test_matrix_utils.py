@@ -10,6 +10,8 @@ import pytest
 from mmrelay.cli_utils import _cleanup_local_session_data, logout_matrix_bot
 from mmrelay.config import get_e2ee_store_dir, load_credentials, save_credentials
 from mmrelay.matrix_utils import (
+    ImageUploadError,
+    NioLocalProtocolError,
     _add_truncated_vars,
     _can_auto_create_credentials,
     _create_mapping_info,
@@ -762,6 +764,39 @@ async def test_on_room_message_detection_sensor_disabled(
     mock_queue_message.assert_not_called()
 
 
+async def test_on_room_message_detection_sensor_broadcast_disabled(
+    mock_room, mock_event, test_config
+):
+    """
+    Detection sensor packets should not connect or queue when broadcast is disabled.
+    """
+    mock_event.source = {
+        "content": {
+            "body": "Detection data",
+            "meshtastic_portnum": "DETECTION_SENSOR_APP",
+        }
+    }
+    test_config["meshtastic"]["detection_sensor"] = True
+    test_config["meshtastic"]["broadcast_enabled"] = False
+
+    with (
+        patch(
+            "mmrelay.matrix_utils.queue_message", return_value=True
+        ) as mock_queue_message,
+        patch(
+            "mmrelay.matrix_utils.connect_meshtastic", return_value=MagicMock()
+        ) as mock_connect,
+        patch("mmrelay.matrix_utils.bot_start_time", 1234567880),
+        patch("mmrelay.matrix_utils.config", test_config),
+        patch("mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]),
+        patch("mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]),
+    ):
+        await on_room_message(mock_room, mock_event)
+
+    mock_queue_message.assert_not_called()
+    mock_connect.assert_not_called()
+
+
 # Matrix utility function tests - converted from unittest.TestCase to standalone pytest functions
 
 
@@ -1385,6 +1420,30 @@ async def test_join_matrix_room_resolves_alias(mock_logger, monkeypatch):
         "Resolved alias '%s' -> '%s'", "#alias:matrix.org", resolved_id
     )
     assert matrix_rooms_config[0]["id"] == resolved_id
+
+
+@patch("mmrelay.matrix_utils.logger")
+async def test_join_matrix_room_resolve_alias_handles_nio_errors(
+    mock_logger, monkeypatch
+):
+    """
+    Alias resolution should catch expected nio exceptions without masking programmer errors.
+    """
+    mock_client = MagicMock()
+    mock_client.rooms = {}
+    mock_client.room_resolve_alias = AsyncMock(side_effect=NioLocalProtocolError("bad"))
+    mock_client.join = AsyncMock()
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.matrix_rooms",
+        [{"id": "#alias:matrix.org"}],
+        raising=False,
+    )
+
+    await join_matrix_room(mock_client, "#alias:matrix.org")
+
+    mock_client.room_resolve_alias.assert_awaited_once()
+    mock_client.join.assert_not_awaited()
+    mock_logger.exception.assert_called_once()
 
 
 @patch("mmrelay.matrix_utils.logger")
@@ -2266,6 +2325,21 @@ async def test_send_room_image():
     assert content["msgtype"] == "m.image"
     assert content["url"] == "mxc://matrix.org/test123"
     assert content["body"] == "test.png"
+
+
+async def test_send_room_image_raises_on_missing_content_uri():
+    """
+    Ensure send_room_image raises a clear error when upload_response lacks a content_uri.
+    """
+    mock_client = MagicMock()
+    mock_client.room_send = AsyncMock()
+    mock_upload_response = MagicMock()
+    mock_upload_response.content_uri = None
+
+    with pytest.raises(ImageUploadError):
+        await send_room_image(
+            mock_client, "!room:matrix.org", mock_upload_response, "test.png"
+        )
 
 
 async def test_send_image():
