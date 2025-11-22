@@ -2740,6 +2740,9 @@ async def on_room_message(
     meshtastic_replyId = event.source["content"].get("meshtastic_replyId")
     suppress = event.source["content"].get("mmrelay_suppress")
 
+    # Initialize text to empty string to prevent UnboundLocalError
+    text = ""
+
     # Establish baseline text content for non-reaction messages
     if not is_reaction or mesh_text_override:
         body_text = getattr(event, "body", "")
@@ -3160,7 +3163,7 @@ async def upload_image(
 
     buffer = io.BytesIO()
     try:
-        image.save(buffer, format=image_format)
+        image.save(buffer, _format=image_format)
         # If save succeeds, determine content type from the format we used
         content_type, _ = mimetypes.guess_type(filename)
         if not content_type or not content_type.startswith("image/"):
@@ -3170,7 +3173,7 @@ async def upload_image(
         # Fallback to PNG if format is unsupported
         buffer.seek(0)
         buffer.truncate(0)
-        image.save(buffer, format="PNG")
+        image.save(buffer, _format="PNG")
         content_type = "image/png"
 
     image_data = buffer.getvalue()
@@ -3182,7 +3185,6 @@ async def upload_image(
             filename=filename,
             filesize=len(image_data),
         )
-        return response
     except NIO_COMM_EXCEPTIONS as e:
         # Convert nio communication exceptions to ImageUploadError
         # Create an UploadError for the ImageUploadError constructor
@@ -3192,6 +3194,8 @@ async def upload_image(
         # Convert timeout exceptions to ImageUploadError
         upload_error = UploadError(message=f"Upload timeout: {e}")
         raise ImageUploadError(upload_error) from e
+    else:
+        return response
 
 
 async def send_room_image(

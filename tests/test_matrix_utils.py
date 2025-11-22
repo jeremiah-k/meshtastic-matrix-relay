@@ -2430,7 +2430,7 @@ async def test_upload_image_sets_content_type_and_uses_filename():
     uploaded = {}
 
     class FakeImage:
-        def save(self, buffer, format=None):
+        def save(self, buffer, _format=None):
             buffer.write(b"jpgbytes")
 
     async def fake_upload(_file_obj, content_type=None, filename=None, filesize=None):
@@ -2462,8 +2462,8 @@ async def test_upload_image_fallbacks_to_png_on_save_error():
         def __init__(self):
             self._first = True
 
-        def save(self, buffer, format=None):
-            calls.append(format)
+        def save(self, buffer, _format=None):
+            calls.append(_format)
             if self._first:
                 self._first = False
                 raise ValueError("bad format")
@@ -2493,7 +2493,7 @@ async def test_upload_image_defaults_to_png_when_mimetype_unknown():
     """Unknown extensions should default to image/png even when save succeeds."""
 
     class FakeImage:
-        def save(self, buffer, format=None):
+        def save(self, buffer, _format=None):
             buffer.write(b"defaultbytes")
 
     uploaded = {}
@@ -2529,29 +2529,29 @@ async def test_connect_matrix_missing_device_id_uses_direct_assignment(
     mock_async_client,
     mock_ssl_context,
     mock_json_load,
-    mock_open,
-    mock_exists,
-    mock_listdir,
-    mock_makedirs,
+    _mock_open,
+    _mock_exists,
+    _mock_listdir,
+    _mock_makedirs,
     monkeypatch,
 ):
     """
     When credentials are missing device_id, restore_login should NOT be called.
     Instead, direct assignment should be used for first-run E2EE setup.
     """
-    mock_exists.return_value = True
+    _mock_exists.return_value = True
     mock_json_load.return_value = {
         "homeserver": "https://matrix.example.org",
         "user_id": "@bot:example.org",
         "access_token": "test_token",
     }
-    mock_listdir.return_value = []
+    _mock_listdir.return_value = []
     mock_ssl_context.return_value = MagicMock()
 
     mock_client_instance = MagicMock()
     mock_client_instance.rooms = {}
 
-    async def mock_sync(*args, **kwargs):
+    async def mock_sync(*_args, **_kwargs):
         return MagicMock()
 
     mock_client_instance.sync = AsyncMock(side_effect=mock_sync)
@@ -2591,7 +2591,7 @@ async def test_connect_matrix_sync_timeout_closes_client(monkeypatch):
     )
 
     # Capture AsyncClient ssl argument for separate test
-    def fake_async_client(*args, **kwargs):
+    def fake_async_client(*_args, **_kwargs):
         return mock_client
 
     monkeypatch.setattr("mmrelay.matrix_utils.AsyncClient", fake_async_client)
@@ -2637,8 +2637,8 @@ async def test_connect_matrix_uses_ssl_context_object(monkeypatch):
 
     client_calls = []
 
-    def fake_async_client(*args, **kwargs):
-        client_calls.append(kwargs.get("ssl"))
+    def fake_async_client(*_args, **_kwargs):
+        client_calls.append(_kwargs.get("ssl"))
         return mock_client
 
     monkeypatch.setattr("mmrelay.matrix_utils.AsyncClient", fake_async_client)
@@ -2705,7 +2705,7 @@ async def test_on_room_message_command_short_circuits(
     class DummyPlugin:
         plugin_name = "dummy"
 
-        async def handle_room_message(self, *args, **kwargs):
+        async def handle_room_message(self, *_args, **_kwargs):
             return False
 
         def get_matrix_commands(self):
@@ -2737,7 +2737,7 @@ async def test_connect_matrix_sync_error_closes_client(monkeypatch):
         return_value=SimpleNamespace(displayname="Bot")
     )
 
-    def fake_async_client(*args, **kwargs):
+    def fake_async_client(*_args, **_kwargs):
         return mock_client
 
     monkeypatch.setattr("mmrelay.matrix_utils.AsyncClient", fake_async_client)
@@ -2777,7 +2777,7 @@ async def test_connect_matrix_uploads_keys_when_needed(monkeypatch):
         return_value=SimpleNamespace(displayname="Bot")
     )
 
-    def fake_async_client(*args, **kwargs):
+    def fake_async_client(*_args, **_kwargs):
         return mock_client
 
     monkeypatch.setattr("mmrelay.matrix_utils.AsyncClient", fake_async_client)
@@ -2900,7 +2900,7 @@ def test_load_credentials_file_not_exists(mock_exists, mock_get_base_dir):
 @patch("os.makedirs")  # Mock the directory creation
 @patch("os.path.exists", return_value=True)  # Mock file existence check
 def test_save_credentials(
-    _mock_exists, mock_makedirs, mock_json_dump, mock_open, mock_get_base_dir
+    _mock_exists, _mock_makedirs, mock_json_dump, _mock_open, mock_get_base_dir
 ):
     """Test credentials saving."""
     mock_get_base_dir.return_value = "/test/config"
@@ -2915,12 +2915,12 @@ def test_save_credentials(
     save_credentials(test_credentials)
 
     # Verify directory creation was attempted
-    mock_makedirs.assert_called_once_with("/test/config", exist_ok=True)
+    _mock_makedirs.assert_called_once_with("/test/config", exist_ok=True)
 
     # Verify file operations
-    mock_open.assert_called_once()
+    _mock_open.assert_called_once()
     mock_json_dump.assert_called_once_with(
-        test_credentials, mock_open().__enter__(), indent=2
+        test_credentials, _mock_open().__enter__(), indent=2
     )
 
 
