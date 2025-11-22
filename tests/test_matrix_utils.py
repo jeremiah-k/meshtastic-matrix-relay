@@ -3,7 +3,7 @@ import os
 import re
 import unittest
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, PropertyMock, call, patch
 
 import pytest
 
@@ -2597,6 +2597,7 @@ async def test_connect_matrix_sync_timeout_closes_client(monkeypatch):
                 "homeserver": "https://example.org",
                 "access_token": "token",
                 "bot_user_id": "@bot:example.org",
+                "encryption": {"enabled": True},
             },
             "matrix_rooms": [{"id": "!room:example", "meshtastic_channel": 0}],
         },
@@ -2713,6 +2714,125 @@ async def test_on_room_message_command_short_circuits(
 
     mock_queue.assert_not_called()
     mock_connect.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_connect_matrix_sync_error_closes_client(monkeypatch):
+    """If initial sync returns an error response, the client should close and raise."""
+    mock_client = MagicMock()
+    mock_client.rooms = {}
+    error_response = type("SyncError", (), {})()
+    mock_client.sync = AsyncMock(return_value=error_response)
+    mock_client.close = AsyncMock()
+    mock_client.should_upload_keys = False
+    mock_client.get_displayname = AsyncMock(
+        return_value=SimpleNamespace(displayname="Bot")
+    )
+
+    def fake_async_client(*args, **kwargs):
+        return mock_client
+
+    monkeypatch.setattr("mmrelay.matrix_utils.AsyncClient", fake_async_client)
+    monkeypatch.setattr("mmrelay.matrix_utils.matrix_client", None, raising=False)
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils._create_ssl_context", lambda: MagicMock(), raising=False
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.config",
+        {
+            "matrix": {
+                "homeserver": "https://example.org",
+                "access_token": "token",
+                "bot_user_id": "@bot:example.org",
+            },
+            "matrix_rooms": [{"id": "!room:example", "meshtastic_channel": 0}],
+        },
+        raising=False,
+    )
+
+    with pytest.raises(ConnectionError):
+        await connect_matrix()
+
+    mock_client.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_connect_matrix_uploads_keys_when_needed(monkeypatch):
+    """When should_upload_keys is True, keys_upload should be called once."""
+    mock_client = MagicMock()
+    mock_client.rooms = {}
+    mock_client.sync = AsyncMock(return_value=SimpleNamespace())
+    mock_client.close = AsyncMock()
+    type(mock_client).should_upload_keys = PropertyMock(return_value=True)
+    mock_client.keys_upload = AsyncMock()
+    mock_client.get_displayname = AsyncMock(
+        return_value=SimpleNamespace(displayname="Bot")
+    )
+
+    def fake_async_client(*args, **kwargs):
+        return mock_client
+
+    monkeypatch.setattr("mmrelay.matrix_utils.AsyncClient", fake_async_client)
+    monkeypatch.setattr("mmrelay.matrix_utils.matrix_client", None, raising=False)
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils._create_ssl_context", lambda: MagicMock(), raising=False
+    )
+    monkeypatch.setenv("MMRELAY_TESTING", "1")
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.is_e2ee_enabled", lambda _cfg: True, raising=False
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.get_e2ee_status",
+        lambda *_args, **_kwargs: {"overall_status": "ok"},
+        raising=False,
+    )
+
+    def fake_import(name):
+        if name == "nio.crypto":
+            return SimpleNamespace(OlmDevice=True)
+        if name == "nio.store":
+            return SimpleNamespace(SqliteStore=True)
+        if name == "olm":
+            return MagicMock()
+        return MagicMock()
+
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.importlib.import_module", fake_import, raising=False
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.get_room_encryption_warnings",
+        lambda *_args, **_kwargs: [],
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils._resolve_aliases_in_mapping",
+        AsyncMock(return_value=None),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils._display_room_channel_mappings",
+        lambda *args, **kwargs: None,
+        raising=False,
+    )
+
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.config",
+        {
+            "matrix": {
+                "homeserver": "https://example.org",
+                "access_token": "token",
+                "bot_user_id": "@bot:example.org",
+                "encryption": {"enabled": True},
+            },
+            "matrix_rooms": [{"id": "!room:example", "meshtastic_channel": 0}],
+        },
+        raising=False,
+    )
+
+    client = await connect_matrix()
+
+    assert client is mock_client
+    mock_client.keys_upload.assert_awaited_once()
 
 
 # E2EE Configuration Tests
