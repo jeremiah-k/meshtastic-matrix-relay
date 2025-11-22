@@ -2531,7 +2531,8 @@ async def test_connect_matrix_restore_login_uses_none_device_id(
     monkeypatch,
 ):
     """
-    When credentials are missing device_id, restore_login should receive None (not an empty string).
+    When credentials are missing device_id, restore_login should NOT be called.
+    Instead, direct assignment should be used for first-run E2EE setup.
     """
     mock_exists.return_value = True
     mock_json_load.return_value = {
@@ -2565,9 +2566,11 @@ async def test_connect_matrix_restore_login_uses_none_device_id(
     client = await connect_matrix()
 
     assert client is mock_client_instance
-    mock_client_instance.restore_login.assert_called_once_with(
-        user_id="@bot:example.org", device_id=None, access_token="test_token"
-    )
+    # restore_login should NOT be called when device_id is None
+    mock_client_instance.restore_login.assert_not_called()
+    # Instead, direct assignment should be used
+    assert mock_client_instance.access_token == "test_token"
+    assert mock_client_instance.user_id == "@bot:example.org"
 
 
 @pytest.mark.asyncio
