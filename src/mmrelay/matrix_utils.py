@@ -7,7 +7,6 @@ import importlib
 import io
 import json
 import logging
-import mimetypes  # For dynamic content type detection and format handling
 import os
 import re
 import ssl
@@ -126,6 +125,15 @@ NIO_COMM_EXCEPTIONS: tuple[type[BaseException], ...] = (
 # Catch only expected nio/network/timeouts so programming errors surface during testing.
 
 logger = get_logger(name="Matrix")
+
+_MIME_TYPE_MAP: Dict[str, str] = {
+    "PNG": "image/png",
+    "JPEG": "image/jpeg",
+    "GIF": "image/gif",
+    "WEBP": "image/webp",
+    "BMP": "image/bmp",
+    "TIFF": "image/tiff",
+}
 
 
 def _is_room_alias(value: Any) -> bool:
@@ -1261,10 +1269,8 @@ async def connect_matrix(passed_config=None):
 
     # Set the access_token and user_id using restore_login for better session management
     if credentials:
-        # Use restore_login method for proper session restoration.
-        # nio will handle loading the store automatically if store_path was provided
-        # to the client constructor, even when device_id is None.
-        # This ensures existing E2EE stores are loaded before attempting device_id discovery.
+        # Use restore_login when a device_id is available so nio can load the store.
+        # When the device_id is unknown, discover it first via whoami and then restore.
         if e2ee_device_id:
             device_id_for_restore = cast(Any, e2ee_device_id)
             matrix_client.restore_login(
@@ -1276,19 +1282,12 @@ async def connect_matrix(passed_config=None):
                 f"Restored login session for {bot_user_id} with device {e2ee_device_id}"
             )
         else:
-            # First-run E2EE setup: load existing store and discover device_id using whoami
-            logger.info(
-                "First-run E2EE setup: loading store and discovering device_id via whoami"
-            )
+            # First-run E2EE setup: discover device_id via whoami before loading the store
+            logger.info("First-run E2EE setup: discovering device_id via whoami")
 
-            # Call restore_login with device_id=None to load existing E2EE store
-            # This ensures any existing encrypted sessions are preserved
-            matrix_client.restore_login(
-                user_id=bot_user_id,
-                device_id=None,
-                access_token=matrix_access_token,
-            )
-            logger.info("Loaded E2EE store for device_id discovery")
+            # Set credentials directly to allow whoami to succeed without a device_id
+            matrix_client.access_token = matrix_access_token
+            matrix_client.user_id = bot_user_id
 
             # Call whoami to discover device_id from server
             try:
@@ -1296,6 +1295,7 @@ async def connect_matrix(passed_config=None):
                 discovered_device_id = getattr(whoami_response, "device_id", None)
                 if discovered_device_id:
                     e2ee_device_id = discovered_device_id
+                    matrix_client.device_id = e2ee_device_id
                     logger.info(f"Discovered device_id from whoami: {e2ee_device_id}")
 
                     # Save the discovered device_id to credentials for future use
@@ -1308,9 +1308,20 @@ async def connect_matrix(passed_config=None):
                             )
                     except (IOError, OSError) as e:
                         logger.warning(f"Failed to persist discovered device_id: {e}")
+
+                    # Reload login and E2EE store now that we have a device_id.
+                    # matrix-nio requires a concrete device_id for restore_login; None is not supported.
+                    matrix_client.restore_login(
+                        user_id=bot_user_id,
+                        device_id=e2ee_device_id,
+                        access_token=matrix_access_token,
+                    )
+                    logger.info(
+                        f"Restored login session for {bot_user_id} with device {e2ee_device_id}"
+                    )
                 else:
                     logger.warning("whoami response did not contain device_id")
-            except Exception as e:
+            except NIO_COMM_EXCEPTIONS as e:
                 logger.warning(f"Failed to discover device_id via whoami: {e}")
                 logger.warning("E2EE may not work properly without a device_id")
     else:
@@ -3258,24 +3269,10 @@ async def upload_image(
     if image_format == "JPG":
         image_format = "JPEG"
 
-    # Standard MIME type mapping for common image formats
-    MIME_TYPE_MAP = {
-        "PNG": "image/png",
-        "JPEG": "image/jpeg",
-        "GIF": "image/gif",
-        "WEBP": "image/webp",
-        "BMP": "image/bmp",
-        "TIFF": "image/tiff",
-    }
-
     buffer = io.BytesIO()
     try:
         image.save(buffer, format=image_format)
-        # If save succeeds, determine content type from the format we used
-        content_type, _ = mimetypes.guess_type(filename)
-        if not content_type or not content_type.startswith("image/"):
-            # Use proper MIME type mapping for fallback
-            content_type = MIME_TYPE_MAP.get(image_format, "image/png")
+        content_type = _MIME_TYPE_MAP.get(image_format, "image/png")
     except (ValueError, KeyError, OSError):
         # Fallback to PNG if format is unsupported
         buffer.seek(0)
@@ -3294,7 +3291,7 @@ async def upload_image(
         )
     except NIO_COMM_EXCEPTIONS as e:
         # Convert nio communication exceptions to an UploadError instance
-        logger.exception(f"Image upload failed due to a network error: {e}")
+        logger.exception("Image upload failed due to a network error")
         upload_error = UploadError(message=str(e))
         return upload_error
     else:

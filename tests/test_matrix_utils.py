@@ -2426,14 +2426,15 @@ async def test_upload_image_sets_content_type_and_uses_filename():
     uploaded = {}
 
     class FakeImage:
-        def save(self, buffer, format=None):
+        def save(self, buffer, _format=None, **kwargs):
             """
             Write JPEG-encoded image data into a binary writable buffer.
 
             Parameters:
                 buffer: A binary writable file-like object that will receive the image bytes.
-                format: Optional image format hint; accepted but not used by this implementation.
+                _format: Optional image format hint; accepted but not used by this implementation.
             """
+            _format = kwargs.get("format", _format)
             buffer.write(b"jpgbytes")
 
     async def fake_upload(_file_obj, content_type=None, filename=None, filesize=None):
@@ -2487,18 +2488,19 @@ async def test_upload_image_fallbacks_to_png_on_save_error():
             """
             self._first = True
 
-        def save(self, buffer, format=None):
+        def save(self, buffer, _format=None, **kwargs):
             """
             Write image data into a binary buffer; on the first call this implementation raises a ValueError, thereafter it writes PNG bytes.
 
             Parameters:
                 buffer: A binary file-like object with a write(bytes) method that will receive the image data.
-                format (str | None): Optional format hint (ignored by this implementation).
+                _format (str | None): Optional format hint (ignored by this implementation).
 
             Raises:
                 ValueError: If this is the first invocation and the instance's `_first` flag is set.
             """
-            calls.append(format)
+            _format = kwargs.get("format", _format)
+            calls.append(_format)
             if self._first:
                 self._first = False
                 raise ValueError("bad format")
@@ -2551,18 +2553,19 @@ async def test_upload_image_fallbacks_to_png_on_oserror():
             """
             self._first = True
 
-        def save(self, buffer, format=None):
+        def save(self, buffer, _format=None, **kwargs):
             """
             Write image data into a binary buffer; on the first call this implementation raises OSError, thereafter it writes PNG bytes.
 
             Parameters:
                 buffer: A binary file-like object with a write(bytes) method that will receive the image data.
-                format (str | None): Optional format hint (ignored by this implementation).
+                _format (str | None): Optional format hint (ignored by this implementation).
 
             Raises:
                 OSError: If this is the first invocation and the instance's `_first` flag is set.
             """
-            calls.append(format)
+            _format = kwargs.get("format", _format)
+            calls.append(_format)
             if self._first:
                 self._first = False
                 raise OSError("cannot write mode RGBA as JPEG")
@@ -2605,14 +2608,15 @@ async def test_upload_image_defaults_to_png_when_mimetype_unknown():
     """Unknown extensions should default to image/png even when save succeeds."""
 
     class FakeImage:
-        def save(self, buffer, format=None):
+        def save(self, buffer, _format=None, **kwargs):
             """
             Write a default placeholder byte sequence into the provided writable binary buffer.
 
             Parameters:
                 buffer: A writable binary file-like object with a write(bytes) method; receives the placeholder bytes.
-                format (str, optional): Ignored by this implementation.
+                _format (str, optional): Ignored by this implementation.
             """
+            _format = kwargs.get("format", _format)
             buffer.write(b"defaultbytes")
 
     uploaded = {}
@@ -2652,6 +2656,7 @@ async def test_upload_image_defaults_to_png_when_mimetype_unknown():
 @patch("mmrelay.matrix_utils.os.path.exists")
 @patch("builtins.open")
 @patch("mmrelay.matrix_utils.json.load")
+@patch("mmrelay.matrix_utils.save_credentials")
 @patch("mmrelay.matrix_utils._create_ssl_context")
 @patch("mmrelay.matrix_utils.matrix_client", None)
 @patch("mmrelay.matrix_utils.AsyncClient")
@@ -2660,6 +2665,7 @@ async def test_connect_matrix_missing_device_id_uses_direct_assignment(
     _mock_logger,
     mock_async_client,
     mock_ssl_context,
+    mock_save_credentials,
     mock_json_load,
     _mock_open,
     _mock_exists,
@@ -2668,9 +2674,8 @@ async def test_connect_matrix_missing_device_id_uses_direct_assignment(
     monkeypatch,
 ):
     """
-    When credentials are missing device_id, restore_login should still be called
-    to load the existing E2EE store before discovering device_id via whoami.
-    This ensures existing encrypted sessions are preserved.
+    When credentials are missing device_id, the client should discover it via whoami
+    and then restore the session using the discovered device_id.
     """
     _mock_exists.return_value = True
     mock_json_load.return_value = {
@@ -2708,8 +2713,13 @@ async def test_connect_matrix_missing_device_id_uses_direct_assignment(
         mock_client_instance.user_id = user_id
         mock_client_instance.device_id = device_id
 
+    discovered_device_id = "DISCOVERED_DEVICE"
+
     mock_client_instance.sync = AsyncMock(side_effect=mock_sync)
     mock_client_instance.restore_login = MagicMock(side_effect=mock_restore_login)
+    mock_client_instance.whoami = AsyncMock(
+        return_value=SimpleNamespace(device_id=discovered_device_id)
+    )
     mock_client_instance.should_upload_keys = False
     mock_client_instance.get_displayname = AsyncMock(
         return_value=SimpleNamespace(displayname="Bot")
@@ -2726,15 +2736,24 @@ async def test_connect_matrix_missing_device_id_uses_direct_assignment(
     client = await connect_matrix()
 
     assert client is mock_client_instance
-    # restore_login SHOULD be called even when device_id is None to load E2EE store
+    # restore_login should use the discovered device_id from whoami
     mock_client_instance.restore_login.assert_called_once_with(
         user_id="@bot:example.org",
-        device_id=None,
+        device_id=discovered_device_id,
         access_token="test_token",
     )
     # Access token should still be set via restore_login
     assert mock_client_instance.access_token == "test_token"
     assert mock_client_instance.user_id == "@bot:example.org"
+    assert mock_client_instance.device_id == discovered_device_id
+    mock_save_credentials.assert_called_once_with(
+        {
+            "homeserver": "https://matrix.example.org",
+            "user_id": "@bot:example.org",
+            "access_token": "test_token",
+            "device_id": discovered_device_id,
+        }
+    )
 
 
 @pytest.mark.asyncio

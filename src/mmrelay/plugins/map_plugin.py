@@ -301,18 +301,18 @@ class Plugin(BasePlugin):
 
         try:
             zoom = int(zoom)
-        except:
-            zoom = self.config["zoom"] if "zoom" in self.config else 8
+        except (TypeError, ValueError):
+            zoom = self.config.get("zoom", 8)
 
         if zoom < 0 or zoom > 30:
             zoom = 8
 
         try:
             image_size = (int(image_size[0]), int(image_size[1]))
-        except:
+        except (TypeError, ValueError):
             image_size = (
-                self.config["image_width"] if "image_width" in self.config else 1000,
-                self.config["image_height"] if "image_height" in self.config else 1000,
+                int(self.config.get("image_width", 1000)),
+                int(self.config.get("image_height", 1000)),
             )
 
         if image_size[0] > 1000 or image_size[1] > 1000:
