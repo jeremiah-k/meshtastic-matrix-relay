@@ -779,22 +779,15 @@ def bot_command(command, event):
     if full_message.startswith(f"!{command}") or text_content.startswith(f"!{command}"):
         return True
 
-    # Check if the message starts with bot_user_id or bot_user_name
-    if bot_user_id and (
+    starts_with_id = bot_user_id and (
         full_message.startswith(bot_user_id) or text_content.startswith(bot_user_id)
-    ):
-        # Construct a regex pattern to match variations of bot mention and command
-        escaped_user_id = re.escape(bot_user_id) if bot_user_id else ""
-        escaped_user_name = re.escape(bot_user_name) if bot_user_name else ""
-        pattern = (
-            rf"^(?:{escaped_user_id}|{escaped_user_name}|[#@].+?)[,:;]?\s*!{command}"
-        )
-        return bool(re.match(pattern, full_message)) or bool(
-            re.match(pattern, text_content)
-        )
-    elif bot_user_name and (
+    )
+    starts_with_name = bot_user_name and (
         full_message.startswith(bot_user_name) or text_content.startswith(bot_user_name)
-    ):
+    )
+    is_mention = starts_with_id or starts_with_name
+
+    if is_mention:
         # Construct a regex pattern to match variations of bot mention and command
         escaped_user_id = re.escape(bot_user_id) if bot_user_id else ""
         escaped_user_name = re.escape(bot_user_name) if bot_user_name else ""
@@ -804,8 +797,7 @@ def bot_command(command, event):
         return bool(re.match(pattern, full_message)) or bool(
             re.match(pattern, text_content)
         )
-    else:
-        return False
+    return False
 
 
 async def connect_matrix(passed_config=None):
@@ -1128,7 +1120,7 @@ async def connect_matrix(passed_config=None):
         device_id=e2ee_device_id,  # Will be None if not specified in config or credentials
         store_path=e2ee_store_path if e2ee_enabled else None,
         config=client_config,
-        ssl=ssl_context is not None,  # Convert SSLContext to bool for nio
+        ssl=ssl_context,
     )
 
     # Set the access_token and user_id using restore_login for better session management
@@ -1215,12 +1207,98 @@ async def connect_matrix(passed_config=None):
             finally:
                 matrix_client = None
             raise ConnectionError(f"Matrix sync failed: {error_type} - {error_details}")
+        else:
+            logger.info(
+                f"Initial sync completed. Found {len(matrix_client.rooms)} rooms."
+            )
+
+            # List all rooms with unified E2EE status display
+            from mmrelay.config import config_path
+            from mmrelay.e2ee_utils import (
+                get_e2ee_status,
+                get_room_encryption_warnings,
+            )
+
+            # Get comprehensive E2EE status
+            e2ee_status = get_e2ee_status(config or {}, config_path)
+
+            # Resolve room aliases in config (supports list[str|dict] and dict[str->str|dict])
+            async def _resolve_alias(alias: str) -> Optional[str]:
+                """
+                Resolve a Matrix room alias to its canonical room ID.
+
+                Attempts to resolve the provided room alias using the module's Matrix client. Returns the resolved room ID string on success; returns None if the alias cannot be resolved or if an error/timeout occurs (errors from the underlying nio client are caught and handled internally).
+                """
+                if not matrix_client:
+                    logger.warning(
+                        f"Cannot resolve alias {alias}: Matrix client is not available"
+                    )
+                    return None
+
+                logger.debug(f"Resolving alias from config: {alias}")
+                try:
+                    response = await matrix_client.room_resolve_alias(alias)
+                    room_id = getattr(response, "room_id", None)
+                    if room_id:
+                        logger.debug(f"Resolved alias {alias} to {room_id}")
+                        return room_id
+                    logger.warning(
+                        f"Could not resolve alias {alias}: {getattr(response, 'message', response)}"
+                    )
+                except (
+                    NioErrorResponse,
+                    NioLocalProtocolError,
+                    NioRemoteProtocolError,
+                    NioLocalTransportError,
+                    NioRemoteTransportError,
+                    asyncio.TimeoutError,
+                ):
+                    logger.exception(f"Error resolving alias {alias}")
+                return None
+
+            await _resolve_aliases_in_mapping(matrix_rooms, _resolve_alias)
+
+            # Display rooms with channel mappings
+            _display_room_channel_mappings(
+                matrix_client.rooms, config, dict(e2ee_status)
+            )
+
+            # Show warnings for encrypted rooms when E2EE is not ready
+            warnings = get_room_encryption_warnings(
+                matrix_client.rooms, dict(e2ee_status)
+            )
+            for warning in warnings:
+                logger.warning(warning)
+
+            # Debug information
+            encrypted_count = sum(
+                1
+                for room in matrix_client.rooms.values()
+                if getattr(room, "encrypted", False)
+            )
+            logger.debug(
+                f"Found {encrypted_count} encrypted rooms out of {len(matrix_client.rooms)} total rooms"
+            )
+            logger.debug(f"E2EE status: {e2ee_status['overall_status']}")
+
+            # Additional debugging for E2EE enabled case
+            if e2ee_enabled and encrypted_count == 0 and len(matrix_client.rooms) > 0:
+                logger.debug("No encrypted rooms detected - all rooms are plaintext")
     except asyncio.TimeoutError:
-        logger.error(
-            f"Matrix sync timed out after {MATRIX_SYNC_OPERATION_TIMEOUT} seconds"
+        logger.exception(
+            f"Initial sync timed out after {MATRIX_SYNC_OPERATION_TIMEOUT} seconds"
         )
         logger.error(
-            "This may indicate network connectivity issues or a slow Matrix server"
+            "This indicates a network connectivity issue or slow Matrix server."
+        )
+        logger.error("Troubleshooting steps:")
+        logger.error("1. Check your internet connection")
+        logger.error(f"2. Verify the homeserver is accessible: {matrix_homeserver}")
+        logger.error(
+            "3. Try again in a few minutes - the server may be temporarily overloaded"
+        )
+        logger.error(
+            "4. Consider using a different Matrix homeserver if the problem persists"
         )
         try:
             if matrix_client:
@@ -1231,46 +1309,35 @@ async def connect_matrix(passed_config=None):
             matrix_client = None
         raise ConnectionError(
             f"Matrix sync timed out after {MATRIX_SYNC_OPERATION_TIMEOUT} seconds - check network connectivity and server status"
+        ) from None
+
+    # Add a delay to allow for key sharing to complete
+    # This addresses a race condition where the client attempts to send encrypted messages
+    # before it has received and processed room key sharing messages from other devices.
+    # The initial sync() call triggers key sharing requests, but the actual key exchange
+    # happens asynchronously. Without this delay, outgoing messages may be sent unencrypted
+    # even to encrypted rooms. While not ideal, this timing-based approach is necessary
+    # because matrix-nio doesn't provide event-driven alternatives to detect when key
+    # sharing is complete.
+    if e2ee_enabled:
+        logger.debug(
+            f"Waiting for {E2EE_KEY_SHARING_DELAY_SECONDS} seconds to allow for key sharing..."
         )
+        await asyncio.sleep(E2EE_KEY_SHARING_DELAY_SECONDS)
+
+    # Fetch the bot's display name
+    response = await matrix_client.get_displayname(bot_user_id)
+    displayname = getattr(response, "displayname", None)
+    if displayname:
+        bot_user_name = displayname
     else:
-        logger.info(f"Initial sync completed. Found {len(matrix_client.rooms)} rooms.")
+        bot_user_name = bot_user_id  # Fallback if display name is not set
 
-        # List all rooms with unified E2EE status display
-        from mmrelay.config import config_path
-        from mmrelay.e2ee_utils import (
-            get_e2ee_status,
-            get_room_encryption_warnings,
-        )
+    # Set E2EE status on the client for other functions to access
+    # Note: e2ee_enabled is a custom attribute we set on the client
+    setattr(matrix_client, "e2ee_enabled", e2ee_enabled)
 
-        # Get comprehensive E2EE status
-        e2ee_status = get_e2ee_status(config or {}, config_path)
-
-        # Resolve room aliases in config (supports list[str|dict] and dict[str->str|dict])
-        async def _resolve_alias(alias: str) -> Optional[str]:
-            """
-            Resolve a Matrix room alias to its canonical room ID.
-
-            Attempts to resolve the provided room alias using the module's Matrix client. Returns the resolved room ID string on success; returns None if the alias cannot be resolved or if an error/timeout occurs (errors from the underlying nio client are caught and handled internally).
-            """
-            if not matrix_client:
-                logger.warning(
-                    f"Cannot resolve alias {alias}: Matrix client is not available"
-                )
-                return None
-
-            logger.debug(f"Resolving alias from config: {alias}")
-            try:
-                response = await matrix_client.room_resolve_alias(alias)
-                room_id = getattr(response, "room_id", None)
-                if room_id:
-                    logger.debug(f"Resolved alias {alias} to {room_id}")
-                    return room_id
-                logger.warning(
-                    f"Could not resolve alias {alias}: {getattr(response, 'message', response)}"
-                )
-            except Exception as e:
-                logger.exception(f"Error resolving alias {alias}")
-                return None
+    return matrix_client
 
 
 async def login_matrix_bot(
@@ -1325,7 +1392,7 @@ async def login_matrix_bot(
             logger.debug(f"SSL context verify_mode: {ssl_context.verify_mode}")
 
         # Create a temporary client for discovery
-        temp_client = AsyncClient(homeserver, "", ssl=ssl_context is not None)
+        temp_client = AsyncClient(homeserver, "", ssl=ssl_context)
         try:
             discovery_response = await asyncio.wait_for(
                 temp_client.discovery_info(), timeout=MATRIX_LOGIN_TIMEOUT
@@ -1478,7 +1545,7 @@ async def login_matrix_bot(
             device_id=existing_device_id,
             store_path=store_path,
             config=client_config,
-            ssl=ssl_context is not None,
+            ssl=ssl_context,
         )
 
         logger.debug("AsyncClient created successfully")
@@ -2512,9 +2579,6 @@ async def on_room_message(
     - May read and write persistent message mappings to support reply/reaction bridging.
     - May call Matrix APIs (e.g., to fetch display names) and connect to Meshtastic.
     """
-    # Initialize text variable to avoid "possibly unbound" errors
-    text = ""
-
     # DEBUG: Log all Matrix message events to trace reception
     logger.debug(
         f"Received Matrix event in room {room.room_id}: {type(event).__name__}"
@@ -2624,6 +2688,13 @@ async def on_room_message(
     meshnet_name = event.source["content"].get("meshtastic_meshnet")
     meshtastic_replyId = event.source["content"].get("meshtastic_replyId")
     suppress = event.source["content"].get("mmrelay_suppress")
+
+    # Establish baseline text content for non-reaction messages
+    if not is_reaction or mesh_text_override:
+        body_text = getattr(event, "body", "") if hasattr(event, "body") else ""
+        content_body = event.source["content"].get("body", "")
+        text = mesh_text_override or body_text or content_body or ""
+        text = text.strip()
 
     # If a message has suppress flag, do not process
     if suppress:
@@ -2884,6 +2955,72 @@ async def on_room_message(
         full_message = f"{prefix}{text}"
         full_message = truncate_message(full_message)
 
+    portnum = event.source["content"].get("meshtastic_portnum")
+    is_detection_packet = portnum == DETECTION_SENSOR_APP
+
+    async def _connect_meshtastic():
+        if os.getenv("MMRELAY_TESTING") == "1" or "PYTEST_CURRENT_TEST" in os.environ:
+            return connect_meshtastic()
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, connect_meshtastic)
+
+    if is_detection_packet:
+        detection_enabled = get_meshtastic_config_value(
+            config, "detection_sensor", DEFAULT_DETECTION_SENSOR
+        )
+        broadcast_enabled = get_meshtastic_config_value(
+            config, "broadcast_enabled", DEFAULT_BROADCAST_ENABLED, required=False
+        )
+        from mmrelay.meshtastic_utils import logger as meshtastic_logger
+
+        if not broadcast_enabled:
+            meshtastic_logger.debug(
+                f"Detection sensor packet received from {full_display_name}, but broadcast is disabled."
+            )
+            return
+
+        if not detection_enabled:
+            meshtastic_logger.debug(
+                f"Detection sensor packet received from {full_display_name}, but detection sensor processing is disabled."
+            )
+            return
+
+        meshtastic_interface = await _connect_meshtastic()
+
+        if not meshtastic_interface:
+            logger.error(
+                "Failed to connect to Meshtastic. Cannot relay detection data."
+            )
+            return
+
+        meshtastic_channel = room_config["meshtastic_channel"]
+
+        import meshtastic.protobuf.portnums_pb2
+
+        success = queue_message(
+            meshtastic_interface.sendData,
+            data=full_message.encode("utf-8"),
+            channelIndex=meshtastic_channel,
+            portNum=meshtastic.protobuf.portnums_pb2.PortNum.DETECTION_SENSOR_APP,
+            description=f"Detection sensor data from {full_display_name}",
+        )
+
+        if success:
+            queue_size = get_message_queue().get_queue_size()
+            if queue_size > 1:
+                meshtastic_logger.info(
+                    f"Relaying detection sensor data from {full_display_name} to radio broadcast (queued: {queue_size} messages)"
+                )
+            else:
+                meshtastic_logger.info(
+                    f"Relaying detection sensor data from {full_display_name} to radio broadcast"
+                )
+        else:
+            meshtastic_logger.error(
+                "Failed to relay detection sensor data to Meshtastic"
+            )
+        return
+
     # Plugin functionality
     from mmrelay.plugin_loader import load_plugins
 
@@ -2921,8 +3058,7 @@ async def on_room_message(
         return
 
     # Connect to Meshtastic
-    loop = asyncio.get_running_loop()
-    meshtastic_interface = await loop.run_in_executor(None, connect_meshtastic)
+    meshtastic_interface = await _connect_meshtastic()
     from mmrelay.meshtastic_utils import logger as meshtastic_logger
 
     if not meshtastic_interface:
@@ -2938,88 +3074,43 @@ async def on_room_message(
         if get_meshtastic_config_value(
             config, "broadcast_enabled", DEFAULT_BROADCAST_ENABLED, required=False
         ):
-            portnum = event.source["content"].get("meshtastic_portnum")
-            if portnum == DETECTION_SENSOR_APP:
-                # If detection_sensor is enabled, forward this data as detection sensor data
-                if get_meshtastic_config_value(
-                    config, "detection_sensor", DEFAULT_DETECTION_SENSOR
-                ):
-                    # Import meshtastic protobuf only when needed to delay logger creation
-                    import meshtastic.protobuf.portnums_pb2
+            mapping_info = None
+            if storage_enabled:
+                # Check database config for message map settings (preferred format)
+                msgs_to_keep = _get_msgs_to_keep_config()
 
-                    success = queue_message(
-                        meshtastic_interface.sendData,
-                        data=full_message.encode("utf-8"),
-                        channelIndex=meshtastic_channel,
-                        portNum=meshtastic.protobuf.portnums_pb2.PortNum.DETECTION_SENSOR_APP,
-                        description=f"Detection sensor data from {full_display_name}",
-                    )
-
-                    if success:
-                        # Get queue size to determine logging approach
-                        queue_size = get_message_queue().get_queue_size()
-
-                        if queue_size > 1:
-                            meshtastic_logger.info(
-                                f"Relaying detection sensor data from {full_display_name} to radio broadcast (queued: {queue_size} messages)"
-                            )
-                        else:
-                            meshtastic_logger.info(
-                                f"Relaying detection sensor data from {full_display_name} to radio broadcast"
-                            )
-                        # Note: Detection sensor messages are not stored in message_map because they are never replied to
-                        # Only TEXT_MESSAGE_APP messages need to be stored for reaction handling
-                    else:
-                        meshtastic_logger.error(
-                            "Failed to relay detection sensor data to Meshtastic"
-                        )
-                        return
-                else:
-                    meshtastic_logger.debug(
-                        f"Detection sensor packet received from {full_display_name}, but detection sensor processing is disabled."
-                    )
-            else:
-                # Regular text message - logging will be handled by queue success handler
-                pass
-
-                # Create mapping info if storage is enabled
-                mapping_info = None
-                if storage_enabled:
-                    # Check database config for message map settings (preferred format)
-                    msgs_to_keep = _get_msgs_to_keep_config()
-
-                    mapping_info = _create_mapping_info(
-                        event.event_id,
-                        room.room_id,
-                        text,
-                        local_meshnet_name,
-                        msgs_to_keep,
-                    )
-
-                success = queue_message(
-                    meshtastic_interface.sendText,
-                    text=full_message,
-                    channelIndex=meshtastic_channel,
-                    description=f"Message from {full_display_name}",
-                    mapping_info=mapping_info,
+                mapping_info = _create_mapping_info(
+                    event.event_id,
+                    room.room_id,
+                    text,
+                    local_meshnet_name,
+                    msgs_to_keep,
                 )
 
-                if success:
-                    # Get queue size to determine logging approach
-                    queue_size = get_message_queue().get_queue_size()
+            success = queue_message(
+                meshtastic_interface.sendText,
+                text=full_message,
+                channelIndex=meshtastic_channel,
+                description=f"Message from {full_display_name}",
+                mapping_info=mapping_info,
+            )
 
-                    if queue_size > 1:
-                        meshtastic_logger.info(
-                            f"Relaying message from {full_display_name} to radio broadcast (queued: {queue_size} messages)"
-                        )
-                    else:
-                        meshtastic_logger.info(
-                            f"Relaying message from {full_display_name} to radio broadcast"
-                        )
+            if success:
+                # Get queue size to determine logging approach
+                queue_size = get_message_queue().get_queue_size()
+
+                if queue_size > 1:
+                    meshtastic_logger.info(
+                        f"Relaying message from {full_display_name} to radio broadcast (queued: {queue_size} messages)"
+                    )
                 else:
-                    meshtastic_logger.error("Failed to relay message to Meshtastic")
-                    return
-                # Message mapping is now handled automatically by the queue system
+                    meshtastic_logger.info(
+                        f"Relaying message from {full_display_name} to radio broadcast"
+                    )
+            else:
+                meshtastic_logger.error("Failed to relay message to Meshtastic")
+                return
+            # Message mapping is now handled automatically by the queue system
         else:
             logger.debug(
                 f"broadcast_enabled is False - not relaying message from {full_display_name} to Meshtastic"
@@ -3060,11 +3151,9 @@ async def upload_image(
 
     image_data = buffer.getvalue()
 
-    response, maybe_keys = await client.upload(
+    response, _ = await client.upload(
         io.BytesIO(image_data),
-        content_type=(
-            content_type if content_type else "image/png"
-        ),  # Fallback to image/png
+        content_type=content_type,
         filename=filename,
         filesize=len(image_data),
     )
@@ -3102,7 +3191,7 @@ async def send_room_image(
         logger.error(
             f"Upload failed: {getattr(upload_response, 'message', 'Unknown error')}"
         )
-        raise Exception(
+        raise ValueError(
             f"Image upload failed: {getattr(upload_response, 'message', 'Unknown error')}"
         )
 
