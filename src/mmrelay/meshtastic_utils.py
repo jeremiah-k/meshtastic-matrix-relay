@@ -993,11 +993,9 @@ def on_meshtastic_message(packet, interface):
         channel = packet.get("channel")
         if channel is None:
             # If channel not specified, deduce from portnum
-            if (
-                decoded.get("portnum") == TEXT_MESSAGE_APP
-                or decoded.get("portnum") == PORTNUM_TEXT_MESSAGE_APP
-                or decoded.get("portnum") == DETECTION_SENSOR_APP
-                or decoded.get("portnum") == PORTNUM_DETECTION_SENSOR_APP
+            if decoded.get("portnum") in (
+                PORTNUM_TEXT_MESSAGE_APP,
+                PORTNUM_DETECTION_SENSOR_APP,
             ):
                 channel = DEFAULT_CHANNEL_VALUE
             else:
@@ -1022,8 +1020,7 @@ def on_meshtastic_message(packet, interface):
 
         # If detection_sensor is disabled and this is a detection sensor packet, skip it
         if (
-            decoded.get("portnum") == DETECTION_SENSOR_APP
-            or decoded.get("portnum") == PORTNUM_DETECTION_SENSOR_APP
+            decoded.get("portnum") == PORTNUM_DETECTION_SENSOR_APP
         ) and not get_meshtastic_config_value(
             config, "detection_sensor", DEFAULT_DETECTION_SENSOR
         ):
