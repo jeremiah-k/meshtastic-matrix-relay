@@ -3197,6 +3197,12 @@ async def on_room_message(
 
     # Extract portnum for potential detection sensor handling
     portnum = event.source["content"].get("meshtastic_portnum")
+    # Normalize legacy string values to support tests/older senders
+    if isinstance(portnum, str) and portnum.isdigit():
+        try:
+            portnum = int(portnum)
+        except ValueError:
+            pass
 
     # Plugin functionality
     from mmrelay.plugin_loader import load_plugins
@@ -3235,8 +3241,9 @@ async def on_room_message(
         return
 
     # Check if this is a detection sensor packet (before connecting to Meshtastic)
-    # Meshtastic uses numeric port numbers; keep only the numeric check
-    is_detection_packet = portnum == PORTNUM_DETECTION_SENSOR_APP
+    is_detection_packet = portnum == PORTNUM_DETECTION_SENSOR_APP or (
+        isinstance(portnum, str) and portnum == DETECTION_SENSOR_APP
+    )
 
     if is_detection_packet:
         await _handle_detection_sensor_packet(
@@ -3374,7 +3381,7 @@ async def upload_image(
         # Convert nio communication exceptions to an UploadError-like instance
         logger.exception("Image upload failed due to a network error")
         try:
-            upload_error = UploadError(str(e))
+            upload_error = UploadError(str(e), status_code="")
         except Exception:
             upload_error = SimpleNamespace(message=str(e), status_code="")
         return upload_error
