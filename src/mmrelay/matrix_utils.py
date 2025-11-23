@@ -1288,7 +1288,7 @@ async def connect_matrix(passed_config=None):
         if e2ee_device_id:
             device_id_for_restore = cast(Any, e2ee_device_id)
             matrix_client.restore_login(
-                user_id=bot_user_id or "",
+                user_id=bot_user_id,
                 device_id=device_id_for_restore,
                 access_token=matrix_access_token,
             )
@@ -1301,7 +1301,7 @@ async def connect_matrix(passed_config=None):
 
             # Set credentials directly to allow whoami to succeed without a device_id
             matrix_client.access_token = matrix_access_token
-            matrix_client.user_id = bot_user_id or ""
+            matrix_client.user_id = bot_user_id
 
             # Call whoami to discover device_id from server
             try:
@@ -1325,12 +1325,11 @@ async def connect_matrix(passed_config=None):
 
                     # Reload login and E2EE store now that we have a device_id.
                     # matrix-nio requires a concrete device_id for restore_login; None is not supported.
-                    if e2ee_device_id:
-                        matrix_client.restore_login(
-                            user_id=bot_user_id or "",
-                            device_id=e2ee_device_id,
-                            access_token=matrix_access_token,
-                        )
+                    matrix_client.restore_login(
+                        user_id=bot_user_id,
+                        device_id=e2ee_device_id,
+                        access_token=matrix_access_token,
+                    )
                     logger.info(
                         f"Restored login session for {bot_user_id} with device {e2ee_device_id}"
                     )
