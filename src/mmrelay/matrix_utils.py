@@ -392,7 +392,8 @@ def _normalize_bot_user_id(homeserver: str, bot_user_id: str | None) -> str | No
             and with or without a server part).
 
     Returns:
-        str: A normalized Matrix user ID in the form "@localpart:server".
+        str | None: A normalized Matrix user ID in the form "@localpart:server",
+        or None if bot_user_id is falsy.
     """
     if not bot_user_id:
         return bot_user_id
@@ -1980,14 +1981,23 @@ async def login_matrix_bot(
             await client.close()
             return False
 
-    except Exception:
+    except (
+        NioLoginError,
+        NioLocalProtocolError,
+        NioRemoteProtocolError,
+        NioLocalTransportError,
+        NioRemoteTransportError,
+        asyncio.TimeoutError,
+        ssl.SSLError,
+        OSError,
+    ):
         logger.exception("Error during login")
         try:
             if client:
                 await client.close()
-        except Exception as e:
+        except Exception as cleanup_e:
             # Ignore errors during client cleanup - connection may already be closed
-            logger.debug(f"Ignoring error during client cleanup: {e}")
+            logger.debug(f"Ignoring error during client cleanup: {cleanup_e}")
         return False
 
 
@@ -2781,7 +2791,7 @@ async def on_decryption_failure(room: MatrixRoom, event: MegolmEvent) -> None:
         request = event.as_key_request(matrix_client.user_id, matrix_client.device_id)
         await matrix_client.to_device(request)
         logger.info(f"Requested keys for failed decryption of event {event.event_id}")
-    except Exception:
+    except NIO_COMM_EXCEPTIONS:
         logger.exception(f"Failed to request keys for event {event.event_id}")
 
 
@@ -3233,7 +3243,17 @@ async def on_room_message(
         logger.error("Failed to connect to Meshtastic. Cannot relay message.")
         return
 
-    meshtastic_channel = room_config["meshtastic_channel"]
+    meshtastic_channel = room_config.get("meshtastic_channel")
+    if meshtastic_channel is None:
+        meshtastic_logger.error(
+            "Room config missing 'meshtastic_channel'; cannot relay message."
+        )
+        return
+    if not isinstance(meshtastic_channel, int) or meshtastic_channel < 0:
+        meshtastic_logger.error(
+            f"Invalid meshtastic_channel value {meshtastic_channel!r} in room config; must be a non-negative integer."
+        )
+        return
 
     # If message is from Matrix and broadcast_enabled is True, relay to Meshtastic
     # Note: If relay_reactions is False, we won't store message_map, but we can still relay.
