@@ -107,12 +107,17 @@ try:
     )
 except ImportError:
     # Fallback for test environments where nio imports might fail
-    NioLoginError = Exception
-    NioLogoutError = Exception
-    NioLocalProtocolError = Exception
-    NioRemoteProtocolError = Exception
-    NioLocalTransportError = Exception
-    NioRemoteTransportError = Exception
+    class _NioStubError(Exception):
+        """Stub exception for nio errors in test mode"""
+
+        pass
+
+    NioLoginError = _NioStubError
+    NioLogoutError = _NioStubError
+    NioLocalProtocolError = _NioStubError
+    NioRemoteProtocolError = _NioStubError
+    NioLocalTransportError = _NioStubError
+    NioRemoteTransportError = _NioStubError
 
 NIO_COMM_EXCEPTIONS: tuple[type[BaseException], ...] = (
     NioLocalProtocolError,
@@ -2563,6 +2568,11 @@ async def send_reply_to_meshtastic(
             "Room config missing 'meshtastic_channel'; cannot relay reply."
         )
         return
+    if not isinstance(meshtastic_channel, int) or meshtastic_channel < 0:
+        meshtastic_logger.error(
+            f"Invalid meshtastic_channel value {meshtastic_channel!r} in room config; must be a non-negative integer."
+        )
+        return
 
     broadcast_enabled = get_meshtastic_config_value(
         config, "broadcast_enabled", DEFAULT_BROADCAST_ENABLED, required=False
@@ -2986,6 +2996,11 @@ async def on_room_message(
                     "Room config missing 'meshtastic_channel'; cannot relay reaction."
                 )
                 return
+            if not isinstance(meshtastic_channel, int) or meshtastic_channel < 0:
+                meshtastic_logger.error(
+                    f"Invalid meshtastic_channel value {meshtastic_channel!r} in room config; must be a non-negative integer."
+                )
+                return
 
             if get_meshtastic_config_value(
                 config, "broadcast_enabled", DEFAULT_BROADCAST_ENABLED, required=False
@@ -3059,6 +3074,11 @@ async def on_room_message(
             if meshtastic_channel is None:
                 meshtastic_logger.error(
                     "Room config missing 'meshtastic_channel'; cannot relay reaction."
+                )
+                return
+            if not isinstance(meshtastic_channel, int) or meshtastic_channel < 0:
+                meshtastic_logger.error(
+                    f"Invalid meshtastic_channel value {meshtastic_channel!r} in room config; must be a non-negative integer."
                 )
                 return
 

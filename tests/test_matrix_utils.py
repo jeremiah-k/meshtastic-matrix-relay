@@ -12,7 +12,6 @@ from mmrelay.config import get_e2ee_store_dir, load_credentials, save_credential
 from mmrelay.matrix_utils import (
     ImageUploadError,
     NioLocalProtocolError,
-    UploadError,
     _add_truncated_vars,
     _can_auto_create_credentials,
     _create_mapping_info,
