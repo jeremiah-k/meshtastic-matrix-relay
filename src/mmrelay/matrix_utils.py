@@ -1181,7 +1181,7 @@ async def connect_matrix(passed_config=None):
 
                             logger.debug("All E2EE dependencies are available")
                         except ImportError:
-                            logger.warning("Missing E2EE dependency")
+                            logger.exception("Missing E2EE dependency")
                             logger.error(
                                 "Please reinstall with: pipx install 'mmrelay[e2e]'"
                             )
