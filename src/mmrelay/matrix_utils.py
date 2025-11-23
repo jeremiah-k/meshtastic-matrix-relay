@@ -12,7 +12,6 @@ import re
 import ssl
 import sys
 import time
-from types import SimpleNamespace
 from typing import Any, Dict, Optional, Union, cast
 from urllib.parse import urlparse
 
@@ -490,6 +489,9 @@ def _get_detailed_matrix_error_message(matrix_response) -> str:
 
         # Try to extract specific error information
         try:
+            # Guard against matrix_response being a string (from bytes conversion above)
+            if isinstance(matrix_response, str):
+                return "Network connectivity issue or server unreachable"
             message_attr = matrix_response.message
             if message_attr:
                 message = message_attr
@@ -529,7 +531,7 @@ def _get_detailed_matrix_error_message(matrix_response) -> str:
             transport = getattr(matrix_response, "transport_response", None)
             if transport and hasattr(transport, "status_code"):
                 try:
-                    status_code = int(getattr(transport, "status_code"))
+                    status_code = int(transport.status_code)
                     return f"Transport error: HTTP {status_code}"
                 except (ValueError, TypeError):
                     return "Network connectivity issue or server unreachable"
