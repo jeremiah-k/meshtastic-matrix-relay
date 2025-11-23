@@ -12,6 +12,7 @@ import re
 import ssl
 import sys
 import time
+from types import SimpleNamespace
 from typing import Any, Dict, Optional, Union, cast
 from urllib.parse import urlparse
 
@@ -3376,9 +3377,12 @@ async def upload_image(
         # Convert nio communication exceptions to an UploadError-like instance
         logger.exception("Image upload failed due to a network error")
         try:
-            upload_error = UploadError(message=str(e), status_code=None)
-        except Exception:
-            upload_error = SimpleNamespace(message=str(e), status_code=None)
+            upload_error = UploadError(message=str(e), status_code="")
+        except (NameError, TypeError):
+            # Create a minimal UploadError-like object if UploadError is unavailable
+            upload_error = type(
+                "UploadError", (), {"message": str(e), "status_code": ""}
+            )()
         return upload_error
     else:
         return response
