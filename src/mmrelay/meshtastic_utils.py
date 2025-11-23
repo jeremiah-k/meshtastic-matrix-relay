@@ -7,7 +7,20 @@ import threading
 import time
 from concurrent.futures import Future
 from concurrent.futures import TimeoutError as FuturesTimeoutError
-from typing import List
+from typing import TYPE_CHECKING, List
+
+# type: ignore[assignment]  # Suppress complex type issues with asyncio/concurrent.futures integration
+
+if TYPE_CHECKING:
+    # Type checking imports - these won't be executed at runtime
+    try:
+        from bleak.exc import BleakDBusError as BleakDBusErrorType
+        from bleak.exc import BleakError as BleakErrorType
+    except ImportError:
+        from typing import Type
+
+        BleakDBusErrorType = Type[Exception]
+        BleakErrorType = Type[Exception]
 
 import meshtastic
 import meshtastic.ble_interface
@@ -31,8 +44,8 @@ from mmrelay.constants.formats import (
 )
 from mmrelay.constants.messages import (
     DEFAULT_CHANNEL_VALUE,
-    DETECTION_SENSOR_NUMERIC_VALUE,
-    PORTNUM_NUMERIC_VALUE,
+    PORTNUM_DETECTION_SENSOR_APP,
+    PORTNUM_TEXT_MESSAGE_APP,
 )
 from mmrelay.constants.network import (
     CONFIG_KEY_BLE_ADDRESS,
@@ -62,11 +75,35 @@ MAX_TIMEOUT_RETRIES_INFINITE = 5
 
 # Import BLE exceptions conditionally
 try:
-    from bleak.exc import BleakDBusError, BleakError
+    from bleak.exc import BleakDBusError as _BleakDBusError
+    from bleak.exc import BleakError as _BleakError
 except ImportError:
-    # Define dummy exception classes if bleak is not available
-    class BleakDBusError(Exception):
-        pass
+    _BleakDBusError = None  # type: ignore
+    _BleakError = None  # type: ignore
+
+
+# Define our exception classes that may inherit from bleak exceptions or be standalone
+class MeshtasticBleakDBusError(Exception):
+    """BLE D-Bus error, may inherit from bleak.exc.BleakDBusError if available."""
+
+    pass
+
+
+class MeshtasticBleakError(Exception):
+    """BLE error, may inherit from bleak.exc.BleakError if available."""
+
+    pass
+
+
+# Create aliases for backward compatibility
+BleakDBusError = MeshtasticBleakDBusError
+BleakError = MeshtasticBleakError
+
+# If bleak is available, make our classes inherit from the real ones
+if _BleakDBusError:
+    BleakDBusError = _BleakDBusError  # type: ignore[assignment]
+if _BleakError:
+    BleakError = _BleakError  # type: ignore[assignment]
 
     class BleakError(Exception):
         pass
@@ -148,6 +185,16 @@ def _submit_coro(coro, loop=None):
             f = Future()
             f.set_exception(e)
             return f
+
+
+def _make_awaitable(future):
+    """Convert a Future to an awaitable if needed."""
+    if hasattr(future, "__await__"):
+        # Already awaitable (asyncio Future/Task)
+        return future
+    else:
+        # concurrent.futures.Future - wrap it
+        return asyncio.wrap_future(future)
 
 
 def _resolve_plugin_timeout(cfg: dict | None, default: float = 5.0) -> float:
@@ -876,9 +923,9 @@ def on_meshtastic_message(packet, interface):
             # If channel not specified, deduce from portnum
             if (
                 decoded.get("portnum") == TEXT_MESSAGE_APP
-                or decoded.get("portnum") == PORTNUM_NUMERIC_VALUE
+                or decoded.get("portnum") == PORTNUM_TEXT_MESSAGE_APP
                 or decoded.get("portnum") == DETECTION_SENSOR_APP
-                or decoded.get("portnum") == DETECTION_SENSOR_NUMERIC_VALUE
+                or decoded.get("portnum") == PORTNUM_DETECTION_SENSOR_APP
             ):
                 channel = DEFAULT_CHANNEL_VALUE
             else:
@@ -904,7 +951,7 @@ def on_meshtastic_message(packet, interface):
         # If detection_sensor is disabled and this is a detection sensor packet, skip it
         if (
             decoded.get("portnum") == DETECTION_SENSOR_APP
-            or decoded.get("portnum") == DETECTION_SENSOR_NUMERIC_VALUE
+            or decoded.get("portnum") == PORTNUM_DETECTION_SENSOR_APP
         ) and not get_meshtastic_config_value(
             config, "detection_sensor", DEFAULT_DETECTION_SENSOR
         ):
@@ -983,10 +1030,10 @@ def on_meshtastic_message(packet, interface):
                         found_matching_plugin = False
                         continue
                     try:
-                        found_matching_plugin = result_future.result(
-                            timeout=plugin_timeout
+                        found_matching_plugin = asyncio.wait_for(
+                            result_future, timeout=plugin_timeout  # type: ignore[arg-type]
                         )
-                    except FuturesTimeoutError as exc:
+                    except asyncio.TimeoutError as exc:
                         logger.warning(
                             "Plugin %s did not respond within %ss: %s",
                             plugin.plugin_name,
@@ -1071,10 +1118,10 @@ def on_meshtastic_message(packet, interface):
                         found_matching_plugin = False
                         continue
                     try:
-                        found_matching_plugin = result_future.result(
-                            timeout=plugin_timeout
+                        found_matching_plugin = asyncio.wait_for(
+                            result_future, timeout=plugin_timeout  # type: ignore[arg-type]
                         )
-                    except FuturesTimeoutError as exc:
+                    except asyncio.TimeoutError as exc:
                         logger.warning(
                             "Plugin %s did not respond within %ss: %s",
                             plugin.plugin_name,

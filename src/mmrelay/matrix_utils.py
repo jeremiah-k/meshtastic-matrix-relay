@@ -60,11 +60,11 @@ from mmrelay.constants.formats import (
 )
 from mmrelay.constants.messages import (
     DEFAULT_MESSAGE_TRUNCATE_BYTES,
-    DETECTION_SENSOR_NUMERIC_VALUE,
     DISPLAY_NAME_DEFAULT_LENGTH,
     MAX_TRUNCATION_LENGTH,
     MESHNET_NAME_ABBREVIATION_LENGTH,
     MESSAGE_PREVIEW_LENGTH,
+    PORTNUM_DETECTION_SENSOR_APP,
     SHORTNAME_FALLBACK_LENGTH,
     TRUNCATION_LOG_LIMIT,
 )
@@ -1276,7 +1276,7 @@ async def connect_matrix(passed_config=None):
 
     matrix_client = AsyncClient(
         homeserver=matrix_homeserver,
-        user=bot_user_id,
+        user=bot_user_id or "",  # Provide empty string fallback if None
         device_id=e2ee_device_id,  # Will be None if not specified in config or credentials
         store_path=e2ee_store_path if e2ee_enabled else None,
         config=client_config,
@@ -1290,8 +1290,8 @@ async def connect_matrix(passed_config=None):
         if e2ee_device_id:
             device_id_for_restore = cast(Any, e2ee_device_id)
             matrix_client.restore_login(
-                user_id=bot_user_id,
-                device_id=device_id_for_restore,
+                user_id=bot_user_id or "",
+                device_id=device_id_for_restore or "",
                 access_token=matrix_access_token,
             )
             logger.info(
@@ -1303,7 +1303,7 @@ async def connect_matrix(passed_config=None):
 
             # Set credentials directly to allow whoami to succeed without a device_id
             matrix_client.access_token = matrix_access_token
-            matrix_client.user_id = bot_user_id
+            matrix_client.user_id = bot_user_id or ""
 
             # Call whoami to discover device_id from server
             try:
@@ -1328,8 +1328,8 @@ async def connect_matrix(passed_config=None):
                     # Reload login and E2EE store now that we have a device_id.
                     # matrix-nio requires a concrete device_id for restore_login; None is not supported.
                     matrix_client.restore_login(
-                        user_id=bot_user_id,
-                        device_id=e2ee_device_id,
+                        user_id=bot_user_id or "",
+                        device_id=e2ee_device_id or "",
                         access_token=matrix_access_token,
                     )
                     logger.info(
@@ -1343,7 +1343,7 @@ async def connect_matrix(passed_config=None):
     else:
         # Fallback to direct assignment for legacy token-based auth
         matrix_client.access_token = matrix_access_token
-        matrix_client.user_id = bot_user_id
+        matrix_client.user_id = bot_user_id or ""
 
     # If E2EE is enabled, upload keys if necessary.
     # nio will have loaded the store automatically if store_path was provided.
@@ -1635,6 +1635,10 @@ async def login_matrix_bot(
         # Format username correctly
         username = _normalize_bot_user_id(homeserver, username)
 
+        if not username:
+            logger.error("Username normalization failed")
+            return
+
         logger.info(f"Using username: {username}")
 
         # Validate username format
@@ -1646,7 +1650,7 @@ async def login_matrix_bot(
             )
 
         # Check for special characters in username that might cause issues
-        username_special_chars = set(username) - set(
+        username_special_chars = set(username or "") - set(
             "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@:.-_"
         )
         if username_special_chars:
@@ -1733,7 +1737,7 @@ async def login_matrix_bot(
 
         client = AsyncClient(
             homeserver,
-            username,
+            username or "",
             device_id=existing_device_id,
             store_path=store_path,
             config=client_config,
@@ -1764,7 +1768,7 @@ async def login_matrix_bot(
                 from nio.api import Api  # type: ignore[import-untyped]
 
                 method, path, data = Api.login(
-                    user=username,
+                    user=username or "",
                     password=password,
                     device_name=device_name,
                     device_id=existing_device_id,
@@ -3231,7 +3235,7 @@ async def on_room_message(
 
     # Check if this is a detection sensor packet (before connecting to Meshtastic)
     is_detection_packet = (
-        portnum == DETECTION_SENSOR_APP or portnum == DETECTION_SENSOR_NUMERIC_VALUE
+        portnum == DETECTION_SENSOR_APP or portnum == PORTNUM_DETECTION_SENSOR_APP
     )
 
     if is_detection_packet:

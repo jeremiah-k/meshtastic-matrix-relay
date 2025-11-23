@@ -4694,7 +4694,7 @@ async def test_connect_matrix_e2ee_missing_nio_crypto():
         patch("mmrelay.matrix_utils.matrix_client", None),
         patch("mmrelay.matrix_utils.AsyncClient") as mock_async_client,
         patch("mmrelay.matrix_utils.logger") as mock_logger,
-        patch("mmrelay.matrix_utils._create_ssl_context") as mock_ssl_context,
+        patch("mmrelay.matrix_utils._create_ssl_context"),
         patch("mmrelay.matrix_utils.importlib.import_module") as mock_import,
     ):
         # Mock importlib to simulate missing nio.crypto
@@ -4754,7 +4754,7 @@ async def test_connect_matrix_e2ee_missing_sqlite_store():
         patch("mmrelay.matrix_utils.matrix_client", None),
         patch("mmrelay.matrix_utils.AsyncClient") as mock_async_client,
         patch("mmrelay.matrix_utils.logger") as mock_logger,
-        patch("mmrelay.matrix_utils._create_ssl_context") as mock_ssl_context,
+        patch("mmrelay.matrix_utils._create_ssl_context"),
         patch("mmrelay.matrix_utils.importlib.import_module") as mock_import,
     ):
         # Mock importlib to simulate missing nio.store.SqliteStore
@@ -4898,7 +4898,7 @@ async def test_resolve_aliases_in_mapping_resolver_failure():
     mapping = {"#alias1": "room1", "#alias2": "room2"}
     mock_resolver = AsyncMock(return_value=None)  # Resolver fails
 
-    with patch("mmrelay.matrix_utils.logger") as mock_logger:
+    with patch("mmrelay.matrix_utils.logger"):
         await _resolve_aliases_in_mapping(mapping, mock_resolver)
 
         # Should not modify mapping when resolver returns None
