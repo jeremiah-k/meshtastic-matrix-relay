@@ -20,6 +20,7 @@ from mmrelay.matrix_utils import (
     _get_e2ee_error_message,
     _get_msgs_to_keep_config,
     _get_valid_device_id,
+    _handle_detection_sensor_packet,
     _is_room_alias,
     _iter_room_alias_entries,
     _normalize_bot_user_id,
@@ -3917,7 +3918,7 @@ def test_can_auto_create_credentials_success():
     assert result is True
 
 
-def test_can_auto_create_credentials_none_values():
+def test_can_auto_create_credentials_none_bot_user_id():
     """Test failure when required fields are None."""
     matrix_config = {
         "homeserver": "https://matrix.example.org",
@@ -3926,6 +3927,29 @@ def test_can_auto_create_credentials_none_values():
     }
 
     result = _can_auto_create_credentials(matrix_config)
+    assert result is False
+
+
+def test_can_auto_create_credentials_none_values_homeserver():
+    """
+    Test _can_auto_create_credentials returns False when values are None.
+    """
+    config = {
+        "homeserver": None,
+        "bot_user_id": "@bot:matrix.org",
+        "password": "password123",
+    }
+
+    result = _can_auto_create_credentials(config)
+    assert result is False
+
+    config = {
+        "homeserver": "https://matrix.org",
+        "bot_user_id": None,
+        "password": "password123",
+    }
+
+    result = _can_auto_create_credentials(config)
     assert result is False
 
 
@@ -4237,6 +4261,36 @@ class TestGetDetailedSyncErrorMessage:
 
         result = _get_detailed_sync_error_message(mock_response)
         assert result == "Network connectivity issue or server unreachable"
+
+    def test_get_detailed_sync_error_message_transport_response(self):
+        """Test _get_detailed_sync_error_message with transport_response."""
+        # Test with transport_response having status_code
+        mock_response = MagicMock()
+        mock_response.message = None
+        mock_response.status_code = None
+        mock_response.transport_response = MagicMock()
+        mock_response.transport_response.status_code = 502
+
+        result = _get_detailed_sync_error_message(mock_response)
+        assert result == "Transport error: HTTP 502"
+
+    def test_get_detailed_sync_error_message_string_fallback(self):
+        """Test _get_detailed_sync_error_message string fallback."""
+        # Test with string that has object repr
+        result = _get_detailed_sync_error_message("<object at 0x123>")
+        assert result == "Network connectivity issue or server unreachable"
+
+        # Test with HTML-like content
+        result = _get_detailed_sync_error_message("<html>Error</html>")
+        assert result == "Network connectivity issue or server unreachable"
+
+        # Test with "unknown error"
+        result = _get_detailed_sync_error_message("Unknown error occurred")
+        assert result == "Network connectivity issue or server unreachable"
+
+        # Test with normal string
+        result = _get_detailed_sync_error_message("Some error message")
+        assert result == "Some error message"
 
 
 def test_is_room_alias_with_alias():
@@ -4618,278 +4672,14 @@ def test_can_auto_create_credentials_whitespace_values():
     assert result is False
 
 
-def test_can_auto_create_credentials_none_values():
-    """
-    Test _can_auto_create_credentials returns False when values are None.
-    """
-    config = {
-        "homeserver": None,
-        "bot_user_id": "@bot:matrix.org",
-        "password": "password123",
-    }
-
-    result = _can_auto_create_credentials(config)
-    assert result is False
-
-    config = {
-        "homeserver": "https://matrix.org",
-        "bot_user_id": None,
-        "password": "password123",
-    }
-
-    result = _can_auto_create_credentials(config)
-    assert result is False
-
-    config = {
-        "homeserver": "https://matrix.org",
-        "bot_user_id": "@bot:matrix.org",
-        "password": None,
-    }
-
-    result = _can_auto_create_credentials(config)
-    assert result is False
-
-
-def test_can_auto_create_credentials_missing_user_id():
-    """
-    Test _can_auto_create_credentials returns False when user_id is missing.
-    """
-    config = {"homeserver": "https://matrix.org", "password": "password123"}
-
-    result = _can_auto_create_credentials(config)
-    assert result is False
-
-
-def test_can_auto_create_credentials_missing_password():
-    """
-    Test _can_auto_create_credentials returns False when password is missing.
-    """
-    config = {"homeserver": "https://matrix.org", "bot_user_id": "@bot:matrix.org"}
-
-    result = _can_auto_create_credentials(config)
-    assert result is False
-
-
-def test_can_auto_create_credentials_empty_values():
-    """
-    Test _can_auto_create_credentials returns False when values are empty strings.
-    """
-    config = {
-        "homeserver": "",
-        "bot_user_id": "@bot:matrix.org",
-        "password": "password123",
-    }
-
-    result = _can_auto_create_credentials(config)
-    assert result is False
-
-    config = {
-        "homeserver": "https://matrix.org",
-        "bot_user_id": "",
-        "password": "password123",
-    }
-
-    result = _can_auto_create_credentials(config)
-    assert result is False
-
-    config = {
-        "homeserver": "https://matrix.org",
-        "bot_user_id": "@bot:matrix.org",
-        "password": "",
-    }
-
-    result = _can_auto_create_credentials(config)
-    assert result is False
-
-
-def test_can_auto_create_credentials_whitespace_values():
-    """
-    Test _can_auto_create_credentials returns False when values contain only whitespace.
-    """
-    config = {
-        "homeserver": "   ",
-        "bot_user_id": "@bot:matrix.org",
-        "password": "password123",
-    }
-
-    result = _can_auto_create_credentials(config)
-    assert result is False
-
-
-def test_can_auto_create_credentials_none_values():
-    """
-    Test _can_auto_create_credentials returns False when values are None.
-    """
-    config = {
-        "homeserver": None,
-        "bot_user_id": "@bot:matrix.org",
-        "password": "password123",
-    }
-
-    result = _can_auto_create_credentials(config)
-    assert result is False
-
-    config = {
-        "homeserver": "https://matrix.org",
-        "bot_user_id": None,
-        "password": "password123",
-    }
-
-    result = _can_auto_create_credentials(config)
-    assert result is False
-
-    config = {
-        "homeserver": "https://matrix.org",
-        "bot_user_id": "@bot:matrix.org",
-        "password": None,
-    }
-
-    result = _can_auto_create_credentials(config)
-    assert result is False
-
-
-def test_can_auto_create_credentials_alternative_user_id_field():
-    """
-    Test _can_auto_create_credentials works with user_id field as fallback.
-    """
-    config = {
-        "homeserver": "https://matrix.org",
-        "user_id": "@bot:matrix.org",  # Alternative field
-        "password": "password123",
-    }
-
-    result = _can_auto_create_credentials(config)
-    assert result is True
-
-
-def test_normalize_bot_user_id_malformed_homeserver():
-    """
-    Test _normalize_bot_user_id handles malformed homeserver URLs gracefully.
-    """
-    # Test with malformed URL that still extracts hostname
-    homeserver = "not-a-url"
-    bot_user_id = "bot"
-
-    result = _normalize_bot_user_id(homeserver, bot_user_id)
-    assert result == "@bot:not-a-url"
-
-
-def test_normalize_bot_user_id_with_at_and_colon():
-    """
-    Test _normalize_bot_user_id handles usernames with multiple @ and : characters.
-    """
-    homeserver = "https://example.com"
-    bot_user_id = "@user:with:extra@chars"
-
-    result = _normalize_bot_user_id(homeserver, bot_user_id)
-    # Should preserve the part after first @ and before first :
-    assert result == "@user:chars"
-
-
-def test_normalize_bot_user_id_unicode_characters():
-    """
-    Test _normalize_bot_user_id handles unicode characters in username and server.
-    """
-    homeserver = "https://测试.example.com"
-    bot_user_id = "用户名"
-
-    result = _normalize_bot_user_id(homeserver, bot_user_id)
-    assert result == "@用户名:测试.example.com"
-
-
-def test_normalize_bot_user_id_homeserver_with_path():
-    """
-    Test _normalize_bot_user_id extracts hostname from homeserver with path.
-    """
-    homeserver = "https://example.com/some/path"
-    bot_user_id = "bot"
-
-    result = _normalize_bot_user_id(homeserver, bot_user_id)
-    assert result == "@bot:example.com"
-
-
-def test_normalize_bot_user_id_homeserver_with_query():
-    """
-    Test _normalize_bot_user_id extracts hostname from homeserver with query params.
-    """
-    homeserver = "https://example.com?param=value"
-    bot_user_id = "bot"
-
-    result = _normalize_bot_user_id(homeserver, bot_user_id)
-    assert result == "@bot:example.com"
-
-
-def test_normalize_bot_user_id_homeserver_with_fragment():
-    """
-    Test _normalize_bot_user_id extracts hostname from homeserver with fragment.
-    """
-    homeserver = "https://example.com#fragment"
-    bot_user_id = "bot"
-
-    result = _normalize_bot_user_id(homeserver, bot_user_id)
-    assert result == "@bot:example.com"
-
-
-async def test_connect_matrix_e2ee_missing_olm_dependency():
-    """
-    Test connect_matrix handles missing python-olm dependency gracefully.
-    """
-    config = {
-        "matrix": {
-            "homeserver": "https://matrix.org",
-            "access_token": "test_token",
-            "bot_user_id": "@bot:matrix.org",
-            "encryption": {"enabled": True},
-        },
-        "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
-    }
-
-    with (
-        patch("mmrelay.matrix_utils.matrix_client", None),
-        patch("mmrelay.matrix_utils.AsyncClient") as mock_async_client,
-        patch("mmrelay.matrix_utils.logger") as mock_logger,
-        patch("mmrelay.matrix_utils._create_ssl_context") as mock_ssl_context,
-        patch("mmrelay.matrix_utils.importlib.import_module") as mock_import,
-    ):
-        # Mock SSL context creation
-        mock_ssl_context.return_value = MagicMock()
-
-        # Mock importlib to raise ImportError for olm
-        def mock_import_side_effect(module_name):
-            if module_name == "olm":
-                raise ImportError("No module named 'olm'")
-            return MagicMock()
-
-        mock_import.side_effect = mock_import_side_effect
-
-        # Mock AsyncClient instance
-        mock_client_instance = MagicMock()
-        mock_client_instance.rooms = {}
-
-        async def mock_sync(*args, **kwargs):
-            return MagicMock()
-
-        async def mock_get_displayname(*args, **kwargs):
-            return MagicMock(displayname="Test Bot")
-
-        mock_client_instance.sync = mock_sync
-        mock_client_instance.get_displayname = mock_get_displayname
-        mock_async_client.return_value = mock_client_instance
-
-        result = await connect_matrix(config)
-
-        # Should still create client but with E2EE disabled
-        assert result == mock_client_instance
-        # Should log warning about missing olm
-        mock_logger.warning.assert_any_call(
-            "E2EE is enabled in config but python-olm is not installed."
-        )
-
-
 async def test_connect_matrix_e2ee_missing_nio_crypto():
     """
-    Test connect_matrix handles missing nio.crypto module gracefully.
+    Test connect_matrix handles missing nio.crypto.OlmDevice gracefully.
     """
+    import os
+
+    os.environ["MMRELAY_TESTING"] = "0"
+
     config = {
         "matrix": {
             "homeserver": "https://matrix.org",
@@ -4907,9 +4697,6 @@ async def test_connect_matrix_e2ee_missing_nio_crypto():
         patch("mmrelay.matrix_utils._create_ssl_context") as mock_ssl_context,
         patch("mmrelay.matrix_utils.importlib.import_module") as mock_import,
     ):
-        # Mock SSL context creation
-        mock_ssl_context.return_value = MagicMock()
-
         # Mock importlib to simulate missing nio.crypto
         def mock_import_side_effect(module_name):
             if module_name == "olm":
@@ -4949,6 +4736,10 @@ async def test_connect_matrix_e2ee_missing_sqlite_store():
     """
     Test connect_matrix handles missing nio.store.SqliteStore gracefully.
     """
+    import os
+
+    os.environ["MMRELAY_TESTING"] = "0"
+
     config = {
         "matrix": {
             "homeserver": "https://matrix.org",
@@ -4966,9 +4757,6 @@ async def test_connect_matrix_e2ee_missing_sqlite_store():
         patch("mmrelay.matrix_utils._create_ssl_context") as mock_ssl_context,
         patch("mmrelay.matrix_utils.importlib.import_module") as mock_import,
     ):
-        # Mock SSL context creation
-        mock_ssl_context.return_value = MagicMock()
-
         # Mock importlib to simulate missing nio.store.SqliteStore
         def mock_import_side_effect(module_name):
             if module_name == "olm":
@@ -5188,6 +4976,54 @@ def test_display_room_channel_mappings_no_config():
         _display_room_channel_mappings(rooms, config, e2ee_status)
 
         mock_logger.info.assert_called_with("No matrix_rooms configuration found")
+
+
+def test_display_room_channel_mappings_dict_config():
+    """Test _display_room_channel_mappings with dict format matrix_rooms config."""
+
+    rooms = {
+        "!room1:matrix.org": MagicMock(display_name="Room 1", encrypted=False),
+    }
+    config = {
+        "matrix_rooms": {
+            "room1": {"id": "!room1:matrix.org", "meshtastic_channel": 0},
+        }
+    }
+    e2ee_status = {"overall_status": "ready"}
+
+    with patch("mmrelay.matrix_utils.logger") as mock_logger:
+        _display_room_channel_mappings(rooms, config, e2ee_status)
+
+        expected_calls = [
+            call("Matrix Rooms → Meshtastic Channels (1 configured):"),
+            call("  Channel 0:"),
+            call("    ✅ Room 1"),
+        ]
+        mock_logger.info.assert_has_calls(expected_calls)
+
+
+def test_display_room_channel_mappings_no_display_name():
+    """Test _display_room_channel_mappings with rooms lacking display_name."""
+
+    rooms = {
+        "!room1:matrix.org": MagicMock(spec=["encrypted"]),  # No display_name
+    }
+    config = {
+        "matrix_rooms": [
+            {"id": "!room1:matrix.org", "meshtastic_channel": 0},
+        ]
+    }
+    e2ee_status = {"overall_status": "ready"}
+
+    with patch("mmrelay.matrix_utils.logger") as mock_logger:
+        _display_room_channel_mappings(rooms, config, e2ee_status)
+
+        expected_calls = [
+            call("Matrix Rooms → Meshtastic Channels (1 configured):"),
+            call("  Channel 0:"),
+            call("    🔒 !room1:matrix.org"),  # Should fall back to room_id
+        ]
+        mock_logger.info.assert_has_calls(expected_calls)
 
 
 def test_get_e2ee_error_message():
@@ -5497,6 +5333,40 @@ class TestUncoveredMatrixUtils(unittest.TestCase):
         result = _get_detailed_sync_error_message(mock_response3)
         self.assertEqual(result, "Rate limited - too many requests")
 
+    def test_get_detailed_sync_error_message_transport_response(self):
+        """Test _get_detailed_sync_error_message with transport_response."""
+        from mmrelay.matrix_utils import _get_detailed_sync_error_message
+
+        # Test with transport_response having status_code
+        mock_response = MagicMock()
+        mock_response.message = None
+        mock_response.status_code = None
+        mock_response.transport_response = MagicMock()
+        mock_response.transport_response.status_code = 502
+
+        result = _get_detailed_sync_error_message(mock_response)
+        self.assertEqual(result, "Transport error: HTTP 502")
+
+    def test_get_detailed_sync_error_message_string_fallback(self):
+        """Test _get_detailed_sync_error_message string fallback."""
+        from mmrelay.matrix_utils import _get_detailed_sync_error_message
+
+        # Test with string that has object repr
+        result = _get_detailed_sync_error_message("<object at 0x123>")
+        self.assertEqual(result, "Network connectivity issue or server unreachable")
+
+        # Test with HTML-like content
+        result = _get_detailed_sync_error_message("<html>Error</html>")
+        self.assertEqual(result, "Network connectivity issue or server unreachable")
+
+        # Test with "unknown error"
+        result = _get_detailed_sync_error_message("Unknown error occurred")
+        self.assertEqual(result, "Network connectivity issue or server unreachable")
+
+        # Test with normal string
+        result = _get_detailed_sync_error_message("Some error message")
+        self.assertEqual(result, "Some error message")
+
     @patch("mmrelay.matrix_utils.logger")
     def test_update_room_id_in_mapping_list(self, mock_logger):
         """Test _update_room_id_in_mapping with list input."""
@@ -5549,3 +5419,173 @@ class TestUncoveredMatrixUtils(unittest.TestCase):
         )
 
         self.assertFalse(result)
+
+
+@pytest.mark.asyncio
+async def test_handle_detection_sensor_packet_broadcast_disabled():
+    """Test _handle_detection_sensor_packet when broadcast is disabled."""
+    config = {"meshtastic": {"broadcast_enabled": False}}
+    room_config = {"meshtastic_channel": 0}
+    full_display_name = "Test User"
+    text = "Test message"
+
+    with patch("mmrelay.matrix_utils.get_meshtastic_config_value") as mock_get_config:
+        mock_get_config.return_value = False  # broadcast_enabled
+
+        await _handle_detection_sensor_packet(
+            config, room_config, full_display_name, text
+        )
+
+        # Should not attempt to connect or send
+        mock_get_config.assert_called()
+
+
+@pytest.mark.asyncio
+async def test_handle_detection_sensor_packet_detection_disabled():
+    """Test _handle_detection_sensor_packet when detection is disabled."""
+    config = {"meshtastic": {"broadcast_enabled": True, "detection_sensor": False}}
+    room_config = {"meshtastic_channel": 0}
+    full_display_name = "Test User"
+    text = "Test message"
+
+    with patch("mmrelay.matrix_utils.get_meshtastic_config_value") as mock_get_config:
+        mock_get_config.side_effect = [
+            True,
+            False,
+        ]  # broadcast_enabled, detection_sensor
+
+        await _handle_detection_sensor_packet(
+            config, room_config, full_display_name, text
+        )
+
+        # Should not attempt to connect or send
+        assert mock_get_config.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_handle_detection_sensor_packet_connect_fail():
+    """Test _handle_detection_sensor_packet when Meshtastic connection fails."""
+    config = {"meshtastic": {"broadcast_enabled": True, "detection_sensor": True}}
+    room_config = {"meshtastic_channel": 0}
+    full_display_name = "Test User"
+    text = "Test message"
+
+    with (
+        patch("mmrelay.matrix_utils.get_meshtastic_config_value") as mock_get_config,
+        patch("mmrelay.matrix_utils._connect_meshtastic") as mock_connect,
+    ):
+        mock_get_config.side_effect = [
+            True,
+            True,
+        ]  # broadcast_enabled, detection_sensor
+        mock_connect.return_value = None  # Connection fails
+
+        await _handle_detection_sensor_packet(
+            config, room_config, full_display_name, text
+        )
+
+        mock_connect.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_handle_detection_sensor_packet_missing_channel():
+    """Test _handle_detection_sensor_packet when meshtastic_channel is missing."""
+    config = {"meshtastic": {"broadcast_enabled": True, "detection_sensor": True}}
+    room_config = {}  # No meshtastic_channel
+    full_display_name = "Test User"
+    text = "Test message"
+
+    mock_interface = MagicMock()
+
+    with (
+        patch("mmrelay.matrix_utils.get_meshtastic_config_value") as mock_get_config,
+        patch("mmrelay.matrix_utils._connect_meshtastic") as mock_connect,
+    ):
+        mock_get_config.side_effect = [True, True]
+        mock_connect.return_value = mock_interface
+
+        await _handle_detection_sensor_packet(
+            config, room_config, full_display_name, text
+        )
+
+        mock_connect.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_handle_detection_sensor_packet_invalid_channel():
+    """Test _handle_detection_sensor_packet when meshtastic_channel is invalid."""
+    config = {"meshtastic": {"broadcast_enabled": True, "detection_sensor": True}}
+    room_config = {"meshtastic_channel": -1}  # Invalid channel
+    full_display_name = "Test User"
+    text = "Test message"
+
+    mock_interface = MagicMock()
+
+    with (
+        patch("mmrelay.matrix_utils.get_meshtastic_config_value") as mock_get_config,
+        patch("mmrelay.matrix_utils._connect_meshtastic") as mock_connect,
+    ):
+        mock_get_config.side_effect = [True, True]
+        mock_connect.return_value = mock_interface
+
+        await _handle_detection_sensor_packet(
+            config, room_config, full_display_name, text
+        )
+
+        mock_connect.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_handle_detection_sensor_packet_success():
+    """Test _handle_detection_sensor_packet successful relay."""
+    config = {"meshtastic": {"broadcast_enabled": True, "detection_sensor": True}}
+    room_config = {"meshtastic_channel": 0}
+    full_display_name = "Test User"
+    text = "Test message"
+
+    mock_interface = MagicMock()
+    mock_queue = MagicMock()
+    mock_queue.get_queue_size.return_value = 1
+
+    with (
+        patch("mmrelay.matrix_utils.get_meshtastic_config_value") as mock_get_config,
+        patch("mmrelay.matrix_utils._connect_meshtastic") as mock_connect,
+        patch("mmrelay.matrix_utils.queue_message") as mock_queue_message,
+        patch("mmrelay.matrix_utils.get_message_queue") as mock_get_queue,
+    ):
+        mock_get_config.side_effect = [True, True]
+        mock_connect.return_value = mock_interface
+        mock_queue_message.return_value = True
+        mock_get_queue.return_value = mock_queue
+
+        await _handle_detection_sensor_packet(
+            config, room_config, full_display_name, text
+        )
+
+        mock_queue_message.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_handle_detection_sensor_packet_queue_fail():
+    """Test _handle_detection_sensor_packet when queue_message fails."""
+    config = {"meshtastic": {"broadcast_enabled": True, "detection_sensor": True}}
+    room_config = {"meshtastic_channel": 0}
+    full_display_name = "Test User"
+    text = "Test message"
+
+    mock_interface = MagicMock()
+
+    with (
+        patch("mmrelay.matrix_utils.get_meshtastic_config_value") as mock_get_config,
+        patch("mmrelay.matrix_utils._connect_meshtastic") as mock_connect,
+        patch("mmrelay.matrix_utils.queue_message") as mock_queue_message,
+    ):
+        mock_get_config.side_effect = [True, True]
+        mock_connect.return_value = mock_interface
+        mock_queue_message.return_value = False  # Queue fails
+
+        await _handle_detection_sensor_packet(
+            config, room_config, full_display_name, text
+        )
+
+        mock_queue_message.assert_called_once()
