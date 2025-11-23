@@ -3382,8 +3382,13 @@ async def upload_image(
         # Convert nio communication exceptions to an UploadError-like instance
         logger.exception("Image upload failed due to a network error")
         try:
-            upload_error = UploadError(str(e), "")
-        except (NameError, TypeError, Exception):
+            upload_error = UploadError(str(e))
+            # Ensure status_code attribute exists for callers/tests
+            if not hasattr(upload_error, "status_code"):
+                upload_error.status_code = ""
+            elif getattr(upload_error, "status_code") is None:
+                upload_error.status_code = ""
+        except Exception:
             upload_error = SimpleNamespace(message=str(e), status_code="")
         return upload_error
     else:
