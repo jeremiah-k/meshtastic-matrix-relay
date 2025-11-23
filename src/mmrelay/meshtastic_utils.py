@@ -191,6 +191,9 @@ def _make_awaitable(future, loop: asyncio.AbstractEventLoop | None = None):
     If the input is already awaitable, it is returned unchanged. Otherwise, the object is
     wrapped with asyncio.wrap_future using the supplied loop (when provided) so that
     concurrent.futures.Future instances can be awaited safely on the intended event loop.
+
+    Callers should always pass the loop they scheduled work on to ensure proper event loop
+    handling. The fallback get_running_loop()/new-loop path is purely defensive.
     """
     if hasattr(future, "__await__"):
         return future
@@ -210,6 +213,9 @@ def _wait_for_result(
     .result(timeout) API (used in tests). Where a running event loop is available, the
     coroutine is scheduled thread-safely; otherwise, the provided loop (or a temporary
     one) is driven with run_until_complete.
+
+    Callers should always pass the loop they scheduled work on to ensure proper event loop
+    handling. The fallback get_running_loop()/new-loop path is purely defensive.
     """
     if result_future is None:
         return False

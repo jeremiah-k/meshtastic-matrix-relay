@@ -469,26 +469,26 @@ def _get_msgs_to_keep_config():
     return msg_map_config.get("msgs_to_keep", DEFAULT_MSGS_TO_KEEP)
 
 
-def _get_detailed_sync_error_message(sync_response) -> str:
+def _get_detailed_matrix_error_message(matrix_response) -> str:
     """
-    Summarize a Matrix sync error or response into a short, user-facing message.
+    Summarize a Matrix error or response into a short, user-facing message.
 
     Parameters:
-        sync_response: The sync response or error to summarize. May be bytes/bytearray, a nio ErrorResponse-like object, an HTTP/transport error, or any object exposing `message`, `status_code`, or `transport_response`.
+        matrix_response: The Matrix response or error to summarize. May be bytes/bytearray, a nio ErrorResponse-like object, an HTTP/transport error, or any object exposing `message`, `status_code`, or `transport_response`. Not limited to sync errors - can handle any nio response/error object.
 
     Returns:
         A short, actionable error description (e.g., authentication failure, forbidden, rate limited, server error, or a generic network/connectivity message).
     """
     try:
         # Handle bytes/bytearray types by converting to string
-        if isinstance(sync_response, (bytes, bytearray)):
+        if isinstance(matrix_response, (bytes, bytearray)):
             try:
-                sync_response = sync_response.decode("utf-8")
+                matrix_response = matrix_response.decode("utf-8")
             except UnicodeDecodeError:
                 return "Network connectivity issue or server unreachable (binary data)"
 
         # Try to extract specific error information
-        message_attr = getattr(sync_response, "message", None)
+        message_attr = getattr(matrix_response, "message", None)
         if message_attr:
             message = message_attr
             # Handle if message is bytes/bytearray
@@ -498,7 +498,7 @@ def _get_detailed_sync_error_message(sync_response) -> str:
                 except UnicodeDecodeError:
                     return "Network connectivity issue or server unreachable"
             return message
-        status_code_attr = getattr(sync_response, "status_code", None)
+        status_code_attr = getattr(matrix_response, "status_code", None)
         if status_code_attr:
             status_code = status_code_attr
             # Handle if status_code is not an int
@@ -519,9 +519,9 @@ def _get_detailed_sync_error_message(sync_response) -> str:
                 return f"Server error (HTTP {status_code}) - the Matrix server is experiencing issues"
             else:
                 return f"HTTP error {status_code}"
-        elif hasattr(sync_response, "transport_response"):
+        elif hasattr(matrix_response, "transport_response"):
             # Check for transport-level errors
-            transport = getattr(sync_response, "transport_response", None)
+            transport = getattr(matrix_response, "transport_response", None)
             if transport and hasattr(transport, "status_code"):
                 try:
                     status_code = int(getattr(transport, "status_code"))
@@ -531,7 +531,7 @@ def _get_detailed_sync_error_message(sync_response) -> str:
 
         # Fallback to string representation with safety checks
         try:
-            error_str = str(sync_response)
+            error_str = str(matrix_response)
         except Exception:
             return "Network connectivity issue or server unreachable"
 
@@ -552,7 +552,7 @@ def _get_detailed_sync_error_message(sync_response) -> str:
 
     except (AttributeError, ValueError, TypeError) as e:
         logger.debug(
-            "Failed to extract sync error details from %r: %s", sync_response, e
+            "Failed to extract matrix error details from %r: %s", matrix_response, e
         )
         # If we can't extract error details, provide a generic but helpful message
         return (
@@ -1289,7 +1289,7 @@ async def connect_matrix(passed_config=None):
             device_id_for_restore = cast(Any, e2ee_device_id)
             matrix_client.restore_login(
                 user_id=bot_user_id or "",
-                device_id=device_id_for_restore or "",
+                device_id=device_id_for_restore,
                 access_token=matrix_access_token,
             )
             logger.info(
@@ -1325,11 +1325,12 @@ async def connect_matrix(passed_config=None):
 
                     # Reload login and E2EE store now that we have a device_id.
                     # matrix-nio requires a concrete device_id for restore_login; None is not supported.
-                    matrix_client.restore_login(
-                        user_id=bot_user_id or "",
-                        device_id=e2ee_device_id or "",
-                        access_token=matrix_access_token,
-                    )
+                    if e2ee_device_id:
+                        matrix_client.restore_login(
+                            user_id=bot_user_id or "",
+                            device_id=e2ee_device_id,
+                            access_token=matrix_access_token,
+                        )
                     logger.info(
                         f"Restored login session for {bot_user_id} with device {e2ee_device_id}"
                     )
@@ -1373,7 +1374,7 @@ async def connect_matrix(passed_config=None):
         ):
             # Provide more detailed error information
             error_type = sync_response.__class__.__name__
-            error_details = _get_detailed_sync_error_message(sync_response)
+            error_details = _get_detailed_matrix_error_message(sync_response)
             logger.error(f"Initial sync failed: {error_type}")
             logger.error(f"Error details: {error_details}")
 
@@ -2000,7 +2001,7 @@ async def login_matrix_bot(
         try:
             if client:
                 await client.close()
-        except Exception as cleanup_e:
+        except (OSError, RuntimeError, ConnectionError) as cleanup_e:
             # Ignore errors during client cleanup - connection may already be closed
             logger.debug(f"Ignoring error during client cleanup: {cleanup_e}")
         return False

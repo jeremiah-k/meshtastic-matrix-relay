@@ -141,6 +141,7 @@ class TestConstantsValidity:
         assert messages.DEFAULT_LOG_BACKUP_COUNT >= 0
         assert messages.LOG_SIZE_BYTES_MULTIPLIER == 1024 * 1024
         assert messages.PORTNUM_TEXT_MESSAGE_APP >= 0
+        assert messages.PORTNUM_DETECTION_SENSOR_APP >= 0
         assert messages.DEFAULT_CHANNEL_VALUE >= 0
 
         # EMOJI_FLAG_VALUE is in formats module, not messages

@@ -16,7 +16,7 @@ from mmrelay.matrix_utils import (
     _can_auto_create_credentials,
     _create_mapping_info,
     _display_room_channel_mappings,
-    _get_detailed_sync_error_message,
+    _get_detailed_matrix_error_message,
     _get_e2ee_error_message,
     _get_msgs_to_keep_config,
     _get_valid_device_id,
@@ -4166,14 +4166,14 @@ class TestMatrixE2EEHasAttrChecks:
 
 
 class TestGetDetailedSyncErrorMessage:
-    """Test cases for _get_detailed_sync_error_message function."""
+    """Test cases for _get_detailed_matrix_error_message function."""
 
     def test_sync_error_with_message_string(self):
         """Test error response with string message."""
         mock_response = MagicMock()
         mock_response.message = "Connection failed"
 
-        result = _get_detailed_sync_error_message(mock_response)
+        result = _get_detailed_matrix_error_message(mock_response)
         assert result == "Connection failed"
 
     def test_sync_error_with_status_code_401(self):
@@ -4183,7 +4183,7 @@ class TestGetDetailedSyncErrorMessage:
         mock_response.message = None
         mock_response.status_code = 401
 
-        result = _get_detailed_sync_error_message(mock_response)
+        result = _get_detailed_matrix_error_message(mock_response)
         assert result == "Authentication failed - invalid or expired credentials"
 
     def test_sync_error_with_status_code_403(self):
@@ -4192,7 +4192,7 @@ class TestGetDetailedSyncErrorMessage:
         mock_response.message = None
         mock_response.status_code = 403
 
-        result = _get_detailed_sync_error_message(mock_response)
+        result = _get_detailed_matrix_error_message(mock_response)
         assert result == "Access forbidden - check user permissions"
 
     def test_sync_error_with_status_code_404(self):
@@ -4201,7 +4201,7 @@ class TestGetDetailedSyncErrorMessage:
         mock_response.message = None
         mock_response.status_code = 404
 
-        result = _get_detailed_sync_error_message(mock_response)
+        result = _get_detailed_matrix_error_message(mock_response)
         assert result == "Server not found - check homeserver URL"
 
     def test_sync_error_with_status_code_429(self):
@@ -4210,7 +4210,7 @@ class TestGetDetailedSyncErrorMessage:
         mock_response.message = None
         mock_response.status_code = 429
 
-        result = _get_detailed_sync_error_message(mock_response)
+        result = _get_detailed_matrix_error_message(mock_response)
         assert result == "Rate limited - too many requests"
 
     def test_sync_error_with_status_code_500(self):
@@ -4219,7 +4219,7 @@ class TestGetDetailedSyncErrorMessage:
         mock_response.message = None
         mock_response.status_code = 500
 
-        result = _get_detailed_sync_error_message(mock_response)
+        result = _get_detailed_matrix_error_message(mock_response)
         assert (
             result
             == "Server error (HTTP 500) - the Matrix server is experiencing issues"
@@ -4229,14 +4229,14 @@ class TestGetDetailedSyncErrorMessage:
         """Test error response as raw bytes."""
         response_bytes = b"Server error"
 
-        result = _get_detailed_sync_error_message(response_bytes)
+        result = _get_detailed_matrix_error_message(response_bytes)
         assert result == "Server error"
 
     def test_sync_error_with_bytes_invalid_utf8(self):
         """Test error response as invalid UTF-8 bytes."""
         response_bytes = b"\xff\xfe\xfd"
 
-        result = _get_detailed_sync_error_message(response_bytes)
+        result = _get_detailed_matrix_error_message(response_bytes)
         assert (
             result == "Network connectivity issue or server unreachable (binary data)"
         )
@@ -4245,7 +4245,7 @@ class TestGetDetailedSyncErrorMessage:
         """Test error response as bytearray."""
         response_bytes = bytearray(b"Server error")
 
-        result = _get_detailed_sync_error_message(response_bytes)
+        result = _get_detailed_matrix_error_message(response_bytes)
         assert result == "Server error"
 
     def test_sync_error_fallback_generic(self):
@@ -4259,11 +4259,11 @@ class TestGetDetailedSyncErrorMessage:
             side_effect=Exception("String conversion failed")
         )
 
-        result = _get_detailed_sync_error_message(mock_response)
+        result = _get_detailed_matrix_error_message(mock_response)
         assert result == "Network connectivity issue or server unreachable"
 
-    def test_get_detailed_sync_error_message_transport_response(self):
-        """Test _get_detailed_sync_error_message with transport_response."""
+    def test_get_detailed_matrix_error_message_transport_response(self):
+        """Test _get_detailed_matrix_error_message with transport_response."""
         # Test with transport_response having status_code
         mock_response = MagicMock()
         mock_response.message = None
@@ -4271,25 +4271,25 @@ class TestGetDetailedSyncErrorMessage:
         mock_response.transport_response = MagicMock()
         mock_response.transport_response.status_code = 502
 
-        result = _get_detailed_sync_error_message(mock_response)
+        result = _get_detailed_matrix_error_message(mock_response)
         assert result == "Transport error: HTTP 502"
 
-    def test_get_detailed_sync_error_message_string_fallback(self):
-        """Test _get_detailed_sync_error_message string fallback."""
+    def test_get_detailed_matrix_error_message_string_fallback(self):
+        """Test _get_detailed_matrix_error_message string fallback."""
         # Test with string that has object repr
-        result = _get_detailed_sync_error_message("<object at 0x123>")
+        result = _get_detailed_matrix_error_message("<object at 0x123>")
         assert result == "Network connectivity issue or server unreachable"
 
         # Test with HTML-like content
-        result = _get_detailed_sync_error_message("<html>Error</html>")
+        result = _get_detailed_matrix_error_message("<html>Error</html>")
         assert result == "Network connectivity issue or server unreachable"
 
         # Test with "unknown error"
-        result = _get_detailed_sync_error_message("Unknown error occurred")
+        result = _get_detailed_matrix_error_message("Unknown error occurred")
         assert result == "Network connectivity issue or server unreachable"
 
         # Test with normal string
-        result = _get_detailed_sync_error_message("Some error message")
+        result = _get_detailed_matrix_error_message("Some error message")
         assert result == "Some error message"
 
 
@@ -5294,48 +5294,48 @@ class TestUncoveredMatrixUtils(unittest.TestCase):
         self.assertEqual(result4, "")
 
     @patch("mmrelay.matrix_utils.logger")
-    def test_get_detailed_sync_error_message_bytes(self, mock_logger):
-        """Test _get_detailed_sync_error_message with bytes input."""
-        from mmrelay.matrix_utils import _get_detailed_sync_error_message
+    def test_get_detailed_matrix_error_message_bytes(self, mock_logger):
+        """Test _get_detailed_matrix_error_message with bytes input."""
+        from mmrelay.matrix_utils import _get_detailed_matrix_error_message
 
         # Test with valid UTF-8 bytes
-        result = _get_detailed_sync_error_message(b"Error message")
+        result = _get_detailed_matrix_error_message(b"Error message")
         self.assertEqual(result, "Error message")
 
         # Test with invalid UTF-8 bytes
-        result = _get_detailed_sync_error_message(b"\xff\xfe\xfd")
+        result = _get_detailed_matrix_error_message(b"\xff\xfe\xfd")
         self.assertEqual(
             result, "Network connectivity issue or server unreachable (binary data)"
         )
 
     @patch("mmrelay.matrix_utils.logger")
-    def test_get_detailed_sync_error_message_object_attributes(self, mock_logger):
-        """Test _get_detailed_sync_error_message with object having attributes."""
-        from mmrelay.matrix_utils import _get_detailed_sync_error_message
+    def test_get_detailed_matrix_error_message_object_attributes(self, mock_logger):
+        """Test _get_detailed_matrix_error_message with object having attributes."""
+        from mmrelay.matrix_utils import _get_detailed_matrix_error_message
 
         # Test with message attribute
         mock_response = MagicMock()
         mock_response.message = "Custom error message"
-        result = _get_detailed_sync_error_message(mock_response)
+        result = _get_detailed_matrix_error_message(mock_response)
         self.assertEqual(result, "Custom error message")
 
         # Test with status_code attribute only (no message)
         mock_response2 = MagicMock()
         mock_response2.message = None  # No message
         mock_response2.status_code = 404
-        result = _get_detailed_sync_error_message(mock_response2)
+        result = _get_detailed_matrix_error_message(mock_response2)
         self.assertEqual(result, "Server not found - check homeserver URL")
 
         # Test with status_code 429 only
         mock_response3 = MagicMock()
         mock_response3.message = None  # No message
         mock_response3.status_code = 429
-        result = _get_detailed_sync_error_message(mock_response3)
+        result = _get_detailed_matrix_error_message(mock_response3)
         self.assertEqual(result, "Rate limited - too many requests")
 
-    def test_get_detailed_sync_error_message_transport_response(self):
-        """Test _get_detailed_sync_error_message with transport_response."""
-        from mmrelay.matrix_utils import _get_detailed_sync_error_message
+    def test_get_detailed_matrix_error_message_transport_response(self):
+        """Test _get_detailed_matrix_error_message with transport_response."""
+        from mmrelay.matrix_utils import _get_detailed_matrix_error_message
 
         # Test with transport_response having status_code
         mock_response = MagicMock()
@@ -5344,27 +5344,27 @@ class TestUncoveredMatrixUtils(unittest.TestCase):
         mock_response.transport_response = MagicMock()
         mock_response.transport_response.status_code = 502
 
-        result = _get_detailed_sync_error_message(mock_response)
+        result = _get_detailed_matrix_error_message(mock_response)
         self.assertEqual(result, "Transport error: HTTP 502")
 
-    def test_get_detailed_sync_error_message_string_fallback(self):
-        """Test _get_detailed_sync_error_message string fallback."""
-        from mmrelay.matrix_utils import _get_detailed_sync_error_message
+    def test_get_detailed_matrix_error_message_string_fallback(self):
+        """Test _get_detailed_matrix_error_message string fallback."""
+        from mmrelay.matrix_utils import _get_detailed_matrix_error_message
 
         # Test with string that has object repr
-        result = _get_detailed_sync_error_message("<object at 0x123>")
+        result = _get_detailed_matrix_error_message("<object at 0x123>")
         self.assertEqual(result, "Network connectivity issue or server unreachable")
 
         # Test with HTML-like content
-        result = _get_detailed_sync_error_message("<html>Error</html>")
+        result = _get_detailed_matrix_error_message("<html>Error</html>")
         self.assertEqual(result, "Network connectivity issue or server unreachable")
 
         # Test with "unknown error"
-        result = _get_detailed_sync_error_message("Unknown error occurred")
+        result = _get_detailed_matrix_error_message("Unknown error occurred")
         self.assertEqual(result, "Network connectivity issue or server unreachable")
 
         # Test with normal string
-        result = _get_detailed_sync_error_message("Some error message")
+        result = _get_detailed_matrix_error_message("Some error message")
         self.assertEqual(result, "Some error message")
 
     @patch("mmrelay.matrix_utils.logger")
