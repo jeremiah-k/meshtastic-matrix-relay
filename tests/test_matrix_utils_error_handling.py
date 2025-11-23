@@ -230,7 +230,10 @@ class TestDetailedSyncErrorMessage(unittest.TestCase):
         # Use fake nio module instead of patching isinstance
         result = _get_detailed_matrix_error_message(mock_response)
 
-        self.assertEqual(result, "Network connectivity issue or server unreachable")
+        self.assertEqual(
+            result,
+            "Unable to determine specific error - likely a network connectivity issue",
+        )
 
     def test_exception_during_processing(self):
         """Test handling of exceptions during error message extraction."""
@@ -242,7 +245,7 @@ class TestDetailedSyncErrorMessage(unittest.TestCase):
 
         self.assertEqual(
             result,
-            "Network connectivity issue or server unreachable",
+            "Unable to determine specific error - likely a network connectivity issue",
         )
 
     def test_message_bytes_decode_error(self):
@@ -256,7 +259,7 @@ class TestDetailedSyncErrorMessage(unittest.TestCase):
 
         self.assertEqual(
             result,
-            "Network connectivity issue or server unreachable",
+            "Unable to determine specific error - likely a network connectivity issue",
         )
 
     def test_status_code_conversion_error(self):
@@ -270,7 +273,7 @@ class TestDetailedSyncErrorMessage(unittest.TestCase):
 
         self.assertEqual(
             result,
-            "Network connectivity issue or server unreachable",
+            "Unable to determine specific error - likely a network connectivity issue",
         )
 
 

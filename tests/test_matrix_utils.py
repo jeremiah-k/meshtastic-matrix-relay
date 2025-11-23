@@ -4703,8 +4703,9 @@ async def test_connect_matrix_e2ee_missing_nio_crypto():
                 return MagicMock()  # olm is available
             elif module_name == "nio.crypto":
                 mock_crypto = MagicMock()
+                mock_crypto.OlmDevice = MagicMock()
                 # Remove OlmDevice attribute
-                delattr(mock_crypto, "OlmDevice")
+                del mock_crypto.OlmDevice
                 return mock_crypto
             return MagicMock()
 
@@ -4767,8 +4768,9 @@ async def test_connect_matrix_e2ee_missing_sqlite_store():
                 return mock_crypto
             elif module_name == "nio.store":
                 mock_store = MagicMock()
+                mock_store.SqliteStore = MagicMock()
                 # Remove SqliteStore attribute
-                delattr(mock_store, "SqliteStore")
+                del mock_store.SqliteStore
                 return mock_store
             return MagicMock()
 

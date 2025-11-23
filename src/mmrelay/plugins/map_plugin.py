@@ -283,7 +283,11 @@ class Plugin(BasePlugin):
         if not self.matches(event):
             return False
 
-        from mmrelay.matrix_utils import connect_matrix, send_image
+        from mmrelay.matrix_utils import (
+            ImageUploadError,
+            connect_matrix,
+            send_image,
+        )
         from mmrelay.meshtastic_utils import connect_meshtastic
 
         matrix_client = await connect_matrix()
@@ -340,6 +344,18 @@ class Plugin(BasePlugin):
             radius=radius,
         )
 
-        await send_image(matrix_client, room.room_id, pillow_image, "location.png")
+        try:
+            await send_image(matrix_client, room.room_id, pillow_image, "location.png")
+        except ImageUploadError as exc:
+            self.logger.error(f"Failed to send map image: {exc}")
+            await matrix_client.room_send(
+                room_id=room.room_id,
+                message_type="m.room.message",
+                content={
+                    "msgtype": "m.notice",
+                    "body": "Failed to generate map: Image upload failed.",
+                },
+            )
+            return False
 
         return True

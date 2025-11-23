@@ -1635,7 +1635,7 @@ async def login_matrix_bot(
 
         if not username:
             logger.error("Username normalization failed")
-            return
+            return False
 
         logger.info(f"Using username: {username}")
 
@@ -3369,9 +3369,12 @@ async def upload_image(
             filesize=len(image_data),
         )
     except NIO_COMM_EXCEPTIONS as e:
-        # Convert nio communication exceptions to an UploadError instance
+        # Convert nio communication exceptions to an UploadError-like instance
         logger.exception("Image upload failed due to a network error")
-        upload_error = UploadError(message=str(e), status_code=None)
+        try:
+            upload_error = UploadError(message=str(e), status_code=None)
+        except Exception:
+            upload_error = SimpleNamespace(message=str(e), status_code=None)
         return upload_error
     else:
         return response
