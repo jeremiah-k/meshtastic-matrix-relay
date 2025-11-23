@@ -19,6 +19,7 @@ from mmrelay.matrix_utils import (
     _get_detailed_sync_error_message,
     _get_e2ee_error_message,
     _get_msgs_to_keep_config,
+    _get_valid_device_id,
     _is_room_alias,
     _iter_room_alias_entries,
     _normalize_bot_user_id,
@@ -2657,6 +2658,11 @@ async def test_upload_image_returns_upload_error_on_network_exception():
         def save(self, buffer, _format=None, **kwargs):
             buffer.write(b"pngbytes")
 
+        # Make it compatible with PIL.Image type checking
+        @property
+        def format(self):
+            return "PNG"
+
     mock_client = MagicMock()
     mock_client.upload = AsyncMock(side_effect=asyncio.TimeoutError("boom"))
 
@@ -2671,7 +2677,9 @@ async def test_upload_image_returns_upload_error_on_network_exception():
 
     with patch("mmrelay.matrix_utils.UploadError", side_effect=LocalUploadError):
         result = await upload_image(
-            mock_client, FakeImage(), "photo.png"  # type: ignore[arg-type]
+            mock_client,
+            FakeImage(),  # type: ignore[arg-type]
+            "photo.png",
         )
 
     assert isinstance(result, LocalUploadError)
@@ -2705,7 +2713,10 @@ async def test_on_room_message_emote_reaction_uses_original_event_id(monkeypatch
             self.server_timestamp = 1
 
     mock_event = MockEmote()
-    mock_room = SimpleNamespace(room_id=room_id)
+    mock_room = MagicMock()
+    mock_room.room_id = room_id
+    mock_room.display_name = "Test Room"
+    mock_room.encrypted = False
 
     # Patch globals/config for the handler
     monkeypatch.setattr(
@@ -3906,48 +3917,6 @@ def test_can_auto_create_credentials_success():
     assert result is True
 
 
-def test_can_auto_create_credentials_missing_homeserver():
-    """Test failure when homeserver is missing."""
-    matrix_config = {"bot_user_id": "@bot:example.org", "password": "test_password"}
-
-    result = _can_auto_create_credentials(matrix_config)
-    assert result is False
-
-
-def test_can_auto_create_credentials_missing_user_id():
-    """Test failure when bot_user_id is missing."""
-    matrix_config = {
-        "homeserver": "https://matrix.example.org",
-        "password": "test_password",
-    }
-
-    result = _can_auto_create_credentials(matrix_config)
-    assert result is False
-
-
-def test_can_auto_create_credentials_missing_password():
-    """Test failure when password is missing."""
-    matrix_config = {
-        "homeserver": "https://matrix.example.org",
-        "bot_user_id": "@bot:example.org",
-    }
-
-    result = _can_auto_create_credentials(matrix_config)
-    assert result is False
-
-
-def test_can_auto_create_credentials_empty_values():
-    """Test failure when required fields are empty."""
-    matrix_config = {
-        "homeserver": "",
-        "bot_user_id": "@bot:example.org",
-        "password": "test_password",
-    }
-
-    result = _can_auto_create_credentials(matrix_config)
-    assert result is False
-
-
 def test_can_auto_create_credentials_none_values():
     """Test failure when required fields are None."""
     matrix_config = {
@@ -4524,14 +4493,628 @@ def test_update_room_id_in_mapping_dict_dicts():
 
 
 def test_update_room_id_in_mapping_not_found():
-    """Test _update_room_id_in_mapping returns False when alias not found."""
-    mapping = ["!room1:matrix.org", "!room2:matrix.org"]
+    """
+    Test that _update_room_id_in_mapping returns False when alias is not found in mapping.
+    """
+    mapping = {"#alias1": "room1", "#alias2": "room2"}
 
-    result = _update_room_id_in_mapping(
-        mapping, "!nonexistent:matrix.org", "!new:matrix.org"
-    )
+    result = _update_room_id_in_mapping(mapping, "#nonexistent", "!resolved:matrix.org")
+
     assert result is False
-    assert mapping == ["!room1:matrix.org", "!room2:matrix.org"]
+
+
+def test_iter_room_alias_entries_complex_nested():
+    """
+    Test _iter_room_alias_entries with complex nested structures.
+    """
+    # Test with list containing mixed string and dict entries
+    mapping_list = [
+        "#alias1",
+        {"id": "#alias2", "meshtastic_channel": 1},
+        {"id": "#alias3", "extra": "data"},
+    ]
+
+    entries = list(_iter_room_alias_entries(mapping_list))
+
+    # Should yield 3 entries
+    assert len(entries) == 3
+
+    # Check first entry (string)
+    alias1, setter1 = entries[0]
+    assert alias1 == "#alias1"
+
+    # Check second entry (dict with id)
+    alias2, setter2 = entries[1]
+    assert alias2 == "#alias2"
+
+    # Check third entry (dict with id and extra data)
+    alias3, setter3 = entries[2]
+    assert alias3 == "#alias3"
+
+    # Test setters work correctly
+    setter1("!resolved1")
+    assert mapping_list[0] == "!resolved1"
+
+    setter2("!resolved2")
+    assert mapping_list[1]["id"] == "!resolved2"
+
+    setter3("!resolved3")
+    assert mapping_list[2]["id"] == "!resolved3"
+
+
+def test_iter_room_alias_entries_dict_format():
+    """
+    Test _iter_room_alias_entries with dictionary format.
+    """
+    mapping_dict = {
+        "room1": "#alias1",
+        "room2": {"id": "#alias2", "meshtastic_channel": 1},
+        "room3": {"id": "#alias3", "extra": "data"},
+    }
+
+    entries = list(_iter_room_alias_entries(mapping_dict))
+
+    # Should yield 3 entries
+    assert len(entries) == 3
+
+    # Check entries
+    alias1, setter1 = entries[0]
+    assert alias1 == "#alias1"
+
+    alias2, setter2 = entries[1]
+    assert alias2 == "#alias2"
+
+    alias3, setter3 = entries[2]
+    assert alias3 == "#alias3"
+
+    # Test setters work correctly
+    setter1("!resolved1")
+    assert mapping_dict["room1"] == "!resolved1"
+
+    setter2("!resolved2")
+    assert mapping_dict["room2"]["id"] == "!resolved2"
+
+    setter3("!resolved3")
+    assert mapping_dict["room3"]["id"] == "!resolved3"
+
+
+def test_iter_room_alias_entries_empty_id():
+    """
+    Test _iter_room_alias_entries handles entries without id field.
+    """
+    mapping = [
+        {"meshtastic_channel": 1},  # Missing id
+        {"id": "", "meshtastic_channel": 2},  # Empty id
+        {"id": "#alias3", "meshtastic_channel": 3},  # Valid id
+    ]
+
+    entries = list(_iter_room_alias_entries(mapping))
+
+    # Should yield 3 entries
+    assert len(entries) == 3
+
+    # Check empty id handling
+    alias1, _setter1 = entries[0]
+    assert alias1 == ""
+
+    alias2, _setter2 = entries[1]
+    assert alias2 == ""
+
+    alias3, _setter3 = entries[2]
+    assert alias3 == "#alias3"
+
+
+def test_can_auto_create_credentials_whitespace_values():
+    """
+    Test _can_auto_create_credentials returns False when values contain only whitespace.
+    """
+    config = {
+        "homeserver": "   ",
+        "bot_user_id": "@bot:matrix.org",
+        "password": "password123",
+    }
+
+    result = _can_auto_create_credentials(config)
+    assert result is False
+
+
+def test_can_auto_create_credentials_none_values():
+    """
+    Test _can_auto_create_credentials returns False when values are None.
+    """
+    config = {
+        "homeserver": None,
+        "bot_user_id": "@bot:matrix.org",
+        "password": "password123",
+    }
+
+    result = _can_auto_create_credentials(config)
+    assert result is False
+
+    config = {
+        "homeserver": "https://matrix.org",
+        "bot_user_id": None,
+        "password": "password123",
+    }
+
+    result = _can_auto_create_credentials(config)
+    assert result is False
+
+    config = {
+        "homeserver": "https://matrix.org",
+        "bot_user_id": "@bot:matrix.org",
+        "password": None,
+    }
+
+    result = _can_auto_create_credentials(config)
+    assert result is False
+
+
+def test_can_auto_create_credentials_missing_user_id():
+    """
+    Test _can_auto_create_credentials returns False when user_id is missing.
+    """
+    config = {"homeserver": "https://matrix.org", "password": "password123"}
+
+    result = _can_auto_create_credentials(config)
+    assert result is False
+
+
+def test_can_auto_create_credentials_missing_password():
+    """
+    Test _can_auto_create_credentials returns False when password is missing.
+    """
+    config = {"homeserver": "https://matrix.org", "bot_user_id": "@bot:matrix.org"}
+
+    result = _can_auto_create_credentials(config)
+    assert result is False
+
+
+def test_can_auto_create_credentials_empty_values():
+    """
+    Test _can_auto_create_credentials returns False when values are empty strings.
+    """
+    config = {
+        "homeserver": "",
+        "bot_user_id": "@bot:matrix.org",
+        "password": "password123",
+    }
+
+    result = _can_auto_create_credentials(config)
+    assert result is False
+
+    config = {
+        "homeserver": "https://matrix.org",
+        "bot_user_id": "",
+        "password": "password123",
+    }
+
+    result = _can_auto_create_credentials(config)
+    assert result is False
+
+    config = {
+        "homeserver": "https://matrix.org",
+        "bot_user_id": "@bot:matrix.org",
+        "password": "",
+    }
+
+    result = _can_auto_create_credentials(config)
+    assert result is False
+
+
+def test_can_auto_create_credentials_whitespace_values():
+    """
+    Test _can_auto_create_credentials returns False when values contain only whitespace.
+    """
+    config = {
+        "homeserver": "   ",
+        "bot_user_id": "@bot:matrix.org",
+        "password": "password123",
+    }
+
+    result = _can_auto_create_credentials(config)
+    assert result is False
+
+
+def test_can_auto_create_credentials_none_values():
+    """
+    Test _can_auto_create_credentials returns False when values are None.
+    """
+    config = {
+        "homeserver": None,
+        "bot_user_id": "@bot:matrix.org",
+        "password": "password123",
+    }
+
+    result = _can_auto_create_credentials(config)
+    assert result is False
+
+    config = {
+        "homeserver": "https://matrix.org",
+        "bot_user_id": None,
+        "password": "password123",
+    }
+
+    result = _can_auto_create_credentials(config)
+    assert result is False
+
+    config = {
+        "homeserver": "https://matrix.org",
+        "bot_user_id": "@bot:matrix.org",
+        "password": None,
+    }
+
+    result = _can_auto_create_credentials(config)
+    assert result is False
+
+
+def test_can_auto_create_credentials_alternative_user_id_field():
+    """
+    Test _can_auto_create_credentials works with user_id field as fallback.
+    """
+    config = {
+        "homeserver": "https://matrix.org",
+        "user_id": "@bot:matrix.org",  # Alternative field
+        "password": "password123",
+    }
+
+    result = _can_auto_create_credentials(config)
+    assert result is True
+
+
+def test_normalize_bot_user_id_malformed_homeserver():
+    """
+    Test _normalize_bot_user_id handles malformed homeserver URLs gracefully.
+    """
+    # Test with malformed URL that still extracts hostname
+    homeserver = "not-a-url"
+    bot_user_id = "bot"
+
+    result = _normalize_bot_user_id(homeserver, bot_user_id)
+    assert result == "@bot:not-a-url"
+
+
+def test_normalize_bot_user_id_with_at_and_colon():
+    """
+    Test _normalize_bot_user_id handles usernames with multiple @ and : characters.
+    """
+    homeserver = "https://example.com"
+    bot_user_id = "@user:with:extra@chars"
+
+    result = _normalize_bot_user_id(homeserver, bot_user_id)
+    # Should preserve the part after first @ and before first :
+    assert result == "@user:chars"
+
+
+def test_normalize_bot_user_id_unicode_characters():
+    """
+    Test _normalize_bot_user_id handles unicode characters in username and server.
+    """
+    homeserver = "https://测试.example.com"
+    bot_user_id = "用户名"
+
+    result = _normalize_bot_user_id(homeserver, bot_user_id)
+    assert result == "@用户名:测试.example.com"
+
+
+def test_normalize_bot_user_id_homeserver_with_path():
+    """
+    Test _normalize_bot_user_id extracts hostname from homeserver with path.
+    """
+    homeserver = "https://example.com/some/path"
+    bot_user_id = "bot"
+
+    result = _normalize_bot_user_id(homeserver, bot_user_id)
+    assert result == "@bot:example.com"
+
+
+def test_normalize_bot_user_id_homeserver_with_query():
+    """
+    Test _normalize_bot_user_id extracts hostname from homeserver with query params.
+    """
+    homeserver = "https://example.com?param=value"
+    bot_user_id = "bot"
+
+    result = _normalize_bot_user_id(homeserver, bot_user_id)
+    assert result == "@bot:example.com"
+
+
+def test_normalize_bot_user_id_homeserver_with_fragment():
+    """
+    Test _normalize_bot_user_id extracts hostname from homeserver with fragment.
+    """
+    homeserver = "https://example.com#fragment"
+    bot_user_id = "bot"
+
+    result = _normalize_bot_user_id(homeserver, bot_user_id)
+    assert result == "@bot:example.com"
+
+
+async def test_connect_matrix_e2ee_missing_olm_dependency():
+    """
+    Test connect_matrix handles missing python-olm dependency gracefully.
+    """
+    config = {
+        "matrix": {
+            "homeserver": "https://matrix.org",
+            "access_token": "test_token",
+            "bot_user_id": "@bot:matrix.org",
+            "encryption": {"enabled": True},
+        },
+        "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+    }
+
+    with (
+        patch("mmrelay.matrix_utils.matrix_client", None),
+        patch("mmrelay.matrix_utils.AsyncClient") as mock_async_client,
+        patch("mmrelay.matrix_utils.logger") as mock_logger,
+        patch("mmrelay.matrix_utils._create_ssl_context") as mock_ssl_context,
+        patch("mmrelay.matrix_utils.importlib.import_module") as mock_import,
+    ):
+        # Mock SSL context creation
+        mock_ssl_context.return_value = MagicMock()
+
+        # Mock importlib to raise ImportError for olm
+        def mock_import_side_effect(module_name):
+            if module_name == "olm":
+                raise ImportError("No module named 'olm'")
+            return MagicMock()
+
+        mock_import.side_effect = mock_import_side_effect
+
+        # Mock AsyncClient instance
+        mock_client_instance = MagicMock()
+        mock_client_instance.rooms = {}
+
+        async def mock_sync(*args, **kwargs):
+            return MagicMock()
+
+        async def mock_get_displayname(*args, **kwargs):
+            return MagicMock(displayname="Test Bot")
+
+        mock_client_instance.sync = mock_sync
+        mock_client_instance.get_displayname = mock_get_displayname
+        mock_async_client.return_value = mock_client_instance
+
+        result = await connect_matrix(config)
+
+        # Should still create client but with E2EE disabled
+        assert result == mock_client_instance
+        # Should log warning about missing olm
+        mock_logger.warning.assert_any_call(
+            "E2EE is enabled in config but python-olm is not installed."
+        )
+
+
+async def test_connect_matrix_e2ee_missing_nio_crypto():
+    """
+    Test connect_matrix handles missing nio.crypto module gracefully.
+    """
+    config = {
+        "matrix": {
+            "homeserver": "https://matrix.org",
+            "access_token": "test_token",
+            "bot_user_id": "@bot:matrix.org",
+            "encryption": {"enabled": True},
+        },
+        "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+    }
+
+    with (
+        patch("mmrelay.matrix_utils.matrix_client", None),
+        patch("mmrelay.matrix_utils.AsyncClient") as mock_async_client,
+        patch("mmrelay.matrix_utils.logger") as mock_logger,
+        patch("mmrelay.matrix_utils._create_ssl_context") as mock_ssl_context,
+        patch("mmrelay.matrix_utils.importlib.import_module") as mock_import,
+    ):
+        # Mock SSL context creation
+        mock_ssl_context.return_value = MagicMock()
+
+        # Mock importlib to simulate missing nio.crypto
+        def mock_import_side_effect(module_name):
+            if module_name == "olm":
+                return MagicMock()  # olm is available
+            elif module_name == "nio.crypto":
+                mock_crypto = MagicMock()
+                # Remove OlmDevice attribute
+                delattr(mock_crypto, "OlmDevice")
+                return mock_crypto
+            return MagicMock()
+
+        mock_import.side_effect = mock_import_side_effect
+
+        # Mock AsyncClient instance
+        mock_client_instance = MagicMock()
+        mock_client_instance.rooms = {}
+
+        async def mock_sync(*args, **kwargs):
+            return MagicMock()
+
+        async def mock_get_displayname(*args, **kwargs):
+            return MagicMock(displayname="Test Bot")
+
+        mock_client_instance.sync = mock_sync
+        mock_client_instance.get_displayname = mock_get_displayname
+        mock_async_client.return_value = mock_client_instance
+
+        result = await connect_matrix(config)
+
+        # Should still create client but with E2EE disabled
+        assert result == mock_client_instance
+        # Should log warning about missing nio.crypto.OlmDevice
+        mock_logger.warning.assert_any_call("Missing E2EE dependency")
+
+
+async def test_connect_matrix_e2ee_missing_sqlite_store():
+    """
+    Test connect_matrix handles missing nio.store.SqliteStore gracefully.
+    """
+    config = {
+        "matrix": {
+            "homeserver": "https://matrix.org",
+            "access_token": "test_token",
+            "bot_user_id": "@bot:matrix.org",
+            "encryption": {"enabled": True},
+        },
+        "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+    }
+
+    with (
+        patch("mmrelay.matrix_utils.matrix_client", None),
+        patch("mmrelay.matrix_utils.AsyncClient") as mock_async_client,
+        patch("mmrelay.matrix_utils.logger") as mock_logger,
+        patch("mmrelay.matrix_utils._create_ssl_context") as mock_ssl_context,
+        patch("mmrelay.matrix_utils.importlib.import_module") as mock_import,
+    ):
+        # Mock SSL context creation
+        mock_ssl_context.return_value = MagicMock()
+
+        # Mock importlib to simulate missing nio.store.SqliteStore
+        def mock_import_side_effect(module_name):
+            if module_name == "olm":
+                return MagicMock()  # olm is available
+            elif module_name == "nio.crypto":
+                mock_crypto = MagicMock()
+                mock_crypto.OlmDevice = MagicMock()
+                return mock_crypto
+            elif module_name == "nio.store":
+                mock_store = MagicMock()
+                # Remove SqliteStore attribute
+                delattr(mock_store, "SqliteStore")
+                return mock_store
+            return MagicMock()
+
+        mock_import.side_effect = mock_import_side_effect
+
+        # Mock AsyncClient instance
+        mock_client_instance = MagicMock()
+        mock_client_instance.rooms = {}
+
+        async def mock_sync(*args, **kwargs):
+            return MagicMock()
+
+        async def mock_get_displayname(*args, **kwargs):
+            return MagicMock(displayname="Test Bot")
+
+        mock_client_instance.sync = mock_sync
+        mock_client_instance.get_displayname = mock_get_displayname
+        mock_async_client.return_value = mock_client_instance
+
+        result = await connect_matrix(config)
+
+        # Should still create client but with E2EE disabled
+        assert result == mock_client_instance
+        # Should log warning about missing nio.store.SqliteStore
+        mock_logger.warning.assert_any_call("Missing E2EE dependency")
+
+
+def test_get_valid_device_id_valid_string():
+    """
+    Test that _get_valid_device_id returns stripped string for valid input.
+    """
+    device_id = "  test_device_id  "
+
+    result = _get_valid_device_id(device_id)
+
+    assert result == "test_device_id"
+
+
+def test_get_valid_device_id_empty_string():
+    """
+    Test that _get_valid_device_id returns None for empty string.
+    """
+    device_id = "   "
+
+    result = _get_valid_device_id(device_id)
+
+    assert result is None
+
+
+def test_get_valid_device_id_non_string():
+    """
+    Test that _get_valid_device_id returns None for non-string input.
+    """
+    result = _get_valid_device_id(123)
+    assert result is None
+
+    result = _get_valid_device_id(None)
+    assert result is None
+
+    result = _get_valid_device_id([])
+    assert result is None
+
+
+def test_create_mapping_info_none_values():
+    """
+    Test that _create_mapping_info returns None when required parameters are None or empty.
+    """
+    # Test with None matrix_event_id
+    result = _create_mapping_info(None, "!room:matrix.org", "Hello")
+    assert result is None
+
+    # Test with empty room_id
+    result = _create_mapping_info("$event123", "", "Hello")
+    assert result is None
+
+    # Test with None text
+    result = _create_mapping_info("$event123", "!room:matrix.org", None)
+    assert result is None
+
+    # Test with empty text
+    result = _create_mapping_info("$event123", "!room:matrix.org", "")
+    assert result is None
+
+
+def test_create_mapping_info_with_quoted_text():
+    """
+    Test that _create_mapping_info strips quoted lines from text.
+    """
+    text = "This is a reply\n> Original message\n> Another quote\nNew content"
+
+    result = _create_mapping_info(
+        matrix_event_id="$event123",
+        room_id="!room:matrix.org",
+        text=text,
+        meshnet="test_mesh",
+        msgs_to_keep=100,
+    )
+
+    expected = {
+        "matrix_event_id": "$event123",
+        "room_id": "!room:matrix.org",
+        "text": "This is a reply New content",  # Quotes stripped
+        "meshnet": "test_mesh",
+        "msgs_to_keep": 100,
+    }
+    assert result == expected
+
+
+async def test_resolve_aliases_in_mapping_unsupported_type():
+    """
+    Test that _resolve_aliases_in_mapping handles unsupported mapping types gracefully.
+    """
+    mock_resolver = AsyncMock(return_value="!resolved:matrix.org")
+
+    # Test with unsupported type (string instead of list/dict)
+    with patch("mmrelay.matrix_utils.logger") as mock_logger:
+        await _resolve_aliases_in_mapping("not_a_mapping", mock_resolver)
+
+        # Should log warning and return without error
+        mock_logger.warning.assert_called_once()
+
+
+async def test_resolve_aliases_in_mapping_resolver_failure():
+    """
+    Test that _resolve_aliases_in_mapping handles resolver failures gracefully.
+    """
+    mapping = {"#alias1": "room1", "#alias2": "room2"}
+    mock_resolver = AsyncMock(return_value=None)  # Resolver fails
+
+    with patch("mmrelay.matrix_utils.logger") as mock_logger:
+        await _resolve_aliases_in_mapping(mapping, mock_resolver)
+
+        # Should not modify mapping when resolver returns None
+        assert mapping == {"#alias1": "room1", "#alias2": "room2"}
 
 
 @pytest.mark.parametrize(
