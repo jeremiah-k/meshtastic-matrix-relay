@@ -12,6 +12,7 @@ import re
 import ssl
 import sys
 import time
+from types import SimpleNamespace
 from typing import Any, Dict, Optional, Union, cast
 from urllib.parse import urlparse
 
@@ -897,6 +898,37 @@ async def _connect_meshtastic():
     return await loop.run_in_executor(None, connect_meshtastic)
 
 
+async def _get_meshtastic_interface_and_channel(
+    room_config: dict, purpose: str
+) -> tuple[Any | None, int | None]:
+    """
+    Connect to Meshtastic and validate the configured channel for a room.
+
+    Returns (interface, channel) on success; (None, None) on failure and logs
+    an error describing why the operation cannot proceed.
+    """
+    from mmrelay.meshtastic_utils import logger as meshtastic_logger
+
+    meshtastic_interface = await _connect_meshtastic()
+    if not meshtastic_interface:
+        meshtastic_logger.error(f"Failed to connect to Meshtastic. Cannot {purpose}.")
+        return None, None
+
+    meshtastic_channel = room_config.get("meshtastic_channel")
+    if meshtastic_channel is None:
+        meshtastic_logger.error(
+            f"Room config missing 'meshtastic_channel'; cannot {purpose}."
+        )
+        return None, None
+    if not isinstance(meshtastic_channel, int) or meshtastic_channel < 0:
+        meshtastic_logger.error(
+            f"Invalid meshtastic_channel value {meshtastic_channel!r} in room config; must be a non-negative integer."
+        )
+        return None, None
+
+    return meshtastic_interface, meshtastic_channel
+
+
 async def _handle_detection_sensor_packet(
     config: dict,
     room_config: dict,
@@ -934,24 +966,10 @@ async def _handle_detection_sensor_packet(
         )
         return
 
-    meshtastic_interface = await _connect_meshtastic()
-
+    meshtastic_interface, meshtastic_channel = (
+        await _get_meshtastic_interface_and_channel(room_config, "relay detection data")
+    )
     if not meshtastic_interface:
-        meshtastic_logger.error(
-            "Failed to connect to Meshtastic. Cannot relay detection data."
-        )
-        return
-
-    meshtastic_channel = room_config.get("meshtastic_channel")
-    if meshtastic_channel is None:
-        meshtastic_logger.error(
-            "Room config missing 'meshtastic_channel'; cannot relay detection data."
-        )
-        return
-    if not isinstance(meshtastic_channel, int) or meshtastic_channel < 0:
-        meshtastic_logger.error(
-            f"Invalid meshtastic_channel value {meshtastic_channel!r} in room config; must be a non-negative integer."
-        )
         return
 
     import meshtastic.protobuf.portnums_pb2  # type: ignore[import-untyped]
@@ -2590,23 +2608,12 @@ async def send_reply_to_meshtastic(
         local_meshnet_name (str | None): Local meshnet name included in mapping metadata when present.
         reply_id (int | None): If provided, send as a structured Meshtastic reply targeting this Meshtastic message ID; otherwise send a regular broadcast.
     """
-    meshtastic_interface = await _connect_meshtastic()
+    meshtastic_interface, meshtastic_channel = (
+        await _get_meshtastic_interface_and_channel(room_config, "relay reply")
+    )
     from mmrelay.meshtastic_utils import logger as meshtastic_logger
 
-    if not meshtastic_interface:
-        meshtastic_logger.error("Failed to connect to Meshtastic. Cannot relay reply.")
-        return
-
-    meshtastic_channel = room_config.get("meshtastic_channel")
-    if meshtastic_channel is None:
-        meshtastic_logger.error(
-            "Room config missing 'meshtastic_channel'; cannot relay reply."
-        )
-        return
-    if not isinstance(meshtastic_channel, int) or meshtastic_channel < 0:
-        meshtastic_logger.error(
-            f"Invalid meshtastic_channel value {meshtastic_channel!r} in room config; must be a non-negative integer."
-        )
+    if not meshtastic_interface or meshtastic_channel is None:
         return
 
     broadcast_enabled = get_meshtastic_config_value(
@@ -3017,25 +3024,14 @@ async def on_room_message(
             reaction_message = f'{shortname}/{short_meshnet_name} reacted {reaction_emoji} to "{abbreviated_text}"'
 
             # Relay the remote reaction to the local meshnet.
-            meshtastic_interface = await _connect_meshtastic()
-            if not meshtastic_interface:
-                logger.error(
-                    "Failed to connect to Meshtastic for remote reaction relay"
+            meshtastic_interface, meshtastic_channel = (
+                await _get_meshtastic_interface_and_channel(
+                    room_config, "relay reaction"
                 )
+            )
+            if not meshtastic_interface or meshtastic_channel is None:
                 return
             from mmrelay.meshtastic_utils import logger as meshtastic_logger
-
-            meshtastic_channel = room_config.get("meshtastic_channel")
-            if meshtastic_channel is None:
-                meshtastic_logger.error(
-                    "Room config missing 'meshtastic_channel'; cannot relay reaction."
-                )
-                return
-            if not isinstance(meshtastic_channel, int) or meshtastic_channel < 0:
-                meshtastic_logger.error(
-                    f"Invalid meshtastic_channel value {meshtastic_channel!r} in room config; must be a non-negative integer."
-                )
-                return
 
             if get_meshtastic_config_value(
                 config, "broadcast_enabled", DEFAULT_BROADCAST_ENABLED, required=False
@@ -3099,23 +3095,14 @@ async def on_room_message(
             reaction_message = (
                 f'{prefix}reacted {reaction_emoji} to "{abbreviated_text}"'
             )
-            meshtastic_interface = await _connect_meshtastic()
-            if not meshtastic_interface:
-                logger.error("Failed to connect to Meshtastic for local reaction relay")
+            meshtastic_interface, meshtastic_channel = (
+                await _get_meshtastic_interface_and_channel(
+                    room_config, "relay reaction"
+                )
+            )
+            if not meshtastic_interface or meshtastic_channel is None:
                 return
             from mmrelay.meshtastic_utils import logger as meshtastic_logger
-
-            meshtastic_channel = room_config.get("meshtastic_channel")
-            if meshtastic_channel is None:
-                meshtastic_logger.error(
-                    "Room config missing 'meshtastic_channel'; cannot relay reaction."
-                )
-                return
-            if not isinstance(meshtastic_channel, int) or meshtastic_channel < 0:
-                meshtastic_logger.error(
-                    f"Invalid meshtastic_channel value {meshtastic_channel!r} in room config; must be a non-negative integer."
-                )
-                return
 
             if get_meshtastic_config_value(
                 config, "broadcast_enabled", DEFAULT_BROADCAST_ENABLED, required=False
@@ -3248,9 +3235,8 @@ async def on_room_message(
         return
 
     # Check if this is a detection sensor packet (before connecting to Meshtastic)
-    is_detection_packet = (
-        portnum == DETECTION_SENSOR_APP or portnum == PORTNUM_DETECTION_SENSOR_APP
-    )
+    # Meshtastic uses numeric port numbers; keep only the numeric check
+    is_detection_packet = portnum == PORTNUM_DETECTION_SENSOR_APP
 
     if is_detection_packet:
         await _handle_detection_sensor_packet(
@@ -3388,12 +3374,9 @@ async def upload_image(
         # Convert nio communication exceptions to an UploadError-like instance
         logger.exception("Image upload failed due to a network error")
         try:
-            upload_error = UploadError(message=str(e), status_code="")
-        except (NameError, TypeError):
-            # Create a minimal UploadError-like object if UploadError is unavailable
-            upload_error = type(
-                "UploadError", (), {"message": str(e), "status_code": ""}
-            )()
+            upload_error = UploadError(str(e))
+        except Exception:
+            upload_error = SimpleNamespace(message=str(e), status_code="")
         return upload_error
     else:
         return response
