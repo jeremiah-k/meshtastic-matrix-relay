@@ -1438,6 +1438,8 @@ async def connect_matrix(passed_config=None):
                     logger.warning(f"Could not resolve alias {alias}: {error_details}")
                 except NIO_COMM_EXCEPTIONS:
                     logger.exception(f"Error resolving alias {alias}")
+                except Exception:
+                    logger.exception(f"Error resolving alias {alias}")
                 return None
 
             await _resolve_aliases_in_mapping(matrix_rooms, _resolve_alias)
@@ -2082,6 +2084,8 @@ async def join_matrix_room(matrix_client, room_id_or_alias: str) -> None:
             )
     except NIO_COMM_EXCEPTIONS:
         logger.exception(f"Error joining room '{room_id}'")
+    except Exception:
+        logger.exception(f"Unexpected error joining room '{room_id}'")
 
 
 def _get_e2ee_error_message():
