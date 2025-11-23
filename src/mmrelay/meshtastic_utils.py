@@ -105,9 +105,6 @@ if _BleakDBusError:
 if _BleakError:
     BleakError = _BleakError  # type: ignore[assignment]
 
-    class BleakError(Exception):
-        pass
-
 
 # Global config variable that will be set from config.py
 config = None
