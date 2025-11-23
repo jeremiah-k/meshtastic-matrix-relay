@@ -522,11 +522,9 @@ def _get_detailed_sync_error_message(sync_response) -> str:
         elif hasattr(sync_response, "transport_response"):
             # Check for transport-level errors
             transport = getattr(sync_response, "transport_response", None)
-            if transport and (
-                status_code_attr := getattr(transport, "status_code", None)
-            ):
+            if transport and hasattr(transport, "status_code"):
                 try:
-                    status_code = int(status_code_attr)
+                    status_code = int(getattr(transport, "status_code"))
                     return f"Transport error: HTTP {status_code}"
                 except (ValueError, TypeError):
                     return "Network connectivity issue or server unreachable"

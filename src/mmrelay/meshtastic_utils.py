@@ -187,14 +187,83 @@ def _submit_coro(coro, loop=None):
             return f
 
 
-def _make_awaitable(future):
-    """Convert a Future to an awaitable if needed."""
+def _make_awaitable(future, loop: asyncio.AbstractEventLoop | None = None):
+    """
+    Convert a Future-like object to an awaitable tied to the provided loop when needed.
+
+    If the input is already awaitable, it is returned unchanged. Otherwise, the object is
+    wrapped with asyncio.wrap_future using the supplied loop (when provided) so that
+    concurrent.futures.Future instances can be awaited safely on the intended event loop.
+    """
     if hasattr(future, "__await__"):
-        # Already awaitable (asyncio Future/Task)
         return future
+    target_loop = loop if isinstance(loop, asyncio.AbstractEventLoop) else None
+    return asyncio.wrap_future(future, loop=target_loop)
+
+
+def _wait_for_result(
+    result_future,
+    timeout: float,
+    loop: asyncio.AbstractEventLoop | None = None,
+):
+    """
+    Resolve the result of a future or awaitable with a timeout in synchronous contexts.
+
+    Supports concurrent.futures.Future, asyncio.Future/Task, or objects exposing a
+    .result(timeout) API (used in tests). Where a running event loop is available, the
+    coroutine is scheduled thread-safely; otherwise, the provided loop (or a temporary
+    one) is driven with run_until_complete.
+    """
+    if result_future is None:
+        return False
+
+    target_loop = loop if isinstance(loop, asyncio.AbstractEventLoop) else None
+
+    # Handle concurrent.futures.Future directly
+    if isinstance(result_future, Future):
+        return result_future.result(timeout=timeout)
+
+    # Handle asyncio Future/Task instances
+    if isinstance(result_future, asyncio.Future):
+        awaitable = result_future
+    elif hasattr(result_future, "result") and callable(result_future.result):
+        # Generic future-like object with .result API (used by some tests)
+        try:
+            return result_future.result(timeout)
+        except TypeError:
+            return result_future.result()
     else:
-        # concurrent.futures.Future - wrap it
-        return asyncio.wrap_future(future)
+        awaitable = _make_awaitable(result_future, loop=target_loop)
+
+    async def _runner():
+        return await asyncio.wait_for(awaitable, timeout=timeout)
+
+    if target_loop and not target_loop.is_closed():
+        if target_loop.is_running():
+            return asyncio.run_coroutine_threadsafe(_runner(), target_loop).result(
+                timeout=timeout
+            )
+        return target_loop.run_until_complete(_runner())
+
+    try:
+        running_loop = asyncio.get_running_loop()
+    except RuntimeError:
+        running_loop = None
+
+    if running_loop and not running_loop.is_closed():
+        if running_loop.is_running():
+            return asyncio.run_coroutine_threadsafe(_runner(), running_loop).result(
+                timeout=timeout
+            )
+        return running_loop.run_until_complete(_runner())
+
+    new_loop = asyncio.new_event_loop()
+    try:
+        asyncio.set_event_loop(new_loop)
+        return new_loop.run_until_complete(_runner())
+    finally:
+        new_loop.close()
+        asyncio.set_event_loop(None)
 
 
 def _resolve_plugin_timeout(cfg: dict | None, default: float = 5.0) -> float:
@@ -1030,10 +1099,14 @@ def on_meshtastic_message(packet, interface):
                         found_matching_plugin = False
                         continue
                     try:
-                        found_matching_plugin = asyncio.wait_for(
-                            result_future, timeout=plugin_timeout  # type: ignore[arg-type]
+                        found_matching_plugin = bool(
+                            _wait_for_result(
+                                result_future,
+                                plugin_timeout,
+                                loop=loop,
+                            )
                         )
-                    except asyncio.TimeoutError as exc:
+                    except (asyncio.TimeoutError, FuturesTimeoutError) as exc:
                         logger.warning(
                             "Plugin %s did not respond within %ss: %s",
                             plugin.plugin_name,
@@ -1118,10 +1191,14 @@ def on_meshtastic_message(packet, interface):
                         found_matching_plugin = False
                         continue
                     try:
-                        found_matching_plugin = asyncio.wait_for(
-                            result_future, timeout=plugin_timeout  # type: ignore[arg-type]
+                        found_matching_plugin = bool(
+                            _wait_for_result(
+                                result_future,
+                                plugin_timeout,
+                                loop=loop,
+                            )
                         )
-                    except asyncio.TimeoutError as exc:
+                    except (asyncio.TimeoutError, FuturesTimeoutError) as exc:
                         logger.warning(
                             "Plugin %s did not respond within %ss: %s",
                             plugin.plugin_name,
