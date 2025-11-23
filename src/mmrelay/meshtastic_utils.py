@@ -31,6 +31,7 @@ from mmrelay.constants.formats import (
 )
 from mmrelay.constants.messages import (
     DEFAULT_CHANNEL_VALUE,
+    DETECTION_SENSOR_NUMERIC_VALUE,
     PORTNUM_NUMERIC_VALUE,
 )
 from mmrelay.constants.network import (
@@ -256,8 +257,9 @@ def _get_device_metadata(client):
 
         # Capture getMetadata() output to extract firmware version
         output_capture = io.StringIO()
-        with contextlib.redirect_stdout(output_capture), contextlib.redirect_stderr(
-            output_capture
+        with (
+            contextlib.redirect_stdout(output_capture),
+            contextlib.redirect_stderr(output_capture),
         ):
             client.localNode.getMetadata()
 
@@ -876,6 +878,7 @@ def on_meshtastic_message(packet, interface):
                 decoded.get("portnum") == TEXT_MESSAGE_APP
                 or decoded.get("portnum") == PORTNUM_NUMERIC_VALUE
                 or decoded.get("portnum") == DETECTION_SENSOR_APP
+                or decoded.get("portnum") == DETECTION_SENSOR_NUMERIC_VALUE
             ):
                 channel = DEFAULT_CHANNEL_VALUE
             else:
@@ -899,9 +902,10 @@ def on_meshtastic_message(packet, interface):
             return
 
         # If detection_sensor is disabled and this is a detection sensor packet, skip it
-        if decoded.get(
-            "portnum"
-        ) == DETECTION_SENSOR_APP and not get_meshtastic_config_value(
+        if (
+            decoded.get("portnum") == DETECTION_SENSOR_APP
+            or decoded.get("portnum") == DETECTION_SENSOR_NUMERIC_VALUE
+        ) and not get_meshtastic_config_value(
             config, "detection_sensor", DEFAULT_DETECTION_SENSOR
         ):
             logger.debug(

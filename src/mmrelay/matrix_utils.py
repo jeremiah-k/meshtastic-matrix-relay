@@ -60,6 +60,7 @@ from mmrelay.constants.formats import (
 )
 from mmrelay.constants.messages import (
     DEFAULT_MESSAGE_TRUNCATE_BYTES,
+    DETECTION_SENSOR_NUMERIC_VALUE,
     DISPLAY_NAME_DEFAULT_LENGTH,
     MAX_TRUNCATION_LENGTH,
     MESHNET_NAME_ABBREVIATION_LENGTH,
@@ -521,9 +522,11 @@ def _get_detailed_sync_error_message(sync_response) -> str:
         elif hasattr(sync_response, "transport_response"):
             # Check for transport-level errors
             transport = getattr(sync_response, "transport_response", None)
-            if transport and hasattr(transport, "status_code"):
+            if transport and (
+                status_code_attr := getattr(transport, "status_code", None)
+            ):
                 try:
-                    status_code = int(transport.status_code)
+                    status_code = int(status_code_attr)
                     return f"Transport error: HTTP {status_code}"
                 except (ValueError, TypeError):
                     return "Network connectivity issue or server unreachable"
@@ -3227,7 +3230,9 @@ async def on_room_message(
         return
 
     # Check if this is a detection sensor packet (before connecting to Meshtastic)
-    is_detection_packet = portnum == DETECTION_SENSOR_APP
+    is_detection_packet = (
+        portnum == DETECTION_SENSOR_APP or portnum == DETECTION_SENSOR_NUMERIC_VALUE
+    )
 
     if is_detection_packet:
         await _handle_detection_sensor_packet(

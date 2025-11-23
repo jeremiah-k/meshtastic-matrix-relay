@@ -12,6 +12,7 @@ LOG_SIZE_BYTES_MULTIPLIER = 1024 * 1024  # Convert MB to bytes
 
 # Numeric constants for comparisons
 PORTNUM_NUMERIC_VALUE = 1  # Numeric equivalent of TEXT_MESSAGE_APP
+DETECTION_SENSOR_NUMERIC_VALUE = 10  # Numeric equivalent of DETECTION_SENSOR_APP
 DEFAULT_CHANNEL_VALUE = 0
 
 # Message formatting constants
