@@ -559,9 +559,9 @@ def _get_detailed_matrix_error_message(matrix_response) -> str:
         if error_str and error_str != "None":
             if "<" in error_str and ">" in error_str and " at 0x" in error_str:
                 return "Network connectivity issue or server unreachable"
-            if "<" in error_str and ">" in error_str:
+            elif "<" in error_str and ">" in error_str:
                 return "Network connectivity issue or server unreachable"
-            if "unknown error" in error_str.lower():
+            elif "unknown error" in error_str.lower():
                 return "Network connectivity issue or server unreachable"
             return error_str
 
@@ -1474,7 +1474,7 @@ async def connect_matrix(passed_config=None):
                     logger.warning(f"Could not resolve alias {alias}: {error_details}")
                 except NIO_COMM_EXCEPTIONS:
                     logger.exception(f"Error resolving alias {alias}")
-                except Exception:
+                except (TypeError, ValueError):
                     logger.exception(f"Error resolving alias {alias}")
                 return None
 
@@ -3382,7 +3382,7 @@ async def upload_image(
         logger.exception("Image upload failed due to a network error")
         try:
             upload_error = UploadError(str(e), status_code="")
-        except Exception:
+        except (NameError, TypeError):
             upload_error = SimpleNamespace(message=str(e), status_code="")
         return upload_error
     else:
