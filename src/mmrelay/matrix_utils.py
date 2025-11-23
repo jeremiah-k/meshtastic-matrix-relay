@@ -487,11 +487,23 @@ def _get_detailed_matrix_error_message(matrix_response) -> str:
             except UnicodeDecodeError:
                 return "Network connectivity issue or server unreachable (binary data)"
 
-        # Try to extract specific error information
-        try:
-            # Guard against matrix_response being a string (from bytes conversion above)
-            if isinstance(matrix_response, str):
+        # If already a string, decide whether to return or fall back
+        if isinstance(matrix_response, str):
+            # Clean up object/HTML/unknown placeholders
+            if (
+                (
+                    "<" in matrix_response
+                    and ">" in matrix_response
+                    and " at 0x" in matrix_response
+                )
+                or ("<" in matrix_response and ">" in matrix_response)
+                or ("unknown error" in matrix_response.lower())
+            ):
                 return "Network connectivity issue or server unreachable"
+            return matrix_response
+
+        # Try to extract specific error information from an object
+        try:
             message_attr = matrix_response.message
             if message_attr:
                 message = message_attr
@@ -501,7 +513,8 @@ def _get_detailed_matrix_error_message(matrix_response) -> str:
                         message = message.decode("utf-8")
                     except UnicodeDecodeError:
                         return "Network connectivity issue or server unreachable"
-                return message
+                if isinstance(message, str):
+                    return message
         except AttributeError:
             # Message attribute access failed, continue to other checks
             pass
@@ -542,20 +555,16 @@ def _get_detailed_matrix_error_message(matrix_response) -> str:
         except Exception:
             return "Network connectivity issue or server unreachable"
 
-        # Clean up object repr strings that contain angle brackets
         if error_str and error_str != "None":
-            # Remove object repr patterns like <object at 0x...>
             if "<" in error_str and ">" in error_str and " at 0x" in error_str:
                 return "Network connectivity issue or server unreachable"
-            # Remove HTML/XML-like content
-            elif "<" in error_str and ">" in error_str:
+            if "<" in error_str and ">" in error_str:
                 return "Network connectivity issue or server unreachable"
-            elif "unknown error" in error_str.lower():
+            if "unknown error" in error_str.lower():
                 return "Network connectivity issue or server unreachable"
-            else:
-                return error_str
-        else:
-            return "Network connectivity issue or server unreachable"
+            return error_str
+
+        return "Network connectivity issue or server unreachable"
 
     except (AttributeError, ValueError, TypeError) as e:
         logger.debug(
