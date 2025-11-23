@@ -232,7 +232,7 @@ class TestDetailedSyncErrorMessage(unittest.TestCase):
 
         self.assertEqual(
             result,
-            "Unable to determine specific error - likely a network connectivity issue",
+            "Network connectivity issue or server unreachable",
         )
 
     def test_exception_during_processing(self):
@@ -245,7 +245,7 @@ class TestDetailedSyncErrorMessage(unittest.TestCase):
 
         self.assertEqual(
             result,
-            "Unable to determine specific error - likely a network connectivity issue",
+            "Network connectivity issue or server unreachable",
         )
 
     def test_message_bytes_decode_error(self):
@@ -259,7 +259,7 @@ class TestDetailedSyncErrorMessage(unittest.TestCase):
 
         self.assertEqual(
             result,
-            "Unable to determine specific error - likely a network connectivity issue",
+            "Network connectivity issue or server unreachable",
         )
 
     def test_status_code_conversion_error(self):
@@ -273,7 +273,7 @@ class TestDetailedSyncErrorMessage(unittest.TestCase):
 
         self.assertEqual(
             result,
-            "Unable to determine specific error - likely a network connectivity issue",
+            "Network connectivity issue or server unreachable",
         )
 
 

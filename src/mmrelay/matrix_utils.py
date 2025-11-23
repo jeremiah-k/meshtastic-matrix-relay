@@ -488,16 +488,20 @@ def _get_detailed_matrix_error_message(matrix_response) -> str:
                 return "Network connectivity issue or server unreachable (binary data)"
 
         # Try to extract specific error information
-        message_attr = getattr(matrix_response, "message", None)
-        if message_attr:
-            message = message_attr
-            # Handle if message is bytes/bytearray
-            if isinstance(message, (bytes, bytearray)):
-                try:
-                    message = message.decode("utf-8")
-                except UnicodeDecodeError:
-                    return "Network connectivity issue or server unreachable"
-            return message
+        try:
+            message_attr = matrix_response.message
+            if message_attr:
+                message = message_attr
+                # Handle if message is bytes/bytearray
+                if isinstance(message, (bytes, bytearray)):
+                    try:
+                        message = message.decode("utf-8")
+                    except UnicodeDecodeError:
+                        return "Network connectivity issue or server unreachable"
+                return message
+        except AttributeError:
+            # Message attribute access failed, continue to other checks
+            pass
         status_code_attr = getattr(matrix_response, "status_code", None)
         if status_code_attr:
             status_code = status_code_attr
