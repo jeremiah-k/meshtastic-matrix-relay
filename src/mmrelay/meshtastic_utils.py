@@ -993,6 +993,8 @@ def on_meshtastic_message(packet, interface):
         channel = packet.get("channel")
         if channel is None:
             # If channel not specified, deduce from portnum
+            # Note: meshtastic-python emits enum names (e.g., "TEXT_MESSAGE_APP") in decoded dicts,
+            # while other paths (protobuf/raw) surface numeric portnums. Support both to avoid drops.
             if decoded.get("portnum") in (
                 PORTNUM_TEXT_MESSAGE_APP,
                 PORTNUM_DETECTION_SENSOR_APP,

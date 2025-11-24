@@ -483,8 +483,8 @@ def _get_detailed_matrix_error_message(matrix_response) -> str:
 
     def _is_unhelpful_error_string(error_str: str) -> bool:
         return (
-            ("<" in error_str and ">" in error_str and " at 0x" in error_str)
-            or ("<" in error_str and ">" in error_str)
+            bool(re.search(r"<.+? object at 0x[0-9a-fA-F]+>", error_str))
+            or bool(re.search(r"<[a-zA-Z/][^>]*>", error_str))
             or ("unknown error" in error_str.lower())
         )
 
@@ -553,7 +553,7 @@ def _get_detailed_matrix_error_message(matrix_response) -> str:
         # Fallback to string representation with safety checks
         try:
             error_str = str(matrix_response)
-        except Exception:
+        except (TypeError, ValueError):
             return "Network connectivity issue or server unreachable"
 
         if (
@@ -1472,7 +1472,7 @@ async def connect_matrix(passed_config=None):
                     logger.warning(f"Could not resolve alias {alias}: {error_details}")
                 except NIO_COMM_EXCEPTIONS:
                     logger.exception(f"Error resolving alias {alias}")
-                except (TypeError, ValueError, Exception):
+                except (TypeError, ValueError):
                     logger.exception(f"Error resolving alias {alias}")
                 return None
 
@@ -2927,8 +2927,11 @@ async def on_room_message(
         meshtastic_replyId = content.get("meshtastic_replyId")
         emote_relates_to = content.get("m.relates_to") or {}
 
-        # Only treat as reaction if it has meshtastic_replyId or relates_to metadata
-        is_reaction = bool(meshtastic_replyId or emote_relates_to)
+        # Only treat as a reaction if it is explicitly an annotation or has a legacy meshtastic_replyId.
+        # Replies also carry m.relates_to, so checking rel_type keeps replies from being misclassified as reactions.
+        is_reaction = bool(
+            meshtastic_replyId or emote_relates_to.get("rel_type") == "m.annotation"
+        )
 
         if is_reaction:
             # We need to manually extract the reaction emoji from the body
@@ -3382,11 +3385,12 @@ async def upload_image(
         try:
             upload_error = UploadError(str(e))
             # Ensure status_code attribute exists for callers/tests
-            if not hasattr(upload_error, "status_code"):
+            if (
+                not hasattr(upload_error, "status_code")
+                or upload_error.status_code is None
+            ):
                 upload_error.status_code = ""
-            elif getattr(upload_error, "status_code") is None:
-                upload_error.status_code = ""
-        except Exception:
+        except (NameError, TypeError):
             upload_error = SimpleNamespace(message=str(e), status_code="")
         return upload_error
     else:
