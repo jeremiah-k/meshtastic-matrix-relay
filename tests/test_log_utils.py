@@ -187,6 +187,82 @@ class TestLogUtils(unittest.TestCase):
         self.assertGreater(len(rich_handlers), 0)
         self.assertTrue(rich_handlers[0].rich_tracebacks)
 
+    def test_get_logger_rich_tracebacks_with_fake_rich_default_disabled(self):
+        """
+        Even when Rich is unavailable, forcing RICH_AVAILABLE with a fake handler should keep tracebacks disabled by default.
+        """
+        import mmrelay.log_utils as lu
+
+        logger_name = "test_logger_fake_rich_default"
+        logging.getLogger(logger_name).handlers.clear()
+
+        original_rich_available = lu.RICH_AVAILABLE
+        original_rich_handler = getattr(lu, "RichHandler", None)
+        original_console = getattr(lu, "console", None)
+
+        class DummyRichHandler(logging.Handler):
+            def __init__(self, *args, **kwargs):
+                super().__init__()
+                self.rich_tracebacks = kwargs.get("rich_tracebacks")
+
+        try:
+            lu.RICH_AVAILABLE = True
+            lu.RichHandler = DummyRichHandler
+            lu.console = object()
+            lu.config = {"logging": {}}
+
+            logger = get_logger(logger_name)
+            handlers = [h for h in logger.handlers if isinstance(h, DummyRichHandler)]
+            self.assertEqual(len(handlers), 1)
+            self.assertFalse(handlers[0].rich_tracebacks)
+        finally:
+            lu.RICH_AVAILABLE = original_rich_available
+            if original_rich_handler is not None:
+                lu.RichHandler = original_rich_handler
+            else:
+                delattr(lu, "RichHandler")
+            lu.console = original_console
+            lu.config = None
+            logging.getLogger(logger_name).handlers.clear()
+
+    def test_get_logger_rich_tracebacks_with_fake_rich_enabled(self):
+        """
+        Forcing RICH_AVAILABLE with a fake handler should honor rich_tracebacks config.
+        """
+        import mmrelay.log_utils as lu
+
+        logger_name = "test_logger_fake_rich_enabled"
+        logging.getLogger(logger_name).handlers.clear()
+
+        original_rich_available = lu.RICH_AVAILABLE
+        original_rich_handler = getattr(lu, "RichHandler", None)
+        original_console = getattr(lu, "console", None)
+
+        class DummyRichHandler(logging.Handler):
+            def __init__(self, *args, **kwargs):
+                super().__init__()
+                self.rich_tracebacks = kwargs.get("rich_tracebacks")
+
+        try:
+            lu.RICH_AVAILABLE = True
+            lu.RichHandler = DummyRichHandler
+            lu.console = object()
+            lu.config = {"logging": {"rich_tracebacks": True}}
+
+            logger = get_logger(logger_name)
+            handlers = [h for h in logger.handlers if isinstance(h, DummyRichHandler)]
+            self.assertEqual(len(handlers), 1)
+            self.assertTrue(handlers[0].rich_tracebacks)
+        finally:
+            lu.RICH_AVAILABLE = original_rich_available
+            if original_rich_handler is not None:
+                lu.RichHandler = original_rich_handler
+            else:
+                delattr(lu, "RichHandler")
+            lu.console = original_console
+            lu.config = None
+            logging.getLogger(logger_name).handlers.clear()
+
     @patch("mmrelay.log_utils.get_log_dir")
     def test_get_logger_with_file_logging(self, mock_get_log_dir):
         """
