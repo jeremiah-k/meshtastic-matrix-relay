@@ -480,6 +480,14 @@ def _get_detailed_matrix_error_message(matrix_response) -> str:
     Returns:
         A short, actionable error description (e.g., authentication failure, forbidden, rate limited, server error, or a generic network/connectivity message).
     """
+
+    def _is_unhelpful_error_string(error_str: str) -> bool:
+        return (
+            ("<" in error_str and ">" in error_str and " at 0x" in error_str)
+            or ("<" in error_str and ">" in error_str)
+            or ("unknown error" in error_str.lower())
+        )
+
     try:
         # Handle bytes/bytearray types by converting to string
         if isinstance(matrix_response, (bytes, bytearray)):
@@ -491,15 +499,7 @@ def _get_detailed_matrix_error_message(matrix_response) -> str:
         # If already a string, decide whether to return or fall back
         if isinstance(matrix_response, str):
             # Clean up object/HTML/unknown placeholders
-            if (
-                (
-                    "<" in matrix_response
-                    and ">" in matrix_response
-                    and " at 0x" in matrix_response
-                )
-                or ("<" in matrix_response and ">" in matrix_response)
-                or ("unknown error" in matrix_response.lower())
-            ):
+            if _is_unhelpful_error_string(matrix_response):
                 return "Network connectivity issue or server unreachable"
             return matrix_response
 
@@ -556,13 +556,11 @@ def _get_detailed_matrix_error_message(matrix_response) -> str:
         except Exception:
             return "Network connectivity issue or server unreachable"
 
-        if error_str and error_str != "None":
-            if "<" in error_str and ">" in error_str and " at 0x" in error_str:
-                return "Network connectivity issue or server unreachable"
-            elif "<" in error_str and ">" in error_str:
-                return "Network connectivity issue or server unreachable"
-            elif "unknown error" in error_str.lower():
-                return "Network connectivity issue or server unreachable"
+        if (
+            error_str
+            and error_str != "None"
+            and not _is_unhelpful_error_string(error_str)
+        ):
             return error_str
 
         return "Network connectivity issue or server unreachable"

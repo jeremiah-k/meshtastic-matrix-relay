@@ -126,6 +126,43 @@ class TestMeshtasticUtils(unittest.TestCase):
 
             # The global mock_submit_coro fixture will handle the AsyncMock properly
 
+    def test_on_meshtastic_message_channel_fallback_for_string_portnum(self):
+        """
+        Text or detection packets with string portnums should fall back to channel 0 when channel is missing.
+        """
+        # Packet missing channel but using string portnum
+        packet_no_channel = self.mock_packet.copy()
+        packet_no_channel["channel"] = None
+
+        with patch("mmrelay.meshtastic_utils.config", self.mock_config), patch(
+            "mmrelay.meshtastic_utils.matrix_rooms", self.mock_config["matrix_rooms"]
+        ), patch(
+            "mmrelay.matrix_utils.matrix_relay", new_callable=AsyncMock
+        ) as mock_matrix_relay, patch(
+            "mmrelay.meshtastic_utils.get_longname"
+        ) as mock_get_longname, patch(
+            "mmrelay.meshtastic_utils.get_shortname"
+        ) as mock_get_shortname, patch(
+            "mmrelay.matrix_utils.get_interaction_settings"
+        ) as mock_get_interactions, patch(
+            "mmrelay.matrix_utils.message_storage_enabled"
+        ) as mock_storage, patch(
+            "mmrelay.plugin_loader.load_plugins", return_value=[]
+        ), patch(
+            "mmrelay.matrix_utils.matrix_client", None
+        ):
+            mock_get_longname.return_value = "Test User"
+            mock_get_shortname.return_value = "TU"
+            mock_get_interactions.return_value = {"reactions": False, "replies": False}
+            mock_storage.return_value = True
+
+            mock_interface = MagicMock()
+
+            # Call the function
+            on_meshtastic_message(packet_no_channel, mock_interface)
+
+            mock_matrix_relay.assert_awaited()
+
     def test_on_meshtastic_message_unmapped_channel(self):
         """
         Test that Meshtastic messages on unmapped channels do not trigger Matrix message relay.

@@ -996,6 +996,8 @@ def on_meshtastic_message(packet, interface):
             if decoded.get("portnum") in (
                 PORTNUM_TEXT_MESSAGE_APP,
                 PORTNUM_DETECTION_SENSOR_APP,
+                TEXT_MESSAGE_APP,
+                DETECTION_SENSOR_APP,
             ):
                 channel = DEFAULT_CHANNEL_VALUE
             else:
