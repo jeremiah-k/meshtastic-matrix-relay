@@ -154,6 +154,7 @@ def get_logger(name):
     # Default to INFO level if config is not available
     log_level = logging.INFO
     color_enabled = True  # Default to using colors
+    rich_tracebacks_enabled = False  # Default to disabling rich tracebacks
 
     # Try to get log level and color settings from config
     global config
@@ -167,6 +168,8 @@ def get_logger(name):
         # Check if colors should be disabled
         if "color_enabled" in config["logging"]:
             color_enabled = config["logging"]["color_enabled"]
+        if "rich_tracebacks" in config["logging"]:
+            rich_tracebacks_enabled = bool(config["logging"]["rich_tracebacks"])
 
     logger.setLevel(log_level)
     logger.propagate = False
@@ -179,7 +182,7 @@ def get_logger(name):
     if color_enabled and RICH_AVAILABLE:
         # Use Rich handler with colors
         console_handler = RichHandler(
-            rich_tracebacks=True,
+            rich_tracebacks=rich_tracebacks_enabled,
             console=console,
             show_time=True,
             show_level=True,

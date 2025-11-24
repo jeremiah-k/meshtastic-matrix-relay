@@ -21,7 +21,11 @@ from unittest.mock import patch
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from mmrelay.log_utils import configure_component_debug_logging, get_logger
+from mmrelay.log_utils import (
+    RICH_AVAILABLE,
+    configure_component_debug_logging,
+    get_logger,
+)
 
 
 class TestLogUtils(unittest.TestCase):
@@ -134,6 +138,54 @@ class TestLogUtils(unittest.TestCase):
         # When colors are disabled, should use StreamHandler instead of RichHandler
         # Note: The actual implementation may still use RichHandler, so we just check it works
         self.assertIsInstance(logger, logging.Logger)
+
+    @unittest.skipUnless(
+        RICH_AVAILABLE, "Rich is not available; skipping rich traceback tests."
+    )
+    def test_get_logger_rich_tracebacks_default_disabled(self):
+        """
+        Rich tracebacks should be disabled by default when using the Rich handler.
+        """
+        import mmrelay.log_utils as lu
+
+        lu.config = {"logging": {}}
+
+        logger_name = "test_logger_rich_default"
+        logging.getLogger(logger_name).handlers.clear()
+        logger = get_logger(logger_name)
+
+        rich_handlers = [
+            h
+            for h in logger.handlers
+            if hasattr(h, "rich_tracebacks")
+            and not isinstance(h, logging.handlers.RotatingFileHandler)
+        ]
+        self.assertGreater(len(rich_handlers), 0)
+        self.assertFalse(rich_handlers[0].rich_tracebacks)
+
+    @unittest.skipUnless(
+        RICH_AVAILABLE, "Rich is not available; skipping rich traceback tests."
+    )
+    def test_get_logger_rich_tracebacks_enabled_via_config(self):
+        """
+        Rich tracebacks should be enabled when configured explicitly.
+        """
+        import mmrelay.log_utils as lu
+
+        lu.config = {"logging": {"rich_tracebacks": True}}
+
+        logger_name = "test_logger_rich_enabled"
+        logging.getLogger(logger_name).handlers.clear()
+        logger = get_logger(logger_name)
+
+        rich_handlers = [
+            h
+            for h in logger.handlers
+            if hasattr(h, "rich_tracebacks")
+            and not isinstance(h, logging.handlers.RotatingFileHandler)
+        ]
+        self.assertGreater(len(rich_handlers), 0)
+        self.assertTrue(rich_handlers[0].rich_tracebacks)
 
     @patch("mmrelay.log_utils.get_log_dir")
     def test_get_logger_with_file_logging(self, mock_get_log_dir):

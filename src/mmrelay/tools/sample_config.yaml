@@ -68,6 +68,7 @@ logging:
   #max_log_size: 10485760                     # 10 MB default if omitted
   #backup_count: 1                            # Keeps 1 backup as the default if omitted
   #color_enabled: true                        # Set to false to disable colored console output
+  #rich_tracebacks: false                     # Show rich tracebacks in console output (defaults to false)
 
   # Component-specific debug logging (useful for troubleshooting)
   # When disabled (false or omitted), external library logs are completely suppressed

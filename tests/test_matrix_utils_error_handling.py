@@ -235,6 +235,31 @@ class TestDetailedSyncErrorMessage(unittest.TestCase):
             "Network connectivity issue or server unreachable",
         )
 
+    def test_str_fallback_unhelpful_string(self):
+        """Objects whose __str__ returns HTML-like content should fall back to connectivity message."""
+
+        class HtmlError:
+            def __str__(self):
+                return "<html>Error</html>"
+
+        result = _get_detailed_matrix_error_message(HtmlError())
+
+        self.assertEqual(
+            result,
+            "Network connectivity issue or server unreachable",
+        )
+
+    def test_str_fallback_useful_string(self):
+        """Objects whose __str__ returns a plain string should preserve the message."""
+
+        class UsefulError:
+            def __str__(self):
+                return "useful message"
+
+        result = _get_detailed_matrix_error_message(UsefulError())
+
+        self.assertEqual(result, "useful message")
+
     def test_exception_during_processing(self):
         """Test handling of exceptions during error message extraction."""
         # Use the fake class that raises an exception when accessing message
