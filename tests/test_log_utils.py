@@ -11,6 +11,7 @@ Tests the logging configuration and functionality including:
 - Log file rotation and path resolution
 """
 
+import contextlib
 import logging
 import os
 import sys
@@ -193,6 +194,19 @@ class TestLogUtils(unittest.TestCase):
         """
         import mmrelay.log_utils as lu
 
+        def _close_all_handlers():
+            for lg in list(logging.Logger.manager.loggerDict.values()):
+                if isinstance(lg, logging.PlaceHolder):
+                    continue
+                for h in list(lg.handlers):
+                    with contextlib.suppress(Exception):
+                        h.close()
+                lg.handlers.clear()
+            for h in list(logging.getLogger().handlers):
+                with contextlib.suppress(Exception):
+                    h.close()
+            logging.getLogger().handlers.clear()
+
         logger_name = "test_logger_fake_rich_default"
         logging.getLogger(logger_name).handlers.clear()
 
@@ -209,13 +223,14 @@ class TestLogUtils(unittest.TestCase):
             lu.RICH_AVAILABLE = True
             lu.RichHandler = DummyRichHandler
             lu.console = object()
-            lu.config = {"logging": {}}
+            lu.config = {"logging": {"log_to_file": False}}
 
             logger = get_logger(logger_name)
             handlers = [h for h in logger.handlers if isinstance(h, DummyRichHandler)]
             self.assertEqual(len(handlers), 1)
             self.assertFalse(handlers[0].rich_tracebacks)
         finally:
+            _close_all_handlers()
             lu.RICH_AVAILABLE = original_rich_available
             if original_rich_handler is not None:
                 lu.RichHandler = original_rich_handler
@@ -223,13 +238,25 @@ class TestLogUtils(unittest.TestCase):
                 delattr(lu, "RichHandler")
             lu.console = original_console
             lu.config = None
-            logging.getLogger(logger_name).handlers.clear()
 
     def test_get_logger_rich_tracebacks_with_fake_rich_enabled(self):
         """
         Forcing RICH_AVAILABLE with a fake handler should honor rich_tracebacks config.
         """
         import mmrelay.log_utils as lu
+
+        def _close_all_handlers():
+            for lg in list(logging.Logger.manager.loggerDict.values()):
+                if isinstance(lg, logging.PlaceHolder):
+                    continue
+                for h in list(lg.handlers):
+                    with contextlib.suppress(Exception):
+                        h.close()
+                lg.handlers.clear()
+            for h in list(logging.getLogger().handlers):
+                with contextlib.suppress(Exception):
+                    h.close()
+            logging.getLogger().handlers.clear()
 
         logger_name = "test_logger_fake_rich_enabled"
         logging.getLogger(logger_name).handlers.clear()
@@ -247,13 +274,14 @@ class TestLogUtils(unittest.TestCase):
             lu.RICH_AVAILABLE = True
             lu.RichHandler = DummyRichHandler
             lu.console = object()
-            lu.config = {"logging": {"rich_tracebacks": True}}
+            lu.config = {"logging": {"rich_tracebacks": True, "log_to_file": False}}
 
             logger = get_logger(logger_name)
             handlers = [h for h in logger.handlers if isinstance(h, DummyRichHandler)]
             self.assertEqual(len(handlers), 1)
             self.assertTrue(handlers[0].rich_tracebacks)
         finally:
+            _close_all_handlers()
             lu.RICH_AVAILABLE = original_rich_available
             if original_rich_handler is not None:
                 lu.RichHandler = original_rich_handler
@@ -261,7 +289,6 @@ class TestLogUtils(unittest.TestCase):
                 delattr(lu, "RichHandler")
             lu.console = original_console
             lu.config = None
-            logging.getLogger(logger_name).handlers.clear()
 
     @patch("mmrelay.log_utils.get_log_dir")
     def test_get_logger_with_file_logging(self, mock_get_log_dir):
