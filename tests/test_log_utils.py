@@ -149,7 +149,7 @@ class TestLogUtils(unittest.TestCase):
         """
         import mmrelay.log_utils as lu
 
-        lu.config = {"logging": {}}
+        lu.config = {"logging": {"log_to_file": False}}
 
         logger_name = "test_logger_rich_default"
         logging.getLogger(logger_name).handlers.clear()
@@ -173,7 +173,12 @@ class TestLogUtils(unittest.TestCase):
         """
         import mmrelay.log_utils as lu
 
-        lu.config = {"logging": {"rich_tracebacks": True}}
+        lu.config = {
+            "logging": {
+                "rich_tracebacks": True,
+                "log_to_file": False,
+            }
+        }
 
         logger_name = "test_logger_rich_enabled"
         logging.getLogger(logger_name).handlers.clear()
@@ -215,7 +220,7 @@ class TestLogUtils(unittest.TestCase):
         original_console = getattr(lu, "console", None)
 
         class DummyRichHandler(logging.Handler):
-            def __init__(self, *args, **kwargs):
+            def __init__(self, **kwargs):
                 super().__init__()
                 self.rich_tracebacks = kwargs.get("rich_tracebacks")
 
@@ -266,7 +271,7 @@ class TestLogUtils(unittest.TestCase):
         original_console = getattr(lu, "console", None)
 
         class DummyRichHandler(logging.Handler):
-            def __init__(self, *args, **kwargs):
+            def __init__(self, **kwargs):
                 super().__init__()
                 self.rich_tracebacks = kwargs.get("rich_tracebacks")
 
