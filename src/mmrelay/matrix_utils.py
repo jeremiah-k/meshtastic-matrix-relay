@@ -23,6 +23,8 @@ from nio import (  # type: ignore[import-untyped]
     DiscoveryInfoResponse,
     MatrixRoom,
     MegolmEvent,
+    ProfileGetDisplayNameError,
+    ProfileGetDisplayNameResponse,
     ReactionEvent,
     RoomMessageEmote,
     RoomMessageNotice,
@@ -504,21 +506,17 @@ def _get_detailed_matrix_error_message(matrix_response) -> str:
             return matrix_response
 
         # Try to extract specific error information from an object
-        try:
-            message_attr = matrix_response.message
-            if message_attr:
-                message = message_attr
-                # Handle if message is bytes/bytearray
-                if isinstance(message, (bytes, bytearray)):
-                    try:
-                        message = message.decode("utf-8")
-                    except UnicodeDecodeError:
-                        return "Network connectivity issue or server unreachable"
-                if isinstance(message, str):
-                    return message
-        except AttributeError:
-            # Message attribute access failed, continue to other checks
-            pass
+        message_attr = getattr(matrix_response, "message", None)
+        if message_attr:
+            message = message_attr
+            # Handle if message is bytes/bytearray
+            if isinstance(message, (bytes, bytearray)):
+                try:
+                    message = message.decode("utf-8")
+                except UnicodeDecodeError:
+                    return "Network connectivity issue or server unreachable"
+            if isinstance(message, str):
+                return message
         status_code_attr = getattr(matrix_response, "status_code", None)
         if status_code_attr:
             status_code = status_code_attr
@@ -554,6 +552,8 @@ def _get_detailed_matrix_error_message(matrix_response) -> str:
         try:
             error_str = str(matrix_response)
         except Exception:
+            # Keep broad here: custom nio/error objects can raise arbitrary exceptions in __str__;
+            # returning a generic connectivity message prevents sync loop crashes.
             logger.debug("Failed to convert matrix_response to string", exc_info=True)
             return "Network connectivity issue or server unreachable"
 
@@ -1477,7 +1477,7 @@ async def connect_matrix(passed_config=None):
                 except (TypeError, ValueError, AttributeError):
                     logger.exception(f"Error resolving alias {alias}")
                 except Exception:
-                    # Keep the bridge alive for unexpected errors while resolving aliases.
+                    # Intentionally broad: keep the bridge alive and satisfy tests that simulate custom network errors.
                     logger.exception(f"Error resolving alias {alias}")
                 return None
 
@@ -2506,7 +2506,20 @@ async def get_user_display_name(room, event):
     if matrix_client:
         try:
             display_name_response = await matrix_client.get_displayname(event.sender)
-            return getattr(display_name_response, "displayname", None) or event.sender
+            if isinstance(display_name_response, ProfileGetDisplayNameResponse):
+                return display_name_response.displayname or event.sender
+            if isinstance(display_name_response, ProfileGetDisplayNameError):
+                logger.debug(
+                    "Failed to get display name for %s: %s",
+                    event.sender,
+                    display_name_response.message,
+                )
+            else:
+                logger.debug(
+                    "Unexpected display name response type %s for %s",
+                    type(display_name_response),
+                    event.sender,
+                )
         except NIO_COMM_EXCEPTIONS as e:
             logger.debug(f"Failed to get display name for {event.sender}: {e}")
             return event.sender
@@ -3349,7 +3362,7 @@ class ImageUploadError(RuntimeError):
 
 async def upload_image(
     client: AsyncClient, image: Image.Image, filename: str
-) -> Union[UploadResponse, UploadError]:
+) -> Union[UploadResponse, UploadError, SimpleNamespace]:
     """
     Upload a Pillow Image to the Matrix content repository.
 
@@ -3360,6 +3373,7 @@ async def upload_image(
     Returns:
         UploadResponse: Successful upload response containing a `content_uri`.
         UploadError: Error object when the upload fails (network or protocol error).
+        SimpleNamespace: Fallback object with message/status_code when UploadError cannot be constructed.
     """
     # Determine image format from filename
     image_format = os.path.splitext(filename)[1][1:].upper() or "PNG"
@@ -3402,7 +3416,7 @@ async def upload_image(
 async def send_room_image(
     client: AsyncClient,
     room_id: str,
-    upload_response: Union[UploadResponse, UploadError, None],
+    upload_response: Union[UploadResponse, UploadError, SimpleNamespace, None],
     filename: str = "image.png",
 ):
     """
@@ -3413,7 +3427,7 @@ async def send_room_image(
 
     Parameters:
         room_id (str): Target Matrix room ID.
-        upload_response (UploadResponse | UploadError | None): Result from upload_image; must expose `content_uri` on success.
+        upload_response (UploadResponse | UploadError | SimpleNamespace | None): Result from upload_image; must expose `content_uri` on success.
         filename (str): Filename to include as the message body (defaults to "image.png").
 
     Raises:

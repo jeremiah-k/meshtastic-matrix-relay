@@ -7,7 +7,7 @@ import threading
 import time
 from concurrent.futures import Future
 from concurrent.futures import TimeoutError as FuturesTimeoutError
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, Any, Awaitable, List
 
 # type: ignore[assignment]  # Suppress complex type issues with asyncio/concurrent.futures integration
 
@@ -163,7 +163,9 @@ def _submit_coro(coro, loop=None):
             return f
 
 
-def _make_awaitable(future, loop: asyncio.AbstractEventLoop | None = None):
+def _make_awaitable(
+    future: Any, loop: asyncio.AbstractEventLoop | None = None
+) -> Awaitable[Any] | Any:
     """
     Convert a Future-like object to an awaitable tied to the provided loop when needed.
 
@@ -181,10 +183,10 @@ def _make_awaitable(future, loop: asyncio.AbstractEventLoop | None = None):
 
 
 def _wait_for_result(
-    result_future,
+    result_future: Any,
     timeout: float,
     loop: asyncio.AbstractEventLoop | None = None,
-):
+) -> Any:
     """
     Resolve the result of a future or awaitable with a timeout in synchronous contexts.
 
@@ -194,7 +196,8 @@ def _wait_for_result(
     one) is driven with run_until_complete.
 
     Callers should always pass the loop they scheduled work on to ensure proper event loop
-    handling. The fallback get_running_loop()/new-loop path is purely defensive.
+    handling. The fallback get_running_loop()/new-loop path is purely defensive and should
+    only be hit in test/non-loop threads.
     """
     if result_future is None:
         return False

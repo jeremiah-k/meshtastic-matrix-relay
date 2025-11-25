@@ -65,6 +65,20 @@ class TestLogUtils(unittest.TestCase):
         logging.getLogger().handlers.clear()
         logging.getLogger().setLevel(logging.WARNING)
 
+    def _close_all_handlers(self):
+        """Close and clear handlers on all known loggers to avoid resource warnings."""
+        for lg in list(logging.Logger.manager.loggerDict.values()):
+            if isinstance(lg, logging.PlaceHolder):
+                continue
+            for h in list(lg.handlers):
+                with contextlib.suppress(Exception):
+                    h.close()
+            lg.handlers.clear()
+        for h in list(logging.getLogger().handlers):
+            with contextlib.suppress(Exception):
+                h.close()
+        logging.getLogger().handlers.clear()
+
     def test_get_logger_basic(self):
         """
         Verifies that a logger is created with default settings when no configuration is provided.
@@ -199,19 +213,6 @@ class TestLogUtils(unittest.TestCase):
         """
         import mmrelay.log_utils as lu
 
-        def _close_all_handlers():
-            for lg in list(logging.Logger.manager.loggerDict.values()):
-                if isinstance(lg, logging.PlaceHolder):
-                    continue
-                for h in list(lg.handlers):
-                    with contextlib.suppress(Exception):
-                        h.close()
-                lg.handlers.clear()
-            for h in list(logging.getLogger().handlers):
-                with contextlib.suppress(Exception):
-                    h.close()
-            logging.getLogger().handlers.clear()
-
         logger_name = "test_logger_fake_rich_default"
         logging.getLogger(logger_name).handlers.clear()
 
@@ -235,7 +236,7 @@ class TestLogUtils(unittest.TestCase):
             self.assertEqual(len(handlers), 1)
             self.assertFalse(handlers[0].rich_tracebacks)
         finally:
-            _close_all_handlers()
+            self._close_all_handlers()
             lu.RICH_AVAILABLE = original_rich_available
             if original_rich_handler is not None:
                 lu.RichHandler = original_rich_handler
@@ -249,19 +250,6 @@ class TestLogUtils(unittest.TestCase):
         Forcing RICH_AVAILABLE with a fake handler should honor rich_tracebacks config.
         """
         import mmrelay.log_utils as lu
-
-        def _close_all_handlers():
-            for lg in list(logging.Logger.manager.loggerDict.values()):
-                if isinstance(lg, logging.PlaceHolder):
-                    continue
-                for h in list(lg.handlers):
-                    with contextlib.suppress(Exception):
-                        h.close()
-                lg.handlers.clear()
-            for h in list(logging.getLogger().handlers):
-                with contextlib.suppress(Exception):
-                    h.close()
-            logging.getLogger().handlers.clear()
 
         logger_name = "test_logger_fake_rich_enabled"
         logging.getLogger(logger_name).handlers.clear()
@@ -286,7 +274,7 @@ class TestLogUtils(unittest.TestCase):
             self.assertEqual(len(handlers), 1)
             self.assertTrue(handlers[0].rich_tracebacks)
         finally:
-            _close_all_handlers()
+            self._close_all_handlers()
             lu.RICH_AVAILABLE = original_rich_available
             if original_rich_handler is not None:
                 lu.RichHandler = original_rich_handler
