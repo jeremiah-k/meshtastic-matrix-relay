@@ -12,7 +12,6 @@ import re
 import ssl
 import sys
 import time
-from types import SimpleNamespace
 from typing import Any, Dict, Optional, Union, cast
 from urllib.parse import urlparse
 
@@ -2136,6 +2135,9 @@ async def join_matrix_room(matrix_client, room_id_or_alias: str) -> None:
             )
     except NIO_COMM_EXCEPTIONS:
         logger.exception(f"Error joining room '{room_id}'")
+    except Exception:
+        # Handle truly unexpected errors during room joining
+        logger.exception(f"Unexpected error joining room '{room_id}'")
 
 
 def _get_e2ee_error_message():
