@@ -2676,14 +2676,14 @@ async def test_upload_image_returns_upload_error_on_network_exception():
             self.retry_after_ms = retry_after_ms
             self.soft_logout = soft_logout
 
-    with patch("mmrelay.matrix_utils.UploadError", side_effect=LocalUploadError):
-        result = await upload_image(
-            mock_client,
-            FakeImage(),  # type: ignore[arg-type]
-            "photo.png",
-        )
+    result = await upload_image(
+        mock_client,
+        FakeImage(),  # type: ignore[arg-type]
+        "photo.png",
+    )
 
-    assert isinstance(result, LocalUploadError)
+    assert hasattr(result, "message")
+    assert hasattr(result, "status_code")
     assert result.message == "boom"
     assert result.status_code is None
     mock_client.upload.assert_awaited_once()
@@ -3995,6 +3995,7 @@ class TestMatrixE2EEHasAttrChecks:
             mock_client_instance.get_displayname = AsyncMock(
                 return_value=MagicMock(displayname="TestBot")
             )
+            mock_client_instance.keys_upload = AsyncMock()
             mock_async_client.return_value = mock_client_instance
 
             # Create mock modules with required attributes
