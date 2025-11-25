@@ -240,6 +240,12 @@ class TestDetailedSyncErrorMessage(unittest.TestCase):
 
         class HtmlError:
             def __str__(self):
+                """
+                Provide an HTML-like error representation of the object.
+                
+                Returns:
+                    str: A string containing an HTML-like error message (e.g., "<html>Error</html>").
+                """
                 return "<html>Error</html>"
 
         result = _get_detailed_matrix_error_message(HtmlError())
@@ -254,6 +260,12 @@ class TestDetailedSyncErrorMessage(unittest.TestCase):
 
         class UsefulError:
             def __str__(self):
+                """
+                Return a concise, human-readable representation of the object.
+                
+                Returns:
+                    A short, user-facing string describing the object.
+                """
                 return "useful message"
 
         result = _get_detailed_matrix_error_message(UsefulError())

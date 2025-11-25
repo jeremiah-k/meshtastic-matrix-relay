@@ -26,6 +26,12 @@ class DummyRichHandler(logging.Handler):
     """Test double for RichHandler when Rich is unavailable."""
 
     def __init__(self, **kwargs: Any) -> None:
+        """
+        Initialize the dummy Rich handler and record the `rich_tracebacks` setting.
+        
+        Parameters:
+            rich_tracebacks (bool | None): If provided, indicates whether rich-style tracebacks should be enabled for this handler.
+        """
         super().__init__()
         self.rich_tracebacks = kwargs.get("rich_tracebacks")
 
@@ -77,7 +83,11 @@ class TestLogUtils(unittest.TestCase):
         logging.getLogger().setLevel(logging.WARNING)
 
     def _close_all_handlers(self) -> None:
-        """Close and clear handlers on all known loggers to avoid resource warnings."""
+        """
+        Close and remove all handlers from every registered logger and the root logger.
+        
+        Closes each handler (suppressing OSError and ValueError) and clears handler lists for all known loggers and the root logger to ensure no file descriptors or resources remain open.
+        """
         for lg in list(logging.Logger.manager.loggerDict.values()):
             if isinstance(lg, logging.PlaceHolder):
                 continue
@@ -287,9 +297,9 @@ class TestLogUtils(unittest.TestCase):
     @patch("mmrelay.log_utils.get_log_dir")
     def test_get_logger_with_file_logging(self, mock_get_log_dir):
         """
-        Verify that a logger is created with a file handler when file logging is enabled in the configuration.
-
-        Ensures the logger has at least one handler and exactly one RotatingFileHandler when file logging is configured.
+        Verify a logger includes a RotatingFileHandler when file logging is enabled.
+        
+        Mocks the log directory and enables file logging in configuration, then creates a uniquely named logger and asserts it has at least one handler and exactly one RotatingFileHandler.
         """
         mock_get_log_dir.return_value = self.test_dir
 
