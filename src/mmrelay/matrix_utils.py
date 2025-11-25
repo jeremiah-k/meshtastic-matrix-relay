@@ -1474,7 +1474,10 @@ async def connect_matrix(passed_config=None):
                     logger.warning(f"Could not resolve alias {alias}: {error_details}")
                 except NIO_COMM_EXCEPTIONS:
                     logger.exception(f"Error resolving alias {alias}")
-                except (TypeError, ValueError):
+                except (TypeError, ValueError, AttributeError):
+                    logger.exception(f"Error resolving alias {alias}")
+                except Exception:
+                    # Keep the bridge alive for unexpected errors while resolving aliases.
                     logger.exception(f"Error resolving alias {alias}")
                 return None
 

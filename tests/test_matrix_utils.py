@@ -2685,7 +2685,7 @@ async def test_upload_image_returns_upload_error_on_network_exception():
 
     assert isinstance(result, LocalUploadError)
     assert result.message == "boom"
-    assert result.status_code == ""
+    assert result.status_code is None
     mock_client.upload.assert_awaited_once()
 
 
