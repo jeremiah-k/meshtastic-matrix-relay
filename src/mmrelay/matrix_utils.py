@@ -3070,7 +3070,8 @@ async def on_room_message(
             ) = await _get_meshtastic_interface_and_channel(
                 room_config, "relay reaction"
             )
-            if not meshtastic_interface or meshtastic_channel is None:
+            # _get_meshtastic_interface_and_channel validates channel and returns None on failure.
+            if not meshtastic_interface:
                 return
 
             if get_meshtastic_config_value(
@@ -3141,7 +3142,8 @@ async def on_room_message(
             ) = await _get_meshtastic_interface_and_channel(
                 room_config, "relay reaction"
             )
-            if not meshtastic_interface or meshtastic_channel is None:
+            # _get_meshtastic_interface_and_channel validates channel and returns None on failure.
+            if not meshtastic_interface:
                 return
 
             if get_meshtastic_config_value(
@@ -3303,11 +3305,6 @@ async def on_room_message(
     ) = await _get_meshtastic_interface_and_channel(room_config, "relay message")
 
     if not meshtastic_interface:
-        # The helper function already logs the specific error
-        return
-
-    # The helper function already handles validation and logging
-    if not isinstance(meshtastic_channel, int) or meshtastic_channel < 0:
         # The helper function already logs the specific error
         return
 
