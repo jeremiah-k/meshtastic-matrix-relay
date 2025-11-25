@@ -242,7 +242,7 @@ class TestDetailedSyncErrorMessage(unittest.TestCase):
             def __str__(self):
                 """
                 Provide an HTML-like error representation of the object.
-                
+
                 Returns:
                     str: A string containing an HTML-like error message (e.g., "<html>Error</html>").
                 """
@@ -262,7 +262,7 @@ class TestDetailedSyncErrorMessage(unittest.TestCase):
             def __str__(self):
                 """
                 Return a concise, human-readable representation of the object.
-                
+
                 Returns:
                     A short, user-facing string describing the object.
                 """

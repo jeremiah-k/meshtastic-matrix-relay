@@ -228,13 +228,13 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         def _submit_coro_mock(coro, loop=None):
             """
             Run an awaitable immediately and return a concurrent.futures.Future completed with its outcome.
-            
+
             Executes the given coroutine synchronously and returns a Future that is set to the coroutine's result or to the exception it raised. The optional `loop` parameter is accepted for compatibility but is ignored.
-             
+
             Parameters:
                 coro (Awaitable): The coroutine or awaitable to execute.
                 loop (Any, optional): Ignored; present for API compatibility.
-            
+
             Returns:
                 concurrent.futures.Future: A Future already completed with the coroutine's result or exception.
             """
@@ -635,7 +635,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
     def test_on_meshtastic_message_large_node_list(self):
         """
         Verify on_meshtastic_message handles a packet when the interface has a very large number of nodes without raising exceptions.
-        
+
         Sets up a mock interface containing 10,000 nodes and uses a completed future for submitted coroutines to simulate fast asynchronous processing; the test passes if the call completes without error.
         """
         packet = {
@@ -662,9 +662,9 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         def _done_future(*args, **kwargs):
             """
             Create and return a Future already completed with result None.
-            
+
             Useful in tests to simulate an already-finished asynchronous operation.
-            
+
             Returns:
                 concurrent.futures.Future: A Future whose result is set to `None`.
             """

@@ -159,10 +159,10 @@ def _is_room_alias(value: Any) -> bool:
 def _get_valid_device_id(device_id_value: Any) -> Optional[str]:
     """
     Return the trimmed device ID when the input is a non-empty string.
-    
+
     Parameters:
         device_id_value (Any): Value to validate as a device identifier.
-    
+
     Returns:
         Optional[str]: The input string with surrounding whitespace removed if non-empty, otherwise None.
     """
@@ -360,10 +360,10 @@ def _display_room_channel_mappings(
 def _can_auto_create_credentials(matrix_config: dict) -> bool:
     """
     Check if the Matrix configuration contains the fields required for automatic credential creation.
-    
+
     Parameters:
         matrix_config (dict): The `matrix` section from config.yaml.
-    
+
     Returns:
         bool: `True` if `homeserver`, a user id (`bot_user_id` or `user_id`), and `password` are present and non-empty strings, `False` otherwise.
     """
@@ -443,9 +443,9 @@ def _normalize_bot_user_id(homeserver: str, bot_user_id: str | None) -> str | No
 def _get_msgs_to_keep_config():
     """
     Determine how many Meshtastic–Matrix message mappings should be retained.
-    
+
     Prefers the new configuration path `database.msg_map.msgs_to_keep`. If that path is absent, falls back to the legacy `db.msg_map.msgs_to_keep` and emits a deprecation warning. If no configuration or value is present, returns DEFAULT_MSGS_TO_KEEP.
-    
+
     Returns:
         int: Number of message mappings to keep.
     """
@@ -471,13 +471,13 @@ def _get_msgs_to_keep_config():
 def _get_detailed_matrix_error_message(matrix_response) -> str:
     """
     Summarize a Matrix SDK response or error into a short, user-facing message.
-    
+
     Accepts bytes/bytearray, string, or objects exposing `message`, `status_code`, or `transport_response`.
     Returns a concise, actionable description appropriate for logging or presenting to users (for example authentication failures, forbidden access, rate limiting, server errors, or a generic network/connectivity message).
-    
+
     Parameters:
         matrix_response: The Matrix response or error to summarize. May be a bytes/bytearray, a string, or an object (e.g., an nio response/error) exposing `message`, `status_code`, or `transport_response`.
-    
+
     Returns:
         A short error description string (for example: `"Authentication failed - invalid or expired credentials"`, `"Access forbidden - check user permissions"`, `"Rate limited - too many requests"`, `"Server error (HTTP <code>)"`, or a generic `"Network connectivity issue or server unreachable"`).
     """
@@ -485,10 +485,10 @@ def _get_detailed_matrix_error_message(matrix_response) -> str:
     def _is_unhelpful_error_string(error_str: str) -> bool:
         """
         Detect whether an error message string is unhelpful (e.g., an object repr, bare HTML-like tag, or generic "unknown error").
-        
+
         Parameters:
             error_str (str): The error message text to evaluate.
-        
+
         Returns:
             bool: `true` if the string appears to be an unhelpful error message (contains an object memory-address repr, a lone HTML-like tag, or the phrase "unknown error"), `false` otherwise.
         """
@@ -846,15 +846,15 @@ matrix_client = None
 def bot_command(command, event):
     """
     Detect whether a Matrix event addresses the bot with the specified command.
-    
+
     Checks the event's plain body and HTML-formatted body (if present). It returns True when either body:
     - begins with `!<command>`, or
     - begins with an explicit bot mention (bot MXID or display name) optionally followed by punctuation and whitespace and then `!<command>`.
-    
+
     Parameters:
         command (str): Command name to detect (without the leading `!`).
         event: Matrix event object expected to provide `body` (plain text) and `source`/`content` with optional `formatted_body` (HTML).
-    
+
     Returns:
         bool: `True` if the message targets the bot with the given command, `False` otherwise.
     """
@@ -896,9 +896,9 @@ def bot_command(command, event):
 async def _connect_meshtastic():
     """
     Obtain a Meshtastic connection object suitable for use from async code.
-    
+
     When running under test, returns the connector directly; otherwise invokes the synchronous connector without blocking the event loop.
-    
+
     Returns:
         A Meshtastic interface or proxy object produced by the synchronous connector.
     """
@@ -913,11 +913,11 @@ async def _get_meshtastic_interface_and_channel(
 ) -> tuple[Any | None, int | None]:
     """
     Get a Meshtastic connection and a validated channel number for the given room.
-    
+
     Parameters:
         room_config (dict): Room configuration containing the key "meshtastic_channel" with a non-negative integer channel.
         purpose (str): Short description of the action (used in error messages) to indicate why the connection/channel are needed.
-    
+
     Returns:
         tuple: (meshtastic_interface, channel) where `meshtastic_interface` is the connected Meshtastic interface object and `channel` is the non-negative integer channel from the room config; returns (None, None) if the connection fails or the channel is missing/invalid.
     """
@@ -951,9 +951,9 @@ async def _handle_detection_sensor_packet(
 ) -> None:
     """
     Relay a detection-sensor message from Matrix to Meshtastic when detection and broadcast are enabled.
-    
+
     If both the global broadcast and detection_sensor features are enabled, queue the given text as a DETECTION_SENSOR_APP payload on the room's configured Meshtastic channel and log the outcome. Does nothing if broadcasting or detection processing is disabled or if obtaining a Meshtastic interface/channel fails.
-    
+
     Parameters:
         config (dict): Global configuration used to determine feature flags.
         room_config (dict): Room-specific configuration; must include "meshtastic_channel" with the target channel index.
@@ -1014,13 +1014,13 @@ async def _handle_detection_sensor_packet(
 async def connect_matrix(passed_config=None):
     """
     Initialize and prepare a Matrix AsyncClient using available credentials and configuration.
-    
+
     Parameters:
         passed_config (dict | None): Optional configuration override for this connection attempt; when provided it is used in place of the module-level config for this call.
-    
+
     Returns:
         AsyncClient | None: A connected and initialized AsyncClient ready for use, or `None` if connection or credentials are unavailable.
-    
+
     Raises:
         ValueError: If the required top-level "matrix_rooms" configuration is missing.
         ConnectionError: If the initial Matrix sync fails or times out.
@@ -2505,11 +2505,11 @@ def strip_quoted_lines(text: str) -> str:
 async def get_user_display_name(room, event):
     """
     Get the display name for an event sender, preferring a room-specific name.
-    
+
     If the room defines a per-room display name for the sender, that name is returned.
     Otherwise the global display name from the homeserver is returned when available.
     If no display name can be determined, the sender's Matrix ID (MXID) is returned.
-    
+
     Returns:
         str: The sender's display name or their MXID.
     """
@@ -2639,9 +2639,9 @@ async def send_reply_to_meshtastic(
 ):
     """
     Queue a Matrix reply to be delivered over Meshtastic as either a structured reply or a regular broadcast.
-    
+
     If broadcasting is disabled this function returns without action. When storage_enabled is True, a message-mapping record linking the originating Matrix event to the Meshtastic message is created and attached to the queued message so later replies and reactions can be correlated. All errors are logged; the function does not raise.
-    
+
     Parameters:
         reply_message (str): Meshtastic-ready text payload to send.
         full_display_name (str): Sender display name used in queue descriptions and logs.
@@ -2882,13 +2882,13 @@ async def on_room_message(
 ) -> None:
     """
     Handle an incoming Matrix room event and relay it to Meshtastic when applicable.
-    
+
     Processes text, notice, emote, and reaction events for configured rooms: ignores events from before the bot started and messages from the bot itself; applies per-room and global interaction settings; forwards reactions and replies to their corresponding Meshtastic targets when mappings exist; reformats and relays Matrix-origin messages to Meshtastic (including remote-meshnet emote reactions as radio text) and handles detection-sensor forwarding. Integrates with the plugin system and treats recognized bot commands as non-relayed.
-    
+
     Parameters:
         room (MatrixRoom): The Matrix room where the event was received.
         event (RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote): The received room event.
-    
+
     Side effects:
         - May enqueue Meshtastic send operations.
         - May read/write persistent message mappings to support reply/reaction bridging.
@@ -3383,12 +3383,12 @@ class ImageUploadError(RuntimeError):
     ):
         """
         Create an ImageUploadError and attach the underlying upload response or error.
-        
+
         Parameters:
             upload_response: The underlying upload error or response object (or None). If present, its `message`
                 attribute will be included in the exception text and the object will be stored on the instance as
                 `upload_response`.
-        
+
         """
         message = getattr(upload_response, "message", "Unknown error")
         super().__init__(f"Image upload failed: {message}")
@@ -3400,11 +3400,11 @@ async def upload_image(
 ) -> Union[UploadResponse, UploadError, SimpleNamespace]:
     """
     Upload a Pillow Image to the Matrix content repository.
-    
+
     Parameters:
         image (PIL.Image.Image): The image to upload.
         filename (str): Filename used to infer the image MIME type and as the uploaded filename.
-    
+
     Returns:
         UploadResponse on success (contains a `content_uri`).
         On failure, an object with `message` and optional `status_code` attributes describing the error.
@@ -3490,15 +3490,15 @@ async def send_image(
 ):
     """
     Upload and send an image to a Matrix room.
-    
+
     Uploads the provided PIL Image to the client's content repository and sends it as an `m.image` message to the specified room using the given filename.
-    
+
     Parameters:
         client (AsyncClient): Matrix client used to upload and send the file.
         room_id (str): Destination Matrix room ID.
         image (Image.Image): PIL Image to upload and send.
         filename (str): Filename to present with the uploaded image (default "image.png").
-    
+
     Raises:
         ImageUploadError: If the image upload or sending fails.
     """

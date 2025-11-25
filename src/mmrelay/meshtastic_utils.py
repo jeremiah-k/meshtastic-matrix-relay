@@ -117,11 +117,11 @@ subscribed_to_connection_lost = False
 def _submit_coro(coro, loop=None):
     """
     Schedule a coroutine to run on an appropriate asyncio event loop and return a Future for its result.
-    
+
     Parameters:
         coro: The coroutine object to execute. If not a coroutine, the function returns None.
         loop: Optional target asyncio event loop. If omitted, the module-level `event_loop` is used.
-    
+
     Returns:
         A Future-like object representing the coroutine's eventual result, or `None` if `coro` is not a coroutine.
     """
@@ -166,13 +166,13 @@ def _make_awaitable(
 ) -> Awaitable[Any] | Any:
     """
     Return an awaitable for the given future-like object, binding it to the provided event loop when necessary.
-    
+
     If `future` already implements the awaitable protocol, it is returned unchanged. For non-awaitable futures, the returned awaitable resolves to the future's result and will be associated with `loop` when one is supplied.
-    
+
     Parameters:
         future: A future-like object or an awaitable.
         loop (asyncio.AbstractEventLoop | None): Event loop to bind non-awaitable futures to; if `None`, no explicit loop binding is applied.
-    
+
     Returns:
         An awaitable that yields the resolved value of `future`, or `future` itself if it is already awaitable.
     """
@@ -189,17 +189,17 @@ def _wait_for_result(
 ) -> Any:
     """
     Resolve and return the value of a future or awaitable within a synchronous context using a timeout.
-    
+
     Supports concurrent.futures.Future, asyncio.Future/Task, awaitables, and objects exposing a `.result(timeout)` API.
-    
+
     Parameters:
         result_future (Any): The future/awaitable or future-like object to resolve.
         timeout (float): Maximum seconds to wait for the result.
         loop (asyncio.AbstractEventLoop | None): Optional event loop to drive awaiting; if omitted, the function will use a running loop or create a temporary one.
-    
+
     Returns:
         Any: The value produced by the resolved future/awaitable.
-    
+
     Raises:
         asyncio.TimeoutError: If awaiting the awaitable times out.
         concurrent.futures.TimeoutError: If a concurrent.futures.Future times out.
@@ -229,10 +229,10 @@ def _wait_for_result(
     async def _runner():
         """
         Await the captured awaitable and fail if it does not complete within the captured timeout.
-        
+
         Returns:
             The result of the awaited awaitable.
-        
+
         Raises:
             asyncio.TimeoutError: If the awaitable does not complete before the timeout expires.
         """
@@ -351,12 +351,12 @@ def _get_name_or_none(name_func, sender):
 def _get_device_metadata(client):
     """
     Extract firmware version and raw metadata output from a Meshtastic client.
-    
+
     Attempts to invoke client.localNode.getMetadata() (if present), captures its console output, and parses a firmware version string. Returns a dict containing the parsed firmware version, the captured raw output (possibly truncated), and a success flag indicating whether a firmware version was found.
-    
+
     Parameters:
         client: An object implementing a Meshtastic client interface; expected to provide a localNode with a getMetadata() method. If the method is absent or parsing fails, defaults are returned.
-    
+
     Returns:
         dict: {
             "firmware_version": str — parsed firmware version or "unknown" when not found,
@@ -812,16 +812,16 @@ async def reconnect():
 def on_meshtastic_message(packet, interface):
     """
     Handle an incoming Meshtastic packet and route it to configured Matrix rooms or installed plugins.
-    
+
     Processes the provided Meshtastic `packet` (a dict-like decoded message) according to interaction settings:
     - relays reactions and replies to the mapped Matrix event/room when enabled,
     - relays ordinary text messages to Matrix rooms mapped to the message's Meshtastic channel unless the message is a direct message to the relay node or a plugin handles it,
     - dispatches non-text or otherwise unhandled packets to plugins for processing.
-    
+
     Parameters:
         packet (dict): The Meshtastic packet (decoded fields expected in a nested `decoded` dict).
         interface: The Meshtastic interface object used to resolve node information and send/receive context.
-    
+
     Side effects:
         Schedules Matrix relay coroutines, invokes plugin handlers, and may persist sender metadata or message mapping information.
     """

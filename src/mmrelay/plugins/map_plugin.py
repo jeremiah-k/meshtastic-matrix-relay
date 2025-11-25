@@ -306,18 +306,27 @@ class Plugin(BasePlugin):
         try:
             zoom = int(zoom)
         except (TypeError, ValueError):
-            zoom = self.config.get("zoom", 8)
+            try:
+                zoom = int(self.config.get("zoom", 8))
+            except (TypeError, ValueError):
+                zoom = 8
 
-        if zoom < 0 or zoom > 30:
+        if not 0 <= zoom <= 30:
             zoom = 8
 
         try:
             image_size = (int(image_size[0]), int(image_size[1]))
         except (TypeError, ValueError):
-            image_size = (
-                int(self.config.get("image_width", 1000)),
-                int(self.config.get("image_height", 1000)),
-            )
+            width, height = 1000, 1000
+            try:
+                width = int(self.config.get("image_width", 1000))
+            except (TypeError, ValueError):
+                pass  # keep default
+            try:
+                height = int(self.config.get("image_height", 1000))
+            except (TypeError, ValueError):
+                pass  # keep default
+            image_size = (width, height)
 
         if image_size[0] > 1000 or image_size[1] > 1000:
             image_size = (1000, 1000)

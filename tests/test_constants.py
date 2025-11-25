@@ -136,7 +136,7 @@ class TestConstantsValidity:
     def test_message_constants_valid(self):
         """
         Assert message-related constants are defined and meet expected non-negative or positive constraints.
-        
+
         Checks:
         - DEFAULT_LOG_SIZE_MB is greater than 0.
         - DEFAULT_LOG_BACKUP_COUNT is greater than or equal to 0.

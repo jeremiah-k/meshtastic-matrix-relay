@@ -91,14 +91,14 @@ class Plugin(BasePlugin):
         # Pass the event to matches()
         """
         Handle a room message that requests a telemetry graph and send the generated image to the Matrix room.
-        
+
         Parses messages invoking one of the telemetry commands (!batteryLevel, !voltage, !airUtilTx) optionally followed by a node identifier, computes hourly averages for the last 12 hours (per-node or network-wide), renders a line plot of those averages, uploads the image to the originating room, and sends it.
-        
+
         Parameters:
             room: Matrix room object where the event originated; used to determine the destination room_id.
             event: Matrix event used to test whether the message matches a supported bot command.
             full_message (str): Full plaintext message content to parse the command and optional node identifier.
-        
+
         Returns:
             True if the message matched a telemetry command and the graph was generated and successfully sent; False otherwise.
         """

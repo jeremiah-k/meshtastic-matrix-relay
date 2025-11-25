@@ -347,7 +347,7 @@ class TestImageUploadAndSend(unittest.TestCase):
     def test_send_image(self, mock_send_room_image, mock_upload_image):
         """
         Ensure send_image uploads the image and sends it to the specified room using the provided filename.
-        
+
         Calls send_image with a mock client, room ID, image, and filename; asserts that upload_image is awaited with the client, image, and filename, and that send_room_image is awaited with the client, room ID, upload response, and filename.
         """
 
@@ -464,7 +464,7 @@ class TestMapPlugin(unittest.TestCase):
     ):
         """
         Verify that receiving a "!map" Matrix room message causes the plugin to generate a map and send it to the room as "location.png".
-        
+
         Asserts that when the plugin matches a "!map" command it calls get_map once and calls send_image with the Matrix client, the originating room ID, the generated image, and the filename "location.png".
         """
 
@@ -531,7 +531,7 @@ class TestMapPlugin(unittest.TestCase):
         async def run_test():
             """
             Verify the plugin handles a "!map zoom=15" room message and forwards zoom=15 to the map generator.
-            
+
             Mocks Matrix and Meshtastic clients, simulates a room message event, and asserts the handler returns True and that get_map was called with zoom=15.
             """
             mock_room = MagicMock()
@@ -652,7 +652,7 @@ class TestMapPlugin(unittest.TestCase):
     ):
         """
         Verify that an invalid zoom parameter in a "!map" command is replaced with the default zoom when handling a room message.
-        
+
         Simulates a room event containing "!map zoom=50", awaits handle_room_message, asserts it returns True, and confirms get_map was invoked with zoom equal to 8.
         """
         """
@@ -664,7 +664,7 @@ class TestMapPlugin(unittest.TestCase):
         async def run_test():
             """
             Verify that an invalid zoom parameter in a "!map" command is replaced with the default zoom level.
-            
+
             Simulates receiving "!map zoom=50" and asserts that get_map is called with the default zoom (8) rather than the invalid value.
             """
             mock_room = MagicMock()

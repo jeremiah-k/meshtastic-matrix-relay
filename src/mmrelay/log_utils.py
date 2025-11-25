@@ -140,12 +140,12 @@ def configure_component_debug_logging():
 def get_logger(name):
     """
     Create and return a logger configured for console output (colorized when available) and optional rotating file logging.
-    
+
     Reads logging-related settings from the global `config` and from command-line arguments to determine log level, whether colors and Rich tracebacks are enabled, logfile path, rotation size, and backup count. If a logfile is used, creates its directory if necessary and stores the path globally when the logger name matches the application display name.
-    
+
     Parameters:
         name (str): The name of the logger to create.
-    
+
     Returns:
         logging.Logger: The configured logger instance.
     """

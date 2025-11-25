@@ -28,7 +28,7 @@ class DummyRichHandler(logging.Handler):
     def __init__(self, **kwargs: Any) -> None:
         """
         Initialize the dummy Rich handler and record the `rich_tracebacks` setting.
-        
+
         Parameters:
             rich_tracebacks (bool | None): If provided, indicates whether rich-style tracebacks should be enabled for this handler.
         """
@@ -85,7 +85,7 @@ class TestLogUtils(unittest.TestCase):
     def _close_all_handlers(self) -> None:
         """
         Close and remove all handlers from every registered logger and the root logger.
-        
+
         Closes each handler (suppressing OSError and ValueError) and clears handler lists for all known loggers and the root logger to ensure no file descriptors or resources remain open.
         """
         for lg in list(logging.Logger.manager.loggerDict.values()):
@@ -298,7 +298,7 @@ class TestLogUtils(unittest.TestCase):
     def test_get_logger_with_file_logging(self, mock_get_log_dir):
         """
         Verify a logger includes a RotatingFileHandler when file logging is enabled.
-        
+
         Mocks the log directory and enables file logging in configuration, then creates a uniquely named logger and asserts it has at least one handler and exactly one RotatingFileHandler.
         """
         mock_get_log_dir.return_value = self.test_dir
