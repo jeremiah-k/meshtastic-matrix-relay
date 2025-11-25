@@ -563,8 +563,8 @@ def _get_detailed_matrix_error_message(matrix_response) -> str:
             and not _is_unhelpful_error_string(error_str)
         ):
             return error_str
-
-        return "Network connectivity issue or server unreachable"
+        else:
+            return "Network connectivity issue or server unreachable"
 
     except (AttributeError, ValueError, TypeError) as e:
         logger.debug(
@@ -2422,7 +2422,7 @@ async def matrix_relay(
                 logger.debug(f"Message event_id: {event_id}")
 
         except asyncio.TimeoutError:
-            logger.error(f"Timeout sending message to Matrix room {room_id}")
+            logger.exception("Timeout sending message to Matrix room %s", room_id)
             return
         except NIO_COMM_EXCEPTIONS:
             logger.exception(f"Error sending message to Matrix room {room_id}")
@@ -3266,7 +3266,8 @@ async def on_room_message(
                         f"Processed command with plugin: {plugin.plugin_name} from {event.sender}"
                     )
             except Exception:
-                # Keep the bridge alive for unexpected plugin errors, but capture traceback for debugging.
+                # Keep the bridge alive for unexpected plugin errors and capture traceback for debugging.
+                # Both error and exception are logged to satisfy error-boundary expectations and provide tracebacks.
                 logger.error(
                     "Error processing message with plugin %s", plugin.plugin_name
                 )
@@ -3361,12 +3362,15 @@ async def on_room_message(
 class ImageUploadError(RuntimeError):
     """Raised when Matrix image upload fails."""
 
-    def __init__(self, upload_response: UploadError | UploadResponse | None):
+    def __init__(
+        self,
+        upload_response: UploadError | UploadResponse | SimpleNamespace | None,
+    ):
         """
         Initialize the ImageUploadError with an optional upload response or error.
 
         Parameters:
-            upload_response (UploadError | UploadResponse | None): The underlying upload error or response object whose
+            upload_response (UploadError | UploadResponse | SimpleNamespace | None): The underlying upload error or response object whose
                 `message` attribute will be included in the exception text. The value is also stored on the exception
                 instance as the `upload_response` attribute.
         """

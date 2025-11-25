@@ -189,8 +189,8 @@ class Plugin(BasePlugin):
 
         try:
             await send_image(matrix_client, room.room_id, pil_image, "graph.png")
-        except ImageUploadError as exc:
-            self.logger.error(f"Failed to send telemetry graph: {exc}")
+        except ImageUploadError:
+            self.logger.exception("Failed to send telemetry graph")
             await matrix_client.room_send(
                 room_id=room.room_id,
                 message_type="m.room.message",

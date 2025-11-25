@@ -71,8 +71,8 @@ class TestLogUtils(unittest.TestCase):
 
         shutil.rmtree(self.test_dir, ignore_errors=True)
 
-        # Reset logging state
-        logging.getLogger().handlers.clear()
+        # Reset logging state using the comprehensive handler cleanup helper
+        self._close_all_handlers()
         logging.getLogger().setLevel(logging.WARNING)
 
     def _close_all_handlers(self):
