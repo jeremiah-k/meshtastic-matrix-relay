@@ -346,9 +346,9 @@ class TestImageUploadAndSend(unittest.TestCase):
     @patch("mmrelay.matrix_utils.send_room_image")
     def test_send_image(self, mock_send_room_image, mock_upload_image):
         """
-        Test that the image sending workflow uploads an image and sends it to a room.
-
-        Verifies that `upload_image` is awaited with the correct client and image, and that `send_room_image` is awaited with the resulting upload response.
+        Ensure send_image uploads the image and sends it to the specified room using the provided filename.
+        
+        Calls send_image with a mock client, room ID, image, and filename; asserts that upload_image is awaited with the client, image, and filename, and that send_room_image is awaited with the client, room ID, upload response, and filename.
         """
 
         async def run_test():
@@ -463,9 +463,9 @@ class TestMapPlugin(unittest.TestCase):
         mock_send_image,
     ):
         """
-        Test that a "!map" Matrix room message triggers map generation and sending of the resulting image.
-
-        Asserts that when the plugin matches a "!map" command it generates a map from node positions (calls get_map once) and sends the produced image to the originating Matrix room using the filename "location.png".
+        Verify that receiving a "!map" Matrix room message causes the plugin to generate a map and send it to the room as "location.png".
+        
+        Asserts that when the plugin matches a "!map" command it calls get_map once and calls send_image with the Matrix client, the originating room ID, the generated image, and the filename "location.png".
         """
 
         async def run_test():
@@ -530,9 +530,9 @@ class TestMapPlugin(unittest.TestCase):
 
         async def run_test():
             """
-            Asynchronously tests that the plugin processes a "!map zoom=15" command by generating a map with the specified zoom level and confirms the handler returns True.
-
-            This test mocks Matrix and Meshtastic clients, simulates a room message event, and verifies that the map generation function receives the correct zoom parameter.
+            Verify the plugin handles a "!map zoom=15" room message and forwards zoom=15 to the map generator.
+            
+            Mocks Matrix and Meshtastic clients, simulates a room message event, and asserts the handler returns True and that get_map was called with zoom=15.
             """
             mock_room = MagicMock()
             mock_room.room_id = "!test:example.com"
@@ -651,9 +651,9 @@ class TestMapPlugin(unittest.TestCase):
         mock_send_image,
     ):
         """
-        Ensure invalid zoom values in '!map' commands are replaced by the default zoom when handling a room message.
-
-        Simulates receiving a "!map zoom=50" command and asserts that handle_room_message returns True and that the map generation function is called with the default zoom level (8).
+        Verify that an invalid zoom parameter in a "!map" command is replaced with the default zoom when handling a room message.
+        
+        Simulates a room event containing "!map zoom=50", awaits handle_room_message, asserts it returns True, and confirms get_map was invoked with zoom equal to 8.
         """
         """
         Run the asynchronous scenario that verifies an invalid zoom parameter is reset.
@@ -663,9 +663,9 @@ class TestMapPlugin(unittest.TestCase):
 
         async def run_test():
             """
-            Asynchronously tests that an invalid zoom parameter in the "!map" command is reset to the default value when handling a room message.
-
-            Simulates a "!map zoom=50" command and verifies that the map generation function receives the default zoom level (8) instead of the invalid value.
+            Verify that an invalid zoom parameter in a "!map" command is replaced with the default zoom level.
+            
+            Simulates receiving "!map zoom=50" and asserts that get_map is called with the default zoom (8) rather than the invalid value.
             """
             mock_room = MagicMock()
             mock_room.room_id = "!test:example.com"

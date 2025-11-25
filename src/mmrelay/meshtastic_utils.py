@@ -116,16 +116,14 @@ subscribed_to_connection_lost = False
 
 def _submit_coro(coro, loop=None):
     """
-    Submit an asyncio coroutine for execution on the appropriate event loop and return a Future representing its result.
-
-    If `loop` (or the module-level `event_loop`) is an open asyncio event loop, the coroutine is scheduled thread-safely via `asyncio.run_coroutine_threadsafe`. If there is a currently running loop in the calling thread, the coroutine is scheduled with that loop's `create_task`. If no running loop exists, the coroutine is executed synchronously with `asyncio.run` and its result (or raised exception) is wrapped in a completed Future. If `coro` is not a coroutine, returns None.
-
+    Schedule a coroutine to run on an appropriate asyncio event loop and return a Future for its result.
+    
     Parameters:
-        coro: The coroutine object to execute.
-        loop: Optional asyncio event loop to target. If omitted, the module-level `event_loop` is used.
-
+        coro: The coroutine object to execute. If not a coroutine, the function returns None.
+        loop: Optional target asyncio event loop. If omitted, the module-level `event_loop` is used.
+    
     Returns:
-        A Future-like object representing the coroutine's eventual result, or None if `coro` is not a coroutine.
+        A Future-like object representing the coroutine's eventual result, or `None` if `coro` is not a coroutine.
     """
     if not inspect.iscoroutine(coro):
         # Defensive guard for tests that mistakenly patch async funcs to return None
@@ -167,14 +165,16 @@ def _make_awaitable(
     future: Any, loop: asyncio.AbstractEventLoop | None = None
 ) -> Awaitable[Any] | Any:
     """
-    Convert a Future-like object to an awaitable tied to the provided loop when needed.
-
-    If the input is already awaitable, it is returned unchanged. Otherwise, the object is
-    wrapped with asyncio.wrap_future using the supplied loop (when provided) so that
-    concurrent.futures.Future instances can be awaited safely on the intended event loop.
-
-    Callers should always pass the loop they scheduled work on to ensure proper event loop
-    handling. The fallback get_running_loop()/new-loop path is purely defensive.
+    Return an awaitable for the given future-like object, binding it to the provided event loop when necessary.
+    
+    If `future` already implements the awaitable protocol, it is returned unchanged. For non-awaitable futures, the returned awaitable resolves to the future's result and will be associated with `loop` when one is supplied.
+    
+    Parameters:
+        future: A future-like object or an awaitable.
+        loop (asyncio.AbstractEventLoop | None): Event loop to bind non-awaitable futures to; if `None`, no explicit loop binding is applied.
+    
+    Returns:
+        An awaitable that yields the resolved value of `future`, or `future` itself if it is already awaitable.
     """
     if hasattr(future, "__await__"):
         return future
@@ -188,16 +188,22 @@ def _wait_for_result(
     loop: asyncio.AbstractEventLoop | None = None,
 ) -> Any:
     """
-    Resolve the result of a future or awaitable with a timeout in synchronous contexts.
-
-    Supports concurrent.futures.Future, asyncio.Future/Task, or objects exposing a
-    .result(timeout) API (used in tests). Where a running event loop is available, the
-    coroutine is scheduled thread-safely; otherwise, the provided loop (or a temporary
-    one) is driven with run_until_complete.
-
-    Callers should always pass the loop they scheduled work on to ensure proper event loop
-    handling. The fallback get_running_loop()/new-loop path is purely defensive and should
-    only be hit in test/non-loop threads.
+    Resolve and return the value of a future or awaitable within a synchronous context using a timeout.
+    
+    Supports concurrent.futures.Future, asyncio.Future/Task, awaitables, and objects exposing a `.result(timeout)` API.
+    
+    Parameters:
+        result_future (Any): The future/awaitable or future-like object to resolve.
+        timeout (float): Maximum seconds to wait for the result.
+        loop (asyncio.AbstractEventLoop | None): Optional event loop to drive awaiting; if omitted, the function will use a running loop or create a temporary one.
+    
+    Returns:
+        Any: The value produced by the resolved future/awaitable.
+    
+    Raises:
+        asyncio.TimeoutError: If awaiting the awaitable times out.
+        concurrent.futures.TimeoutError: If a concurrent.futures.Future times out.
+        Exception: Any exception raised by the resolved future/awaitable is propagated.
     """
     if result_future is None:
         return False
@@ -221,6 +227,15 @@ def _wait_for_result(
         awaitable = _make_awaitable(result_future, loop=target_loop)
 
     async def _runner():
+        """
+        Await the captured awaitable and fail if it does not complete within the captured timeout.
+        
+        Returns:
+            The result of the awaited awaitable.
+        
+        Raises:
+            asyncio.TimeoutError: If the awaitable does not complete before the timeout expires.
+        """
         return await asyncio.wait_for(awaitable, timeout=timeout)
 
     if target_loop and not target_loop.is_closed():
@@ -335,14 +350,19 @@ def _get_name_or_none(name_func, sender):
 
 def _get_device_metadata(client):
     """
-    Retrieve firmware metadata from a Meshtastic client.
-
-    Calls client.localNode.getMetadata() (if present) and captures its stdout/stderr to extract a firmware version and raw output. Returns a dict with:
-    - firmware_version: parsed version string or "unknown" when not found,
-    - raw_output: captured output (truncated to 4096 characters with a trailing ellipsis if longer),
-    - success: True when a firmware_version was successfully parsed.
-
-    If the client lacks localNode.getMetadata or parsing fails, returns defaults without raising.
+    Extract firmware version and raw metadata output from a Meshtastic client.
+    
+    Attempts to invoke client.localNode.getMetadata() (if present), captures its console output, and parses a firmware version string. Returns a dict containing the parsed firmware version, the captured raw output (possibly truncated), and a success flag indicating whether a firmware version was found.
+    
+    Parameters:
+        client: An object implementing a Meshtastic client interface; expected to provide a localNode with a getMetadata() method. If the method is absent or parsing fails, defaults are returned.
+    
+    Returns:
+        dict: {
+            "firmware_version": str — parsed firmware version or "unknown" when not found,
+            "raw_output": str — captured output from getMetadata() (truncated to 4096 characters with a trailing ellipsis if longer),
+            "success": bool — `true` when a firmware_version was successfully parsed, `false` otherwise
+        }
     """
     result = {"firmware_version": "unknown", "raw_output": "", "success": False}
 
@@ -791,21 +811,19 @@ async def reconnect():
 
 def on_meshtastic_message(packet, interface):
     """
-    Handle an incoming Meshtastic packet and relay it to Matrix rooms or plugins as configured.
-
-    This function inspects a Meshtastic `packet` (expected as a dict), applies interaction rules (reactions, replies, replies storage, detection-sensor filtering), and either:
-    - relays reactions or replies as appropriate to the mapped Matrix event/room,
-    - relays normal text messages to all Matrix rooms mapped to the message's Meshtastic channel (unless the message is a direct message to the relay node or a plugin handles it),
-    - or dispatches non-text or unhandled packets to plugins for processing.
-
-    Behavior notes:
-    - Uses global configuration and matrix_rooms mappings; returns immediately if configuration or event loop is missing or if shutdown is in progress.
-    - Resolves sender display names from a local DB or node info and persists them when found.
-    - Honors interaction settings for reactions and replies, and the meshtastic `detection_sensor` configuration when handling detection sensor packets.
-    - Uses _submit_coro to schedule Matrix/plugin coroutines on the configured event loop.
-    - Side effects: schedules Matrix relays, may call plugin handlers, and may store sender metadata and message->Matrix mappings via other utilities.
-
-    No return value.
+    Handle an incoming Meshtastic packet and route it to configured Matrix rooms or installed plugins.
+    
+    Processes the provided Meshtastic `packet` (a dict-like decoded message) according to interaction settings:
+    - relays reactions and replies to the mapped Matrix event/room when enabled,
+    - relays ordinary text messages to Matrix rooms mapped to the message's Meshtastic channel unless the message is a direct message to the relay node or a plugin handles it,
+    - dispatches non-text or otherwise unhandled packets to plugins for processing.
+    
+    Parameters:
+        packet (dict): The Meshtastic packet (decoded fields expected in a nested `decoded` dict).
+        interface: The Meshtastic interface object used to resolve node information and send/receive context.
+    
+    Side effects:
+        Schedules Matrix relay coroutines, invokes plugin handlers, and may persist sender metadata or message mapping information.
     """
     global config, matrix_rooms
 
