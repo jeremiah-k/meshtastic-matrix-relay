@@ -554,6 +554,7 @@ def _get_detailed_matrix_error_message(matrix_response) -> str:
         try:
             error_str = str(matrix_response)
         except Exception:
+            logger.debug("Failed to convert matrix_response to string", exc_info=True)
             return "Network connectivity issue or server unreachable"
 
         if (
@@ -964,9 +965,10 @@ async def _handle_detection_sensor_packet(
         )
         return
 
-    meshtastic_interface, meshtastic_channel = (
-        await _get_meshtastic_interface_and_channel(room_config, "relay detection data")
-    )
+    (
+        meshtastic_interface,
+        meshtastic_channel,
+    ) = await _get_meshtastic_interface_and_channel(room_config, "relay detection data")
     if not meshtastic_interface:
         return
 
@@ -1333,7 +1335,7 @@ async def connect_matrix(passed_config=None):
 
             # Set credentials directly to allow whoami to succeed without a device_id
             matrix_client.access_token = matrix_access_token
-            matrix_client.user_id = bot_user_id
+            matrix_client.user_id = bot_user_id or ""
 
             # Call whoami to discover device_id from server
             try:
@@ -1472,8 +1474,8 @@ async def connect_matrix(passed_config=None):
                     logger.warning(f"Could not resolve alias {alias}: {error_details}")
                 except NIO_COMM_EXCEPTIONS:
                     logger.exception(f"Error resolving alias {alias}")
-                except (TypeError, ValueError) as exc:
-                    logger.exception(f"Error resolving alias {alias}: %s", exc)
+                except (TypeError, ValueError):
+                    logger.exception(f"Error resolving alias {alias}")
                 except Exception:
                     # Keep the bridge alive for unexpected errors while resolving aliases.
                     logger.exception(f"Error resolving alias {alias}")
@@ -2609,9 +2611,10 @@ async def send_reply_to_meshtastic(
         local_meshnet_name (str | None): Local meshnet name included in mapping metadata when present.
         reply_id (int | None): If provided, send as a structured Meshtastic reply targeting this Meshtastic message ID; otherwise send a regular broadcast.
     """
-    meshtastic_interface, meshtastic_channel = (
-        await _get_meshtastic_interface_and_channel(room_config, "relay reply")
-    )
+    (
+        meshtastic_interface,
+        meshtastic_channel,
+    ) = await _get_meshtastic_interface_and_channel(room_config, "relay reply")
     from mmrelay.meshtastic_utils import logger as meshtastic_logger
 
     if not meshtastic_interface or meshtastic_channel is None:
@@ -3028,10 +3031,11 @@ async def on_room_message(
             reaction_message = f'{shortname}/{short_meshnet_name} reacted {reaction_emoji} to "{abbreviated_text}"'
 
             # Relay the remote reaction to the local meshnet.
-            meshtastic_interface, meshtastic_channel = (
-                await _get_meshtastic_interface_and_channel(
-                    room_config, "relay reaction"
-                )
+            (
+                meshtastic_interface,
+                meshtastic_channel,
+            ) = await _get_meshtastic_interface_and_channel(
+                room_config, "relay reaction"
             )
             if not meshtastic_interface or meshtastic_channel is None:
                 return
@@ -3099,10 +3103,11 @@ async def on_room_message(
             reaction_message = (
                 f'{prefix}reacted {reaction_emoji} to "{abbreviated_text}"'
             )
-            meshtastic_interface, meshtastic_channel = (
-                await _get_meshtastic_interface_and_channel(
-                    room_config, "relay reaction"
-                )
+            (
+                meshtastic_interface,
+                meshtastic_channel,
+            ) = await _get_meshtastic_interface_and_channel(
+                room_config, "relay reaction"
             )
             if not meshtastic_interface or meshtastic_channel is None:
                 return
