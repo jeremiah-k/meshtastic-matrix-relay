@@ -185,17 +185,10 @@ class Plugin(BasePlugin):
         img = Image.open(buf)
         pil_image = Image.frombytes(mode="RGBA", size=img.size, data=img.tobytes())
 
-        from mmrelay.matrix_utils import (
-            ImageUploadError,
-            send_room_image,
-            upload_image,
-        )
+        from mmrelay.matrix_utils import ImageUploadError, send_image
 
         try:
-            upload_response = await upload_image(matrix_client, pil_image, "graph.png")
-            await send_room_image(
-                matrix_client, room.room_id, upload_response, "graph.png"
-            )
+            await send_image(matrix_client, room.room_id, pil_image, "graph.png")
         except ImageUploadError as exc:
             self.logger.error(f"Failed to send telemetry graph: {exc}")
             await matrix_client.room_send(

@@ -551,9 +551,9 @@ def _get_detailed_matrix_error_message(matrix_response) -> str:
         # Fallback to string representation with safety checks
         try:
             error_str = str(matrix_response)
-        except Exception:
+        except Exception:  # noqa: BLE001 — keep bridge alive on hostile __str__()
             # Keep broad here: custom nio/error objects can raise arbitrary exceptions in __str__;
-            # returning a generic connectivity message prevents sync loop crashes.
+            # returning a generic connectivity message prevents sync loop crashes and keeps handling consistent.
             logger.debug("Failed to convert matrix_response to string", exc_info=True)
             return "Network connectivity issue or server unreachable"
 
@@ -848,7 +848,8 @@ def bot_command(command, event):
     Returns:
         True if the message targets the bot with the given command, False otherwise.
     """
-    full_message = event.body.strip()
+    full_message = getattr(event, "body", "") or ""
+    full_message = full_message.strip()
     content = event.source.get("content", {})
     formatted_body = content.get("formatted_body", "")
 
@@ -1476,7 +1477,9 @@ async def connect_matrix(passed_config=None):
                     logger.exception(f"Error resolving alias {alias}")
                 except (TypeError, ValueError, AttributeError):
                     logger.exception(f"Error resolving alias {alias}")
-                except Exception:
+                except (
+                    Exception
+                ):  # noqa: BLE001 — keep bridge alive on unexpected alias errors
                     # Intentionally broad: keep the bridge alive and satisfy tests that simulate custom network errors.
                     logger.exception(f"Error resolving alias {alias}")
                 return None
@@ -2503,16 +2506,24 @@ async def get_user_display_name(room, event):
     if room_display_name:
         return room_display_name
 
+    # Some environments may not expose the nio response classes; guard isinstance to avoid TypeError.
+    response_types = tuple(
+        t for t in (ProfileGetDisplayNameResponse,) if isinstance(t, type)
+    )
+    error_types = tuple(t for t in (ProfileGetDisplayNameError,) if isinstance(t, type))
+
     if matrix_client:
         try:
             display_name_response = await matrix_client.get_displayname(event.sender)
-            if isinstance(display_name_response, ProfileGetDisplayNameResponse):
-                return display_name_response.displayname or event.sender
-            if isinstance(display_name_response, ProfileGetDisplayNameError):
+            if response_types and isinstance(display_name_response, response_types):
+                return (
+                    getattr(display_name_response, "displayname", None) or event.sender
+                )
+            if error_types and isinstance(display_name_response, error_types):
                 logger.debug(
                     "Failed to get display name for %s: %s",
                     event.sender,
-                    display_name_response.message,
+                    getattr(display_name_response, "message", display_name_response),
                 )
             else:
                 logger.debug(
@@ -2520,6 +2531,10 @@ async def get_user_display_name(room, event):
                     type(display_name_response),
                     event.sender,
                 )
+            # Fallback: if the response exposes a displayname attribute, use it.
+            display_attr = getattr(display_name_response, "displayname", None)
+            if display_attr:
+                return display_attr
         except NIO_COMM_EXCEPTIONS as e:
             logger.debug(f"Failed to get display name for {event.sender}: {e}")
             return event.sender
@@ -3248,10 +3263,10 @@ async def on_room_message(
                     logger.info(
                         f"Processed command with plugin: {plugin.plugin_name} from {event.sender}"
                     )
-            except Exception as e:
-                # Keep the bridge alive for unexpected plugin errors
-                logger.error(
-                    f"Error processing message with plugin {plugin.plugin_name}: {e}"
+            except Exception:
+                # Keep the bridge alive for unexpected plugin errors, but capture traceback for debugging.
+                logger.exception(
+                    "Error processing message with plugin %s", plugin.plugin_name
                 )
 
     # Check if the message is a command directed at the bot

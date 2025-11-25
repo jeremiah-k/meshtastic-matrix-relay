@@ -19,6 +19,16 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+
+# Shared dummy RichHandler stand-in for environments where Rich is unavailable or patched out.
+class DummyRichHandler(logging.Handler):
+    """Test double for RichHandler when Rich is unavailable."""
+
+    def __init__(self, **kwargs):
+        super().__init__()
+        self.rich_tracebacks = kwargs.get("rich_tracebacks")
+
+
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
@@ -220,11 +230,6 @@ class TestLogUtils(unittest.TestCase):
         original_rich_handler = getattr(lu, "RichHandler", None)
         original_console = getattr(lu, "console", None)
 
-        class DummyRichHandler(logging.Handler):
-            def __init__(self, **kwargs):
-                super().__init__()
-                self.rich_tracebacks = kwargs.get("rich_tracebacks")
-
         try:
             lu.RICH_AVAILABLE = True
             lu.RichHandler = DummyRichHandler
@@ -257,11 +262,6 @@ class TestLogUtils(unittest.TestCase):
         original_rich_available = lu.RICH_AVAILABLE
         original_rich_handler = getattr(lu, "RichHandler", None)
         original_console = getattr(lu, "console", None)
-
-        class DummyRichHandler(logging.Handler):
-            def __init__(self, **kwargs):
-                super().__init__()
-                self.rich_tracebacks = kwargs.get("rich_tracebacks")
 
         try:
             lu.RICH_AVAILABLE = True
