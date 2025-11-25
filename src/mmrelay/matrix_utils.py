@@ -485,9 +485,9 @@ def _get_detailed_matrix_error_message(matrix_response) -> str:
 
     def _is_unhelpful_error_string(error_str: str) -> bool:
         return (
-            bool(re.search(r"<.+? object at 0x[0-9a-fA-F]+>", error_str))
-            or bool(re.search(r"<[a-zA-Z/][^>]*>", error_str))
-            or ("unknown error" in error_str.lower())
+            re.search(r"<.+? object at 0x[0-9a-fA-F]+>", error_str) is not None
+            or re.search(r"<[a-zA-Z/][^>]*>", error_str) is not None
+            or "unknown error" in error_str.lower()
         )
 
     try:
@@ -1355,7 +1355,7 @@ async def connect_matrix(passed_config=None):
                             logger.info(
                                 "Updated credentials.json with discovered device_id"
                             )
-                    except (IOError, OSError) as e:
+                    except OSError as e:
                         logger.warning(f"Failed to persist discovered device_id: {e}")
 
                     # Reload login and E2EE store now that we have a device_id.

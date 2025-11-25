@@ -17,6 +17,7 @@ import os
 import sys
 import tempfile
 import unittest
+from typing import Any
 from unittest.mock import patch
 
 
@@ -24,7 +25,7 @@ from unittest.mock import patch
 class DummyRichHandler(logging.Handler):
     """Test double for RichHandler when Rich is unavailable."""
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs: Any) -> None:
         super().__init__()
         self.rich_tracebacks = kwargs.get("rich_tracebacks")
 
@@ -75,17 +76,17 @@ class TestLogUtils(unittest.TestCase):
         self._close_all_handlers()
         logging.getLogger().setLevel(logging.WARNING)
 
-    def _close_all_handlers(self):
+    def _close_all_handlers(self) -> None:
         """Close and clear handlers on all known loggers to avoid resource warnings."""
         for lg in list(logging.Logger.manager.loggerDict.values()):
             if isinstance(lg, logging.PlaceHolder):
                 continue
             for h in list(lg.handlers):
-                with contextlib.suppress(Exception):
+                with contextlib.suppress(OSError, ValueError):
                     h.close()
             lg.handlers.clear()
         for h in list(logging.getLogger().handlers):
-            with contextlib.suppress(Exception):
+            with contextlib.suppress(OSError, ValueError):
                 h.close()
         logging.getLogger().handlers.clear()
 
