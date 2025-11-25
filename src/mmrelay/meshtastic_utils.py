@@ -75,35 +75,14 @@ MAX_TIMEOUT_RETRIES_INFINITE = 5
 
 # Import BLE exceptions conditionally
 try:
-    from bleak.exc import BleakDBusError as _BleakDBusError
-    from bleak.exc import BleakError as _BleakError
+    from bleak.exc import BleakDBusError, BleakError
 except ImportError:
-    _BleakDBusError = None  # type: ignore
-    _BleakError = None  # type: ignore
+    # Define dummy exception classes if bleak is not available
+    class BleakDBusError(Exception):
+        pass
 
-
-# Define our exception classes that may inherit from bleak exceptions or be standalone
-class MeshtasticBleakDBusError(Exception):
-    """BLE D-Bus error, may inherit from bleak.exc.BleakDBusError if available."""
-
-    pass
-
-
-class MeshtasticBleakError(Exception):
-    """BLE error, may inherit from bleak.exc.BleakError if available."""
-
-    pass
-
-
-# Create aliases for backward compatibility
-BleakDBusError = MeshtasticBleakDBusError
-BleakError = MeshtasticBleakError
-
-# If bleak is available, make our classes inherit from the real ones
-if _BleakDBusError:
-    BleakDBusError = _BleakDBusError  # type: ignore[assignment]
-if _BleakError:
-    BleakError = _BleakError  # type: ignore[assignment]
+    class BleakError(Exception):
+        pass
 
 
 # Global config variable that will be set from config.py
