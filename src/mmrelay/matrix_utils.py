@@ -3265,6 +3265,9 @@ async def on_room_message(
                     )
             except Exception:
                 # Keep the bridge alive for unexpected plugin errors, but capture traceback for debugging.
+                logger.error(
+                    "Error processing message with plugin %s", plugin.plugin_name
+                )
                 logger.exception(
                     "Error processing message with plugin %s", plugin.plugin_name
                 )
