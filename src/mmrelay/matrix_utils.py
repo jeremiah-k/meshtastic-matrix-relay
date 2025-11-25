@@ -1476,9 +1476,6 @@ async def connect_matrix(passed_config=None):
                     logger.exception(f"Error resolving alias {alias}")
                 except (TypeError, ValueError):
                     logger.exception(f"Error resolving alias {alias}")
-                except Exception:
-                    # Keep the bridge alive for unexpected errors while resolving aliases.
-                    logger.exception(f"Error resolving alias {alias}")
                 return None
 
             await _resolve_aliases_in_mapping(matrix_rooms, _resolve_alias)
@@ -2136,8 +2133,6 @@ async def join_matrix_room(matrix_client, room_id_or_alias: str) -> None:
             )
     except NIO_COMM_EXCEPTIONS:
         logger.exception(f"Error joining room '{room_id}'")
-    except Exception:
-        logger.exception(f"Unexpected error joining room '{room_id}'")
 
 
 def _get_e2ee_error_message():
@@ -3373,6 +3368,9 @@ async def upload_image(
         content_type = _MIME_TYPE_MAP.get(image_format, "image/png")
     except (ValueError, KeyError, OSError):
         # Fallback to PNG if format is unsupported
+        logger.warning(
+            f"Unsupported image format '{image_format}' for {filename}. Falling back to PNG."
+        )
         buffer.seek(0)
         buffer.truncate(0)
         image.save(buffer, format="PNG")
@@ -3390,16 +3388,10 @@ async def upload_image(
     except NIO_COMM_EXCEPTIONS as e:
         # Convert nio communication exceptions to an UploadError-like instance
         logger.exception("Image upload failed due to a network error")
-        try:
-            upload_error = UploadError(str(e))
-            # Ensure status_code attribute exists for callers/tests
-            if (
-                not hasattr(upload_error, "status_code")
-                or upload_error.status_code is None
-            ):
-                upload_error.status_code = ""
-        except (NameError, TypeError):
-            upload_error = SimpleNamespace(message=str(e), status_code="")
+        upload_error = UploadError(str(e))
+        # Ensure status_code attribute exists for callers/tests
+        if not hasattr(upload_error, "status_code") or upload_error.status_code is None:
+            upload_error.status_code = None
         return upload_error
     else:
         return response

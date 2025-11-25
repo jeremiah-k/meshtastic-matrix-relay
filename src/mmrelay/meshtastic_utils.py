@@ -1023,8 +1023,9 @@ def on_meshtastic_message(packet, interface):
             return
 
         # If detection_sensor is disabled and this is a detection sensor packet, skip it
+        portnum = decoded.get("portnum")
         if (
-            decoded.get("portnum") == PORTNUM_DETECTION_SENSOR_APP
+            portnum == PORTNUM_DETECTION_SENSOR_APP or portnum == DETECTION_SENSOR_APP
         ) and not get_meshtastic_config_value(
             config, "detection_sensor", DEFAULT_DETECTION_SENSOR
         ):
