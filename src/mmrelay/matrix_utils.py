@@ -550,7 +550,11 @@ def _get_detailed_matrix_error_message(matrix_response) -> str:
                     return "Network connectivity issue or server unreachable"
 
         # Fallback to string representation with safety checks
-        error_str = str(matrix_response)
+        try:
+            error_str = str(matrix_response)
+        except Exception:
+            logger.debug("Failed to convert matrix_response to string", exc_info=True)
+            return "Network connectivity issue or server unreachable"
 
         if (
             error_str
@@ -1471,6 +1475,9 @@ async def connect_matrix(passed_config=None):
                     logger.exception(f"Error resolving alias {alias}")
                 except (TypeError, ValueError, AttributeError):
                     logger.exception(f"Error resolving alias {alias}")
+                except Exception:
+                    # Keep the bridge alive for unexpected errors while resolving aliases.
+                    logger.exception(f"Error resolving alias {alias}")
                 return None
 
             await _resolve_aliases_in_mapping(matrix_rooms, _resolve_alias)
@@ -2129,6 +2136,9 @@ async def join_matrix_room(matrix_client, room_id_or_alias: str) -> None:
             )
     except NIO_COMM_EXCEPTIONS:
         logger.exception(f"Error joining room '{room_id}'")
+    except Exception:
+        # Handle truly unexpected errors during room joining
+        logger.exception(f"Unexpected error joining room '{room_id}'")
 
 
 def _get_e2ee_error_message():
@@ -2850,6 +2860,7 @@ async def on_room_message(
 
     # Importing here to avoid circular imports and to keep logic consistent
     # Note: We do not call store_message_map directly here for inbound matrix->mesh messages.
+    from mmrelay.meshtastic_utils import logger as meshtastic_logger
     from mmrelay.message_queue import get_message_queue
 
     # That logic occurs inside matrix_relay if needed.
@@ -3032,7 +3043,6 @@ async def on_room_message(
             )
             if not meshtastic_interface or meshtastic_channel is None:
                 return
-            from mmrelay.meshtastic_utils import logger as meshtastic_logger
 
             if get_meshtastic_config_value(
                 config, "broadcast_enabled", DEFAULT_BROADCAST_ENABLED, required=False
@@ -3104,7 +3114,6 @@ async def on_room_message(
             )
             if not meshtastic_interface or meshtastic_channel is None:
                 return
-            from mmrelay.meshtastic_utils import logger as meshtastic_logger
 
             if get_meshtastic_config_value(
                 config, "broadcast_enabled", DEFAULT_BROADCAST_ENABLED, required=False
