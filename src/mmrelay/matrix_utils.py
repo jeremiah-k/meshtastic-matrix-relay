@@ -550,11 +550,7 @@ def _get_detailed_matrix_error_message(matrix_response) -> str:
                     return "Network connectivity issue or server unreachable"
 
         # Fallback to string representation with safety checks
-        try:
-            error_str = str(matrix_response)
-        except Exception:
-            logger.debug("Failed to convert matrix_response to string", exc_info=True)
-            return "Network connectivity issue or server unreachable"
+        error_str = str(matrix_response)
 
         if (
             error_str
@@ -1386,7 +1382,7 @@ async def connect_matrix(passed_config=None):
                 logger.info("Encryption keys uploaded successfully")
             else:
                 logger.debug("No key upload needed - keys already present")
-        except Exception:
+        except NIO_COMM_EXCEPTIONS:
             logger.exception("Failed to upload E2EE keys")
             # E2EE might still work, so we don't disable it here
             logger.error("Consider regenerating credentials with: mmrelay auth login")
@@ -1474,9 +1470,6 @@ async def connect_matrix(passed_config=None):
                 except NIO_COMM_EXCEPTIONS:
                     logger.exception(f"Error resolving alias {alias}")
                 except (TypeError, ValueError, AttributeError):
-                    logger.exception(f"Error resolving alias {alias}")
-                except Exception:
-                    # Keep the bridge alive for unexpected errors while resolving aliases.
                     logger.exception(f"Error resolving alias {alias}")
                 return None
 
@@ -2099,6 +2092,7 @@ async def join_matrix_room(matrix_client, room_id_or_alias: str) -> None:
             try:
                 _update_room_id_in_mapping(mapping, room_id_or_alias, room_id)
             except Exception:
+                # Keep the bridge alive for unexpected mapping update errors
                 logger.debug(
                     "Non-fatal error updating matrix_rooms for alias '%s'",
                     room_id_or_alias,
@@ -2135,9 +2129,6 @@ async def join_matrix_room(matrix_client, room_id_or_alias: str) -> None:
             )
     except NIO_COMM_EXCEPTIONS:
         logger.exception(f"Error joining room '{room_id}'")
-    except Exception:
-        # Handle truly unexpected errors during room joining
-        logger.exception(f"Unexpected error joining room '{room_id}'")
 
 
 def _get_e2ee_error_message():
@@ -2419,7 +2410,7 @@ async def matrix_relay(
         except asyncio.TimeoutError:
             logger.error(f"Timeout sending message to Matrix room {room_id}")
             return
-        except Exception:
+        except NIO_COMM_EXCEPTIONS:
             logger.exception(f"Error sending message to Matrix room {room_id}")
             return
 
@@ -2450,6 +2441,7 @@ async def matrix_relay(
     except asyncio.TimeoutError:
         logger.error("Timed out while waiting for Matrix response")
     except Exception:
+        # Keep the bridge alive for unexpected Meshtastic send errors
         logger.exception(f"Error sending radio message to matrix room {room_id}")
 
 
@@ -2698,6 +2690,7 @@ async def send_reply_to_meshtastic(
             # Message mapping is now handled automatically by the queue system
 
         except Exception:
+            # Keep the bridge alive for unexpected Meshtastic send errors
             meshtastic_logger.exception("Error sending Matrix reply to Meshtastic")
 
 
@@ -3233,6 +3226,7 @@ async def on_room_message(
                         f"Processed command with plugin: {plugin.plugin_name} from {event.sender}"
                     )
             except Exception as e:
+                # Keep the bridge alive for unexpected plugin errors
                 logger.error(
                     f"Error processing message with plugin {plugin.plugin_name}: {e}"
                 )
