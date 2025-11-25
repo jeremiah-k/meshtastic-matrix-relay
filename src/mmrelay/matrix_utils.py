@@ -3261,24 +3261,19 @@ async def on_room_message(
         )
         return
 
-    # Connect to Meshtastic for regular messages
-    meshtastic_interface = await _connect_meshtastic()
-    from mmrelay.meshtastic_utils import logger as meshtastic_logger
+    # Connect to Meshtastic and validate channel for regular messages
+    (
+        meshtastic_interface,
+        meshtastic_channel,
+    ) = await _get_meshtastic_interface_and_channel(room_config, "relay message")
 
     if not meshtastic_interface:
-        logger.error("Failed to connect to Meshtastic. Cannot relay message.")
+        # The helper function already logs the specific error
         return
 
-    meshtastic_channel = room_config.get("meshtastic_channel")
-    if meshtastic_channel is None:
-        meshtastic_logger.error(
-            "Room config missing 'meshtastic_channel'; cannot relay message."
-        )
-        return
+    # The helper function already handles validation and logging
     if not isinstance(meshtastic_channel, int) or meshtastic_channel < 0:
-        meshtastic_logger.error(
-            f"Invalid meshtastic_channel value {meshtastic_channel!r} in room config; must be a non-negative integer."
-        )
+        # The helper function already logs the specific error
         return
 
     # If message is from Matrix and broadcast_enabled is True, relay to Meshtastic
