@@ -135,12 +135,21 @@ class TestConstantsValidity:
 
     def test_message_constants_valid(self):
         """
-        Validate that message-related constants have positive or non-negative values and correct multipliers, and that the emoji flag value is defined and non-negative in the formats module.
+        Assert message-related constants are defined and meet expected non-negative or positive constraints.
+
+        Checks:
+        - DEFAULT_LOG_SIZE_MB is greater than 0.
+        - DEFAULT_LOG_BACKUP_COUNT is greater than or equal to 0.
+        - LOG_SIZE_BYTES_MULTIPLIER equals 1024 * 1024.
+        - PORTNUM_TEXT_MESSAGE_APP and PORTNUM_DETECTION_SENSOR_APP are greater than or equal to 0.
+        - DEFAULT_CHANNEL_VALUE is greater than or equal to 0.
+        - formats.EMOJI_FLAG_VALUE is greater than or equal to 0.
         """
         assert messages.DEFAULT_LOG_SIZE_MB > 0
         assert messages.DEFAULT_LOG_BACKUP_COUNT >= 0
         assert messages.LOG_SIZE_BYTES_MULTIPLIER == 1024 * 1024
-        assert messages.PORTNUM_NUMERIC_VALUE >= 0
+        assert messages.PORTNUM_TEXT_MESSAGE_APP >= 0
+        assert messages.PORTNUM_DETECTION_SENSOR_APP >= 0
         assert messages.DEFAULT_CHANNEL_VALUE >= 0
 
         # EMOJI_FLAG_VALUE is in formats module, not messages

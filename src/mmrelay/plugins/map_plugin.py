@@ -184,7 +184,19 @@ def anonymize_location(lat, lon, radius=1000):
 
 def get_map(locations, zoom=None, image_size=None, anonymize=True, radius=10000):
     """
-    Anonymize a location to 10km by default
+    Generate a static map image with labeled location markers.
+    
+    Renders a map containing each entry in `locations` as a labeled marker; coordinates may be randomly offset for privacy.
+    
+    Parameters:
+        locations (Iterable[dict]): Iterable of dicts with keys "lat", "lon", and "label". "lat" and "lon" are numeric (or numeric strings) representing latitude and longitude in degrees; "label" is the text shown for the marker.
+        zoom (int | None): Map zoom level to use. If None the Context's default zoom applies.
+        image_size (tuple[int, int] | None): (width, height) in pixels for the output image. If None, defaults to (1000, 1000). Dimensions are clamped by caller logic.
+        anonymize (bool): If True, apply a random offset to each coordinate to preserve privacy.
+        radius (int): Maximum anonymization offset in meters applied when `anonymize` is True.
+    
+    Returns:
+        PIL.Image.Image: A Pillow image containing the rendered map with labels.
     """
     context = staticmaps.Context()
     context.set_tile_provider(staticmaps.tile_provider_OSM)
@@ -211,40 +223,6 @@ def get_map(locations, zoom=None, image_size=None, anonymize=True, radius=10000)
         return context.render_pillow(1000, 1000)
 
 
-async def upload_image(client: AsyncClient, image: Image.Image) -> UploadResponse:
-    buffer = io.BytesIO()
-    image.save(buffer, format="PNG")
-    image_data = buffer.getvalue()
-
-    response, maybe_keys = await client.upload(
-        io.BytesIO(image_data),
-        content_type="image/png",
-        filename="location.png",
-        filesize=len(image_data),
-    )
-
-    return response
-
-
-async def send_room_image(
-    client: AsyncClient, room_id: str, upload_response: UploadResponse
-):
-    await client.room_send(
-        room_id=room_id,
-        message_type="m.room.message",
-        content={
-            "msgtype": "m.image",
-            "url": upload_response.content_uri,
-            "body": "image.png",
-        },
-    )
-
-
-async def send_image(client: AsyncClient, room_id: str, image: Image.Image):
-    response = await upload_image(client=client, image=image)
-    await send_room_image(client, room_id, upload_response=response)
-
-
 class Plugin(BasePlugin):
     """Static map generation plugin for mesh node locations.
 
@@ -264,6 +242,7 @@ class Plugin(BasePlugin):
 
     Uploads generated maps as images to Matrix rooms.
     """
+
     plugin_name = "map"
 
     # No __init__ method needed with the simplified plugin system
@@ -288,10 +267,27 @@ class Plugin(BasePlugin):
 
     async def handle_room_message(self, room, event, full_message):
         # Pass the whole event to matches() for compatibility w/ updated base_plugin.py
+        """
+        Handle "!map" commands in a Matrix room by generating a static map of known mesh node locations and sending it to the room.
+        
+        Parses optional parameters in the incoming message for zoom (zoom=N) and image size (size=W,H). Collects node positions from the Meshtastic client, optionally anonymizes coordinates per plugin configuration, builds a map image, and uploads it to the room as "location.png".
+        
+        Parameters:
+            room: The Matrix room object where the message was received; used to determine the destination room ID.
+            event: The full Matrix event object passed to matches(); used for plugin matching.
+            full_message (str): The raw message text to parse for the "!map" command and optional parameters.
+        
+        Returns:
+            bool: `True` if the message was recognized, a map was generated, and the image was sent; `False` if the message did not target this plugin or was not processed.
+        """
         if not self.matches(event):
             return False
 
-        from mmrelay.matrix_utils import connect_matrix
+        from mmrelay.matrix_utils import (
+            ImageUploadError,
+            connect_matrix,
+            send_image,
+        )
         from mmrelay.meshtastic_utils import connect_meshtastic
 
         matrix_client = await connect_matrix()
@@ -309,19 +305,28 @@ class Plugin(BasePlugin):
 
         try:
             zoom = int(zoom)
-        except:
-            zoom = self.config["zoom"] if "zoom" in self.config else 8
+        except (TypeError, ValueError):
+            try:
+                zoom = int(self.config.get("zoom", 8))
+            except (TypeError, ValueError):
+                zoom = 8
 
-        if zoom < 0 or zoom > 30:
+        if not 0 <= zoom <= 30:
             zoom = 8
 
         try:
             image_size = (int(image_size[0]), int(image_size[1]))
-        except:
-            image_size = (
-                self.config["image_width"] if "image_width" in self.config else 1000,
-                self.config["image_height"] if "image_height" in self.config else 1000,
-            )
+        except (TypeError, ValueError):
+            width, height = 1000, 1000
+            try:
+                width = int(self.config.get("image_width", 1000))
+            except (TypeError, ValueError):
+                pass  # keep default
+            try:
+                height = int(self.config.get("image_height", 1000))
+            except (TypeError, ValueError):
+                pass  # keep default
+            image_size = (width, height)
 
         if image_size[0] > 1000 or image_size[1] > 1000:
             image_size = (1000, 1000)
@@ -337,8 +342,8 @@ class Plugin(BasePlugin):
                     }
                 )
 
-        anonymize = self.config["anonymize"] if "anonymize" in self.config else True
-        radius = self.config["radius"] if "radius" in self.config else 1000
+        anonymize = self.config.get("anonymize", True)
+        radius = self.config.get("radius", 1000)
 
         pillow_image = get_map(
             locations=locations,
@@ -348,6 +353,18 @@ class Plugin(BasePlugin):
             radius=radius,
         )
 
-        await send_image(matrix_client, room.room_id, pillow_image)
+        try:
+            await send_image(matrix_client, room.room_id, pillow_image, "location.png")
+        except ImageUploadError as exc:
+            self.logger.error(f"Failed to send map image: {exc}")
+            await matrix_client.room_send(
+                room_id=room.room_id,
+                message_type="m.room.message",
+                content={
+                    "msgtype": "m.notice",
+                    "body": "Failed to generate map: Image upload failed.",
+                },
+            )
+            return False
 
         return True

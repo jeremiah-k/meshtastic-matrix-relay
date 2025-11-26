@@ -11,17 +11,39 @@ Tests the logging configuration and functionality including:
 - Log file rotation and path resolution
 """
 
+import contextlib
 import logging
 import os
 import sys
 import tempfile
 import unittest
+from typing import Any
 from unittest.mock import patch
+
+
+# Shared dummy RichHandler stand-in for environments where Rich is unavailable or patched out.
+class DummyRichHandler(logging.Handler):
+    """Test double for RichHandler when Rich is unavailable."""
+
+    def __init__(self, **kwargs: Any) -> None:
+        """
+        Initialize the dummy Rich handler and record the `rich_tracebacks` setting.
+
+        Parameters:
+            rich_tracebacks (bool | None): If provided, indicates whether rich-style tracebacks should be enabled for this handler.
+        """
+        super().__init__()
+        self.rich_tracebacks = kwargs.get("rich_tracebacks")
+
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from mmrelay.log_utils import configure_component_debug_logging, get_logger
+from mmrelay.log_utils import (
+    RICH_AVAILABLE,
+    configure_component_debug_logging,
+    get_logger,
+)
 
 
 class TestLogUtils(unittest.TestCase):
@@ -56,9 +78,27 @@ class TestLogUtils(unittest.TestCase):
 
         shutil.rmtree(self.test_dir, ignore_errors=True)
 
-        # Reset logging state
-        logging.getLogger().handlers.clear()
+        # Reset logging state using the comprehensive handler cleanup helper
+        self._close_all_handlers()
         logging.getLogger().setLevel(logging.WARNING)
+
+    def _close_all_handlers(self) -> None:
+        """
+        Close and remove all handlers from every registered logger and the root logger.
+
+        Closes each handler (suppressing OSError and ValueError) and clears handler lists for all known loggers and the root logger to ensure no file descriptors or resources remain open.
+        """
+        for lg in list(logging.Logger.manager.loggerDict.values()):
+            if isinstance(lg, logging.PlaceHolder):
+                continue
+            for h in list(lg.handlers):
+                with contextlib.suppress(OSError, ValueError):
+                    h.close()
+            lg.handlers.clear()
+        for h in list(logging.getLogger().handlers):
+            with contextlib.suppress(OSError, ValueError):
+                h.close()
+        logging.getLogger().handlers.clear()
 
     def test_get_logger_basic(self):
         """
@@ -135,12 +175,131 @@ class TestLogUtils(unittest.TestCase):
         # Note: The actual implementation may still use RichHandler, so we just check it works
         self.assertIsInstance(logger, logging.Logger)
 
+    @unittest.skipUnless(
+        RICH_AVAILABLE, "Rich is not available; skipping rich traceback tests."
+    )
+    def test_get_logger_rich_tracebacks_default_disabled(self):
+        """
+        Rich tracebacks should be disabled by default when using the Rich handler.
+        """
+        import mmrelay.log_utils as lu
+
+        lu.config = {"logging": {"log_to_file": False}}
+
+        logger_name = "test_logger_rich_default"
+        logging.getLogger(logger_name).handlers.clear()
+        logger = get_logger(logger_name)
+
+        rich_handlers = [
+            h
+            for h in logger.handlers
+            if hasattr(h, "rich_tracebacks")
+            and not isinstance(h, logging.handlers.RotatingFileHandler)
+        ]
+        self.assertGreater(len(rich_handlers), 0)
+        self.assertFalse(rich_handlers[0].rich_tracebacks)
+
+    @unittest.skipUnless(
+        RICH_AVAILABLE, "Rich is not available; skipping rich traceback tests."
+    )
+    def test_get_logger_rich_tracebacks_enabled_via_config(self):
+        """
+        Rich tracebacks should be enabled when configured explicitly.
+        """
+        import mmrelay.log_utils as lu
+
+        lu.config = {
+            "logging": {
+                "rich_tracebacks": True,
+                "log_to_file": False,
+            }
+        }
+
+        logger_name = "test_logger_rich_enabled"
+        logging.getLogger(logger_name).handlers.clear()
+        logger = get_logger(logger_name)
+
+        rich_handlers = [
+            h
+            for h in logger.handlers
+            if hasattr(h, "rich_tracebacks")
+            and not isinstance(h, logging.handlers.RotatingFileHandler)
+        ]
+        self.assertGreater(len(rich_handlers), 0)
+        self.assertTrue(rich_handlers[0].rich_tracebacks)
+
+    def test_get_logger_rich_tracebacks_with_fake_rich_default_disabled(self):
+        """
+        Even when Rich is unavailable, forcing RICH_AVAILABLE with a fake handler should keep tracebacks disabled by default.
+        """
+        import mmrelay.log_utils as lu
+
+        logger_name = "test_logger_fake_rich_default"
+        logging.getLogger(logger_name).handlers.clear()
+
+        original_rich_available = lu.RICH_AVAILABLE
+        original_rich_handler = getattr(lu, "RichHandler", None)
+        original_console = getattr(lu, "console", None)
+
+        try:
+            lu.RICH_AVAILABLE = True
+            lu.RichHandler = DummyRichHandler
+            lu.console = object()
+            lu.config = {"logging": {"log_to_file": False}}
+
+            logger = get_logger(logger_name)
+            handlers = [h for h in logger.handlers if isinstance(h, DummyRichHandler)]
+            self.assertEqual(len(handlers), 1)
+            self.assertFalse(handlers[0].rich_tracebacks)
+        finally:
+            self._close_all_handlers()
+            lu.RICH_AVAILABLE = original_rich_available
+            if original_rich_handler is not None:
+                lu.RichHandler = original_rich_handler
+            else:
+                delattr(lu, "RichHandler")
+            lu.console = original_console
+            lu.config = None
+
+    def test_get_logger_rich_tracebacks_with_fake_rich_enabled(self):
+        """
+        Forcing RICH_AVAILABLE with a fake handler should honor rich_tracebacks config.
+        """
+        import mmrelay.log_utils as lu
+
+        logger_name = "test_logger_fake_rich_enabled"
+        logging.getLogger(logger_name).handlers.clear()
+
+        original_rich_available = lu.RICH_AVAILABLE
+        original_rich_handler = getattr(lu, "RichHandler", None)
+        original_console = getattr(lu, "console", None)
+
+        try:
+            lu.RICH_AVAILABLE = True
+            lu.RichHandler = DummyRichHandler
+            lu.console = object()
+            lu.config = {"logging": {"rich_tracebacks": True, "log_to_file": False}}
+
+            logger = get_logger(logger_name)
+            handlers = [h for h in logger.handlers if isinstance(h, DummyRichHandler)]
+            self.assertEqual(len(handlers), 1)
+            self.assertTrue(handlers[0].rich_tracebacks)
+        finally:
+            self._close_all_handlers()
+            lu.RICH_AVAILABLE = original_rich_available
+            if original_rich_handler is not None:
+                lu.RichHandler = original_rich_handler
+            else:
+                delattr(lu, "RichHandler")
+            lu.console = original_console
+            lu.config = None
+
     @patch("mmrelay.log_utils.get_log_dir")
     def test_get_logger_with_file_logging(self, mock_get_log_dir):
         """
-        Verify that a logger is created with a file handler when file logging is enabled in the configuration.
+        Verify a logger includes a RotatingFileHandler when file logging is enabled.
 
-        Ensures the logger has at least one handler and exactly one RotatingFileHandler when file logging is configured.
+        Mocks the log directory and enables file logging in configuration, then creates a uniquely named logger and asserts it has at least one handler and exactly one RotatingFileHandler.
         """
         mock_get_log_dir.return_value = self.test_dir
 

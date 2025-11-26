@@ -10,8 +10,9 @@ DEFAULT_LOG_SIZE_MB = 5
 DEFAULT_LOG_BACKUP_COUNT = 1
 LOG_SIZE_BYTES_MULTIPLIER = 1024 * 1024  # Convert MB to bytes
 
-# Numeric constants for comparisons
-PORTNUM_NUMERIC_VALUE = 1  # Numeric equivalent of TEXT_MESSAGE_APP
+# Numeric portnum constants for comparisons
+PORTNUM_TEXT_MESSAGE_APP = 1  # Numeric portnum for TEXT_MESSAGE_APP
+PORTNUM_DETECTION_SENSOR_APP = 10  # Numeric portnum for DETECTION_SENSOR_APP
 DEFAULT_CHANNEL_VALUE = 0
 
 # Message formatting constants

@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, patch
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from mmrelay.matrix_utils import _get_detailed_sync_error_message
+from mmrelay.matrix_utils import _get_detailed_matrix_error_message
 
 
 class FakeNioErrorResponse:
@@ -57,7 +57,7 @@ class FakeNioErrorResponseWithException:
 
 
 class TestDetailedSyncErrorMessage(unittest.TestCase):
-    """Test cases for _get_detailed_sync_error_message function."""
+    """Test cases for _get_detailed_matrix_error_message function."""
 
     def setUp(self):
         """
@@ -98,7 +98,7 @@ class TestDetailedSyncErrorMessage(unittest.TestCase):
             message="Authentication failed", status_code=401
         )
 
-        result = _get_detailed_sync_error_message(mock_response)
+        result = _get_detailed_matrix_error_message(mock_response)
         self.assertEqual(result, "Authentication failed")
 
     def test_nio_error_response_with_status_code_only(self):
@@ -106,7 +106,7 @@ class TestDetailedSyncErrorMessage(unittest.TestCase):
         # Create a fake nio ErrorResponse with no message
         mock_response = FakeNioErrorResponse(message=None, status_code=404)
 
-        result = _get_detailed_sync_error_message(mock_response)
+        result = _get_detailed_matrix_error_message(mock_response)
         # Since our fake class doesn't pass isinstance check, it falls through to generic handling
         # which provides more specific error messages for known status codes
         self.assertEqual(result, "Server not found - check homeserver URL")
@@ -120,7 +120,7 @@ class TestDetailedSyncErrorMessage(unittest.TestCase):
         with patch(
             "builtins.__import__", side_effect=ImportError("No module named 'nio'")
         ):
-            result = _get_detailed_sync_error_message(mock_response)
+            result = _get_detailed_matrix_error_message(mock_response)
 
         self.assertEqual(result, "Server error")
 
@@ -130,7 +130,7 @@ class TestDetailedSyncErrorMessage(unittest.TestCase):
         mock_response.message = "Connection timeout"
 
         # Use fake nio module instead of patching isinstance
-        result = _get_detailed_sync_error_message(mock_response)
+        result = _get_detailed_matrix_error_message(mock_response)
 
         self.assertEqual(result, "Connection timeout")
 
@@ -141,7 +141,7 @@ class TestDetailedSyncErrorMessage(unittest.TestCase):
         mock_response.status_code = 401
 
         # Use fake nio module instead of patching isinstance
-        result = _get_detailed_sync_error_message(mock_response)
+        result = _get_detailed_matrix_error_message(mock_response)
 
         self.assertEqual(
             result, "Authentication failed - invalid or expired credentials"
@@ -154,7 +154,7 @@ class TestDetailedSyncErrorMessage(unittest.TestCase):
         mock_response.status_code = 403
 
         # Use fake nio module instead of patching isinstance
-        result = _get_detailed_sync_error_message(mock_response)
+        result = _get_detailed_matrix_error_message(mock_response)
 
         self.assertEqual(result, "Access forbidden - check user permissions")
 
@@ -165,7 +165,7 @@ class TestDetailedSyncErrorMessage(unittest.TestCase):
         mock_response.status_code = 404
 
         # Use fake nio module instead of patching isinstance
-        result = _get_detailed_sync_error_message(mock_response)
+        result = _get_detailed_matrix_error_message(mock_response)
 
         self.assertEqual(result, "Server not found - check homeserver URL")
 
@@ -176,7 +176,7 @@ class TestDetailedSyncErrorMessage(unittest.TestCase):
         mock_response.status_code = 429
 
         # Use fake nio module instead of patching isinstance
-        result = _get_detailed_sync_error_message(mock_response)
+        result = _get_detailed_matrix_error_message(mock_response)
 
         self.assertEqual(result, "Rate limited - too many requests")
 
@@ -187,7 +187,7 @@ class TestDetailedSyncErrorMessage(unittest.TestCase):
         mock_response.status_code = 502
 
         # Use fake nio module instead of patching isinstance
-        result = _get_detailed_sync_error_message(mock_response)
+        result = _get_detailed_matrix_error_message(mock_response)
 
         self.assertEqual(
             result, "Server error (HTTP 502) - the Matrix server is experiencing issues"
@@ -200,7 +200,7 @@ class TestDetailedSyncErrorMessage(unittest.TestCase):
         mock_response.status_code = 418
 
         # Use fake nio module instead of patching isinstance
-        result = _get_detailed_sync_error_message(mock_response)
+        result = _get_detailed_matrix_error_message(mock_response)
 
         self.assertEqual(result, "HTTP error 418")
 
@@ -213,7 +213,7 @@ class TestDetailedSyncErrorMessage(unittest.TestCase):
         mock_response.transport_response.status_code = 0
 
         # Use fake nio module instead of patching isinstance
-        result = _get_detailed_sync_error_message(mock_response)
+        result = _get_detailed_matrix_error_message(mock_response)
 
         self.assertEqual(result, "Transport error: HTTP 0")
 
@@ -228,9 +228,49 @@ class TestDetailedSyncErrorMessage(unittest.TestCase):
         mock_response.__str__ = MagicMock(return_value="None")
 
         # Use fake nio module instead of patching isinstance
-        result = _get_detailed_sync_error_message(mock_response)
+        result = _get_detailed_matrix_error_message(mock_response)
 
-        self.assertEqual(result, "Network connectivity issue or server unreachable")
+        self.assertEqual(
+            result,
+            "Network connectivity issue or server unreachable",
+        )
+
+    def test_str_fallback_unhelpful_string(self):
+        """Objects whose __str__ returns HTML-like content should fall back to connectivity message."""
+
+        class HtmlError:
+            def __str__(self):
+                """
+                Provide an HTML-like error representation of the object.
+
+                Returns:
+                    str: A string containing an HTML-like error message (e.g., "<html>Error</html>").
+                """
+                return "<html>Error</html>"
+
+        result = _get_detailed_matrix_error_message(HtmlError())
+
+        self.assertEqual(
+            result,
+            "Network connectivity issue or server unreachable",
+        )
+
+    def test_str_fallback_useful_string(self):
+        """Objects whose __str__ returns a plain string should preserve the message."""
+
+        class UsefulError:
+            def __str__(self):
+                """
+                Return a concise, human-readable representation of the object.
+
+                Returns:
+                    A short, user-facing string describing the object.
+                """
+                return "useful message"
+
+        result = _get_detailed_matrix_error_message(UsefulError())
+
+        self.assertEqual(result, "useful message")
 
     def test_exception_during_processing(self):
         """Test handling of exceptions during error message extraction."""
@@ -238,7 +278,7 @@ class TestDetailedSyncErrorMessage(unittest.TestCase):
         mock_response = FakeNioErrorResponseWithException(status_code=None)
 
         with patch("mmrelay.matrix_utils.logger"):
-            result = _get_detailed_sync_error_message(mock_response)
+            result = _get_detailed_matrix_error_message(mock_response)
 
         self.assertEqual(
             result,
@@ -252,7 +292,7 @@ class TestDetailedSyncErrorMessage(unittest.TestCase):
         mock_response.message = b"\xff\xfe\xfd"  # Invalid UTF-8 bytes
         mock_response.status_code = None
 
-        result = _get_detailed_sync_error_message(mock_response)
+        result = _get_detailed_matrix_error_message(mock_response)
 
         self.assertEqual(
             result,
@@ -266,7 +306,7 @@ class TestDetailedSyncErrorMessage(unittest.TestCase):
         mock_response.message = None
         mock_response.status_code = "not_a_number"
 
-        result = _get_detailed_sync_error_message(mock_response)
+        result = _get_detailed_matrix_error_message(mock_response)
 
         self.assertEqual(
             result,

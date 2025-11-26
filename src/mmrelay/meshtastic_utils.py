@@ -7,7 +7,20 @@ import threading
 import time
 from concurrent.futures import Future
 from concurrent.futures import TimeoutError as FuturesTimeoutError
-from typing import List
+from typing import TYPE_CHECKING, Any, Awaitable, List
+
+# type: ignore[assignment]  # Suppress complex type issues with asyncio/concurrent.futures integration
+
+if TYPE_CHECKING:
+    # Type checking imports - these won't be executed at runtime
+    try:
+        from bleak.exc import BleakDBusError as BleakDBusErrorType
+        from bleak.exc import BleakError as BleakErrorType
+    except ImportError:
+        from typing import Type
+
+        BleakDBusErrorType = Type[Exception]
+        BleakErrorType = Type[Exception]
 
 import meshtastic
 import meshtastic.ble_interface
@@ -31,7 +44,8 @@ from mmrelay.constants.formats import (
 )
 from mmrelay.constants.messages import (
     DEFAULT_CHANNEL_VALUE,
-    PORTNUM_NUMERIC_VALUE,
+    PORTNUM_DETECTION_SENSOR_APP,
+    PORTNUM_TEXT_MESSAGE_APP,
 )
 from mmrelay.constants.network import (
     CONFIG_KEY_BLE_ADDRESS,
@@ -102,16 +116,14 @@ subscribed_to_connection_lost = False
 
 def _submit_coro(coro, loop=None):
     """
-    Submit an asyncio coroutine for execution on the appropriate event loop and return a Future representing its result.
-
-    If `loop` (or the module-level `event_loop`) is an open asyncio event loop, the coroutine is scheduled thread-safely via `asyncio.run_coroutine_threadsafe`. If there is a currently running loop in the calling thread, the coroutine is scheduled with that loop's `create_task`. If no running loop exists, the coroutine is executed synchronously with `asyncio.run` and its result (or raised exception) is wrapped in a completed Future. If `coro` is not a coroutine, returns None.
+    Schedule a coroutine to run on an appropriate asyncio event loop and return a Future for its result.
 
     Parameters:
-        coro: The coroutine object to execute.
-        loop: Optional asyncio event loop to target. If omitted, the module-level `event_loop` is used.
+        coro: The coroutine object to execute. If not a coroutine, the function returns None.
+        loop: Optional target asyncio event loop. If omitted, the module-level `event_loop` is used.
 
     Returns:
-        A Future-like object representing the coroutine's eventual result, or None if `coro` is not a coroutine.
+        A Future-like object representing the coroutine's eventual result, or `None` if `coro` is not a coroutine.
     """
     if not inspect.iscoroutine(coro):
         # Defensive guard for tests that mistakenly patch async funcs to return None
@@ -147,6 +159,111 @@ def _submit_coro(coro, loop=None):
             f = Future()
             f.set_exception(e)
             return f
+
+
+def _make_awaitable(
+    future: Any, loop: asyncio.AbstractEventLoop | None = None
+) -> Awaitable[Any] | Any:
+    """
+    Return an awaitable for the given future-like object, binding it to the provided event loop when necessary.
+
+    If `future` already implements the awaitable protocol, it is returned unchanged. For non-awaitable futures, the returned awaitable resolves to the future's result and will be associated with `loop` when one is supplied.
+
+    Parameters:
+        future: A future-like object or an awaitable.
+        loop (asyncio.AbstractEventLoop | None): Event loop to bind non-awaitable futures to; if `None`, no explicit loop binding is applied.
+
+    Returns:
+        An awaitable that yields the resolved value of `future`, or `future` itself if it is already awaitable.
+    """
+    if hasattr(future, "__await__"):
+        return future
+    target_loop = loop if isinstance(loop, asyncio.AbstractEventLoop) else None
+    return asyncio.wrap_future(future, loop=target_loop)
+
+
+def _wait_for_result(
+    result_future: Any,
+    timeout: float,
+    loop: asyncio.AbstractEventLoop | None = None,
+) -> Any:
+    """
+    Resolve and return the value of a future or awaitable within a synchronous context using a timeout.
+
+    Supports concurrent.futures.Future, asyncio.Future/Task, awaitables, and objects exposing a `.result(timeout)` API.
+
+    Parameters:
+        result_future (Any): The future/awaitable or future-like object to resolve.
+        timeout (float): Maximum seconds to wait for the result.
+        loop (asyncio.AbstractEventLoop | None): Optional event loop to drive awaiting; if omitted, the function will use a running loop or create a temporary one.
+
+    Returns:
+        Any: The value produced by the resolved future/awaitable.
+
+    Raises:
+        asyncio.TimeoutError: If awaiting the awaitable times out.
+        concurrent.futures.TimeoutError: If a concurrent.futures.Future times out.
+        Exception: Any exception raised by the resolved future/awaitable is propagated.
+    """
+    if result_future is None:
+        return False
+
+    target_loop = loop if isinstance(loop, asyncio.AbstractEventLoop) else None
+
+    # Handle concurrent.futures.Future directly
+    if isinstance(result_future, Future):
+        return result_future.result(timeout=timeout)
+
+    # Handle asyncio Future/Task instances
+    if isinstance(result_future, asyncio.Future):
+        awaitable = result_future
+    elif hasattr(result_future, "result") and callable(result_future.result):
+        # Generic future-like object with .result API (used by some tests)
+        try:
+            return result_future.result(timeout)
+        except TypeError:
+            return result_future.result()
+    else:
+        awaitable = _make_awaitable(result_future, loop=target_loop)
+
+    async def _runner():
+        """
+        Await the captured awaitable and fail if it does not complete within the captured timeout.
+
+        Returns:
+            The result of the awaited awaitable.
+
+        Raises:
+            asyncio.TimeoutError: If the awaitable does not complete before the timeout expires.
+        """
+        return await asyncio.wait_for(awaitable, timeout=timeout)
+
+    if target_loop and not target_loop.is_closed():
+        if target_loop.is_running():
+            return asyncio.run_coroutine_threadsafe(_runner(), target_loop).result(
+                timeout=timeout
+            )
+        return target_loop.run_until_complete(_runner())
+
+    try:
+        running_loop = asyncio.get_running_loop()
+    except RuntimeError:
+        running_loop = None
+
+    if running_loop and not running_loop.is_closed():
+        if running_loop.is_running():
+            return asyncio.run_coroutine_threadsafe(_runner(), running_loop).result(
+                timeout=timeout
+            )
+        return running_loop.run_until_complete(_runner())
+
+    new_loop = asyncio.new_event_loop()
+    try:
+        asyncio.set_event_loop(new_loop)
+        return new_loop.run_until_complete(_runner())
+    finally:
+        new_loop.close()
+        asyncio.set_event_loop(None)
 
 
 def _resolve_plugin_timeout(cfg: dict | None, default: float = 5.0) -> float:
@@ -233,14 +350,19 @@ def _get_name_or_none(name_func, sender):
 
 def _get_device_metadata(client):
     """
-    Retrieve firmware metadata from a Meshtastic client.
+    Extract firmware version and raw metadata output from a Meshtastic client.
 
-    Calls client.localNode.getMetadata() (if present) and captures its stdout/stderr to extract a firmware version and raw output. Returns a dict with:
-    - firmware_version: parsed version string or "unknown" when not found,
-    - raw_output: captured output (truncated to 4096 characters with a trailing ellipsis if longer),
-    - success: True when a firmware_version was successfully parsed.
+    Attempts to invoke client.localNode.getMetadata() (if present), captures its console output, and parses a firmware version string. Returns a dict containing the parsed firmware version, the captured raw output (possibly truncated), and a success flag indicating whether a firmware version was found.
 
-    If the client lacks localNode.getMetadata or parsing fails, returns defaults without raising.
+    Parameters:
+        client: An object implementing a Meshtastic client interface; expected to provide a localNode with a getMetadata() method. If the method is absent or parsing fails, defaults are returned.
+
+    Returns:
+        dict: {
+            "firmware_version": str — parsed firmware version or "unknown" when not found,
+            "raw_output": str — captured output from getMetadata() (truncated to 4096 characters with a trailing ellipsis if longer),
+            "success": bool — `true` when a firmware_version was successfully parsed, `false` otherwise
+        }
     """
     result = {"firmware_version": "unknown", "raw_output": "", "success": False}
 
@@ -256,8 +378,9 @@ def _get_device_metadata(client):
 
         # Capture getMetadata() output to extract firmware version
         output_capture = io.StringIO()
-        with contextlib.redirect_stdout(output_capture), contextlib.redirect_stderr(
-            output_capture
+        with (
+            contextlib.redirect_stdout(output_capture),
+            contextlib.redirect_stderr(output_capture),
         ):
             client.localNode.getMetadata()
 
@@ -688,21 +811,19 @@ async def reconnect():
 
 def on_meshtastic_message(packet, interface):
     """
-    Handle an incoming Meshtastic packet and relay it to Matrix rooms or plugins as configured.
+    Handle an incoming Meshtastic packet and route it to configured Matrix rooms or installed plugins.
 
-    This function inspects a Meshtastic `packet` (expected as a dict), applies interaction rules (reactions, replies, replies storage, detection-sensor filtering), and either:
-    - relays reactions or replies as appropriate to the mapped Matrix event/room,
-    - relays normal text messages to all Matrix rooms mapped to the message's Meshtastic channel (unless the message is a direct message to the relay node or a plugin handles it),
-    - or dispatches non-text or unhandled packets to plugins for processing.
+    Processes the provided Meshtastic `packet` (a dict-like decoded message) according to interaction settings:
+    - relays reactions and replies to the mapped Matrix event/room when enabled,
+    - relays ordinary text messages to Matrix rooms mapped to the message's Meshtastic channel unless the message is a direct message to the relay node or a plugin handles it,
+    - dispatches non-text or otherwise unhandled packets to plugins for processing.
 
-    Behavior notes:
-    - Uses global configuration and matrix_rooms mappings; returns immediately if configuration or event loop is missing or if shutdown is in progress.
-    - Resolves sender display names from a local DB or node info and persists them when found.
-    - Honors interaction settings for reactions and replies, and the meshtastic `detection_sensor` configuration when handling detection sensor packets.
-    - Uses _submit_coro to schedule Matrix/plugin coroutines on the configured event loop.
-    - Side effects: schedules Matrix relays, may call plugin handlers, and may store sender metadata and message->Matrix mappings via other utilities.
+    Parameters:
+        packet (dict): The Meshtastic packet (decoded fields expected in a nested `decoded` dict).
+        interface: The Meshtastic interface object used to resolve node information and send/receive context.
 
-    No return value.
+    Side effects:
+        Schedules Matrix relay coroutines, invokes plugin handlers, and may persist sender metadata or message mapping information.
     """
     global config, matrix_rooms
 
@@ -872,10 +993,13 @@ def on_meshtastic_message(packet, interface):
         channel = packet.get("channel")
         if channel is None:
             # If channel not specified, deduce from portnum
-            if (
-                decoded.get("portnum") == TEXT_MESSAGE_APP
-                or decoded.get("portnum") == PORTNUM_NUMERIC_VALUE
-                or decoded.get("portnum") == DETECTION_SENSOR_APP
+            # Note: meshtastic-python emits enum names (e.g., "TEXT_MESSAGE_APP") in decoded dicts,
+            # while other paths (protobuf/raw) surface numeric portnums. Support both to avoid drops.
+            if decoded.get("portnum") in (
+                PORTNUM_TEXT_MESSAGE_APP,
+                PORTNUM_DETECTION_SENSOR_APP,
+                TEXT_MESSAGE_APP,
+                DETECTION_SENSOR_APP,
             ):
                 channel = DEFAULT_CHANNEL_VALUE
             else:
@@ -899,9 +1023,10 @@ def on_meshtastic_message(packet, interface):
             return
 
         # If detection_sensor is disabled and this is a detection sensor packet, skip it
-        if decoded.get(
-            "portnum"
-        ) == DETECTION_SENSOR_APP and not get_meshtastic_config_value(
+        portnum = decoded.get("portnum")
+        if (
+            portnum == PORTNUM_DETECTION_SENSOR_APP or portnum == DETECTION_SENSOR_APP
+        ) and not get_meshtastic_config_value(
             config, "detection_sensor", DEFAULT_DETECTION_SENSOR
         ):
             logger.debug(
@@ -979,10 +1104,14 @@ def on_meshtastic_message(packet, interface):
                         found_matching_plugin = False
                         continue
                     try:
-                        found_matching_plugin = result_future.result(
-                            timeout=plugin_timeout
+                        found_matching_plugin = bool(
+                            _wait_for_result(
+                                result_future,
+                                plugin_timeout,
+                                loop=loop,
+                            )
                         )
-                    except FuturesTimeoutError as exc:
+                    except (asyncio.TimeoutError, FuturesTimeoutError) as exc:
                         logger.warning(
                             "Plugin %s did not respond within %ss: %s",
                             plugin.plugin_name,
@@ -1067,10 +1196,14 @@ def on_meshtastic_message(packet, interface):
                         found_matching_plugin = False
                         continue
                     try:
-                        found_matching_plugin = result_future.result(
-                            timeout=plugin_timeout
+                        found_matching_plugin = bool(
+                            _wait_for_result(
+                                result_future,
+                                plugin_timeout,
+                                loop=loop,
+                            )
                         )
-                    except FuturesTimeoutError as exc:
+                    except (asyncio.TimeoutError, FuturesTimeoutError) as exc:
                         logger.warning(
                             "Plugin %s did not respond within %ss: %s",
                             plugin.plugin_name,

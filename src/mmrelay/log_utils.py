@@ -139,9 +139,9 @@ def configure_component_debug_logging():
 
 def get_logger(name):
     """
-    Create and configure a logger with console output (optionally colorized) and optional rotating file logging.
+    Create and return a logger configured for console output (colorized when available) and optional rotating file logging.
 
-    The logger's log level, colorization, and file logging behavior are determined by global configuration and command-line arguments. Log files are rotated by size, and the log directory is created if necessary. If the logger name matches the application display name, the log file path is stored globally for reference.
+    Reads logging-related settings from the global `config` and from command-line arguments to determine log level, whether colors and Rich tracebacks are enabled, logfile path, rotation size, and backup count. If a logfile is used, creates its directory if necessary and stores the path globally when the logger name matches the application display name.
 
     Parameters:
         name (str): The name of the logger to create.
@@ -154,6 +154,7 @@ def get_logger(name):
     # Default to INFO level if config is not available
     log_level = logging.INFO
     color_enabled = True  # Default to using colors
+    rich_tracebacks_enabled = False  # Default to disabling rich tracebacks
 
     # Try to get log level and color settings from config
     global config
@@ -167,6 +168,8 @@ def get_logger(name):
         # Check if colors should be disabled
         if "color_enabled" in config["logging"]:
             color_enabled = config["logging"]["color_enabled"]
+        if "rich_tracebacks" in config["logging"]:
+            rich_tracebacks_enabled = bool(config["logging"]["rich_tracebacks"])
 
     logger.setLevel(log_level)
     logger.propagate = False
@@ -179,7 +182,7 @@ def get_logger(name):
     if color_enabled and RICH_AVAILABLE:
         # Use Rich handler with colors
         console_handler = RichHandler(
-            rich_tracebacks=True,
+            rich_tracebacks=rich_tracebacks_enabled,
             console=console,
             show_time=True,
             show_level=True,

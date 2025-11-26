@@ -89,6 +89,19 @@ class Plugin(BasePlugin):
 
     async def handle_room_message(self, room, event, full_message):
         # Pass the event to matches()
+        """
+        Handle a room message that requests a telemetry graph and send the generated image to the Matrix room.
+
+        Parses messages invoking one of the telemetry commands (!batteryLevel, !voltage, !airUtilTx) optionally followed by a node identifier, computes hourly averages for the last 12 hours (per-node or network-wide), renders a line plot of those averages, uploads the image to the originating room, and sends it.
+
+        Parameters:
+            room: Matrix room object where the event originated; used to determine the destination room_id.
+            event: Matrix event used to test whether the message matches a supported bot command.
+            full_message (str): Full plaintext message content to parse the command and optional node identifier.
+
+        Returns:
+            True if the message matched a telemetry command and the graph was generated and successfully sent; False otherwise.
+        """
         if not self.matches(event):
             return False
 
@@ -172,8 +185,19 @@ class Plugin(BasePlugin):
         img = Image.open(buf)
         pil_image = Image.frombytes(mode="RGBA", size=img.size, data=img.tobytes())
 
-        from mmrelay.matrix_utils import send_room_image, upload_image
+        from mmrelay.matrix_utils import ImageUploadError, send_image
 
-        upload_response = await upload_image(matrix_client, pil_image, "graph.png")
-        await send_room_image(matrix_client, room.room_id, upload_response)
+        try:
+            await send_image(matrix_client, room.room_id, pil_image, "graph.png")
+        except ImageUploadError:
+            self.logger.exception("Failed to send telemetry graph")
+            await matrix_client.room_send(
+                room_id=room.room_id,
+                message_type="m.room.message",
+                content={
+                    "msgtype": "m.notice",
+                    "body": "Failed to generate graph: Image upload failed.",
+                },
+            )
+            return False
         return True

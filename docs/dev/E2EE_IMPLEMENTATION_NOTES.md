@@ -37,7 +37,7 @@ Analysis of several working `matrix-nio` bots (`matrix-commander`, `matrix-nio-s
 The correct sequence is:
 
 1. Initialize `AsyncClient`, providing `homeserver`, `user_id`, `device_id`, and `store_path` in the constructor.
-2. Call `client.restore_login()` to inject the access token. This method implicitly loads the E2EE store.
+2. Call `client.restore_login()` to inject the access token. This method implicitly loads the E2EE store. **Note:** `restore_login` requires a concrete `device_id`; passing `None` is not supported by matrix-nio. If the device_id is unknown, first set `access_token`/`user_id`, call `whoami()` to discover the device_id, then invoke `restore_login` with that value.
 3. Call `client.keys_upload()` if `client.should_upload_keys` is true.
 4. Begin syncing.
 
