@@ -243,6 +243,7 @@ class Plugin(BasePlugin):
     Uploads generated maps as images to Matrix rooms.
     """
 
+    is_core_plugin = True
     plugin_name = "map"
 
     # No __init__ method needed with the simplified plugin system

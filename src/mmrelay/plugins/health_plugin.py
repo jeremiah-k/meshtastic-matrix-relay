@@ -5,6 +5,7 @@ from mmrelay.plugins.base_plugin import BasePlugin
 
 class Plugin(BasePlugin):
     plugin_name = "health"
+    is_core_plugin = True
 
     @property
     def description(self):

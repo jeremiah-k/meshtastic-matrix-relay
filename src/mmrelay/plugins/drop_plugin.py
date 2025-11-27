@@ -10,6 +10,7 @@ from mmrelay.plugins.base_plugin import BasePlugin
 
 class Plugin(BasePlugin):
     plugin_name = "drop"
+    is_core_plugin = True
     special_node = "!NODE_MSGS!"
 
     # No __init__ method needed with the simplified plugin system

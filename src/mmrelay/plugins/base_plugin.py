@@ -86,10 +86,10 @@ class BasePlugin(ABC):
     def __init__(self, plugin_name=None) -> None:
         """
         Initialize plugin state and load per-plugin configuration and runtime defaults.
-        
+
         Parameters:
             plugin_name (str, optional): Override the class-level plugin_name for this instance.
-        
+
         Raises:
             ValueError: If no plugin name is available from the parameter, instance, or class attribute.
         """
@@ -631,24 +631,26 @@ class BasePlugin(ABC):
     def matches(self, event):
         """
         Determine whether a Matrix event invokes this plugin's Matrix commands.
-        
+
         Checks whether the event contains any of the plugin's configured Matrix commands, taking into account the plugin's configured bot-mention requirement.
-        
+
         Parameters:
             event: The Matrix room event to evaluate.
-        
+
         Returns:
             `true` if the event matches one of the plugin's Matrix commands, `false` otherwise.
         """
         from mmrelay.matrix_utils import bot_command
 
         # Determine if bot mentions are required
-        require_mention = self._get_require_bot_mention()
+        require_mention = self.get_require_bot_mention()
 
-        # Pass the entire event to bot_command with require_mention parameter
-        return bot_command(self.plugin_name, event, require_mention=require_mention)
+        return any(
+            bot_command(command, event, require_mention=require_mention)
+            for command in self.get_matrix_commands()
+        )
 
-    def _get_require_bot_mention(self) -> bool:
+    def get_require_bot_mention(self) -> bool:
         """Determine if bot mentions are required for this plugin.
 
         Checks plugin-specific configuration first, then global plugins configuration,
@@ -672,19 +674,23 @@ class BasePlugin(ABC):
         # Non-core plugins default to False (backward compatibility)
         return False
 
+    # Backward compatibility for older callers/third-party plugins
+    def _get_require_bot_mention(self) -> bool:
+        return self.get_require_bot_mention()
+
     @abstractmethod
     async def handle_meshtastic_message(
         self, packet, formatted_message, longname, meshnet_name
     ):
         """
         Process an incoming Meshtastic packet and perform plugin-specific handling.
-        
+
         Parameters:
             packet: The original Meshtastic packet object (protobuf-derived dict or message) as received from the radio.
             formatted_message (str): A cleaned, human-readable representation of the packet's text payload.
             longname (str): Sender display name or node label associated with the packet.
             meshnet_name (str): The mesh network identifier where the packet originated.
-        
+
         """
         pass  # Implement in subclass
 

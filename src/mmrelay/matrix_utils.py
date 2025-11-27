@@ -843,7 +843,7 @@ bot_start_time = int(
 matrix_client = None
 
 
-def bot_command(command, event, require_mention=False):
+def bot_command(command: str, event, require_mention: bool = False) -> bool:
     """
     Detect whether a Matrix event addresses the bot with the specified command.
 
@@ -890,9 +890,9 @@ def bot_command(command, event, require_mention=False):
 async def _connect_meshtastic():
     """
     Get a Meshtastic connection usable from asynchronous code.
-    
+
     In test environments (MMRELAY_TESTING=1 or when running under pytest) returns the connector directly; otherwise invokes the synchronous connector in a thread executor to avoid blocking the event loop.
-    
+
     Returns:
         Meshtastic interface or proxy object produced by the connector.
     """
@@ -3284,22 +3284,30 @@ async def on_room_message(
                     "Error processing message with plugin %s", plugin.plugin_name
                 )
 
-    # Check if the message is a command directed at the bot
+    # If this is a command (recognized by any plugin), we do not send it to the mesh
     is_command = False
     for plugin in plugins:
-        require_mention = (
-            plugin._get_require_bot_mention()
-            if hasattr(plugin, "_get_require_bot_mention")
-            else False
-        )
-        for command in plugin.get_matrix_commands():
-            if bot_command(command, event, require_mention=require_mention):
+        if hasattr(plugin, "matches"):
+            try:
+                if plugin.matches(event):
+                    is_command = True
+                    break
+            except Exception:
+                # If a plugin raises during match detection, fall back to relaying
+                logger.exception("Error checking plugin match for %s", plugin)
+        elif hasattr(plugin, "get_matrix_commands"):
+            require_mention = (
+                plugin.get_require_bot_mention()
+                if hasattr(plugin, "get_require_bot_mention")
+                else False
+            )
+            if any(
+                bot_command(command, event, require_mention=require_mention)
+                for command in plugin.get_matrix_commands()
+            ):
                 is_command = True
                 break
-        if is_command:
-            break
 
-    # If this is a command, we do not send it to the mesh
     if is_command:
         logger.debug("Message is a command, not sending to mesh")
         return

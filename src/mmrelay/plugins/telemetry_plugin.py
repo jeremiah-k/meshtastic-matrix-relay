@@ -11,6 +11,7 @@ from mmrelay.plugins.base_plugin import BasePlugin
 
 class Plugin(BasePlugin):
     plugin_name = "telemetry"
+    is_core_plugin = True
     max_data_rows_per_node = 50
 
     def commands(self):
@@ -81,23 +82,22 @@ class Plugin(BasePlugin):
     def matches(self, event):
         """
         Determine whether the given Matrix event invokes any of this plugin's Matrix commands, honoring the current bot-mention requirement.
-        
+
         Parameters:
             event: The Matrix event object to evaluate for a command invocation.
-        
+
         Returns:
             True if any registered Matrix command matches the event, False otherwise.
         """
         from mmrelay.matrix_utils import bot_command
 
         # Determine if bot mentions are required
-        require_mention = self._get_require_bot_mention()
+        require_mention = self.get_require_bot_mention()
 
-        # Use bot_command() to check if any of the commands match
-        for command in self.get_matrix_commands():
-            if bot_command(command, event, require_mention=require_mention):
-                return True
-        return False
+        return any(
+            bot_command(command, event, require_mention=require_mention)
+            for command in self.get_matrix_commands()
+        )
 
     async def handle_room_message(self, room, event, full_message):
         # Pass the event to matches()

@@ -18,6 +18,7 @@ class Plugin(BasePlugin):
     and their descriptions.
     """
 
+    is_core_plugin = True
     plugin_name = "help"
 
     @property
