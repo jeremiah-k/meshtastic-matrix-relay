@@ -650,9 +650,13 @@ class BasePlugin(ABC):
         # Check global plugins configuration if available
         global config
         if config is not None:
-            plugins_config = config.get("plugins", {})
-            if CONFIG_KEY_REQUIRE_BOT_MENTION in plugins_config:
-                return bool(plugins_config[CONFIG_KEY_REQUIRE_BOT_MENTION])
+            for section_name in ("plugins", "community-plugins", "custom-plugins"):
+                section_config = config.get(section_name, {})
+                if (
+                    isinstance(section_config, dict)
+                    and CONFIG_KEY_REQUIRE_BOT_MENTION in section_config
+                ):
+                    return bool(section_config[CONFIG_KEY_REQUIRE_BOT_MENTION])
 
         # Default behavior: core plugins require mentions by default
         # Core plugins are the ones in the main plugins directory
