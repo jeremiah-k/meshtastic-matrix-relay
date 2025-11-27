@@ -889,12 +889,12 @@ def bot_command(command, event, require_mention=False):
 
 async def _connect_meshtastic():
     """
-    Obtain a Meshtastic connection object suitable for use from async code.
-
-    When running under test, returns the connector directly; otherwise invokes the synchronous connector without blocking the event loop.
-
+    Get a Meshtastic connection usable from asynchronous code.
+    
+    In test environments (MMRELAY_TESTING=1 or when running under pytest) returns the connector directly; otherwise invokes the synchronous connector in a thread executor to avoid blocking the event loop.
+    
     Returns:
-        A Meshtastic interface or proxy object produced by the synchronous connector.
+        Meshtastic interface or proxy object produced by the connector.
     """
     if os.getenv("MMRELAY_TESTING") == "1" or "PYTEST_CURRENT_TEST" in os.environ:
         return connect_meshtastic()
