@@ -81,9 +81,12 @@ class Plugin(BasePlugin):
     def matches(self, event):
         from mmrelay.matrix_utils import bot_command
 
+        # Determine if bot mentions are required
+        require_mention = self._get_require_bot_mention()
+
         # Use bot_command() to check if any of the commands match
         for command in self.get_matrix_commands():
-            if bot_command(command, event):
+            if bot_command(command, event, require_mention=require_mention):
                 return True
         return False
 

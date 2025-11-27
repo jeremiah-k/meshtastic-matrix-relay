@@ -297,7 +297,9 @@ class TestTelemetryPlugin(unittest.TestCase):
 
         Verifies that the method checks all available commands and returns True upon finding a match.
         """
-        mock_bot_command.side_effect = lambda cmd, event: cmd == "batteryLevel"
+        mock_bot_command.side_effect = (
+            lambda cmd, event, require_mention=False: cmd == "batteryLevel"
+        )
 
         event = MagicMock()
         result = self.plugin.matches(event)

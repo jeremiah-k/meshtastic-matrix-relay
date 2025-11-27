@@ -6,6 +6,10 @@ from typing import Any, Dict, Union
 import markdown
 
 from mmrelay.config import get_plugin_data_dir
+from mmrelay.constants.config import (
+    CONFIG_KEY_REQUIRE_BOT_MENTION,
+    DEFAULT_REQUIRE_BOT_MENTION,
+)
 from mmrelay.constants.database import (
     DEFAULT_MAX_DATA_ROWS_PER_NODE_BASE,
     DEFAULT_TEXT_TRUNCATION_LENGTH,
@@ -624,8 +628,44 @@ class BasePlugin(ABC):
         """
         from mmrelay.matrix_utils import bot_command
 
-        # Pass the entire event to bot_command
-        return bot_command(self.plugin_name, event)
+        # Determine if bot mentions are required
+        require_mention = self._get_require_bot_mention()
+
+        # Pass the entire event to bot_command with require_mention parameter
+        return bot_command(self.plugin_name, event, require_mention=require_mention)
+
+    def _get_require_bot_mention(self) -> bool:
+        """Determine if bot mentions are required for this plugin.
+
+        Checks plugin-specific configuration first, then global plugins configuration,
+        using appropriate defaults for core plugins.
+
+        Returns:
+            bool: True if bot mentions are required, False otherwise
+        """
+        # Check plugin-specific configuration first
+        if CONFIG_KEY_REQUIRE_BOT_MENTION in self.config:
+            return bool(self.config[CONFIG_KEY_REQUIRE_BOT_MENTION])
+
+        # Check global plugins configuration if available
+        global config
+        if config is not None:
+            plugins_config = config.get("plugins", {})
+            if CONFIG_KEY_REQUIRE_BOT_MENTION in plugins_config:
+                return bool(plugins_config[CONFIG_KEY_REQUIRE_BOT_MENTION])
+
+        # Default behavior: core plugins require mentions by default
+        # Core plugins are the ones in the main plugins directory
+        import os
+
+        plugin_file = os.path.join(
+            os.path.dirname(__file__), f"{self.plugin_name}_plugin.py"
+        )
+        if os.path.exists(plugin_file):
+            return DEFAULT_REQUIRE_BOT_MENTION
+
+        # Non-core plugins default to False (backward compatibility)
+        return False
 
     @abstractmethod
     async def handle_meshtastic_message(

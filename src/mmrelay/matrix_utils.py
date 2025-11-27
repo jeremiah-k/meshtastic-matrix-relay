@@ -843,17 +843,18 @@ bot_start_time = int(
 matrix_client = None
 
 
-def bot_command(command, event):
+def bot_command(command, event, require_mention=False):
     """
     Detect whether a Matrix event addresses the bot with the specified command.
 
     Checks the event's plain body and HTML-formatted body (if present). It returns True when either body:
-    - begins with `!<command>`, or
-    - begins with an explicit bot mention (bot MXID or display name) optionally followed by punctuation and whitespace and then `!<command>`.
+    - begins with `!<command>` (when require_mention=False), or
+    - begins with an explicit bot mention (bot MXID or display name) optionally followed by punctuation and whitespace and then `!<command>` (when require_mention=True or when mentions are detected).
 
     Parameters:
         command (str): Command name to detect (without the leading `!`).
         event: Matrix event object expected to provide `body` (plain text) and `source`/`content` with optional `formatted_body` (HTML).
+        require_mention (bool): If True, only accept commands that explicitly mention the bot. If False, accept both mentioned and non-mentioned commands.
 
     Returns:
         bool: `True` if the message targets the bot with the given command, `False` otherwise.
@@ -866,10 +867,14 @@ def bot_command(command, event):
     # Remove HTML tags and extract the text content
     text_content = re.sub(r"<[^>]+>", "", formatted_body).strip()
 
-    # Check for simple !command format first
-    if full_message.startswith(f"!{command}") or text_content.startswith(f"!{command}"):
-        return True
+    # If require_mention is False, check for simple !command format first
+    if not require_mention:
+        if full_message.startswith(f"!{command}") or text_content.startswith(
+            f"!{command}"
+        ):
+            return True
 
+    # Check for bot mentions
     starts_with_id = bot_user_id and (
         full_message.startswith(bot_user_id) or text_content.startswith(bot_user_id)
     )
@@ -878,6 +883,26 @@ def bot_command(command, event):
     )
     is_mention = starts_with_id or starts_with_name
 
+    # If require_mention is True, check for any mention pattern
+    if require_mention:
+        # Construct a regex pattern to match variations of bot mention and command
+        parts = []
+        if bot_user_id:
+            parts.append(re.escape(bot_user_id))
+        if bot_user_name:
+            parts.append(re.escape(bot_user_name))
+        # Include generic mention patterns to accommodate different Matrix clients
+        parts.append(r"[@#][^\s:]+")
+        pattern = rf"^(?:{'|'.join(parts)})[,:;]?\s*!{re.escape(command)}"
+        return bool(re.match(pattern, full_message)) or bool(
+            re.match(pattern, text_content)
+        )
+
+    # If require_mention is False, check for simple !command format first
+    if full_message.startswith(f"!{command}") or text_content.startswith(f"!{command}"):
+        return True
+
+    # Also check for mentions even when require_mention=False (for backward compatibility)
     if is_mention:
         # Construct a regex pattern to match variations of bot mention and command
         parts = []
@@ -885,11 +910,13 @@ def bot_command(command, event):
             parts.append(re.escape(bot_user_id))
         if bot_user_name:
             parts.append(re.escape(bot_user_name))
-        # Only include explicit bot identifiers to avoid false positives with any @mention or #reference
+        # Include generic mention patterns to accommodate different Matrix clients
+        parts.append(r"[@#][^\s:]+")
         pattern = rf"^(?:{'|'.join(parts)})[,:;]?\s*!{re.escape(command)}"
         return bool(re.match(pattern, full_message)) or bool(
             re.match(pattern, text_content)
         )
+
     return False
 
 
