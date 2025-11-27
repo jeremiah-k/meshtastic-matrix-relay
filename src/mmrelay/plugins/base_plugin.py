@@ -1,3 +1,4 @@
+import inspect
 import os
 import threading
 from abc import ABC, abstractmethod
@@ -66,6 +67,7 @@ class BasePlugin(ABC):
 
     # Class-level default attributes
     plugin_name = None  # Must be overridden in subclasses
+    is_core_plugin: bool | None = None
     max_data_rows_per_node = DEFAULT_MAX_DATA_ROWS_PER_NODE_BASE
     priority = 10
 
@@ -112,6 +114,16 @@ class BasePlugin(ABC):
         if plugin_name is not None:
             self.plugin_name = plugin_name
 
+        # Allow plugin to declare core status; fall back to module location
+        self.is_core_plugin = getattr(self, "is_core_plugin", None)
+        if self.is_core_plugin is None:
+            try:
+                class_file = inspect.getfile(self.__class__)
+            except TypeError:
+                class_file = ""
+            core_plugins_dir = os.path.dirname(__file__)
+            self.is_core_plugin = class_file.startswith(core_plugins_dir)
+
         # For backward compatibility: if plugin_name is not provided as a parameter,
         # check if it's set as an instance attribute (old way) or use the class attribute
         if not hasattr(self, "plugin_name") or self.plugin_name is None:
@@ -136,6 +148,19 @@ class BasePlugin(ABC):
             for level in plugin_levels:
                 if level in config and self.plugin_name in config[level]:
                     self.config = config[level][self.plugin_name]
+                    break
+
+            # Cache global plugin-level settings (for options like require_bot_mention)
+            self._global_require_bot_mention = None
+            for section_name in ("plugins", "community-plugins", "custom-plugins"):
+                section_config = config.get(section_name, {})
+                if (
+                    isinstance(section_config, dict)
+                    and CONFIG_KEY_REQUIRE_BOT_MENTION in section_config
+                ):
+                    self._global_require_bot_mention = bool(
+                        section_config[CONFIG_KEY_REQUIRE_BOT_MENTION]
+                    )
                     break
 
             # Get the list of mapped channels
@@ -647,23 +672,12 @@ class BasePlugin(ABC):
         if CONFIG_KEY_REQUIRE_BOT_MENTION in self.config:
             return bool(self.config[CONFIG_KEY_REQUIRE_BOT_MENTION])
 
-        # Check global plugins configuration if available
-        global config
-        if config is not None:
-            for section_name in ("plugins", "community-plugins", "custom-plugins"):
-                section_config = config.get(section_name, {})
-                if (
-                    isinstance(section_config, dict)
-                    and CONFIG_KEY_REQUIRE_BOT_MENTION in section_config
-                ):
-                    return bool(section_config[CONFIG_KEY_REQUIRE_BOT_MENTION])
+        # Use cached global plugins configuration if available
+        if getattr(self, "_global_require_bot_mention", None) is not None:
+            return bool(self._global_require_bot_mention)
 
         # Default behavior: core plugins require mentions by default
-        # Core plugins are the ones in the main plugins directory
-        plugin_file = os.path.join(
-            os.path.dirname(__file__), f"{self.plugin_name}_plugin.py"
-        )
-        if os.path.exists(plugin_file):
+        if self.is_core_plugin:
             return DEFAULT_REQUIRE_BOT_MENTION
 
         # Non-core plugins default to False (backward compatibility)
