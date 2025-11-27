@@ -79,6 +79,15 @@ class Plugin(BasePlugin):
         return []
 
     def matches(self, event):
+        """
+        Determine whether the given Matrix event invokes any of this plugin's Matrix commands, honoring the current bot-mention requirement.
+        
+        Parameters:
+            event: The Matrix event object to evaluate for a command invocation.
+        
+        Returns:
+            True if any registered Matrix command matches the event, False otherwise.
+        """
         from mmrelay.matrix_utils import bot_command
 
         # Determine if bot mentions are required

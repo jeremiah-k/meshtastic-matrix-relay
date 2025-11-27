@@ -1248,7 +1248,9 @@ class TestBotCommand:
 
     def test_direct_mention_require_mention_true(self):
         """
-        Tests that a message starting with the bot command fails when require_mention=True.
+        Verifies that a plain command without a bot mention is not recognized when mentions are required.
+        
+        This test constructs a mock event with a command-like body and asserts that bot_command returns falsy when require_mention is enabled.
         """
         mock_event = MagicMock()
         mock_event.body = "!help"
@@ -3194,12 +3196,32 @@ async def test_on_room_message_requires_mention_before_filtering_command(
         plugin_name = "ping"
 
         async def handle_room_message(self, *_args, **_kwargs):
+            """
+            Handle an incoming room message event and indicate that it was not processed.
+            
+            This method accepts arbitrary positional and keyword arguments from the message dispatcher (for example, room and event) but intentionally does not process them; it always signals that the message was not handled.
+            
+            Returns:
+                False (bool): Indicates the message was not handled.
+            """
             return False
 
         def get_matrix_commands(self):
+            """
+            Return the list of Matrix command keywords supported by this handler.
+            
+            Returns:
+                list[str]: Supported command strings, for example `["ping"]`.
+            """
             return ["ping"]
 
         def _get_require_bot_mention(self):
+            """
+            Indicates whether commands require an explicit bot mention.
+            
+            Returns:
+                bool: `True` if the bot must be explicitly mentioned to accept commands, `False` otherwise.
+            """
             return True
 
     mock_interface = MagicMock()
