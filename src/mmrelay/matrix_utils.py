@@ -847,9 +847,9 @@ def bot_command(command, event, require_mention=False):
     """
     Detect whether a Matrix event addresses the bot with the specified command.
 
-    Checks the event's plain body and HTML-formatted body (if present). It returns True when either body:
-    - begins with `!<command>` (when require_mention=False), or
-    - begins with an explicit bot mention (bot MXID or display name) optionally followed by punctuation and whitespace and then `!<command>` (when require_mention=True or when mentions are detected).
+    Checks both the plain body and HTML-formatted body (if present). It returns True when either body:
+    - begins with `!<command>` (only when require_mention=False), or
+    - begins with an explicit bot mention (bot MXID or display name) optionally followed by punctuation/whitespace and then `!<command>`.
 
     Parameters:
         command (str): Command name to detect (without the leading `!`).
@@ -859,65 +859,32 @@ def bot_command(command, event, require_mention=False):
     Returns:
         bool: `True` if the message targets the bot with the given command, `False` otherwise.
     """
-    full_message = getattr(event, "body", "") or ""
-    full_message = full_message.strip()
+    full_message = (getattr(event, "body", "") or "").strip()
     content = event.source.get("content", {})
     formatted_body = content.get("formatted_body", "")
 
     # Remove HTML tags and extract the text content
     text_content = re.sub(r"<[^>]+>", "", formatted_body).strip()
 
-    # If require_mention is False, check for simple !command format first
-    if not require_mention:
-        if full_message.startswith(f"!{command}") or text_content.startswith(
-            f"!{command}"
-        ):
-            return True
+    bodies = [full_message, text_content]
 
-    # Check for bot mentions
-    starts_with_id = bot_user_id and (
-        full_message.startswith(bot_user_id) or text_content.startswith(bot_user_id)
-    )
-    starts_with_name = bot_user_name and (
-        full_message.startswith(bot_user_name) or text_content.startswith(bot_user_name)
-    )
-    is_mention = starts_with_id or starts_with_name
-
-    # If require_mention is True, check for any mention pattern
-    if require_mention:
-        # Construct a regex pattern to match variations of bot mention and command
-        parts = []
-        if bot_user_id:
-            parts.append(re.escape(bot_user_id))
-        if bot_user_name:
-            parts.append(re.escape(bot_user_name))
-        # Include generic mention patterns to accommodate different Matrix clients
-        parts.append(r"[@#][^\s:]+")
-        pattern = rf"^(?:{'|'.join(parts)})[,:;]?\s*!{re.escape(command)}"
-        return bool(re.match(pattern, full_message)) or bool(
-            re.match(pattern, text_content)
-        )
-
-    # If require_mention is False, check for simple !command format first
-    if full_message.startswith(f"!{command}") or text_content.startswith(f"!{command}"):
+    if not require_mention and any(
+        body.startswith(f"!{command}") for body in bodies if body
+    ):
         return True
 
-    # Also check for mentions even when require_mention=False (for backward compatibility)
-    if is_mention:
-        # Construct a regex pattern to match variations of bot mention and command
-        parts = []
-        if bot_user_id:
-            parts.append(re.escape(bot_user_id))
-        if bot_user_name:
-            parts.append(re.escape(bot_user_name))
-        # Include generic mention patterns to accommodate different Matrix clients
-        parts.append(r"[@#][^\s:]+")
-        pattern = rf"^(?:{'|'.join(parts)})[,:;]?\s*!{re.escape(command)}"
-        return bool(re.match(pattern, full_message)) or bool(
-            re.match(pattern, text_content)
-        )
+    mention_parts = []
+    if bot_user_id:
+        mention_parts.append(re.escape(bot_user_id))
+    if bot_user_name:
+        mention_parts.append(re.escape(bot_user_name))
 
-    return False
+    if not mention_parts:
+        return False
+
+    pattern = rf"^(?:{'|'.join(mention_parts)})[,:;]?\s*!{re.escape(command)}"
+
+    return any(re.match(pattern, body) for body in bodies if body)
 
 
 async def _connect_meshtastic():
@@ -3320,8 +3287,13 @@ async def on_room_message(
     # Check if the message is a command directed at the bot
     is_command = False
     for plugin in plugins:
+        require_mention = (
+            plugin._get_require_bot_mention()
+            if hasattr(plugin, "_get_require_bot_mention")
+            else False
+        )
         for command in plugin.get_matrix_commands():
-            if bot_command(command, event):
+            if bot_command(command, event, require_mention=require_mention):
                 is_command = True
                 break
         if is_command:

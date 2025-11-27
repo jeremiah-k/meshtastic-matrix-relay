@@ -656,8 +656,6 @@ class BasePlugin(ABC):
 
         # Default behavior: core plugins require mentions by default
         # Core plugins are the ones in the main plugins directory
-        import os
-
         plugin_file = os.path.join(
             os.path.dirname(__file__), f"{self.plugin_name}_plugin.py"
         )

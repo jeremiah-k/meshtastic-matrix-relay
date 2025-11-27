@@ -1345,16 +1345,16 @@ class TestBotCommand:
         result = bot_command("help", mock_event, require_mention=True)
         assert result
 
-    def test_bot_mention_generic_require_mention_true(self):
+    def test_non_bot_mention_require_mention_true(self):
         """
-        Test that a message with generic mention works when require_mention=True.
+        Test that a message mentioning another user does not trigger when require_mention=True.
         """
         mock_event = MagicMock()
         mock_event.body = "@someuser: !help"
         mock_event.source = {"content": {"formatted_body": "@someuser: !help"}}
 
         result = bot_command("help", mock_event, require_mention=True)
-        assert result
+        assert not result
 
     def test_bot_mention_require_mention_false(self):
         """
@@ -3169,6 +3169,57 @@ async def test_on_room_message_command_short_circuits(
 
     mock_queue.assert_not_called()
     mock_connect.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_on_room_message_requires_mention_before_filtering_command(
+    monkeypatch, mock_room, mock_event, test_config
+):
+    """Plugins that require mentions should not block relaying unmentioned commands."""
+    test_config["meshtastic"]["broadcast_enabled"] = True
+    monkeypatch.setattr("mmrelay.matrix_utils.config", test_config, raising=False)
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.matrix_rooms",
+        test_config["matrix_rooms"],
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.bot_user_id", "@bot:matrix.org", raising=False
+    )
+    monkeypatch.setattr("mmrelay.matrix_utils.bot_start_time", 0, raising=False)
+    mock_event.body = "!ping"
+    mock_event.source["content"]["body"] = "!ping"
+
+    class MentionedPlugin:
+        plugin_name = "ping"
+
+        async def handle_room_message(self, *_args, **_kwargs):
+            return False
+
+        def get_matrix_commands(self):
+            return ["ping"]
+
+        def _get_require_bot_mention(self):
+            return True
+
+    mock_interface = MagicMock()
+
+    with (
+        patch("mmrelay.plugin_loader.load_plugins", return_value=[MentionedPlugin()]),
+        patch(
+            "mmrelay.matrix_utils._get_meshtastic_interface_and_channel",
+            AsyncMock(return_value=(mock_interface, 0)),
+        ),
+        patch(
+            "mmrelay.matrix_utils.get_user_display_name",
+            AsyncMock(return_value="User"),
+        ),
+        patch("mmrelay.matrix_utils.queue_message") as mock_queue,
+    ):
+        mock_queue.return_value = True
+        await on_room_message(mock_room, mock_event)
+
+    mock_queue.assert_called_once()
 
 
 @pytest.mark.asyncio
