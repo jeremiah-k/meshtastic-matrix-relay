@@ -873,7 +873,7 @@ def bot_command(command: str, event, require_mention: bool = False) -> bool:
     bare_pattern = rf"^!{re.escape(command)}(?:\s|$)"
 
     if not require_mention and any(
-        re.match(bare_pattern, body) for body in bodies if body
+        re.match(bare_pattern, body, re.IGNORECASE) for body in bodies if body
     ):
         return True
 
@@ -890,7 +890,7 @@ def bot_command(command: str, event, require_mention: bool = False) -> bool:
         rf"^(?:{'|'.join(mention_parts)})[,:;]?\s*!" rf"{re.escape(command)}(?:\s|$)"
     )
 
-    return any(re.match(pattern, body) for body in bodies if body)
+    return any(re.match(pattern, body, re.IGNORECASE) for body in bodies if body)
 
 
 async def _connect_meshtastic():
