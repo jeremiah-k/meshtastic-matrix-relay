@@ -2212,6 +2212,10 @@ async def matrix_relay(
 
     matrix_client = await connect_matrix()
 
+    if matrix_client is None:
+        logger.error("Matrix client is None. Cannot send message.")
+        return
+
     # Check if config is available
     if config is None:
         logger.error("No configuration available. Cannot relay message to Matrix.")
