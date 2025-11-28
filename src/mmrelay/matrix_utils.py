@@ -2241,6 +2241,9 @@ async def matrix_relay(
     )  # Default from constants
 
     try:
+        if room_id not in matrix_client.rooms:
+            await join_matrix_room(matrix_client, room_id)
+
         # Always use our own local meshnet_name for outgoing events
         local_meshnet_name = config["meshtastic"]["meshnet_name"]
 
