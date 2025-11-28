@@ -296,9 +296,12 @@ class Plugin(BasePlugin):
         matrix_client = await connect_matrix()
         meshtastic_client = connect_meshtastic()
 
-        pattern = r"^(?:.+?:\s*)?!map(?:\s+zoom=(\d+))?(?:\s+size=(\d+),(\d+))?$"
-        # TODO: consolidate command parsing with bot_command/base matches to avoid duplicated regex logic.
-        match = re.match(pattern, text)
+        args = self.extract_command_args("map", text)
+        if args is None:
+            return False
+
+        pattern = r"^(?:zoom=(\d+))?(?:\s+size=(\d+),(\d+))?$"
+        match = re.match(pattern, args, flags=re.IGNORECASE)
 
         # Indicate this message is not meant for this plugin
         if not match:

@@ -97,16 +97,17 @@ class Plugin(BasePlugin):
         if not self.matches(event):
             return False
 
-        # TODO: consolidate command parsing with bot_command/base matches to avoid duplicated regex logic.
-        match = re.match(
-            r"^(?:.+?:\s*)?!(batteryLevel|voltage|airUtilTx)(?:\s+(.+))?$",
-            text,
-        )
-        if not match:
-            return False
+        telemetry_option = None
+        node = None
+        for command in self.get_matrix_commands():
+            args = self.extract_command_args(command, text)
+            if args is not None:
+                telemetry_option = command
+                node = args or None
+                break
 
-        telemetry_option = match.group(1)
-        node = match.group(2)
+        if telemetry_option is None:
+            return False
 
         hourly_intervals = self._generate_timeperiods()
         from mmrelay.matrix_utils import connect_matrix

@@ -1,5 +1,6 @@
 import inspect
 import os
+import re
 import threading
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Union
@@ -666,6 +667,24 @@ class BasePlugin(ABC):
             bot_command(command, event, require_mention=require_mention)
             for command in self.get_matrix_commands()
         )
+
+    def extract_command_args(self, command: str, text: str) -> str | None:
+        """
+        Extract arguments following a bot command, tolerating an optional leading mention prefix.
+
+        Returns the substring after the command (stripped), or None if the command pattern does not match.
+        """
+        if not isinstance(text, str):
+            return None
+        pattern = rf"^(?:.+?:\s*)?!{re.escape(command)}(?:\s+(.*))?$"
+        match = re.match(pattern, text, flags=re.IGNORECASE)
+        if not match:
+            return None
+        args = match.group(1)
+        if args is None:
+            return ""
+        args = args.strip()
+        return args if args else ""
 
     def get_require_bot_mention(self) -> bool:
         """Determine if bot mentions are required for this plugin.
