@@ -98,7 +98,7 @@ class Plugin(BasePlugin):
             return False
 
         match = re.match(
-            r"^(?:[^\s:]+:\s*)?!(batteryLevel|voltage|airUtilTx)(?:\s+(.+))?$",
+            r"^(?:.+?:\s*)?!(batteryLevel|voltage|airUtilTx)(?:\s+(.+))?$",
             full_message,
         )
         if not match:

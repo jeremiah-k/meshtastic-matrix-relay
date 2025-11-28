@@ -2361,11 +2361,6 @@ async def matrix_relay(
                 logger.error(f"Error formatting Matrix reply: {e}")
 
         try:
-            # Ensure matrix_client is not None
-            if not matrix_client:
-                logger.error("Matrix client is None. Cannot send message.")
-                return
-
             # Send the message with a timeout
             # For encrypted rooms, use ignore_unverified_devices=True
             # After checking working implementations, always use ignore_unverified_devices=True
@@ -3308,17 +3303,23 @@ async def on_room_message(
                     getattr(plugin, "plugin_name", plugin),
                 )
         elif hasattr(plugin, "get_matrix_commands"):
-            require_mention = (
-                plugin.get_require_bot_mention()
-                if hasattr(plugin, "get_require_bot_mention")
-                else False
-            )
-            if any(
-                bot_command(command, event, require_mention=require_mention)
-                for command in plugin.get_matrix_commands()
-            ):
-                is_command = True
-                break
+            try:
+                require_mention = (
+                    plugin.get_require_bot_mention()
+                    if hasattr(plugin, "get_require_bot_mention")
+                    else False
+                )
+                if any(
+                    bot_command(command, event, require_mention=require_mention)
+                    for command in plugin.get_matrix_commands()
+                ):
+                    is_command = True
+                    break
+            except Exception:
+                logger.exception(
+                    "Error checking plugin match for %s",
+                    getattr(plugin, "plugin_name", plugin),
+                )
 
     if is_command:
         logger.debug("Message is a command, not sending to mesh")

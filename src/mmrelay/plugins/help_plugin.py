@@ -58,7 +58,7 @@ class Plugin(BasePlugin):
 
         command = None
 
-        match = re.match(r"^(?:[^\s:]+:\s*)?!help(?:\s+(.+))?$", full_message)
+        match = re.match(r"^(?:.+?:\s*)?!help(?:\s+(.+))?$", full_message)
         if match:
             command = match.group(1)
 
