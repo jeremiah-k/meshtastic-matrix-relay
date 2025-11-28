@@ -128,9 +128,8 @@ class TestHealthPlugin(unittest.TestCase):
         mock_meshtastic_client.nodes = {}
         mock_connect.return_value = mock_meshtastic_client
 
-        # The plugin has a bug - it doesn't check for empty lists before calling median()
-        with self.assertRaises(StatisticsError):  # Will raise StatisticsError
-            self.plugin.generate_response()
+        result = self.plugin.generate_response()
+        self.assertEqual(result, "No nodes discovered yet.")
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     def test_generate_response_with_minimal_data(self, mock_connect):
@@ -150,9 +149,8 @@ class TestHealthPlugin(unittest.TestCase):
         mock_meshtastic_client.nodes = minimal_nodes
         mock_connect.return_value = mock_meshtastic_client
 
-        # The plugin has a bug - it tries to calculate median on empty air_util_tx and snr lists
-        with self.assertRaises(StatisticsError):  # Will raise StatisticsError
-            self.plugin.generate_response()
+        result = self.plugin.generate_response()
+        self.assertIn("Nodes:", result)
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     def test_generate_response_with_all_low_battery(self, mock_connect):
@@ -170,9 +168,8 @@ class TestHealthPlugin(unittest.TestCase):
         mock_meshtastic_client.nodes = low_battery_nodes
         mock_connect.return_value = mock_meshtastic_client
 
-        # The plugin has a bug - it tries to calculate median on empty air_util_tx list
-        with self.assertRaises(StatisticsError):  # Will raise StatisticsError
-            self.plugin.generate_response()
+        result = self.plugin.generate_response()
+        self.assertIn("Nodes:", result)
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     def test_generate_response_filters_none_values(self, mock_connect):

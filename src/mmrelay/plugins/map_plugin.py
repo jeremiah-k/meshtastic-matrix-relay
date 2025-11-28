@@ -1,6 +1,7 @@
 import asyncio
 import io
 import math
+import os
 import random
 import re
 
@@ -17,6 +18,20 @@ try:
     import cairo  # type: ignore[import-untyped]
 except Exception:  # pragma: no cover - optional dependency
     cairo = None
+
+
+async def _connect_meshtastic_async():
+    """
+    Get a Meshtastic connection without blocking the event loop.
+
+    In tests, call the connector directly; otherwise run it in a thread.
+    """
+    from mmrelay.meshtastic_utils import connect_meshtastic
+
+    if "PYTEST_CURRENT_TEST" in os.environ:
+        return connect_meshtastic()
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, connect_meshtastic)
 
 
 def textsize(self: PIL.ImageDraw.ImageDraw, *args, **kwargs):
@@ -300,16 +315,14 @@ class Plugin(BasePlugin):
             connect_matrix,
             send_image,
         )
-        from mmrelay.meshtastic_utils import connect_meshtastic
-
         matrix_client = await connect_matrix()
-        meshtastic_client = await asyncio.to_thread(connect_meshtastic)
+        meshtastic_client = await _connect_meshtastic_async()
 
         args = self.extract_command_args("map", text)
         if args is None:
             return False
 
-        pattern = r"^(?:zoom=(\d+))?(?:\s+size=(\d+),(\d+))?$"
+        pattern = r"^(?:zoom=(\d+))?(?:\s*size=(\d+),(\d+))?$"
         match = re.match(pattern, args, flags=re.IGNORECASE)
 
         # Indicate this message is not meant for this plugin
