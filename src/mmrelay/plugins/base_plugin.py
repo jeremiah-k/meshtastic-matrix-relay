@@ -684,8 +684,7 @@ class BasePlugin(ABC):
         args = match.group(1)
         if args is None:
             return ""
-        args = args.strip()
-        return args if args else ""
+        return args.strip()
 
     def get_require_bot_mention(self) -> bool:
         """Determine if bot mentions are required for this plugin.

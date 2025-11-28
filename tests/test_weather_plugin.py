@@ -23,6 +23,7 @@ import pytest
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from mmrelay.constants.messages import PORTNUM_TEXT_MESSAGE_APP
 from mmrelay.plugins.weather_plugin import Plugin
 
 
@@ -299,7 +300,7 @@ class TestWeatherPlugin(unittest.TestCase):
             self.assertEqual(float(params.get("latitude")), 40.7128)
             # Longitude formatting may vary; compare numerically (allow slight rounding)
             self.assertAlmostEqual(float(params.get("longitude")), -74.0060, places=3)
-            self.assertEqual(int(params.get("forecast_days")), 2)
+            self.assertEqual(int(params.get("forecast_days")), 3)
             self.assertEqual(params.get("timezone"), "auto")
             hourly = params.get("hourly") or ""
             for field in (
@@ -719,7 +720,7 @@ class TestWeatherPlugin(unittest.TestCase):
 
         packet = {
             "decoded": {
-                "portnum": "TEXT_MESSAGE_APP",
+                "portnum": PORTNUM_TEXT_MESSAGE_APP,
                 "text": "Hello world",  # No !weather command
             },
             "channel": 0,
@@ -755,7 +756,7 @@ class TestWeatherPlugin(unittest.TestCase):
         self.plugin.is_channel_enabled = MagicMock(return_value=False)
 
         packet = {
-            "decoded": {"portnum": "TEXT_MESSAGE_APP", "text": "!weather"},
+            "decoded": {"portnum": PORTNUM_TEXT_MESSAGE_APP, "text": "!weather"},
             "channel": 0,
         }
 
@@ -800,7 +801,7 @@ class TestWeatherPlugin(unittest.TestCase):
         mock_connect.return_value = mock_client
 
         packet = {
-            "decoded": {"portnum": "TEXT_MESSAGE_APP", "text": "!weather"},
+            "decoded": {"portnum": PORTNUM_TEXT_MESSAGE_APP, "text": "!weather"},
             "channel": 0,
             "fromId": "!12345678",
             "to": 123456789,  # Direct message to relay
@@ -854,7 +855,7 @@ class TestWeatherPlugin(unittest.TestCase):
         mock_connect.return_value = mock_client
 
         packet = {
-            "decoded": {"portnum": "TEXT_MESSAGE_APP", "text": "!weather"},
+            "decoded": {"portnum": PORTNUM_TEXT_MESSAGE_APP, "text": "!weather"},
             "channel": 0,
             "fromId": "!12345678",
             "to": 4294967295,  # BROADCAST_NUM
@@ -901,7 +902,7 @@ class TestWeatherPlugin(unittest.TestCase):
 
         packet = {
             "decoded": {
-                "portnum": "TEXT_MESSAGE_APP",
+                "portnum": PORTNUM_TEXT_MESSAGE_APP,
                 "text": "!weather 37.77,-122.42",
             },
             "channel": 0,
@@ -938,7 +939,7 @@ class TestWeatherPlugin(unittest.TestCase):
         self.plugin.generate_forecast = MagicMock(return_value="OK")
 
         packet = {
-            "decoded": {"portnum": "TEXT_MESSAGE_APP", "text": "!weather Boston"},
+            "decoded": {"portnum": PORTNUM_TEXT_MESSAGE_APP, "text": "!weather Boston"},
             "channel": 0,
             "fromId": "!12345678",
             "to": 4294967295,  # BROADCAST_NUM
@@ -977,7 +978,7 @@ class TestWeatherPlugin(unittest.TestCase):
         self.plugin.generate_forecast = MagicMock(return_value="OK")
 
         packet = {
-            "decoded": {"portnum": "TEXT_MESSAGE_APP", "text": "!weather"},
+            "decoded": {"portnum": PORTNUM_TEXT_MESSAGE_APP, "text": "!weather"},
             "channel": 0,
             "fromId": "!requester",
             "to": 4294967295,
@@ -1022,7 +1023,7 @@ class TestWeatherPlugin(unittest.TestCase):
         mock_connect.return_value = mock_client
 
         packet = {
-            "decoded": {"portnum": "TEXT_MESSAGE_APP", "text": "!weather please"},
+            "decoded": {"portnum": PORTNUM_TEXT_MESSAGE_APP, "text": "!weather please"},
             "channel": 1,
             "fromId": "!12345678",
             "to": 4294967295,  # BROADCAST_NUM
@@ -1070,7 +1071,7 @@ class TestWeatherPlugin(unittest.TestCase):
         mock_connect.return_value = mock_client
 
         packet = {
-            "decoded": {"portnum": "TEXT_MESSAGE_APP", "text": "!weather"},
+            "decoded": {"portnum": PORTNUM_TEXT_MESSAGE_APP, "text": "!weather"},
             "channel": 0,
             "fromId": "!unknown",
             "to": 4294967295,
@@ -1102,7 +1103,7 @@ class TestWeatherPlugin(unittest.TestCase):
         mock_connect.return_value = mock_client
 
         packet = {
-            "decoded": {"portnum": "TEXT_MESSAGE_APP", "text": "!weather"},
+            "decoded": {"portnum": PORTNUM_TEXT_MESSAGE_APP, "text": "!weather"},
             "fromId": "!12345678",
             # No channel field - should default to 0
         }
@@ -1199,7 +1200,7 @@ class TestWeatherPlugin(unittest.TestCase):
             # Mock packet for broadcast message
             packet = {
                 "decoded": {
-                    "portnum": "TEXT_MESSAGE_APP",
+                    "portnum": PORTNUM_TEXT_MESSAGE_APP,
                     "text": "!weather",  # Use "text" not "payload"
                 },
                 "from": 123456789,

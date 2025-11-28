@@ -7,6 +7,7 @@ import requests  # type: ignore[import-untyped]
 from meshtastic.mesh_interface import BROADCAST_NUM
 
 from mmrelay.constants.formats import TEXT_MESSAGE_APP
+from mmrelay.constants.messages import PORTNUM_TEXT_MESSAGE_APP
 from mmrelay.plugins.base_plugin import BasePlugin
 
 
@@ -195,13 +196,19 @@ class Plugin(BasePlugin):
                 daily_codes = data.get("daily", {}).get("weathercode") or []
                 daily_max = data.get("daily", {}).get("temperature_2m_max") or []
                 daily_min = data.get("daily", {}).get("temperature_2m_min") or []
+                daily_times = data.get("daily", {}).get("time") or []
                 if units == "imperial":
-                    daily_max = [t * 9 / 5 + 32 for t in daily_max]
-                    daily_min = [t * 9 / 5 + 32 for t in daily_min]
+                    daily_max = [
+                        t * 9 / 5 + 32 if t is not None else None for t in daily_max
+                    ]
+                    daily_min = [
+                        t * 9 / 5 + 32 if t is not None else None for t in daily_min
+                    ]
                 days = min(
                     len(daily_codes),
                     len(daily_max),
                     len(daily_min),
+                    len(daily_times),
                     5 if mode in ("5day", "forecast") else 3,
                 )
                 if days == 0:
@@ -209,14 +216,22 @@ class Plugin(BasePlugin):
                 segments = []
                 for i in range(days):
                     day_label = (
-                        datetime.fromisoformat(data["daily"]["time"][i]).strftime("%a")
-                        if data.get("daily", {}).get("time")
+                        datetime.fromisoformat(daily_times[i]).strftime("%a")
+                        if daily_times
                         else f"D{i}"
                     )
+                    max_temp = daily_max[i]
+                    min_temp = daily_min[i]
+                    code = daily_codes[i]
+
+                    if max_temp is None or min_temp is None or code is None:
+                        segments.append(f"{day_label}: Data unavailable")
+                        continue
+
                     segments.append(
-                        f"{day_label}: {weather_code_to_text(daily_codes[i], True)} "
-                        f"{round(daily_max[i],1)}{temperature_unit}/"
-                        f"{round(daily_min[i],1)}{temperature_unit}"
+                        f"{day_label}: {weather_code_to_text(code, True)} "
+                        f"{round(max_temp, 1)}{temperature_unit}/"
+                        f"{round(min_temp, 1)}{temperature_unit}"
                     )
                 return " | ".join(segments)[:200]
 
@@ -274,7 +289,11 @@ class Plugin(BasePlugin):
         if (
             "decoded" not in packet
             or "portnum" not in packet["decoded"]
-            or packet["decoded"]["portnum"] != TEXT_MESSAGE_APP
+            or packet["decoded"]["portnum"]
+            not in (
+                TEXT_MESSAGE_APP,
+                PORTNUM_TEXT_MESSAGE_APP,
+            )
             or "text" not in packet["decoded"]
         ):
             return False  # Not a text message or port does not match
@@ -342,7 +361,8 @@ class Plugin(BasePlugin):
         weather_notice = "Cannot determine location"
         if coords:
             mode = parsed_command if parsed_command else "weather"
-            weather_notice = self.generate_forecast(
+            weather_notice = await asyncio.to_thread(
+                self.generate_forecast,
                 latitude=coords[0],
                 longitude=coords[1],
                 mode=mode,
@@ -371,7 +391,7 @@ class Plugin(BasePlugin):
     def get_mesh_commands(self):
         return list(self.mesh_commands)
 
-    async def handle_room_message(self, room, event, text):
+    async def handle_room_message(self, room, event, text):  # noqa: ARG002
         if not self.matches(event):
             return False
 
@@ -391,7 +411,7 @@ class Plugin(BasePlugin):
         if args_text:
             coords = self._parse_location_override(args_text)
             if coords is None:
-                coords = self._geocode_location(args_text)
+                coords = await asyncio.to_thread(self._geocode_location, args_text)
 
         if coords is None:
             from mmrelay.meshtastic_utils import connect_meshtastic
@@ -407,8 +427,11 @@ class Plugin(BasePlugin):
             )
             return True
 
-        forecast = self.generate_forecast(
-            latitude=coords[0], longitude=coords[1], mode=parsed_command
+        forecast = await asyncio.to_thread(
+            self.generate_forecast,
+            latitude=coords[0],
+            longitude=coords[1],
+            mode=parsed_command,
         )
         await self.send_matrix_message(room.room_id, forecast, formatted=False)
         return True
@@ -440,7 +463,8 @@ class Plugin(BasePlugin):
         """Return (command, args) when the message starts with a supported mesh command."""
         if not isinstance(message, str):
             return None, None
-        pattern = rf"^\s*!(?P<cmd>{'|'.join(self.mesh_commands)})(?:\s+(?P<args>.*))?$"
+        cmd_pattern = "|".join(re.escape(cmd) for cmd in self.mesh_commands)
+        pattern = rf"^\s*!(?P<cmd>{cmd_pattern})(?:\s+(?P<args>.*))?$"
         match = re.match(pattern, message, flags=re.IGNORECASE)
         if not match:
             return None, None
@@ -486,6 +510,11 @@ class Plugin(BasePlugin):
                 timeout=10,
             )
             response.raise_for_status()
+        except requests.RequestException:
+            self.logger.exception("Error geocoding location")
+            return None
+
+        try:
             payload = response.json()
             results = payload.get("results") or []
             if not results:
@@ -495,9 +524,6 @@ class Plugin(BasePlugin):
             lon = first.get("longitude")
             if isinstance(lat, (int, float)) and isinstance(lon, (int, float)):
                 return float(lat), float(lon)
-            return None
-        except requests.RequestException:
-            self.logger.exception("Error geocoding location")
             return None
         except (ValueError, TypeError, KeyError):
             self.logger.exception("Malformed geocoding response")
