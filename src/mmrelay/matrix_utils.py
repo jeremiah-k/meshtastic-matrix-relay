@@ -3270,7 +3270,7 @@ async def on_room_message(
         if not found_matching_plugin:
             try:
                 found_matching_plugin = await plugin.handle_room_message(
-                    room, event, full_message
+                    room, event, text
                 )
                 if found_matching_plugin:
                     logger.info(

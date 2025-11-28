@@ -294,7 +294,7 @@ class Plugin(BasePlugin):
         matrix_client = await connect_matrix()
         meshtastic_client = connect_meshtastic()
 
-        pattern = r"^.*:(?: !map(?: zoom=(\d+))?(?: size=(\d+),(\d+))?)?$"
+        pattern = r"^(?:[^\s:]+:\s*)?!map(?:\s+zoom=(\d+))?(?:\s+size=(\d+),(\d+))?$"
         match = re.match(pattern, full_message)
 
         # Indicate this message is not meant for this plugin

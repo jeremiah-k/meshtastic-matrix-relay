@@ -97,8 +97,9 @@ class Plugin(BasePlugin):
         if not self.matches(event):
             return False
 
-        match = re.search(
-            r":\s+!(batteryLevel|voltage|airUtilTx)(?:\s+(.+))?$", full_message
+        match = re.match(
+            r"^(?:[^\s:]+:\s*)?!(batteryLevel|voltage|airUtilTx)(?:\s+(.+))?$",
+            full_message,
         )
         if not match:
             return False
