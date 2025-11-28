@@ -870,8 +870,10 @@ def bot_command(command: str, event, require_mention: bool = False) -> bool:
 
     bodies = [full_message, text_content]
 
+    bare_pattern = rf"^!{re.escape(command)}(?:\s|$)"
+
     if not require_mention and any(
-        body.startswith(f"!{command}") for body in bodies if body
+        re.match(bare_pattern, body) for body in bodies if body
     ):
         return True
 
@@ -884,7 +886,9 @@ def bot_command(command: str, event, require_mention: bool = False) -> bool:
     if not mention_parts:
         return False
 
-    pattern = rf"^(?:{'|'.join(mention_parts)})[,:;]?\s*!{re.escape(command)}"
+    pattern = (
+        rf"^(?:{'|'.join(mention_parts)})[,:;]?\s*!" rf"{re.escape(command)}(?:\s|$)"
+    )
 
     return any(re.match(pattern, body) for body in bodies if body)
 
