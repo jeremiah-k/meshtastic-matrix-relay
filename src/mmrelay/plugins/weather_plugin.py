@@ -1,4 +1,5 @@
 import asyncio
+import re
 from datetime import datetime
 
 import requests
@@ -11,6 +12,7 @@ from mmrelay.plugins.base_plugin import BasePlugin
 class Plugin(BasePlugin):
     plugin_name = "weather"
     is_core_plugin = True
+    mesh_commands = ("weather", "forecast", "24hrs", "3day", "5day")
 
     # No __init__ method needed with the simplified plugin system
     # The BasePlugin will automatically use the class-level plugin_name
@@ -19,16 +21,20 @@ class Plugin(BasePlugin):
     def description(self):
         return "Show weather forecast for a radio node using GPS location"
 
-    def generate_forecast(self, latitude, longitude):
+    def generate_forecast(self, latitude, longitude, mode: str = "weather"):
         """
         Generate a concise one-line weather forecast for the given GPS coordinates.
 
-        Queries the Open-Meteo API for current conditions and hour-aligned forecasts at approximately +2h and +5h, formats temperatures according to self.config.get("units", "metric") ("metric" -> °C, "imperial" -> °F), and returns a single-line summary like:
-        "Now: ☀️ Clear sky - 12.3°C | +2h: 🌧️ Light rain - 13.1°C 20% | +5h: ⛅️ Partly cloudy - 10.8°C 5%".
+        Supports multiple modes:
+        - "weather": current + short-term (+2h, +5h)
+        - "24hrs": current + +6h/+12h/+24h
+        - "3day": daily summary for next 3 days (High/Low)
+        - "5day" or "forecast": daily summary for next 5 days (High/Low)
 
         Parameters:
             latitude (float): Latitude in decimal degrees.
             longitude (float): Longitude in decimal degrees.
+            mode (str): One of "weather", "24hrs", "3day", "5day", or "forecast".
 
         Returns:
             str: A one-line forecast string on success. On recoverable failures returns one of:
@@ -42,12 +48,14 @@ class Plugin(BasePlugin):
         """
         units = self.config.get("units", "metric")  # Default to metric
         temperature_unit = "°C" if units == "metric" else "°F"
+        daily_days = 5 if mode in ("5day", "forecast") else 3
 
         url = (
             f"https://api.open-meteo.com/v1/forecast?"
             f"latitude={latitude}&longitude={longitude}&"
             f"hourly=temperature_2m,precipitation_probability,weathercode,is_day&"
-            f"forecast_days=2&timezone=auto&current_weather=true"
+            f"daily=weathercode,temperature_2m_max,temperature_2m_min&"
+            f"forecast_days={daily_days}&timezone=auto&current_weather=true"
         )
 
         try:
@@ -94,6 +102,9 @@ class Plugin(BasePlugin):
 
             forecast_2h_index = base_index + 2
             forecast_5h_index = base_index + 5
+            forecast_6h_index = base_index + 6
+            forecast_12h_index = base_index + 12
+            forecast_24h_index = base_index + 24
 
             # Guard against empty hourly series before clamping
             temps = data["hourly"].get("temperature_2m") or []
@@ -103,40 +114,39 @@ class Plugin(BasePlugin):
             max_index = len(temps) - 1
             forecast_2h_index = min(forecast_2h_index, max_index)
             forecast_5h_index = min(forecast_5h_index, max_index)
+            forecast_6h_index = min(forecast_6h_index, max_index)
+            forecast_12h_index = min(forecast_12h_index, max_index)
+            forecast_24h_index = min(forecast_24h_index, max_index)
 
-            forecast_2h_temp = data["hourly"]["temperature_2m"][forecast_2h_index]
-            forecast_2h_precipitation = data["hourly"]["precipitation_probability"][
-                forecast_2h_index
-            ]
-            forecast_2h_weather_code = data["hourly"]["weathercode"][forecast_2h_index]
-            # Get hour-specific day/night flag for +2h forecast
-            forecast_2h_is_day = (
-                data["hourly"]["is_day"][forecast_2h_index]
-                if data["hourly"].get("is_day")
-                else is_day
-            )
+            def get_hourly(idx):
+                temp = data["hourly"]["temperature_2m"][idx]
+                precip = data["hourly"]["precipitation_probability"][idx]
+                wcode = data["hourly"]["weathercode"][idx]
+                is_day_hour = (
+                    data["hourly"]["is_day"][idx]
+                    if data["hourly"].get("is_day")
+                    else is_day
+                )
+                return temp, precip, wcode, is_day_hour
 
-            forecast_5h_temp = data["hourly"]["temperature_2m"][forecast_5h_index]
-            forecast_5h_precipitation = data["hourly"]["precipitation_probability"][
-                forecast_5h_index
-            ]
-            forecast_5h_weather_code = data["hourly"]["weathercode"][forecast_5h_index]
-            # Get hour-specific day/night flag for +5h forecast
-            forecast_5h_is_day = (
-                data["hourly"]["is_day"][forecast_5h_index]
-                if data["hourly"].get("is_day")
-                else is_day
-            )
+            forecast_hours = {
+                "+2h": get_hourly(forecast_2h_index),
+                "+5h": get_hourly(forecast_5h_index),
+                "+6h": get_hourly(forecast_6h_index),
+                "+12h": get_hourly(forecast_12h_index),
+                "+24h": get_hourly(forecast_24h_index),
+            }
 
             if units == "imperial":
-                # Convert temperatures from Celsius to Fahrenheit
                 current_temp = current_temp * 9 / 5 + 32
-                forecast_2h_temp = forecast_2h_temp * 9 / 5 + 32
-                forecast_5h_temp = forecast_5h_temp * 9 / 5 + 32
+                for key, (t, p, w, dflag) in forecast_hours.items():
+                    forecast_hours[key] = (t * 9 / 5 + 32, p, w, dflag)
 
             current_temp = round(current_temp, 1)
-            forecast_2h_temp = round(forecast_2h_temp, 1)
-            forecast_5h_temp = round(forecast_5h_temp, 1)
+            forecast_hours = {
+                key: (round(t, 1), p, w, dflag)
+                for key, (t, p, w, dflag) in forecast_hours.items()
+            }
 
             def weather_code_to_text(weather_code, is_day):
                 weather_mapping = {
@@ -175,20 +185,52 @@ class Plugin(BasePlugin):
                 return weather_mapping.get(weather_code, "❓ Unknown")
 
             # Generate one-line weather forecast
+            if mode == "24hrs":
+                slots = ["+6h", "+12h", "+24h"]
+            else:
+                slots = ["+2h", "+5h"]
+
+            if mode in ("3day", "5day", "forecast"):
+                daily_codes = data.get("daily", {}).get("weathercode") or []
+                daily_max = data.get("daily", {}).get("temperature_2m_max") or []
+                daily_min = data.get("daily", {}).get("temperature_2m_min") or []
+                if units == "imperial":
+                    daily_max = [t * 9 / 5 + 32 for t in daily_max]
+                    daily_min = [t * 9 / 5 + 32 for t in daily_min]
+                days = min(
+                    len(daily_codes),
+                    len(daily_max),
+                    len(daily_min),
+                    5 if mode in ("5day", "forecast") else 3,
+                )
+                if days == 0:
+                    return "Weather data temporarily unavailable."
+                segments = []
+                for i in range(days):
+                    day_label = (
+                        datetime.fromisoformat(data["daily"]["time"][i]).strftime("%a")
+                        if data.get("daily", {}).get("time")
+                        else f"D{i}"
+                    )
+                    segments.append(
+                        f"{day_label}: {weather_code_to_text(daily_codes[i], True)} "
+                        f"{round(daily_max[i],1)}{temperature_unit}/"
+                        f"{round(daily_min[i],1)}{temperature_unit}"
+                    )
+                return " | ".join(segments)[:200]
+
             forecast = (
                 f"Now: {weather_code_to_text(current_weather_code, is_day)} - "
-                f"{current_temp}{temperature_unit} | "
+                f"{current_temp}{temperature_unit}"
             )
-            forecast += (
-                f"+2h: {weather_code_to_text(forecast_2h_weather_code, forecast_2h_is_day)} - "
-                f"{forecast_2h_temp}{temperature_unit} {forecast_2h_precipitation}% | "
-            )
-            forecast += (
-                f"+5h: {weather_code_to_text(forecast_5h_weather_code, forecast_5h_is_day)} - "
-                f"{forecast_5h_temp}{temperature_unit} {forecast_5h_precipitation}%"
-            )
+            for slot in slots:
+                temp, precip, wcode, slot_is_day = forecast_hours[slot]
+                forecast += (
+                    f" | {slot}: {weather_code_to_text(wcode, slot_is_day)} - "
+                    f"{temp}{temperature_unit} {precip}%"
+                )
 
-            return forecast
+            return forecast[:200]
 
         except Exception as e:
             # Handle HTTP/network errors from requests
@@ -229,85 +271,194 @@ class Plugin(BasePlugin):
             bool: True if the message was handled and a response was sent; False otherwise.
         """
         if (
-            "decoded" in packet
-            and "portnum" in packet["decoded"]
-            and packet["decoded"]["portnum"] == TEXT_MESSAGE_APP
-            and "text" in packet["decoded"]
+            "decoded" not in packet
+            or "portnum" not in packet["decoded"]
+            or packet["decoded"]["portnum"] != TEXT_MESSAGE_APP
+            or "text" not in packet["decoded"]
         ):
-            message = packet["decoded"]["text"].strip()
-            channel = packet.get("channel", 0)  # Default to channel 0 if not provided
+            return False  # Not a text message or port does not match
 
-            from mmrelay.meshtastic_utils import connect_meshtastic
+        message = packet["decoded"]["text"].strip()
+        parsed_command, arg_text = self._parse_mesh_command(message)
+        if not parsed_command:
+            return False
 
-            meshtastic_client = connect_meshtastic()
+        channel = packet.get("channel", 0)  # Default to channel 0 if not provided
 
-            # Determine if the message is a direct message
-            toId = packet.get("to")
-            myId = meshtastic_client.myInfo.my_node_num  # Get relay's own node number
+        from mmrelay.meshtastic_utils import connect_meshtastic
 
-            if toId == myId:
-                # Direct message to us
-                is_direct_message = True
-            elif toId == BROADCAST_NUM:
-                is_direct_message = False
-            else:
-                # Message to someone else; we may ignore it
-                is_direct_message = False
+        meshtastic_client = connect_meshtastic()
 
-            # Pass is_direct_message to is_channel_enabled
-            if not self.is_channel_enabled(
-                channel, is_direct_message=is_direct_message
+        # Determine if the message is a direct message
+        toId = packet.get("to")
+        myId = meshtastic_client.myInfo.my_node_num  # Get relay's own node number
+
+        if toId == myId:
+            # Direct message to us
+            is_direct_message = True
+        elif toId == BROADCAST_NUM:
+            is_direct_message = False
+        else:
+            # Message to someone else; we may ignore it
+            is_direct_message = False
+
+        # Pass is_direct_message to is_channel_enabled
+        if not self.is_channel_enabled(channel, is_direct_message=is_direct_message):
+            # Channel not enabled for plugin
+            return False
+
+        # Log that the plugin is processing the message
+        self.logger.info(
+            f"Processing message from {longname} on channel {channel} with plugin '{self.plugin_name}'"
+        )
+
+        fromId = packet.get("fromId")
+        if fromId not in meshtastic_client.nodes:
+            return True  # Unknown node, treat as handled without responding
+
+        coords = None
+        # Optional override via command arguments
+        if arg_text:
+            coords = self._parse_location_override(arg_text)
+            if coords is None:
+                coords = self._geocode_location(arg_text)
+
+        if coords is None:
+            requesting_node = meshtastic_client.nodes.get(fromId)
+            if (
+                requesting_node
+                and "position" in requesting_node
+                and "latitude" in requesting_node["position"]
+                and "longitude" in requesting_node["position"]
             ):
-                # Channel not enabled for plugin
-                return False
+                coords = (
+                    requesting_node["position"]["latitude"],
+                    requesting_node["position"]["longitude"],
+                )
+            else:
+                coords = self._determine_mesh_location(meshtastic_client)
 
-            if f"!{self.plugin_name}" not in message.lower():
-                return False
-
-            # Log that the plugin is processing the message
-            self.logger.info(
-                f"Processing message from {longname} on channel {channel} with plugin '{self.plugin_name}'"
+        weather_notice = "Cannot determine location"
+        if coords:
+            mode = parsed_command if parsed_command else "weather"
+            weather_notice = self.generate_forecast(
+                latitude=coords[0],
+                longitude=coords[1],
+                mode=mode,
             )
 
-            fromId = packet.get("fromId")
-            if fromId in meshtastic_client.nodes:
-                weather_notice = "Cannot determine location"
-                requesting_node = meshtastic_client.nodes.get(fromId)
-                if (
-                    requesting_node
-                    and "position" in requesting_node
-                    and "latitude" in requesting_node["position"]
-                    and "longitude" in requesting_node["position"]
-                ):
-                    weather_notice = self.generate_forecast(
-                        latitude=requesting_node["position"]["latitude"],
-                        longitude=requesting_node["position"]["longitude"],
-                    )
+        # Wait for the response delay
+        await asyncio.sleep(self.get_response_delay())
 
-                # Wait for the response delay
-                await asyncio.sleep(self.get_response_delay())
-
-                if is_direct_message:
-                    # Respond via DM
-                    meshtastic_client.sendText(
-                        text=weather_notice,
-                        destinationId=fromId,
-                    )
-                else:
-                    # Respond in the same channel (broadcast)
-                    meshtastic_client.sendText(
-                        text=weather_notice,
-                        channelIndex=channel,
-                    )
-            return True
+        if is_direct_message:
+            # Respond via DM
+            meshtastic_client.sendText(
+                text=weather_notice,
+                destinationId=fromId,
+            )
         else:
-            return False  # Not a text message or port does not match
+            # Respond in the same channel (broadcast)
+            meshtastic_client.sendText(
+                text=weather_notice,
+                channelIndex=channel,
+            )
+        return True
 
     def get_matrix_commands(self):
         return []
 
     def get_mesh_commands(self):
-        return [self.plugin_name]
+        return list(self.mesh_commands)
 
     async def handle_room_message(self, room, event, full_message):
         return False  # Not handling Matrix messages in this plugin
+
+    def _determine_mesh_location(self, meshtastic_client):
+        """
+        Derive an approximate mesh location by averaging available node positions.
+
+        Prefers valid latitude/longitude pairs across all known nodes when the requesting node lacks position data.
+        """
+        positions = []
+        for info in meshtastic_client.nodes.values():
+            pos = info.get("position") if isinstance(info, dict) else None
+            if not pos:
+                continue
+            lat = pos.get("latitude")
+            lon = pos.get("longitude")
+            if isinstance(lat, (int, float)) and isinstance(lon, (int, float)):
+                positions.append((lat, lon))
+
+        if not positions:
+            return None
+
+        avg_lat = sum(p[0] for p in positions) / len(positions)
+        avg_lon = sum(p[1] for p in positions) / len(positions)
+        return avg_lat, avg_lon
+
+    def _parse_mesh_command(self, message: str) -> tuple[str | None, str | None]:
+        """Return (command, args) when the message starts with a supported mesh command."""
+        if not isinstance(message, str):
+            return None, None
+        pattern = rf"^\s*!(?P<cmd>{'|'.join(self.mesh_commands)})(?:\s+(?P<args>.*))?$"
+        match = re.match(pattern, message, flags=re.IGNORECASE)
+        if not match:
+            return None, None
+        cmd = match.group("cmd").lower()
+        args = match.group("args") or ""
+        return cmd, args.strip()
+
+    def _parse_location_override(self, arg_text: str) -> tuple[float, float] | None:
+        """
+        Parse a latitude/longitude override in the form \"lat,lon\" or \"lat lon\".
+
+        Returns:
+            tuple[float, float] | None: Parsed coordinates, or None if parsing fails.
+        """
+        if not arg_text:
+            return None
+        parts = re.split(r"[,\s]+", arg_text.strip())
+        if len(parts) != 2:
+            return None
+        try:
+            lat = float(parts[0])
+            lon = float(parts[1])
+        except (TypeError, ValueError):
+            return None
+        if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+            return None
+        return lat, lon
+
+    def _geocode_location(self, query: str) -> tuple[float, float] | None:
+        """
+        Resolve a free-form location (e.g., city or postal code) to coordinates via Open-Meteo geocoding.
+
+        Returns:
+            tuple[float, float] | None: Coordinates if found, otherwise None.
+        """
+        if not query:
+            return None
+        url = "https://geocoding-api.open-meteo.com/v1/search"
+        try:
+            response = requests.get(
+                url,
+                params={"name": query, "count": 1, "format": "json"},
+                timeout=10,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            results = payload.get("results") or []
+            if not results:
+                return None
+            first = results[0]
+            lat = first.get("latitude")
+            lon = first.get("longitude")
+            if isinstance(lat, (int, float)) and isinstance(lon, (int, float)):
+                return float(lat), float(lon)
+            return None
+        except requests.RequestException:
+            self.logger.exception("Error geocoding location")
+            return None
+        except (ValueError, TypeError, KeyError):
+            self.logger.exception("Malformed geocoding response")
+            return None

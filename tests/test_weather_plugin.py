@@ -234,7 +234,21 @@ class TestWeatherPlugin(unittest.TestCase):
         Test that the plugin's get_mesh_commands method returns the expected list of mesh commands.
         """
         commands = self.plugin.get_mesh_commands()
-        self.assertEqual(commands, ["weather"])
+        self.assertEqual(commands, ["weather", "forecast", "24hrs", "3day", "5day"])
+
+    def test_parse_mesh_command_requires_prefix(self):
+        """
+        Ensure commands must start at the beginning of the message.
+        """
+        # Should parse when command is at the start
+        cmd, args = self.plugin._parse_mesh_command("!weather 90210")
+        self.assertEqual(cmd, "weather")
+        self.assertEqual(args, "90210")
+
+        # Should not parse when command appears later in text
+        cmd, args = self.plugin._parse_mesh_command("please use !weather 90210")
+        self.assertIsNone(cmd)
+        self.assertIsNone(args)
 
     def test_handle_room_message_always_false(self):
         """
@@ -297,7 +311,7 @@ class TestWeatherPlugin(unittest.TestCase):
             self.assertIn("latitude=40.7128", url)
             # May be formatted without trailing zero
             self.assertIn("longitude=-74.006", url)
-            self.assertIn("forecast_days=2", url)
+            self.assertIn("forecast_days=3", url)
             self.assertIn("timezone=auto", url)
             for field in (
                 "temperature_2m",
@@ -866,6 +880,116 @@ class TestWeatherPlugin(unittest.TestCase):
             self.plugin.is_channel_enabled.assert_called_once_with(
                 0, is_direct_message=False
             )
+
+        import asyncio
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    def test_handle_meshtastic_message_latlon_override(self, mock_connect):
+        """
+        Commands with an explicit lat/lon should use the override even if the node lacks position data.
+        """
+        mock_client = MagicMock()
+        mock_client.myInfo.my_node_num = 123456789
+        mock_client.nodes = {"!12345678": {}}
+        mock_connect.return_value = mock_client
+
+        self.plugin.generate_forecast = MagicMock(return_value="OK")
+
+        packet = {
+            "decoded": {
+                "portnum": "TEXT_MESSAGE_APP",
+                "text": "!weather 37.77,-122.42",
+            },
+            "channel": 0,
+            "fromId": "!12345678",
+            "to": 4294967295,  # BROADCAST_NUM
+        }
+
+        async def run_test():
+            result = await self.plugin.handle_meshtastic_message(
+                packet, "formatted_message", "longname", "meshnet_name"
+            )
+
+            self.assertTrue(result)
+            self.plugin.generate_forecast.assert_called_once()
+            call_args = self.plugin.generate_forecast.call_args
+            self.assertAlmostEqual(call_args.kwargs["latitude"], 37.77)
+            self.assertAlmostEqual(call_args.kwargs["longitude"], -122.42)
+
+        import asyncio
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    def test_handle_meshtastic_message_geocode_fallback(self, mock_connect):
+        """
+        Free-form location strings should be geocoded when coordinates are not available.
+        """
+        mock_client = MagicMock()
+        mock_client.myInfo.my_node_num = 123456789
+        mock_client.nodes = {"!12345678": {}}
+        mock_connect.return_value = mock_client
+
+        self.plugin._geocode_location = MagicMock(return_value=(10.0, 20.0))
+        self.plugin.generate_forecast = MagicMock(return_value="OK")
+
+        packet = {
+            "decoded": {"portnum": "TEXT_MESSAGE_APP", "text": "!weather Boston"},
+            "channel": 0,
+            "fromId": "!12345678",
+            "to": 4294967295,  # BROADCAST_NUM
+        }
+
+        async def run_test():
+            result = await self.plugin.handle_meshtastic_message(
+                packet, "formatted_message", "longname", "meshnet_name"
+            )
+
+            self.assertTrue(result)
+            self.plugin._geocode_location.assert_called_once_with("Boston")
+            self.plugin.generate_forecast.assert_called_once()
+            call_args = self.plugin.generate_forecast.call_args
+            self.assertAlmostEqual(call_args.kwargs["latitude"], 10.0)
+            self.assertAlmostEqual(call_args.kwargs["longitude"], 20.0)
+
+        import asyncio
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    def test_handle_meshtastic_message_mesh_average_location(self, mock_connect):
+        """
+        When the requesting node lacks a position, the mesh-average location should be used.
+        """
+        mock_client = MagicMock()
+        mock_client.myInfo.my_node_num = 123456789
+        mock_client.nodes = {
+            "!requester": {},
+            "!node1": {"position": {"latitude": 10.0, "longitude": 10.0}},
+            "!node2": {"position": {"latitude": 20.0, "longitude": 30.0}},
+        }
+        mock_connect.return_value = mock_client
+
+        self.plugin.generate_forecast = MagicMock(return_value="OK")
+
+        packet = {
+            "decoded": {"portnum": "TEXT_MESSAGE_APP", "text": "!weather"},
+            "channel": 0,
+            "fromId": "!requester",
+            "to": 4294967295,
+        }
+
+        async def run_test():
+            await self.plugin.handle_meshtastic_message(
+                packet, "formatted_message", "longname", "meshnet_name"
+            )
+            self.plugin.generate_forecast.assert_called_once()
+            call_args = self.plugin.generate_forecast.call_args
+            # Average of (10,10) and (20,30) => (15,20)
+            self.assertAlmostEqual(call_args.kwargs["latitude"], 15.0)
+            self.assertAlmostEqual(call_args.kwargs["longitude"], 20.0)
 
         import asyncio
 
