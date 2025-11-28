@@ -1,15 +1,22 @@
+import asyncio
 import io
 import math
 import random
 import re
 
 import PIL.ImageDraw
+from typing import TYPE_CHECKING
 import s2sphere
 import staticmaps
 from nio import AsyncClient, UploadResponse
 from PIL import Image
 
 from mmrelay.plugins.base_plugin import BasePlugin
+
+try:
+    import cairo  # type: ignore[import-untyped]
+except Exception:  # pragma: no cover - optional dependency
+    cairo = None
 
 
 def textsize(self: PIL.ImageDraw.ImageDraw, *args, **kwargs):
@@ -18,7 +25,7 @@ def textsize(self: PIL.ImageDraw.ImageDraw, *args, **kwargs):
 
 
 # Monkeypatch fix for https://github.com/flopp/py-staticmaps/issues/39
-PIL.ImageDraw.ImageDraw.textsize = textsize
+PIL.ImageDraw.ImageDraw.textsize = textsize  # type: ignore[attr-defined]
 
 
 class TextLabel(staticmaps.Object):
@@ -72,6 +79,8 @@ class TextLabel(staticmaps.Object):
         )
 
     def render_cairo(self, renderer: staticmaps.CairoRenderer) -> None:
+        if cairo is None:
+            return
         x, y = renderer.transformer().ll2pixel(self.latlng())
 
         ctx = renderer.context()
@@ -294,7 +303,7 @@ class Plugin(BasePlugin):
         from mmrelay.meshtastic_utils import connect_meshtastic
 
         matrix_client = await connect_matrix()
-        meshtastic_client = connect_meshtastic()
+        meshtastic_client = await asyncio.to_thread(connect_meshtastic)
 
         args = self.extract_command_args("map", text)
         if args is None:

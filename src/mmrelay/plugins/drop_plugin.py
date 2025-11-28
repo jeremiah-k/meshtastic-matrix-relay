@@ -49,7 +49,7 @@ class Plugin(BasePlugin):
                 )
 
                 self.logger.debug(f"Packet originates from: {packet_location}")
-                messages = self.get_node_data(self.special_node)
+                messages = self.get_node_data(self.special_node) or []
                 unsent_messages = []
                 for message in messages:
                     # You cannot pickup what you dropped

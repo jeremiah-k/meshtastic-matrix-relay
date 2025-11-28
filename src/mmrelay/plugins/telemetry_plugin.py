@@ -1,6 +1,5 @@
 import io
 import json
-import re
 from datetime import datetime, timedelta
 
 import matplotlib.pyplot as plt
@@ -134,7 +133,10 @@ class Plugin(BasePlugin):
 
         if node:
             node_data_rows = self.get_node_data(node)
-            calculate_averages(node_data_rows)
+            if node_data_rows:
+                calculate_averages(node_data_rows)
+            else:
+                return False
         else:
             for node_data_json in self.get_data():
                 node_data_rows = json.loads(node_data_json[0])

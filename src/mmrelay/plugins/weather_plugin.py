@@ -1,8 +1,9 @@
 import asyncio
 import re
 from datetime import datetime
+from typing import TYPE_CHECKING
 
-import requests
+import requests  # type: ignore[import-untyped]
 from meshtastic.mesh_interface import BROADCAST_NUM
 
 from mmrelay.constants.formats import TEXT_MESSAGE_APP
@@ -365,13 +366,52 @@ class Plugin(BasePlugin):
         return True
 
     def get_matrix_commands(self):
-        return []
+        return list(self.mesh_commands)
 
     def get_mesh_commands(self):
         return list(self.mesh_commands)
 
-    async def handle_room_message(self, room, event, full_message):
-        return False  # Not handling Matrix messages in this plugin
+    async def handle_room_message(self, room, event, text):
+        if not self.matches(event):
+            return False
+
+        coords = None
+        parsed_command = None
+        args_text = None
+        for command in self.get_matrix_commands():
+            args = self.extract_command_args(command, text)
+            if args is not None:
+                parsed_command = command
+                args_text = args
+                break
+
+        if not parsed_command:
+            return False
+
+        if args_text:
+            coords = self._parse_location_override(args_text)
+            if coords is None:
+                coords = self._geocode_location(args_text)
+
+        if coords is None:
+            from mmrelay.meshtastic_utils import connect_meshtastic
+
+            meshtastic_client = await asyncio.to_thread(connect_meshtastic)
+            coords = self._determine_mesh_location(meshtastic_client)
+
+        if coords is None:
+            await self.send_matrix_message(
+                room.room_id,
+                "Cannot determine location",
+                formatted=False,
+            )
+            return True
+
+        forecast = self.generate_forecast(
+            latitude=coords[0], longitude=coords[1], mode=parsed_command
+        )
+        await self.send_matrix_message(room.room_id, forecast, formatted=False)
+        return True
 
     def _determine_mesh_location(self, meshtastic_client):
         """
@@ -409,7 +449,7 @@ class Plugin(BasePlugin):
         return cmd, args.strip()
 
     def _parse_location_override(self, arg_text: str) -> tuple[float, float] | None:
-        """
+        r"""
         Parse a latitude/longitude override in the form \"lat,lon\" or \"lat lon\".
 
         Returns:

@@ -40,7 +40,7 @@ config = None
 _deprecated_warning_shown = False
 
 # Track delay values we've already warned about to prevent spam
-_warned_delay_values = set()
+_warned_delay_values: set[float] = set()
 _plugins_low_delay_warned = False
 
 
@@ -147,6 +147,8 @@ class BasePlugin(ABC):
 
         self.logger = get_logger(f"Plugin:{self.plugin_name}")
         self.config: Dict[str, Any] = {"active": False}
+        self.mapped_channels: list[int | None] = []
+        self._global_require_bot_mention: bool | None = None
         global config
         plugin_levels = ["plugins", "community-plugins", "custom-plugins"]
 
@@ -158,7 +160,6 @@ class BasePlugin(ABC):
                     break
 
             # Cache global plugin-level settings (for options like require_bot_mention)
-            self._global_require_bot_mention = None
             for section_name in ("plugins", "community-plugins", "custom-plugins"):
                 section_config = config.get(section_name, {})
                 if (
@@ -469,7 +470,7 @@ class BasePlugin(ABC):
 
         description = f"Plugin {self.plugin_name}: {text[:DEFAULT_TEXT_TRUNCATION_LENGTH]}{'...' if len(text) > DEFAULT_TEXT_TRUNCATION_LENGTH else ''}"
 
-        send_kwargs = {
+        send_kwargs: Dict[str, Any] = {
             "text": text,
             "channelIndex": channel,
         }
@@ -700,6 +701,20 @@ class BasePlugin(ABC):
             return bool(self.config[CONFIG_KEY_REQUIRE_BOT_MENTION])
 
         # Use cached global plugins configuration if available
+        if getattr(self, "_global_require_bot_mention", None) is None:
+            global config
+            if config is not None:
+                for section_name in ("plugins", "community-plugins", "custom-plugins"):
+                    section_config = config.get(section_name, {})
+                    if (
+                        isinstance(section_config, dict)
+                        and CONFIG_KEY_REQUIRE_BOT_MENTION in section_config
+                    ):
+                        self._global_require_bot_mention = bool(
+                            section_config[CONFIG_KEY_REQUIRE_BOT_MENTION]
+                        )
+                        break
+
         if getattr(self, "_global_require_bot_mention", None) is not None:
             return bool(self._global_require_bot_mention)
 

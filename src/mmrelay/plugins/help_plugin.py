@@ -1,5 +1,3 @@
-import re
-
 from mmrelay.plugin_loader import load_plugins
 from mmrelay.plugins.base_plugin import BasePlugin
 

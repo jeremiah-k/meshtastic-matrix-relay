@@ -20,6 +20,15 @@ import unittest
 from typing import Any
 from unittest.mock import patch
 
+# Add src to path for imports before local imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+
+from mmrelay.log_utils import (
+    RICH_AVAILABLE,
+    configure_component_debug_logging,
+    get_logger,
+)
+
 
 # Shared dummy RichHandler stand-in for environments where Rich is unavailable or patched out.
 class DummyRichHandler(logging.Handler):
@@ -34,16 +43,6 @@ class DummyRichHandler(logging.Handler):
         """
         super().__init__()
         self.rich_tracebacks = kwargs.get("rich_tracebacks")
-
-
-# Add src to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-
-from mmrelay.log_utils import (
-    RICH_AVAILABLE,
-    configure_component_debug_logging,
-    get_logger,
-)
 
 
 class TestLogUtils(unittest.TestCase):

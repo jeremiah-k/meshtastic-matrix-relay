@@ -16,7 +16,7 @@ import copy
 import os
 import sys
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -224,10 +224,10 @@ class TestWeatherPlugin(unittest.TestCase):
 
     def test_get_matrix_commands(self):
         """
-        Test that the plugin's get_matrix_commands method returns an empty list.
+        Test that the plugin's get_matrix_commands method returns the expected list of matrix commands.
         """
         commands = self.plugin.get_matrix_commands()
-        self.assertEqual(commands, [])
+        self.assertEqual(commands, ["weather", "forecast", "24hrs", "3day", "5day"])
 
     def test_get_mesh_commands(self):
         """
@@ -250,20 +250,22 @@ class TestWeatherPlugin(unittest.TestCase):
         self.assertIsNone(cmd)
         self.assertIsNone(args)
 
-    def test_handle_room_message_always_false(self):
+    def test_handle_room_message_with_override(self):
         """
-        Test that handle_room_message always returns False asynchronously.
+        Matrix-side weather command should parse coordinates and send a forecast.
         """
 
         async def run_test():
-            """
-            Asynchronously tests that handle_room_message always returns False when called.
+            self.plugin.matches = MagicMock(return_value=True)
+            self.plugin.generate_forecast = MagicMock(return_value="OK")
+            self.plugin.send_matrix_message = AsyncMock()
 
-            Returns:
-                bool: False, indicating the message was not handled.
-            """
-            result = await self.plugin.handle_room_message(None, None, "message")
-            self.assertFalse(result)
+            result = await self.plugin.handle_room_message(
+                MagicMock(room_id="!room"), MagicMock(), "!weather 10.0 20.0"
+            )
+            self.assertTrue(result)
+            self.plugin.generate_forecast.assert_called_once()
+            self.plugin.send_matrix_message.assert_called_once()
 
         import asyncio
 

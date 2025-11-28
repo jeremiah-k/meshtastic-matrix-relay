@@ -36,13 +36,13 @@ services:
     # Uses label-based filtering to update only labeled containers
 
   # Uncomment below to enable automatic updates:
-  # watchtower:
-  #   image: containrrr/watchtower:latest
-  #   container_name: watchtower-mmrelay
-  #   restart: unless-stopped
-  #   volumes:
-  #     - /var/run/docker.sock:/var/run/docker.sock
-  #   environment:
-  #     - WATCHTOWER_CLEANUP=true
-  #     - WATCHTOWER_SCHEDULE=0 2 * * *  # Daily at 2 AM
-  #   command: --label-enable
+  #watchtower:
+  #  image: containrrr/watchtower:latest
+  #  container_name: watchtower-mmrelay
+  #  restart: unless-stopped
+  #  volumes:
+  #    - /var/run/docker.sock:/var/run/docker.sock
+  #  environment:
+  #    - WATCHTOWER_CLEANUP=true
+  #    - WATCHTOWER_SCHEDULE=0 2 * * *  # Daily at 2 AM
+  #  command: --label-enable

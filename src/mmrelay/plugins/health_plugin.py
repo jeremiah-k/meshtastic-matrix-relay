@@ -19,6 +19,9 @@ class Plugin(BasePlugin):
         air_util_tx = []
         snr = []
 
+        if not meshtastic_client.nodes:
+            return "No nodes discovered yet."
+
         for _node, info in meshtastic_client.nodes.items():
             if "deviceMetrics" in info:
                 if "batteryLevel" in info["deviceMetrics"]:
