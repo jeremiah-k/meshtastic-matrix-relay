@@ -1,3 +1,4 @@
+import inspect
 import os
 import threading
 from abc import ABC, abstractmethod
@@ -6,6 +7,10 @@ from typing import Any, Dict, Union
 import markdown
 
 from mmrelay.config import get_plugin_data_dir
+from mmrelay.constants.config import (
+    CONFIG_KEY_REQUIRE_BOT_MENTION,
+    DEFAULT_REQUIRE_BOT_MENTION,
+)
 from mmrelay.constants.database import (
     DEFAULT_MAX_DATA_ROWS_PER_NODE_BASE,
     DEFAULT_TEXT_TRUNCATION_LENGTH,
@@ -62,6 +67,7 @@ class BasePlugin(ABC):
 
     # Class-level default attributes
     plugin_name = None  # Must be overridden in subclasses
+    is_core_plugin: bool | None = None
     max_data_rows_per_node = DEFAULT_MAX_DATA_ROWS_PER_NODE_BASE
     priority = 10
 
@@ -79,24 +85,30 @@ class BasePlugin(ABC):
 
     def __init__(self, plugin_name=None) -> None:
         """
-        Initialize plugin state: name, logger, configuration, mapped channels, scheduling controls, and response delay.
+        Initialize plugin state and load per-plugin configuration and runtime defaults.
 
         Parameters:
-            plugin_name (str, optional): Overrides the class-level `plugin_name` when provided.
-
-        Returns:
-            None
+            plugin_name (str, optional): Override the class-level plugin_name for this instance.
 
         Raises:
             ValueError: If no plugin name is available from the parameter, instance, or class attribute.
 
         Details:
-            - Loads per-plugin configuration from the global `config` by checking "plugins", "community-plugins", then "custom-plugins"; defaults to `{"active": False}` if not found.
-            - Builds `self.mapped_channels` from `config["matrix_rooms"]` supporting both dict and list formats.
-            - Determines `self.channels` from the plugin config (falls back to `self.mapped_channels`) and ensures it is a list; logs a warning for any configured channels not present in `mapped_channels`.
-            - Initializes scheduling controls (`self._stop_event`, `self._schedule_thread`) used by the plugin scheduler.
-            - Reads Meshtastic delay settings from `config["meshtastic"]`, preferring `message_delay` with fallback to deprecated `plugin_response_delay`. Emits a one-time deprecation warning when `plugin_response_delay` is used.
-            - Enforces a minimum delay of `MINIMUM_MESSAGE_DELAY`; values below the minimum are clamped and emit a one-time warning per unique delay value.
+            - Loads per-plugin configuration from the global `config` by checking
+              "plugins", "community-plugins", then "custom-plugins"; defaults to
+              `{"active": False}` if not found.
+            - Builds `self.mapped_channels` from `config["matrix_rooms"]`, supporting
+              both dict and list formats.
+            - Sets `self.channels` from the plugin config (falls back to
+              `self.mapped_channels`) and coerces it to a list; logs a warning for
+              configured channels not present in `mapped_channels`.
+            - Initializes scheduling controls (`self._stop_event`,
+              `self._schedule_thread`) used by the plugin scheduler.
+            - Reads Meshtastic delay settings from `config["meshtastic"]`,
+              preferring `message_delay` with fallback to deprecated
+              `plugin_response_delay`, with one-time deprecation logging.
+            - Enforces a minimum delay of `MINIMUM_MESSAGE_DELAY`; values below the
+              minimum are clamped and emit a one-time warning per unique delay value.
         """
         # Allow plugin_name to be passed as a parameter for simpler initialization
         # This maintains backward compatibility while providing a cleaner API
@@ -107,6 +119,16 @@ class BasePlugin(ABC):
         # If plugin_name is provided as a parameter, use it
         if plugin_name is not None:
             self.plugin_name = plugin_name
+
+        # Allow plugin to declare core status; fall back to module location
+        self.is_core_plugin = getattr(self, "is_core_plugin", None)
+        if self.is_core_plugin is None:
+            try:
+                class_file = inspect.getfile(self.__class__)
+            except TypeError:
+                class_file = ""
+            core_plugins_dir = os.path.dirname(__file__)
+            self.is_core_plugin = class_file.startswith(core_plugins_dir)
 
         # For backward compatibility: if plugin_name is not provided as a parameter,
         # check if it's set as an instance attribute (old way) or use the class attribute
@@ -132,6 +154,19 @@ class BasePlugin(ABC):
             for level in plugin_levels:
                 if level in config and self.plugin_name in config[level]:
                     self.config = config[level][self.plugin_name]
+                    break
+
+            # Cache global plugin-level settings (for options like require_bot_mention)
+            self._global_require_bot_mention = None
+            for section_name in ("plugins", "community-plugins", "custom-plugins"):
+                section_config = config.get(section_name, {})
+                if (
+                    isinstance(section_config, dict)
+                    and CONFIG_KEY_REQUIRE_BOT_MENTION in section_config
+                ):
+                    self._global_require_bot_mention = bool(
+                        section_config[CONFIG_KEY_REQUIRE_BOT_MENTION]
+                    )
                     break
 
             # Get the list of mapped channels
@@ -611,26 +646,65 @@ class BasePlugin(ABC):
         return plugin_dir
 
     def matches(self, event):
-        """Check if a Matrix event matches this plugin's commands.
+        """
+        Determine whether a Matrix event invokes this plugin's Matrix commands.
 
-        Args:
-            event: Matrix room event to check
+        Checks whether the event contains any of the plugin's configured Matrix commands, taking into account the plugin's configured bot-mention requirement.
+
+        Parameters:
+            event: The Matrix room event to evaluate.
 
         Returns:
-            bool: True if event matches plugin commands, False otherwise
-
-        Uses bot_command() utility to check if the event contains any of
-        the plugin's matrix commands with proper bot command syntax.
+            `true` if the event matches one of the plugin's Matrix commands, `false` otherwise.
         """
         from mmrelay.matrix_utils import bot_command
 
-        # Pass the entire event to bot_command
-        return bot_command(self.plugin_name, event)
+        # Determine if bot mentions are required
+        require_mention = self.get_require_bot_mention()
+
+        return any(
+            bot_command(command, event, require_mention=require_mention)
+            for command in self.get_matrix_commands()
+        )
+
+    def get_require_bot_mention(self) -> bool:
+        """Determine if bot mentions are required for this plugin.
+
+        Checks plugin-specific configuration first, then global plugins configuration,
+        using appropriate defaults for core plugins.
+
+        Returns:
+            bool: True if bot mentions are required, False otherwise
+        """
+        # Check plugin-specific configuration first
+        if CONFIG_KEY_REQUIRE_BOT_MENTION in self.config:
+            return bool(self.config[CONFIG_KEY_REQUIRE_BOT_MENTION])
+
+        # Use cached global plugins configuration if available
+        if getattr(self, "_global_require_bot_mention", None) is not None:
+            return bool(self._global_require_bot_mention)
+
+        # Default behavior: core plugins require mentions by default
+        if self.is_core_plugin:
+            return DEFAULT_REQUIRE_BOT_MENTION
+
+        # Non-core plugins default to False (backward compatibility)
+        return False
 
     @abstractmethod
     async def handle_meshtastic_message(
         self, packet, formatted_message, longname, meshnet_name
     ):
+        """
+        Process an incoming Meshtastic packet and perform plugin-specific handling.
+
+        Parameters:
+            packet: The original Meshtastic packet object (protobuf-derived dict or message) as received from the radio.
+            formatted_message (str): A cleaned, human-readable representation of the packet's text payload.
+            longname (str): Sender display name or node label associated with the packet.
+            meshnet_name (str): The mesh network identifier where the packet originated.
+
+        """
         pass  # Implement in subclass
 
     @abstractmethod

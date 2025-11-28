@@ -18,6 +18,7 @@ class Plugin(BasePlugin):
     and their descriptions.
     """
 
+    is_core_plugin = True
     plugin_name = "help"
 
     @property
@@ -50,14 +51,15 @@ class Plugin(BasePlugin):
         """
         return []
 
-    async def handle_room_message(self, room, event, full_message):
+    async def handle_room_message(self, room, event, text):
         # Pass the event to matches()
         if not self.matches(event):
             return False
 
         command = None
 
-        match = re.match(r"^.*: !help\s+(.+)$", full_message)
+        # TODO: consolidate argument parsing with bot_command/base matches to avoid re-parsing here.
+        match = re.match(r"^(?:.+?:\s*)?!help(?:\s+(.+))?$", text)
         if match:
             command = match.group(1)
 

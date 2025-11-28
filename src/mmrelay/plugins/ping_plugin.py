@@ -26,6 +26,7 @@ def match_case(source, target):
 
 class Plugin(BasePlugin):
     plugin_name = "ping"
+    is_core_plugin = True
     punctuation = string.punctuation
 
     # No __init__ method needed with the simplified plugin system

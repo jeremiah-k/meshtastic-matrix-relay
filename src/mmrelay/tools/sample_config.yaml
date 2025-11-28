@@ -93,15 +93,21 @@ logging:
 
 # These are core Plugins - Note: Some plugins are experimental and some need maintenance.
 plugins:
+  # Global setting for all plugins: require bot mentions for commands
+  #require_bot_mention: true  # Set to false to disable mention requirements for all plugins
+  
   ping:
     active: true
+    #require_bot_mention: true  # Override global setting for this plugin only
     #channels: [2,3,5] # List of channels the plugin will respond to; DMs are always processed if the plugin is active
   weather:
     active: true
+    #require_bot_mention: true  # Override global setting for this plugin only
     units: imperial # Options: metric, imperial - Default is metric
     #channels: [] # Empty list, will only respond to DMs
   nodes:
     active: true
+    #require_bot_mention: true  # Override global setting for this plugin only
     # Does not need to specify channels, as it's a Matrix-only plugin
 
 #community-plugins:

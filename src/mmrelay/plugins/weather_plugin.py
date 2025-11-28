@@ -10,6 +10,7 @@ from mmrelay.plugins.base_plugin import BasePlugin
 
 class Plugin(BasePlugin):
     plugin_name = "weather"
+    is_core_plugin = True
 
     # No __init__ method needed with the simplified plugin system
     # The BasePlugin will automatically use the class-level plugin_name

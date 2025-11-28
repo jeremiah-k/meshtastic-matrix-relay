@@ -33,6 +33,7 @@ def get_relative_time(timestamp):
 
 class Plugin(BasePlugin):
     plugin_name = "nodes"
+    is_core_plugin = True
 
     @property
     def description(self):

@@ -1235,6 +1235,30 @@ class TestBotCommand:
         result = bot_command("help", mock_event)
         assert result
 
+    def test_direct_mention_require_mention_false(self):
+        """
+        Tests that a message starting with the bot command works when require_mention=False.
+        """
+        mock_event = MagicMock()
+        mock_event.body = "!help"
+        mock_event.source = {"content": {"formatted_body": "!help"}}
+
+        result = bot_command("help", mock_event, require_mention=False)
+        assert result
+
+    def test_direct_mention_require_mention_true(self):
+        """
+        Verifies that a plain command without a bot mention is not recognized when mentions are required.
+
+        This test constructs a mock event with a command-like body and asserts that bot_command returns falsy when require_mention is enabled.
+        """
+        mock_event = MagicMock()
+        mock_event.body = "!help"
+        mock_event.source = {"content": {"formatted_body": "!help"}}
+
+        result = bot_command("help", mock_event, require_mention=True)
+        assert not result
+
     def test_no_match(self):
         """
         Test that a non-command message does not trigger bot command detection.
@@ -1244,6 +1268,17 @@ class TestBotCommand:
         mock_event.source = {"content": {"formatted_body": "regular message"}}
 
         result = bot_command("help", mock_event)
+        assert not result
+
+    def test_no_match_require_mention_true(self):
+        """
+        Test that a non-command message does not trigger bot command detection when require_mention=True.
+        """
+        mock_event = MagicMock()
+        mock_event.body = "regular message"
+        mock_event.source = {"content": {"formatted_body": "regular message"}}
+
+        result = bot_command("help", mock_event, require_mention=True)
         assert not result
 
     def test_case_insensitive(self):
@@ -1257,6 +1292,17 @@ class TestBotCommand:
         result = bot_command("HELP", mock_event)  # Command should match case
         assert result
 
+    def test_case_insensitive_require_mention_true(self):
+        """
+        Test that bot command detection fails when require_mention=True even with case-insensitive match.
+        """
+        mock_event = MagicMock()
+        mock_event.body = "!HELP"
+        mock_event.source = {"content": {"formatted_body": "!HELP"}}
+
+        result = bot_command("HELP", mock_event, require_mention=True)
+        assert not result
+
     def test_with_args(self):
         """
         Test that the bot command is correctly detected when followed by additional arguments.
@@ -1266,6 +1312,61 @@ class TestBotCommand:
         mock_event.source = {"content": {"formatted_body": "!help me please"}}
 
         result = bot_command("help", mock_event)
+        assert result
+
+    def test_with_args_require_mention_true(self):
+        """
+        Test that the bot command fails when require_mention=True even with arguments.
+        """
+        mock_event = MagicMock()
+        mock_event.body = "!help me please"
+        mock_event.source = {"content": {"formatted_body": "!help me please"}}
+
+        result = bot_command("help", mock_event, require_mention=True)
+        assert not result
+
+    def test_bot_mention_require_mention_true(self):
+        """
+        Test that a message with bot mention works when require_mention=True.
+        """
+        mock_event = MagicMock()
+        mock_event.body = "@bot:matrix.org: !help"
+        mock_event.source = {"content": {"formatted_body": "@bot:matrix.org: !help"}}
+
+        result = bot_command("help", mock_event, require_mention=True)
+        assert result
+
+    def test_bot_mention_with_name_require_mention_true(self):
+        """
+        Test that a message with bot display name works when require_mention=True.
+        """
+        mock_event = MagicMock()
+        mock_event.body = "Bot: !help"
+        mock_event.source = {"content": {"formatted_body": "Bot: !help"}}
+
+        result = bot_command("help", mock_event, require_mention=True)
+        assert result
+
+    def test_non_bot_mention_require_mention_true(self):
+        """
+        Test that a message mentioning another user does not trigger when require_mention=True.
+        """
+        mock_event = MagicMock()
+        mock_event.body = "@someuser: !help"
+        mock_event.source = {"content": {"formatted_body": "@someuser: !help"}}
+
+        result = bot_command("help", mock_event, require_mention=True)
+        assert not result
+
+    def test_bot_mention_require_mention_false(self):
+        """
+        Test that a message with bot mention works when require_mention=False.
+        """
+        mock_event = MagicMock()
+        mock_event.body = "@bot:matrix.org: !help"
+        mock_event.source = {"content": {"formatted_body": "@bot:matrix.org: !help"}}
+
+        result = bot_command("help", mock_event, require_mention=False)
         assert result
 
 
@@ -3059,6 +3160,15 @@ async def test_on_room_message_command_short_circuits(
             """
             return ["ping"]
 
+        def matches(self, event):
+            """Use bot_command to detect this plugin's commands."""
+            from mmrelay.matrix_utils import bot_command
+
+            return any(
+                bot_command(cmd, event, require_mention=False)
+                for cmd in self.get_matrix_commands()
+            )
+
     with (
         patch("mmrelay.plugin_loader.load_plugins", return_value=[DummyPlugin()]),
         patch("mmrelay.matrix_utils.bot_command", return_value=True),
@@ -3070,6 +3180,77 @@ async def test_on_room_message_command_short_circuits(
 
     mock_queue.assert_not_called()
     mock_connect.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_on_room_message_requires_mention_before_filtering_command(
+    monkeypatch, mock_room, mock_event, test_config
+):
+    """Plugins that require mentions should not block relaying unmentioned commands."""
+    test_config["meshtastic"]["broadcast_enabled"] = True
+    monkeypatch.setattr("mmrelay.matrix_utils.config", test_config, raising=False)
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.matrix_rooms",
+        test_config["matrix_rooms"],
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.bot_user_id", "@bot:matrix.org", raising=False
+    )
+    monkeypatch.setattr("mmrelay.matrix_utils.bot_start_time", 0, raising=False)
+    mock_event.body = "!ping"
+    mock_event.source["content"]["body"] = "!ping"
+
+    class MentionedPlugin:
+        plugin_name = "ping"
+
+        async def handle_room_message(self, *_args, **_kwargs):
+            """
+            Handle an incoming room message event and indicate that it was not processed.
+
+            This method accepts arbitrary positional and keyword arguments from the message dispatcher (for example, room and event) but intentionally does not process them; it always signals that the message was not handled.
+
+            Returns:
+                False (bool): Indicates the message was not handled.
+            """
+            return False
+
+        def get_matrix_commands(self):
+            """
+            Return the list of Matrix command keywords supported by this handler.
+
+            Returns:
+                list[str]: Supported command strings, for example `["ping"]`.
+            """
+            return ["ping"]
+
+        def get_require_bot_mention(self):
+            """
+            Indicates whether commands require an explicit bot mention.
+
+            Returns:
+                bool: `True` if the bot must be explicitly mentioned to accept commands, `False` otherwise.
+            """
+            return True
+
+    mock_interface = MagicMock()
+
+    with (
+        patch("mmrelay.plugin_loader.load_plugins", return_value=[MentionedPlugin()]),
+        patch(
+            "mmrelay.matrix_utils._get_meshtastic_interface_and_channel",
+            AsyncMock(return_value=(mock_interface, 0)),
+        ),
+        patch(
+            "mmrelay.matrix_utils.get_user_display_name",
+            AsyncMock(return_value="User"),
+        ),
+        patch("mmrelay.matrix_utils.queue_message") as mock_queue,
+    ):
+        mock_queue.return_value = True
+        await on_room_message(mock_room, mock_event)
+
+    mock_queue.assert_called_once()
 
 
 @pytest.mark.asyncio

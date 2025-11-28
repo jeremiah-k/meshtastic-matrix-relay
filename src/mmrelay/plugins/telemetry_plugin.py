@@ -11,6 +11,7 @@ from mmrelay.plugins.base_plugin import BasePlugin
 
 class Plugin(BasePlugin):
     plugin_name = "telemetry"
+    is_core_plugin = True
     max_data_rows_per_node = 50
 
     def commands(self):
@@ -78,16 +79,7 @@ class Plugin(BasePlugin):
     def get_mesh_commands(self):
         return []
 
-    def matches(self, event):
-        from mmrelay.matrix_utils import bot_command
-
-        # Use bot_command() to check if any of the commands match
-        for command in self.get_matrix_commands():
-            if bot_command(command, event):
-                return True
-        return False
-
-    async def handle_room_message(self, room, event, full_message):
+    async def handle_room_message(self, room, event, text):
         # Pass the event to matches()
         """
         Handle a room message that requests a telemetry graph and send the generated image to the Matrix room.
@@ -97,7 +89,7 @@ class Plugin(BasePlugin):
         Parameters:
             room: Matrix room object where the event originated; used to determine the destination room_id.
             event: Matrix event used to test whether the message matches a supported bot command.
-            full_message (str): Full plaintext message content to parse the command and optional node identifier.
+            text (str): Full plaintext message content to parse the command and optional node identifier.
 
         Returns:
             True if the message matched a telemetry command and the graph was generated and successfully sent; False otherwise.
@@ -105,8 +97,10 @@ class Plugin(BasePlugin):
         if not self.matches(event):
             return False
 
-        match = re.search(
-            r":\s+!(batteryLevel|voltage|airUtilTx)(?:\s+(.+))?$", full_message
+        # TODO: consolidate command parsing with bot_command/base matches to avoid duplicated regex logic.
+        match = re.match(
+            r"^(?:.+?:\s*)?!(batteryLevel|voltage|airUtilTx)(?:\s+(.+))?$",
+            text,
         )
         if not match:
             return False

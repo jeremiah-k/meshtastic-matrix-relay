@@ -16,6 +16,7 @@ class Plugin(BasePlugin):
     """
 
     plugin_name = "debug"
+    is_core_plugin = True
     priority = 1
 
     async def handle_meshtastic_message(

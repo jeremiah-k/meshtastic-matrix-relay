@@ -843,64 +843,64 @@ bot_start_time = int(
 matrix_client = None
 
 
-def bot_command(command, event):
+def bot_command(command: str, event, require_mention: bool = False) -> bool:
     """
     Detect whether a Matrix event addresses the bot with the specified command.
 
-    Checks the event's plain body and HTML-formatted body (if present). It returns True when either body:
-    - begins with `!<command>`, or
-    - begins with an explicit bot mention (bot MXID or display name) optionally followed by punctuation and whitespace and then `!<command>`.
+    Checks both the plain body and HTML-formatted body (if present). It returns True when either body:
+    - begins with `!<command>` (only when require_mention=False), or
+    - begins with an explicit bot mention (bot MXID or display name) optionally followed by punctuation/whitespace and then `!<command>`.
 
     Parameters:
         command (str): Command name to detect (without the leading `!`).
         event: Matrix event object expected to provide `body` (plain text) and `source`/`content` with optional `formatted_body` (HTML).
+        require_mention (bool): If True, only accept commands that explicitly mention the bot. If False, accept both mentioned and non-mentioned commands.
 
     Returns:
         bool: `True` if the message targets the bot with the given command, `False` otherwise.
     """
-    full_message = getattr(event, "body", "") or ""
-    full_message = full_message.strip()
+    full_message = (getattr(event, "body", "") or "").strip()
+    if not command:
+        return False
     content = event.source.get("content", {})
     formatted_body = content.get("formatted_body", "")
 
     # Remove HTML tags and extract the text content
     text_content = re.sub(r"<[^>]+>", "", formatted_body).strip()
 
-    # Check for simple !command format first
-    if full_message.startswith(f"!{command}") or text_content.startswith(f"!{command}"):
+    bodies = [full_message, text_content]
+
+    bare_pattern = rf"^!{re.escape(command)}(?:\s|$)"
+
+    if not require_mention and any(
+        re.match(bare_pattern, body, re.IGNORECASE) for body in bodies if body
+    ):
         return True
 
-    starts_with_id = bot_user_id and (
-        full_message.startswith(bot_user_id) or text_content.startswith(bot_user_id)
-    )
-    starts_with_name = bot_user_name and (
-        full_message.startswith(bot_user_name) or text_content.startswith(bot_user_name)
-    )
-    is_mention = starts_with_id or starts_with_name
+    mention_parts = []
+    if bot_user_id:
+        mention_parts.append(re.escape(bot_user_id))
+    if bot_user_name:
+        mention_parts.append(re.escape(bot_user_name))
 
-    if is_mention:
-        # Construct a regex pattern to match variations of bot mention and command
-        parts = []
-        if bot_user_id:
-            parts.append(re.escape(bot_user_id))
-        if bot_user_name:
-            parts.append(re.escape(bot_user_name))
-        # Only include explicit bot identifiers to avoid false positives with any @mention or #reference
-        pattern = rf"^(?:{'|'.join(parts)})[,:;]?\s*!{re.escape(command)}"
-        return bool(re.match(pattern, full_message)) or bool(
-            re.match(pattern, text_content)
-        )
-    return False
+    if not mention_parts:
+        return False
+
+    pattern = (
+        rf"^(?:{'|'.join(mention_parts)})[,:;]?\s*!" rf"{re.escape(command)}(?:\s|$)"
+    )
+
+    return any(re.match(pattern, body, re.IGNORECASE) for body in bodies if body)
 
 
 async def _connect_meshtastic():
     """
-    Obtain a Meshtastic connection object suitable for use from async code.
+    Get a Meshtastic connection usable from asynchronous code.
 
-    When running under test, returns the connector directly; otherwise invokes the synchronous connector without blocking the event loop.
+    In test environments (MMRELAY_TESTING=1 or when running under pytest) returns the connector directly; otherwise invokes the synchronous connector in a thread executor to avoid blocking the event loop.
 
     Returns:
-        A Meshtastic interface or proxy object produced by the synchronous connector.
+        Meshtastic interface or proxy object produced by the connector.
     """
     if os.getenv("MMRELAY_TESTING") == "1" or "PYTEST_CURRENT_TEST" in os.environ:
         return connect_meshtastic()
@@ -2216,6 +2216,10 @@ async def matrix_relay(
 
     matrix_client = await connect_matrix()
 
+    if matrix_client is None:
+        logger.error("Matrix client is None. Cannot send message.")
+        return
+
     # Check if config is available
     if config is None:
         logger.error("No configuration available. Cannot relay message to Matrix.")
@@ -2245,6 +2249,9 @@ async def matrix_relay(
     )  # Default from constants
 
     try:
+        if room_id not in matrix_client.rooms:
+            await join_matrix_room(matrix_client, room_id)
+
         # Always use our own local meshnet_name for outgoing events
         local_meshnet_name = config["meshtastic"]["meshnet_name"]
 
@@ -2358,11 +2365,6 @@ async def matrix_relay(
                 logger.error(f"Error formatting Matrix reply: {e}")
 
         try:
-            # Ensure matrix_client is not None
-            if not matrix_client:
-                logger.error("Matrix client is None. Cannot send message.")
-                return
-
             # Send the message with a timeout
             # For encrypted rooms, use ignore_unverified_devices=True
             # After checking working implementations, always use ignore_unverified_devices=True
@@ -3274,7 +3276,7 @@ async def on_room_message(
         if not found_matching_plugin:
             try:
                 found_matching_plugin = await plugin.handle_room_message(
-                    room, event, full_message
+                    room, event, text
                 )
                 if found_matching_plugin:
                     logger.info(
@@ -3290,18 +3292,25 @@ async def on_room_message(
                     "Error processing message with plugin %s", plugin.plugin_name
                 )
 
-    # Check if the message is a command directed at the bot
-    is_command = False
-    for plugin in plugins:
-        for command in plugin.get_matrix_commands():
-            if bot_command(command, event):
-                is_command = True
-                break
-        if is_command:
-            break
+    # If a plugin handled the message, don't relay it to Meshtastic
+    if found_matching_plugin:
+        logger.debug("Message handled by plugin, not sending to mesh")
+        return
 
-    # If this is a command, we do not send it to the mesh
-    if is_command:
+    def _matches_command(plugin_obj) -> bool:
+        if hasattr(plugin_obj, "matches"):
+            try:
+                return bool(plugin_obj.matches(event))
+            except Exception:
+                logger.exception(
+                    "Error checking plugin match for %s",
+                    getattr(plugin_obj, "plugin_name", plugin_obj),
+                )
+                return False
+
+        return False
+
+    if any(_matches_command(plugin) for plugin in plugins):
         logger.debug("Message is a command, not sending to mesh")
         return
 
