@@ -655,7 +655,7 @@ class BasePlugin(ABC):
             event: The Matrix room event to evaluate.
 
         Returns:
-            `true` if the event matches one of the plugin's Matrix commands, `false` otherwise.
+            True if the event matches one of the plugin's Matrix commands, False otherwise.
         """
         from mmrelay.matrix_utils import bot_command
 

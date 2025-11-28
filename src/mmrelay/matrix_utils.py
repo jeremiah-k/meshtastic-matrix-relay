@@ -3307,6 +3307,23 @@ async def on_room_message(
                     getattr(plugin_obj, "plugin_name", plugin_obj),
                 )
                 return False
+        if hasattr(plugin_obj, "get_matrix_commands"):
+            try:
+                require_mention = (
+                    plugin_obj.get_require_bot_mention()
+                    if hasattr(plugin_obj, "get_require_bot_mention")
+                    else False
+                )
+                return any(
+                    bot_command(cmd, event, require_mention=require_mention)
+                    for cmd in plugin_obj.get_matrix_commands()
+                )
+            except Exception:
+                logger.exception(
+                    "Error checking plugin commands for %s",
+                    getattr(plugin_obj, "plugin_name", plugin_obj),
+                )
+                return False
 
         return False
 

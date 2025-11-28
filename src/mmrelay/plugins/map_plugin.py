@@ -171,8 +171,10 @@ def anonymize_location(lat, lon, radius=1000):
     """
     # Generate random offsets for latitude and longitude
     lat_offset = random.uniform(-radius / 111320, radius / 111320)
+    lat_rad = math.radians(lat)
     lon_offset = random.uniform(
-        -radius / (111320 * math.cos(lat)), radius / (111320 * math.cos(lat))
+        -radius / (111320 * math.cos(lat_rad)),
+        radius / (111320 * math.cos(lat_rad)),
     )
 
     # Apply the offsets to the location coordinates

@@ -27,19 +27,19 @@ class Plugin(BasePlugin):
                     air_util_tx.append(info["deviceMetrics"]["airUtilTx"])
             if "snr" in info:
                 snr.append(info["snr"])
-        print(str(snr))
-        # filter out none type values from snr and air_util_tx just in case
+
+        # filter out None values from snr and air_util_tx just in case
         air_util_tx = [value for value in air_util_tx if value is not None]
         snr = [value for value in snr if value is not None]
 
         low_battery = len([n for n in battery_levels if n <= 10])
         radios = len(meshtastic_client.nodes)
         avg_battery = statistics.mean(battery_levels) if battery_levels else 0
-        mdn_battery = statistics.median(battery_levels)
+        mdn_battery = statistics.median(battery_levels) if battery_levels else 0
         avg_air = statistics.mean(air_util_tx) if air_util_tx else 0
-        mdn_air = statistics.median(air_util_tx)
+        mdn_air = statistics.median(air_util_tx) if air_util_tx else 0
         avg_snr = statistics.mean(snr) if snr else 0
-        mdn_snr = statistics.median(snr)
+        mdn_snr = statistics.median(snr) if snr else 0
 
         return f"""Nodes: {radios}
 Battery: {avg_battery:.1f}% / {mdn_battery:.1f}% (avg / median)
