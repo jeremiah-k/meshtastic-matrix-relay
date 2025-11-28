@@ -92,6 +92,23 @@ class BasePlugin(ABC):
 
         Raises:
             ValueError: If no plugin name is available from the parameter, instance, or class attribute.
+
+        Details:
+            - Loads per-plugin configuration from the global `config` by checking
+              "plugins", "community-plugins", then "custom-plugins"; defaults to
+              `{"active": False}` if not found.
+            - Builds `self.mapped_channels` from `config["matrix_rooms"]`, supporting
+              both dict and list formats.
+            - Sets `self.channels` from the plugin config (falls back to
+              `self.mapped_channels`) and coerces it to a list; logs a warning for
+              configured channels not present in `mapped_channels`.
+            - Initializes scheduling controls (`self._stop_event`,
+              `self._schedule_thread`) used by the plugin scheduler.
+            - Reads Meshtastic delay settings from `config["meshtastic"]`,
+              preferring `message_delay` with fallback to deprecated
+              `plugin_response_delay`, with one-time deprecation logging.
+            - Enforces a minimum delay of `MINIMUM_MESSAGE_DELAY`; values below the
+              minimum are clamped and emit a one-time warning per unique delay value.
         """
         # Allow plugin_name to be passed as a parameter for simpler initialization
         # This maintains backward compatibility while providing a cleaner API
@@ -673,10 +690,6 @@ class BasePlugin(ABC):
 
         # Non-core plugins default to False (backward compatibility)
         return False
-
-    # Backward compatibility for older callers/third-party plugins
-    def _get_require_bot_mention(self) -> bool:
-        return self.get_require_bot_mention()
 
     @abstractmethod
     async def handle_meshtastic_message(
