@@ -860,6 +860,8 @@ def bot_command(command: str, event, require_mention: bool = False) -> bool:
         bool: `True` if the message targets the bot with the given command, `False` otherwise.
     """
     full_message = (getattr(event, "body", "") or "").strip()
+    if not command:
+        return False
     content = event.source.get("content", {})
     formatted_body = content.get("formatted_body", "")
 
@@ -3294,7 +3296,10 @@ async def on_room_message(
                     break
             except Exception:
                 # If a plugin raises during match detection, fall back to relaying
-                logger.exception("Error checking plugin match for %s", plugin)
+                logger.exception(
+                    "Error checking plugin match for %s",
+                    getattr(plugin, "plugin_name", plugin),
+                )
         elif hasattr(plugin, "get_matrix_commands"):
             require_mention = (
                 plugin.get_require_bot_mention()
