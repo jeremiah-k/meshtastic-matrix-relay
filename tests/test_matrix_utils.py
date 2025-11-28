@@ -3160,6 +3160,12 @@ async def test_on_room_message_command_short_circuits(
             """
             return ["ping"]
 
+        def matches(self, event):
+            """Use bot_command to detect this plugin's commands."""
+            from mmrelay.matrix_utils import bot_command
+
+            return bot_command(self.plugin_name, event)
+
     with (
         patch("mmrelay.plugin_loader.load_plugins", return_value=[DummyPlugin()]),
         patch("mmrelay.matrix_utils.bot_command", return_value=True),
