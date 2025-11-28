@@ -58,6 +58,7 @@ class Plugin(BasePlugin):
 
         command = None
 
+        # TODO: consolidate argument parsing with bot_command/base matches to avoid re-parsing here.
         match = re.match(r"^(?:.+?:\s*)?!help(?:\s+(.+))?$", text)
         if match:
             command = match.group(1)

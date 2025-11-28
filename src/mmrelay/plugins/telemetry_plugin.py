@@ -97,6 +97,7 @@ class Plugin(BasePlugin):
         if not self.matches(event):
             return False
 
+        # TODO: consolidate command parsing with bot_command/base matches to avoid duplicated regex logic.
         match = re.match(
             r"^(?:.+?:\s*)?!(batteryLevel|voltage|airUtilTx)(?:\s+(.+))?$",
             text,

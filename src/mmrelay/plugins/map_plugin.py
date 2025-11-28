@@ -295,6 +295,7 @@ class Plugin(BasePlugin):
         meshtastic_client = connect_meshtastic()
 
         pattern = r"^(?:.+?:\s*)?!map(?:\s+zoom=(\d+))?(?:\s+size=(\d+),(\d+))?$"
+        # TODO: consolidate command parsing with bot_command/base matches to avoid duplicated regex logic.
         match = re.match(pattern, text)
 
         # Indicate this message is not meant for this plugin
