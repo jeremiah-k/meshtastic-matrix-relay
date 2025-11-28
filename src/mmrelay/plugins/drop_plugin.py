@@ -87,7 +87,7 @@ class Plugin(BasePlugin):
             and "portnum" in packet["decoded"]
             and packet["decoded"]["portnum"] == TEXT_MESSAGE_APP
         ):
-            text = packet["decoded"]["text"] if "text" in packet["decoded"] else None
+            text = packet["decoded"].get("text") or ""
             if f"!{self.plugin_name}" not in text:
                 return False
 
