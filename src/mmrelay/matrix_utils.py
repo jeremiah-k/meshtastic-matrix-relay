@@ -3297,40 +3297,38 @@ async def on_room_message(
         logger.debug("Message handled by plugin, not sending to mesh")
         return
 
-    # If this is a command (recognized by any plugin), we do not send it to the mesh
-    is_command = False
-    for plugin in plugins:
-        if hasattr(plugin, "matches"):
+    def _matches_command(plugin_obj) -> bool:
+        if hasattr(plugin_obj, "matches"):
             try:
-                if plugin.matches(event):
-                    is_command = True
-                    break
+                return bool(plugin_obj.matches(event))
             except Exception:
-                # If a plugin raises during match detection, fall back to relaying
                 logger.exception(
                     "Error checking plugin match for %s",
-                    getattr(plugin, "plugin_name", plugin),
+                    getattr(plugin_obj, "plugin_name", plugin_obj),
                 )
-        elif hasattr(plugin, "get_matrix_commands"):
+                return False
+
+        if hasattr(plugin_obj, "get_matrix_commands"):
             try:
                 require_mention = (
-                    plugin.get_require_bot_mention()
-                    if hasattr(plugin, "get_require_bot_mention")
+                    plugin_obj.get_require_bot_mention()
+                    if hasattr(plugin_obj, "get_require_bot_mention")
                     else False
                 )
-                if any(
-                    bot_command(command, event, require_mention=require_mention)
-                    for command in plugin.get_matrix_commands()
-                ):
-                    is_command = True
-                    break
+                return any(
+                    bot_command(cmd, event, require_mention=require_mention)
+                    for cmd in plugin_obj.get_matrix_commands()
+                )
             except Exception:
                 logger.exception(
                     "Error checking plugin match for %s",
-                    getattr(plugin, "plugin_name", plugin),
+                    getattr(plugin_obj, "plugin_name", plugin_obj),
                 )
+                return False
 
-    if is_command:
+        return False
+
+    if any(_matches_command(plugin) for plugin in plugins):
         logger.debug("Message is a command, not sending to mesh")
         return
 
