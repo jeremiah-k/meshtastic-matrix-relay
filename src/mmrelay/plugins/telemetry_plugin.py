@@ -79,7 +79,7 @@ class Plugin(BasePlugin):
     def get_mesh_commands(self):
         return []
 
-    async def handle_room_message(self, room, event, full_message):
+    async def handle_room_message(self, room, event, text):
         # Pass the event to matches()
         """
         Handle a room message that requests a telemetry graph and send the generated image to the Matrix room.
@@ -89,7 +89,7 @@ class Plugin(BasePlugin):
         Parameters:
             room: Matrix room object where the event originated; used to determine the destination room_id.
             event: Matrix event used to test whether the message matches a supported bot command.
-            full_message (str): Full plaintext message content to parse the command and optional node identifier.
+            text (str): Full plaintext message content to parse the command and optional node identifier.
 
         Returns:
             True if the message matched a telemetry command and the graph was generated and successfully sent; False otherwise.
@@ -99,7 +99,7 @@ class Plugin(BasePlugin):
 
         match = re.match(
             r"^(?:.+?:\s*)?!(batteryLevel|voltage|airUtilTx)(?:\s+(.+))?$",
-            full_message,
+            text,
         )
         if not match:
             return False

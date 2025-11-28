@@ -3288,41 +3288,9 @@ async def on_room_message(
                     "Error processing message with plugin %s", plugin.plugin_name
                 )
 
-    # If this is a command (recognized by any plugin), we do not send it to the mesh
-    is_command = False
-    for plugin in plugins:
-        if hasattr(plugin, "matches"):
-            try:
-                if plugin.matches(event):
-                    is_command = True
-                    break
-            except Exception:
-                # If a plugin raises during match detection, fall back to relaying
-                logger.exception(
-                    "Error checking plugin match for %s",
-                    getattr(plugin, "plugin_name", plugin),
-                )
-        elif hasattr(plugin, "get_matrix_commands"):
-            try:
-                require_mention = (
-                    plugin.get_require_bot_mention()
-                    if hasattr(plugin, "get_require_bot_mention")
-                    else False
-                )
-                if any(
-                    bot_command(command, event, require_mention=require_mention)
-                    for command in plugin.get_matrix_commands()
-                ):
-                    is_command = True
-                    break
-            except Exception:
-                logger.exception(
-                    "Error checking plugin match for %s",
-                    getattr(plugin, "plugin_name", plugin),
-                )
-
-    if is_command:
-        logger.debug("Message is a command, not sending to mesh")
+    # If a plugin handled the message, don't relay it to Meshtastic
+    if found_matching_plugin:
+        logger.debug("Message handled by plugin, not sending to mesh")
         return
 
     # Check if this is a detection sensor packet (before connecting to Meshtastic)

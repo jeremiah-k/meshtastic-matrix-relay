@@ -51,14 +51,14 @@ class Plugin(BasePlugin):
         """
         return []
 
-    async def handle_room_message(self, room, event, full_message):
+    async def handle_room_message(self, room, event, text):
         # Pass the event to matches()
         if not self.matches(event):
             return False
 
         command = None
 
-        match = re.match(r"^(?:.+?:\s*)?!help(?:\s+(.+))?$", full_message)
+        match = re.match(r"^(?:.+?:\s*)?!help(?:\s+(.+))?$", text)
         if match:
             command = match.group(1)
 
