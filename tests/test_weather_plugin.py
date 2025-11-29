@@ -1240,20 +1240,50 @@ class TestWeatherPlugin(unittest.TestCase):
         """Test generate_forecast handles requests.RequestException."""
         import requests
 
-        # Mock requests to raise RequestException
-        mock_response = MagicMock()
-        mock_response.raise_for_status.side_effect = requests.RequestException(
-            "Network error"
-        )
-        mock_get.return_value = mock_response
+        # Mock requests.get itself to raise RequestException
+        mock_get.side_effect = requests.RequestException("Network error")
 
         plugin = Plugin()
 
-        # Test the method
         result = plugin.generate_forecast(40.7128, -74.0060)
 
-        # Should return error message for parsing error (exception occurs during parsing)
         self.assertEqual(result, "Error parsing weather data.")
+
+    @patch("mmrelay.plugins.weather_plugin.asyncio.to_thread")
+    def test_handle_meshtastic_message_missing_myinfo(self, mock_to_thread):
+        """
+        Ensure handle_meshtastic_message returns True when myInfo is missing.
+        """
+        import asyncio
+
+        from mmrelay.constants.formats import TEXT_MESSAGE_APP
+
+        async def run_test():
+            mock_packet = {
+                "decoded": {
+                    "portnum": TEXT_MESSAGE_APP,
+                    "text": "!weather",
+                },
+                "channel": 0,
+                "to": "abc",
+                "fromId": "node1",
+            }
+            mock_room = MagicMock()
+            mock_event = MagicMock()
+
+            client = MagicMock()
+            client.myInfo = None
+            client.nodes = {"node1": {"position": {"latitude": 1.0, "longitude": 1.0}}}
+            mock_to_thread.return_value = client
+
+            plugin = Plugin()
+
+            result = await plugin.handle_meshtastic_message(
+                mock_packet, "!weather", "Tester", "mesh"
+            )
+            self.assertTrue(result)
+
+        asyncio.run(run_test())
 
     @patch("mmrelay.plugins.weather_plugin.requests.get")
     def test_generate_forecast_attribute_error_fallback(self, mock_get):

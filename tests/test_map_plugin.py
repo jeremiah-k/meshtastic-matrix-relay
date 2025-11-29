@@ -590,10 +590,11 @@ class TestMapPlugin(unittest.TestCase):
             mock_image = MagicMock()
             mock_get_map.return_value = mock_image
 
-            with patch.object(self.plugin, "matches", return_value=True):
-                result = await self.plugin.handle_room_message(
-                    mock_room, mock_event, "user: !map size=500,400"
-                )
+            with patch.dict(os.environ, {"PYTEST_CURRENT_TEST": "1"}, clear=False):
+                with patch.object(self.plugin, "matches", return_value=True):
+                    result = await self.plugin.handle_room_message(
+                        mock_room, mock_event, "user: !map size=500,400"
+                    )
 
             self.assertTrue(result)
             # Check that get_map was called with correct image_size
@@ -723,15 +724,60 @@ class TestMapPlugin(unittest.TestCase):
             mock_image = MagicMock()
             mock_get_map.return_value = mock_image
 
-            with patch.object(self.plugin, "matches", return_value=True):
-                result = await self.plugin.handle_room_message(
-                    mock_room, mock_event, "user: !map size=2000,1500"
-                )
+            with patch.dict(os.environ, {"PYTEST_CURRENT_TEST": "1"}, clear=False):
+                with patch.object(self.plugin, "matches", return_value=True):
+                    result = await self.plugin.handle_room_message(
+                        mock_room, mock_event, "user: !map size=2000,1500"
+                    )
 
             self.assertTrue(result)
             # Check that image size was capped at 1000x1000
             call_args = mock_get_map.call_args
             self.assertEqual(call_args[1]["image_size"], (1000, 1000))
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.matrix_utils.send_image")
+    @patch("mmrelay.plugins.map_plugin.get_map")
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    @patch("mmrelay.matrix_utils.connect_matrix")
+    def test_handle_room_message_no_locations(
+        self,
+        mock_connect_matrix,
+        mock_connect_meshtastic,
+        mock_get_map,
+        mock_send_image,
+    ):
+        """
+        Ensure a friendly notice is sent when no nodes contain location data.
+        """
+
+        async def run_test():
+            mock_room = MagicMock()
+            mock_room.room_id = "!test:example.com"
+            mock_event = MagicMock()
+            mock_event.body = "!map"
+
+            mock_matrix_client = MagicMock()
+            mock_matrix_client.room_send = AsyncMock()
+            mock_connect_matrix.return_value = mock_matrix_client
+
+            mock_meshtastic_client = MagicMock()
+            mock_meshtastic_client.nodes = {"node1": {"user": {"shortName": "n1"}}}
+            mock_connect_meshtastic.return_value = mock_meshtastic_client
+
+            self.plugin.send_matrix_message = AsyncMock()
+
+            with patch.dict(os.environ, {}, clear=True):
+                with patch.object(self.plugin, "matches", return_value=True):
+                    result = await self.plugin.handle_room_message(
+                        mock_room, mock_event, "!map"
+                    )
+
+            self.assertTrue(result)
+            self.plugin.send_matrix_message.assert_awaited_once()
+            mock_get_map.assert_not_called()
+            mock_send_image.assert_not_awaited()
 
         asyncio.run(run_test())
 
