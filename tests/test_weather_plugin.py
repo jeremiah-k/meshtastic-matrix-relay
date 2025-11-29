@@ -1247,7 +1247,7 @@ class TestWeatherPlugin(unittest.TestCase):
 
         result = plugin.generate_forecast(40.7128, -74.0060)
 
-        self.assertEqual(result, "Error parsing weather data.")
+        self.assertEqual(result, "Error fetching weather data.")
 
     @patch("mmrelay.plugins.weather_plugin.asyncio.to_thread")
     def test_handle_meshtastic_message_missing_myinfo(self, mock_to_thread):
