@@ -326,6 +326,11 @@ class Plugin(BasePlugin):
         from mmrelay.meshtastic_utils import connect_meshtastic
 
         meshtastic_client = await asyncio.to_thread(connect_meshtastic)
+        if meshtastic_client is None:
+            self.logger.error(
+                "Meshtastic client unavailable; cannot handle weather request."
+            )
+            return True
 
         # Determine if the message is a direct message
         toId = packet.get("to")
@@ -430,7 +435,13 @@ class Plugin(BasePlugin):
             from mmrelay.meshtastic_utils import connect_meshtastic
 
             meshtastic_client = await asyncio.to_thread(connect_meshtastic)
-            coords = self._determine_mesh_location(meshtastic_client)
+            if meshtastic_client is None:
+                self.logger.error(
+                    "Meshtastic client unavailable; cannot determine mesh location."
+                )
+                coords = None
+            else:
+                coords = self._determine_mesh_location(meshtastic_client)
 
         if coords is None:
             await self.send_matrix_message(
