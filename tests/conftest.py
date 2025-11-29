@@ -328,14 +328,14 @@ class MockStaticmapsModule:
     @staticmethod
     def create_latlng(lat, lon):
         """
-        Create a MockLatLng from latitude and longitude expressed in decimal degrees.
-
+        Create a MockLatLng representing the specified geographic coordinates.
+        
         Parameters:
             lat (float): Latitude in decimal degrees.
             lon (float): Longitude in decimal degrees.
-
+        
         Returns:
-            MockLatLng: A mock LatLng object created via MockLatLng.from_degrees.
+            MockLatLng: A mock LatLng object for the given latitude and longitude.
         """
         return MockLatLng.from_degrees(lat, lon)
 

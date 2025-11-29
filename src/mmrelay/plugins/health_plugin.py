@@ -12,6 +12,19 @@ class Plugin(BasePlugin):
         return "Show mesh health using avg battery, SNR, AirUtil"
 
     def generate_response(self):
+        """
+        Compute and format mesh health metrics from connected Meshtastic nodes.
+        
+        Collects battery levels, air utilization (tx), and SNR from discovered nodes, computes node count, average and median values for each metric, and counts nodes with battery <= 10. If no nodes are discovered, returns the literal string "No nodes discovered yet."
+        
+        Returns:
+            str: A multi-line formatted summary containing:
+                - Nodes: total number of nodes
+                - Battery: average and median battery percentage
+                - Nodes with Low Battery (< 10): count of low-battery nodes
+                - Air Util: average and median air utilization
+                - SNR: average and median signal-to-noise ratio
+        """
         from mmrelay.meshtastic_utils import connect_meshtastic
 
         meshtastic_client = connect_meshtastic()

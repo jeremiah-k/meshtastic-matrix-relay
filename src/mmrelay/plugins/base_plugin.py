@@ -671,9 +671,12 @@ class BasePlugin(ABC):
 
     def extract_command_args(self, command: str, text: str) -> str | None:
         """
-        Extract arguments following a bot command, tolerating an optional leading mention prefix.
-
-        Returns the substring after the command (stripped), or None if the command pattern does not match.
+        Extract arguments that follow a bot command in a message, tolerating an optional leading mention prefix and matching the command case-insensitively.
+        
+        If the message contains the command (e.g. "!cmd arg1 arg2" or "@bot: !cmd arg1"), returns the trailing argument string stripped of surrounding whitespace; if the command is present with no arguments returns an empty string; if the input does not match the command pattern or is not a string returns None.
+        
+        Returns:
+            str: Arguments after the command, stripped of surrounding whitespace, or an empty string if no arguments are present; `None` if the command pattern does not match or input is not a string.
         """
         if not isinstance(text, str):
             return None

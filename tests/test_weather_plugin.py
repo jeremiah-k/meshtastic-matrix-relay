@@ -257,6 +257,11 @@ class TestWeatherPlugin(unittest.TestCase):
         """
 
         async def run_test():
+            """
+            Test that a room message containing an explicit weather command with coordinates triggers forecast generation and a Matrix message.
+            
+            Sets up the plugin to match the message, stubs generate_forecast to return a response, and stubs send_matrix_message. Verifies handle_room_message returns True, generate_forecast is called once, and send_matrix_message is awaited once.
+            """
             self.plugin.matches = MagicMock(return_value=True)
             self.plugin.generate_forecast = MagicMock(return_value="OK")
             self.plugin.send_matrix_message = AsyncMock()
@@ -985,6 +990,11 @@ class TestWeatherPlugin(unittest.TestCase):
         }
 
         async def run_test():
+            """
+            Execute handle_meshtastic_message with a packet that lacks a requester position and assert generate_forecast is called with the mesh-average coordinates.
+            
+            Verifies that when requester nodes have positions [(10, 10), (20, 30)], the plugin averages them to latitude 15.0 and longitude 20.0 and passes those values to generate_forecast.
+            """
             await self.plugin.handle_meshtastic_message(
                 packet, "formatted_message", "longname", "meshnet_name"
             )

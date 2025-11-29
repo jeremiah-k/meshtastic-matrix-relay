@@ -569,9 +569,9 @@ class TestMapPlugin(unittest.TestCase):
 
         async def run_test():
             """
-            Asynchronously tests that the plugin processes a "!map size=500,400" command by generating a map image with the specified size and returns True.
-
-            Verifies that the `get_map` function receives the correct `image_size` parameter when a custom size is provided in the command.
+            Test that a "!map size=500,400" room command triggers map generation with the specified image size.
+            
+            Asserts the handler returns True and that get_map was invoked with image_size of (500, 400).
             """
             mock_room = MagicMock()
             mock_room.room_id = "!test:example.com"

@@ -22,6 +22,12 @@ class Plugin(BasePlugin):
 
     @property
     def description(self):
+        """
+        Indicates the plugin provides weather forecasts for a radio node based on GPS coordinates.
+        
+        Returns:
+            str: Short human-readable description of the plugin.
+        """
         return "Show weather forecast for a radio node using GPS location"
 
     def generate_forecast(self, latitude, longitude, mode: str = "weather"):
@@ -122,6 +128,19 @@ class Plugin(BasePlugin):
             forecast_24h_index = min(forecast_24h_index, max_index)
 
             def get_hourly(idx):
+                """
+                Retrieve hourly weather observations at the given hourly index.
+                
+                Parameters:
+                    idx (int): Index into the hourly time series arrays in the fetched weather data.
+                
+                Returns:
+                    tuple: A 4-tuple containing:
+                        - temperature (float): Temperature at 2 meters for the hour.
+                        - precipitation_probability (float): Precipitation probability for the hour.
+                        - weather_code (int): Open-Meteo weather code for the hour.
+                        - is_day (int): 1 if the hour is daytime, 0 if nighttime.
+                """
                 temp = data["hourly"]["temperature_2m"][idx]
                 precip = data["hourly"]["precipitation_probability"][idx]
                 wcode = data["hourly"]["weathercode"][idx]
@@ -204,6 +223,18 @@ class Plugin(BasePlugin):
         temperature_unit: str,
         daily_days: int,
     ) -> str:
+        """
+        Builds a concise multi-day weather summary for display.
+        
+        Parameters:
+            data (dict): Parsed Open-Meteo response containing daily keys like `weathercode`, `temperature_2m_max`, `temperature_2m_min`, and `time`.
+            units (str): Unit system from configuration; when equal to `"imperial"`, temperatures are converted from Celsius to Fahrenheit.
+            temperature_unit (str): Temperature unit symbol to append (e.g., "°C" or "°F").
+            daily_days (int): Maximum number of days to include in the summary.
+        
+        Returns:
+            str: A pipe-separated string with one segment per day (e.g., "Mon: ☀️ 20.0°C/10.0°C | Tue: …"), or "Weather data temporarily unavailable." if no valid daily entries; output is truncated to 200 characters.
+        """
         daily_codes = data.get("daily", {}).get("weathercode") or []
         daily_max = data.get("daily", {}).get("temperature_2m_max") or []
         daily_min = data.get("daily", {}).get("temperature_2m_min") or []
@@ -251,6 +282,24 @@ class Plugin(BasePlugin):
         temperature_unit: str,
         slots: list[str],
     ) -> str:
+        """
+        Builds a short hourly forecast string containing a "Now" segment followed by forecast segments for the given slots.
+        
+        Parameters:
+            current_temp (float | None): Current temperature value or None if unavailable.
+            current_weather_code (int): Current weather code used to produce descriptive text.
+            is_day (int): Indicator (typically 0/1) whether it is currently daytime.
+            forecast_hours (dict): Mapping from slot label (str) to a tuple (temperature, precipitation_percent, weather_code, is_day).
+                - temperature (float | None)
+                - precipitation_percent (int | None)
+                - weather_code (int | None)
+                - is_day (int)
+            temperature_unit (str): Temperature unit string appended to numeric temperatures (e.g., "°C" or "°F").
+            slots (list[str]): Ordered list of slot labels to include after "Now" (e.g., ["+2h", "+5h", "+12h"]).
+        
+        Returns:
+            str: Concise forecast string (truncated to 200 characters) where each segment contains a description from weather code, temperature with unit, and precipitation percent; unavailable values are indicated as "Data unavailable".
+        """
         if current_temp is None:
             forecast = (
                 f"Now: {self._weather_code_to_text(current_weather_code, is_day)} - "
@@ -275,6 +324,16 @@ class Plugin(BasePlugin):
 
     @staticmethod
     def _weather_code_to_text(weather_code: int, is_day: int) -> str:
+        """
+        Map an Open-Meteo numeric weather code and day/night indicator to a short emoji-prefixed description.
+        
+        Parameters:
+            weather_code (int): Open-Meteo weather code.
+            is_day (int): Day indicator (truthy for day, falsy for night).
+        
+        Returns:
+            str: A brief human-readable description prefixed with an emoji (e.g., "☀️ Clear sky"), or "❓ Unknown" if the code is not recognized.
+        """
         weather_mapping = {
             0: "☀️ Clear sky" if is_day else "🌙 Clear sky",
             1: "🌤️ Mainly clear" if is_day else "🌙🌤️ Mainly clear",
@@ -312,12 +371,12 @@ class Plugin(BasePlugin):
         self, packet, formatted_message, longname, meshnet_name
     ):
         """
-        Processes incoming Meshtastic text messages and responds with a weather forecast if the plugin command is detected.
-
-        Checks if the message is a valid text message on the expected port, verifies channel and command enablement, retrieves the sender's GPS location, generates a weather forecast, and sends the response either as a direct message or broadcast depending on the message type.
-
+        Handle an incoming Meshtastic text message and respond with a weather forecast when a supported command is detected.
+        
+        Parses and validates the incoming packet and command, resolves a location (from command arguments, the sender node, or the mesh), generates a forecast, and sends the response either as a direct message or a channel broadcast as appropriate.
+        
         Returns:
-            bool: True if the message was handled and a response was sent; False otherwise.
+            bool: `True` if the packet was handled (a response was sent or the request was acknowledged as handled); `False` if the packet is not a relevant text message or command for this plugin.
         """
         if (
             "decoded" not in packet
@@ -449,12 +508,37 @@ class Plugin(BasePlugin):
         return True
 
     def get_matrix_commands(self):
+        """
+        Return the list of command names exposed by this plugin for Matrix integrations.
+        
+        Returns:
+            commands (list[str]): A list of command strings supported by the plugin for Matrix.
+        """
         return list(self.mesh_commands)
 
     def get_mesh_commands(self):
+        """
+        List available mesh commands exposed by this plugin.
+        
+        Returns:
+            list[str]: A copy of the plugin's mesh command names.
+        """
         return list(self.mesh_commands)
 
     async def handle_room_message(self, room, event, text):
+        """
+        Handle a Matrix room message that invokes the weather plugin and post a forecast.
+        
+        Parses the incoming room message text for a supported weather command, resolves coordinates (from command arguments, mesh-derived location, or geocoding), generates a forecast for the resolved coordinates, and sends the forecast to the Matrix room. If location cannot be determined, posts "Cannot determine location" to the room.
+        
+        Parameters:
+            room: The Matrix room object where the event originated.
+            event: The Matrix event object to evaluate for a plugin match.
+            text (str): The raw message text to parse for a weather command.
+        
+        Returns:
+            bool: `True` if the event matched the plugin and was handled (a response was sent or attempted), `False` if the event did not match and was not handled.
+        """
         if not self.matches(event):
             return False
 
@@ -515,7 +599,15 @@ class Plugin(BasePlugin):
     async def _resolve_location_from_args(
         self, arg_text: str | None
     ) -> tuple[float, float] | None:
-        """Resolve location from args via direct parsing or geocoding."""
+        """
+        Resolve geographic coordinates from an argument string by parsing numeric overrides or falling back to geocoding.
+        
+        Parameters:
+            arg_text (str | None): Free-form location text or a latitude/longitude override (e.g., "12.34, -56.78" or "City, Country").
+        
+        Returns:
+            tuple[float, float] | None: (latitude, longitude) in decimal degrees if resolved, otherwise `None`.
+        """
         if not arg_text:
             return None
         coords = self._parse_location_override(arg_text)
@@ -527,9 +619,13 @@ class Plugin(BasePlugin):
 
     def _determine_mesh_location(self, meshtastic_client):
         """
-        Derive an approximate mesh location by averaging available node positions.
-
-        Prefers valid latitude/longitude pairs across all known nodes when the requesting node lacks position data.
+        Compute an approximate mesh location by averaging known node coordinates.
+        
+        Parameters:
+            meshtastic_client: An object exposing a `nodes` mapping where each value may be a dict containing a `position` dict with numeric `latitude` and `longitude`.
+        
+        Returns:
+            tuple[float, float] | None: A (latitude, longitude) pair representing the averaged position across available nodes, or `None` if no valid node coordinates are found. The longitude average correctly handles antimeridian wrapping.
         """
         positions = []
         for info in meshtastic_client.nodes.values():
@@ -554,7 +650,17 @@ class Plugin(BasePlugin):
         return avg_lat, avg_lon
 
     def _parse_mesh_command(self, message: str) -> tuple[str | None, str | None]:
-        """Return (command, args) when the message starts with a supported mesh command."""
+        """
+        Parse a message for a supported mesh command prefixed with '!'.
+        
+        This matches messages that optionally begin with whitespace, followed by '!' and one of the plugin's supported commands (case-insensitive), optionally followed by arguments. Leading/trailing whitespace around the returned args is removed.
+        
+        Parameters:
+            message (str): The incoming message text to parse.
+        
+        Returns:
+            tuple[str | None, str | None]: `(command, args)` where `command` is the matched command in lowercase and `args` is the trimmed argument string. Returns `(None, None)` if `message` is not a string or does not contain a supported command.
+        """
         if not isinstance(message, str):
             return None, None
         cmd_pattern = "|".join(re.escape(cmd) for cmd in self.mesh_commands)
@@ -567,11 +673,14 @@ class Plugin(BasePlugin):
         return cmd, args.strip()
 
     def _parse_location_override(self, arg_text: str) -> tuple[float, float] | None:
-        r"""
-        Parse a latitude/longitude override in the form \"lat,lon\" or \"lat lon\".
-
+        """
+        Parse a latitude/longitude string in "lat,lon" or "lat lon" format into a (latitude, longitude) tuple.
+        
+        Parameters:
+            arg_text (str): Text containing latitude and longitude separated by a comma or whitespace.
+        
         Returns:
-            tuple[float, float] | None: Parsed coordinates, or None if parsing fails.
+            tuple[float, float] | None: (latitude, longitude) if parsing succeeds and values are within valid ranges; otherwise None.
         """
         if not arg_text:
             return None
@@ -589,10 +698,10 @@ class Plugin(BasePlugin):
 
     def _geocode_location(self, query: str) -> tuple[float, float] | None:
         """
-        Resolve a free-form location (e.g., city or postal code) to coordinates via Open-Meteo geocoding.
-
+        Resolve a free-form location string to (latitude, longitude) coordinates using the Open-Meteo geocoding API.
+        
         Returns:
-            tuple[float, float] | None: Coordinates if found, otherwise None.
+            tuple[float, float] | None: A (latitude, longitude) pair as floats if a numeric result is found, `None` otherwise.
         """
         if not query:
             return None

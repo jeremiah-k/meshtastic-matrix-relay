@@ -29,12 +29,12 @@ class Plugin(BasePlugin):
         self, packet, formatted_message, longname, meshnet_name
     ):
         """
-        Handles incoming Meshtastic packets for the drop message plugin, delivering or storing dropped messages based on packet content and node location.
-
-        When a packet is received, attempts to deliver any stored dropped messages to the sender if they are within a configured radius of the message's location and are not the original dropper. If the packet contains a properly formatted drop command, extracts the message and stores it with the sender's current location for future delivery.
-
+        Manage delivery and storage of "drop" messages based on an incoming packet and node locations.
+        
+        When a packet arrives, attempt to deliver any stored dropped messages to the sender if the sender's known position is within the configured radius and the sender is not the original dropper. If the packet contains a valid "!drop <message>" command, record the message together with the sender's current location for later delivery.
+        
         Returns:
-            True if a drop command was processed and stored, False otherwise.
+            True if a drop command was processed and stored (or processing occurred but the dropper's position was unavailable), False otherwise.
         """
         meshtastic_client = connect_meshtastic()
         nodeInfo = meshtastic_client.getMyNodeInfo()

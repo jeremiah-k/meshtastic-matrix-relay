@@ -140,6 +140,11 @@ class TestPingPlugin(unittest.TestCase):
         }
 
         async def run_test():
+            """
+            Verify that handle_meshtastic_message does not process a packet when the Meshtastic client lacks `myInfo`.
+            
+            This test awaits plugin.handle_meshtastic_message with the provided `packet` and asserts that it returns `False`, indicating no handling occurred for a client with missing `myInfo`.
+            """
             result = await self.plugin.handle_meshtastic_message(
                 packet, "formatted_message", "TestNode", "TestMesh"
             )
