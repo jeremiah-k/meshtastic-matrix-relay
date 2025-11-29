@@ -236,7 +236,7 @@ class TestGetMap(unittest.TestCase):
     @patch("staticmaps.Context")
     def test_get_map_with_anonymization(self, mock_context_class, mock_anonymize):
         """
-        Tests that `get_map` calls the anonymization function for each location when anonymization is enabled and a radius is specified.
+        Tests that anonymize_location is no longer invoked even when anonymization flag is passed.
         """
         mock_context = MagicMock()
         mock_context_class.return_value = mock_context
@@ -245,9 +245,7 @@ class TestGetMap(unittest.TestCase):
 
         get_map(self.test_locations, anonymize=True, radius=5000)
 
-        # Should call anonymize_location for each location
-        self.assertEqual(mock_anonymize.call_count, len(self.test_locations))
-        mock_anonymize.assert_any_call(lat=37.7749, lon=-122.4194, radius=5000)
+        mock_anonymize.assert_not_called()
 
 
 @pytest.mark.usefixtures("mock_event_loop")

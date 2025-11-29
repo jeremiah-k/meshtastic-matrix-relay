@@ -189,7 +189,7 @@ def anonymize_location(lat, lon, radius=1000):
     return lat, lon
 
 
-def get_map(locations, zoom=None, image_size=None, anonymize=True, radius=10000):
+def get_map(locations, zoom=None, image_size=None, anonymize=False, radius=10000):
     """
     Generate a static map image with labeled location markers.
 
@@ -200,8 +200,8 @@ def get_map(locations, zoom=None, image_size=None, anonymize=True, radius=10000)
         locations (Iterable[dict]): Iterable of dicts with keys "lat", "lon", and "label". Optional "precisionBits" controls shaded radius.
         zoom (int | None): Map zoom level to use. If None the Context's default zoom applies.
         image_size (tuple[int, int] | None): (width, height) in pixels for the output image. If None, defaults to (1000, 1000). Dimensions are clamped by caller logic.
-        anonymize (bool): Deprecated; left for backward compatibility (no coordinate changes performed).
-        radius (int): Deprecated; left for backward compatibility (no coordinate changes performed).
+        anonymize (bool): Deprecated; ignored (coordinates are not altered).
+        radius (int): Deprecated; ignored (coordinates are not altered).
 
     Returns:
         PIL.Image.Image: A Pillow image containing the rendered map with labels.
@@ -372,15 +372,12 @@ class Plugin(BasePlugin):
                     }
                 )
 
-        anonymize = self.config.get("anonymize", True)
-        radius = self.config.get("radius", 1000)
-
         pillow_image = get_map(
             locations=locations,
             zoom=zoom,
             image_size=image_size,
-            anonymize=anonymize,
-            radius=radius,
+            anonymize=False,
+            radius=0,
         )
 
         try:
