@@ -226,6 +226,116 @@ class TestMeshtasticUtils(unittest.TestCase):
             result = on_meshtastic_message(packet, mock_interface)
             self.assertIsNone(result)
 
+    def test_on_meshtastic_message_reaction_relay(self):
+        """
+        Ensure reaction packets are relayed to Matrix when reactions are enabled.
+        """
+        reaction_packet = {
+            "fromId": "!node",
+            "to": 999,
+            "decoded": {
+                "text": ":)",
+                "portnum": "TEXT_MESSAGE_APP",
+                "replyId": 42,
+                "emoji": 1,
+            },
+            "channel": 0,
+            "id": 555,
+        }
+
+        with patch("mmrelay.meshtastic_utils.config", self.mock_config), patch(
+            "mmrelay.meshtastic_utils.matrix_rooms", self.mock_config["matrix_rooms"]
+        ), patch("mmrelay.meshtastic_utils.event_loop", MagicMock()), patch(
+            "mmrelay.meshtastic_utils.get_longname", return_value="Long Name"
+        ), patch(
+            "mmrelay.meshtastic_utils.get_shortname", return_value="LN"
+        ), patch(
+            "mmrelay.matrix_utils.get_interaction_settings",
+            return_value={"reactions": True, "replies": True},
+        ), patch(
+            "mmrelay.matrix_utils.message_storage_enabled", return_value=False
+        ), patch(
+            "mmrelay.meshtastic_utils.get_message_map_by_meshtastic_id",
+            return_value=("evt1", "!room1:matrix.org", "orig text", "mesh"),
+        ), patch(
+            "mmrelay.matrix_utils.get_matrix_prefix", return_value="[prefix] "
+        ), patch(
+            "mmrelay.matrix_utils.matrix_relay", new_callable=AsyncMock
+        ) as mock_matrix_relay, patch(
+            "mmrelay.meshtastic_utils._submit_coro"
+        ) as mock_submit_coro, patch(
+            "mmrelay.meshtastic_utils.logger"
+        ):
+            mock_interface = MagicMock()
+            mock_interface.myInfo.my_node_num = 999
+
+            on_meshtastic_message(reaction_packet, mock_interface)
+
+            mock_submit_coro.assert_called_once()
+            # Ensure we scheduled the matrix relay coroutine
+            scheduled_coro = mock_submit_coro.call_args.args[0]
+            self.assertTrue(mock_matrix_relay.called)
+
+    def test_on_meshtastic_message_reply_relay(self):
+        """
+        Ensure reply packets (non-emoji) are relayed when replies are enabled.
+        """
+        reply_packet = {
+            "fromId": "!node",
+            "to": 999,
+            "decoded": {
+                "text": "Reply message",
+                "portnum": "TEXT_MESSAGE_APP",
+                "replyId": 77,
+            },
+            "channel": 0,
+            "id": 777,
+        }
+
+        with patch("mmrelay.meshtastic_utils.config", self.mock_config), patch(
+            "mmrelay.meshtastic_utils.matrix_rooms", self.mock_config["matrix_rooms"]
+        ), patch("mmrelay.meshtastic_utils.event_loop", MagicMock()), patch(
+            "mmrelay.meshtastic_utils.get_longname", return_value="Long Name"
+        ), patch(
+            "mmrelay.meshtastic_utils.get_shortname", return_value="LN"
+        ), patch(
+            "mmrelay.matrix_utils.get_interaction_settings",
+            return_value={"reactions": True, "replies": True},
+        ), patch(
+            "mmrelay.matrix_utils.message_storage_enabled", return_value=False
+        ), patch(
+            "mmrelay.meshtastic_utils.get_message_map_by_meshtastic_id",
+            return_value=("evt1", "!room1:matrix.org", "orig text", "mesh"),
+        ), patch(
+            "mmrelay.matrix_utils.get_matrix_prefix", return_value="[prefix] "
+        ), patch(
+            "mmrelay.matrix_utils.matrix_relay", new_callable=AsyncMock
+        ) as mock_matrix_relay, patch(
+            "mmrelay.meshtastic_utils._submit_coro"
+        ) as mock_submit_coro:
+            mock_interface = MagicMock()
+            mock_interface.myInfo.my_node_num = 999
+
+            on_meshtastic_message(reply_packet, mock_interface)
+
+            mock_submit_coro.assert_called_once()
+            self.assertTrue(mock_matrix_relay.called)
+
+    def test_on_meshtastic_message_event_loop_missing(self):
+        """
+        Returns early when event loop is not set.
+        """
+        with patch("mmrelay.meshtastic_utils.config", self.mock_config), patch(
+            "mmrelay.meshtastic_utils.matrix_rooms", self.mock_config["matrix_rooms"]
+        ), patch("mmrelay.meshtastic_utils.event_loop", None), patch(
+            "mmrelay.meshtastic_utils.logger"
+        ) as mock_logger:
+            mock_interface = MagicMock()
+            mock_interface.myInfo.my_node_num = 1
+            result = on_meshtastic_message(self.mock_packet, mock_interface)
+            self.assertIsNone(result)
+            mock_logger.error.assert_not_called()
+
     @patch("mmrelay.meshtastic_utils.serial_port_exists")
     @patch("mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface")
     @patch("mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface")
