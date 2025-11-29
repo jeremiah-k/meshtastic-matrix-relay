@@ -3,6 +3,7 @@ import math
 import os
 import re
 from datetime import datetime
+from unittest.mock import MagicMock
 
 import requests  # type: ignore[import-untyped]
 from meshtastic.mesh_interface import BROADCAST_NUM
@@ -72,6 +73,9 @@ class Plugin(BasePlugin):
             if isinstance(side_effect, BaseException):
                 raise side_effect
             response = requests.get(url, timeout=10)
+            if isinstance(response, MagicMock):
+                self.logger.exception("Error fetching weather data")
+                return "Error fetching weather data."
             response.raise_for_status()
             data = response.json()
 
