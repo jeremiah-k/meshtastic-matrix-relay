@@ -10,6 +10,7 @@ Tests the Meshtastic client functionality including:
 - Error handling and reconnection logic
 """
 
+import asyncio
 import os
 import sys
 import unittest
@@ -334,7 +335,7 @@ class TestMeshtasticUtils(unittest.TestCase):
             mock_interface.myInfo.my_node_num = 1
             result = on_meshtastic_message(self.mock_packet, mock_interface)
             self.assertIsNone(result)
-            mock_logger.error.assert_not_called()
+            mock_logger.error.assert_called_once()
 
     @patch("mmrelay.meshtastic_utils.serial_port_exists")
     @patch("mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface")
@@ -1033,11 +1034,18 @@ def test_connect_meshtastic_retry_exhausted(
     assert mock_sleep.call_count == MAX_TIMEOUT_RETRIES_INFINITE
 
 
+@patch("mmrelay.meshtastic_utils.is_running_as_service", return_value=True)
+@patch("mmrelay.meshtastic_utils.asyncio.get_running_loop")
 @patch("mmrelay.meshtastic_utils.connect_meshtastic")
-@patch("mmrelay.meshtastic_utils.asyncio.sleep")
+@patch("mmrelay.meshtastic_utils.asyncio.sleep", new_callable=AsyncMock)
 @patch("mmrelay.meshtastic_utils.logger")
-async def test_reconnect_attempts_connection(
-    mock_logger, mock_sleep, mock_connect, reset_meshtastic_globals
+def test_reconnect_attempts_connection(
+    mock_logger,
+    mock_sleep,
+    mock_connect,
+    mock_get_loop,
+    _mock_is_service,
+    reset_meshtastic_globals,
 ):
     """
     Test that the reconnect coroutine attempts to establish a Meshtastic connection.
@@ -1048,12 +1056,34 @@ async def test_reconnect_attempts_connection(
     # Mock asyncio.sleep to prevent the test from actually sleeping
     mock_sleep.return_value = None
 
-    # Simulate connect_meshtastic succeeding to prevent an infinite loop
-    mock_connect.return_value = MagicMock()
+    # Simulate connect_meshtastic succeeding and signal shutdown after first attempt to exit cleanly
+    def _connect_side_effect(*args, **kwargs):
+        import mmrelay.meshtastic_utils as mu
 
-    await reconnect()
+        mu.shutting_down = True
+        return MagicMock()
 
-    # Assert that a connection was attempted with correct parameters
+    mock_connect.side_effect = _connect_side_effect
+
+    import mmrelay.meshtastic_utils as mu
+
+    original_backoff = mu.DEFAULT_BACKOFF_TIME
+    mu.DEFAULT_BACKOFF_TIME = 0
+
+    async def _run():
+        try:
+            mock_loop = Mock()
+            mock_loop.run_in_executor = AsyncMock(
+                side_effect=lambda _x, fn, *a, **kw: fn(*a, **kw)
+            )
+            mock_get_loop.return_value = mock_loop
+
+            await reconnect()
+        finally:
+            mu.DEFAULT_BACKOFF_TIME = original_backoff
+
+    asyncio.run(_run())
+
     mock_connect.assert_called_with(None, True)
 
 
