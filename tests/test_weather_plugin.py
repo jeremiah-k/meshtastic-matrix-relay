@@ -1240,8 +1240,8 @@ class TestWeatherPlugin(unittest.TestCase):
         """Test generate_forecast handles requests.RequestException."""
         import requests
 
-        # Mock requests.get itself to raise RequestException
-        mock_get.side_effect = requests.RequestException("Network error")
+        # Mock requests.get itself to raise a real RequestException subclass
+        mock_get.side_effect = requests.exceptions.RequestException("Network error")
 
         plugin = Plugin()
 
