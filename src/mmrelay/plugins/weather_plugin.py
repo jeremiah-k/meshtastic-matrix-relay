@@ -544,9 +544,10 @@ class Plugin(BasePlugin):
             first = results[0]
             lat = first.get("latitude")
             lon = first.get("longitude")
-            if isinstance(lat, (int, float)) and isinstance(lon, (int, float)):
-                return float(lat), float(lon)
-            return None
         except (ValueError, TypeError, KeyError):
             self.logger.exception("Malformed geocoding response")
+            return None
+        else:
+            if isinstance(lat, (int, float)) and isinstance(lon, (int, float)):
+                return float(lat), float(lon)
             return None

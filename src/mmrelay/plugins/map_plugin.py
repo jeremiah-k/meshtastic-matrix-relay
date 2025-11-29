@@ -190,8 +190,8 @@ def anonymize_location(lat, lon, radius=1000):
 
 
 def get_map(
-    locations, zoom=None, image_size=None, anonymize=False, radius=10000
-):  # noqa: ARG001
+    locations, zoom=None, image_size=None, anonymize=False, radius=10000  # noqa: ARG001
+):
     """
     Generate a static map image with labeled location markers.
 
@@ -229,7 +229,7 @@ def get_map(
             context.add_object(
                 circle_cls(
                     radio,
-                    precision_radius_m / 1000.0,
+                    precision_radius_m,
                     fill_color=color_cls(0, 0, 0, 48),
                     color=color_cls(0, 0, 0, 64),
                 )
@@ -361,7 +361,12 @@ class Plugin(BasePlugin):
             and not getattr(meshtastic_client, "nodes", None)
         ):
             self.logger.error("Meshtastic client unavailable; cannot generate map")
-            return False
+            await self.send_matrix_message(
+                room.room_id,
+                "Cannot generate map: Meshtastic client unavailable.",
+                formatted=False,
+            )
+            return True
 
         locations = []
         for _node, info in meshtastic_client.nodes.items():
