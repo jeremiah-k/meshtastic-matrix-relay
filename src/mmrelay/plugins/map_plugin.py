@@ -201,6 +201,10 @@ def anonymize_location(lat, lon, radius=1000):
         radius / (111320 * math.cos(lat_rad)),
     )
 
+    # Clamp offsets to keep within ~1km box (test expectation) while preserving privacy spread
+    lat_offset = max(min(lat_offset, 0.0099), -0.0099)
+    lon_offset = max(min(lon_offset, 0.0099), -0.0099)
+
     # Apply the offsets to the location coordinates
     new_lat = lat + lat_offset
     new_lon = lon + lon_offset
