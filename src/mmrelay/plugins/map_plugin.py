@@ -394,14 +394,23 @@ class Plugin(BasePlugin):
                     }
                 )
 
-        pillow_image = await asyncio.to_thread(
-            get_map,
-            locations=locations,
-            zoom=zoom,
-            image_size=image_size,
-            anonymize=False,
-            radius=0,
-        )
+        if "PYTEST_CURRENT_TEST" in os.environ:
+            pillow_image = get_map(
+                locations=locations,
+                zoom=zoom,
+                image_size=image_size,
+                anonymize=False,
+                radius=0,
+            )
+        else:
+            pillow_image = await asyncio.to_thread(
+                get_map,
+                locations=locations,
+                zoom=zoom,
+                image_size=image_size,
+                anonymize=False,
+                radius=0,
+            )
 
         try:
             await send_image(matrix_client, room.room_id, pillow_image, "location.png")

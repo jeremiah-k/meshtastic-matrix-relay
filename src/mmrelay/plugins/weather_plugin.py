@@ -267,14 +267,8 @@ class Plugin(BasePlugin):
             return forecast[:200]
 
         except Exception as e:
-            # Identify request/HTTP errors without assuming RequestException is a real type
             req_exc = getattr(requests, "RequestException", None)
-            is_req_error = False
-            if req_exc is not None and isinstance(req_exc, type):
-                try:
-                    is_req_error = isinstance(e, req_exc)
-                except TypeError:
-                    is_req_error = False
+            is_req_error = isinstance(req_exc, type) and isinstance(e, req_exc)
             if not is_req_error:
                 exception_module = getattr(type(e), "__module__", "")
                 if exception_module.startswith("requests"):
@@ -284,14 +278,12 @@ class Plugin(BasePlugin):
                 self.logger.exception("Error fetching weather data")
                 return "Error fetching weather data."
 
-            # Handle data parsing errors
             if isinstance(
                 e, (KeyError, IndexError, TypeError, ValueError, AttributeError)
             ):
                 self.logger.exception("Malformed weather data")
                 return "Error parsing weather data."
 
-            # Re-raise unexpected exceptions
             raise
 
     async def handle_meshtastic_message(
