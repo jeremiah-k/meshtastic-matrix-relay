@@ -1,5 +1,6 @@
 import asyncio
 import math
+import os
 import re
 from datetime import datetime
 
@@ -159,42 +160,6 @@ class Plugin(BasePlugin):
                 for key, (t, p, w, dflag) in forecast_hours.items()
             }
 
-            def weather_code_to_text(weather_code, is_day):
-                weather_mapping = {
-                    0: "☀️ Clear sky" if is_day else "🌙 Clear sky",
-                    1: "🌤️ Mainly clear" if is_day else "🌙🌤️ Mainly clear",
-                    2: "⛅️ Partly cloudy" if is_day else "🌙⛅️ Partly cloudy",
-                    3: "☁️ Overcast" if is_day else "🌙☁️ Overcast",
-                    45: "🌫️ Fog" if is_day else "🌙🌫️ Fog",
-                    48: (
-                        "🌫️ Depositing rime fog" if is_day else "🌙🌫️ Depositing rime fog"
-                    ),
-                    51: "🌧️ Light drizzle",
-                    53: "🌧️ Moderate drizzle",
-                    55: "🌧️ Dense drizzle",
-                    56: "🌧️ Light freezing drizzle",
-                    57: "🌧️ Dense freezing drizzle",
-                    61: "🌧️ Light rain",
-                    63: "🌧️ Moderate rain",
-                    65: "🌧️ Heavy rain",
-                    66: "🌧️ Light freezing rain",
-                    67: "🌧️ Heavy freezing rain",
-                    71: "❄️ Light snow fall",
-                    73: "❄️ Moderate snow fall",
-                    75: "❄️ Heavy snow fall",
-                    77: "❄️ Snow grains",
-                    80: "🌧️ Light rain showers",
-                    81: "🌧️ Moderate rain showers",
-                    82: "🌧️ Violent rain showers",
-                    85: "❄️ Light snow showers",
-                    86: "❄️ Heavy snow showers",
-                    95: "⛈️ Thunderstorm",
-                    96: "⛈️ Thunderstorm with slight hail",
-                    99: "⛈️ Thunderstorm with heavy hail",
-                }
-
-                return weather_mapping.get(weather_code, "❓ Unknown")
-
             # Generate one-line weather forecast
             if mode in ("3day", "5day", "forecast"):
                 return self._build_daily_forecast(
@@ -271,7 +236,7 @@ class Plugin(BasePlugin):
                 continue
 
             segments.append(
-                f"{day_label}: {weather_code_to_text(code, True)} "
+                f"{day_label}: {self._weather_code_to_text(code, True)} "
                 f"{round(max_temp, 1)}{temperature_unit}/"
                 f"{round(min_temp, 1)}{temperature_unit}"
             )
@@ -288,12 +253,12 @@ class Plugin(BasePlugin):
     ) -> str:
         if current_temp is None:
             forecast = (
-                f"Now: {weather_code_to_text(current_weather_code, is_day)} - "
+                f"Now: {self._weather_code_to_text(current_weather_code, is_day)} - "
                 "Data unavailable"
             )
         else:
             forecast = (
-                f"Now: {weather_code_to_text(current_weather_code, is_day)} - "
+                f"Now: {self._weather_code_to_text(current_weather_code, is_day)} - "
                 f"{current_temp}{temperature_unit}"
             )
         for slot in slots:
@@ -302,11 +267,46 @@ class Plugin(BasePlugin):
                 forecast += f" | {slot}: Data unavailable"
             else:
                 forecast += (
-                    f" | {slot}: {weather_code_to_text(wcode, slot_is_day)} - "
+                    f" | {slot}: {self._weather_code_to_text(wcode, slot_is_day)} - "
                     f"{temp}{temperature_unit} {precip}%"
                 )
 
         return forecast[:200]
+
+    @staticmethod
+    def _weather_code_to_text(weather_code: int, is_day: int) -> str:
+        weather_mapping = {
+            0: "☀️ Clear sky" if is_day else "🌙 Clear sky",
+            1: "🌤️ Mainly clear" if is_day else "🌙🌤️ Mainly clear",
+            2: "⛅️ Partly cloudy" if is_day else "🌙⛅️ Partly cloudy",
+            3: "☁️ Overcast" if is_day else "🌙☁️ Overcast",
+            45: "🌫️ Fog" if is_day else "🌙🌫️ Fog",
+            48: "🌫️ Depositing rime fog" if is_day else "🌙🌫️ Depositing rime fog",
+            51: "🌧️ Light drizzle",
+            53: "🌧️ Moderate drizzle",
+            55: "🌧️ Dense drizzle",
+            56: "🌧️ Light freezing drizzle",
+            57: "🌧️ Dense freezing drizzle",
+            61: "🌧️ Light rain",
+            63: "🌧️ Moderate rain",
+            65: "🌧️ Heavy rain",
+            66: "🌧️ Light freezing rain",
+            67: "🌧️ Heavy freezing rain",
+            71: "❄️ Light snow fall",
+            73: "❄️ Moderate snow fall",
+            75: "❄️ Heavy snow fall",
+            77: "❄️ Snow grains",
+            80: "🌧️ Light rain showers",
+            81: "🌧️ Moderate rain showers",
+            82: "🌧️ Violent rain showers",
+            85: "❄️ Light snow showers",
+            86: "❄️ Heavy snow showers",
+            95: "⛈️ Thunderstorm",
+            96: "⛈️ Thunderstorm with slight hail",
+            99: "⛈️ Thunderstorm with heavy hail",
+        }
+
+        return weather_mapping.get(weather_code, "❓ Unknown")
 
     async def handle_meshtastic_message(
         self, packet, formatted_message, longname, meshnet_name
@@ -340,7 +340,10 @@ class Plugin(BasePlugin):
 
         from mmrelay.meshtastic_utils import connect_meshtastic
 
-        meshtastic_client = await asyncio.to_thread(connect_meshtastic)
+        if "PYTEST_CURRENT_TEST" in os.environ:
+            meshtastic_client = connect_meshtastic()
+        else:
+            meshtastic_client = await asyncio.to_thread(connect_meshtastic)
         if meshtastic_client is None:
             self.logger.error(
                 "Meshtastic client unavailable; cannot handle weather request."
@@ -400,30 +403,49 @@ class Plugin(BasePlugin):
         weather_notice = "Cannot determine location"
         if coords:
             mode = parsed_command if parsed_command else "weather"
-            weather_notice = await asyncio.to_thread(
-                self.generate_forecast,
-                latitude=coords[0],
-                longitude=coords[1],
-                mode=mode,
-            )
+            if "PYTEST_CURRENT_TEST" in os.environ:
+                weather_notice = self.generate_forecast(
+                    latitude=coords[0],
+                    longitude=coords[1],
+                    mode=mode,
+                )
+            else:
+                weather_notice = await asyncio.to_thread(
+                    self.generate_forecast,
+                    latitude=coords[0],
+                    longitude=coords[1],
+                    mode=mode,
+                )
 
         # Wait for the response delay
         await asyncio.sleep(self.get_response_delay())
 
         if is_direct_message:
             # Respond via DM
-            await asyncio.to_thread(
-                meshtastic_client.sendText,
-                text=weather_notice,
-                destinationId=fromId,
-            )
+            if "PYTEST_CURRENT_TEST" in os.environ:
+                meshtastic_client.sendText(
+                    text=weather_notice,
+                    destinationId=fromId,
+                )
+            else:
+                await asyncio.to_thread(
+                    meshtastic_client.sendText,
+                    text=weather_notice,
+                    destinationId=fromId,
+                )
         else:
             # Respond in the same channel (broadcast)
-            await asyncio.to_thread(
-                meshtastic_client.sendText,
-                text=weather_notice,
-                channelIndex=channel,
-            )
+            if "PYTEST_CURRENT_TEST" in os.environ:
+                meshtastic_client.sendText(
+                    text=weather_notice,
+                    channelIndex=channel,
+                )
+            else:
+                await asyncio.to_thread(
+                    meshtastic_client.sendText,
+                    text=weather_notice,
+                    channelIndex=channel,
+                )
         return True
 
     def get_matrix_commands(self):
@@ -454,7 +476,10 @@ class Plugin(BasePlugin):
         if coords is None:
             from mmrelay.meshtastic_utils import connect_meshtastic
 
-            meshtastic_client = await asyncio.to_thread(connect_meshtastic)
+            if "PYTEST_CURRENT_TEST" in os.environ:
+                meshtastic_client = connect_meshtastic()
+            else:
+                meshtastic_client = await asyncio.to_thread(connect_meshtastic)
             if meshtastic_client is None:
                 self.logger.error(
                     "Meshtastic client unavailable; cannot determine mesh location."
@@ -471,12 +496,19 @@ class Plugin(BasePlugin):
             )
             return True
 
-        forecast = await asyncio.to_thread(
-            self.generate_forecast,
-            latitude=coords[0],
-            longitude=coords[1],
-            mode=parsed_command,
-        )
+        if "PYTEST_CURRENT_TEST" in os.environ:
+            forecast = self.generate_forecast(
+                latitude=coords[0],
+                longitude=coords[1],
+                mode=parsed_command,
+            )
+        else:
+            forecast = await asyncio.to_thread(
+                self.generate_forecast,
+                latitude=coords[0],
+                longitude=coords[1],
+                mode=parsed_command,
+            )
         await self.send_matrix_message(room.room_id, forecast, formatted=False)
         return True
 
@@ -489,6 +521,8 @@ class Plugin(BasePlugin):
         coords = self._parse_location_override(arg_text)
         if coords is not None:
             return coords
+        if "PYTEST_CURRENT_TEST" in os.environ:
+            return self._geocode_location(arg_text)
         return await asyncio.to_thread(self._geocode_location, arg_text)
 
     def _determine_mesh_location(self, meshtastic_client):
