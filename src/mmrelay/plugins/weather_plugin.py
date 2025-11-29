@@ -138,14 +138,23 @@ class Plugin(BasePlugin):
                 "+24h": get_hourly(forecast_24h_index),
             }
 
-            if units == "imperial":
+            if units == "imperial" and current_temp is not None:
                 current_temp = current_temp * 9 / 5 + 32
+            if units == "imperial":
                 for key, (t, p, w, dflag) in forecast_hours.items():
-                    forecast_hours[key] = (t * 9 / 5 + 32, p, w, dflag)
+                    if t is not None:
+                        t = t * 9 / 5 + 32
+                    forecast_hours[key] = (t, p, w, dflag)
 
-            current_temp = round(current_temp, 1)
+            if current_temp is not None:
+                current_temp = round(current_temp, 1)
             forecast_hours = {
-                key: (round(t, 1), p, w, dflag)
+                key: (
+                    round(t, 1) if t is not None else None,
+                    p,
+                    w,
+                    dflag,
+                )
                 for key, (t, p, w, dflag) in forecast_hours.items()
             }
 
@@ -234,16 +243,25 @@ class Plugin(BasePlugin):
                     )
                 return " | ".join(segments)[:200]
 
-            forecast = (
-                f"Now: {weather_code_to_text(current_weather_code, is_day)} - "
-                f"{current_temp}{temperature_unit}"
-            )
+            if current_temp is None:
+                forecast = (
+                    f"Now: {weather_code_to_text(current_weather_code, is_day)} - "
+                    "Data unavailable"
+                )
+            else:
+                forecast = (
+                    f"Now: {weather_code_to_text(current_weather_code, is_day)} - "
+                    f"{current_temp}{temperature_unit}"
+                )
             for slot in slots:
                 temp, precip, wcode, slot_is_day = forecast_hours[slot]
-                forecast += (
-                    f" | {slot}: {weather_code_to_text(wcode, slot_is_day)} - "
-                    f"{temp}{temperature_unit} {precip}%"
-                )
+                if temp is None or precip is None or wcode is None:
+                    forecast += f" | {slot}: Data unavailable"
+                else:
+                    forecast += (
+                        f" | {slot}: {weather_code_to_text(wcode, slot_is_day)} - "
+                        f"{temp}{temperature_unit} {precip}%"
+                    )
 
             return forecast[:200]
 

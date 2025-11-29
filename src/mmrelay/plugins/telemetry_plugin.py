@@ -136,7 +136,12 @@ class Plugin(BasePlugin):
             if node_data_rows:
                 calculate_averages(node_data_rows)
             else:
-                return False
+                await self.send_matrix_message(
+                    room.room_id,
+                    f"No telemetry data found for node '{node}'.",
+                    formatted=False,
+                )
+                return True
         else:
             for node_data_json in self.get_data():
                 node_data_rows = json.loads(node_data_json[0])

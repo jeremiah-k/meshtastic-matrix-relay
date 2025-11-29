@@ -31,7 +31,8 @@ class Plugin(BasePlugin):
             if "snr" in info:
                 snr.append(info["snr"])
 
-        # filter out None values from snr and air_util_tx just in case
+        # filter out None values from metrics just in case
+        battery_levels = [value for value in battery_levels if value is not None]
         air_util_tx = [value for value in air_util_tx if value is not None]
         snr = [value for value in snr if value is not None]
 

@@ -189,7 +189,9 @@ def anonymize_location(lat, lon, radius=1000):
     return lat, lon
 
 
-def get_map(locations, zoom=None, image_size=None, anonymize=False, radius=10000):
+def get_map(
+    locations, zoom=None, image_size=None, anonymize=False, radius=10000
+):  # noqa: ARG001
     """
     Generate a static map image with labeled location markers.
 
@@ -215,11 +217,12 @@ def get_map(locations, zoom=None, image_size=None, anonymize=False, radius=10000
             float(location["lat"]), float(location["lon"])
         )
         precision_bits = location.get("precisionBits")
-        precision_radius_m = (
-            precision_bits_to_meters(int(precision_bits))
-            if precision_bits is not None
-            else None
-        )
+        precision_radius_m = None
+        if precision_bits is not None:
+            try:
+                precision_radius_m = precision_bits_to_meters(int(precision_bits))
+            except (TypeError, ValueError):
+                precision_radius_m = None
         circle_cls = getattr(staticmaps, "Circle", None)
         color_cls = getattr(staticmaps, "Color", None)
         if precision_radius_m and circle_cls and color_cls:
@@ -288,7 +291,7 @@ class Plugin(BasePlugin):
         """
         Handle "!map" commands in a Matrix room by generating a static map of known mesh node locations and sending it to the room.
 
-        Parses optional parameters in the incoming message for zoom (zoom=N) and image size (size=W,H). Collects node positions from the Meshtastic client, optionally anonymizes coordinates per plugin configuration, builds a map image, and uploads it to the room as "location.png".
+        Parses optional parameters in the incoming message for zoom (zoom=N) and image size (size=W,H). Collects node positions from the Meshtastic client, renders firmware-provided precision as shaded circles, builds a map image, and uploads it to the room as "location.png".
 
         Parameters:
             room: The Matrix room object where the message was received; used to determine the destination room ID.
@@ -299,23 +302,6 @@ class Plugin(BasePlugin):
             bool: `True` if the message was recognized, a map was generated, and the image was sent; `False` if the message did not target this plugin or was not processed.
         """
         if not self.matches(event):
-            return False
-
-        from mmrelay.matrix_utils import (
-            ImageUploadError,
-            connect_matrix,
-            send_image,
-        )
-
-        matrix_client = await connect_matrix()
-        meshtastic_client = await _connect_meshtastic_async()
-
-        # In test environment, mock might not have all attributes, so be more lenient
-        if not meshtastic_client or (
-            "PYTEST_CURRENT_TEST" not in os.environ
-            and not getattr(meshtastic_client, "nodes", None)
-        ):
-            self.logger.error("Meshtastic client unavailable; cannot generate map")
             return False
 
         args = self.extract_command_args("map", text)
@@ -359,6 +345,23 @@ class Plugin(BasePlugin):
 
         if image_size[0] > 1000 or image_size[1] > 1000:
             image_size = (1000, 1000)
+
+        from mmrelay.matrix_utils import (
+            ImageUploadError,
+            connect_matrix,
+            send_image,
+        )
+
+        matrix_client = await connect_matrix()
+        meshtastic_client = await _connect_meshtastic_async()
+
+        # In test environment, mock might not have all attributes, so be more lenient
+        if not meshtastic_client or (
+            "PYTEST_CURRENT_TEST" not in os.environ
+            and not getattr(meshtastic_client, "nodes", None)
+        ):
+            self.logger.error("Meshtastic client unavailable; cannot generate map")
+            return False
 
         locations = []
         for _node, info in meshtastic_client.nodes.items():
