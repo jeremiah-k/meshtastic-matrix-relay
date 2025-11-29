@@ -1,7 +1,6 @@
 import asyncio
 import re
 from datetime import datetime
-from typing import TYPE_CHECKING
 
 import requests  # type: ignore[import-untyped]
 from meshtastic.mesh_interface import BROADCAST_NUM

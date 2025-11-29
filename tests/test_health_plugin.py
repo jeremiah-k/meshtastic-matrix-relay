@@ -14,7 +14,6 @@ import asyncio
 import os
 import sys
 import unittest
-from statistics import StatisticsError
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
