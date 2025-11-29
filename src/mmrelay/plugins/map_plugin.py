@@ -1,8 +1,6 @@
 import asyncio
-import io
 import os
 import re
-from typing import TYPE_CHECKING
 
 import PIL.ImageDraw
 import s2sphere
@@ -13,12 +11,15 @@ from PIL import Image
 from mmrelay.log_utils import get_logger
 from mmrelay.plugins.base_plugin import BasePlugin
 
+S2_PRECISION_BITS_TO_METERS_CONSTANT = 23905787.925008
+# Derived from S2 geometry; matches Meshtastic Android precision-bits radius conversion.
+
 
 def precision_bits_to_meters(bits: int) -> float | None:
     """Convert precision bits to approximate radius in meters (matches Android logic)."""
     if bits <= 0:
         return None
-    return 23905787.925008 * 0.5 ** bits
+    return S2_PRECISION_BITS_TO_METERS_CONSTANT * 0.5 ** bits
 
 try:
     import cairo  # type: ignore[import-untyped]
@@ -44,8 +45,8 @@ async def _connect_meshtastic_async():
 
 
 def textsize(self: PIL.ImageDraw.ImageDraw, *args, **kwargs):
-    _x, _y, w, h = self.textbbox((0, 0), *args, **kwargs)
-    return w, h
+    left, top, right, bottom = self.textbbox((0, 0), *args, **kwargs)
+    return right - left, bottom - top
 
 
 # Monkeypatch fix for https://github.com/flopp/py-staticmaps/issues/39
@@ -320,15 +321,16 @@ class Plugin(BasePlugin):
         if args is None:
             return False
 
-        pattern = r"^(?:zoom=(\d+))?(?:\s*size=(\d+),(\d+))?$"
-        match = re.match(pattern, args, flags=re.IGNORECASE)
-
-        # Indicate this message is not meant for this plugin
-        if not match:
+        # Accept zoom/size in any order, but reject unknown tokens
+        token_pattern = r"(?:\s*(?:zoom=\d+|size=\d+,\d+))*\s*$"
+        if args and not re.fullmatch(token_pattern, args, flags=re.IGNORECASE):
             return False
 
-        zoom = match.group(1)
-        image_size = match.group(2, 3)
+        zoom_match = re.search(r"zoom=(\d+)", args, flags=re.IGNORECASE)
+        size_match = re.search(r"size=(\d+),\s*(\d+)", args, flags=re.IGNORECASE)
+
+        zoom = zoom_match.group(1) if zoom_match else None
+        image_size = size_match.groups() if size_match else (None, None)
 
         try:
             zoom = int(zoom)
@@ -402,7 +404,7 @@ class Plugin(BasePlugin):
         try:
             await send_image(matrix_client, room.room_id, pillow_image, "location.png")
         except ImageUploadError as exc:
-            self.logger.error(f"Failed to send map image: {exc}")
+            self.logger.error("Failed to send map image: %s", exc)
             await matrix_client.room_send(
                 room_id=room.room_id,
                 message_type="m.room.message",

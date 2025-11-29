@@ -1,4 +1,5 @@
 import asyncio
+import math
 import re
 from datetime import datetime
 
@@ -491,7 +492,12 @@ class Plugin(BasePlugin):
             return None
 
         avg_lat = sum(p[0] for p in positions) / len(positions)
-        avg_lon = sum(p[1] for p in positions) / len(positions)
+
+        # Average longitudes on the unit circle to handle antimeridian wrapping
+        sum_x = sum(math.cos(math.radians(lon)) for _, lon in positions)
+        sum_y = sum(math.sin(math.radians(lon)) for _, lon in positions)
+        avg_lon = math.degrees(math.atan2(sum_y, sum_x))
+
         return avg_lat, avg_lon
 
     def _parse_mesh_command(self, message: str) -> tuple[str | None, str | None]:
