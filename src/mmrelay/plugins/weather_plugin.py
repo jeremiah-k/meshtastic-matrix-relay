@@ -331,7 +331,7 @@ class Plugin(BasePlugin):
             self.logger.warning(
                 "Meshtastic client myInfo unavailable; skipping request"
             )
-            return False
+            return True
         myId = meshtastic_client.myInfo.my_node_num  # Get relay's own node number
 
         if toId == myId:
