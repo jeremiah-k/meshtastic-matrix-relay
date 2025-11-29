@@ -812,18 +812,12 @@ async def reconnect():
 def on_meshtastic_message(packet, interface):
     """
     Handle an incoming Meshtastic packet and route it to configured Matrix rooms or installed plugins.
-
-    Processes the provided Meshtastic `packet` (a dict-like decoded message) according to interaction settings:
-    - relays reactions and replies to the mapped Matrix event/room when enabled,
-    - relays ordinary text messages to Matrix rooms mapped to the message's Meshtastic channel unless the message is a direct message to the relay node or a plugin handles it,
-    - dispatches non-text or otherwise unhandled packets to plugins for processing.
-
+    
+    Processes the decoded packet according to interaction settings: relays reactions and replies when enabled, relays ordinary text messages to Matrix rooms mapped to the packet's Meshtastic channel (unless the message is a direct message to the relay node or handled by a plugin), and dispatches non-text or otherwise unhandled packets to installed plugins. Side effects include scheduling Matrix relay coroutines, invoking plugin handlers (with configured timeouts), and updating or reading sender metadata/message mappings.
+    
     Parameters:
-        packet (dict): The Meshtastic packet (decoded fields expected in a nested `decoded` dict).
-        interface: The Meshtastic interface object used to resolve node information and send/receive context.
-
-    Side effects:
-        Schedules Matrix relay coroutines, invokes plugin handlers, and may persist sender metadata or message mapping information.
+        packet (dict): Decoded Meshtastic packet (expected to contain a nested 'decoded' dict with fields like 'text', 'replyId', 'portnum', etc.).
+        interface: Meshtastic interface object used to resolve node information and node metadata (must provide .myInfo and .nodes).
     """
     global config, matrix_rooms
 
