@@ -889,6 +889,9 @@ def on_meshtastic_message(packet, interface):
     # Determine if this is a direct message to the relay node
     from meshtastic.mesh_interface import BROADCAST_NUM
 
+    if not getattr(interface, "myInfo", None):
+        logger.warning("Meshtastic interface missing myInfo; cannot determine node id")
+        return None
     myId = interface.myInfo.my_node_num
 
     if toId == myId:

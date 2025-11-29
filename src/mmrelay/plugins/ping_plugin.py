@@ -49,6 +49,11 @@ class Plugin(BasePlugin):
 
             # Determine if the message is a direct message
             toId = packet.get("to")
+            if not getattr(meshtastic_client, "myInfo", None):
+                self.logger.warning(
+                    "Meshtastic client myInfo unavailable; skipping ping"
+                )
+                return False
             myId = meshtastic_client.myInfo.my_node_num  # Get relay's own node number
 
             if toId == myId:
@@ -113,6 +118,8 @@ class Plugin(BasePlugin):
                 return True
             else:
                 return False  # No match, do not process
+
+        return False
 
     def get_matrix_commands(self):
         return [self.plugin_name]

@@ -323,7 +323,7 @@ class Plugin(BasePlugin):
 
         # Accept zoom/size in any order, but reject unknown tokens
         token_pattern = r"(?:\s*(?:zoom=\d+|size=\d+,\d+))*\s*$"
-        if args and not re.fullmatch(token_pattern, args, flags=re.IGNORECASE):
+        if args and not re.fullmatch(token_pattern, args, flags=re.IGNORECASE):  # noqa: S105
             return False
 
         zoom_match = re.search(r"zoom=(\d+)", args, flags=re.IGNORECASE)
@@ -357,8 +357,9 @@ class Plugin(BasePlugin):
                 pass  # keep default
             image_size = (width, height)
 
-        if image_size[0] > 1000 or image_size[1] > 1000:
-            image_size = (1000, 1000)
+        width = max(1, min(image_size[0], 1000))
+        height = max(1, min(image_size[1], 1000))
+        image_size = (width, height)
 
         from mmrelay.matrix_utils import (
             ImageUploadError,
@@ -393,7 +394,8 @@ class Plugin(BasePlugin):
                     }
                 )
 
-        pillow_image = get_map(
+        pillow_image = await asyncio.to_thread(
+            get_map,
             locations=locations,
             zoom=zoom,
             image_size=image_size,
@@ -404,7 +406,7 @@ class Plugin(BasePlugin):
         try:
             await send_image(matrix_client, room.room_id, pillow_image, "location.png")
         except ImageUploadError as exc:
-            self.logger.error("Failed to send map image: %s", exc)
+            self.logger.exception("Failed to send map image: %s", exc)
             await matrix_client.room_send(
                 room_id=room.room_id,
                 message_type="m.room.message",
