@@ -406,6 +406,8 @@ class Plugin(BasePlugin):
                 )
                 return True
 
+        # In tests, run synchronously to avoid executor/thread issues; in production,
+        # offload CPU-bound rendering to keep the event loop responsive.
         if "PYTEST_CURRENT_TEST" in os.environ:
             pillow_image = get_map(
                 locations=locations,
@@ -426,7 +428,7 @@ class Plugin(BasePlugin):
 
         try:
             await send_image(matrix_client, room.room_id, pillow_image, "location.png")
-        except ImageUploadError as exc:
+        except ImageUploadError:
             self.logger.exception("Failed to send map image")
             await matrix_client.room_send(
                 room_id=room.room_id,

@@ -1268,8 +1268,6 @@ class TestWeatherPlugin(unittest.TestCase):
                 "to": "abc",
                 "fromId": "node1",
             }
-            mock_room = MagicMock()
-            mock_event = MagicMock()
 
             client = MagicMock()
             client.myInfo = None

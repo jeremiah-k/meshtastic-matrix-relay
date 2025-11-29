@@ -196,77 +196,23 @@ class Plugin(BasePlugin):
                 return weather_mapping.get(weather_code, "❓ Unknown")
 
             # Generate one-line weather forecast
-            if mode == "24hrs":
-                slots = ["+6h", "+12h", "+24h"]
-            else:
-                slots = ["+2h", "+5h"]
-
             if mode in ("3day", "5day", "forecast"):
-                daily_codes = data.get("daily", {}).get("weathercode") or []
-                daily_max = data.get("daily", {}).get("temperature_2m_max") or []
-                daily_min = data.get("daily", {}).get("temperature_2m_min") or []
-                daily_times = data.get("daily", {}).get("time") or []
-                if units == "imperial":
-                    daily_max = [
-                        t * 9 / 5 + 32 if t is not None else None for t in daily_max
-                    ]
-                    daily_min = [
-                        t * 9 / 5 + 32 if t is not None else None for t in daily_min
-                    ]
-                days = min(
-                    len(daily_codes),
-                    len(daily_max),
-                    len(daily_min),
-                    len(daily_times),
-                    daily_days,
+                return self._build_daily_forecast(
+                    data, units, temperature_unit, daily_days
                 )
-                if days == 0:
-                    return "Weather data temporarily unavailable."
-                segments = []
-                for i in range(days):
-                    day_label = (
-                        datetime.fromisoformat(daily_times[i]).strftime("%a")
-                        if daily_times
-                        else f"D{i}"
-                    )
-                    max_temp = daily_max[i]
-                    min_temp = daily_min[i]
-                    code = daily_codes[i]
 
-                    if max_temp is None or min_temp is None or code is None:
-                        segments.append(f"{day_label}: Data unavailable")
-                        continue
-
-                    segments.append(
-                        f"{day_label}: {weather_code_to_text(code, True)} "
-                        f"{round(max_temp, 1)}{temperature_unit}/"
-                        f"{round(min_temp, 1)}{temperature_unit}"
-                    )
-                return " | ".join(segments)[:200]
-
-            if current_temp is None:
-                forecast = (
-                    f"Now: {weather_code_to_text(current_weather_code, is_day)} - "
-                    "Data unavailable"
-                )
-            else:
-                forecast = (
-                    f"Now: {weather_code_to_text(current_weather_code, is_day)} - "
-                    f"{current_temp}{temperature_unit}"
-                )
-            for slot in slots:
-                temp, precip, wcode, slot_is_day = forecast_hours[slot]
-                if temp is None or precip is None or wcode is None:
-                    forecast += f" | {slot}: Data unavailable"
-                else:
-                    forecast += (
-                        f" | {slot}: {weather_code_to_text(wcode, slot_is_day)} - "
-                        f"{temp}{temperature_unit} {precip}%"
-                    )
-
-            return forecast[:200]
+            slots = ["+6h", "+12h", "+24h"] if mode == "24hrs" else ["+2h", "+5h"]
+            return self._build_hourly_forecast(
+                current_temp,
+                current_weather_code,
+                is_day,
+                forecast_hours,
+                temperature_unit,
+                slots,
+            )
 
         except Exception as e:
+            # Be defensive: requests may be mocked to non-type sentinels in tests
             req_exc = getattr(requests, "RequestException", None)
             is_req_error = isinstance(req_exc, type) and isinstance(e, req_exc)
             if not is_req_error:
@@ -285,6 +231,82 @@ class Plugin(BasePlugin):
                 return "Error parsing weather data."
 
             raise
+
+    def _build_daily_forecast(
+        self,
+        data: dict,
+        units: str,
+        temperature_unit: str,
+        daily_days: int,
+    ) -> str:
+        daily_codes = data.get("daily", {}).get("weathercode") or []
+        daily_max = data.get("daily", {}).get("temperature_2m_max") or []
+        daily_min = data.get("daily", {}).get("temperature_2m_min") or []
+        daily_times = data.get("daily", {}).get("time") or []
+        if units == "imperial":
+            daily_max = [t * 9 / 5 + 32 if t is not None else None for t in daily_max]
+            daily_min = [t * 9 / 5 + 32 if t is not None else None for t in daily_min]
+        days = min(
+            len(daily_codes),
+            len(daily_max),
+            len(daily_min),
+            len(daily_times),
+            daily_days,
+        )
+        if days == 0:
+            return "Weather data temporarily unavailable."
+        segments = []
+        for i in range(days):
+            day_label = (
+                datetime.fromisoformat(daily_times[i]).strftime("%a")
+                if daily_times
+                else f"D{i}"
+            )
+            max_temp = daily_max[i]
+            min_temp = daily_min[i]
+            code = daily_codes[i]
+
+            if max_temp is None or min_temp is None or code is None:
+                segments.append(f"{day_label}: Data unavailable")
+                continue
+
+            segments.append(
+                f"{day_label}: {weather_code_to_text(code, True)} "
+                f"{round(max_temp, 1)}{temperature_unit}/"
+                f"{round(min_temp, 1)}{temperature_unit}"
+            )
+        return " | ".join(segments)[:200]
+
+    def _build_hourly_forecast(
+        self,
+        current_temp: float | None,
+        current_weather_code: int,
+        is_day: int,
+        forecast_hours: dict,
+        temperature_unit: str,
+        slots: list[str],
+    ) -> str:
+        if current_temp is None:
+            forecast = (
+                f"Now: {weather_code_to_text(current_weather_code, is_day)} - "
+                "Data unavailable"
+            )
+        else:
+            forecast = (
+                f"Now: {weather_code_to_text(current_weather_code, is_day)} - "
+                f"{current_temp}{temperature_unit}"
+            )
+        for slot in slots:
+            temp, precip, wcode, slot_is_day = forecast_hours[slot]
+            if temp is None or precip is None or wcode is None:
+                forecast += f" | {slot}: Data unavailable"
+            else:
+                forecast += (
+                    f" | {slot}: {weather_code_to_text(wcode, slot_is_day)} - "
+                    f"{temp}{temperature_unit} {precip}%"
+                )
+
+        return forecast[:200]
 
     async def handle_meshtastic_message(
         self, packet, formatted_message, longname, meshnet_name

@@ -777,7 +777,7 @@ class TestMapPlugin(unittest.TestCase):
             self.assertTrue(result)
             self.plugin.send_matrix_message.assert_awaited_once()
             mock_get_map.assert_not_called()
-            mock_send_image.assert_not_awaited()
+            mock_send_image.assert_not_called()
 
         asyncio.run(run_test())
 
