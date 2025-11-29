@@ -1256,12 +1256,12 @@ class TestWeatherPlugin(unittest.TestCase):
         """
         import asyncio
 
-        from mmrelay.constants.formats import TEXT_MESSAGE_APP
+        from mmrelay.constants.messages import PORTNUM_TEXT_MESSAGE_APP
 
         async def run_test():
             mock_packet = {
                 "decoded": {
-                    "portnum": TEXT_MESSAGE_APP,
+                    "portnum": PORTNUM_TEXT_MESSAGE_APP,
                     "text": "!weather",
                 },
                 "channel": 0,
