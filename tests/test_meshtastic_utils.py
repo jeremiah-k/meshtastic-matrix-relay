@@ -212,6 +212,20 @@ class TestMeshtasticUtils(unittest.TestCase):
             # Verify _submit_coro was not called for non-text message
             mock_submit_coro.assert_not_called()
 
+    def test_on_meshtastic_message_missing_myinfo(self):
+        """
+        Ensure handler returns early without myInfo on the interface.
+        """
+        packet = self.mock_packet.copy()
+        mock_interface = MagicMock()
+        mock_interface.myInfo = None
+
+        with patch("mmrelay.meshtastic_utils.config", self.mock_config), patch(
+            "mmrelay.meshtastic_utils.matrix_rooms", self.mock_config["matrix_rooms"]
+        ):
+            result = on_meshtastic_message(packet, mock_interface)
+            self.assertIsNone(result)
+
     @patch("mmrelay.meshtastic_utils.serial_port_exists")
     @patch("mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface")
     @patch("mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface")

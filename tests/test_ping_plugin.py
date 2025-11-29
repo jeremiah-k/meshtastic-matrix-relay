@@ -122,6 +122,32 @@ class TestPingPlugin(unittest.TestCase):
         self.assertEqual(commands, ["ping"])
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    def test_handle_meshtastic_message_missing_myinfo(self, mock_connect):
+        """
+        Ensure the handler exits cleanly when myInfo is missing.
+        """
+
+        mock_client = MagicMock()
+        mock_client.myInfo = None
+        mock_client.nodes = {}
+        mock_connect.return_value = mock_client
+
+        packet = {
+            "decoded": {"text": "ping"},
+            "channel": 0,
+            "fromId": "!12345678",
+            "to": BROADCAST_NUM,
+        }
+
+        async def run_test():
+            result = await self.plugin.handle_meshtastic_message(
+                packet, "formatted_message", "TestNode", "TestMesh"
+            )
+            self.assertFalse(result)
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     @patch("asyncio.sleep")
     def test_handle_meshtastic_message_simple_ping_broadcast(
         self, mock_sleep, mock_connect
