@@ -306,7 +306,7 @@ class Plugin(BasePlugin):
 
         from mmrelay.meshtastic_utils import connect_meshtastic
 
-        meshtastic_client = connect_meshtastic()
+        meshtastic_client = await asyncio.to_thread(connect_meshtastic)
 
         # Determine if the message is a direct message
         toId = packet.get("to")
@@ -372,13 +372,15 @@ class Plugin(BasePlugin):
 
         if is_direct_message:
             # Respond via DM
-            meshtastic_client.sendText(
+            await asyncio.to_thread(
+                meshtastic_client.sendText,
                 text=weather_notice,
                 destinationId=fromId,
             )
         else:
             # Respond in the same channel (broadcast)
-            meshtastic_client.sendText(
+            await asyncio.to_thread(
+                meshtastic_client.sendText,
                 text=weather_notice,
                 channelIndex=channel,
             )
@@ -390,7 +392,7 @@ class Plugin(BasePlugin):
     def get_mesh_commands(self):
         return list(self.mesh_commands)
 
-    async def handle_room_message(self, room, event, text):  # noqa: ARG002
+    async def handle_room_message(self, room, event, text):
         if not self.matches(event):
             return False
 

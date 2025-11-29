@@ -3317,7 +3317,7 @@ async def on_room_message(
                     bot_command(cmd, event, require_mention=require_mention)
                     for cmd in plugin_obj.get_matrix_commands()
                 )
-            except Exception:
+            except (TypeError, AttributeError, ValueError):
                 # Intentional: isolate plugin errors while surfacing them via logs.
                 logger.exception(
                     "Error checking plugin commands for %s",

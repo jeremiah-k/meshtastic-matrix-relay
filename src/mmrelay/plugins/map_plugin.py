@@ -16,7 +16,7 @@ from mmrelay.plugins.base_plugin import BasePlugin
 
 try:
     import cairo  # type: ignore[import-untyped]
-except Exception:  # pragma: no cover - optional dependency
+except ImportError:  # pragma: no cover - optional dependency
     cairo = None
 
 
@@ -35,7 +35,7 @@ async def _connect_meshtastic_async():
 
 
 def textsize(self: PIL.ImageDraw.ImageDraw, *args, **kwargs):
-    x, y, w, h = self.textbbox((0, 0), *args, **kwargs)
+    _x, _y, w, h = self.textbbox((0, 0), *args, **kwargs)
     return w, h
 
 
@@ -211,16 +211,16 @@ def anonymize_location(lat, lon, radius=1000):
 def get_map(locations, zoom=None, image_size=None, anonymize=True, radius=10000):
     """
     Generate a static map image with labeled location markers.
-    
+
     Renders a map containing each entry in `locations` as a labeled marker; coordinates may be randomly offset for privacy.
-    
+
     Parameters:
         locations (Iterable[dict]): Iterable of dicts with keys "lat", "lon", and "label". "lat" and "lon" are numeric (or numeric strings) representing latitude and longitude in degrees; "label" is the text shown for the marker.
         zoom (int | None): Map zoom level to use. If None the Context's default zoom applies.
         image_size (tuple[int, int] | None): (width, height) in pixels for the output image. If None, defaults to (1000, 1000). Dimensions are clamped by caller logic.
         anonymize (bool): If True, apply a random offset to each coordinate to preserve privacy.
         radius (int): Maximum anonymization offset in meters applied when `anonymize` is True.
-    
+
     Returns:
         PIL.Image.Image: A Pillow image containing the rendered map with labels.
     """
@@ -296,14 +296,14 @@ class Plugin(BasePlugin):
         # Pass the whole event to matches() for compatibility w/ updated base_plugin.py
         """
         Handle "!map" commands in a Matrix room by generating a static map of known mesh node locations and sending it to the room.
-        
+
         Parses optional parameters in the incoming message for zoom (zoom=N) and image size (size=W,H). Collects node positions from the Meshtastic client, optionally anonymizes coordinates per plugin configuration, builds a map image, and uploads it to the room as "location.png".
-        
+
         Parameters:
             room: The Matrix room object where the message was received; used to determine the destination room ID.
             event: The full Matrix event object passed to matches(); used for plugin matching.
             text (str): The raw message text to parse for the "!map" command and optional parameters.
-        
+
         Returns:
             bool: `True` if the message was recognized, a map was generated, and the image was sent; `False` if the message did not target this plugin or was not processed.
         """
@@ -315,8 +315,13 @@ class Plugin(BasePlugin):
             connect_matrix,
             send_image,
         )
+
         matrix_client = await connect_matrix()
         meshtastic_client = await _connect_meshtastic_async()
+
+        if not meshtastic_client or not getattr(meshtastic_client, "nodes", None):
+            self.logger.error("Meshtastic client unavailable; cannot generate map")
+            return False
 
         args = self.extract_command_args("map", text)
         if args is None:

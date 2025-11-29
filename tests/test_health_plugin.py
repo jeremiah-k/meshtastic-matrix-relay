@@ -119,9 +119,10 @@ class TestHealthPlugin(unittest.TestCase):
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     def test_generate_response_with_empty_nodes(self, mock_connect):
         """
-        Test that generating a response with no nodes raises an exception due to empty data lists.
+        Test that generating a response with no nodes returns a graceful string response.
 
-        Verifies that the plugin does not handle empty node data and raises an exception (such as StatisticsError) when attempting to compute statistics.
+        Verifies that the plugin handles empty node data gracefully and returns "No nodes discovered yet."
+        instead of raising an exception when no nodes are available.
         """
         mock_meshtastic_client = MagicMock()
         mock_meshtastic_client.nodes = {}
@@ -133,9 +134,10 @@ class TestHealthPlugin(unittest.TestCase):
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     def test_generate_response_with_minimal_data(self, mock_connect):
         """
-        Test that generating a response with minimal node data raises an exception due to missing metrics.
+        Test that generating a response with minimal node data returns a graceful string response.
 
-        This test verifies that the plugin raises an exception (such as StatisticsError) when attempting to compute statistics on empty air utilization and SNR lists, exposing a bug in the response generation logic.
+        This test verifies that the plugin handles missing metrics gracefully and returns a string
+        containing "Nodes:" when some metrics are missing, rather than raising an exception.
         """
         minimal_nodes = {
             "node1": {
@@ -154,9 +156,10 @@ class TestHealthPlugin(unittest.TestCase):
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     def test_generate_response_with_all_low_battery(self, mock_connect):
         """
-        Test that response generation raises an exception when all nodes have low battery and air utilization data is missing.
+        Test that response generation handles low battery nodes gracefully when air utilization data is missing.
 
-        This verifies that the plugin attempts to compute statistics on empty air utilization data, exposing a known bug.
+        This verifies that the plugin returns a string response containing "Nodes:" even when
+        air utilization data is missing, rather than raising an exception.
         """
         low_battery_nodes = {
             "node1": {"deviceMetrics": {"batteryLevel": 5}, "snr": 10.0},

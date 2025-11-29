@@ -699,21 +699,6 @@ class BasePlugin(ABC):
         if CONFIG_KEY_REQUIRE_BOT_MENTION in self.config:
             return bool(self.config[CONFIG_KEY_REQUIRE_BOT_MENTION])
 
-        # Use cached global plugins configuration if available
-        if getattr(self, "_global_require_bot_mention", None) is None:
-            global config
-            if config is not None:
-                for section_name in ("plugins", "community-plugins", "custom-plugins"):
-                    section_config = config.get(section_name, {})
-                    if (
-                        isinstance(section_config, dict)
-                        and CONFIG_KEY_REQUIRE_BOT_MENTION in section_config
-                    ):
-                        self._global_require_bot_mention = bool(
-                            section_config[CONFIG_KEY_REQUIRE_BOT_MENTION]
-                        )
-                        break
-
         if getattr(self, "_global_require_bot_mention", None) is not None:
             return bool(self._global_require_bot_mention)
 
