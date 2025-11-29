@@ -266,21 +266,9 @@ class Plugin(BasePlugin):
             return forecast[:200]
 
         except Exception as e:
-            # Handle HTTP/network errors from requests
-            # Handle requests-related exceptions using safe attribute checking
-            try:
-                # Check if this is a requests exception by checking the module
-                if hasattr(requests, "RequestException") and isinstance(
-                    e, requests.RequestException
-                ):
-                    self.logger.exception("Error fetching weather data")
-                    return "Error fetching weather data."
-            except (AttributeError, TypeError):
-                # Fallback to string-based detection if isinstance fails
-                exception_module = getattr(type(e), "__module__", "")
-                if "requests" in exception_module:
-                    self.logger.exception("Error fetching weather data")
-                    return "Error fetching weather data."
+            if isinstance(e, requests.RequestException):
+                self.logger.exception("Error fetching weather data")
+                return "Error fetching weather data."
 
             # Handle data parsing errors
             if isinstance(
@@ -351,6 +339,7 @@ class Plugin(BasePlugin):
 
         fromId = packet.get("fromId")
         if fromId not in meshtastic_client.nodes:
+            self.logger.debug("Ignoring weather request from unknown node: %s", fromId)
             return True  # Unknown node, treat as handled without responding
 
         coords = await self._resolve_location_from_args(arg_text)

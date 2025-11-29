@@ -2,9 +2,9 @@ import asyncio
 import io
 import os
 import re
+from typing import TYPE_CHECKING
 
 import PIL.ImageDraw
-from typing import TYPE_CHECKING
 import s2sphere
 import staticmaps
 from nio import AsyncClient, UploadResponse
@@ -184,14 +184,20 @@ class TextLabel(staticmaps.Object):
         )
 
 
-def anonymize_location(lat, lon, radius=1000):
+def anonymize_location(
+    lat: float, lon: float, radius: float = 1000
+) -> tuple[float, float]:
     """Return coordinates unchanged; firmware-level precision controls anonymity."""
     return lat, lon
 
 
 def get_map(
-    locations, zoom=None, image_size=None, anonymize=False, radius=10000  # noqa: ARG001
-):
+    locations: list[dict],
+    zoom: int | None = None,
+    image_size: tuple[int, int] | None = None,
+    anonymize: bool = False,  # noqa: ARG001
+    radius: int = 10000,  # noqa: ARG001
+) -> Image.Image:
     """
     Generate a static map image with labeled location markers.
 
@@ -355,11 +361,10 @@ class Plugin(BasePlugin):
         matrix_client = await connect_matrix()
         meshtastic_client = await _connect_meshtastic_async()
 
-        # In test environment, mock might not have all attributes, so be more lenient
-        if not meshtastic_client or (
-            "PYTEST_CURRENT_TEST" not in os.environ
-            and not getattr(meshtastic_client, "nodes", None)
-        ):
+        has_nodes = getattr(meshtastic_client, "nodes", None) is not None
+        is_test = "PYTEST_CURRENT_TEST" in os.environ
+
+        if not meshtastic_client or (not is_test and not has_nodes):
             self.logger.error("Meshtastic client unavailable; cannot generate map")
             await self.send_matrix_message(
                 room.room_id,
