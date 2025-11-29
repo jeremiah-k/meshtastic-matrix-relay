@@ -18,6 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import s2sphere
+import staticmaps
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -150,38 +151,24 @@ class TestAnonymizeLocation(unittest.TestCase):
 
     def test_anonymize_location_default_radius(self):
         """
-        Verify that anonymize_location changes coordinates within approximately 1km when using the default radius.
+        Verify that anonymize_location returns unchanged coordinates (firmware handles precision).
         """
         lat, lon = 37.7749, -122.4194
         new_lat, new_lon = anonymize_location(lat, lon)
 
-        # Check that coordinates changed
-        self.assertNotEqual(new_lat, lat)
-        self.assertNotEqual(new_lon, lon)
-
-        # Check that change is within reasonable bounds (roughly 1km)
-        lat_diff = abs(new_lat - lat)
-        lon_diff = abs(new_lon - lon)
-        self.assertLess(lat_diff, 0.01)  # Roughly 1km in degrees
-        self.assertLess(lon_diff, 0.01)
+        self.assertAlmostEqual(new_lat, lat)
+        self.assertAlmostEqual(new_lon, lon)
 
     def test_anonymize_location_custom_radius(self):
         """
-        Verify that anonymize_location modifies coordinates within a custom radius and that the changes remain within expected bounds.
+        Verify that anonymize_location ignores custom radius and returns original coordinates.
         """
         lat, lon = 37.7749, -122.4194
         radius = 5000  # 5km
         new_lat, new_lon = anonymize_location(lat, lon, radius)
 
-        # Check that coordinates changed
-        self.assertNotEqual(new_lat, lat)
-        self.assertNotEqual(new_lon, lon)
-
-        # Check that change is within expected bounds
-        lat_diff = abs(new_lat - lat)
-        lon_diff = abs(new_lon - lon)
-        self.assertLess(lat_diff, 0.06)  # Roughly 5km in degrees
-        self.assertLess(lon_diff, 0.06)
+        self.assertAlmostEqual(new_lat, lat)
+        self.assertAlmostEqual(new_lon, lon)
 
     def test_anonymize_location_zero_radius(self):
         """
@@ -203,7 +190,7 @@ class TestGetMap(unittest.TestCase):
         Initialize test locations for use in map-related test cases.
         """
         self.test_locations = [
-            {"lat": 37.7749, "lon": -122.4194, "label": "SF"},
+            {"lat": 37.7749, "lon": -122.4194, "label": "SF", "precisionBits": 14},
             {"lat": 37.7849, "lon": -122.4094, "label": "Oakland"},
         ]
 
@@ -220,7 +207,9 @@ class TestGetMap(unittest.TestCase):
 
         mock_context.set_tile_provider.assert_called_once()
         mock_context.set_zoom.assert_called_once_with(None)
-        self.assertEqual(mock_context.add_object.call_count, len(self.test_locations))
+        self.assertGreaterEqual(
+            mock_context.add_object.call_count, len(self.test_locations)
+        )
         mock_context.render_pillow.assert_called_once_with(1000, 1000)
 
     @patch("staticmaps.Context")

@@ -208,7 +208,7 @@ class Plugin(BasePlugin):
                     len(daily_max),
                     len(daily_min),
                     len(daily_times),
-                    5 if mode in ("5day", "forecast") else 3,
+                    daily_days,
                 )
                 if days == 0:
                     return "Weather data temporarily unavailable."
@@ -335,12 +335,7 @@ class Plugin(BasePlugin):
         if fromId not in meshtastic_client.nodes:
             return True  # Unknown node, treat as handled without responding
 
-        coords = None
-        # Optional override via command arguments
-        if arg_text:
-            coords = self._parse_location_override(arg_text)
-            if coords is None:
-                coords = await asyncio.to_thread(self._geocode_location, arg_text)
+        coords = await self._resolve_location_from_args(arg_text)
 
         if coords is None:
             requesting_node = meshtastic_client.nodes.get(fromId)
@@ -409,10 +404,7 @@ class Plugin(BasePlugin):
         if not parsed_command:
             return False
 
-        if args_text:
-            coords = self._parse_location_override(args_text)
-            if coords is None:
-                coords = await asyncio.to_thread(self._geocode_location, args_text)
+        coords = await self._resolve_location_from_args(args_text)
 
         if coords is None:
             from mmrelay.meshtastic_utils import connect_meshtastic
@@ -436,6 +428,17 @@ class Plugin(BasePlugin):
         )
         await self.send_matrix_message(room.room_id, forecast, formatted=False)
         return True
+
+    async def _resolve_location_from_args(
+        self, arg_text: str | None
+    ) -> tuple[float, float] | None:
+        """Resolve location from args via direct parsing or geocoding."""
+        if not arg_text:
+            return None
+        coords = self._parse_location_override(arg_text)
+        if coords is not None:
+            return coords
+        return await asyncio.to_thread(self._geocode_location, arg_text)
 
     def _determine_mesh_location(self, meshtastic_client):
         """

@@ -322,6 +322,8 @@ class MockStaticmapsModule:
     SvgRenderer = MagicMock
     PixelBoundsT = tuple
     tile_provider_OSM = object()
+    Color = MagicMock
+    Circle = MagicMock
 
     @staticmethod
     def create_latlng(lat, lon):

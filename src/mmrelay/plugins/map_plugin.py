@@ -1,8 +1,6 @@
 import asyncio
 import io
-import math
 import os
-import random
 import re
 
 import PIL.ImageDraw
@@ -13,6 +11,13 @@ from nio import AsyncClient, UploadResponse
 from PIL import Image
 
 from mmrelay.plugins.base_plugin import BasePlugin
+
+
+def precision_bits_to_meters(bits: int) -> float | None:
+    """Convert precision bits to approximate radius in meters (matches Android logic)."""
+    if bits <= 0:
+        return None
+    return 23905787.925008 * 0.5 ** bits
 
 try:
     import cairo  # type: ignore[import-untyped]
@@ -180,50 +185,23 @@ class TextLabel(staticmaps.Object):
 
 
 def anonymize_location(lat, lon, radius=1000):
-    """Add random offset to GPS coordinates for privacy protection.
-
-    Args:
-        lat (float): Original latitude
-        lon (float): Original longitude
-        radius (int): Maximum offset distance in meters (default: 1000)
-
-    Returns:
-        tuple: (new_lat, new_lon) with random offset applied
-
-    Adds random offset within specified radius to obscure exact locations
-    while maintaining general geographic area for mapping purposes.
-    """
-    # Generate random offsets for latitude and longitude
-    lat_offset = random.uniform(-radius / 111320, radius / 111320)
-    lat_rad = math.radians(lat)
-    lon_offset = random.uniform(
-        -radius / (111320 * math.cos(lat_rad)),
-        radius / (111320 * math.cos(lat_rad)),
-    )
-
-    # Clamp offsets to keep within ~1km box (test expectation) while preserving privacy spread
-    lat_offset = max(min(lat_offset, 0.0099), -0.0099)
-    lon_offset = max(min(lon_offset, 0.0099), -0.0099)
-
-    # Apply the offsets to the location coordinates
-    new_lat = lat + lat_offset
-    new_lon = lon + lon_offset
-
-    return new_lat, new_lon
+    """Return coordinates unchanged; firmware-level precision controls anonymity."""
+    return lat, lon
 
 
 def get_map(locations, zoom=None, image_size=None, anonymize=True, radius=10000):
     """
     Generate a static map image with labeled location markers.
 
-    Renders a map containing each entry in `locations` as a labeled marker; coordinates may be randomly offset for privacy.
+    Renders a map containing each entry in `locations` as a labeled marker; coordinates are used as provided. If
+    a location includes ``precisionBits``, a lightly shaded circle representing that precision radius is drawn.
 
     Parameters:
-        locations (Iterable[dict]): Iterable of dicts with keys "lat", "lon", and "label". "lat" and "lon" are numeric (or numeric strings) representing latitude and longitude in degrees; "label" is the text shown for the marker.
+        locations (Iterable[dict]): Iterable of dicts with keys "lat", "lon", and "label". Optional "precisionBits" controls shaded radius.
         zoom (int | None): Map zoom level to use. If None the Context's default zoom applies.
         image_size (tuple[int, int] | None): (width, height) in pixels for the output image. If None, defaults to (1000, 1000). Dimensions are clamped by caller logic.
-        anonymize (bool): If True, apply a random offset to each coordinate to preserve privacy.
-        radius (int): Maximum anonymization offset in meters applied when `anonymize` is True.
+        anonymize (bool): Deprecated; left for backward compatibility (no coordinate changes performed).
+        radius (int): Deprecated; left for backward compatibility (no coordinate changes performed).
 
     Returns:
         PIL.Image.Image: A Pillow image containing the rendered map with labels.
@@ -233,16 +211,25 @@ def get_map(locations, zoom=None, image_size=None, anonymize=True, radius=10000)
     context.set_zoom(zoom)
 
     for location in locations:
-        if anonymize:
-            new_location = anonymize_location(
-                lat=float(location["lat"]),
-                lon=float(location["lon"]),
-                radius=radius,
-            )
-            radio = staticmaps.create_latlng(new_location[0], new_location[1])
-        else:
-            radio = staticmaps.create_latlng(
-                float(location["lat"]), float(location["lon"])
+        radio = staticmaps.create_latlng(
+            float(location["lat"]), float(location["lon"])
+        )
+        precision_bits = location.get("precisionBits")
+        precision_radius_m = (
+            precision_bits_to_meters(int(precision_bits))
+            if precision_bits is not None
+            else None
+        )
+        circle_cls = getattr(staticmaps, "Circle", None)
+        color_cls = getattr(staticmaps, "Color", None)
+        if precision_radius_m and circle_cls and color_cls:
+            context.add_object(
+                circle_cls(
+                    radio,
+                    precision_radius_m / 1000.0,
+                    fill_color=color_cls(0, 0, 0, 48),
+                    color=color_cls(0, 0, 0, 64),
+                )
             )
         context.add_object(TextLabel(radio, location["label"], fontSize=50))
 
@@ -257,7 +244,7 @@ class Plugin(BasePlugin):
     """Static map generation plugin for mesh node locations.
 
     Generates static maps showing positions of mesh nodes with labeled markers.
-    Supports customizable zoom levels, image sizes, and privacy features.
+    Supports customizable zoom levels, image sizes, and renders firmware-provided precision as shaded circles.
 
     Commands:
         !map: Generate map with default settings
@@ -267,8 +254,8 @@ class Plugin(BasePlugin):
     Configuration:
         zoom (int): Default zoom level (default: 8)
         image_width/image_height (int): Default image size (default: 1000x1000)
-        anonymize (bool): Whether to offset coordinates for privacy (default: true)
-        radius (int): Anonymization offset radius in meters (default: 1000)
+        anonymize (bool): Deprecated; coordinates are not altered by this plugin.
+        radius (int): Deprecated; retained for backward compatibility.
 
     Uploads generated maps as images to Matrix rooms.
     """
@@ -380,6 +367,7 @@ class Plugin(BasePlugin):
                     {
                         "lat": info["position"]["latitude"],
                         "lon": info["position"]["longitude"],
+                        "precisionBits": info["position"].get("precisionBits"),
                         "label": info["user"]["shortName"],
                     }
                 )
