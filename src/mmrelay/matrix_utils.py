@@ -846,16 +846,16 @@ matrix_client = None
 def bot_command(command: str, event, require_mention: bool = False) -> bool:
     """
     Detect whether a Matrix event addresses the bot with the specified command.
-    
+
     Checks plain and HTML-formatted bodies. A match occurs when the message either begins with
     `!<command>` (allowed only when require_mention is False) or begins with an explicit bot mention
     (bot MXID or display name) optionally followed by punctuation/whitespace and then `!<command>`.
-    
+
     Parameters:
         command (str): Command name to detect (without the leading `!`).
         event: Matrix event object providing a plain `body` and `source`/`content` with optional `formatted_body`.
         require_mention (bool): If True, only accept commands that explicitly mention the bot; if False, accept bare commands as well.
-    
+
     Returns:
         bool: `True` if the message targets the bot with the given command, `False` otherwise.
     """
@@ -3300,18 +3300,18 @@ async def on_room_message(
     def _matches_command(plugin_obj) -> bool:
         """
         Determines whether a plugin should handle the current Matrix event.
-        
+
         Checks for a plugin-provided matches(event) predicate first; if absent, checks
         get_matrix_commands() (honoring an optional get_require_bot_mention() flag)
         and tests each command against the bot_command matcher. If the plugin raises
         any error during these checks, the error is logged and the plugin is treated
         as not matching.
-        
+
         Parameters:
             plugin_obj: The plugin instance or object to evaluate. It may implement
                 either `matches(event)` or `get_matrix_commands()` (and optionally
                 `get_require_bot_mention()`).
-        
+
         Returns:
             True if the plugin indicates it matches the current event, False otherwise.
         """
@@ -3334,7 +3334,7 @@ async def on_room_message(
                     bot_command(cmd, event, require_mention=require_mention)
                     for cmd in plugin_obj.get_matrix_commands()
                 )
-            except (TypeError, AttributeError, ValueError):
+            except Exception:
                 # Intentional: isolate plugin errors while surfacing them via logs.
                 logger.exception(
                     "Error checking plugin commands for %s",

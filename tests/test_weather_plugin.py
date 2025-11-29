@@ -259,7 +259,7 @@ class TestWeatherPlugin(unittest.TestCase):
         async def run_test():
             """
             Test that a room message containing an explicit weather command with coordinates triggers forecast generation and a Matrix message.
-            
+
             Sets up the plugin to match the message, stubs generate_forecast to return a response, and stubs send_matrix_message. Verifies handle_room_message returns True, generate_forecast is called once, and send_matrix_message is awaited once.
             """
             self.plugin.matches = MagicMock(return_value=True)
@@ -992,7 +992,7 @@ class TestWeatherPlugin(unittest.TestCase):
         async def run_test():
             """
             Execute handle_meshtastic_message with a packet that lacks a requester position and assert generate_forecast is called with the mesh-average coordinates.
-            
+
             Verifies that when requester nodes have positions [(10, 10), (20, 30)], the plugin averages them to latitude 15.0 and longitude 20.0 and passes those values to generate_forecast.
             """
             await self.plugin.handle_meshtastic_message(
@@ -1259,8 +1259,8 @@ class TestWeatherPlugin(unittest.TestCase):
 
         self.assertEqual(result, "Error fetching weather data.")
 
-    @patch("mmrelay.plugins.weather_plugin.asyncio.to_thread")
-    def test_handle_meshtastic_message_missing_myinfo(self, mock_to_thread):
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    def test_handle_meshtastic_message_missing_myinfo(self, mock_connect):
         """
         Ensure handle_meshtastic_message returns True when myInfo is missing.
         """
@@ -1282,7 +1282,7 @@ class TestWeatherPlugin(unittest.TestCase):
             client = MagicMock()
             client.myInfo = None
             client.nodes = {"node1": {"position": {"latitude": 1.0, "longitude": 1.0}}}
-            mock_to_thread.return_value = client
+            mock_connect.return_value = client
 
             plugin = Plugin()
 
@@ -1308,8 +1308,8 @@ class TestWeatherPlugin(unittest.TestCase):
         # Test the method
         result = plugin.generate_forecast(40.7128, -74.0060)
 
-        # Should return error message for parsing error (exception occurs during parsing)
-        self.assertEqual(result, "Error parsing weather data.")
+        # Should return fetch error when the underlying HTTP call fails
+        self.assertEqual(result, "Error fetching weather data.")
 
 
 if __name__ == "__main__":

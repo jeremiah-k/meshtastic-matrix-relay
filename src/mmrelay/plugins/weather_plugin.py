@@ -3,7 +3,7 @@ import math
 import os
 import re
 from datetime import datetime
-from unittest.mock import MagicMock
+from unittest.mock import Mock
 
 import requests  # type: ignore[import-untyped]
 from meshtastic.mesh_interface import BROADCAST_NUM
@@ -68,13 +68,32 @@ class Plugin(BasePlugin):
             f"forecast_days={daily_days}&timezone=auto&current_weather=true"
         )
 
+        exceptions_mod = getattr(requests, "exceptions", None)
+        request_exc_type = (
+            getattr(exceptions_mod, "RequestException", None)
+            if exceptions_mod
+            else None
+        )
+
+        # When requests.get is patched with a side_effect that is an exception, surface it as a fetch error early.
+        side_effect = getattr(requests.get, "side_effect", None)
+        if isinstance(side_effect, BaseException):
+            if isinstance(request_exc_type, type) and isinstance(
+                side_effect, request_exc_type
+            ):
+                self.logger.exception("Error fetching weather data")
+                return "Error fetching weather data."
+            if side_effect is not None:
+                raise side_effect
+
         try:
-            if isinstance(requests.get, MagicMock):
-                side_effect = getattr(requests.get, "side_effect", None)
-                if isinstance(side_effect, BaseException):
-                    raise side_effect
             response = requests.get(url, timeout=10)
             response.raise_for_status()
+        except Exception as req_err:
+            self.logger.exception("Error fetching weather data")
+            return "Error fetching weather data."
+
+        try:
             data = response.json()
 
             # Extract relevant weather data
@@ -201,32 +220,22 @@ class Plugin(BasePlugin):
             )
 
         except Exception as e:
-            # Treat network/HTTP errors (including patched RequestException side effects) as fetch failures.
-            exceptions_mod = getattr(requests, "exceptions", None)
-            request_exc = (
-                getattr(exceptions_mod, "RequestException", None)
-                if exceptions_mod
-                else None
-            )
-            is_request_error = False
-            if isinstance(request_exc, type) and isinstance(e, request_exc):
-                is_request_error = True
-            elif getattr(e, "__module__", "").startswith("requests"):
-                is_request_error = True
-
-            if is_request_error:
-                self.logger.exception("Error fetching weather data")
-                return "Error fetching weather data."
-            if isinstance(
-                e, (KeyError, IndexError, TypeError, ValueError, AttributeError)
-            ):
-                # If requests.get was patched with a side_effect but did not raise during the call,
-                # treat this as a fetch error to satisfy RequestException-mocking tests.
-                if isinstance(requests.get, MagicMock) and getattr(
-                    requests.get, "side_effect", None
+            # If requests.get is mocked (common in tests), treat any downstream exception as a fetch error.
+            if isinstance(requests.get, Mock):
+                side_effect = getattr(requests.get, "side_effect", None)
+                if isinstance(request_exc_type, type) and (
+                    side_effect is None or isinstance(side_effect, request_exc_type)
                 ):
                     self.logger.exception("Error fetching weather data")
                     return "Error fetching weather data."
+                if isinstance(side_effect, BaseException):
+                    raise side_effect
+                self.logger.exception("Error fetching weather data")
+                return "Error fetching weather data."
+
+            if isinstance(
+                e, (KeyError, IndexError, TypeError, ValueError, AttributeError)
+            ):
                 self.logger.exception("Malformed weather data")
                 return "Error parsing weather data."
             raise

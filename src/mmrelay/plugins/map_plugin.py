@@ -417,6 +417,14 @@ class Plugin(BasePlugin):
         )
 
         matrix_client = await connect_matrix()
+        if matrix_client is None:
+            logger.error("Failed to connect to Matrix client; cannot generate map")
+            await self.send_matrix_message(
+                room.room_id,
+                "Cannot generate map: Matrix client unavailable.",
+                formatted=False,
+            )
+            return True
         meshtastic_client = await _connect_meshtastic_async()
 
         has_nodes = getattr(meshtastic_client, "nodes", None) is not None

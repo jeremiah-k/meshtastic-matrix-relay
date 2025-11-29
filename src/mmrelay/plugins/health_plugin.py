@@ -1,4 +1,7 @@
+import asyncio
 import statistics
+
+from nio import MatrixRoom, RoomMessageText
 
 from mmrelay.plugins.base_plugin import BasePlugin
 
@@ -8,15 +11,15 @@ class Plugin(BasePlugin):
     is_core_plugin = True
 
     @property
-    def description(self):
+    def description(self) -> str:
         return "Show mesh health using avg battery, SNR, AirUtil"
 
-    def generate_response(self):
+    def generate_response(self) -> str:
         """
         Compute and format mesh health metrics from connected Meshtastic nodes.
-        
+
         Collects battery levels, air utilization (tx), and SNR from discovered nodes, computes node count, average and median values for each metric, and counts nodes with battery <= 10. If no nodes are discovered, returns the literal string "No nodes discovered yet."
-        
+
         Returns:
             str: A multi-line formatted summary containing:
                 - Nodes: total number of nodes
@@ -28,6 +31,8 @@ class Plugin(BasePlugin):
         from mmrelay.meshtastic_utils import connect_meshtastic
 
         meshtastic_client = connect_meshtastic()
+        if meshtastic_client is None:
+            return "Unable to connect to Meshtastic device."
         battery_levels = []
         air_util_tx = []
         snr = []
@@ -66,17 +71,20 @@ SNR: {avg_snr:.2f} / {mdn_snr:.2f} (avg / median)
 """
 
     async def handle_meshtastic_message(
-        self, packet, formatted_message, longname, meshnet_name
-    ):
+        self, packet, formatted_message: str, longname: str, meshnet_name: str
+    ) -> bool:
         return False
 
-    async def handle_room_message(self, room, event, full_message):
+    async def handle_room_message(
+        self, room: MatrixRoom, event: RoomMessageText, full_message: str
+    ) -> bool:
 
         if not self.matches(event):
             return False
 
-        await self.send_matrix_message(
-            room.room_id, self.generate_response(), formatted=False
+        response = await asyncio.get_running_loop().run_in_executor(
+            None, self.generate_response
         )
+        await self.send_matrix_message(room.room_id, response, formatted=False)
 
         return True

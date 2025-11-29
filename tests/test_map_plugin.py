@@ -18,7 +18,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import s2sphere
-import staticmaps
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -570,7 +569,7 @@ class TestMapPlugin(unittest.TestCase):
         async def run_test():
             """
             Test that a "!map size=500,400" room command triggers map generation with the specified image size.
-            
+
             Asserts the handler returns True and that get_map was invoked with image_size of (500, 400).
             """
             mock_room = MagicMock()
