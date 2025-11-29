@@ -140,9 +140,9 @@ class Plugin(BasePlugin):
                 "+24h": get_hourly(forecast_24h_index),
             }
 
-            if units == "imperial" and current_temp is not None:
-                current_temp = current_temp * 9 / 5 + 32
             if units == "imperial":
+                if current_temp is not None:
+                    current_temp = current_temp * 9 / 5 + 32
                 for key, (t, p, w, dflag) in forecast_hours.items():
                     if t is not None:
                         t = t * 9 / 5 + 32
