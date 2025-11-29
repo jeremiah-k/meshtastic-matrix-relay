@@ -3302,6 +3302,7 @@ async def on_room_message(
             try:
                 return bool(plugin_obj.matches(event))
             except Exception:
+                # Broad catch keeps a faulty plugin from crashing the bridge; we log details for diagnostics.
                 logger.exception(
                     "Error checking plugin match for %s",
                     getattr(plugin_obj, "plugin_name", plugin_obj),
@@ -3317,6 +3318,7 @@ async def on_room_message(
                     for cmd in plugin_obj.get_matrix_commands()
                 )
             except Exception:
+                # Intentional: isolate plugin errors while surfacing them via logs.
                 logger.exception(
                     "Error checking plugin commands for %s",
                     getattr(plugin_obj, "plugin_name", plugin_obj),

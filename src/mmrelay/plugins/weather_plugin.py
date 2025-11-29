@@ -340,7 +340,7 @@ class Plugin(BasePlugin):
         if arg_text:
             coords = self._parse_location_override(arg_text)
             if coords is None:
-                coords = self._geocode_location(arg_text)
+                coords = await asyncio.to_thread(self._geocode_location, arg_text)
 
         if coords is None:
             requesting_node = meshtastic_client.nodes.get(fromId)
