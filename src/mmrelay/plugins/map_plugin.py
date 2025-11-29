@@ -10,6 +10,7 @@ import staticmaps
 from nio import AsyncClient, UploadResponse
 from PIL import Image
 
+from mmrelay.log_utils import get_logger
 from mmrelay.plugins.base_plugin import BasePlugin
 
 
@@ -23,6 +24,9 @@ try:
     import cairo  # type: ignore[import-untyped]
 except ImportError:  # pragma: no cover - optional dependency
     cairo = None
+
+
+logger = get_logger(__name__)
 
 
 async def _connect_meshtastic_async():
@@ -100,6 +104,7 @@ class TextLabel(staticmaps.Object):
 
     def render_cairo(self, renderer: staticmaps.CairoRenderer) -> None:
         if cairo is None:
+            logger.debug("Cairo not available; skipping Cairo label render path")
             return
         x, y = renderer.transformer().ll2pixel(self.latlng())
 
@@ -185,7 +190,7 @@ class TextLabel(staticmaps.Object):
 
 
 def anonymize_location(
-    lat: float, lon: float, radius: float = 1000
+    lat: float, lon: float, _radius: float = 1000  # deprecated; kept for compat
 ) -> tuple[float, float]:
     """Return coordinates unchanged; firmware-level precision controls anonymity."""
     return lat, lon
@@ -218,6 +223,9 @@ def get_map(
     context.set_tile_provider(staticmaps.tile_provider_OSM)
     context.set_zoom(zoom)
 
+    circle_cls = getattr(staticmaps, "Circle", None)
+    color_cls = getattr(staticmaps, "Color", None)
+
     for location in locations:
         radio = staticmaps.create_latlng(
             float(location["lat"]), float(location["lon"])
@@ -229,8 +237,6 @@ def get_map(
                 precision_radius_m = precision_bits_to_meters(int(precision_bits))
             except (TypeError, ValueError):
                 precision_radius_m = None
-        circle_cls = getattr(staticmaps, "Circle", None)
-        color_cls = getattr(staticmaps, "Color", None)
         if precision_radius_m and circle_cls and color_cls:
             context.add_object(
                 circle_cls(
