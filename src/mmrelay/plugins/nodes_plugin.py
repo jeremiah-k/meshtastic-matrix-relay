@@ -87,10 +87,10 @@ $shortname $longname / $devicemodel / $battery $voltage / $snr / $hops / $lastse
 
     async def handle_meshtastic_message(
         self, packet, formatted_message, longname, meshnet_name
-    ):
+    ) -> bool:
         return False
 
-    async def handle_room_message(self, room, event, full_message):
+    async def handle_room_message(self, room, event, full_message) -> bool:
         # Pass the event to matches()
         if not self.matches(event):
             return False

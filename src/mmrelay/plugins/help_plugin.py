@@ -30,7 +30,7 @@ class Plugin(BasePlugin):
 
     async def handle_meshtastic_message(
         self, packet, formatted_message, longname, meshnet_name
-    ):
+    ) -> bool:
         return False
 
     def get_matrix_commands(self):
@@ -49,7 +49,7 @@ class Plugin(BasePlugin):
         """
         return []
 
-    async def handle_room_message(self, room, event, text):
+    async def handle_room_message(self, room, event, full_message) -> bool:
         # Pass the event to matches()
         """
         Handle an incoming Matrix room message for the help command and reply with either a list of available commands or details for a specific command.
@@ -57,7 +57,7 @@ class Plugin(BasePlugin):
         Parameters:
             room: The Matrix room object where the message originated; must provide `room_id`.
             event: The incoming Matrix event; used to determine whether this plugin should handle the message.
-            text (str): The raw message text from the room.
+             full_message (str): The raw message text from the room.
 
         Returns:
             handled (bool): `True` if the plugin processed the message and sent a reply, `False` if the event did not match and was not handled.
@@ -65,7 +65,7 @@ class Plugin(BasePlugin):
         if not self.matches(event):
             return False
 
-        command = self.extract_command_args("help", text)
+        command = self.extract_command_args("help", full_message)
 
         plugins = load_plugins()
 

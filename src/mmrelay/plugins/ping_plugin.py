@@ -38,7 +38,7 @@ class Plugin(BasePlugin):
 
     async def handle_meshtastic_message(
         self, packet, formatted_message, longname, meshnet_name
-    ):
+    ) -> bool:
         """
         Handle an incoming Meshtastic packet and respond to a matched "ping" message when appropriate.
 
@@ -147,7 +147,7 @@ class Plugin(BasePlugin):
     def get_mesh_commands(self):
         return [self.plugin_name]
 
-    async def handle_room_message(self, room, event, full_message):
+    async def handle_room_message(self, room, event, full_message) -> bool:
         # Pass the event to matches()
         if not self.matches(event):
             return False

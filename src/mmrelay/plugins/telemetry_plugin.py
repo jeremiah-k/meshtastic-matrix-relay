@@ -34,7 +34,7 @@ class Plugin(BasePlugin):
 
     async def handle_meshtastic_message(
         self, packet, formatted_message, longname, meshnet_name
-    ):
+    ) -> bool:
         # Support deviceMetrics only for now
         if (
             "decoded" in packet
@@ -78,7 +78,7 @@ class Plugin(BasePlugin):
     def get_mesh_commands(self):
         return []
 
-    async def handle_room_message(self, room, event, text):
+    async def handle_room_message(self, room, event, full_message) -> bool:
         # Pass the event to matches()
         """
         Handle a room message that requests a telemetry graph and send the generated image to the Matrix room.
@@ -88,7 +88,7 @@ class Plugin(BasePlugin):
         Parameters:
             room: Matrix room object where the event originated; used to determine the destination room_id.
             event: Matrix event used to test whether the message matches a supported bot command.
-            text (str): Full plaintext message content to parse the command and optional node identifier.
+            full_message (str): Full plaintext message content to parse the command and optional node identifier.
 
         Returns:
             True if the message matched a telemetry command and the graph was generated and successfully sent; False otherwise.
@@ -99,7 +99,7 @@ class Plugin(BasePlugin):
         telemetry_option = None
         node = None
         for command in self.get_matrix_commands():
-            args = self.extract_command_args(command, text)
+            args = self.extract_command_args(command, full_message)
             if args is not None:
                 telemetry_option = command
                 node = args or None

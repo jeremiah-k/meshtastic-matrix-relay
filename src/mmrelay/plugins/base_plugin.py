@@ -73,14 +73,14 @@ class BasePlugin(ABC):
     priority = 10
 
     @property
-    def description(self):
+    def description(self) -> str:
         """Get the plugin description for help text.
 
         Returns:
             str: Human-readable description of plugin functionality
 
         Override this property in subclasses to provide meaningful help text
-        that will be displayed by the help plugin.
+        that will be displayed by help plugin.
         """
         return ""
 
@@ -715,7 +715,7 @@ class BasePlugin(ABC):
     @abstractmethod
     async def handle_meshtastic_message(
         self, packet, formatted_message, longname, meshnet_name
-    ):
+    ) -> bool:
         """
         Process an incoming Meshtastic packet and perform plugin-specific handling.
 
@@ -725,9 +725,22 @@ class BasePlugin(ABC):
             longname (str): Sender display name or node label associated with the packet.
             meshnet_name (str): The mesh network identifier where the packet originated.
 
+        Returns:
+            bool: True if the packet was handled, False otherwise.
         """
         pass  # Implement in subclass
 
     @abstractmethod
-    async def handle_room_message(self, room, event, full_message):
+    async def handle_room_message(self, room, event, full_message) -> bool:
+        """
+        Process an incoming Matrix room message and perform plugin-specific handling.
+
+        Parameters:
+            room: The Matrix room object where the message was received.
+            event: The Matrix event object containing the message details.
+            full_message: The full message text that was sent.
+
+        Returns:
+            bool: True if the message was handled, False otherwise.
+        """
         pass  # Implement in subclass

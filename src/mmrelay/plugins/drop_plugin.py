@@ -23,12 +23,12 @@ class Plugin(BasePlugin):
                 if "position" in info:
                     return info["position"]
                 else:
-                    return None
-        return None
+                    return False
+        return False
 
     async def handle_meshtastic_message(
         self, packet, formatted_message, longname, meshnet_name
-    ):
+    ) -> bool:
         """
         Manage delivery and storage of "drop" messages based on an incoming packet and node locations.
 
@@ -123,7 +123,8 @@ class Plugin(BasePlugin):
             self.logger.debug(f"Dropped a message: {drop_message}")
             return True
 
-    async def handle_room_message(self, room, event, full_message):
+    async def handle_room_message(self, room, event, full_message) -> bool:
         # Pass the event to matches() instead of full_message
         if self.matches(event):
             return True
+        return False

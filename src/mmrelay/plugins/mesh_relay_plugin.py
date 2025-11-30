@@ -87,7 +87,7 @@ class Plugin(BasePlugin):
 
     async def handle_meshtastic_message(
         self, packet, formatted_message, longname, meshnet_name
-    ):
+    ) -> bool:
         """
         Relay a Meshtastic packet to a configured Matrix room.
 
@@ -159,7 +159,7 @@ class Plugin(BasePlugin):
             return bool(match)
         return False
 
-    async def handle_room_message(self, room, event, full_message):
+    async def handle_room_message(self, room, event, full_message) -> bool:
         """
         Relay an embedded Meshtastic packet from a Matrix room message to the Meshtastic mesh.
 

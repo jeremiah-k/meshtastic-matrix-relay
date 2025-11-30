@@ -335,7 +335,7 @@ class Plugin(BasePlugin):
 
     async def handle_meshtastic_message(
         self, packet, formatted_message, longname, meshnet_name
-    ):
+    ) -> bool:
         return False
 
     def get_matrix_commands(self):
@@ -344,7 +344,7 @@ class Plugin(BasePlugin):
     def get_mesh_commands(self):
         return []
 
-    async def handle_room_message(self, room, event, text):
+    async def handle_room_message(self, room, event, full_message) -> bool:
         # Pass the whole event to matches() for compatibility w/ updated base_plugin.py
         """
         Handle "!map" commands in a Matrix room by generating a static map of known mesh node locations and sending it to the room.
@@ -354,7 +354,7 @@ class Plugin(BasePlugin):
         Parameters:
             room: The Matrix room object where the message was received; used to determine the destination room ID.
             event: The full Matrix event object passed to matches(); used for plugin matching.
-            text (str): The raw message text to parse for the "!map" command and optional parameters.
+            full_message (str): The raw message text to parse for the "!map" command and optional parameters.
 
         Returns:
             bool: `True` if the message was recognized, a map was generated, and the image was sent; `False` if the message did not target this plugin or was not processed.
@@ -362,7 +362,7 @@ class Plugin(BasePlugin):
         if not self.matches(event):
             return False
 
-        args = self.extract_command_args("map", text)
+        args = self.extract_command_args("map", full_message)
         if args is None:
             return False
 

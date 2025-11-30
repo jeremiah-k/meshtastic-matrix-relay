@@ -359,7 +359,7 @@ class Plugin(BasePlugin):
 
     async def handle_meshtastic_message(
         self, packet, formatted_message, longname, meshnet_name
-    ):
+    ) -> bool:
         """
         Handle an incoming Meshtastic text message and respond with a weather forecast when a supported command is detected.
 
@@ -493,7 +493,7 @@ class Plugin(BasePlugin):
         """
         return list(self.mesh_commands)
 
-    async def handle_room_message(self, room, event, full_message):
+    async def handle_room_message(self, room, event, full_message) -> bool:
         """
         Handle a Matrix room message that invokes the weather plugin and post a forecast.
 
