@@ -145,7 +145,7 @@ class TestPingPlugin(unittest.TestCase):
             result = await self.plugin.handle_meshtastic_message(
                 packet, "formatted_message", "TestNode", "TestMesh"
             )
-            self.assertFalse(result)
+            self.assertTrue(result)
 
         asyncio.run(run_test())
 

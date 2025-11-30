@@ -63,9 +63,15 @@ class Plugin(BasePlugin):
 
             # Determine if the message is a direct message
             toId = packet.get("to")
-        if not getattr(meshtastic_client, "myInfo", None):
-            self.logger.warning("Meshtastic client myInfo unavailable; skipping ping")
-            return True
+            if not meshtastic_client:
+                self.logger.warning("Meshtastic client unavailable; skipping ping")
+                return True
+            if not getattr(meshtastic_client, "myInfo", None):
+                self.logger.warning(
+                    "Meshtastic client myInfo unavailable; skipping ping"
+                )
+                return True
+
             myId = meshtastic_client.myInfo.my_node_num  # Get relay's own node number
 
             if toId == myId:

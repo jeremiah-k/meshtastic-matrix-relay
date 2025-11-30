@@ -30,6 +30,7 @@ class TestHelpPlugin(unittest.TestCase):
         """
         self.plugin = Plugin()
         self.plugin.logger = MagicMock()
+        self.plugin.get_require_bot_mention = MagicMock(return_value=False)
 
         # Mock Matrix client methods
         self.plugin.send_matrix_message = AsyncMock()
@@ -100,6 +101,8 @@ class TestHelpPlugin(unittest.TestCase):
 
         room = MagicMock()
         event = MagicMock()
+        event.body = "full_message"
+        event.source = {"content": {"formatted_body": ""}}
 
         async def run_test():
             """
@@ -130,8 +133,10 @@ class TestHelpPlugin(unittest.TestCase):
 
         room = MagicMock()
         room.room_id = "!test:matrix.org"
+        full_message = "!help"
         event = MagicMock()
-        full_message = "bot: !help"
+        event.body = full_message
+        event.source = {"content": {"formatted_body": ""}}
 
         async def run_test():
             """
@@ -177,8 +182,10 @@ class TestHelpPlugin(unittest.TestCase):
 
         room = MagicMock()
         room.room_id = "!test:matrix.org"
+        full_message = "!help weather"
         event = MagicMock()
-        full_message = "bot: !help weather"
+        event.body = full_message
+        event.source = {"content": {"formatted_body": ""}}
 
         async def run_test():
             """
@@ -219,8 +226,10 @@ class TestHelpPlugin(unittest.TestCase):
 
         room = MagicMock()
         room.room_id = "!test:matrix.org"
+        full_message = "!help nonexistent"
         event = MagicMock()
-        full_message = "bot: !help nonexistent"
+        event.body = full_message
+        event.source = {"content": {"formatted_body": ""}}
 
         async def run_test():
             """
@@ -261,8 +270,10 @@ class TestHelpPlugin(unittest.TestCase):
 
         room = MagicMock()
         room.room_id = "!test:matrix.org"
+        full_message = "!help"
         event = MagicMock()
-        full_message = "bot: !help"
+        event.body = full_message
+        event.source = {"content": {"formatted_body": ""}}
 
         async def run_test():
             """
@@ -303,8 +314,10 @@ class TestHelpPlugin(unittest.TestCase):
 
         room = MagicMock()
         room.room_id = "!test:matrix.org"
+        full_message = "!help cmd2"
         event = MagicMock()
-        full_message = "bot: !help cmd2"
+        event.body = full_message
+        event.source = {"content": {"formatted_body": ""}}
 
         async def run_test():
             """
@@ -336,8 +349,10 @@ class TestHelpPlugin(unittest.TestCase):
 
         room = MagicMock()
         room.room_id = "!test:matrix.org"
+        full_message = "!help"
         event = MagicMock()
-        full_message = "bot: !help"
+        event.body = full_message
+        event.source = {"content": {"formatted_body": ""}}
 
         async def run_test():
             """

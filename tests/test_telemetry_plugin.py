@@ -39,6 +39,9 @@ class TestTelemetryPlugin(unittest.TestCase):
 
         # Mock Matrix client methods
         self.plugin.send_matrix_message = AsyncMock()
+        self.plugin.send_room_image = AsyncMock()
+        self.plugin.upload_image = AsyncMock()
+        self.plugin.get_require_bot_mention = MagicMock(return_value=False)
 
     def test_plugin_name(self):
         """
@@ -351,6 +354,8 @@ class TestTelemetryPlugin(unittest.TestCase):
         room = MagicMock()
         event = MagicMock()
         full_message = "some invalid message format"
+        event.body = full_message
+        event.source = {"content": {"formatted_body": ""}}
 
         async def run_test():
             """
@@ -403,7 +408,9 @@ class TestTelemetryPlugin(unittest.TestCase):
             room = MagicMock()
             room.room_id = "!test:matrix.org"
             event = MagicMock()
-            full_message = "bot: !batteryLevel"
+            full_message = "!batteryLevel"
+            event.body = full_message
+            event.source = {"content": {"formatted_body": ""}}
 
             async def run_test():
                 """
@@ -477,7 +484,9 @@ class TestTelemetryPlugin(unittest.TestCase):
             room = MagicMock()
             room.room_id = "!test:matrix.org"
             event = MagicMock()
-            full_message = "bot: !voltage NodeABC"
+            full_message = "!voltage NodeABC"
+            event.body = full_message
+            event.source = {"content": {"formatted_body": ""}}
 
             async def run_test():
                 """
