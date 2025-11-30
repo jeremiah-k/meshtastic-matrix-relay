@@ -123,8 +123,11 @@ class Plugin(BasePlugin):
             self.logger.debug(f"Dropped a message: {drop_message}")
             return True
 
-    async def handle_room_message(self, room, event, full_message) -> bool:
+        # Packet did not contain a drop command or was not processable
+        return False
+
+    async def handle_room_message(self, _room, _event, _full_message) -> bool:
         # Pass the event to matches() instead of full_message
-        if self.matches(event):
+        if self.matches(_event):
             return True
         return False
