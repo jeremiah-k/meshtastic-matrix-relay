@@ -16,6 +16,9 @@ class Plugin(BasePlugin):
     is_core_plugin = True
     mesh_commands = ("weather", "forecast", "24hrs", "3day", "5day")
 
+    # Maximum forecast length to fit within Meshtastic message limits
+    MAX_FORECAST_LENGTH = 200
+
     # No __init__ method needed with the simplified plugin system
     # The BasePlugin will automatically use the class-level plugin_name
 
@@ -260,7 +263,7 @@ class Plugin(BasePlugin):
                 f"{round(max_temp, 1)}{temperature_unit}/"
                 f"{round(min_temp, 1)}{temperature_unit}"
             )
-        return " | ".join(segments)[:200]
+        return " | ".join(segments)[: self.MAX_FORECAST_LENGTH]
 
     def _build_hourly_forecast(
         self,
@@ -309,7 +312,7 @@ class Plugin(BasePlugin):
                     f"{temp}{temperature_unit} {precip}%"
                 )
 
-        return forecast[:200]
+        return forecast[: self.MAX_FORECAST_LENGTH]
 
     @staticmethod
     def _weather_code_to_text(weather_code: int, is_day: int) -> str:
