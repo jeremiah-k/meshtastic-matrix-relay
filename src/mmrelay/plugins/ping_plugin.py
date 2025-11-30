@@ -59,7 +59,7 @@ class Plugin(BasePlugin):
 
     @property
     def description(self):
-        return "Check connectivity with relay or respond to pings over mesh"
+        return "Check connectivity with the relay or respond to pings over the mesh"
 
     async def handle_meshtastic_message(
         self, packet, formatted_message, longname, meshnet_name
