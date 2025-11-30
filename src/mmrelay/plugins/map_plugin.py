@@ -6,7 +6,7 @@ import PIL.ImageDraw
 import s2sphere
 import staticmaps
 from nio import AsyncClient, UploadResponse
-from PIL import Image
+from PIL import Image as PILImage
 
 from mmrelay.constants.plugins import S2_PRECISION_BITS_TO_METERS_CONSTANT
 from mmrelay.log_utils import get_logger
@@ -250,7 +250,7 @@ def get_map(
     image_size: tuple[int, int] | None = None,
     anonymize: bool = False,  # noqa: ARG001
     radius: int = 10000,  # noqa: ARG001
-) -> Image.Image:
+) -> PILImage.Image:
     """
     Generate a static map image with labeled location markers.
 
@@ -269,7 +269,8 @@ def get_map(
     """
     context = staticmaps.Context()
     context.set_tile_provider(staticmaps.tile_provider_OSM)
-    context.set_zoom(zoom)
+    if zoom is not None:
+        context.set_zoom(zoom)
 
     circle_cls = getattr(staticmaps, "Circle", None)
     color_cls = getattr(staticmaps, "Color", None)
@@ -296,9 +297,9 @@ def get_map(
 
     # render non-anti-aliased png
     if image_size:
-        return context.render_pillow(image_size[0], image_size[1])
+        return context.render_pillow(image_size[0], image_size[1])  # type: ignore[return-value]
     else:
-        return context.render_pillow(1000, 1000)
+        return context.render_pillow(1000, 1000)  # type: ignore[return-value]
 
 
 class Plugin(BasePlugin):

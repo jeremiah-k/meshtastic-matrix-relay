@@ -204,7 +204,7 @@ class TestGetMap(unittest.TestCase):
         get_map(self.test_locations)
 
         mock_context.set_tile_provider.assert_called_once()
-        mock_context.set_zoom.assert_called_once_with(None)
+        mock_context.set_zoom.assert_not_called()  # Should not be called when zoom is None
         self.assertEqual(mock_context.add_object.call_count, 3)
         mock_context.render_pillow.assert_called_once_with(1000, 1000)
 

@@ -64,7 +64,7 @@ class TestTelemetryPlugin(unittest.TestCase):
         """
         Verify that the plugin's description method returns the expected summary string.
         """
-        description = self.plugin.description()
+        description = self.plugin.description
         self.assertEqual(
             description, "Graph of avg Mesh telemetry value for last 12 hours"
         )
@@ -236,14 +236,14 @@ class TestTelemetryPlugin(unittest.TestCase):
             """
             Runs an asynchronous test to verify that a non-telemetry Meshtastic message is ignored by the plugin.
 
-            Asserts that the handler returns None and does not attempt to store any data.
+            Asserts that the handler returns False and does not attempt to store any data.
             """
             result = await self.plugin.handle_meshtastic_message(
                 packet, "formatted_message", "longname", "meshnet_name"
             )
 
-            # Should return None (not processed)
-            self.assertIsNone(result)
+            # Should return False (not processed)
+            self.assertFalse(result)
 
             # Should not store any data
             self.plugin.set_node_data.assert_not_called()
@@ -277,8 +277,8 @@ class TestTelemetryPlugin(unittest.TestCase):
                 packet, "formatted_message", "longname", "meshnet_name"
             )
 
-            # Should return None (not processed)
-            self.assertIsNone(result)
+            # Should return False (not processed)
+            self.assertFalse(result)
 
             # Should not store any data
             self.plugin.set_node_data.assert_not_called()

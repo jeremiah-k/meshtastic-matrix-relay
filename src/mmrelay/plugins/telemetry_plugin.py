@@ -1,6 +1,7 @@
 import io
 import json
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 
 import matplotlib.pyplot as plt
 from PIL import Image
@@ -16,7 +17,8 @@ class Plugin(BasePlugin):
     def commands(self):
         return ["batteryLevel", "voltage", "airUtilTx"]
 
-    def description(self):
+    @property
+    def description(self) -> str:
         return "Graph of avg Mesh telemetry value for last 12 hours"
 
     def _generate_timeperiods(self, hours=12):
@@ -72,6 +74,9 @@ class Plugin(BasePlugin):
             self.set_node_data(meshtastic_id=packet["fromId"], node_data=telemetry_data)
             return False
 
+        # Return False for non-telemetry packets
+        return False
+
     def get_matrix_commands(self):
         return ["batteryLevel", "voltage", "airUtilTx"]
 
@@ -105,9 +110,9 @@ class Plugin(BasePlugin):
                 node = args or None
                 break
 
-        # If matches(event) was True but we couldn't parse any command args, treat as handled to avoid ambiguous handling
+        # If matches(event) was True but we couldn't parse any command args, treat as not handled
         if telemetry_option is None and self.matches(event):
-            return True
+            return False
 
         hourly_intervals = self._generate_timeperiods()
 
@@ -185,7 +190,7 @@ class Plugin(BasePlugin):
 
         # Save the plot as a PIL image
         buf = io.BytesIO()
-        fig.canvas.print_png(buf)
+        fig.savefig(buf, format="png")
         buf.seek(0)
         img = Image.open(buf)
         pil_image = Image.frombytes(mode="RGBA", size=img.size, data=img.tobytes())
@@ -193,16 +198,21 @@ class Plugin(BasePlugin):
         from mmrelay.matrix_utils import ImageUploadError, send_image
 
         try:
+            if matrix_client is None:
+                from types import SimpleNamespace
+
+                raise ImageUploadError(SimpleNamespace(message="Matrix client is None"))
             await send_image(matrix_client, room.room_id, pil_image, "graph.png")
         except ImageUploadError:
             self.logger.exception("Failed to send telemetry graph")
-            await matrix_client.room_send(
-                room_id=room.room_id,
-                message_type="m.room.message",
-                content={
-                    "msgtype": "m.notice",
-                    "body": "Failed to generate graph: Image upload failed.",
-                },
-            )
+            if matrix_client is not None:
+                await matrix_client.room_send(
+                    room_id=room.room_id,
+                    message_type="m.room.message",
+                    content={
+                        "msgtype": "m.notice",
+                        "body": "Failed to generate graph: Image upload failed.",
+                    },
+                )
             return False
         return True
