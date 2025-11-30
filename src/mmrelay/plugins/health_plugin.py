@@ -86,9 +86,7 @@ SNR: {avg_snr:.2f} / {mdn_snr:.2f} (avg / median)
         if not self.matches(event):
             return False
 
-        response = await asyncio.get_running_loop().run_in_executor(
-            None, self.generate_response
-        )
+        response = await asyncio.to_thread(self.generate_response)
         await self.send_matrix_message(room.room_id, response, formatted=False)
 
         return True
