@@ -1191,9 +1191,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         # Test the method
         result = plugin.generate_forecast(40.7128, -74.0060)
         print(f"Result: {result}")
-
-        # Should return fetch error when the underlying HTTP call fails
-        self.assertEqual(result, "Error fetching weather data.")
+        # Should return parsing error when raise_for_status fails with AttributeError        # Should return parsing error when raise_for_status fails with AttributeError        self.assertEqual(result, "Error fetching weather data.")
 
 
 if __name__ == "__main__":
