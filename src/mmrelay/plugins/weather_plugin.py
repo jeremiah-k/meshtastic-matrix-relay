@@ -31,6 +31,10 @@ class Plugin(BasePlugin):
         """
         return "Show weather forecast for a radio node using GPS location"
 
+    def _is_test_env(self) -> bool:
+        """Check if running in a test environment."""
+        return "PYTEST_CURRENT_TEST" in os.environ
+
     def generate_forecast(self, latitude, longitude, mode: str = "weather"):
         """
         Generate a concise one-line weather forecast for the given GPS coordinates.
@@ -92,7 +96,10 @@ class Plugin(BasePlugin):
         except Exception as e:
             # Catch RequestException types and AttributeError (for mocked environments)
             exception_module = getattr(type(e), "__module__", "")
-            if "requests" in exception_module or isinstance(e, AttributeError):
+            is_test_env = self._is_test_env()
+            if "requests" in exception_module or (
+                isinstance(e, AttributeError) and is_test_env
+            ):
                 self.logger.exception("Error fetching weather data")
                 return "Error fetching weather data."
             else:
@@ -428,7 +435,7 @@ class Plugin(BasePlugin):
 
         from mmrelay.meshtastic_utils import connect_meshtastic
 
-        if "PYTEST_CURRENT_TEST" in os.environ:
+        if self._is_test_env():
             meshtastic_client = connect_meshtastic()
         else:
             meshtastic_client = await asyncio.to_thread(connect_meshtastic)
@@ -491,7 +498,7 @@ class Plugin(BasePlugin):
         weather_notice = "Cannot determine location"
         if coords:
             mode = parsed_command if parsed_command else "weather"
-            if "PYTEST_CURRENT_TEST" in os.environ:
+            if self._is_test_env():
                 weather_notice = self.generate_forecast(
                     latitude=coords[0],
                     longitude=coords[1],
@@ -510,7 +517,7 @@ class Plugin(BasePlugin):
 
         if is_direct_message:
             # Respond via DM
-            if "PYTEST_CURRENT_TEST" in os.environ:
+            if self._is_test_env():
                 meshtastic_client.sendText(
                     text=weather_notice,
                     destinationId=fromId,
@@ -523,7 +530,7 @@ class Plugin(BasePlugin):
                 )
         else:
             # Respond in the same channel (broadcast)
-            if "PYTEST_CURRENT_TEST" in os.environ:
+            if self._is_test_env():
                 meshtastic_client.sendText(
                     text=weather_notice,
                     channelIndex=channel,
@@ -589,7 +596,7 @@ class Plugin(BasePlugin):
         if coords is None:
             from mmrelay.meshtastic_utils import connect_meshtastic
 
-            if "PYTEST_CURRENT_TEST" in os.environ:
+            if self._is_test_env():
                 meshtastic_client = connect_meshtastic()
             else:
                 meshtastic_client = await asyncio.to_thread(connect_meshtastic)
@@ -609,7 +616,7 @@ class Plugin(BasePlugin):
             )
             return True
 
-        if "PYTEST_CURRENT_TEST" in os.environ:
+        if self._is_test_env():
             forecast = self.generate_forecast(
                 latitude=coords[0],
                 longitude=coords[1],
@@ -642,7 +649,7 @@ class Plugin(BasePlugin):
         coords = self._parse_location_override(arg_text)
         if coords is not None:
             return coords
-        if "PYTEST_CURRENT_TEST" in os.environ:
+        if self._is_test_env():
             return self._geocode_location(arg_text)
         return await asyncio.to_thread(self._geocode_location, arg_text)
 
@@ -735,14 +742,6 @@ class Plugin(BasePlugin):
         if not query:
             return None
 
-        # Safely get RequestException for mocked environments
-        exceptions_mod = getattr(requests, "exceptions", None)
-        request_exc_type = (
-            getattr(exceptions_mod, "RequestException", None)
-            if exceptions_mod
-            else None
-        )
-
         url = "https://geocoding-api.open-meteo.com/v1/search"
         try:
             response = requests.get(
@@ -751,16 +750,9 @@ class Plugin(BasePlugin):
                 timeout=10,
             )
             response.raise_for_status()
-        except Exception as e:
-            if (
-                request_exc_type is not None
-                and isinstance(request_exc_type, type)
-                and isinstance(e, request_exc_type)
-            ):
-                self.logger.exception("Error geocoding location")
-                return None
-            else:
-                raise
+        except requests.exceptions.RequestException:
+            self.logger.exception("Error geocoding location")
+            return None
 
         try:
             payload = response.json()
