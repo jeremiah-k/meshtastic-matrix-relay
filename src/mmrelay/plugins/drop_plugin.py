@@ -23,8 +23,8 @@ class Plugin(BasePlugin):
                 if "position" in info:
                     return info["position"]
                 else:
-                    return False
-        return False
+                    return None
+        return None
 
     async def handle_meshtastic_message(
         self, packet, formatted_message, longname, meshnet_name
