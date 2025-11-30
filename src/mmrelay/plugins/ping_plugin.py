@@ -3,8 +3,6 @@ import re
 
 from meshtastic.mesh_interface import BROADCAST_NUM
 
-from mmrelay.constants.formats import TEXT_MESSAGE_APP
-from mmrelay.constants.messages import PORTNUM_TEXT_MESSAGE_APP
 from mmrelay.plugins.base_plugin import BasePlugin
 
 
@@ -15,7 +13,7 @@ def match_case(source: str, target: str) -> str:
     If the source is all uppercase, make the target all uppercase.
     If the source is all lowercase, make the target all lowercase.
     If the source is capitalized (first letter uppercase, rest lowercase), capitalize the target.
-    Otherwise, return the target unchanged.
+    Otherwise, match the case of each character from the source to the target.
 
     Args:
         source (str): The string whose case pattern to match.
