@@ -367,7 +367,7 @@ class Plugin(BasePlugin):
             return False
 
         # Accept zoom/size in any order, but reject unknown tokens
-        token_pattern = r"(?:\s*(?:zoom=\d+|size=\d+,\d+))*\s*$"
+        token_pattern = r"(?:\s*(?:zoom=\d+|size=\d+,\s*\d+))*\s*$"
         if args and not re.fullmatch(token_pattern, args, flags=re.IGNORECASE):
             return False
 
