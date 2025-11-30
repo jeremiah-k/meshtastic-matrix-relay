@@ -71,6 +71,32 @@ sys.modules["pubsub"] = MagicMock()
 sys.modules["matplotlib"] = MagicMock()
 sys.modules["matplotlib.pyplot"] = MagicMock()
 sys.modules["requests"] = MagicMock()
+
+
+class RequestException(Exception):
+    pass
+
+
+class HTTPError(RequestException):
+    pass
+
+
+class ConnectionError(RequestException):
+    pass
+
+
+class Timeout(RequestException):
+    pass
+
+
+class MockRequestsExceptions:
+    RequestException = RequestException
+    HTTPError = HTTPError
+    ConnectionError = ConnectionError
+    Timeout = Timeout
+
+
+sys.modules["requests"].exceptions = MockRequestsExceptions()
 sys.modules["markdown"] = MagicMock()
 sys.modules["haversine"] = MagicMock()
 sys.modules["schedule"] = MagicMock()

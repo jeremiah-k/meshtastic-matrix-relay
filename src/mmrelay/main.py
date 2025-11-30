@@ -6,6 +6,7 @@ It uses Meshtastic-python and Matrix nio client library to interface with the ra
 import asyncio
 import concurrent.futures
 import functools
+import os
 import signal
 import sys
 

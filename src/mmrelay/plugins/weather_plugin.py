@@ -201,12 +201,22 @@ class Plugin(BasePlugin):
                 slots,
             )
 
+        except KeyError as e:
+            self.logger.exception("Malformed weather data")
+            return "Error parsing weather data."
+        except IndexError as e:
+            self.logger.exception("Malformed weather data")
+            return "Error parsing weather data."
+        except TypeError as e:
+            self.logger.exception("Malformed weather data")
+            return "Error parsing weather data."
+        except ValueError as e:
+            self.logger.exception("Malformed weather data")
+            return "Error parsing weather data."
+        except AttributeError as e:
+            self.logger.exception("Malformed weather data")
+            return "Error parsing weather data."
         except Exception as e:
-            if isinstance(
-                e, (KeyError, IndexError, TypeError, ValueError, AttributeError)
-            ):
-                self.logger.exception("Malformed weather data")
-                return "Error parsing weather data."
             raise
 
     def _build_daily_forecast(

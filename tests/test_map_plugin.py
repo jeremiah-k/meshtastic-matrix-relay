@@ -437,12 +437,12 @@ class TestMapPlugin(unittest.TestCase):
 
     @patch("mmrelay.matrix_utils.send_image")
     @patch("mmrelay.plugins.map_plugin.get_map")
-    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    @patch("mmrelay.plugins.map_plugin._connect_meshtastic_async")
     @patch("mmrelay.matrix_utils.connect_matrix")
     def test_handle_room_message_basic_map(
         self,
         mock_connect_matrix,
-        mock_connect_meshtastic,
+        mock_connect_meshtastic_async,
         mock_get_map,
         mock_send_image,
     ):
@@ -476,7 +476,7 @@ class TestMapPlugin(unittest.TestCase):
                     "user": {"shortName": "SF"},
                 }
             }
-            mock_connect_meshtastic.return_value = mock_meshtastic_client
+            mock_connect_meshtastic_async.return_value = mock_meshtastic_client
 
             mock_image = MagicMock()
             mock_get_map.return_value = mock_image
@@ -497,12 +497,12 @@ class TestMapPlugin(unittest.TestCase):
 
     @patch("mmrelay.matrix_utils.send_image")
     @patch("mmrelay.plugins.map_plugin.get_map")
-    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    @patch("mmrelay.plugins.map_plugin._connect_meshtastic_async")
     @patch("mmrelay.matrix_utils.connect_matrix")
     def test_handle_room_message_with_zoom(
         self,
         mock_connect_matrix,
-        mock_connect_meshtastic,
+        mock_connect_meshtastic_async,
         mock_get_map,
         mock_send_image,
     ):
@@ -529,8 +529,18 @@ class TestMapPlugin(unittest.TestCase):
             mock_connect_matrix.return_value = mock_matrix_client
 
             mock_meshtastic_client = MagicMock()
-            mock_meshtastic_client.nodes = {}
-            mock_connect_meshtastic.return_value = mock_meshtastic_client
+            # Add mock node with location data
+            mock_meshtastic_client.nodes = {
+                "!nodeid": {
+                    "user": {"shortName": "Test"},
+                    "position": {
+                        "latitude": 37.7749,
+                        "longitude": -122.4194,
+                        "precisionBits": 12,
+                    },
+                }
+            }
+            mock_connect_meshtastic_async.return_value = mock_meshtastic_client
 
             mock_image = MagicMock()
             mock_get_map.return_value = mock_image
@@ -543,18 +553,19 @@ class TestMapPlugin(unittest.TestCase):
             self.assertTrue(result)
             # Check that get_map was called with zoom=15
             call_args = mock_get_map.call_args
+            self.assertIsNotNone(call_args, "get_map should have been called")
             self.assertEqual(call_args[1]["zoom"], 15)
 
         asyncio.run(run_test())
 
     @patch("mmrelay.matrix_utils.send_image")
     @patch("mmrelay.plugins.map_plugin.get_map")
-    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    @patch("mmrelay.plugins.map_plugin._connect_meshtastic_async")
     @patch("mmrelay.matrix_utils.connect_matrix")
     def test_handle_room_message_with_size(
         self,
         mock_connect_matrix,
-        mock_connect_meshtastic,
+        mock_connect_meshtastic_async,
         mock_get_map,
         mock_send_image,
     ):
@@ -581,8 +592,18 @@ class TestMapPlugin(unittest.TestCase):
             mock_connect_matrix.return_value = mock_matrix_client
 
             mock_meshtastic_client = MagicMock()
-            mock_meshtastic_client.nodes = {}
-            mock_connect_meshtastic.return_value = mock_meshtastic_client
+            # Add mock node with location data
+            mock_meshtastic_client.nodes = {
+                "!nodeid": {
+                    "user": {"shortName": "Test"},
+                    "position": {
+                        "latitude": 37.7749,
+                        "longitude": -122.4194,
+                        "precisionBits": 12,
+                    },
+                }
+            }
+            mock_connect_meshtastic_async.return_value = mock_meshtastic_client
 
             mock_image = MagicMock()
             mock_get_map.return_value = mock_image
@@ -625,12 +646,12 @@ class TestMapPlugin(unittest.TestCase):
 
     @patch("mmrelay.matrix_utils.send_image")
     @patch("mmrelay.plugins.map_plugin.get_map")
-    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    @patch("mmrelay.plugins.map_plugin._connect_meshtastic_async")
     @patch("mmrelay.matrix_utils.connect_matrix")
     def test_handle_room_message_invalid_zoom(
         self,
         mock_connect_matrix,
-        mock_connect_meshtastic,
+        mock_connect_meshtastic_async,
         mock_get_map,
         mock_send_image,
     ):
@@ -662,8 +683,18 @@ class TestMapPlugin(unittest.TestCase):
             mock_connect_matrix.return_value = mock_matrix_client
 
             mock_meshtastic_client = MagicMock()
-            mock_meshtastic_client.nodes = {}
-            mock_connect_meshtastic.return_value = mock_meshtastic_client
+            # Add mock node with location data
+            mock_meshtastic_client.nodes = {
+                "!nodeid": {
+                    "user": {"shortName": "Test"},
+                    "position": {
+                        "latitude": 37.7749,
+                        "longitude": -122.4194,
+                        "precisionBits": 12,
+                    },
+                }
+            }
+            mock_connect_meshtastic_async.return_value = mock_meshtastic_client
 
             mock_image = MagicMock()
             mock_get_map.return_value = mock_image
@@ -682,12 +713,12 @@ class TestMapPlugin(unittest.TestCase):
 
     @patch("mmrelay.matrix_utils.send_image")
     @patch("mmrelay.plugins.map_plugin.get_map")
-    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    @patch("mmrelay.plugins.map_plugin._connect_meshtastic_async")
     @patch("mmrelay.matrix_utils.connect_matrix")
     def test_handle_room_message_oversized_image(
         self,
         mock_connect_matrix,
-        mock_connect_meshtastic,
+        mock_connect_meshtastic_async,
         mock_get_map,
         mock_send_image,
     ):
@@ -714,8 +745,18 @@ class TestMapPlugin(unittest.TestCase):
             mock_connect_matrix.return_value = mock_matrix_client
 
             mock_meshtastic_client = MagicMock()
-            mock_meshtastic_client.nodes = {}
-            mock_connect_meshtastic.return_value = mock_meshtastic_client
+            # Add mock node with location data
+            mock_meshtastic_client.nodes = {
+                "!nodeid": {
+                    "user": {"shortName": "Test"},
+                    "position": {
+                        "latitude": 37.7749,
+                        "longitude": -122.4194,
+                        "precisionBits": 12,
+                    },
+                }
+            }
+            mock_connect_meshtastic_async.return_value = mock_meshtastic_client
 
             mock_image = MagicMock()
             mock_get_map.return_value = mock_image
@@ -734,12 +775,12 @@ class TestMapPlugin(unittest.TestCase):
 
     @patch("mmrelay.matrix_utils.send_image")
     @patch("mmrelay.plugins.map_plugin.get_map")
-    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    @patch("mmrelay.plugins.map_plugin._connect_meshtastic_async")
     @patch("mmrelay.matrix_utils.connect_matrix")
     def test_handle_room_message_no_locations(
         self,
         mock_connect_matrix,
-        mock_connect_meshtastic,
+        mock_connect_meshtastic_async,
         mock_get_map,
         mock_send_image,
     ):
@@ -759,7 +800,7 @@ class TestMapPlugin(unittest.TestCase):
 
             mock_meshtastic_client = MagicMock()
             mock_meshtastic_client.nodes = {"node1": {"user": {"shortName": "n1"}}}
-            mock_connect_meshtastic.return_value = mock_meshtastic_client
+            mock_connect_meshtastic_async.return_value = mock_meshtastic_client
 
             self.plugin.send_matrix_message = AsyncMock()
 

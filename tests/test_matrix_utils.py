@@ -3552,7 +3552,30 @@ async def test_connect_matrix_with_e2ee_credentials(
     }
 
     # Mock olm import to simulate E2EE availability
-    with patch.dict("sys.modules", {"olm": MagicMock()}):
+    mock_olm = MagicMock()
+    with (
+        patch.dict("sys.modules", {"olm": mock_olm}),
+        patch("importlib.import_module") as mock_import,
+    ):
+        # Make import_module return the mock for olm and nio modules
+        def mock_import_side_effect(module_name):
+            if module_name == "olm":
+                return mock_olm
+            elif module_name == "nio.crypto":
+                mock_crypto = MagicMock()
+                mock_crypto.OlmDevice = MagicMock()
+                return mock_crypto
+            elif module_name == "nio.store":
+                mock_store = MagicMock()
+                mock_store.SqliteStore = MagicMock()
+                return mock_store
+            else:
+                # Return real module for other imports
+                import importlib
+
+                return importlib.import_module(module_name)
+
+        mock_import.side_effect = mock_import_side_effect
         client = await connect_matrix(test_config)
 
         assert client is not None

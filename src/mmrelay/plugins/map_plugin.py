@@ -326,8 +326,8 @@ class Plugin(BasePlugin):
     is_core_plugin = True
     plugin_name = "map"
 
-    # No __init__ method needed with the simplified plugin system
-    # The BasePlugin will automatically use the class-level plugin_name
+    def __init__(self):
+        super().__init__()
 
     @property
     def description(self):
