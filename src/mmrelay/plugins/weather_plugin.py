@@ -190,10 +190,11 @@ class Plugin(BasePlugin):
             if units == "imperial":
                 if current_temp is not None:
                     current_temp = current_temp * 9 / 5 + 32
-                for key, (t, p, w, dflag) in forecast_hours.items():
+                for key, values in forecast_hours.items():
+                    t, p, w, dflag, *rest = values
                     if t is not None:
                         t = t * 9 / 5 + 32
-                    forecast_hours[key] = (t, p, w, dflag)
+                    forecast_hours[key] = (t, p, w, dflag, *rest)
 
             if current_temp is not None:
                 current_temp = round(current_temp, 1)
@@ -203,8 +204,9 @@ class Plugin(BasePlugin):
                     p,
                     w,
                     dflag,
+                    *rest,
                 )
-                for key, (t, p, w, dflag) in forecast_hours.items()
+                for key, (t, p, w, dflag, *rest) in forecast_hours.items()
             }
 
             # Generate one-line weather forecast

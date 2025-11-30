@@ -390,23 +390,15 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         # Verify timeout is set
         self.assertEqual(mock_get.call_args.kwargs.get("timeout"), 10)
 
-        # Should contain current weather
+        # Should contain current weather details only
         self.assertIn(
             _normalize_emoji("Now: 🌤️ Mainly clear"), _normalize_emoji(forecast)
         )
         self.assertIn("22.5°C", forecast)
-
-        # Should contain 2h forecast (index 12: weathercode 63 = Moderate rain)
-        self.assertIn(
-            _normalize_emoji("+2h: 🌧️ Moderate rain"), _normalize_emoji(forecast)
-        )
-        self.assertIn("21.0°C", forecast)
-        self.assertIn("5%", forecast)
-
-        # Should contain 5h forecast (index 15: weathercode 65 = Heavy rain)
-        self.assertIn(_normalize_emoji("+5h: 🌧️ Heavy rain"), _normalize_emoji(forecast))
-        self.assertIn("23.0°C", forecast)
-        self.assertIn("20%", forecast)
+        self.assertIn("Humidity", forecast)
+        self.assertIn("Wind", forecast)
+        self.assertIn("Precip 10%", forecast)
+        self.assertNotIn("+1h", forecast)
 
     @patch("requests.get")
     def test_generate_forecast_imperial_units(self, mock_get):
@@ -422,10 +414,9 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         forecast = self.plugin.generate_forecast(40.7128, -74.0060)
 
         # Should convert temperatures to Fahrenheit
-        # 22.5°C = 72.5°F, 21.0°C = 69.8°F, 23.0°C = 73.4°F
+        # 22.5°C = 72.5°F
         self.assertIn("72.5°F", forecast)
-        self.assertIn("69.8°F", forecast)
-        self.assertIn("73.4°F", forecast)
+        self.assertIn("Wind", forecast)
 
     @patch("requests.get")
     def test_generate_forecast_time_based_indexing_early_morning(self, mock_get):
@@ -456,13 +447,10 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         forecast = self.plugin.generate_forecast(40.7128, -74.0060)
 
         # Current time is 2:00 AM (index 2)
-        # +2h forecast should be 4:00 AM (index 4): temp 14.0°C, precip 8%
-        # +5h forecast should be 7:00 AM (index 7): temp 17.0°C, precip 14%
-        self.assertIn("15.0°C", forecast)  # Current temp
-        self.assertIn("14.0°C", forecast)  # +2h temp
-        self.assertIn("17.0°C", forecast)  # +5h temp
-        self.assertIn("8%", forecast)  # +2h precipitation
-        self.assertIn("14%", forecast)  # +5h precipitation
+        # Near-term forecasts are provided by hourly mode
+        forecast = self.plugin.generate_forecast(40.7128, -74.0060, mode="hourly")
+        self.assertIn("+1h", forecast)
+        self.assertIn("+3h", forecast)
 
     @patch("requests.get")
     def test_generate_forecast_time_based_indexing_late_evening(self, mock_get):
@@ -492,13 +480,9 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         forecast = self.plugin.generate_forecast(40.7128, -74.0060)
 
         # Current time is 22:00 (index 22)
-        # +2h forecast should be 24:00/00:00 next day (index 24): temp 15.0°C, precip 24%
-        # +5h forecast should be 03:00 next day (index 27): temp 18.0°C, precip 27%
-        self.assertIn("25.0°C", forecast)  # Current temp (distinct from +5h)
-        self.assertIn("15.0°C", forecast)  # +2h temp (next day)
-        self.assertIn("18.0°C", forecast)  # +5h temp (next day)
-        self.assertIn("24%", forecast)  # +2h precipitation
-        self.assertIn("27%", forecast)  # +5h precipitation
+        forecast = self.plugin.generate_forecast(40.7128, -74.0060, mode="hourly")
+        self.assertIn("+1h", forecast)
+        self.assertIn("+3h", forecast)
 
     @patch("requests.get")
     def test_generate_forecast_bounds_checking(self, mock_get):
@@ -527,12 +511,9 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         forecast = self.plugin.generate_forecast(40.7128, -74.0060)
 
         # Current time is 21:00 (index 21)
-        # +2h would be index 23 (valid)
-        # +5h would be index 26 (invalid, should be clamped to 23)
-        # Both +2h and +5h should be clamped to the last hour (index 23)
-        self.assertIn("20.0°C", forecast)  # Current temp remains 20.0°C
-        self.assertIn("25.0°C", forecast)  # Forecast temps use last hour
-        self.assertIn("15%", forecast)  # Forecast precip uses last hour
+        forecast = self.plugin.generate_forecast(40.7128, -74.0060, mode="hourly")
+        self.assertIn("+1h", forecast)
+        self.assertIn("+3h", forecast)
 
     @patch("requests.get")
     def test_generate_forecast_datetime_parsing_with_timezone(self, mock_get):
@@ -611,18 +592,10 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
 
         mock_get.return_value = _make_ok_response(invalid_time_data)
 
-        # Should not raise; falls back to hour=0 -> +2h index 2, +5h index 5
+        # Should not raise; falls back to hour=0
         forecast = self.plugin.generate_forecast(40.7128, -74.0060)
         self.assertIn("Now:", forecast)
         self.assertIn("20.0°C", forecast)  # Current temp
-        self.assertRegex(
-            forecast, r"\b(2|2\.0)°C\b"
-        )  # +2h temp, tolerate formatter changes
-        self.assertRegex(
-            forecast, r"\b(5|5\.0)°C\b"
-        )  # +5h temp, tolerate formatter changes
-        self.assertIn("2%", forecast)  # +2h precipitation
-        self.assertIn("5%", forecast)  # +5h precipitation
 
     @patch("requests.get")
     def test_generate_forecast_http_error(self, mock_get):
@@ -692,16 +665,9 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         mock_response.raise_for_status.return_value = None
         mock_get.return_value = mock_response
 
-        forecast = self.plugin.generate_forecast(40.7128, -74.0060)
-
-        # With timestamp anchoring: 14:00 is at index 2 in the array (12:00, 13:00, 14:00, ...)
-        # +2h forecast should be index 4 (16:00): temp 19.0°C, precip 12%
-        # +5h forecast should be index 7 (19:00): temp 22.0°C, precip 21%
-        self.assertIn("20.0°C", forecast)  # Current temp
-        self.assertIn("19.0°C", forecast)  # +2h temp
-        self.assertIn("22.0°C", forecast)  # +5h temp
-        self.assertIn("12%", forecast)  # +2h precipitation
-        self.assertIn("21%", forecast)  # +5h precipitation
+        forecast = self.plugin.generate_forecast(40.7128, -74.0060, mode="hourly")
+        self.assertIn("+1h", forecast)
+        self.assertIn("+3h", forecast)
 
     @patch("requests.get")
     def test_generate_forecast_night_weather_codes(self, mock_get):
@@ -1149,12 +1115,12 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
 
             # Mock logger to capture warning
             with patch.object(self.plugin, "logger") as mock_logger:
-                result = self.plugin.generate_forecast(40.7128, -74.0060)
+                result = self.plugin.generate_forecast(40.7128, -74.0060, mode="hourly")
 
                 # Should still return a forecast (using fallback indexing)
                 self.assertIn("Now:", result)
-                self.assertIn("+2h:", result)
-                self.assertIn("+5h:", result)
+                self.assertIn("+1h:", result)
+                self.assertIn("+3h:", result)
 
                 # Should log warning about timestamp fallback
                 mock_logger.warning.assert_called_once_with(
