@@ -425,7 +425,7 @@ class Plugin(BasePlugin):
         )
 
         fromId = packet.get("fromId")
-        if fromId not in meshtastic_client.nodes:
+        if not fromId or fromId not in meshtastic_client.nodes:
             self.logger.debug("Ignoring weather request from unknown node: %s", fromId)
             return True  # Unknown node, treat as handled without responding
 
@@ -520,8 +520,21 @@ class Plugin(BasePlugin):
                 args_text = args
                 break
 
+        # If matches(event) was True but we couldn't parse args, treat as valid command with empty args
         if not parsed_command:
-            return False
+            # Find which command matched by using the same logic as matches()
+            from mmrelay.matrix_utils import bot_command
+
+            require_mention = self.get_require_bot_mention()
+            for command in self.get_matrix_commands():
+                if bot_command(command, event, require_mention=require_mention):
+                    parsed_command = command
+                    args_text = ""
+                    break
+
+            # If still no command found, return False
+            if not parsed_command:
+                return False
 
         coords = await self._resolve_location_from_args(args_text)
 

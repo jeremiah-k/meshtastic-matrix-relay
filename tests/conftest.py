@@ -572,12 +572,10 @@ def reset_meshtastic_globals():
     """
     import mmrelay.meshtastic_utils as mu
 
-    # Store original values
+    # Store original values (excluding logger and event_loop to keep them functional)
     original_values = {
         "config": getattr(mu, "config", None),
-        "logger": getattr(mu, "logger", None),
         "meshtastic_client": getattr(mu, "meshtastic_client", None),
-        "event_loop": getattr(mu, "event_loop", None),
         "reconnecting": getattr(mu, "reconnecting", False),
         "shutting_down": getattr(mu, "shutting_down", False),
         "reconnect_task": getattr(mu, "reconnect_task", None),
@@ -587,11 +585,9 @@ def reset_meshtastic_globals():
         ),
     }
 
-    # Reset all globals to default/clean state
+    # Reset mutable globals to a clean state; keep logger and event_loop usable
     mu.config = None
-    mu.logger = None
     mu.meshtastic_client = None
-    mu.event_loop = None
     mu.reconnecting = False
     mu.shutting_down = False
     mu.reconnect_task = None

@@ -436,12 +436,13 @@ class Plugin(BasePlugin):
 
         locations = []
         for _node, info in meshtastic_client.nodes.items():
-            if "position" in info and "latitude" in info["position"]:
+            pos = info.get("position") if isinstance(info, dict) else None
+            if isinstance(pos, dict) and "latitude" in pos and "longitude" in pos:
                 locations.append(
                     {
-                        "lat": info["position"]["latitude"],
-                        "lon": info["position"]["longitude"],
-                        "precisionBits": info["position"].get("precisionBits"),
+                        "lat": pos["latitude"],
+                        "lon": pos["longitude"],
+                        "precisionBits": pos.get("precisionBits"),
                         "label": info["user"]["shortName"],
                     }
                 )
