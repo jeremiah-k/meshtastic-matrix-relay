@@ -45,6 +45,9 @@ config = None
 # Global variable to store the log file path
 log_file_path = None
 
+# Cache for parsed CLI arguments
+_cached_args = None
+
 # Track if component debug logging has been configured
 _component_debug_configured = False
 
@@ -138,7 +141,7 @@ def configure_component_debug_logging():
     _component_debug_configured = True
 
 
-def get_logger(name):
+def get_logger(name: str) -> logging.Logger:
     """
     Create and return a logger configured for console output (colorized when available) and optional rotating file logging.
 
@@ -205,15 +208,19 @@ def get_logger(name):
     logger.addHandler(console_handler)
 
     # Check command line arguments for log file path (only if not in test environment)
-    args = None
-    try:
-        # Only parse arguments if we're not in a test environment
-        from mmrelay.cli import parse_arguments
+    global _cached_args
+    args = _cached_args
 
-        args = parse_arguments()
-    except (SystemExit, ImportError):
-        # If argument parsing fails (e.g., in tests), continue without CLI arguments
-        pass
+    if args is None:
+        try:
+            # Only parse arguments if we're not in a test environment
+            from mmrelay.cli import parse_arguments
+
+            args = parse_arguments()
+            _cached_args = args
+        except (SystemExit, ImportError):
+            # If argument parsing fails (e.g., in tests), continue without CLI arguments
+            pass
 
     # Check if file logging is enabled (default to True for better user experience)
     if (

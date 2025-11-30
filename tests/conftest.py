@@ -593,10 +593,9 @@ def reset_meshtastic_globals():
 
     yield
 
-    # Restore original values
+    # Restore original values (including Nones) to avoid state leakage
     for attr_name, original_value in original_values.items():
-        if original_value is not None:
-            setattr(mu, attr_name, original_value)
+        setattr(mu, attr_name, original_value)
 
 
 @pytest.fixture

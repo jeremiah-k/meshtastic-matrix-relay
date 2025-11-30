@@ -91,9 +91,9 @@ Replace with consistent behavior:
 
 ```python
 # ✅ NEW PATTERN - Consistent behavior
-def function_that_works_everywhere():
+async def function_that_works_everywhere():
     # Same logic for test and production
-    return asyncio.to_thread(blocking_operation)
+    return await asyncio.to_thread(blocking_operation)
 ```
 
 ## Test Organization

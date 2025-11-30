@@ -1230,13 +1230,8 @@ async def connect_matrix(passed_config=None):
                         logger.warning("E2EE will be disabled for this session.")
                         e2ee_enabled = False
                     else:
-                        # Dependencies are available, keep the config-determined value
-                        if e2ee_enabled:
-                            logger.info("End-to-End Encryption (E2EE) is enabled")
-                        else:
-                            logger.debug(
-                                "E2EE dependencies available but E2EE is disabled in configuration"
-                            )
+                        # Dependencies are available and E2EE is enabled in config
+                        logger.info("End-to-End Encryption (E2EE) is enabled")
 
                     if e2ee_enabled:
                         # Ensure nio still receives a store path even when dependency

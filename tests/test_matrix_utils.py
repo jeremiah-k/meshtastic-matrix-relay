@@ -3553,27 +3553,29 @@ async def test_connect_matrix_with_e2ee_credentials(
 
     # Mock olm import to simulate E2EE availability
     mock_olm = MagicMock()
+    # Capture the real import_module so the side effect can delegate without recursion
+    import importlib as _importlib
+
+    real_import_module = _importlib.import_module
+
     with (
         patch.dict("sys.modules", {"olm": mock_olm}),
         patch("importlib.import_module") as mock_import,
     ):
-        # Make import_module return the mock for olm and nio modules
+        # Make import_module return mocks for E2EE modules and delegate all other imports
         def mock_import_side_effect(module_name):
             if module_name == "olm":
                 return mock_olm
-            elif module_name == "nio.crypto":
+            if module_name == "nio.crypto":
                 mock_crypto = MagicMock()
                 mock_crypto.OlmDevice = MagicMock()
                 return mock_crypto
-            elif module_name == "nio.store":
+            if module_name == "nio.store":
                 mock_store = MagicMock()
                 mock_store.SqliteStore = MagicMock()
                 return mock_store
-            else:
-                # Return real module for other imports
-                import importlib
-
-                return importlib.import_module(module_name)
+            # Delegate everything else to the original import function
+            return real_import_module(module_name)
 
         mock_import.side_effect = mock_import_side_effect
         client = await connect_matrix(test_config)

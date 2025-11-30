@@ -1,9 +1,7 @@
 import asyncio
 import math
-import os
 import re
 from datetime import datetime
-from unittest.mock import Mock
 
 import requests  # type: ignore[import-untyped]
 from meshtastic.mesh_interface import BROADCAST_NUM
@@ -201,19 +199,7 @@ class Plugin(BasePlugin):
                 slots,
             )
 
-        except KeyError as e:
-            self.logger.exception("Malformed weather data")
-            return "Error parsing weather data."
-        except IndexError as e:
-            self.logger.exception("Malformed weather data")
-            return "Error parsing weather data."
-        except TypeError as e:
-            self.logger.exception("Malformed weather data")
-            return "Error parsing weather data."
-        except ValueError as e:
-            self.logger.exception("Malformed weather data")
-            return "Error parsing weather data."
-        except AttributeError as e:
+        except (KeyError, IndexError, TypeError, ValueError, AttributeError):
             self.logger.exception("Malformed weather data")
             return "Error parsing weather data."
         except Exception as e:

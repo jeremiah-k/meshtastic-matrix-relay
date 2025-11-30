@@ -12,6 +12,7 @@ import logging
 import os
 import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -336,12 +337,9 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
 
         with patch("mmrelay.e2ee_utils.importlib.import_module") as mock_import:
             # Create mock modules where nio.store lacks SqliteStore
-            mock_olm = MagicMock()
-            mock_nio_crypto = MagicMock()
-            mock_nio_crypto.OlmDevice = MagicMock()
-            mock_nio_store = MagicMock()
-            # Remove the SqliteStore attribute to simulate missing dependency
-            del mock_nio_store.SqliteStore
+            mock_olm = types.SimpleNamespace()
+            mock_nio_crypto = types.SimpleNamespace(OlmDevice=MagicMock())
+            mock_nio_store = types.SimpleNamespace()
 
             def import_side_effect(name):
                 """
@@ -355,9 +353,9 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
                 """
                 if name == "olm":
                     return mock_olm
-                elif name == "nio.crypto":
+                if name == "nio.crypto":
                     return mock_nio_crypto
-                elif name == "nio.store":
+                if name == "nio.store":
                     return mock_nio_store
                 return MagicMock()
 

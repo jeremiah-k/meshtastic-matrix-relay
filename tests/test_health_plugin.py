@@ -185,6 +185,9 @@ class TestHealthPlugin(unittest.TestCase):
 
         result = self.plugin.generate_response()
         self.assertIn("Nodes:", result)
+        self.assertIn("Battery: 50.0% / 50.0%", result)
+        self.assertIn("Air Util: 0.00 / 0.00", result)
+        self.assertIn("SNR: 0.00 / 0.00", result)
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     def test_generate_response_with_all_low_battery(self, mock_connect):
@@ -205,6 +208,8 @@ class TestHealthPlugin(unittest.TestCase):
 
         result = self.plugin.generate_response()
         self.assertIn("Nodes:", result)
+        self.assertIn("Nodes with Low Battery (< 10): 2", result)
+        self.assertIn("Battery: 6.5% / 6.5%", result)
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     def test_generate_response_filters_none_values(self, mock_connect):
