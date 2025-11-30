@@ -76,7 +76,7 @@ SNR: {avg_snr:.2f} / {mdn_snr:.2f} (avg / median)
 """
 
     async def handle_meshtastic_message(
-        self, _packet, _formatted_message: str, _longname: str, _meshnet_name: str
+        self, packet, formatted_message: str, longname: str, meshnet_name: str
     ) -> bool:
         return False
 

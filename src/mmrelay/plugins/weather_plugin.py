@@ -358,7 +358,7 @@ class Plugin(BasePlugin):
         return weather_mapping.get(weather_code, "❓ Unknown")
 
     async def handle_meshtastic_message(
-        self, packet, _formatted_message, longname, _meshnet_name
+        self, packet, formatted_message, longname, meshnet_name
     ):
         """
         Handle an incoming Meshtastic text message and respond with a weather forecast when a supported command is detected.
