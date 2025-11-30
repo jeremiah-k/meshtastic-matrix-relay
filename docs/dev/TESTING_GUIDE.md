@@ -64,6 +64,38 @@ def test_handle_auth_logout_keyboard_interrupt(self, mock_print, mock_logout):
 | Direct async function testing                 | `AsyncMock`    | `mock_func = AsyncMock(return_value=result)` |
 | Exception in async context                    | Regular `Mock` | `mock_func.side_effect = Exception()`        |
 
+## Standardized Async Patterns
+
+The project has standardized async testing patterns and no longer requires test environment detection (e.g., `MMRELAY_TESTING` environment variable).
+
+### Key Principles
+
+1. **No Test Environment Detection**: Code should behave consistently in test and production environments
+2. **Use `asyncio.to_thread()`**: For running blocking operations in async context
+3. **Consistent Mocking**: Use the patterns described above for all async function testing
+4. **Global State Isolation**: Use `reset_meshtastic_globals` fixture for tests that modify global state
+
+### Migration from Old Patterns
+
+If you encounter code using old test environment detection patterns:
+
+```python
+# ❌ OLD PATTERN - No longer needed
+if os.getenv("MMRELAY_TESTING"):
+    # Test-specific behavior
+else:
+    # Production behavior
+```
+
+Replace with consistent behavior:
+
+```python
+# ✅ NEW PATTERN - Consistent behavior
+def function_that_works_everywhere():
+    # Same logic for test and production
+    return asyncio.to_thread(blocking_operation)
+```
+
 ## Test Organization
 
 ### Test File Structure
@@ -112,6 +144,35 @@ class TestFeatureName(unittest.TestCase):
         # Assert
 ```
 
+### Global State Management
+
+For tests that interact with meshtastic utilities or plugins that maintain global state, use the `reset_meshtastic_globals` fixture to ensure proper test isolation:
+
+```python
+import pytest
+
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+class TestMyPlugin(unittest.TestCase):
+    """Test plugin with proper global state isolation."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.mock_args = MagicMock()
+        # Global state will be reset before each test
+
+    def test_plugin_behavior(self):
+        """Test plugin behavior without global state interference."""
+        # Test implementation
+        pass
+```
+
+The `reset_meshtastic_globals` fixture automatically:
+
+- Resets module-level globals in `mmrelay.meshtastic_utils`
+- Clears config, logger, meshtastic_client, and event_loop references
+- Resets state flags (reconnecting, shutting_down, etc.)
+- Ensures clean test isolation between test runs
+
 ### Async Mock Cleanup
 
 The project uses a cleanup fixture in `tests/conftest.py` to handle AsyncMock cleanup for certain test modules. If you're writing tests that don't need AsyncMock warnings suppressed, ensure your test module is not in the `asyncmock_patterns` list:
@@ -119,12 +180,22 @@ The project uses a cleanup fixture in `tests/conftest.py` to handle AsyncMock cl
 ```python
 # In conftest.py
 asyncmock_patterns = [
+    "test_async_patterns",
     "test_matrix_utils",
-    "test_e2ee_unified",
+    "test_matrix_utils_edge_cases",
+    "test_mesh_relay_plugin",
+    "test_map_plugin",
+    "test_meshtastic_utils",
+    "test_base_plugin",
+    "test_telemetry_plugin",
+    "test_performance_stress",
+    "test_main",
+    "test_health_plugin",
+    "test_error_boundaries",
+    "test_integration_scenarios",
     "test_help_plugin",
     "test_ping_plugin",
     "test_nodes_plugin",
-    # "test_cli",  # ✅ Removed - warnings properly fixed
 ]
 ```
 
@@ -246,6 +317,56 @@ def test_output_messages(self, mock_print):
     mock_print.assert_any_call("Expected message")
 ```
 
+### Exception Handling in Plugins
+
+When testing plugin exception handling, ensure you test both network-level exceptions and data parsing exceptions:
+
+```python
+@patch("mmrelay.plugins.weather_plugin.requests.get")
+def test_weather_plugin_requests_exception(self, mock_get):
+    """Test weather plugin handles requests exceptions properly."""
+    # Mock network-level failure
+    mock_get.side_effect = requests.exceptions.ConnectionError("Network error")
+
+    plugin = Plugin()
+    result = plugin.generate_forecast(40.7128, -74.0060)
+
+    self.assertEqual(result, "Error fetching weather data.")
+
+@patch("mmrelay.plugins.weather_plugin.requests.get")
+def test_weather_plugin_attribute_error_fallback(self, mock_get):
+    """Test weather plugin handles AttributeError during response processing."""
+    # Mock response that raises AttributeError on raise_for_status
+    mock_response = MagicMock()
+    mock_response.raise_for_status.side_effect = AttributeError("Some error")
+    mock_response.raise_for_status.__module__ = "requests"  # Make it look like requests exception
+    mock_get.return_value = mock_response
+
+    plugin = Plugin()
+    result = plugin.generate_forecast(40.7128, -74.0060)
+
+    self.assertEqual(result, "Error fetching weather data.")
+```
+
+**Key Patterns for Exception Testing:**
+
+1. **Network Exceptions**: Test `requests.exceptions.RequestException` and subclasses
+2. **Attribute Errors**: Test cases where response objects might not have expected attributes
+3. **Data Parsing Errors**: Test malformed JSON responses and missing data fields
+4. **Multiple Exception Types**: Use tuple catching for related exceptions:
+
+```python
+# ✅ GOOD: Catch related exceptions together
+except (requests.exceptions.RequestException, AttributeError):
+    self.logger.exception("Error fetching weather data")
+    return "Error fetching weather data."
+
+# ✅ GOOD: Handle parsing errors specifically
+except (KeyError, IndexError, TypeError, ValueError, AttributeError):
+    self.logger.exception("Malformed weather data")
+    return "Error parsing weather data."
+```
+
 ## Troubleshooting
 
 ### RuntimeWarnings About Unawaited Coroutines
@@ -320,24 +441,6 @@ def test_clone_or_update_repo_invalid_url_whitespace(self, mock_logger, mock_som
 ```
 
 **Note**: Parametrized tests work fine with pytest functions (not unittest.TestCase), as shown in the Test Organization section.
-
-### Hanging Tests Due to `run_in_executor`
-
-Some tests may hang due to the use of `asyncio.run_in_executor` in the application code. This is because the default executor uses a thread pool that may not be properly shut down during test teardown.
-
-To resolve this, a pytest fixture called `mock_event_loop` is available in `tests/conftest.py`. This fixture patches `asyncio.get_running_loop` to return a mock event loop that runs tasks synchronously in the same thread, avoiding the use of a thread pool.
-
-To use this fixture, add the `@pytest.mark.usefixtures("mock_event_loop")` decorator to your test class:
-
-```python
-import pytest
-
-@pytest.mark.usefixtures("mock_event_loop")
-class TestMyPlugin(unittest.TestCase):
-    ...
-```
-
-This will apply the fixture to all test methods in the class, preventing them from hanging.
 
 ## References
 
