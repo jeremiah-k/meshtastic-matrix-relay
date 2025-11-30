@@ -91,11 +91,8 @@ class Plugin(BasePlugin):
             response.raise_for_status()
         except Exception as e:
             # Catch RequestException types and AttributeError (for mocked environments)
-            if (
-                request_exc_type is not None
-                and isinstance(request_exc_type, type)
-                and isinstance(e, request_exc_type)
-            ) or isinstance(e, AttributeError):
+            exception_module = getattr(type(e), "__module__", "")
+            if "requests" in exception_module or isinstance(e, AttributeError):
                 self.logger.exception("Error fetching weather data")
                 return "Error fetching weather data."
             else:
