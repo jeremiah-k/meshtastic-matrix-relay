@@ -514,7 +514,7 @@ class TestMeshtasticUtils(unittest.TestCase):
         mock_interface._generatePacketId.return_value = 12345
         mock_interface._sendPacket.return_value = {"id": 12345}
 
-        result = sendTextReply(mock_interface, "Hello", 999, destinationId=123456789)
+        result = sendTextReply(mock_interface, "Hello", 999, destinationId="123456789")
 
         # Should return the result from _sendPacket
         self.assertEqual(result, {"id": 12345})
@@ -532,7 +532,7 @@ class TestMeshtasticUtils(unittest.TestCase):
         mock_interface._generatePacketId.return_value = 12345
         mock_interface._sendPacket.return_value = None  # Simulate failure
 
-        result = sendTextReply(mock_interface, "Hello", 999, destinationId=123456789)
+        result = sendTextReply(mock_interface, "Hello", 999, destinationId="123456789")
 
         self.assertIsNone(result)
 
@@ -1091,7 +1091,7 @@ def test_reconnect_attempts_connection(
     mock_connect,
     mock_get_loop,
     _mock_is_service,
-    _reset_meshtastic_globals,
+    reset_meshtastic_globals,
 ):
     """
     Test that the reconnect coroutine attempts to establish a Meshtastic connection.
