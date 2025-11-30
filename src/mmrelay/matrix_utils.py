@@ -1234,8 +1234,7 @@ async def connect_matrix(passed_config=None):
                         logger.info("End-to-End Encryption (E2EE) is enabled")
 
                     if e2ee_enabled:
-                        # Ensure nio still receives a store path even when dependency
-                        # checks are skipped; without this the client will not load encryption state.
+                        # Ensure nio receives a store path for the client to load encryption state.
                         # Get store path from config or use default
                         if (
                             "encryption" in config["matrix"]

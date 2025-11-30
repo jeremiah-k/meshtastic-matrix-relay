@@ -2,7 +2,6 @@ import asyncio
 import contextlib
 import inspect
 import io
-import os
 import re
 import threading
 import time

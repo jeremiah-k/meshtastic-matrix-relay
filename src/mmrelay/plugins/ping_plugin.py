@@ -41,15 +41,15 @@ class Plugin(BasePlugin):
     ):
         """
         Handle an incoming Meshtastic packet and respond to a matched "ping" message when appropriate.
-        
+
         Checks the packet for decoded text, verifies channel and addressing rules, and if the message contains the word "ping" (optionally surrounded by punctuation) constructs a case-matching "pong" reply and sends it either as a direct message or to the same channel.
-        
+
         Parameters:
             packet (dict): Meshtastic packet expected to include a `decoded` mapping with `text`, and may include `channel`, `to`, and `fromId`.
             formatted_message (str): Pre-formatted representation of the message (may be unused by this handler).
             longname (str): Human-readable sender identifier used for logging.
             meshnet_name (str): Name of the mesh network where the message originated.
-        
+
         Returns:
             bool: `True` if the handler processed the packet and sent a reply, `False` otherwise.
         """
@@ -138,7 +138,7 @@ class Plugin(BasePlugin):
     def get_matrix_commands(self):
         """
         Provide the Matrix command names exposed by this plugin.
-        
+
         Returns:
             list[str]: A single-element list containing the plugin's command name.
         """

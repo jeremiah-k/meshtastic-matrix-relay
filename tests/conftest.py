@@ -41,6 +41,7 @@ sys.modules["meshtastic.serial_interface"] = MagicMock()
 sys.modules["meshtastic.tcp_interface"] = MagicMock()
 sys.modules["meshtastic.mesh_interface"] = MagicMock()
 meshtastic_mock.BROADCAST_ADDR = "^all"
+meshtastic_mock.BROADCAST_NUM = 4294967295
 
 nio_mock = MagicMock()
 sys.modules["nio"] = nio_mock
@@ -97,6 +98,12 @@ class MockRequestsExceptions:
 
 
 sys.modules["requests"].exceptions = MockRequestsExceptions()
+
+# Add top-level aliases for code that uses requests.RequestException directly
+sys.modules["requests"].RequestException = RequestException
+sys.modules["requests"].HTTPError = HTTPError
+sys.modules["requests"].ConnectionError = ConnectionError
+sys.modules["requests"].Timeout = Timeout
 sys.modules["markdown"] = MagicMock()
 sys.modules["haversine"] = MagicMock()
 sys.modules["schedule"] = MagicMock()

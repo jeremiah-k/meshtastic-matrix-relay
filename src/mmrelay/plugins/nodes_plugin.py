@@ -1,4 +1,3 @@
-import os
 from datetime import datetime
 
 from mmrelay.plugins.base_plugin import BasePlugin

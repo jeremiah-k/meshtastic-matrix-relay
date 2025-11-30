@@ -8,6 +8,15 @@ execution by defining trusted sources and dangerous patterns.
 
 from typing import Tuple
 
+# Message length limits
+MAX_FORECAST_LENGTH = 200
+
+# Special node identifiers
+SPECIAL_NODE_MESSAGES = "!NODE_MSGS!"
+
+# S2 geometry constants for map functionality
+S2_PRECISION_BITS_TO_METERS_CONSTANT = 23905787.925008
+
 # Trusted git hosting platforms for community plugins
 # These hosts are considered safe for plugin source repositories
 DEFAULT_ALLOWED_COMMUNITY_HOSTS: Tuple[str, ...] = (

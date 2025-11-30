@@ -8,6 +8,7 @@ from meshtastic.mesh_interface import BROADCAST_NUM
 
 from mmrelay.constants.formats import TEXT_MESSAGE_APP
 from mmrelay.constants.messages import PORTNUM_TEXT_MESSAGE_APP
+from mmrelay.constants.plugins import MAX_FORECAST_LENGTH
 from mmrelay.plugins.base_plugin import BasePlugin
 
 
@@ -15,9 +16,6 @@ class Plugin(BasePlugin):
     plugin_name = "weather"
     is_core_plugin = True
     mesh_commands = ("weather", "forecast", "24hrs", "3day", "5day")
-
-    # Maximum forecast length to fit within Meshtastic message limits
-    MAX_FORECAST_LENGTH = 200
 
     # No __init__ method needed with the simplified plugin system
     # The BasePlugin will automatically use the class-level plugin_name
@@ -205,7 +203,7 @@ class Plugin(BasePlugin):
         except (KeyError, IndexError, TypeError, ValueError, AttributeError):
             self.logger.exception("Malformed weather data")
             return "Error parsing weather data."
-        except Exception as e:
+        except Exception:
             raise
 
     def _build_daily_forecast(
@@ -263,7 +261,7 @@ class Plugin(BasePlugin):
                 f"{round(max_temp, 1)}{temperature_unit}/"
                 f"{round(min_temp, 1)}{temperature_unit}"
             )
-        return " | ".join(segments)[: self.MAX_FORECAST_LENGTH]
+        return " | ".join(segments)[:MAX_FORECAST_LENGTH]
 
     def _build_hourly_forecast(
         self,
@@ -312,7 +310,7 @@ class Plugin(BasePlugin):
                     f"{temp}{temperature_unit} {precip}%"
                 )
 
-        return forecast[: self.MAX_FORECAST_LENGTH]
+        return forecast[:MAX_FORECAST_LENGTH]
 
     @staticmethod
     def _weather_code_to_text(weather_code: int, is_day: int) -> str:

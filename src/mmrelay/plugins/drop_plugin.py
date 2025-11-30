@@ -4,6 +4,7 @@ from haversine import haversine
 
 from mmrelay.constants.database import DEFAULT_DISTANCE_KM_FALLBACK, DEFAULT_RADIUS_KM
 from mmrelay.constants.formats import TEXT_MESSAGE_APP
+from mmrelay.constants.plugins import SPECIAL_NODE_MESSAGES
 from mmrelay.meshtastic_utils import connect_meshtastic
 from mmrelay.plugins.base_plugin import BasePlugin
 
@@ -11,7 +12,7 @@ from mmrelay.plugins.base_plugin import BasePlugin
 class Plugin(BasePlugin):
     plugin_name = "drop"
     is_core_plugin = True
-    special_node = "!NODE_MSGS!"
+    special_node = SPECIAL_NODE_MESSAGES
 
     # No __init__ method needed with the simplified plugin system
     # The BasePlugin will automatically use the class-level plugin_name
@@ -30,9 +31,9 @@ class Plugin(BasePlugin):
     ):
         """
         Manage delivery and storage of "drop" messages based on an incoming packet and node locations.
-        
+
         When a packet arrives, attempt to deliver any stored dropped messages to the sender if the sender's known position is within the configured radius and the sender is not the original dropper. If the packet contains a valid "!drop <message>" command, record the message together with the sender's current location for later delivery.
-        
+
         Returns:
             True if a drop command was processed and stored (or processing occurred but the dropper's position was unavailable), False otherwise.
         """

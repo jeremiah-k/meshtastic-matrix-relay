@@ -213,7 +213,8 @@ def get_logger(name: str) -> logging.Logger:
 
     if args is None:
         try:
-            # Only parse arguments if we're not in a test environment
+            # Parse command-line arguments once and cache results; if parsing fails (e.g., in tests), continue without CLI arguments.
+            # Note: This is a first-parse-wins cache - subsequent changes to sys.argv won't be picked up.
             from mmrelay.cli import parse_arguments
 
             args = parse_arguments()

@@ -8,11 +8,9 @@ import staticmaps
 from nio import AsyncClient, UploadResponse
 from PIL import Image
 
+from mmrelay.constants.plugins import S2_PRECISION_BITS_TO_METERS_CONSTANT
 from mmrelay.log_utils import get_logger
 from mmrelay.plugins.base_plugin import BasePlugin
-
-S2_PRECISION_BITS_TO_METERS_CONSTANT = 23905787.925008
-# Derived from S2 geometry; matches Meshtastic Android precision-bits radius conversion.
 
 
 def precision_bits_to_meters(bits: int) -> float | None:

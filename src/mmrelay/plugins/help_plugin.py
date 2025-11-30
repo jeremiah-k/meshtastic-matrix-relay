@@ -53,12 +53,12 @@ class Plugin(BasePlugin):
         # Pass the event to matches()
         """
         Handle an incoming Matrix room message for the help command and reply with either a list of available commands or details for a specific command.
-        
+
         Parameters:
             room: The Matrix room object where the message originated; must provide `room_id`.
             event: The incoming Matrix event; used to determine whether this plugin should handle the message.
             text (str): The raw message text from the room.
-        
+
         Returns:
             handled (bool): `True` if the plugin processed the message and sent a reply, `False` if the event did not match and was not handled.
         """

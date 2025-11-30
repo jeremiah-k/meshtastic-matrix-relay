@@ -16,8 +16,6 @@ import tempfile
 import threading
 import unittest
 
-import pytest
-
 from mmrelay.db_runtime import DatabaseManager
 
 

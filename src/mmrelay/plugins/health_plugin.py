@@ -81,7 +81,7 @@ SNR: {avg_snr:.2f} / {mdn_snr:.2f} (avg / median)
         return False
 
     async def handle_room_message(
-        self, room: MatrixRoom, event: RoomMessageText, full_message: str
+        self, room: MatrixRoom, event: RoomMessageText, _full_message: str
     ) -> bool:
         if not self.matches(event):
             return False

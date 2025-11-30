@@ -1,5 +1,4 @@
 import asyncio
-import os
 import re
 import unittest
 from types import SimpleNamespace
@@ -3563,7 +3562,7 @@ async def test_connect_matrix_with_e2ee_credentials(
         patch("importlib.import_module") as mock_import,
     ):
         # Make import_module return mocks for E2EE modules and delegate all other imports
-        def mock_import_side_effect(module_name):
+        def mock_import_side_effect(module_name, *args, **kwargs):
             if module_name == "olm":
                 return mock_olm
             if module_name == "nio.crypto":
@@ -3575,7 +3574,7 @@ async def test_connect_matrix_with_e2ee_credentials(
                 mock_store.SqliteStore = MagicMock()
                 return mock_store
             # Delegate everything else to the original import function
-            return real_import_module(module_name)
+            return real_import_module(module_name, *args, **kwargs)
 
         mock_import.side_effect = mock_import_side_effect
         client = await connect_matrix(test_config)

@@ -21,7 +21,6 @@ import sys
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 import schedule
 
 # Add src to path for imports
