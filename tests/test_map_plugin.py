@@ -268,71 +268,82 @@ class TestImageUploadAndSend(unittest.TestCase):
         """
         # Reset AsyncMock instances to prevent test pollution
         # Don't call .close() as it creates coroutines that need to be awaited
-        self.mock_client.upload.reset_mock()
-        self.mock_client.room_send.reset_mock()
-        # Clear references to prevent pollution
-        self.mock_client = None
-        self.mock_image = None
-        self.mock_upload_response = None
+        if hasattr(self, "mock_client") and self.mock_client:
+            self.mock_client.upload.reset_mock()
+            self.mock_client.room_send.reset_mock()
 
-    async def test_upload_image(self):
+    def test_upload_image(self):
         """
         Asynchronously tests that the image upload function saves an image to a buffer, uploads it via the client, and returns the correct upload response.
         """
-        # Mock image save
-        mock_buffer = MagicMock()
-        mock_buffer.getvalue.return_value = b"fake_image_data"
 
-        with patch("io.BytesIO", return_value=mock_buffer):
-            self.mock_client.upload.return_value = (self.mock_upload_response, None)
+        async def run_test():
+            # Mock image save
+            mock_buffer = MagicMock()
+            mock_buffer.getvalue.return_value = b"fake_image_data"
 
-            result = await upload_image(self.mock_client, self.mock_image, "test.png")
+            with patch("io.BytesIO", return_value=mock_buffer):
+                self.mock_client.upload.return_value = (self.mock_upload_response, None)
 
-            self.assertEqual(result, self.mock_upload_response)
-            self.mock_client.upload.assert_awaited_once()
+                result = await upload_image(
+                    self.mock_client, self.mock_image, "test.png"
+                )
 
-    async def test_send_room_image(self):
+                self.assertEqual(result, self.mock_upload_response)
+                self.mock_client.upload.assert_awaited_once()
+
+        asyncio.run(run_test())
+
+    def test_send_room_image(self):
         """
         Asynchronously verifies that an image message is sent to the specified Matrix room with the correct content using the client.
         """
-        room_id = "!test:example.com"
 
-        await send_room_image(
-            self.mock_client, room_id, self.mock_upload_response, "test.png"
-        )
+        async def run_test():
+            room_id = "!test:example.com"
 
-        self.mock_client.room_send.assert_awaited_once_with(
-            room_id=room_id,
-            message_type="m.room.message",
-            content={
-                "msgtype": "m.image",
-                "url": "mxc://example.com/test123",
-                "body": "test.png",
-            },
-        )
+            await send_room_image(
+                self.mock_client, room_id, self.mock_upload_response, "test.png"
+            )
+
+            self.mock_client.room_send.assert_awaited_once_with(
+                room_id=room_id,
+                message_type="m.room.message",
+                content={
+                    "msgtype": "m.image",
+                    "url": "mxc://example.com/test123",
+                    "body": "test.png",
+                },
+            )
+
+        asyncio.run(run_test())
 
     @patch("mmrelay.matrix_utils.upload_image")
     @patch("mmrelay.matrix_utils.send_room_image")
-    async def test_send_image(self, mock_send_room_image, mock_upload_image):
+    def test_send_image(self, mock_send_room_image, mock_upload_image):
         """
         Ensure send_image uploads the image and sends it to the specified room using the provided filename.
 
         Calls send_image with a mock client, room ID, image, and filename; asserts that upload_image is awaited with the client, image, and filename, and that send_room_image is awaited with the client, room ID, upload response, and filename.
         """
-        room_id = "!test:example.com"
-        mock_upload_image.return_value = self.mock_upload_response
 
-        await send_image(self.mock_client, room_id, self.mock_image, "test.png")
+        async def run_test():
+            room_id = "!test:example.com"
+            mock_upload_image.return_value = self.mock_upload_response
 
-        mock_upload_image.assert_awaited_once_with(
-            client=self.mock_client, image=self.mock_image, filename="test.png"
-        )
-        mock_send_room_image.assert_awaited_once_with(
-            self.mock_client,
-            room_id,
-            upload_response=self.mock_upload_response,
-            filename="test.png",
-        )
+            await send_image(self.mock_client, room_id, self.mock_image, "test.png")
+
+            mock_upload_image.assert_awaited_once_with(
+                client=self.mock_client, image=self.mock_image, filename="test.png"
+            )
+            mock_send_room_image.assert_awaited_once_with(
+                self.mock_client,
+                room_id,
+                upload_response=self.mock_upload_response,
+                filename="test.png",
+            )
+
+        asyncio.run(run_test())
 
 
 class TestMapPlugin(unittest.TestCase):
@@ -360,7 +371,7 @@ class TestMapPlugin(unittest.TestCase):
         Resets the plugin instance to ensure that no lingering references or mocks persist between tests.
         """
         # Clean up any references that might hold AsyncMock instances
-        self.plugin = None
+        pass  # No need to set to None, just let it be cleaned up naturally
 
     def test_plugin_name(self):
         """
