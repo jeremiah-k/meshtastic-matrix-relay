@@ -15,7 +15,8 @@ from mmrelay.plugins.base_plugin import BasePlugin
 class Plugin(BasePlugin):
     plugin_name = "weather"
     is_core_plugin = True
-    mesh_commands = ("weather", "forecast", "24hrs", "3day", "5day")
+    mesh_commands = ("weather", "hourly", "week")
+    legacy_commands = ("forecast", "24hrs", "3day", "5day")
 
     # No __init__ method needed with the simplified plugin system
     # The BasePlugin will automatically use the class-level plugin_name
@@ -30,20 +31,35 @@ class Plugin(BasePlugin):
         """
         return "Show weather forecast for a radio node using GPS location"
 
+    def _normalize_mode(self, mode: str) -> str:
+        """
+        Normalize command/mode strings into the supported forecast modes.
+
+        Returns one of:
+            - "weather": current conditions with minimal near-term context
+            - "hourly": a richer next-few-hours view
+            - "week": multi-day summary
+        """
+        cmd = (mode or "weather").lower()
+        if cmd == "hourly":
+            return "hourly"
+        if cmd == "week":
+            return "week"
+        return "weather"
+
     def generate_forecast(self, latitude, longitude, mode: str = "weather"):
         """
         Generate a concise one-line weather forecast for the given GPS coordinates.
 
         Supports multiple modes:
-        - "weather": current + short-term (+2h, +5h)
-        - "24hrs": current + +6h/+12h/+24h
-        - "3day": daily summary for next 3 days (High/Low)
-        - "5day" or "forecast": daily summary for next 5 days (High/Low)
+        - "weather": emphasize current conditions plus minimal near-term context (+1h, +3h)
+        - "hourly": current + richer near-term view (+1h, +3h, +6h, +12h, +24h)
+        - "week": daily summary for the next few days (up to 5)
 
         Parameters:
             latitude (float): Latitude in decimal degrees.
             longitude (float): Longitude in decimal degrees.
-            mode (str): One of "weather", "24hrs", "3day", "5day", or "forecast".
+            mode (str): One of "weather", "hourly", or "week" (legacy aliases accepted).
 
         Returns:
             str: A one-line forecast string on success. On recoverable failures returns one of:
@@ -55,14 +71,30 @@ class Plugin(BasePlugin):
             - The function attempts to anchor forecasts to hourly timestamps when available; if a timestamp match cannot be found it falls back to hour-of-day indexing.
             - Network/request-related errors and parsing errors are handled as described above; unexpected exceptions are re-raised.
         """
+        mode_key = self._normalize_mode(mode)
+
         units = self.config.get("units", "metric")  # Default to metric
         temperature_unit = "°C" if units == "metric" else "°F"
-        daily_days = 5 if mode in ("5day", "forecast") else 3
+        daily_days = 5 if mode_key == "week" else 3
+
+        hourly_config = {
+            "weather": {
+                "slots": ["now"],
+                "offsets": [],
+            },
+            "hourly": {
+                "slots": ["+1h", "+3h", "+6h", "+12h", "+24h"],
+                "offsets": [1, 3, 6, 12, 24],
+            },
+        }
+        mode_offsets = hourly_config.get(mode_key, hourly_config["weather"])
+        offsets = mode_offsets["offsets"]
 
         url = (
             f"https://api.open-meteo.com/v1/forecast?"
             f"latitude={latitude}&longitude={longitude}&"
-            f"hourly=temperature_2m,precipitation_probability,weathercode,is_day&"
+            f"hourly=temperature_2m,precipitation_probability,weathercode,is_day,"
+            f"relativehumidity_2m,windspeed_10m,winddirection_10m&"
             f"daily=weathercode,temperature_2m_max,temperature_2m_min&"
             f"forecast_days={daily_days}&timezone=auto&current_weather=true"
         )
@@ -114,54 +146,45 @@ class Plugin(BasePlugin):
                         "Falling back to hour-of-day indexing, which may be inaccurate."
                     )
 
-            forecast_2h_index = base_index + 2
-            forecast_5h_index = base_index + 5
-            forecast_6h_index = base_index + 6
-            forecast_12h_index = base_index + 12
-            forecast_24h_index = base_index + 24
-
             # Guard against empty hourly series before clamping
             temps = data["hourly"].get("temperature_2m") or []
+            precips = data["hourly"].get("precipitation_probability") or []
+            humidities = data["hourly"].get("relativehumidity_2m") or []
+            windspeeds = data["hourly"].get("windspeed_10m") or []
+            winddirs = data["hourly"].get("winddirection_10m") or []
             if not temps:
                 self.logger.warning("No hourly temperature data returned.")
                 return "Weather data temporarily unavailable."
             max_index = len(temps) - 1
-            forecast_2h_index = min(forecast_2h_index, max_index)
-            forecast_5h_index = min(forecast_5h_index, max_index)
-            forecast_6h_index = min(forecast_6h_index, max_index)
-            forecast_12h_index = min(forecast_12h_index, max_index)
-            forecast_24h_index = min(forecast_24h_index, max_index)
+
+            # Build index map for requested offsets
+            index_map: dict[str, int] = {
+                f"+{offset}h": min(base_index + offset, max_index) for offset in offsets
+            }
+            index_map["now"] = min(base_index, max_index)
+
+            def _safe_get(seq, idx):
+                try:
+                    return seq[idx]
+                except Exception:
+                    return None
 
             def get_hourly(idx):
-                """
-                Retrieve hourly weather observations at the given hourly index.
-
-                Parameters:
-                    idx (int): Index into the hourly time series arrays in the fetched weather data.
-
-                Returns:
-                    tuple: A 4-tuple containing:
-                        - temperature (float): Temperature at 2 meters for the hour.
-                        - precipitation_probability (float): Precipitation probability for the hour.
-                        - weather_code (int): Open-Meteo weather code for the hour.
-                        - is_day (int): 1 if the hour is daytime, 0 if nighttime.
-                """
-                temp = data["hourly"]["temperature_2m"][idx]
-                precip = data["hourly"]["precipitation_probability"][idx]
-                wcode = data["hourly"]["weathercode"][idx]
+                temp = _safe_get(temps, idx)
+                precip = _safe_get(precips, idx)
+                wcode = _safe_get(data["hourly"].get("weathercode", []), idx)
                 is_day_hour = (
-                    data["hourly"]["is_day"][idx]
+                    _safe_get(data["hourly"].get("is_day", []), idx)
                     if data["hourly"].get("is_day")
                     else is_day
                 )
-                return temp, precip, wcode, is_day_hour
+                humidity = _safe_get(humidities, idx)
+                wind = _safe_get(windspeeds, idx)
+                wind_dir = _safe_get(winddirs, idx)
+                return temp, precip, wcode, is_day_hour, humidity, wind, wind_dir
 
             forecast_hours = {
-                "+2h": get_hourly(forecast_2h_index),
-                "+5h": get_hourly(forecast_5h_index),
-                "+6h": get_hourly(forecast_6h_index),
-                "+12h": get_hourly(forecast_12h_index),
-                "+24h": get_hourly(forecast_24h_index),
+                label: get_hourly(idx) for label, idx in index_map.items()
             }
 
             if units == "imperial":
@@ -185,12 +208,41 @@ class Plugin(BasePlugin):
             }
 
             # Generate one-line weather forecast
-            if mode in ("3day", "5day", "forecast"):
+            if mode_key == "week":
                 return self._build_daily_forecast(
                     data, units, temperature_unit, daily_days
                 )
 
-            slots = ["+6h", "+12h", "+24h"] if mode == "24hrs" else ["+2h", "+5h"]
+            if mode_key == "weather":
+                now_slot = forecast_hours.get("now")
+                humidity = now_slot[4] if now_slot else None
+                wind_speed = now_slot[5] if now_slot else None
+                wind_dir = now_slot[6] if now_slot else None
+                precip_now = now_slot[1] if now_slot else None
+                wind_unit = "km/h"
+                if units == "imperial" and wind_speed is not None:
+                    wind_speed = wind_speed * 0.621371
+                    wind_unit = "mph"
+                parts = [
+                    (
+                        f"Now: {self._weather_code_to_text(current_weather_code, is_day)} - "
+                        f"{current_temp}{temperature_unit}"
+                        if current_temp is not None
+                        else f"Now: {self._weather_code_to_text(current_weather_code, is_day)} - Data unavailable"
+                    )
+                ]
+                if humidity is not None:
+                    parts.append(f"Humidity {round(humidity)}%")
+                if wind_speed is not None:
+                    wind_part = f"Wind {round(wind_speed, 1)}{wind_unit}"
+                    if wind_dir is not None:
+                        wind_part += f" {round(wind_dir)}°"
+                    parts.append(wind_part)
+                if precip_now is not None:
+                    parts.append(f"Precip {precip_now}%")
+                return " | ".join(parts)[:MAX_FORECAST_LENGTH]
+
+            slots = hourly_config.get(mode_key, hourly_config["weather"])["slots"]
             return self._build_hourly_forecast(
                 current_temp,
                 current_weather_code,
@@ -301,7 +353,7 @@ class Plugin(BasePlugin):
                 f"{current_temp}{temperature_unit}"
             )
         for slot in slots:
-            temp, precip, wcode, slot_is_day = forecast_hours[slot]
+            temp, precip, wcode, slot_is_day, *_rest = forecast_hours[slot]
             if temp is None or precip is None or wcode is None:
                 forecast += f" | {slot}: Data unavailable"
             else:

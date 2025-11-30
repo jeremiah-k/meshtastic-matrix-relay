@@ -205,6 +205,61 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
                     0,  # 23:00 - night
                 ]
                 + [1] * 24,  # Next day data (all day)
+                "relativehumidity_2m": [
+                    70,
+                    69,
+                    68,
+                    67,
+                    66,
+                    65,
+                    64,
+                    63,
+                    62,
+                    61,
+                    60,
+                    59,
+                    58,
+                    57,
+                    56,
+                    55,
+                    54,
+                    53,
+                    52,
+                    51,
+                    50,
+                    49,
+                    48,
+                    47,
+                ]
+                + [65] * 24,
+                "windspeed_10m": [
+                    5,
+                    5.5,
+                    6,
+                    6.5,
+                    7,
+                    7.5,
+                    8,
+                    8.5,
+                    9,
+                    10,
+                    12,
+                    13,
+                    14,
+                    15,
+                    16,
+                    17,
+                    18,
+                    17,
+                    16,
+                    15,
+                    14,
+                    13,
+                    12,
+                    11,
+                ]
+                + [10] * 24,
+                "winddirection_10m": [180] * 48,
             },
         }
 
@@ -228,14 +283,14 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         Test that the plugin's get_matrix_commands method returns the expected list of matrix commands.
         """
         commands = self.plugin.get_matrix_commands()
-        self.assertEqual(commands, ["weather", "forecast", "24hrs", "3day", "5day"])
+        self.assertEqual(commands, ["weather", "hourly", "week"])
 
     def test_get_mesh_commands(self):
         """
         Test that the plugin's get_mesh_commands method returns the expected list of mesh commands.
         """
         commands = self.plugin.get_mesh_commands()
-        self.assertEqual(commands, ["weather", "forecast", "24hrs", "3day", "5day"])
+        self.assertEqual(commands, ["weather", "hourly", "week"])
 
     def test_parse_mesh_command_requires_prefix(self):
         """
