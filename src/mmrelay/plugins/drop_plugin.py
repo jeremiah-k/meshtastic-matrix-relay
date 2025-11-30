@@ -131,8 +131,8 @@ class Plugin(BasePlugin):
         # Packet did not contain a drop command or was not processable
         return False
 
-    async def handle_room_message(self, _room, _event, _full_message) -> bool:
+    async def handle_room_message(self, room, event, full_message) -> bool:
         # Pass the event to matches() instead of full_message
-        if self.matches(_event):
+        if self.matches(event):
             return True
         return False

@@ -73,7 +73,7 @@ Battery: {avg_battery:.1f}% / {mdn_battery:.1f}% (avg / median)
 Nodes with Low Battery (< 10): {low_battery}
 Air Util: {avg_air:.2f} / {mdn_air:.2f} (avg / median)
 SNR: {avg_snr:.2f} / {mdn_snr:.2f} (avg / median)
-"""
+        """
 
     async def handle_meshtastic_message(
         self, packet, formatted_message: str, longname: str, meshnet_name: str
