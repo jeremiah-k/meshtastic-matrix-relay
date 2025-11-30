@@ -21,7 +21,7 @@ class Plugin(BasePlugin):
     # The BasePlugin will automatically use the class-level plugin_name
 
     @property
-    def description(self):
+    def description(self) -> str:
         """
         Indicates the plugin provides weather forecasts for a radio node based on GPS coordinates.
 
@@ -493,7 +493,7 @@ class Plugin(BasePlugin):
         """
         return list(self.mesh_commands)
 
-    async def handle_room_message(self, room, event, text):
+    async def handle_room_message(self, room, event, full_message):
         """
         Handle a Matrix room message that invokes the weather plugin and post a forecast.
 
@@ -514,7 +514,7 @@ class Plugin(BasePlugin):
         parsed_command = None
         args_text = None
         for command in self.get_matrix_commands():
-            args = self.extract_command_args(command, text)
+            args = self.extract_command_args(command, full_message)
             if args is not None:
                 parsed_command = command
                 args_text = args
