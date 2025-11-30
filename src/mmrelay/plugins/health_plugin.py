@@ -18,7 +18,7 @@ class Plugin(BasePlugin):
         """
         Compute and format mesh health metrics from connected Meshtastic nodes.
 
-        Collects battery levels, air utilization (tx), and SNR from discovered nodes, computes node count, average and median values for each metric, and counts nodes with battery <= 10. If no nodes are discovered, returns the literal string "No nodes discovered yet."
+        Collects battery levels, air utilization (tx), and SNR from discovered nodes, computes node count, average and median values for each metric, and counts nodes with battery < 10. If no nodes are discovered, returns the literal string "No nodes discovered yet."
 
         Returns:
             str: A multi-line formatted summary containing:

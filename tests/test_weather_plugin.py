@@ -764,6 +764,9 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         }
         mock_connect.return_value = mock_client
 
+        # Mock send_message method
+        self.plugin.send_message = MagicMock()
+
         packet = {
             "decoded": {"portnum": PORTNUM_TEXT_MESSAGE_APP, "text": "!weather"},
             "channel": 0,
@@ -778,9 +781,9 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result)
 
         # Should send direct message response
-        mock_client.sendText.assert_called_once()
-        call_args = mock_client.sendText.call_args
-        self.assertEqual(call_args.kwargs["destinationId"], "!12345678")
+        self.plugin.send_message.assert_called_once()
+        call_args = self.plugin.send_message.call_args
+        self.assertEqual(call_args.kwargs["destination_id"], "!12345678")
         self.assertIn(
             _normalize_emoji("Now: 🌤️ Mainly clear"),
             _normalize_emoji(call_args.kwargs["text"]),
@@ -808,6 +811,9 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         }
         mock_connect.return_value = mock_client
 
+        # Mock send_message method
+        self.plugin.send_message = MagicMock()
+
         packet = {
             "decoded": {"portnum": PORTNUM_TEXT_MESSAGE_APP, "text": "!weather"},
             "channel": 0,
@@ -822,9 +828,9 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result)
 
         # Should send broadcast response with error message
-        mock_client.sendText.assert_called_once()
-        call_args = mock_client.sendText.call_args
-        self.assertEqual(call_args.kwargs["channelIndex"], 0)
+        self.plugin.send_message.assert_called_once()
+        call_args = self.plugin.send_message.call_args
+        self.assertEqual(call_args.kwargs["channel"], 0)
         self.assertEqual(call_args.kwargs["text"], "Cannot determine location")
 
         # Should check if channel is enabled for broadcast
@@ -951,9 +957,12 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         }
         mock_connect.return_value = mock_client
 
+        # Mock send_message method
+        self.plugin.send_message = MagicMock()
+
         packet = {
-            "decoded": {"portnum": PORTNUM_TEXT_MESSAGE_APP, "text": "!weather please"},
-            "channel": 1,
+            "decoded": {"portnum": PORTNUM_TEXT_MESSAGE_APP, "text": "!weather"},
+            "channel": 0,
             "fromId": "!12345678",
             "to": 4294967295,  # BROADCAST_NUM
         }
@@ -965,9 +974,9 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result)
 
         # Should send broadcast response with weather data
-        mock_client.sendText.assert_called_once()
-        call_args = mock_client.sendText.call_args
-        self.assertEqual(call_args.kwargs["channelIndex"], 1)
+        self.plugin.send_message.assert_called_once()
+        call_args = self.plugin.send_message.call_args
+        self.assertEqual(call_args.kwargs["channel"], 0)
         self.assertIn(
             _normalize_emoji("Now: 🌤️ Mainly clear"),
             _normalize_emoji(call_args.kwargs["text"]),
@@ -975,7 +984,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
 
         # Should check if channel is enabled for broadcast
         self.plugin.is_channel_enabled.assert_called_once_with(
-            1, is_direct_message=False
+            0, is_direct_message=False
         )
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")

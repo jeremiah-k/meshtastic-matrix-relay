@@ -1,7 +1,6 @@
 import io
 import json
 from datetime import datetime, timedelta
-from types import SimpleNamespace
 
 import matplotlib.pyplot as plt
 from PIL import Image

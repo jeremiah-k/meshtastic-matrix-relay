@@ -461,17 +461,15 @@ class Plugin(BasePlugin):
 
         if is_direct_message:
             # Respond via DM
-            await asyncio.to_thread(
-                meshtastic_client.sendText,
+            self.send_message(
                 text=weather_notice,
-                destinationId=fromId,
+                destination_id=fromId,
             )
         else:
             # Respond in the same channel (broadcast)
-            await asyncio.to_thread(
-                meshtastic_client.sendText,
+            self.send_message(
                 text=weather_notice,
-                channelIndex=channel,
+                channel=channel,
             )
         return True
 

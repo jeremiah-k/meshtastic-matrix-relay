@@ -1,3 +1,4 @@
+import asyncio
 import re
 
 from haversine import haversine
@@ -37,7 +38,7 @@ class Plugin(BasePlugin):
         Returns:
             True if a drop command was processed and stored (or processing occurred but the dropper's position was unavailable), False otherwise.
         """
-        meshtastic_client = connect_meshtastic()
+        meshtastic_client = await asyncio.to_thread(connect_meshtastic)
         if meshtastic_client is None:
             self.logger.warning(
                 "Meshtastic client unavailable; skipping drop message handling"
