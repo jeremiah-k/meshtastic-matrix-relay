@@ -89,7 +89,7 @@ class Plugin(BasePlugin):
         try:
             response = requests.get(url, timeout=10)
             response.raise_for_status()
-        except Exception as req_err:
+        except requests.exceptions.RequestException:
             self.logger.exception("Error fetching weather data")
             return "Error fetching weather data."
 
