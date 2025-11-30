@@ -3330,7 +3330,6 @@ async def test_connect_matrix_uploads_keys_when_needed(monkeypatch):
     monkeypatch.setattr(
         "mmrelay.matrix_utils._create_ssl_context", lambda: MagicMock(), raising=False
     )
-    monkeypatch.setenv("MMRELAY_TESTING", "1")
     monkeypatch.setattr(
         "mmrelay.matrix_utils.is_e2ee_enabled", lambda _cfg: True, raising=False
     )
@@ -4164,7 +4163,6 @@ class TestMatrixE2EEHasAttrChecks:
             patch("mmrelay.matrix_utils.AsyncClient") as mock_async_client,
             patch("mmrelay.matrix_utils.logger"),
             patch("mmrelay.matrix_utils.importlib.import_module") as mock_import,
-            patch.dict(os.environ, {"MMRELAY_TESTING": "0"}, clear=False),
         ):
             # Mock AsyncClient instance with proper async methods
             mock_client_instance = MagicMock()
@@ -4225,7 +4223,6 @@ class TestMatrixE2EEHasAttrChecks:
             patch("mmrelay.matrix_utils.AsyncClient") as mock_async_client,
             patch("mmrelay.matrix_utils.logger") as mock_logger,
             patch("mmrelay.matrix_utils.importlib.import_module") as mock_import,
-            patch.dict(os.environ, {"MMRELAY_TESTING": "0"}, clear=False),
         ):
             # Mock AsyncClient instance with proper async methods
             mock_client_instance = MagicMock()
@@ -4289,7 +4286,6 @@ class TestMatrixE2EEHasAttrChecks:
             patch("mmrelay.matrix_utils.AsyncClient") as mock_async_client,
             patch("mmrelay.matrix_utils.logger") as mock_logger,
             patch("mmrelay.matrix_utils.importlib.import_module") as mock_import,
-            patch.dict(os.environ, {"MMRELAY_TESTING": "0"}, clear=False),
         ):
             # Mock AsyncClient instance with proper async methods
             mock_client_instance = MagicMock()
@@ -4858,10 +4854,6 @@ async def test_connect_matrix_e2ee_missing_nio_crypto():
     """
     Test connect_matrix handles missing nio.crypto.OlmDevice gracefully.
     """
-    import os
-
-    os.environ["MMRELAY_TESTING"] = "0"
-
     config = {
         "matrix": {
             "homeserver": "https://matrix.org",
@@ -4919,10 +4911,6 @@ async def test_connect_matrix_e2ee_missing_sqlite_store():
     """
     Test connect_matrix handles missing nio.store.SqliteStore gracefully.
     """
-    import os
-
-    os.environ["MMRELAY_TESTING"] = "0"
-
     config = {
         "matrix": {
             "homeserver": "https://matrix.org",

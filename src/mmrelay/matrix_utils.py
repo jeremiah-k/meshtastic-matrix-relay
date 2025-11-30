@@ -897,15 +897,12 @@ async def _connect_meshtastic():
     """
     Get a Meshtastic connection usable from asynchronous code.
 
-    In test environments (MMRELAY_TESTING=1 or when running under pytest) returns the connector directly; otherwise invokes the synchronous connector in a thread executor to avoid blocking the event loop.
+    Invokes the synchronous connector in a thread to avoid blocking the event loop.
 
     Returns:
         Meshtastic interface or proxy object produced by the connector.
     """
-    if os.getenv("MMRELAY_TESTING") == "1" or "PYTEST_CURRENT_TEST" in os.environ:
-        return connect_meshtastic()
-    loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(None, connect_meshtastic)
+    return await asyncio.to_thread(connect_meshtastic)
 
 
 async def _get_meshtastic_interface_and_channel(
@@ -1214,44 +1211,36 @@ async def connect_matrix(passed_config=None):
                 try:
                     importlib.import_module("olm")
 
-                    # Also check for other required E2EE dependencies unless tests skip them
-                    if os.getenv("MMRELAY_TESTING") != "1":
-                        try:
-                            nio_crypto = importlib.import_module("nio.crypto")
-                            if not hasattr(nio_crypto, "OlmDevice"):
-                                raise ImportError("nio.crypto.OlmDevice is unavailable")
+                    # Also check for other required E2EE dependencies
+                    try:
+                        nio_crypto = importlib.import_module("nio.crypto")
+                        if not hasattr(nio_crypto, "OlmDevice"):
+                            raise ImportError("nio.crypto.OlmDevice is unavailable")
 
-                            nio_store = importlib.import_module("nio.store")
-                            if not hasattr(nio_store, "SqliteStore"):
-                                raise ImportError(
-                                    "nio.store.SqliteStore is unavailable"
-                                )
+                        nio_store = importlib.import_module("nio.store")
+                        if not hasattr(nio_store, "SqliteStore"):
+                            raise ImportError("nio.store.SqliteStore is unavailable")
 
-                            logger.debug("All E2EE dependencies are available")
-                        except ImportError:
-                            logger.exception("Missing E2EE dependency")
-                            logger.error(
-                                "Please reinstall with: pipx install 'mmrelay[e2e]'"
-                            )
-                            logger.warning("E2EE will be disabled for this session.")
-                            e2ee_enabled = False
-                        else:
-                            # Dependencies are available, keep the config-determined value
-                            if e2ee_enabled:
-                                logger.info("End-to-End Encryption (E2EE) is enabled")
-                            else:
-                                logger.debug(
-                                    "E2EE dependencies available but E2EE is disabled in configuration"
-                                )
-                    else:
-                        logger.debug(
-                            "Skipping additional E2EE dependency imports in test mode"
+                        logger.debug("All E2EE dependencies are available")
+                    except ImportError:
+                        logger.exception("Missing E2EE dependency")
+                        logger.error(
+                            "Please reinstall with: pipx install 'mmrelay[e2e]'"
                         )
+                        logger.warning("E2EE will be disabled for this session.")
+                        e2ee_enabled = False
+                    else:
+                        # Dependencies are available, keep the config-determined value
+                        if e2ee_enabled:
+                            logger.info("End-to-End Encryption (E2EE) is enabled")
+                        else:
+                            logger.debug(
+                                "E2EE dependencies available but E2EE is disabled in configuration"
+                            )
 
                     if e2ee_enabled:
                         # Ensure nio still receives a store path even when dependency
-                        # checks are skipped (e.g. production runs without MMRELAY_TESTING);
-                        # without this the client will not load encryption state.
+                        # checks are skipped; without this the client will not load encryption state.
                         # Get store path from config or use default
                         if (
                             "encryption" in config["matrix"]

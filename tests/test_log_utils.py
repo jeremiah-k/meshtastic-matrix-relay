@@ -37,7 +37,7 @@ class DummyRichHandler(logging.Handler):
     def __init__(self, **kwargs: Any) -> None:
         """
         Record the handler's preference for using rich-style tracebacks.
-        
+
         Parameters:
             rich_tracebacks (bool | None): Whether rich-style tracebacks are enabled for this handler; `None` means unspecified.
         """
@@ -516,9 +516,8 @@ class TestLogUtils(unittest.TestCase):
         """
         Verify that a logger can be created in a test environment without triggering CLI parsing or errors.
         """
-        # Set test environment
-        with patch.dict(os.environ, {"MMRELAY_TESTING": "1"}):
-            logger = get_logger("test_logger")
+        # Should create logger without issues even if argument parsing fails/runs
+        logger = get_logger("test_logger")
 
         # Should create logger without issues
         self.assertIsInstance(logger, logging.Logger)

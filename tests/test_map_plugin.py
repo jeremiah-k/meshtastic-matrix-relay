@@ -589,11 +589,10 @@ class TestMapPlugin(unittest.TestCase):
             mock_image = MagicMock()
             mock_get_map.return_value = mock_image
 
-            with patch.dict(os.environ, {"PYTEST_CURRENT_TEST": "1"}, clear=False):
-                with patch.object(self.plugin, "matches", return_value=True):
-                    result = await self.plugin.handle_room_message(
-                        mock_room, mock_event, "user: !map size=500,400"
-                    )
+            with patch.object(self.plugin, "matches", return_value=True):
+                result = await self.plugin.handle_room_message(
+                    mock_room, mock_event, "user: !map size=500,400"
+                )
 
             self.assertTrue(result)
             # Check that get_map was called with correct image_size
@@ -723,11 +722,10 @@ class TestMapPlugin(unittest.TestCase):
             mock_image = MagicMock()
             mock_get_map.return_value = mock_image
 
-            with patch.dict(os.environ, {"PYTEST_CURRENT_TEST": "1"}, clear=False):
-                with patch.object(self.plugin, "matches", return_value=True):
-                    result = await self.plugin.handle_room_message(
-                        mock_room, mock_event, "user: !map size=2000,1500"
-                    )
+            with patch.object(self.plugin, "matches", return_value=True):
+                result = await self.plugin.handle_room_message(
+                    mock_room, mock_event, "user: !map size=2000,1500"
+                )
 
             self.assertTrue(result)
             # Check that image size was capped at 1000x1000

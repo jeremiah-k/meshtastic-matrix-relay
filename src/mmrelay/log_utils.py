@@ -207,12 +207,9 @@ def get_logger(name):
     args = None
     try:
         # Only parse arguments if we're not in a test environment
-        import os
+        from mmrelay.cli import parse_arguments
 
-        if not os.environ.get("MMRELAY_TESTING"):
-            from mmrelay.cli import parse_arguments
-
-            args = parse_arguments()
+        args = parse_arguments()
     except (SystemExit, ImportError):
         # If argument parsing fails (e.g., in tests), continue without CLI arguments
         pass
