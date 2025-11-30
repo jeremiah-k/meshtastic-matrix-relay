@@ -5,7 +5,7 @@ import re
 import PIL.ImageDraw
 import s2sphere
 import staticmaps
-from nio import AsyncClient, UploadResponse
+from nio import AsyncClient
 from PIL import Image as PILImage
 
 from mmrelay.constants.plugins import S2_PRECISION_BITS_TO_METERS_CONSTANT
@@ -438,13 +438,20 @@ class Plugin(BasePlugin):
         locations = []
         for _node, info in meshtastic_client.nodes.items():
             pos = info.get("position") if isinstance(info, dict) else None
-            if isinstance(pos, dict) and "latitude" in pos and "longitude" in pos:
+            user = info.get("user") if isinstance(info, dict) else None
+            if (
+                isinstance(pos, dict)
+                and "latitude" in pos
+                and "longitude" in pos
+                and isinstance(user, dict)
+                and "shortName" in user
+            ):
                 locations.append(
                     {
                         "lat": pos["latitude"],
                         "lon": pos["longitude"],
                         "precisionBits": pos.get("precisionBits"),
-                        "label": info["user"]["shortName"],
+                        "label": user["shortName"],
                     }
                 )
 

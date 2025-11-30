@@ -38,6 +38,11 @@ class Plugin(BasePlugin):
             True if a drop command was processed and stored (or processing occurred but the dropper's position was unavailable), False otherwise.
         """
         meshtastic_client = connect_meshtastic()
+        if meshtastic_client is None:
+            self.logger.warning(
+                "Meshtastic client unavailable; skipping drop message handling"
+            )
+            return False
         nodeInfo = meshtastic_client.getMyNodeInfo()
 
         # Attempt message drop to packet originator if not relay

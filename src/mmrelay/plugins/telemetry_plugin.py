@@ -111,10 +111,8 @@ class Plugin(BasePlugin):
                 break
 
         # If matches(event) was True but we couldn't parse any command args, treat as not handled
-        if telemetry_option is None and self.matches(event):
+        if telemetry_option is None:
             return False
-
-        hourly_intervals = self._generate_timeperiods()
 
         hourly_intervals = self._generate_timeperiods()
         from mmrelay.matrix_utils import connect_matrix
