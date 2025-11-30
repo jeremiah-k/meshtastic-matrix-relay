@@ -54,6 +54,11 @@ class Plugin(BasePlugin):
         air_util_tx = [value for value in air_util_tx if value is not None]
         snr = [value for value in snr if value is not None]
 
+        # Check if any health metrics are available
+        if not battery_levels and not air_util_tx and not snr:
+            radios = len(meshtastic_client.nodes)
+            return f"Nodes: {radios}\nNo nodes with health metrics found."
+
         low_battery = len([n for n in battery_levels if n <= 10])
         radios = len(meshtastic_client.nodes)
         avg_battery = statistics.mean(battery_levels) if battery_levels else 0

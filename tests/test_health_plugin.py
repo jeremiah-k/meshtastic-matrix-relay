@@ -132,6 +132,40 @@ class TestHealthPlugin(unittest.TestCase):
         self.assertEqual(result, "No nodes discovered yet.")
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    def test_generate_response_with_nodes_but_no_health_metrics(self, mock_connect):
+        """
+        Test that generating a response with nodes but no health metrics returns appropriate message.
+
+        Verifies that the plugin handles the scenario where nodes are discovered but none
+        have health metrics (battery, air utilization, SNR), returning "No nodes with health metrics found."
+        instead of showing misleading 0.0% values.
+        """
+        # Nodes exist but have no health metrics
+        nodes_without_metrics = {
+            "node1": {
+                "user": {"longName": "Node 1"},
+                # No deviceMetrics or snr
+            },
+            "node2": {
+                "user": {"longName": "Node 2"},
+                "deviceMetrics": {},  # Empty deviceMetrics
+                # No snr
+            },
+            "node3": {
+                "user": {"longName": "Node 3"},
+                "deviceMetrics": {"batteryLevel": None},  # None battery level
+                "snr": None,  # None SNR
+            },
+        }
+
+        mock_meshtastic_client = MagicMock()
+        mock_meshtastic_client.nodes = nodes_without_metrics
+        mock_connect.return_value = mock_meshtastic_client
+
+        result = self.plugin.generate_response()
+        self.assertEqual(result, "Nodes: 3\nNo nodes with health metrics found.")
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     def test_generate_response_with_minimal_data(self, mock_connect):
         """
         Test that generating a response with minimal node data returns a graceful string response.
