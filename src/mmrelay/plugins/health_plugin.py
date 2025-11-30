@@ -71,14 +71,13 @@ SNR: {avg_snr:.2f} / {mdn_snr:.2f} (avg / median)
 """
 
     async def handle_meshtastic_message(
-        self, packet, formatted_message: str, longname: str, meshnet_name: str
+        self, _packet, _formatted_message: str, _longname: str, _meshnet_name: str
     ) -> bool:
         return False
 
     async def handle_room_message(
         self, room: MatrixRoom, event: RoomMessageText, full_message: str
     ) -> bool:
-
         if not self.matches(event):
             return False
 

@@ -18,16 +18,17 @@ S2_PRECISION_BITS_TO_METERS_CONSTANT = 23905787.925008
 def precision_bits_to_meters(bits: int) -> float | None:
     """
     Convert a precision value in S2 "precision bits" to an approximate radius in meters.
-    
+
     Parameters:
         bits (int): Precision expressed as S2 precision bits; larger values indicate finer precision.
-    
+
     Returns:
         float | None: Approximate radius in meters corresponding to `bits`, or `None` if `bits` is less than or equal to 0.
     """
     if bits <= 0:
         return None
-    return S2_PRECISION_BITS_TO_METERS_CONSTANT * 0.5 ** bits
+    return S2_PRECISION_BITS_TO_METERS_CONSTANT * 0.5**bits
+
 
 try:
     import cairo  # type: ignore[import-untyped]
@@ -41,9 +42,9 @@ logger = get_logger(__name__)
 async def _connect_meshtastic_async():
     """
     Obtain a Meshtastic client connection without blocking the event loop.
-    
+
     If running under a pytest environment (PYTEST_CURRENT_TEST present) the connector is invoked directly; otherwise the connector is executed in a thread to avoid blocking the event loop.
-    
+
     Returns:
         meshtastic_client: The Meshtastic client instance, or `None` if a connection could not be established.
     """
@@ -58,7 +59,7 @@ async def _connect_meshtastic_async():
 def textsize(self: PIL.ImageDraw.ImageDraw, *args, **kwargs):
     """
     Compute the width and height of the given text as it would be rendered by this ImageDraw instance.
-    
+
     Returns:
         (width, height): Tuple containing the text's horizontal and vertical size in pixels.
     """
@@ -95,9 +96,9 @@ class TextLabel(staticmaps.Object):
     def render_pillow(self, renderer: staticmaps.PillowRenderer) -> None:
         """
         Render the label as a balloon marker with an arrow and centered text using a Pillow renderer.
-        
+
         Draws a white balloon with a red outline and black text positioned at the object's latitude/longitude using the provided staticmaps.PillowRenderer.
-        
+
         Parameters:
             renderer (staticmaps.PillowRenderer): Renderer and drawing context used to convert coordinates to pixels and paint the label.
         """
@@ -131,9 +132,9 @@ class TextLabel(staticmaps.Object):
     def render_cairo(self, renderer: staticmaps.CairoRenderer) -> None:
         """
         Render the label as a balloon with a tail and centered text using a Cairo renderer.
-        
+
         Draws a white rounded balloon with a red outline and black text positioned at this object's latitude/longitude (as provided by latlng()) using the supplied Cairo renderer. If the module-level Cairo binding is unavailable, this method performs no drawing.
-        
+
         Parameters:
             renderer (staticmaps.CairoRenderer): Cairo renderer used to transform geographic coordinates to pixels and to perform all drawing operations.
         """
@@ -187,7 +188,7 @@ class TextLabel(staticmaps.Object):
     def render_svg(self, renderer: staticmaps.SvgRenderer) -> None:
         """
         Render this label as an SVG balloon with centered text at the object's latitude/longitude pixel position.
-        
+
         Parameters:
             renderer (staticmaps.SvgRenderer): SVG renderer used to transform geographic coordinates to pixels and to emit SVG elements. The method adds a filled rounded balloon path and a centered text element to the renderer's current group.
         """
@@ -230,16 +231,18 @@ class TextLabel(staticmaps.Object):
 
 
 def anonymize_location(
-    lat: float, lon: float, _radius: float = 1000  # deprecated; kept for compat
+    lat: float,
+    lon: float,
+    _radius: float = 1000,  # deprecated; kept for compat
 ) -> tuple[float, float]:
     """
     Return the input latitude and longitude unchanged.
-    
+
     Parameters:
         lat (float): Latitude in decimal degrees.
         lon (float): Longitude in decimal degrees.
         _radius (float): Deprecated and ignored; kept for backward compatibility.
-    
+
     Returns:
         tuple[float, float]: The same (lat, lon) values passed in.
     """
@@ -271,15 +274,14 @@ def get_map(
     """
     context = staticmaps.Context()
     context.set_tile_provider(staticmaps.tile_provider_OSM)
-    context.set_zoom(zoom)
+    if zoom is not None:
+        context.set_zoom(zoom)
 
     circle_cls = getattr(staticmaps, "Circle", None)
     color_cls = getattr(staticmaps, "Color", None)
 
     for location in locations:
-        radio = staticmaps.create_latlng(
-            float(location["lat"]), float(location["lon"])
-        )
+        radio = staticmaps.create_latlng(float(location["lat"]), float(location["lon"]))
         precision_bits = location.get("precisionBits")
         precision_radius_m = None
         if precision_bits is not None:

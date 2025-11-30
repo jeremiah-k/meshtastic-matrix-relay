@@ -101,15 +101,15 @@ class TestMeshtasticUtils(unittest.TestCase):
             f.set_result(None)
             return f
 
-        with patch("mmrelay.meshtastic_utils.get_longname") as mock_get_longname, patch(
-            "mmrelay.meshtastic_utils.get_shortname"
-        ) as mock_get_shortname, patch(
-            "mmrelay.matrix_utils.matrix_relay", new_callable=AsyncMock
-        ), patch(
-            "mmrelay.matrix_utils.get_interaction_settings"
-        ) as mock_get_interactions, patch(
-            "mmrelay.matrix_utils.message_storage_enabled"
-        ) as mock_storage:
+        with (
+            patch("mmrelay.meshtastic_utils.get_longname") as mock_get_longname,
+            patch("mmrelay.meshtastic_utils.get_shortname") as mock_get_shortname,
+            patch("mmrelay.matrix_utils.matrix_relay", new_callable=AsyncMock),
+            patch(
+                "mmrelay.matrix_utils.get_interaction_settings"
+            ) as mock_get_interactions,
+            patch("mmrelay.matrix_utils.message_storage_enabled") as mock_storage,
+        ):
             mock_get_longname.return_value = "Test User"
             mock_get_shortname.return_value = "TU"
             mock_get_interactions.return_value = {"reactions": False, "replies": False}
@@ -135,22 +135,23 @@ class TestMeshtasticUtils(unittest.TestCase):
         packet_no_channel = self.mock_packet.copy()
         packet_no_channel["channel"] = None
 
-        with patch("mmrelay.meshtastic_utils.config", self.mock_config), patch(
-            "mmrelay.meshtastic_utils.matrix_rooms", self.mock_config["matrix_rooms"]
-        ), patch(
-            "mmrelay.matrix_utils.matrix_relay", new_callable=AsyncMock
-        ) as mock_matrix_relay, patch(
-            "mmrelay.meshtastic_utils.get_longname"
-        ) as mock_get_longname, patch(
-            "mmrelay.meshtastic_utils.get_shortname"
-        ) as mock_get_shortname, patch(
-            "mmrelay.matrix_utils.get_interaction_settings"
-        ) as mock_get_interactions, patch(
-            "mmrelay.matrix_utils.message_storage_enabled"
-        ) as mock_storage, patch(
-            "mmrelay.plugin_loader.load_plugins", return_value=[]
-        ), patch(
-            "mmrelay.matrix_utils.matrix_client", None
+        with (
+            patch("mmrelay.meshtastic_utils.config", self.mock_config),
+            patch(
+                "mmrelay.meshtastic_utils.matrix_rooms",
+                self.mock_config["matrix_rooms"],
+            ),
+            patch(
+                "mmrelay.matrix_utils.matrix_relay", new_callable=AsyncMock
+            ) as mock_matrix_relay,
+            patch("mmrelay.meshtastic_utils.get_longname") as mock_get_longname,
+            patch("mmrelay.meshtastic_utils.get_shortname") as mock_get_shortname,
+            patch(
+                "mmrelay.matrix_utils.get_interaction_settings"
+            ) as mock_get_interactions,
+            patch("mmrelay.matrix_utils.message_storage_enabled") as mock_storage,
+            patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
+            patch("mmrelay.matrix_utils.matrix_client", None),
         ):
             mock_get_longname.return_value = "Test User"
             mock_get_shortname.return_value = "TU"
@@ -174,9 +175,14 @@ class TestMeshtasticUtils(unittest.TestCase):
         packet_unmapped = self.mock_packet.copy()
         packet_unmapped["channel"] = 99  # Not in matrix_rooms config
 
-        with patch("mmrelay.meshtastic_utils.config", self.mock_config), patch(
-            "mmrelay.meshtastic_utils.matrix_rooms", self.mock_config["matrix_rooms"]
-        ), patch("mmrelay.meshtastic_utils._submit_coro") as mock_submit_coro:
+        with (
+            patch("mmrelay.meshtastic_utils.config", self.mock_config),
+            patch(
+                "mmrelay.meshtastic_utils.matrix_rooms",
+                self.mock_config["matrix_rooms"],
+            ),
+            patch("mmrelay.meshtastic_utils._submit_coro") as mock_submit_coro,
+        ):
             mock_interface = MagicMock()
 
             # Call the function
@@ -195,14 +201,16 @@ class TestMeshtasticUtils(unittest.TestCase):
         packet_no_text = self.mock_packet.copy()
         packet_no_text["decoded"] = {"portnum": 2}  # Not TEXT_MESSAGE_APP
 
-        with patch("mmrelay.meshtastic_utils.config", self.mock_config), patch(
-            "mmrelay.meshtastic_utils.matrix_rooms", self.mock_config["matrix_rooms"]
-        ), patch("mmrelay.meshtastic_utils._submit_coro") as mock_submit_coro, patch(
-            "mmrelay.plugin_loader.load_plugins"
-        ) as mock_load_plugins, patch(
-            "mmrelay.meshtastic_utils.is_running_as_service", return_value=True
-        ), patch(
-            "mmrelay.matrix_utils.matrix_client", None
+        with (
+            patch("mmrelay.meshtastic_utils.config", self.mock_config),
+            patch(
+                "mmrelay.meshtastic_utils.matrix_rooms",
+                self.mock_config["matrix_rooms"],
+            ),
+            patch("mmrelay.meshtastic_utils._submit_coro") as mock_submit_coro,
+            patch("mmrelay.plugin_loader.load_plugins") as mock_load_plugins,
+            patch("mmrelay.meshtastic_utils.is_running_as_service", return_value=True),
+            patch("mmrelay.matrix_utils.matrix_client", None),
         ):
             mock_load_plugins.return_value = []
             mock_interface = MagicMock()
@@ -221,8 +229,12 @@ class TestMeshtasticUtils(unittest.TestCase):
         mock_interface = MagicMock()
         mock_interface.myInfo = None
 
-        with patch("mmrelay.meshtastic_utils.config", self.mock_config), patch(
-            "mmrelay.meshtastic_utils.matrix_rooms", self.mock_config["matrix_rooms"]
+        with (
+            patch("mmrelay.meshtastic_utils.config", self.mock_config),
+            patch(
+                "mmrelay.meshtastic_utils.matrix_rooms",
+                self.mock_config["matrix_rooms"],
+            ),
         ):
             result = on_meshtastic_message(packet, mock_interface)
             self.assertIsNone(result)
@@ -244,29 +256,41 @@ class TestMeshtasticUtils(unittest.TestCase):
             "id": 555,
         }
 
-        with patch("mmrelay.meshtastic_utils.config", self.mock_config), patch(
-            "mmrelay.meshtastic_utils.matrix_rooms", self.mock_config["matrix_rooms"]
-        ), patch("mmrelay.meshtastic_utils.event_loop", MagicMock()), patch(
-            "mmrelay.meshtastic_utils.get_longname", return_value="Long Name"
-        ), patch(
-            "mmrelay.meshtastic_utils.get_shortname", return_value="LN"
-        ), patch(
-            "mmrelay.matrix_utils.get_interaction_settings",
-            return_value={"reactions": True, "replies": True},
-        ), patch(
-            "mmrelay.matrix_utils.message_storage_enabled", return_value=False
-        ), patch(
-            "mmrelay.meshtastic_utils.get_message_map_by_meshtastic_id",
-            return_value=("evt1", "!room1:matrix.org", "orig text", "mesh"),
-        ), patch(
-            "mmrelay.matrix_utils.get_matrix_prefix", return_value="[prefix] "
-        ), patch(
-            "mmrelay.matrix_utils.matrix_relay", new_callable=AsyncMock
-        ) as mock_matrix_relay, patch(
-            "mmrelay.meshtastic_utils._submit_coro"
-        ) as mock_submit_coro, patch(
-            "mmrelay.meshtastic_utils.logger"
+        with (
+            patch("mmrelay.meshtastic_utils.config", self.mock_config),
+            patch(
+                "mmrelay.meshtastic_utils.matrix_rooms",
+                self.mock_config["matrix_rooms"],
+            ),
+            patch("mmrelay.meshtastic_utils.event_loop", MagicMock()),
+            patch("mmrelay.meshtastic_utils.get_longname", return_value="Long Name"),
+            patch("mmrelay.meshtastic_utils.get_shortname", return_value="LN"),
+            patch(
+                "mmrelay.matrix_utils.get_interaction_settings",
+                return_value={"reactions": True, "replies": True},
+            ),
+            patch("mmrelay.matrix_utils.message_storage_enabled", return_value=False),
+            patch(
+                "mmrelay.meshtastic_utils.get_message_map_by_meshtastic_id",
+                return_value=("evt1", "!room1:matrix.org", "orig text", "mesh"),
+            ),
+            patch("mmrelay.matrix_utils.get_matrix_prefix", return_value="[prefix] "),
+            patch(
+                "mmrelay.matrix_utils.matrix_relay", new_callable=AsyncMock
+            ) as mock_matrix_relay,
+            patch("mmrelay.meshtastic_utils._submit_coro") as mock_submit_coro,
+            patch("mmrelay.meshtastic_utils.logger"),
         ):
+            import inspect
+
+            def _drain_coro(coro, *_args, **_kwargs):
+                # Mirror mock_submit_coro fixture behavior: close coroutines
+                # so AsyncMock-based matrix_relay calls don't raise warnings.
+                if inspect.iscoroutine(coro):
+                    coro.close()
+                return None
+
+            mock_submit_coro.side_effect = _drain_coro
             mock_interface = MagicMock()
             mock_interface.myInfo.my_node_num = 999
 
@@ -274,7 +298,6 @@ class TestMeshtasticUtils(unittest.TestCase):
 
             mock_submit_coro.assert_called_once()
             # Ensure we scheduled the matrix relay coroutine
-            scheduled_coro = mock_submit_coro.call_args.args[0]
             self.assertTrue(mock_matrix_relay.called)
 
     def test_on_meshtastic_message_reply_relay(self):
@@ -293,27 +316,40 @@ class TestMeshtasticUtils(unittest.TestCase):
             "id": 777,
         }
 
-        with patch("mmrelay.meshtastic_utils.config", self.mock_config), patch(
-            "mmrelay.meshtastic_utils.matrix_rooms", self.mock_config["matrix_rooms"]
-        ), patch("mmrelay.meshtastic_utils.event_loop", MagicMock()), patch(
-            "mmrelay.meshtastic_utils.get_longname", return_value="Long Name"
-        ), patch(
-            "mmrelay.meshtastic_utils.get_shortname", return_value="LN"
-        ), patch(
-            "mmrelay.matrix_utils.get_interaction_settings",
-            return_value={"reactions": True, "replies": True},
-        ), patch(
-            "mmrelay.matrix_utils.message_storage_enabled", return_value=False
-        ), patch(
-            "mmrelay.meshtastic_utils.get_message_map_by_meshtastic_id",
-            return_value=("evt1", "!room1:matrix.org", "orig text", "mesh"),
-        ), patch(
-            "mmrelay.matrix_utils.get_matrix_prefix", return_value="[prefix] "
-        ), patch(
-            "mmrelay.matrix_utils.matrix_relay", new_callable=AsyncMock
-        ) as mock_matrix_relay, patch(
-            "mmrelay.meshtastic_utils._submit_coro"
-        ) as mock_submit_coro:
+        with (
+            patch("mmrelay.meshtastic_utils.config", self.mock_config),
+            patch(
+                "mmrelay.meshtastic_utils.matrix_rooms",
+                self.mock_config["matrix_rooms"],
+            ),
+            patch("mmrelay.meshtastic_utils.event_loop", MagicMock()),
+            patch("mmrelay.meshtastic_utils.get_longname", return_value="Long Name"),
+            patch("mmrelay.meshtastic_utils.get_shortname", return_value="LN"),
+            patch(
+                "mmrelay.matrix_utils.get_interaction_settings",
+                return_value={"reactions": True, "replies": True},
+            ),
+            patch("mmrelay.matrix_utils.message_storage_enabled", return_value=False),
+            patch(
+                "mmrelay.meshtastic_utils.get_message_map_by_meshtastic_id",
+                return_value=("evt1", "!room1:matrix.org", "orig text", "mesh"),
+            ),
+            patch("mmrelay.matrix_utils.get_matrix_prefix", return_value="[prefix] "),
+            patch(
+                "mmrelay.matrix_utils.matrix_relay", new_callable=AsyncMock
+            ) as mock_matrix_relay,
+            patch("mmrelay.meshtastic_utils._submit_coro") as mock_submit_coro,
+        ):
+            import inspect
+
+            def _drain_coro(coro, *_args, **_kwargs):
+                # Mirror mock_submit_coro fixture behavior: close coroutines
+                # so AsyncMock-based matrix_relay calls don't raise warnings.
+                if inspect.iscoroutine(coro):
+                    coro.close()
+                return None
+
+            mock_submit_coro.side_effect = _drain_coro
             mock_interface = MagicMock()
             mock_interface.myInfo.my_node_num = 999
 
@@ -326,11 +362,15 @@ class TestMeshtasticUtils(unittest.TestCase):
         """
         Returns early when event loop is not set.
         """
-        with patch("mmrelay.meshtastic_utils.config", self.mock_config), patch(
-            "mmrelay.meshtastic_utils.matrix_rooms", self.mock_config["matrix_rooms"]
-        ), patch("mmrelay.meshtastic_utils.event_loop", None), patch(
-            "mmrelay.meshtastic_utils.logger"
-        ) as mock_logger:
+        with (
+            patch("mmrelay.meshtastic_utils.config", self.mock_config),
+            patch(
+                "mmrelay.meshtastic_utils.matrix_rooms",
+                self.mock_config["matrix_rooms"],
+            ),
+            patch("mmrelay.meshtastic_utils.event_loop", None),
+            patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+        ):
             mock_interface = MagicMock()
             mock_interface.myInfo.my_node_num = 1
             result = on_meshtastic_message(self.mock_packet, mock_interface)
@@ -521,22 +561,22 @@ class TestMeshtasticUtils(unittest.TestCase):
             f.set_result(None)
             return f
 
-        with patch("mmrelay.meshtastic_utils.config", config_no_broadcast), patch(
-            "mmrelay.meshtastic_utils.matrix_rooms", config_no_broadcast["matrix_rooms"]
-        ), patch("mmrelay.meshtastic_utils._submit_coro") as mock_submit_coro, patch(
-            "mmrelay.matrix_utils.matrix_relay", new_callable=AsyncMock
-        ), patch(
-            "mmrelay.meshtastic_utils.get_longname"
-        ) as mock_get_longname, patch(
-            "mmrelay.meshtastic_utils.get_shortname"
-        ) as mock_get_shortname, patch(
-            "mmrelay.matrix_utils.get_interaction_settings"
-        ) as mock_get_interactions, patch(
-            "mmrelay.matrix_utils.message_storage_enabled"
-        ) as mock_storage, patch(
-            "mmrelay.meshtastic_utils.is_running_as_service", return_value=True
-        ), patch(
-            "mmrelay.matrix_utils.matrix_client", None
+        with (
+            patch("mmrelay.meshtastic_utils.config", config_no_broadcast),
+            patch(
+                "mmrelay.meshtastic_utils.matrix_rooms",
+                config_no_broadcast["matrix_rooms"],
+            ),
+            patch("mmrelay.meshtastic_utils._submit_coro") as mock_submit_coro,
+            patch("mmrelay.matrix_utils.matrix_relay", new_callable=AsyncMock),
+            patch("mmrelay.meshtastic_utils.get_longname") as mock_get_longname,
+            patch("mmrelay.meshtastic_utils.get_shortname") as mock_get_shortname,
+            patch(
+                "mmrelay.matrix_utils.get_interaction_settings"
+            ) as mock_get_interactions,
+            patch("mmrelay.matrix_utils.message_storage_enabled") as mock_storage,
+            patch("mmrelay.meshtastic_utils.is_running_as_service", return_value=True),
+            patch("mmrelay.matrix_utils.matrix_client", None),
         ):
             mock_submit_coro.side_effect = _done_future
             mock_get_longname.return_value = "Test User"
@@ -905,14 +945,16 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
             f.set_result(None)
             return f
 
-        with patch("mmrelay.meshtastic_utils.config", self.mock_config), patch(
-            "mmrelay.meshtastic_utils.matrix_rooms", self.mock_config["matrix_rooms"]
-        ), patch("mmrelay.meshtastic_utils._submit_coro") as mock_submit_coro, patch(
-            "mmrelay.meshtastic_utils.is_running_as_service", return_value=True
-        ), patch(
-            "mmrelay.matrix_utils.matrix_client", None
+        with (
+            patch("mmrelay.meshtastic_utils.config", self.mock_config),
+            patch(
+                "mmrelay.meshtastic_utils.matrix_rooms",
+                self.mock_config["matrix_rooms"],
+            ),
+            patch("mmrelay.meshtastic_utils._submit_coro") as mock_submit_coro,
+            patch("mmrelay.meshtastic_utils.is_running_as_service", return_value=True),
+            patch("mmrelay.matrix_utils.matrix_client", None),
         ):
-
             mock_submit_coro.side_effect = _done_future
             mock_interface = MagicMock()
 
@@ -950,10 +992,14 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
             f.set_result(None)
             return f
 
-        with patch("mmrelay.meshtastic_utils.config", self.mock_config), patch(
-            "mmrelay.meshtastic_utils.matrix_rooms", self.mock_config["matrix_rooms"]
-        ), patch("mmrelay.meshtastic_utils._submit_coro") as mock_submit_coro:
-
+        with (
+            patch("mmrelay.meshtastic_utils.config", self.mock_config),
+            patch(
+                "mmrelay.meshtastic_utils.matrix_rooms",
+                self.mock_config["matrix_rooms"],
+            ),
+            patch("mmrelay.meshtastic_utils._submit_coro") as mock_submit_coro,
+        ):
             mock_submit_coro.side_effect = _done_future
             mock_interface = MagicMock()
 
@@ -1040,12 +1086,12 @@ def test_connect_meshtastic_retry_exhausted(
 @patch("mmrelay.meshtastic_utils.asyncio.sleep", new_callable=AsyncMock)
 @patch("mmrelay.meshtastic_utils.logger")
 def test_reconnect_attempts_connection(
-    mock_logger,
+    _mock_logger,
     mock_sleep,
     mock_connect,
     mock_get_loop,
     _mock_is_service,
-    reset_meshtastic_globals,
+    _reset_meshtastic_globals,
 ):
     """
     Test that the reconnect coroutine attempts to establish a Meshtastic connection.
@@ -1057,7 +1103,7 @@ def test_reconnect_attempts_connection(
     mock_sleep.return_value = None
 
     # Simulate connect_meshtastic succeeding and signal shutdown after first attempt to exit cleanly
-    def _connect_side_effect(*args, **kwargs):
+    def _connect_side_effect(*_args, **_kwargs):
         import mmrelay.meshtastic_utils as mu
 
         mu.shutting_down = True
