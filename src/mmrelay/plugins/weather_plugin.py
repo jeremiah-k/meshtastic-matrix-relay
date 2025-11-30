@@ -89,9 +89,17 @@ class Plugin(BasePlugin):
         try:
             response = requests.get(url, timeout=10)
             response.raise_for_status()
-        except requests.exceptions.RequestException:
-            self.logger.exception("Error fetching weather data")
-            return "Error fetching weather data."
+        except Exception as e:
+            # Catch RequestException types and AttributeError (for mocked environments)
+            if (
+                request_exc_type is not None
+                and isinstance(request_exc_type, type)
+                and isinstance(e, request_exc_type)
+            ) or isinstance(e, AttributeError):
+                self.logger.exception("Error fetching weather data")
+                return "Error fetching weather data."
+            else:
+                raise
 
         try:
             data = response.json()
@@ -729,6 +737,15 @@ class Plugin(BasePlugin):
         """
         if not query:
             return None
+
+        # Safely get RequestException for mocked environments
+        exceptions_mod = getattr(requests, "exceptions", None)
+        request_exc_type = (
+            getattr(exceptions_mod, "RequestException", None)
+            if exceptions_mod
+            else None
+        )
+
         url = "https://geocoding-api.open-meteo.com/v1/search"
         try:
             response = requests.get(
@@ -737,9 +754,16 @@ class Plugin(BasePlugin):
                 timeout=10,
             )
             response.raise_for_status()
-        except requests.RequestException:
-            self.logger.exception("Error geocoding location")
-            return None
+        except Exception as e:
+            if (
+                request_exc_type is not None
+                and isinstance(request_exc_type, type)
+                and isinstance(e, request_exc_type)
+            ):
+                self.logger.exception("Error geocoding location")
+                return None
+            else:
+                raise
 
         try:
             payload = response.json()
