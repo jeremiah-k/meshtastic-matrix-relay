@@ -118,6 +118,11 @@ class Plugin(BasePlugin):
         from mmrelay.matrix_utils import connect_matrix
 
         matrix_client = await connect_matrix()
+        if matrix_client is None:
+            self.logger.warning(
+                "Matrix client unavailable; skipping telemetry graph generation"
+            )
+            return False
 
         # Compute the hourly averages for each node
         hourly_averages = {}
@@ -196,21 +201,16 @@ class Plugin(BasePlugin):
         from mmrelay.matrix_utils import ImageUploadError, send_image
 
         try:
-            if matrix_client is None:
-                from types import SimpleNamespace
-
-                raise ImageUploadError(SimpleNamespace(message="Matrix client is None"))
             await send_image(matrix_client, room.room_id, pil_image, "graph.png")
         except ImageUploadError:
             self.logger.exception("Failed to send telemetry graph")
-            if matrix_client is not None:
-                await matrix_client.room_send(
-                    room_id=room.room_id,
-                    message_type="m.room.message",
-                    content={
-                        "msgtype": "m.notice",
-                        "body": "Failed to generate graph: Image upload failed.",
-                    },
-                )
+            await matrix_client.room_send(
+                room_id=room.room_id,
+                message_type="m.room.message",
+                content={
+                    "msgtype": "m.notice",
+                    "body": "Failed to generate graph: Image upload failed.",
+                },
+            )
             return False
         return True

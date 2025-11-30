@@ -59,7 +59,7 @@ class Plugin(BasePlugin):
             radios = len(meshtastic_client.nodes)
             return f"Nodes: {radios}\nNo nodes with health metrics found."
 
-        low_battery = len([n for n in battery_levels if n <= 10])
+        low_battery = len([n for n in battery_levels if n < 10])
         radios = len(meshtastic_client.nodes)
         avg_battery = statistics.mean(battery_levels) if battery_levels else 0
         mdn_battery = statistics.median(battery_levels) if battery_levels else 0
@@ -68,12 +68,31 @@ class Plugin(BasePlugin):
         avg_snr = statistics.mean(snr) if snr else 0
         mdn_snr = statistics.median(snr) if snr else 0
 
+        # Format metrics conditionally
+        if air_util_tx:
+            air_util_line = f"Air Util: {avg_air:.2f} / {mdn_air:.2f} (avg / median)"
+        else:
+            air_util_line = "Air Util: N/A"
+
+        if snr:
+            snr_line = f"SNR: {avg_snr:.2f} / {mdn_snr:.2f} (avg / median)"
+        else:
+            snr_line = "SNR: N/A"
+
+        # Format battery conditionally
+        if battery_levels:
+            battery_line = (
+                f"Battery: {avg_battery:.1f}% / {mdn_battery:.1f}% (avg / median)"
+            )
+        else:
+            battery_line = "Battery: N/A"
+            low_battery = 0  # No low battery nodes if no battery data
+
         return f"""Nodes: {radios}
-Battery: {avg_battery:.1f}% / {mdn_battery:.1f}% (avg / median)
-Nodes with Low Battery (< 10): {low_battery}
-Air Util: {avg_air:.2f} / {mdn_air:.2f} (avg / median)
-SNR: {avg_snr:.2f} / {mdn_snr:.2f} (avg / median)
-        """
+ {battery_line}
+ Nodes with Low Battery (< 10): {low_battery}
+ {air_util_line}
+ {snr_line}"""
 
     async def handle_meshtastic_message(
         self, packet, formatted_message: str, longname: str, meshnet_name: str
@@ -81,7 +100,7 @@ SNR: {avg_snr:.2f} / {mdn_snr:.2f} (avg / median)
         return False
 
     async def handle_room_message(
-        self, room: MatrixRoom, event: RoomMessageText, _full_message: str
+        self, room: MatrixRoom, event: RoomMessageText, full_message: str
     ) -> bool:
         if not self.matches(event):
             return False
