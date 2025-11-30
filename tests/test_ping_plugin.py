@@ -71,7 +71,6 @@ class TestMatchCase(unittest.TestCase):
         self.assertEqual(result, "")
 
 
-@pytest.mark.usefixtures("mock_event_loop")
 class TestPingPlugin(unittest.TestCase):
     """Test cases for the ping plugin."""
 
@@ -142,7 +141,7 @@ class TestPingPlugin(unittest.TestCase):
         async def run_test():
             """
             Verify that handle_meshtastic_message does not process a packet when the Meshtastic client lacks `myInfo`.
-            
+
             This test awaits plugin.handle_meshtastic_message with the provided `packet` and asserts that it returns `False`, indicating no handling occurred for a client with missing `myInfo`.
             """
             result = await self.plugin.handle_meshtastic_message(

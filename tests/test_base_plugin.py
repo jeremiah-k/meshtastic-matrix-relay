@@ -61,7 +61,6 @@ class MockPlugin(BasePlugin):
         return None
 
 
-@pytest.mark.usefixtures("mock_event_loop")
 class TestBasePlugin(unittest.TestCase):
     """Test cases for the BasePlugin class."""
 

@@ -247,7 +247,6 @@ class TestGetMap(unittest.TestCase):
         mock_anonymize.assert_not_called()
 
 
-@pytest.mark.usefixtures("mock_event_loop")
 class TestImageUploadAndSend(unittest.TestCase):
     """Test cases for image upload and sending functionality."""
 
@@ -361,7 +360,6 @@ class TestImageUploadAndSend(unittest.TestCase):
         asyncio.run(run_test())
 
 
-@pytest.mark.usefixtures("mock_event_loop")
 class TestMapPlugin(unittest.TestCase):
     """Test cases for the map Plugin class."""
 

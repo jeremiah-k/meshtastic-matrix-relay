@@ -145,7 +145,6 @@ class TestGetRelativeTime(unittest.TestCase):
         self.assertEqual(result, expected_format)
 
 
-@pytest.mark.usefixtures("mock_event_loop")
 class TestNodesPlugin(unittest.TestCase):
     """Test cases for the nodes plugin."""
 

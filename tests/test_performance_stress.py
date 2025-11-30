@@ -69,7 +69,6 @@ def reset_global_state():
     gc.collect()
 
 
-@pytest.mark.usefixtures("mock_event_loop")
 class TestPerformanceStress:
     """Test cases for performance and stress scenarios."""
 
