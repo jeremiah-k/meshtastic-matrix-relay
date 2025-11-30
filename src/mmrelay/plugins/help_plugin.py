@@ -64,8 +64,10 @@ class Plugin(BasePlugin):
         """
         if not self.matches(event):
             return False
-
-        command = self.extract_command_args("help", full_message)
+        matched_command = self.get_matching_matrix_command(event)
+        if not matched_command:
+            return False
+        command = self.extract_command_args(matched_command, full_message) or ""
 
         plugins = load_plugins()
 

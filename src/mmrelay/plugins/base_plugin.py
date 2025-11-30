@@ -510,6 +510,22 @@ class BasePlugin(ABC):
         """
         return [self.plugin_name]
 
+    def get_matching_matrix_command(self, event) -> str | None:
+        """
+        Find the first Matrix command that matches an event.
+
+        Iterates the commands returned by `get_matrix_commands()` and uses
+        `bot_command` with this plugin's mention requirement to detect a match.
+        Returns the matching command string, or None if no command matches.
+        """
+        from mmrelay.matrix_utils import bot_command
+
+        require_mention = self.get_require_bot_mention()
+        for command in self.get_matrix_commands():
+            if bot_command(command, event, require_mention=require_mention):
+                return command
+        return None
+
     async def send_matrix_message(self, room_id, message, formatted=True):
         """Send a message to a Matrix room.
 

@@ -100,18 +100,13 @@ class Plugin(BasePlugin):
         if not self.matches(event):
             return False
 
-        telemetry_option = None
-        node = None
-        for command in self.get_matrix_commands():
-            args = self.extract_command_args(command, full_message)
-            if args is not None:
-                telemetry_option = command
-                node = args or None
-                break
-
-        # If matches(event) was True but we couldn't parse any command args, treat as not handled
-        if telemetry_option is None:
+        parsed_command = self.get_matching_matrix_command(event)
+        if not parsed_command:
             return False
+
+        args = self.extract_command_args(parsed_command, full_message) or ""
+        telemetry_option = parsed_command
+        node = args or None
 
         hourly_intervals = self._generate_timeperiods()
         from mmrelay.matrix_utils import connect_matrix
@@ -193,6 +188,7 @@ class Plugin(BasePlugin):
         # Save the plot as a PIL image
         buf = io.BytesIO()
         fig.savefig(buf, format="png", bbox_inches="tight")
+        plt.close(fig)
         buf.seek(0)
         img = Image.open(buf)
         pil_image = Image.frombytes(mode="RGBA", size=img.size, data=img.tobytes())

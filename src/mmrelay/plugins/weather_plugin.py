@@ -166,7 +166,7 @@ class Plugin(BasePlugin):
             def _safe_get(seq, idx):
                 try:
                     return seq[idx]
-                except Exception:
+                except (IndexError, TypeError, KeyError):
                     return None
 
             def get_hourly(idx):
@@ -562,31 +562,10 @@ class Plugin(BasePlugin):
         if not self.matches(event):
             return False
 
-        coords = None
-        parsed_command = None
-        args_text = None
-        for command in self.get_matrix_commands():
-            args = self.extract_command_args(command, full_message)
-            if args is not None:
-                parsed_command = command
-                args_text = args
-                break
-
-        # If matches(event) was True but we couldn't parse args, treat as valid command with empty args
+        parsed_command = self.get_matching_matrix_command(event)
         if not parsed_command:
-            # Find which command matched by using the same logic as matches()
-            from mmrelay.matrix_utils import bot_command
-
-            require_mention = self.get_require_bot_mention()
-            for command in self.get_matrix_commands():
-                if bot_command(command, event, require_mention=require_mention):
-                    parsed_command = command
-                    args_text = ""
-                    break
-
-            # If still no command found, return False
-            if not parsed_command:
-                return False
+            return False
+        args_text = self.extract_command_args(parsed_command, full_message) or ""
 
         coords = await self._resolve_location_from_args(args_text)
 

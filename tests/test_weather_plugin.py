@@ -311,11 +311,17 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         Matrix-side weather command should parse coordinates and send a forecast.
         """
         self.plugin.matches = MagicMock(return_value=True)
+        # Provide a realistic Matrix event with string fields so bot_command parsing works
+        mock_event = MagicMock()
+        mock_event.body = "!weather 10.0 20.0"
+        mock_event.source = {"content": {"formatted_body": ""}}
+        # Disable mention requirement for this Matrix command
+        self.plugin.get_require_bot_mention = MagicMock(return_value=False)
         self.plugin.generate_forecast = MagicMock(return_value="OK")
         self.plugin.send_matrix_message = AsyncMock()
 
         result = await self.plugin.handle_room_message(
-            MagicMock(room_id="!room"), MagicMock(), "!weather 10.0 20.0"
+            MagicMock(room_id="!room"), mock_event, "!weather 10.0 20.0"
         )
         self.assertTrue(result)
         self.plugin.generate_forecast.assert_called_once()
