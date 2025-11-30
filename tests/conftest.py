@@ -329,11 +329,11 @@ class MockStaticmapsModule:
     def create_latlng(lat, lon):
         """
         Create a MockLatLng representing the specified geographic coordinates.
-        
+
         Parameters:
             lat (float): Latitude in decimal degrees.
             lon (float): Longitude in decimal degrees.
-        
+
         Returns:
             MockLatLng: A mock LatLng object for the given latitude and longitude.
         """
@@ -527,6 +527,50 @@ def reset_banner_flag():
 
     mmrelay.main._banner_printed = False
     yield
+
+
+@pytest.fixture
+def reset_meshtastic_globals():
+    """
+    Pytest fixture that resets global variables in mmrelay.meshtastic_utils module.
+
+    Resets module-level globals like config, logger, meshtastic_client, event_loop,
+    and state flags to ensure clean test isolation between test runs.
+    """
+    import mmrelay.meshtastic_utils as mu
+
+    # Store original values
+    original_values = {
+        "config": getattr(mu, "config", None),
+        "logger": getattr(mu, "logger", None),
+        "meshtastic_client": getattr(mu, "meshtastic_client", None),
+        "event_loop": getattr(mu, "event_loop", None),
+        "reconnecting": getattr(mu, "reconnecting", False),
+        "shutting_down": getattr(mu, "shutting_down", False),
+        "reconnect_task": getattr(mu, "reconnect_task", None),
+        "subscribed_to_messages": getattr(mu, "subscribed_to_messages", False),
+        "subscribed_to_connection_lost": getattr(
+            mu, "subscribed_to_connection_lost", False
+        ),
+    }
+
+    # Reset all globals to default/clean state
+    mu.config = None
+    mu.logger = None
+    mu.meshtastic_client = None
+    mu.event_loop = None
+    mu.reconnecting = False
+    mu.shutting_down = False
+    mu.reconnect_task = None
+    mu.subscribed_to_messages = False
+    mu.subscribed_to_connection_lost = False
+
+    yield
+
+    # Restore original values
+    for attr_name, original_value in original_values.items():
+        if original_value is not None:
+            setattr(mu, attr_name, original_value)
 
 
 @pytest.fixture

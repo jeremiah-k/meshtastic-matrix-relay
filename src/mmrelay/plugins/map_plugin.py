@@ -274,8 +274,7 @@ def get_map(
     """
     context = staticmaps.Context()
     context.set_tile_provider(staticmaps.tile_provider_OSM)
-    if zoom is not None:
-        context.set_zoom(zoom)
+    context.set_zoom(zoom)
 
     circle_cls = getattr(staticmaps, "Circle", None)
     color_cls = getattr(staticmaps, "Color", None)
