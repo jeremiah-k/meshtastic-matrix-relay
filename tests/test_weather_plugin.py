@@ -264,6 +264,19 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         )
         self.assertTrue(result)
         self.plugin.generate_forecast.assert_called_once()
+        call_args = self.plugin.generate_forecast.call_args
+        self.assertAlmostEqual(
+            call_args.kwargs.get(
+                "latitude", call_args.args[0] if call_args.args else None
+            ),
+            10.0,
+        )
+        self.assertAlmostEqual(
+            call_args.kwargs.get(
+                "longitude", call_args.args[1] if len(call_args.args) > 1 else None
+            ),
+            20.0,
+        )
         self.plugin.send_matrix_message.assert_called_once()
 
     @patch("requests.get")
@@ -1161,7 +1174,6 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         """
         Ensure handle_meshtastic_message returns True when myInfo is missing.
         """
-        from mmrelay.constants.messages import PORTNUM_TEXT_MESSAGE_APP
 
         mock_packet = {
             "decoded": {

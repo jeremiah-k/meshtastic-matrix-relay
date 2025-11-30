@@ -104,13 +104,14 @@ class Plugin(BasePlugin):
 
             drop_message = match.group(1)
 
-            position = {}
-            for _node, info in meshtastic_client.nodes.items():
-                if info["user"]["id"] == packet["fromId"]:
-                    if "position" in info:
-                        position = info["position"]
-                    else:
-                        continue
+            from_id = packet.get("fromId")
+            if not from_id:
+                self.logger.debug(
+                    "Drop command missing fromId; cannot determine originator. Skipping ..."
+                )
+                return False
+
+            position = self.get_position(meshtastic_client, from_id) or {}
 
             if "latitude" not in position or "longitude" not in position:
                 self.logger.debug(
@@ -134,6 +135,4 @@ class Plugin(BasePlugin):
 
     async def handle_room_message(self, room, event, full_message) -> bool:
         # Pass the event to matches() instead of full_message
-        if self.matches(event):
-            return True
-        return False
+        return self.matches(event)
