@@ -43,17 +43,14 @@ async def _connect_meshtastic_async() -> object | None:
     """
     Obtain a Meshtastic client connection without blocking the event loop.
 
-    If running under a pytest environment (PYTEST_CURRENT_TEST present) the connector is invoked directly; otherwise the connector is executed in a thread to avoid blocking the event loop.
+    The connector is executed in a thread to avoid blocking the event loop.
 
     Returns:
         meshtastic_client: The Meshtastic client instance, or `None` if a connection could not be established.
     """
     from mmrelay.meshtastic_utils import connect_meshtastic
 
-    if "PYTEST_CURRENT_TEST" in os.environ:
-        return connect_meshtastic()
-    loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(None, connect_meshtastic)
+    return await asyncio.to_thread(connect_meshtastic)
 
 
 def textsize(self: PIL.ImageDraw.ImageDraw, *args, **kwargs):
@@ -288,7 +285,7 @@ def get_map(
                 precision_radius_m = precision_bits_to_meters(int(precision_bits))
             except (TypeError, ValueError):
                 precision_radius_m = None
-        if precision_radius_m and circle_cls and color_cls:
+        if precision_radius_m is not None and circle_cls and color_cls:
             context.add_object(
                 circle_cls(
                     radio,
@@ -429,9 +426,8 @@ class Plugin(BasePlugin):
         meshtastic_client = await _connect_meshtastic_async()
 
         has_nodes = getattr(meshtastic_client, "nodes", None) is not None
-        is_test = "PYTEST_CURRENT_TEST" in os.environ
 
-        if not meshtastic_client or (not is_test and not has_nodes):
+        if not meshtastic_client or not has_nodes:
             self.logger.error("Meshtastic client unavailable; cannot generate map")
             await self.send_matrix_message(
                 room.room_id,
@@ -453,36 +449,22 @@ class Plugin(BasePlugin):
                 )
 
         if not locations:
-            if "PYTEST_CURRENT_TEST" in os.environ:
-                # Allow tests to exercise rendering path even without node data
-                pass
-            else:
-                await self.send_matrix_message(
-                    room.room_id,
-                    "Cannot generate map: No nodes with location data found.",
-                    formatted=False,
-                )
-                return True
+            await self.send_matrix_message(
+                room.room_id,
+                "Cannot generate map: No nodes with location data found.",
+                formatted=False,
+            )
+            return True
 
-        # In tests, run synchronously to avoid executor/thread issues; in production,
-        # offload CPU-bound rendering to keep the event loop responsive.
-        if "PYTEST_CURRENT_TEST" in os.environ:
-            pillow_image = get_map(
-                locations=locations,
-                zoom=zoom,
-                image_size=image_size,
-                anonymize=False,
-                radius=0,
-            )
-        else:
-            pillow_image = await asyncio.to_thread(
-                get_map,
-                locations=locations,
-                zoom=zoom,
-                image_size=image_size,
-                anonymize=False,
-                radius=0,
-            )
+        # Offload CPU-bound rendering to keep the event loop responsive.
+        pillow_image = await asyncio.to_thread(
+            get_map,
+            locations=locations,
+            zoom=zoom,
+            image_size=image_size,
+            anonymize=False,
+            radius=0,
+        )
 
         try:
             await send_image(matrix_client, room.room_id, pillow_image, "location.png")

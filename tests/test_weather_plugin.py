@@ -65,8 +65,8 @@ def _make_ok_response(payload):
     return r
 
 
-@pytest.mark.usefixtures("mock_event_loop")
-class TestWeatherPlugin(unittest.TestCase):
+@pytest.mark.usefixtures("mock_to_thread")
+class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
     """Test cases for the weather plugin."""
 
     def setUp(self):
@@ -251,31 +251,20 @@ class TestWeatherPlugin(unittest.TestCase):
         self.assertIsNone(cmd)
         self.assertIsNone(args)
 
-    def test_handle_room_message_with_override(self):
+    async def test_handle_room_message_with_override(self):
         """
         Matrix-side weather command should parse coordinates and send a forecast.
         """
+        self.plugin.matches = MagicMock(return_value=True)
+        self.plugin.generate_forecast = MagicMock(return_value="OK")
+        self.plugin.send_matrix_message = AsyncMock()
 
-        async def run_test():
-            """
-            Test that a room message containing an explicit weather command with coordinates triggers forecast generation and a Matrix message.
-
-            Sets up the plugin to match the message, stubs generate_forecast to return a response, and stubs send_matrix_message. Verifies handle_room_message returns True, generate_forecast is called once, and send_matrix_message is awaited once.
-            """
-            self.plugin.matches = MagicMock(return_value=True)
-            self.plugin.generate_forecast = MagicMock(return_value="OK")
-            self.plugin.send_matrix_message = AsyncMock()
-
-            result = await self.plugin.handle_room_message(
-                MagicMock(room_id="!room"), MagicMock(), "!weather 10.0 20.0"
-            )
-            self.assertTrue(result)
-            self.plugin.generate_forecast.assert_called_once()
-            self.plugin.send_matrix_message.assert_called_once()
-
-        import asyncio
-
-        asyncio.run(run_test())
+        result = await self.plugin.handle_room_message(
+            MagicMock(room_id="!room"), MagicMock(), "!weather 10.0 20.0"
+        )
+        self.assertTrue(result)
+        self.plugin.generate_forecast.assert_called_once()
+        self.plugin.send_matrix_message.assert_called_once()
 
     @patch("requests.get")
     def test_generate_forecast_metric_units(self, mock_get):
@@ -684,7 +673,7 @@ class TestWeatherPlugin(unittest.TestCase):
         # Should handle unknown weather codes gracefully
         self.assertIn("❓ Unknown", forecast)
 
-    def test_handle_meshtastic_message_not_text_message(self):
+    async def test_handle_meshtastic_message_not_text_message(self):
         """
         Test that the plugin ignores Meshtastic messages that are not text messages.
 
@@ -697,24 +686,13 @@ class TestWeatherPlugin(unittest.TestCase):
             }
         }
 
-        async def run_test():
-            """
-            Runs an asynchronous test to verify that handling a Meshtastic message returns False.
-
-            Returns:
-                bool: False, indicating the message was not handled.
-            """
-            result = await self.plugin.handle_meshtastic_message(
-                packet, "formatted_message", "longname", "meshnet_name"
-            )
-            self.assertFalse(result)
-
-        import asyncio
-
-        asyncio.run(run_test())
+        result = await self.plugin.handle_meshtastic_message(
+            packet, "formatted_message", "longname", "meshnet_name"
+        )
+        self.assertFalse(result)
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
-    def test_handle_meshtastic_message_no_weather_command(self, mock_connect):
+    async def test_handle_meshtastic_message_no_weather_command(self, mock_connect):
         """
         Test that a Meshtastic text message without the "!weather" command is ignored by the plugin.
 
@@ -731,24 +709,13 @@ class TestWeatherPlugin(unittest.TestCase):
             "channel": 0,
         }
 
-        async def run_test():
-            """
-            Runs an asynchronous test to verify that handling a Meshtastic message returns False.
-
-            Returns:
-                bool: False, indicating the message was not handled.
-            """
-            result = await self.plugin.handle_meshtastic_message(
-                packet, "formatted_message", "longname", "meshnet_name"
-            )
-            self.assertFalse(result)
-
-        import asyncio
-
-        asyncio.run(run_test())
+        result = await self.plugin.handle_meshtastic_message(
+            packet, "formatted_message", "longname", "meshnet_name"
+        )
+        self.assertFalse(result)
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
-    def test_handle_meshtastic_message_channel_not_enabled(self, mock_connect):
+    async def test_handle_meshtastic_message_channel_not_enabled(self, mock_connect):
         """
         Test that a "!weather" message on a disabled channel is not processed.
 
@@ -765,25 +732,17 @@ class TestWeatherPlugin(unittest.TestCase):
             "channel": 0,
         }
 
-        async def run_test():
-            """
-            Asynchronously runs a test to verify that handling a Meshtastic message returns False and checks channel enablement with default parameters.
-            """
-            result = await self.plugin.handle_meshtastic_message(
-                packet, "formatted_message", "longname", "meshnet_name"
-            )
-            self.assertFalse(result)
-            self.plugin.is_channel_enabled.assert_called_once_with(
-                0, is_direct_message=False
-            )
-
-        import asyncio
-
-        asyncio.run(run_test())
+        result = await self.plugin.handle_meshtastic_message(
+            packet, "formatted_message", "longname", "meshnet_name"
+        )
+        self.assertFalse(result)
+        self.plugin.is_channel_enabled.assert_called_once_with(
+            0, is_direct_message=False
+        )
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     @patch("requests.get")
-    def test_handle_meshtastic_message_direct_message_with_location(
+    async def test_handle_meshtastic_message_direct_message_with_location(
         self, mock_get, mock_connect
     ):
         """
@@ -812,38 +771,28 @@ class TestWeatherPlugin(unittest.TestCase):
             "to": 123456789,  # Direct message to relay
         }
 
-        async def run_test():
-            """
-            Asynchronously tests that a direct Meshtastic message containing a weather command from a known node with location data triggers the plugin to send a direct forecast response and checks channel enablement for direct messages.
+        result = await self.plugin.handle_meshtastic_message(
+            packet, "formatted_message", "longname", "meshnet_name"
+        )
 
-            Verifies that the plugin returns True, sends a direct message with the expected weather forecast, and calls the channel enablement check with the correct parameters.
-            """
-            result = await self.plugin.handle_meshtastic_message(
-                packet, "formatted_message", "longname", "meshnet_name"
-            )
+        self.assertTrue(result)
 
-            self.assertTrue(result)
+        # Should send direct message response
+        mock_client.sendText.assert_called_once()
+        call_args = mock_client.sendText.call_args
+        self.assertEqual(call_args.kwargs["destinationId"], "!12345678")
+        self.assertIn(
+            _normalize_emoji("Now: 🌤️ Mainly clear"),
+            _normalize_emoji(call_args.kwargs["text"]),
+        )
 
-            # Should send direct message response
-            mock_client.sendText.assert_called_once()
-            call_args = mock_client.sendText.call_args
-            self.assertEqual(call_args.kwargs["destinationId"], "!12345678")
-            self.assertIn(
-                _normalize_emoji("Now: 🌤️ Mainly clear"),
-                _normalize_emoji(call_args.kwargs["text"]),
-            )
-
-            # Should check if channel is enabled for direct message
-            self.plugin.is_channel_enabled.assert_called_once_with(
-                0, is_direct_message=True
-            )
-
-        import asyncio
-
-        asyncio.run(run_test())
+        # Should check if channel is enabled for direct message
+        self.plugin.is_channel_enabled.assert_called_once_with(
+            0, is_direct_message=True
+        )
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
-    def test_handle_meshtastic_message_broadcast_no_location(self, mock_connect):
+    async def test_handle_meshtastic_message_broadcast_no_location(self, mock_connect):
         """
         Test that a broadcast "!weather" message from a node without location data results in an error response.
 
@@ -866,35 +815,25 @@ class TestWeatherPlugin(unittest.TestCase):
             "to": 4294967295,  # BROADCAST_NUM
         }
 
-        async def run_test():
-            """
-            Asynchronously tests that the plugin responds with an error message when handling a broadcast weather request without location data.
+        result = await self.plugin.handle_meshtastic_message(
+            packet, "formatted_message", "longname", "meshnet_name"
+        )
 
-            Verifies that the plugin sends a broadcast message indicating location cannot be determined, checks channel enablement for broadcast, and returns True.
-            """
-            result = await self.plugin.handle_meshtastic_message(
-                packet, "formatted_message", "longname", "meshnet_name"
-            )
+        self.assertTrue(result)
 
-            self.assertTrue(result)
+        # Should send broadcast response with error message
+        mock_client.sendText.assert_called_once()
+        call_args = mock_client.sendText.call_args
+        self.assertEqual(call_args.kwargs["channelIndex"], 0)
+        self.assertEqual(call_args.kwargs["text"], "Cannot determine location")
 
-            # Should send broadcast response with error message
-            mock_client.sendText.assert_called_once()
-            call_args = mock_client.sendText.call_args
-            self.assertEqual(call_args.kwargs["channelIndex"], 0)
-            self.assertEqual(call_args.kwargs["text"], "Cannot determine location")
-
-            # Should check if channel is enabled for broadcast
-            self.plugin.is_channel_enabled.assert_called_once_with(
-                0, is_direct_message=False
-            )
-
-        import asyncio
-
-        asyncio.run(run_test())
+        # Should check if channel is enabled for broadcast
+        self.plugin.is_channel_enabled.assert_called_once_with(
+            0, is_direct_message=False
+        )
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
-    def test_handle_meshtastic_message_latlon_override(self, mock_connect):
+    async def test_handle_meshtastic_message_latlon_override(self, mock_connect):
         """
         Commands with an explicit lat/lon should use the override even if the node lacks position data.
         """
@@ -915,23 +854,18 @@ class TestWeatherPlugin(unittest.TestCase):
             "to": 4294967295,  # BROADCAST_NUM
         }
 
-        async def run_test():
-            result = await self.plugin.handle_meshtastic_message(
-                packet, "formatted_message", "longname", "meshnet_name"
-            )
+        result = await self.plugin.handle_meshtastic_message(
+            packet, "formatted_message", "longname", "meshnet_name"
+        )
 
-            self.assertTrue(result)
-            self.plugin.generate_forecast.assert_called_once()
-            call_args = self.plugin.generate_forecast.call_args
-            self.assertAlmostEqual(call_args.kwargs["latitude"], 37.77)
-            self.assertAlmostEqual(call_args.kwargs["longitude"], -122.42)
-
-        import asyncio
-
-        asyncio.run(run_test())
+        self.assertTrue(result)
+        self.plugin.generate_forecast.assert_called_once()
+        call_args = self.plugin.generate_forecast.call_args
+        self.assertAlmostEqual(call_args.kwargs["latitude"], 37.77)
+        self.assertAlmostEqual(call_args.kwargs["longitude"], -122.42)
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
-    def test_handle_meshtastic_message_geocode_fallback(self, mock_connect):
+    async def test_handle_meshtastic_message_geocode_fallback(self, mock_connect):
         """
         Free-form location strings should be geocoded when coordinates are not available.
         """
@@ -950,24 +884,19 @@ class TestWeatherPlugin(unittest.TestCase):
             "to": 4294967295,  # BROADCAST_NUM
         }
 
-        async def run_test():
-            result = await self.plugin.handle_meshtastic_message(
-                packet, "formatted_message", "longname", "meshnet_name"
-            )
+        result = await self.plugin.handle_meshtastic_message(
+            packet, "formatted_message", "longname", "meshnet_name"
+        )
 
-            self.assertTrue(result)
-            self.plugin._geocode_location.assert_called_once_with("Boston")
-            self.plugin.generate_forecast.assert_called_once()
-            call_args = self.plugin.generate_forecast.call_args
-            self.assertAlmostEqual(call_args.kwargs["latitude"], 10.0)
-            self.assertAlmostEqual(call_args.kwargs["longitude"], 20.0)
-
-        import asyncio
-
-        asyncio.run(run_test())
+        self.assertTrue(result)
+        self.plugin._geocode_location.assert_called_once_with("Boston")
+        self.plugin.generate_forecast.assert_called_once()
+        call_args = self.plugin.generate_forecast.call_args
+        self.assertAlmostEqual(call_args.kwargs["latitude"], 10.0)
+        self.assertAlmostEqual(call_args.kwargs["longitude"], 20.0)
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
-    def test_handle_meshtastic_message_mesh_average_location(self, mock_connect):
+    async def test_handle_meshtastic_message_mesh_average_location(self, mock_connect):
         """
         When the requesting node lacks a position, the mesh-average location should be used.
         """
@@ -989,28 +918,18 @@ class TestWeatherPlugin(unittest.TestCase):
             "to": 4294967295,
         }
 
-        async def run_test():
-            """
-            Execute handle_meshtastic_message with a packet that lacks a requester position and assert generate_forecast is called with the mesh-average coordinates.
-
-            Verifies that when requester nodes have positions [(10, 10), (20, 30)], the plugin averages them to latitude 15.0 and longitude 20.0 and passes those values to generate_forecast.
-            """
-            await self.plugin.handle_meshtastic_message(
-                packet, "formatted_message", "longname", "meshnet_name"
-            )
-            self.plugin.generate_forecast.assert_called_once()
-            call_args = self.plugin.generate_forecast.call_args
-            # Average of (10,10) and (20,30) => (15,20)
-            self.assertAlmostEqual(call_args.kwargs["latitude"], 15.0)
-            self.assertAlmostEqual(call_args.kwargs["longitude"], 20.0)
-
-        import asyncio
-
-        asyncio.run(run_test())
+        await self.plugin.handle_meshtastic_message(
+            packet, "formatted_message", "longname", "meshnet_name"
+        )
+        self.plugin.generate_forecast.assert_called_once()
+        call_args = self.plugin.generate_forecast.call_args
+        # Average of (10,10) and (20,30) => (15,20)
+        self.assertAlmostEqual(call_args.kwargs["latitude"], 15.0)
+        self.assertAlmostEqual(call_args.kwargs["longitude"], 20.0)
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     @patch("requests.get")
-    def test_handle_meshtastic_message_broadcast_with_location(
+    async def test_handle_meshtastic_message_broadcast_with_location(
         self, mock_get, mock_connect
     ):
         """
@@ -1039,38 +958,28 @@ class TestWeatherPlugin(unittest.TestCase):
             "to": 4294967295,  # BROADCAST_NUM
         }
 
-        async def run_test():
-            """
-            Asynchronously tests that a broadcast "!weather" message with location data triggers a weather forecast response.
+        result = await self.plugin.handle_meshtastic_message(
+            packet, "formatted_message", "longname", "meshnet_name"
+        )
 
-            Verifies that the plugin sends a broadcast message with the correct weather forecast, checks channel enablement for broadcast, and returns True.
-            """
-            result = await self.plugin.handle_meshtastic_message(
-                packet, "formatted_message", "longname", "meshnet_name"
-            )
+        self.assertTrue(result)
 
-            self.assertTrue(result)
+        # Should send broadcast response with weather data
+        mock_client.sendText.assert_called_once()
+        call_args = mock_client.sendText.call_args
+        self.assertEqual(call_args.kwargs["channelIndex"], 1)
+        self.assertIn(
+            _normalize_emoji("Now: 🌤️ Mainly clear"),
+            _normalize_emoji(call_args.kwargs["text"]),
+        )
 
-            # Should send broadcast response with weather data
-            mock_client.sendText.assert_called_once()
-            call_args = mock_client.sendText.call_args
-            self.assertEqual(call_args.kwargs["channelIndex"], 1)
-            self.assertIn(
-                _normalize_emoji("Now: 🌤️ Mainly clear"),
-                _normalize_emoji(call_args.kwargs["text"]),
-            )
-
-            # Should check if channel is enabled for broadcast
-            self.plugin.is_channel_enabled.assert_called_once_with(
-                1, is_direct_message=False
-            )
-
-        import asyncio
-
-        asyncio.run(run_test())
+        # Should check if channel is enabled for broadcast
+        self.plugin.is_channel_enabled.assert_called_once_with(
+            1, is_direct_message=False
+        )
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
-    def test_handle_meshtastic_message_unknown_node(self, mock_connect):
+    async def test_handle_meshtastic_message_unknown_node(self, mock_connect):
         """
         Test that a weather request from an unknown node returns True without sending a response message.
         """
@@ -1087,24 +996,16 @@ class TestWeatherPlugin(unittest.TestCase):
             "to": 4294967295,
         }
 
-        async def run_test():
-            """
-            Runs an asynchronous test to verify that handling a Meshtastic message from an unknown node returns True and does not send any message.
-            """
-            result = await self.plugin.handle_meshtastic_message(
-                packet, "formatted_message", "longname", "meshnet_name"
-            )
+        result = await self.plugin.handle_meshtastic_message(
+            packet, "formatted_message", "longname", "meshnet_name"
+        )
 
-            # Should return True but not send any message (node not found)
-            self.assertTrue(result)
-            mock_client.sendText.assert_not_called()
-
-        import asyncio
-
-        asyncio.run(run_test())
+        # Should return True but not send any message (node not found)
+        self.assertTrue(result)
+        mock_client.sendText.assert_not_called()
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
-    def test_handle_meshtastic_message_missing_channel(self, mock_connect):
+    async def test_handle_meshtastic_message_missing_channel(self, mock_connect):
         """
         Test that handling a Meshtastic message without a channel field defaults to channel 0 and checks channel enablement accordingly.
         """
@@ -1118,22 +1019,14 @@ class TestWeatherPlugin(unittest.TestCase):
             # No channel field - should default to 0
         }
 
-        async def run_test():
-            """
-            Runs an asynchronous test to verify that handling a Meshtastic message without a channel field defaults to channel 0 and checks channel enablement accordingly.
-            """
-            await self.plugin.handle_meshtastic_message(
-                packet, "formatted_message", "longname", "meshnet_name"
-            )
+        await self.plugin.handle_meshtastic_message(
+            packet, "formatted_message", "longname", "meshnet_name"
+        )
 
-            # Should use default channel 0
-            self.plugin.is_channel_enabled.assert_called_once_with(
-                0, is_direct_message=False
-            )
-
-        import asyncio
-
-        asyncio.run(run_test())
+        # Should use default channel 0
+        self.plugin.is_channel_enabled.assert_called_once_with(
+            0, is_direct_message=False
+        )
 
     def test_generate_forecast_timestamp_fallback_warning(self):
         """Test that warning is logged when current time can't be found in hourly timestamps."""
@@ -1202,48 +1095,43 @@ class TestWeatherPlugin(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 self.plugin.generate_forecast(40.7128, -74.0060)
 
-    def test_handle_meshtastic_message_broadcast_message_detection(self):
+    async def test_handle_meshtastic_message_broadcast_message_detection(self):
         """Test that broadcast messages are properly detected."""
         from meshtastic.mesh_interface import BROADCAST_NUM
 
-        async def run_test():
-            # Mock packet for broadcast message
-            packet = {
-                "decoded": {
-                    "portnum": PORTNUM_TEXT_MESSAGE_APP,
-                    "text": "!weather",  # Use "text" not "payload"
-                },
-                "from": 123456789,
-                "to": BROADCAST_NUM,  # Broadcast message
-                "channel": 0,
-            }
+        # Mock packet for broadcast message
+        packet = {
+            "decoded": {
+                "portnum": PORTNUM_TEXT_MESSAGE_APP,
+                "text": "!weather",  # Use "text" not "payload"
+            },
+            "from": 123456789,
+            "to": BROADCAST_NUM,  # Broadcast message
+            "channel": 0,
+        }
 
-            # Mock the plugin methods and meshtastic connection
-            self.plugin.is_channel_enabled = MagicMock(return_value=True)
-            self.plugin.get_node_location = MagicMock(return_value=(40.7128, -74.0060))
-            self.plugin.generate_forecast = MagicMock(return_value="Test forecast")
-            self.plugin.send_message = MagicMock()
+        # Mock the plugin methods and meshtastic connection
+        self.plugin.is_channel_enabled = MagicMock(return_value=True)
+        self.plugin.get_node_location = MagicMock(return_value=(40.7128, -74.0060))
+        self.plugin.generate_forecast = MagicMock(return_value="Test forecast")
+        self.plugin.send_message = MagicMock()
 
-            # Mock the meshtastic connection
-            mock_client = MagicMock()
-            mock_client.myInfo.my_node_num = 987654321  # Different from sender
+        # Mock the meshtastic connection
+        mock_client = MagicMock()
+        mock_client.myInfo.my_node_num = 987654321  # Different from sender
 
-            with patch(
-                "mmrelay.meshtastic_utils.connect_meshtastic", return_value=mock_client
-            ):
-                # Call the method
-                await self.plugin.handle_meshtastic_message(
-                    packet, "!weather", "TestNode", "TestMesh"
-                )
+        with patch(
+            "mmrelay.meshtastic_utils.connect_meshtastic", return_value=mock_client
+        ):
+            # Call the method
+            await self.plugin.handle_meshtastic_message(
+                packet, "!weather", "TestNode", "TestMesh"
+            )
 
-                # Should check if channel is enabled for broadcast (is_direct_message=False)
-                self.plugin.is_channel_enabled.assert_called_once_with(
-                    0, is_direct_message=False
-                )
-
-        import asyncio
-
-        asyncio.run(run_test())
+            # Should check if channel is enabled for broadcast (is_direct_message=False)
+            self.plugin.is_channel_enabled.assert_called_once_with(
+                0, is_direct_message=False
+            )
 
     @patch("mmrelay.plugins.weather_plugin.requests.get")
     def test_generate_forecast_requests_exception(self, mock_get):
@@ -1260,38 +1148,33 @@ class TestWeatherPlugin(unittest.TestCase):
         self.assertEqual(result, "Error fetching weather data.")
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
-    def test_handle_meshtastic_message_missing_myinfo(self, mock_connect):
+    async def test_handle_meshtastic_message_missing_myinfo(self, mock_connect):
         """
         Ensure handle_meshtastic_message returns True when myInfo is missing.
         """
-        import asyncio
-
         from mmrelay.constants.messages import PORTNUM_TEXT_MESSAGE_APP
 
-        async def run_test():
-            mock_packet = {
-                "decoded": {
-                    "portnum": PORTNUM_TEXT_MESSAGE_APP,
-                    "text": "!weather",
-                },
-                "channel": 0,
-                "to": "abc",
-                "fromId": "node1",
-            }
+        mock_packet = {
+            "decoded": {
+                "portnum": PORTNUM_TEXT_MESSAGE_APP,
+                "text": "!weather",
+            },
+            "channel": 0,
+            "to": "abc",
+            "fromId": "node1",
+        }
 
-            client = MagicMock()
-            client.myInfo = None
-            client.nodes = {"node1": {"position": {"latitude": 1.0, "longitude": 1.0}}}
-            mock_connect.return_value = client
+        client = MagicMock()
+        client.myInfo = None
+        client.nodes = {"node1": {"position": {"latitude": 1.0, "longitude": 1.0}}}
+        mock_connect.return_value = client
 
-            plugin = Plugin()
+        plugin = Plugin()
 
-            result = await plugin.handle_meshtastic_message(
-                mock_packet, "!weather", "Tester", "mesh"
-            )
-            self.assertTrue(result)
-
-        asyncio.run(run_test())
+        result = await plugin.handle_meshtastic_message(
+            mock_packet, "!weather", "Tester", "mesh"
+        )
+        self.assertTrue(result)
 
     @patch("mmrelay.plugins.weather_plugin.requests.get")
     def test_generate_forecast_attribute_error_fallback(self, mock_get):

@@ -642,82 +642,17 @@ def comprehensive_cleanup():
     gc.collect()
 
 
-@pytest.fixture
-def mock_event_loop(monkeypatch):
+@pytest.fixture(autouse=True)
+def mock_to_thread(monkeypatch):
     """
-    Patch asyncio loop helpers so run_in_executor executes callables synchronously during tests.
+    Mock asyncio.to_thread to run synchronously for tests.
 
-    Replace asyncio.get_running_loop and asyncio.get_event_loop with wrappers that ensure the returned event loop's run_in_executor invokes the callable immediately on the current thread and returns an already-completed Future with the callable's result or exception. This prevents background thread creation from run_in_executor calls and makes test behavior and teardown deterministic.
+    This avoids creating separate threads during testing, ensuring that code designed to run
+    in a thread (via asyncio.to_thread) executes immediately in the main thread. This simplifies
+    testing with mocks (which are often not thread-safe) and ensures deterministic execution.
     """
 
-    original_get_running_loop = asyncio.get_running_loop
-    original_get_event_loop = asyncio.get_event_loop
+    async def _to_thread(func, *args, **kwargs):
+        return func(*args, **kwargs)
 
-    def _patch_loop(loop: asyncio.AbstractEventLoop) -> asyncio.AbstractEventLoop:
-        """
-        Patch an event loop so its `run_in_executor` executes callables immediately on the loop's thread.
-
-        Replaces `loop.run_in_executor` with a synchronous implementation that ignores the executor argument and returns an `asyncio.Future` already resolved with the callable's return value or exception. Also sets `loop._mmrelay_run_in_executor_patched = True` to mark the loop as patched. If `loop` is None or already patched, the input is returned unchanged.
-
-        Parameters:
-            loop (asyncio.AbstractEventLoop | None): Event loop to patch; may be None.
-
-        Returns:
-            asyncio.AbstractEventLoop | None: The same loop instance (patched) or None if input was None.
-        """
-        if loop is None:
-            return loop
-        if getattr(loop, "_mmrelay_run_in_executor_patched", False):
-            return loop
-
-        def run_in_executor_sync(_executor, func, *args, **kwargs):
-            """
-            Invoke a callable immediately on the current thread.
-
-            Parameters:
-                _executor: Ignored; present for API compatibility with executor-style APIs.
-                func (Callable): Callable to invoke.
-                *args: Positional arguments forwarded to `func`.
-                **kwargs: Keyword arguments forwarded to `func`.
-
-            Returns:
-                asyncio.Future: Future whose result is the value returned by `func`, or whose exception is the exception raised by `func`.
-            """
-            future = loop.create_future()
-            try:
-                result = func(*args, **kwargs)
-            except Exception as exc:
-                future.set_exception(exc)
-            else:
-                future.set_result(result)
-            return future
-
-        loop.run_in_executor = run_in_executor_sync  # type: ignore[assignment]
-        loop._mmrelay_run_in_executor_patched = True  # type: ignore[attr-defined]
-        return loop
-
-    def patched_get_running_loop():
-        """
-        Get the currently running asyncio event loop patched for test compatibility.
-
-        The returned loop has its `run_in_executor` implementation replaced so executor callables run synchronously, enabling deterministic behavior in tests.
-
-        Returns:
-            asyncio.AbstractEventLoop: The active event loop whose `run_in_executor` executes callables synchronously.
-        """
-        loop = original_get_running_loop()
-        return _patch_loop(loop)
-
-    def patched_get_event_loop():
-        """
-        Return the current asyncio event loop after applying test-specific patches.
-
-        Calls the original event loop getter to obtain the active loop, then passes it to _patch_loop and returns the patched loop. The patched loop exposes a run_in_executor that executes callables synchronously and returns a completed Future with the callable's result or exception, preventing background thread creation during tests.
-        """
-        loop = original_get_event_loop()
-        return _patch_loop(loop)
-
-    monkeypatch.setattr(asyncio, "get_running_loop", patched_get_running_loop)
-    monkeypatch.setattr(asyncio, "get_event_loop", patched_get_event_loop)
-
-    yield
+    monkeypatch.setattr(asyncio, "to_thread", _to_thread)

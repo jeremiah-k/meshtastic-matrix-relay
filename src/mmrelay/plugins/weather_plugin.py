@@ -31,10 +31,6 @@ class Plugin(BasePlugin):
         """
         return "Show weather forecast for a radio node using GPS location"
 
-    def _is_test_env(self) -> bool:
-        """Check if running in a test environment."""
-        return "PYTEST_CURRENT_TEST" in os.environ
-
     def generate_forecast(self, latitude, longitude, mode: str = "weather"):
         """
         Generate a concise one-line weather forecast for the given GPS coordinates.
@@ -72,38 +68,12 @@ class Plugin(BasePlugin):
             f"forecast_days={daily_days}&timezone=auto&current_weather=true"
         )
 
-        exceptions_mod = getattr(requests, "exceptions", None)
-        request_exc_type = (
-            getattr(exceptions_mod, "RequestException", None)
-            if exceptions_mod
-            else None
-        )
-
-        # When requests.get is patched with a side_effect that is an exception, surface it as a fetch error early.
-        side_effect = getattr(requests.get, "side_effect", None)
-        if isinstance(side_effect, BaseException):
-            if isinstance(request_exc_type, type) and isinstance(
-                side_effect, request_exc_type
-            ):
-                self.logger.exception("Error fetching weather data")
-                return "Error fetching weather data."
-            if side_effect is not None:
-                raise side_effect
-
         try:
             response = requests.get(url, timeout=10)
             response.raise_for_status()
-        except Exception as e:
-            # Catch RequestException types and AttributeError (for mocked environments)
-            exception_module = getattr(type(e), "__module__", "")
-            is_test_env = self._is_test_env()
-            if "requests" in exception_module or (
-                isinstance(e, AttributeError) and is_test_env
-            ):
-                self.logger.exception("Error fetching weather data")
-                return "Error fetching weather data."
-            else:
-                raise
+        except requests.exceptions.RequestException:
+            self.logger.exception("Error fetching weather data")
+            return "Error fetching weather data."
 
         try:
             data = response.json()
@@ -232,19 +202,6 @@ class Plugin(BasePlugin):
             )
 
         except Exception as e:
-            # If requests.get is mocked (common in tests), treat any downstream exception as a fetch error.
-            if isinstance(requests.get, Mock):
-                side_effect = getattr(requests.get, "side_effect", None)
-                if isinstance(request_exc_type, type) and (
-                    side_effect is None or isinstance(side_effect, request_exc_type)
-                ):
-                    self.logger.exception("Error fetching weather data")
-                    return "Error fetching weather data."
-                if isinstance(side_effect, BaseException):
-                    raise side_effect from None
-                self.logger.exception("Error fetching weather data")
-                return "Error fetching weather data."
-
             if isinstance(
                 e, (KeyError, IndexError, TypeError, ValueError, AttributeError)
             ):
@@ -404,7 +361,7 @@ class Plugin(BasePlugin):
         return weather_mapping.get(weather_code, "❓ Unknown")
 
     async def handle_meshtastic_message(
-        self, packet, formatted_message, longname, _meshnet_name
+        self, packet, _formatted_message, longname, _meshnet_name
     ):
         """
         Handle an incoming Meshtastic text message and respond with a weather forecast when a supported command is detected.
@@ -435,10 +392,7 @@ class Plugin(BasePlugin):
 
         from mmrelay.meshtastic_utils import connect_meshtastic
 
-        if self._is_test_env():
-            meshtastic_client = connect_meshtastic()
-        else:
-            meshtastic_client = await asyncio.to_thread(connect_meshtastic)
+        meshtastic_client = await asyncio.to_thread(connect_meshtastic)
         if meshtastic_client is None:
             self.logger.error(
                 "Meshtastic client unavailable; cannot handle weather request."
@@ -498,49 +452,30 @@ class Plugin(BasePlugin):
         weather_notice = "Cannot determine location"
         if coords:
             mode = parsed_command if parsed_command else "weather"
-            if self._is_test_env():
-                weather_notice = self.generate_forecast(
-                    latitude=coords[0],
-                    longitude=coords[1],
-                    mode=mode,
-                )
-            else:
-                weather_notice = await asyncio.to_thread(
-                    self.generate_forecast,
-                    latitude=coords[0],
-                    longitude=coords[1],
-                    mode=mode,
-                )
+            weather_notice = await asyncio.to_thread(
+                self.generate_forecast,
+                latitude=coords[0],
+                longitude=coords[1],
+                mode=mode,
+            )
 
         # Wait for the response delay
         await asyncio.sleep(self.get_response_delay())
 
         if is_direct_message:
             # Respond via DM
-            if self._is_test_env():
-                meshtastic_client.sendText(
-                    text=weather_notice,
-                    destinationId=fromId,
-                )
-            else:
-                await asyncio.to_thread(
-                    meshtastic_client.sendText,
-                    text=weather_notice,
-                    destinationId=fromId,
-                )
+            await asyncio.to_thread(
+                meshtastic_client.sendText,
+                text=weather_notice,
+                destinationId=fromId,
+            )
         else:
             # Respond in the same channel (broadcast)
-            if self._is_test_env():
-                meshtastic_client.sendText(
-                    text=weather_notice,
-                    channelIndex=channel,
-                )
-            else:
-                await asyncio.to_thread(
-                    meshtastic_client.sendText,
-                    text=weather_notice,
-                    channelIndex=channel,
-                )
+            await asyncio.to_thread(
+                meshtastic_client.sendText,
+                text=weather_notice,
+                channelIndex=channel,
+            )
         return True
 
     def get_matrix_commands(self):
@@ -596,10 +531,7 @@ class Plugin(BasePlugin):
         if coords is None:
             from mmrelay.meshtastic_utils import connect_meshtastic
 
-            if self._is_test_env():
-                meshtastic_client = connect_meshtastic()
-            else:
-                meshtastic_client = await asyncio.to_thread(connect_meshtastic)
+            meshtastic_client = await asyncio.to_thread(connect_meshtastic)
             if meshtastic_client is None:
                 self.logger.error(
                     "Meshtastic client unavailable; cannot determine mesh location."
@@ -616,19 +548,12 @@ class Plugin(BasePlugin):
             )
             return True
 
-        if self._is_test_env():
-            forecast = self.generate_forecast(
-                latitude=coords[0],
-                longitude=coords[1],
-                mode=parsed_command,
-            )
-        else:
-            forecast = await asyncio.to_thread(
-                self.generate_forecast,
-                latitude=coords[0],
-                longitude=coords[1],
-                mode=parsed_command,
-            )
+        forecast = await asyncio.to_thread(
+            self.generate_forecast,
+            latitude=coords[0],
+            longitude=coords[1],
+            mode=parsed_command,
+        )
         await self.send_matrix_message(room.room_id, forecast, formatted=False)
         return True
 
@@ -649,8 +574,6 @@ class Plugin(BasePlugin):
         coords = self._parse_location_override(arg_text)
         if coords is not None:
             return coords
-        if self._is_test_env():
-            return self._geocode_location(arg_text)
         return await asyncio.to_thread(self._geocode_location, arg_text)
 
     def _determine_mesh_location(self, meshtastic_client):
