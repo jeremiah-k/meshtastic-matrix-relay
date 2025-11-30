@@ -9,6 +9,7 @@ import functools
 import signal
 import sys
 
+from aiohttp import ClientError
 from nio import (
     MegolmEvent,
     ReactionEvent,
@@ -242,9 +243,15 @@ async def main(config):
                         matrix_logger.warning(
                             "Matrix sync_forever completed unexpectedly"
                         )
-                    except Exception:  # noqa: BLE001 — sync loop must keep retrying
-                        # Log the exception and continue to retry
-                        matrix_logger.exception("Matrix sync failed")
+                    except (
+                        Exception
+                    ) as exc:  # noqa: BLE001 — sync loop must keep retrying
+                        if isinstance(exc, (asyncio.TimeoutError, ClientError)):
+                            matrix_logger.warning(
+                                "Matrix sync timed out, retrying: %s", exc
+                            )
+                        else:
+                            matrix_logger.exception("Matrix sync failed")
                         # The outer try/catch will handle the retry logic
 
             except Exception:  # noqa: BLE001 — keep loop alive for retries
