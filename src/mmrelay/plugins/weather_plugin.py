@@ -234,7 +234,7 @@ class Plugin(BasePlugin):
                     self.logger.exception("Error fetching weather data")
                     return "Error fetching weather data."
                 if isinstance(side_effect, BaseException):
-                    raise side_effect
+                    raise side_effect from None
                 self.logger.exception("Error fetching weather data")
                 return "Error fetching weather data."
 

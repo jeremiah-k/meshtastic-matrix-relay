@@ -39,7 +39,7 @@ except ImportError:  # pragma: no cover - optional dependency
 logger = get_logger(__name__)
 
 
-async def _connect_meshtastic_async():
+async def _connect_meshtastic_async() -> object | None:
     """
     Obtain a Meshtastic client connection without blocking the event loop.
 
