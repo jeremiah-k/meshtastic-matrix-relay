@@ -76,7 +76,7 @@ class Plugin(BasePlugin):
         """
         # Maintain legacy matches() call for tests/compatibility but do not gate handling on it
         self.matches(event)
-        matched_command = await self.get_matching_matrix_command(event)
+        matched_command = self.get_matching_matrix_command(event)
         if not matched_command:
             return False
         command = self.extract_command_args(matched_command, full_message) or ""
