@@ -275,6 +275,12 @@ def get_map(
     circle_cls = getattr(staticmaps, "Circle", None)
     color_cls = getattr(staticmaps, "Color", None)
 
+    # Center the map on the average location so nodes are not pushed to the edge
+    if locations:
+        avg_lat = sum(float(loc["lat"]) for loc in locations) / len(locations)
+        avg_lon = sum(float(loc["lon"]) for loc in locations) / len(locations)
+        context.set_center(staticmaps.create_latlng(avg_lat, avg_lon))
+
     for location in locations:
         radio = staticmaps.create_latlng(float(location["lat"]), float(location["lon"]))
         precision_bits = location.get("precisionBits")
