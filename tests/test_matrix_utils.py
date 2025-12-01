@@ -5139,7 +5139,7 @@ def test_display_room_channel_mappings(e2ee_status, expected_log_for_room1):
 
         # Should have logged room mappings in order
         expected_calls = [
-            call("Matrix Rooms → Meshtastic Channels (2 configured):"),
+            call("Meshtastic Channels ↔ Matrix Rooms (2 configured):"),
             call("  Channel 0:"),
             call(expected_log_for_room1),
             call("  Channel 1:"),
@@ -5191,7 +5191,7 @@ def test_display_room_channel_mappings_dict_config():
         _display_room_channel_mappings(rooms, config, e2ee_status)
 
         expected_calls = [
-            call("Matrix Rooms → Meshtastic Channels (1 configured):"),
+            call("Meshtastic Channels ↔ Matrix Rooms (1 configured):"),
             call("  Channel 0:"),
             call("    ✅ Room 1"),
         ]
@@ -5215,7 +5215,7 @@ def test_display_room_channel_mappings_no_display_name():
         _display_room_channel_mappings(rooms, config, e2ee_status)
 
         expected_calls = [
-            call("Matrix Rooms → Meshtastic Channels (1 configured):"),
+            call("Meshtastic Channels ↔ Matrix Rooms (1 configured):"),
             call("  Channel 0:"),
             call("    🔒 !room1:matrix.org"),  # Should fall back to room_id
         ]

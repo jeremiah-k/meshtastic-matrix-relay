@@ -322,7 +322,7 @@ def _display_room_channel_mappings(
 
     # Display header
     mapped_rooms = sum(len(room_list) for room_list in channels.values())
-    logger.info(f"Matrix Rooms → Meshtastic Channels ({mapped_rooms} configured):")
+    logger.info(f"Meshtastic Channels ↔ Matrix Rooms ({mapped_rooms} configured):")
 
     # Display rooms organized by channel (sorted by channel number)
     for channel in sorted(channels.keys()):
