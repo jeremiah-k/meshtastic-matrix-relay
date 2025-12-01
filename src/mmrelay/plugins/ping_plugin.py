@@ -10,10 +10,10 @@ from mmrelay.plugins.base_plugin import BasePlugin
 
 def match_case(source: str, target: str) -> str:
     """
-    Apply the letter-case pattern of `source` to `target`.
-    
-    If `source` is empty an empty string is returned. If `target` is empty it is returned unchanged. If `source` and `target` differ in length, `target` is truncated to `len(source)`. Common whole-string patterns are preserved: all-uppercase, all-lowercase, and title-case are applied to the entire `target`; mixed-case source patterns are applied character-by-character.
-    
+    Apply letter-case pattern of `source` to `target`.
+
+    If `source` is empty an empty string is returned. If `target` is empty it is returned unchanged. If `target` is longer than `source`, `target` is truncated to `len(source)`. For mixed-case patterns, the effective length is the minimum of the two input lengths due to zip behavior. Common whole-string patterns are preserved: all-uppercase, all-lowercase, and title-case are applied to the entire `target`; mixed-case source patterns are applied character-by-character.
+
     Returns:
         str: The `target` string with its letters' case adjusted to match `source`.
     """
@@ -48,7 +48,7 @@ class Plugin(BasePlugin):
     def description(self):
         """
         Provide a short description of the plugin's purpose.
-        
+
         Returns:
             str: A human-readable description: "Check connectivity with the relay or respond to pings over the mesh"
         """
@@ -157,7 +157,7 @@ class Plugin(BasePlugin):
     def get_matrix_commands(self) -> list[str]:
         """
         Provide the Matrix command names exposed by this plugin.
-        
+
         Returns:
             list[str]: A list containing the plugin's Matrix command (the plugin_name).
         """
@@ -166,7 +166,7 @@ class Plugin(BasePlugin):
     def get_mesh_commands(self) -> list[str]:
         """
         List mesh command names exposed by this plugin.
-        
+
         Returns:
             list[str]: List of command names exposed by the plugin; typically a single-element list containing the plugin's name.
         """
@@ -176,12 +176,12 @@ class Plugin(BasePlugin):
         # Pass event to matches()
         """
         Handle a Matrix room message that matches this plugin's trigger and reply with "pong!".
-        
+
         Parameters:
             room: The Matrix room object where the event originated; used to obtain the room_id for the reply.
             event: The Matrix event to evaluate against the plugin's matching rules.
             full_message: The raw or normalized message text content of the event.
-        
+
         Returns:
             bool: `true` if the message matched and a reply was sent, `false` otherwise.
         """

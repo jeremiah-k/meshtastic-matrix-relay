@@ -32,9 +32,9 @@ class Plugin(BasePlugin):
     ) -> bool:
         """
         Handle delivery of stored drop messages and record new drops from an incoming Meshtastic packet.
-        
+
         If the packet originates from another node and that node's position is known, deliver any stored drops whose saved location lies within the configured radius to the originator (excluding messages the originator created). If the packet contains a "!drop <message>" command and the dropper's position is known, store the message together with the dropper's location and originator id for later delivery.
-        
+
         Returns:
             `True` if a drop command was processed (including cases where processing occurred but the dropper's position was unavailable), `False` otherwise.
         """
@@ -78,8 +78,10 @@ class Plugin(BasePlugin):
                     if distance_km <= radius_km:
                         target_node = packet["fromId"]
                         self.logger.debug(f"Sending dropped message to {target_node}")
-                        meshtastic_client.sendText(
-                            text=message["text"], destinationId=target_node
+                        await asyncio.to_thread(
+                            meshtastic_client.sendText,
+                            text=message["text"],
+                            destinationId=target_node,
                         )
                     else:
                         unsent_messages.append(message)
@@ -137,10 +139,10 @@ class Plugin(BasePlugin):
         # Pass the event to matches() instead of full_message
         """
         Route a room event to the plugin's matching logic.
-        
+
         Parameters:
             event (object): The room event to evaluate; forwarded to matches().
-        
+
         Returns:
             bool: True if the event matches the plugin's criteria, False otherwise.
         """

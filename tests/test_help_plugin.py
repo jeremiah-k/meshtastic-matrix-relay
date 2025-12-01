@@ -10,6 +10,7 @@ Tests the help command functionality including:
 - Plugin description retrieval
 """
 
+import asyncio
 import os
 import sys
 import unittest
@@ -27,7 +28,7 @@ class TestHelpPlugin(unittest.TestCase):
     def setUp(self):
         """
         Set up the test fixture by creating a Plugin instance and configuring its mocked collaborators.
-        
+
         Configures:
         - plugin: instantiated Plugin with a mocked logger and get_require_bot_mention returning False.
         - send_matrix_message: asynchronous mock for sending Matrix messages.
@@ -96,8 +97,6 @@ class TestHelpPlugin(unittest.TestCase):
             )
             self.assertFalse(result)
 
-        import asyncio
-
         asyncio.run(run_test())
 
     def test_handle_room_message_no_match(self):
@@ -114,7 +113,7 @@ class TestHelpPlugin(unittest.TestCase):
         async def run_test():
             """
             Verify that handle_room_message returns False and does not send a Matrix message when the event does not match the help command.
-            
+
             Asserts that:
             - The call result is False.
             - matches(event) was called once.
@@ -124,8 +123,6 @@ class TestHelpPlugin(unittest.TestCase):
             self.assertFalse(result)
             self.plugin.matches.assert_called_once_with(event)
             self.plugin.send_matrix_message.assert_not_called()
-
-        import asyncio
 
         asyncio.run(run_test())
 
@@ -153,7 +150,7 @@ class TestHelpPlugin(unittest.TestCase):
         async def run_test():
             """
             Run assertions that handling a general "!help" room message results in a command list being sent.
-            
+
             Verifies that handle_room_message reports success, that matches() is called with the event, that send_matrix_message() is called once for the target room, and that the sent message contains "Available commands:" and the expected commands "nodes", "health", "weather", and "help".
             """
             result = await self.plugin.handle_room_message(room, event, full_message)
@@ -173,8 +170,6 @@ class TestHelpPlugin(unittest.TestCase):
             self.assertIn("health", message)
             self.assertIn("weather", message)
             self.assertIn("help", message)
-
-        import asyncio
 
         asyncio.run(run_test())
 
@@ -202,7 +197,7 @@ class TestHelpPlugin(unittest.TestCase):
         async def run_test():
             """
             Run the test that requesting help for a specific command results in a single sent message containing the command and its description.
-            
+
             Asserts that handle_room_message returns True, send_matrix_message was called once, and the sent message includes the command token (e.g. `!weather`) and its human-readable description.
             """
             result = await self.plugin.handle_room_message(room, event, full_message)
@@ -218,15 +213,13 @@ class TestHelpPlugin(unittest.TestCase):
             self.assertIn("`!weather`:", message)
             self.assertIn("Show weather forecast", message)
 
-        import asyncio
-
         asyncio.run(run_test())
 
     @patch("mmrelay.plugins.help_plugin.load_plugins")
     def test_handle_room_message_specific_help_not_found(self, mock_load_plugins):
         """
         Verify the help plugin responds with a "command not found" message when a specific nonexistent command is requested.
-        
+
         Asserts that handle_room_message returns True, that send_matrix_message is called once, and that the sent message equals "No such command: nonexistent".
         """
         mock_load_plugins.return_value = [
@@ -260,8 +253,6 @@ class TestHelpPlugin(unittest.TestCase):
 
             # Should contain error message
             self.assertEqual(message, "No such command: nonexistent")
-
-        import asyncio
 
         asyncio.run(run_test())
 
@@ -303,8 +294,6 @@ class TestHelpPlugin(unittest.TestCase):
             self.assertIn("cmd3", message)
             self.assertIn("weather", message)
 
-        import asyncio
-
         asyncio.run(run_test())
 
     @patch("mmrelay.plugins.help_plugin.load_plugins")
@@ -345,8 +334,6 @@ class TestHelpPlugin(unittest.TestCase):
             self.assertIn("`!cmd2`:", message)
             self.assertIn("Multi-command plugin", message)
 
-        import asyncio
-
         asyncio.run(run_test())
 
     @patch("mmrelay.plugins.help_plugin.load_plugins")
@@ -369,7 +356,7 @@ class TestHelpPlugin(unittest.TestCase):
         async def run_test():
             """
             Run the asynchronous test that verifies the help plugin reports no commands when no plugins are loaded.
-            
+
             Asserts that handle_room_message returns True and that the sent Matrix message equals "Available commands: ".
             """
             result = await self.plugin.handle_room_message(room, event, full_message)
@@ -380,8 +367,6 @@ class TestHelpPlugin(unittest.TestCase):
 
             # Should show empty command list
             self.assertEqual(message, "Available commands: ")
-
-        import asyncio
 
         asyncio.run(run_test())
 

@@ -72,7 +72,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         """
         Prepare the test fixture by creating a Plugin instance with mocked dependencies and a reusable two-day sample weather payload.
-        
+
         Sets plugin.logger to a MagicMock, plugin.config to {"units": "metric"}, plugin.is_channel_enabled to a MagicMock(return_value=True), and plugin.get_response_delay to a MagicMock(return_value=1.0). Also provides self.sample_weather_data: an Open-Meteo-like 48-hour payload whose current_weather.time is "2023-08-20T10:00" and whose hourly arrays (time, temperature_2m, precipitation_probability, weathercode, is_day, relativehumidity_2m, windspeed_10m, winddirection_10m) are structured so tests can reference the current hour (10:00), the +2h forecast (12:00), and the +5h forecast (15:00).
         """
         self.plugin = Plugin()
@@ -450,10 +450,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
 
         mock_get.return_value = _make_ok_response(early_morning_data)
 
-        forecast = self.plugin.generate_forecast(40.7128, -74.0060)
-
-        # Current time is 2:00 AM (index 2)
-        # Near-term forecasts are provided by hourly mode
+        # Current time is 2:00 AM (index 2); near-term forecasts use hourly mode
         forecast = self.plugin.generate_forecast(40.7128, -74.0060, mode="hourly")
         self.assertIn("+3h", forecast)
         self.assertIn("+6h", forecast)
@@ -484,9 +481,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
 
         mock_get.return_value = _make_ok_response(late_evening_data)
 
-        forecast = self.plugin.generate_forecast(40.7128, -74.0060)
-
-        # Current time is 22:00 (index 22)
+        # Current time is 22:00 (index 22); near-term forecasts use hourly mode
         forecast = self.plugin.generate_forecast(40.7128, -74.0060, mode="hourly")
         self.assertIn("+3h", forecast)
         self.assertIn("+6h", forecast)
@@ -516,9 +511,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
 
         mock_get.return_value = _make_ok_response(limited_data)
 
-        forecast = self.plugin.generate_forecast(40.7128, -74.0060)
-
-        # Current time is 21:00 (index 21)
+        # Current time is 21:00 (index 21); near-term forecasts use hourly mode
         forecast = self.plugin.generate_forecast(40.7128, -74.0060, mode="hourly")
         self.assertIn("+3h", forecast)
         self.assertIn("+6h", forecast)

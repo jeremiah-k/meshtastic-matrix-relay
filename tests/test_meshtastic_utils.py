@@ -83,7 +83,7 @@ class TestMeshtasticUtils(unittest.TestCase):
     def test_on_meshtastic_message_basic(self):
         """
         Verify that a Meshtastic text message on a channel mapped to a Matrix room schedules the Matrix relay coroutine.
-        
+
         Sets up name, interaction, and storage mocks and invokes on_meshtastic_message with a valid text packet and mock interface, asserting that the message relay is scheduled for delivery to Matrix.
         """
         # Mock the required functions
@@ -94,7 +94,7 @@ class TestMeshtasticUtils(unittest.TestCase):
         def _done_future(*args, **kwargs):
             """
             Create a completed Future whose result is None.
-            
+
             Returns:
                 Future: A Future object already resolved with result `None`.
             """
@@ -289,10 +289,10 @@ class TestMeshtasticUtils(unittest.TestCase):
                 # so AsyncMock-based matrix_relay calls don't raise warnings.
                 """
                 Close a coroutine object to prevent un-awaited-coroutine warnings in tests.
-                
+
                 Parameters:
                     coro: The coroutine object to close; if not a coroutine, the function has no effect.
-                
+
                 Notes:
                     Accepts additional positional and keyword arguments for compatibility with fixtures that forward them; those are ignored.
                 """
@@ -357,10 +357,10 @@ class TestMeshtasticUtils(unittest.TestCase):
                 # so AsyncMock-based matrix_relay calls don't raise warnings.
                 """
                 Close a coroutine object to prevent un-awaited-coroutine warnings in tests.
-                
+
                 Parameters:
                     coro: The coroutine object to close; if not a coroutine, the function has no effect.
-                
+
                 Notes:
                     Accepts additional positional and keyword arguments for compatibility with fixtures that forward them; those are ignored.
                 """
@@ -571,11 +571,11 @@ class TestMeshtasticUtils(unittest.TestCase):
             # Close the coroutine if it's a coroutine to prevent "never awaited" warnings
             """
             Close `coro` if it is a coroutine to avoid "coroutine was never awaited" warnings and return a completed Future.
-            
+
             Parameters:
                 coro: The object to inspect; if it is a coroutine it will be closed.
                 *args, **kwargs: Ignored.
-            
+
             Returns:
                 asyncio.Future: A Future already resolved with the value `None`.
             """
@@ -960,11 +960,11 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
             # Close the coroutine if it's a coroutine to prevent "never awaited" warnings
             """
             Close `coro` if it is a coroutine to avoid "coroutine was never awaited" warnings and return a completed Future.
-            
+
             Parameters:
                 coro: The object to inspect; if it is a coroutine it will be closed.
                 *args, **kwargs: Ignored.
-            
+
             Returns:
                 asyncio.Future: A Future already resolved with the value `None`.
             """
@@ -1012,11 +1012,11 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
             # Close the coroutine if it's a coroutine to prevent "never awaited" warnings
             """
             Close `coro` if it is a coroutine to avoid "coroutine was never awaited" warnings and return a completed Future.
-            
+
             Parameters:
                 coro: The object to inspect; if it is a coroutine it will be closed.
                 *args, **kwargs: Ignored.
-            
+
             Returns:
                 asyncio.Future: A Future already resolved with the value `None`.
             """
@@ -1129,9 +1129,11 @@ def test_reconnect_attempts_connection(
 ):
     """
     Ensure the reconnect coroutine requests a Meshtastic connection attempt.
-    
+
     Mocks asyncio.sleep to avoid delays and simulates a successful connection that sets shutdown to True so the coroutine exits after the first attempt. Verifies that the connection function is invoked with `force_connect=True`.
     """
+    # Touch the fixture result so static analysis doesn't treat it as unused
+    _ = reset_meshtastic_globals
 
     # Mock asyncio.sleep to prevent the test from actually sleeping
     mock_sleep.return_value = None
@@ -1140,9 +1142,9 @@ def test_reconnect_attempts_connection(
     def _connect_side_effect(*_args, **_kwargs):
         """
         Set the global shutdown flag in the meshtastic utilities and return a MagicMock.
-        
+
         This helper sets mmrelay.meshtastic_utils.shutting_down to True as a side effect and provides a MagicMock instance for use in tests.
-        
+
         Returns:
             MagicMock: A new MagicMock instance.
         """
