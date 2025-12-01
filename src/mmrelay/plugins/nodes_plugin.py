@@ -89,10 +89,33 @@ $shortname $longname / $devicemodel / $battery $voltage / $snr / $hops / $lastse
     async def handle_meshtastic_message(
         self, packet, formatted_message, longname, meshnet_name
     ) -> bool:
+        """
+        Handle an incoming Meshtastic packet message; currently does not process or consume the message.
+        
+        Parameters:
+            packet: Raw Meshtastic packet data received from the mesh.
+            formatted_message (str): Human-readable representation of the packet payload.
+            longname (str): Full device name of the packet sender.
+            meshnet_name (str): Name of the mesh network the packet originated from.
+        
+        Returns:
+            `False` indicating the plugin did not handle the message.
+        """
         return False
 
     async def handle_room_message(self, room, event, full_message) -> bool:
         # Pass the event to matches()
+        """
+        Handle an incoming room message and respond with the nodes summary when the plugin matches the event.
+        
+        Parameters:
+            room: The Matrix room object where the event occurred; used to send the response.
+            event: The incoming event evaluated by self.matches() to decide whether to handle the message.
+            full_message: The raw message text (not used by this handler).
+        
+        Returns:
+            bool: `True` if the event was handled and a response was sent, `False` otherwise.
+        """
         if not self.matches(event):
             return False
 

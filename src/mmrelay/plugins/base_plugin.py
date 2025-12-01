@@ -87,29 +87,14 @@ class BasePlugin(ABC):
     def __init__(self, plugin_name=None) -> None:
         """
         Initialize plugin state and load per-plugin configuration and runtime defaults.
-
+        
+        Loads this plugin's configuration (searching "plugins", "community-plugins", then "custom-plugins"), builds mapped Matrix-to-meshtastic channels from the global `matrix_rooms` config (supporting dict or list formats), and establishes runtime attributes used by the plugin scheduler and messaging code (including `mapped_channels`, `channels`, and `response_delay`).
+        
         Parameters:
-            plugin_name (str, optional): Override the class-level plugin_name for this instance.
-
+            plugin_name (str, optional): Override the class-level `plugin_name` for this instance.
+        
         Raises:
-            ValueError: If no plugin name is available from the parameter, instance, or class attribute.
-
-        Details:
-            - Loads per-plugin configuration from the global `config` by checking
-              "plugins", "community-plugins", then "custom-plugins"; defaults to
-              `{"active": False}` if not found.
-            - Builds `self.mapped_channels` from `config["matrix_rooms"]`, supporting
-              both dict and list formats.
-            - Sets `self.channels` from the plugin config (falls back to
-              `self.mapped_channels`) and coerces it to a list; logs a warning for
-              configured channels not present in `mapped_channels`.
-            - Initializes scheduling controls (`self._stop_event`,
-              `self._schedule_thread`) used by the plugin scheduler.
-            - Reads Meshtastic delay settings from `config["meshtastic"]`,
-              preferring `message_delay` with fallback to deprecated
-              `plugin_response_delay`, with one-time deprecation logging.
-            - Enforces a minimum delay of `MINIMUM_MESSAGE_DELAY`; values below the
-              minimum are clamped and emit a one-time warning per unique delay value.
+            ValueError: If no plugin name is available from the parameter, the instance, or the class attribute.
         """
         # Allow plugin_name to be passed as a parameter for simpler initialization
         # This maintains backward compatibility while providing a cleaner API
@@ -500,23 +485,24 @@ class BasePlugin(ABC):
             return channel in self.channels
 
     def get_matrix_commands(self):
-        """Get list of Matrix commands this plugin responds to.
-
+        """
+        Return the Matrix command names this plugin responds to.
+        
+        By default returns a single-item list containing the plugin's name; override to provide custom commands or aliases.
+        
         Returns:
-            list: List of command strings (without ! prefix)
-
-        Default implementation returns [plugin_name]. Override to provide
-        custom commands or multiple command aliases.
+            list[str]: Command names (without a leading '!' prefix)
         """
         return [self.plugin_name]
 
     def get_matching_matrix_command(self, event) -> str | None:
         """
-        Find the first Matrix command that matches an event.
-
-        Iterates the commands returned by `get_matrix_commands()` and uses
-        `bot_command` with this plugin's mention requirement to detect a match.
-        Returns the matching command string, or None if no command matches.
+        Identify the first Matrix command that matches the given event.
+        
+        Checks each command returned by get_matrix_commands() against the event using this plugin's bot-mention requirement.
+        
+        Returns:
+        	The matching command string, or None if no command matches.
         """
         from mmrelay.matrix_utils import bot_command
 
@@ -527,18 +513,16 @@ class BasePlugin(ABC):
         return None
 
     async def send_matrix_message(self, room_id, message, formatted=True):
-        """Send a message to a Matrix room.
-
-        Args:
-            room_id (str): Matrix room identifier
-            message (str): Message content to send
-            formatted (bool): Whether to send as formatted HTML (default: True)
-
+        """
+        Send a message to a Matrix room, optionally formatted as HTML.
+        
+        Parameters:
+            room_id (str): Matrix room identifier.
+            message (str): Message content to send.
+            formatted (bool): If True, send an HTML-formatted message (message is converted from Markdown); otherwise send plain text.
+        
         Returns:
-            dict: Response from Matrix API room_send
-
-        Connects to Matrix using matrix_utils and sends a room message
-        with optional HTML formatting via markdown.
+            dict | None: The Matrix API response from the room send call, or `None` if the Matrix client could not be obtained.
         """
         from mmrelay.matrix_utils import connect_matrix
 
@@ -706,13 +690,14 @@ class BasePlugin(ABC):
         return args.strip()
 
     def get_require_bot_mention(self) -> bool:
-        """Determine if bot mentions are required for this plugin.
-
-        Checks plugin-specific configuration first, then global plugins configuration,
-        using appropriate defaults for core plugins.
-
+        """
+        Determine whether this plugin requires the bot to be mentioned.
+        
+        Checks plugin-specific configuration first, then a cached global setting, and falls back
+        to core/non-core defaults.
+        
         Returns:
-            bool: True if bot mentions are required, False otherwise
+            `true` if bot mentions are required for this plugin, `false` otherwise.
         """
         # Check plugin-specific configuration first
         if CONFIG_KEY_REQUIRE_BOT_MENTION in self.config:
@@ -733,30 +718,30 @@ class BasePlugin(ABC):
         self, packet, formatted_message, longname, meshnet_name
     ) -> bool:
         """
-        Process an incoming Meshtastic packet and perform plugin-specific handling.
-
+        Handle an incoming Meshtastic packet and perform plugin-specific processing.
+        
         Parameters:
-            packet: The original Meshtastic packet object (protobuf-derived dict or message) as received from the radio.
-            formatted_message (str): A cleaned, human-readable representation of the packet's text payload.
-            longname (str): Sender display name or node label associated with the packet.
-            meshnet_name (str): The mesh network identifier where the packet originated.
-
+            packet: Original Meshtastic packet (protobuf-derived dict or message).
+            formatted_message (str): Clean, human-readable text payload.
+            longname (str): Sender display name or node label.
+            meshnet_name (str): Identifier of the originating mesh network.
+        
         Returns:
-            bool: True if the packet was handled, False otherwise.
+            `true` if the packet was handled, `false` otherwise.
         """
         pass  # Implement in subclass
 
     @abstractmethod
     async def handle_room_message(self, room, event, full_message) -> bool:
         """
-        Process an incoming Matrix room message and perform plugin-specific handling.
-
+        Handle an incoming Matrix room message and perform plugin-specific processing.
+        
         Parameters:
-            room: The Matrix room object where the message was received.
-            event: The Matrix event object containing the message details.
-            full_message: The full message text that was sent.
-
+            room: Matrix room object where the message was received.
+            event: Matrix event object containing message metadata and sender.
+            full_message: The full text content of the received message.
+        
         Returns:
-            bool: True if the message was handled, False otherwise.
+            True if the message was handled by the plugin, False otherwise.
         """
         pass  # Implement in subclass

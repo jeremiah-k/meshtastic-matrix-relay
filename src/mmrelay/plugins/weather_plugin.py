@@ -32,12 +32,10 @@ class Plugin(BasePlugin):
 
     def _normalize_mode(self, mode: str) -> str:
         """
-        Normalize command/mode strings into the supported forecast modes.
-
-        Returns one of:
-            - "weather": current conditions only
-            - "hourly": a compact next-few-hours view
-            - "weekly": multi-day summary
+        Normalize a mode/command string to one of the supported forecast modes.
+        
+        Returns:
+            str: One of "weather", "hourly", or "weekly". Unrecognized or empty input defaults to "weather".
         """
         cmd = (mode or "weather").lower()
         if cmd == "hourly":
@@ -164,12 +162,31 @@ class Plugin(BasePlugin):
             index_map["now"] = min(base_index, max_index)
 
             def _safe_get(seq, idx):
+                """
+                Safely retrieve an item from a sequence or mapping by index/key.
+                
+                Parameters:
+                    seq: Sequence or mapping to index into; may be None or not subscriptable.
+                    idx: Index or key used to access `seq`.
+                
+                Returns:
+                    The value at `seq[idx]` if accessible, or `None` if the index/key is missing or `seq` cannot be indexed.
+                """
                 try:
                     return seq[idx]
                 except (IndexError, TypeError, KeyError):
                     return None
 
             def get_hourly(idx):
+                """
+                Fetch hourly weather values at the given hourly index from the parsed API data arrays.
+                
+                Parameters:
+                	idx (int): Hour offset index into the hourly arrays (0-based).
+                
+                Returns:
+                	tuple: (temperature, precipitation, weather_code, is_day, humidity, wind_speed, wind_direction) where each element is the value at `idx` or `None` if that value is unavailable.
+                """
                 temp = _safe_get(temps, idx)
                 precip = _safe_get(precips, idx)
                 wcode = _safe_get(data["hourly"].get("weathercode", []), idx)
@@ -327,22 +344,18 @@ class Plugin(BasePlugin):
         slots: list[str],
     ) -> str:
         """
-        Builds a short hourly forecast string containing a "Now" segment followed by forecast segments for the given slots.
-
+        Builds a concise hourly forecast string starting with a "Now" segment followed by the requested slot segments.
+        
         Parameters:
-            current_temp (float | None): Current temperature value or None if unavailable.
-            current_weather_code (int): Current weather code used to produce descriptive text.
-            is_day (int): Indicator (typically 0/1) whether it is currently daytime.
-            forecast_hours (dict): Mapping from slot label (str) to a tuple (temperature, precipitation_percent, weather_code, is_day).
-                - temperature (float | None)
-                - precipitation_percent (int | None)
-                - weather_code (int | None)
-                - is_day (int)
-            temperature_unit (str): Temperature unit string appended to numeric temperatures (e.g., "°C" or "°F").
-            slots (list[str]): Ordered list of slot labels to include after "Now" (e.g., ["+2h", "+5h", "+12h"]).
-
+            current_temp (float | None): Current temperature or None if unavailable.
+            current_weather_code (int): Weather code used to produce the descriptive text for the current time.
+            is_day (int): Day/night indicator (0/1) for the current time used to select day/night descriptions.
+            forecast_hours (dict): Mapping from slot label to a tuple with at least (temperature, precipitation_percent, weather_code, is_day). Missing values may be None.
+            temperature_unit (str): Unit symbol appended to temperatures (e.g., "°C" or "°F").
+            slots (list[str]): Ordered slot labels to include after "Now" (for example ["+2h", "+5h", "+12h"]).
+        
         Returns:
-            str: Concise forecast string (truncated to 200 characters) where each segment contains a description from weather code, temperature with unit, and precipitation percent; unavailable values are indicated as "Data unavailable".
+            str: A compact forecast string where each segment is formatted as "<label>: <description> - <temp><unit> <precip>%" and segments with missing data show "Data unavailable"; the result is trimmed to the plugin's configured maximum length.
         """
         if current_temp is None:
             forecast = (
@@ -368,6 +381,15 @@ class Plugin(BasePlugin):
 
     @staticmethod
     def _trim_to_max_bytes(text: str) -> str:
+        """
+        Trim a UTF-8 string so its UTF-8 encoding does not exceed MAX_FORECAST_LENGTH bytes.
+        
+        Parameters:
+            text (str): Input string to trim.
+        
+        Returns:
+            str: The original string if its UTF-8 encoding is within the limit, otherwise a truncated string whose UTF-8 encoding is at most MAX_FORECAST_LENGTH bytes (any partial trailing UTF-8 character is removed).
+        """
         encoded = text.encode("utf-8")
         if len(encoded) <= MAX_FORECAST_LENGTH:
             return text
@@ -537,10 +559,10 @@ class Plugin(BasePlugin):
 
     def get_matrix_commands(self):
         """
-        Return the list of command names exposed by this plugin for Matrix integrations.
-
+        List command names the plugin exposes to Matrix integrations.
+        
         Returns:
-            commands (list[str]): A list of command strings supported by the plugin for Matrix.
+            list[str]: Command strings supported by this plugin.
         """
         return list(self.mesh_commands)
 
@@ -555,15 +577,15 @@ class Plugin(BasePlugin):
 
     async def handle_room_message(self, room, event, full_message) -> bool:
         """
-        Handle a Matrix room message that invokes the weather plugin and post a forecast.
-
-        Parses the incoming room message text for a supported weather command, resolves coordinates (from command arguments, mesh-derived location, or geocoding), generates a forecast for the resolved coordinates, and sends the forecast to the Matrix room. If location cannot be determined, posts "Cannot determine location" to the room.
-
+        Handle a Matrix room message invoking the weather plugin and post a forecast to the room.
+        
+        Parses the room message for a supported weather command, resolves coordinates from command arguments, mesh-derived location, or geocoding, generates a forecast for the resolved coordinates, and sends the forecast back to the Matrix room. If a location cannot be determined, posts "Cannot determine location" to the room.
+        
         Parameters:
             room: The Matrix room object where the event originated.
             event: The Matrix event object to evaluate for a plugin match.
-            text (str): The raw message text to parse for a weather command.
-
+            full_message (str): The raw message text used to extract command arguments.
+        
         Returns:
             bool: `True` if the event matched the plugin and was handled (a response was sent or attempted), `False` if the event did not match and was not handled.
         """
@@ -706,10 +728,12 @@ class Plugin(BasePlugin):
 
     def _geocode_location(self, query: str) -> tuple[float, float] | None:
         """
-        Resolve a free-form location string to (latitude, longitude) coordinates using the Open-Meteo geocoding API.
-
+        Resolve a free-form location string to geographic coordinates using the Open-Meteo geocoding API.
+        
+        Queries the Open-Meteo geocoding endpoint and returns the first result's latitude and longitude as floats.
+        
         Returns:
-            tuple[float, float] | None: A (latitude, longitude) pair as floats if a numeric result is found, `None` otherwise.
+            tuple[float, float] | None: A (latitude, longitude) pair as floats if a result is found, `None` otherwise.
         """
         if not query:
             return None

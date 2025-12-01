@@ -116,10 +116,9 @@ class TestHealthPlugin(unittest.TestCase):
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     def test_generate_response_with_empty_nodes(self, mock_connect):
         """
-        Test that generating a response with no nodes returns a graceful string response.
-
-        Verifies that the plugin handles empty node data gracefully and returns "No nodes discovered yet."
-        instead of raising an exception when no nodes are available.
+        Verify that generate_response returns a user-facing message when no Meshtastic nodes are discovered.
+        
+        Asserts that with an empty Meshtastic client node set, the plugin returns "No nodes discovered yet." instead of raising an error.
         """
         mock_meshtastic_client = MagicMock()
         mock_meshtastic_client.nodes = {}

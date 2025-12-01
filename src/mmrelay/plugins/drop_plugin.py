@@ -31,12 +31,12 @@ class Plugin(BasePlugin):
         self, packet, formatted_message, longname, meshnet_name
     ) -> bool:
         """
-        Manage delivery and storage of "drop" messages based on an incoming packet and node locations.
-
-        When a packet arrives, attempt to deliver any stored dropped messages to the sender if the sender's known position is within the configured radius and the sender is not the original dropper. If the packet contains a valid "!drop <message>" command, record the message together with the sender's current location for later delivery.
-
+        Handle delivery of stored drop messages and record new drops from an incoming Meshtastic packet.
+        
+        If the packet originates from another node and that node's position is known, deliver any stored drops whose saved location lies within the configured radius to the originator (excluding messages the originator created). If the packet contains a "!drop <message>" command and the dropper's position is known, store the message together with the dropper's location and originator id for later delivery.
+        
         Returns:
-            True if a drop command was processed and stored (or processing occurred but the dropper's position was unavailable), False otherwise.
+            `True` if a drop command was processed (including cases where processing occurred but the dropper's position was unavailable), `False` otherwise.
         """
         meshtastic_client = await asyncio.to_thread(connect_meshtastic)
         if meshtastic_client is None:
@@ -135,4 +135,13 @@ class Plugin(BasePlugin):
 
     async def handle_room_message(self, _room, event, _full_message) -> bool:
         # Pass the event to matches() instead of full_message
+        """
+        Route a room event to the plugin's matching logic.
+        
+        Parameters:
+            event (object): The room event to evaluate; forwarded to matches().
+        
+        Returns:
+            bool: True if the event matches the plugin's criteria, False otherwise.
+        """
         return self.matches(event)

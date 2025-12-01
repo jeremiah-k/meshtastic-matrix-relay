@@ -845,19 +845,17 @@ matrix_client = None
 
 def bot_command(command: str, event, require_mention: bool = False) -> bool:
     """
-    Detect whether a Matrix event addresses the bot with the specified command.
-
-    Checks plain and HTML-formatted bodies. A match occurs when the message either begins with
-    `!<command>` (allowed only when require_mention is False) or begins with an explicit bot mention
-    (bot MXID or display name) optionally followed by punctuation/whitespace and then `!<command>`.
-
+    Determine whether a Matrix event addresses the bot with the given command.
+    
+    Checks the event's plain and HTML-formatted bodies. Matches when the message either starts with `!<command>` (only allowed when `require_mention` is False) or begins with an explicit mention of the bot (bot MXID or display name) optionally followed by punctuation/whitespace and then `!<command>`.
+    
     Parameters:
         command (str): Command name to detect (without the leading `!`).
-        event: Matrix event object providing a plain `body` and `source`/`content` with optional `formatted_body`.
-        require_mention (bool): If True, only accept commands that explicitly mention the bot; if False, accept bare commands as well.
-
+        event: Matrix event object expected to provide a plain `body` and a `source`/`content` with optional `formatted_body`.
+        require_mention (bool): If True, only accept commands that explicitly mention the bot; if False, accept bare `!<command>` messages as well.
+    
     Returns:
-        bool: `True` if the message targets the bot with the given command, `False` otherwise.
+        bool: `True` if the message addresses the bot with the given command, `False` otherwise.
     """
     full_message = (getattr(event, "body", "") or "").strip()
     if not command:
@@ -895,12 +893,10 @@ def bot_command(command: str, event, require_mention: bool = False) -> bool:
 
 async def _connect_meshtastic():
     """
-    Get a Meshtastic connection usable from asynchronous code.
-
-    Invokes the synchronous connector in a thread to avoid blocking the event loop.
-
+    Obtain a Meshtastic interface suitable for use from async code.
+    
     Returns:
-        Meshtastic interface or proxy object produced by the connector.
+        meshtastic_iface: The Meshtastic interface or proxy object produced by the synchronous connector.
     """
     return await asyncio.to_thread(connect_meshtastic)
 
@@ -909,14 +905,14 @@ async def _get_meshtastic_interface_and_channel(
     room_config: dict, purpose: str
 ) -> tuple[Any | None, int | None]:
     """
-    Get a Meshtastic connection and a validated channel number for the given room.
-
+    Obtain a Meshtastic interface and validate the room's Meshtastic channel.
+    
     Parameters:
-        room_config (dict): Room configuration containing the key "meshtastic_channel" with a non-negative integer channel.
-        purpose (str): Short description of the action (used in error messages) to indicate why the connection/channel are needed.
-
+        room_config (dict): Room configuration expected to contain "meshtastic_channel" with a non-negative integer.
+        purpose (str): Short description of why the interface/channel are needed (used in error messages).
+    
     Returns:
-        tuple: (meshtastic_interface, channel) where `meshtastic_interface` is the connected Meshtastic interface object and `channel` is the non-negative integer channel from the room config; returns (None, None) if the connection fails or the channel is missing/invalid.
+        tuple: (meshtastic_interface, channel) where `meshtastic_interface` is the connected Meshtastic interface object or `None` on failure, and `channel` is the non-negative integer channel from the room config or `None` if missing/invalid.
     """
     from mmrelay.meshtastic_utils import logger as meshtastic_logger
 
@@ -1010,14 +1006,14 @@ async def _handle_detection_sensor_packet(
 
 async def connect_matrix(passed_config=None):
     """
-    Initialize and prepare a Matrix AsyncClient using available credentials and configuration.
-
+    Prepare and return a configured Matrix AsyncClient using available credentials and configuration.
+    
     Parameters:
-        passed_config (dict | None): Optional configuration override for this connection attempt; when provided it is used in place of the module-level config for this call.
-
+        passed_config (dict | None): Optional configuration override for this connection attempt; when provided it is used instead of the module-level config for this call.
+    
     Returns:
-        AsyncClient | None: A connected and initialized AsyncClient ready for use, or `None` if connection or credentials are unavailable.
-
+        AsyncClient | None: An initialized AsyncClient ready for use, or `None` if connection or credential setup failed.
+    
     Raises:
         ValueError: If the required top-level "matrix_rooms" configuration is missing.
         ConnectionError: If the initial Matrix sync fails or times out.
@@ -2866,18 +2862,13 @@ async def on_room_message(
     ],
 ) -> None:
     """
-    Handle an incoming Matrix room event and relay it to Meshtastic when applicable.
-
-    Processes text, notice, emote, and reaction events for configured rooms: ignores events from before the bot started and messages from the bot itself; applies per-room and global interaction settings; forwards reactions and replies to their corresponding Meshtastic targets when mappings exist; reformats and relays Matrix-origin messages to Meshtastic (including remote-meshnet emote reactions as radio text) and handles detection-sensor forwarding. Integrates with the plugin system and treats recognized bot commands as non-relayed.
-
+    Handle a Matrix room event and, when applicable, bridge it to Meshtastic.
+    
+    Processes text, notice, emote, and reaction events for rooms configured in matrix_rooms: ignores events from before the bot started and messages sent by the bot; respects per-room and global interaction settings; forwards reactions and replies to Meshtastic when a corresponding mapping exists; reformats Matrix-origin messages (including remote-meshnet messages) for Meshtastic and handles detection-sensor forwarding. Integrates with the plugin system and treats matched commands as handled (not relayed).
+    
     Parameters:
         room (MatrixRoom): The Matrix room where the event was received.
         event (RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote): The received room event.
-
-    Side effects:
-        - May enqueue Meshtastic send operations.
-        - May read/write persistent message mappings to support reply/reaction bridging.
-        - May call Matrix APIs (e.g., to fetch display names) and establish Meshtastic connections.
     """
     # DEBUG: Log all Matrix message events to trace reception
     logger.debug(
@@ -3282,21 +3273,19 @@ async def on_room_message(
 
     def _matches_command(plugin_obj) -> bool:
         """
-        Determines whether a plugin should handle the current Matrix event.
-
-        Checks for a plugin-provided matches(event) predicate first; if absent, checks
-        get_matrix_commands() (honoring an optional get_require_bot_mention() flag)
-        and tests each command against the bot_command matcher. If the plugin raises
-        any error during these checks, the error is logged and the plugin is treated
-        as not matching.
-
+        Determine whether the given plugin should handle the current Matrix event.
+        
+        Checks the plugin's `matches(event)` predicate if present; otherwise, checks
+        `get_matrix_commands()` and tests each command against the bot command matcher,
+        honoring an optional `get_require_bot_mention()` flag. Plugin errors are caught
+        and logged; errors cause the plugin to be treated as not matching.
+        
         Parameters:
-            plugin_obj: The plugin instance or object to evaluate. It may implement
-                either `matches(event)` or `get_matrix_commands()` (and optionally
-                `get_require_bot_mention()`).
-
+            plugin_obj: Plugin instance or object that may implement `matches(event)`,
+                        `get_matrix_commands()`, and optionally `get_require_bot_mention()`.
+        
         Returns:
-            True if the plugin indicates it matches the current event, False otherwise.
+            `True` if the plugin should handle the current event, `False` otherwise.
         """
         if hasattr(plugin_obj, "matches"):
             try:

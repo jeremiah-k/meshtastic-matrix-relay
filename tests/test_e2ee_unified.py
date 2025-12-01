@@ -213,6 +213,18 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
             mock_nio_store.SqliteStore = MagicMock()
 
             def import_side_effect(name):
+                """
+                Provide a replacement for import_module that returns predefined mocks for specific module names.
+                
+                Parameters:
+                    name (str): The fully qualified module name requested.
+                
+                Returns:
+                    object: A mock object to stand in for the requested module:
+                      - a new MagicMock for "olm" and any unknown module name,
+                      - the value of `mock_nio_crypto` for "nio.crypto",
+                      - the value of `mock_nio_store` for "nio.store".
+                """
                 if name == "olm":
                     return MagicMock()
                 if name == "nio.crypto":
@@ -343,13 +355,13 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
 
             def import_side_effect(name):
                 """
-                Provide a test-double module object corresponding to a requested import name.
-
+                Return a test-double module object for a requested import name.
+                
                 Parameters:
                     name (str): Module name being imported (e.g., "olm", "nio.crypto", "nio.store").
-
+                
                 Returns:
-                    object: The corresponding mock module: `mock_olm` for "olm", `mock_nio_crypto` for "nio.crypto", `mock_nio_store` for "nio.store", or a new `MagicMock` for any other name.
+                    object: A mock module corresponding to `name` (`mock_olm`, `mock_nio_crypto`, `mock_nio_store`), or a fresh `MagicMock` for any other module name.
                 """
                 if name == "olm":
                     return mock_olm
