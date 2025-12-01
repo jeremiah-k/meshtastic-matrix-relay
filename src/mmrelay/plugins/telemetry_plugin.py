@@ -144,7 +144,7 @@ class Plugin(BasePlugin):
         if not self.matches(event):
             return False
 
-        parsed_command = self.get_matching_matrix_command(event)
+        parsed_command = await self.get_matching_matrix_command(event)
         if not parsed_command:
             return False
 

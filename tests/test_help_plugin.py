@@ -113,8 +113,14 @@ class TestHelpPlugin(unittest.TestCase):
         # Mock Matrix client get_displayname to return a string
         with patch("mmrelay.matrix_utils.connect_matrix") as mock_connect:
             mock_matrix_client = AsyncMock()
-            mock_matrix_client.get_displayname = AsyncMock(return_value="TestBot")
+            response_mock = MagicMock()
+            response_mock.displayname = "TestBot"
+            mock_matrix_client.get_displayname = AsyncMock(return_value=response_mock)
             mock_connect.return_value = mock_matrix_client
+            import mmrelay.matrix_utils as mu
+
+            mu.matrix_client = mock_matrix_client
+            mu.bot_user_id = "@bot:matrix.org"
 
         async def run_test():
             """

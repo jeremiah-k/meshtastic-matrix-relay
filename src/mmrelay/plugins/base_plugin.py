@@ -495,7 +495,7 @@ class BasePlugin(ABC):
         """
         return [self.plugin_name]
 
-    def get_matching_matrix_command(self, event) -> str | None:
+    async def get_matching_matrix_command(self, event) -> str | None:
         """
         Identify the first Matrix command that matches the given event.
 
@@ -508,7 +508,7 @@ class BasePlugin(ABC):
 
         require_mention = self.get_require_bot_mention()
         for command in self.get_matrix_commands():
-            if bot_command(command, event, require_mention=require_mention):
+            if await bot_command(command, event, require_mention=require_mention):
                 return command
         return None
 

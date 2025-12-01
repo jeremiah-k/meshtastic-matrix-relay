@@ -843,7 +843,23 @@ bot_start_time = int(
 matrix_client = None
 
 
-def bot_command(
+async def get_displayname(user_id: str) -> str | None:
+    """
+    Get the display name for a given user ID.
+
+    Parameters:
+        user_id (str): The Matrix user ID.
+
+    Returns:
+        str | None: The display name, or None if not available.
+    """
+    if not matrix_client:
+        return None
+    response = await matrix_client.get_displayname(user_id)
+    return getattr(response, "displayname", None)
+
+
+async def bot_command(
     command: str,
     event: RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote,
     require_mention: bool = False,
@@ -882,8 +898,8 @@ def bot_command(
     mention_parts: list[str] = []
     if bot_user_id:
         mention_parts.append(re.escape(bot_user_id))
-    if bot_user_name:
-        mention_parts.append(re.escape(bot_user_name))
+    bot_user_name = await get_displayname(bot_user_id) or bot_user_id
+    mention_parts.append(re.escape(bot_user_name))
 
     if not mention_parts:
         return False
