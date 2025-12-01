@@ -273,9 +273,9 @@ class TestTelemetryPlugin(unittest.TestCase):
 
         async def run_test():
             """
-            Verify that a non-telemetry Meshtastic packet is ignored by the plugin.
+            Verify that a telemetry packet missing deviceMetrics is ignored by the plugin.
 
-            Calls handle_meshtastic_message with a non-telemetry packet and asserts it returns False and does not call set_node_data.
+            Calls handle_meshtastic_message with a telemetry packet lacking deviceMetrics and asserts it returns False and does not call set_node_data.
             """
             result = await self.plugin.handle_meshtastic_message(
                 packet, "formatted_message", "longname", "meshnet_name"

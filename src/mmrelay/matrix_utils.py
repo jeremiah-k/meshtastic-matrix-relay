@@ -901,6 +901,9 @@ def bot_command(
             try:
                 mention_parts.append(re.escape(str(ident)))
             except Exception:
+                logger.debug(
+                    "Failed to escape identifier %r for bot_command pattern", ident
+                )
                 continue
 
     if not mention_parts:
