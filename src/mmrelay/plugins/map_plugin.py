@@ -8,7 +8,10 @@ import staticmaps
 from nio import AsyncClient
 from PIL import Image as PILImage
 
-from mmrelay.constants.plugins import S2_PRECISION_BITS_TO_METERS_CONSTANT
+from mmrelay.constants.plugins import (
+    S2_PRECISION_BITS_TO_METERS_CONSTANT,
+    MAX_MAP_IMAGE_SIZE,
+)
 from mmrelay.log_utils import get_logger
 from mmrelay.plugins.base_plugin import BasePlugin
 
@@ -250,7 +253,7 @@ def get_map(
     Parameters:
         locations (list[dict]): List of dicts with keys "lat" (float|str), "lon" (float|str), and "label" (str). Optional "precisionBits" (int|str) may be included to render a precision circle.
         zoom (int | None): Optional zoom level to apply to the map; if None the context default is used.
-        image_size (tuple[int, int] | None): Optional (width, height) in pixels for the output image. If None, defaults to (1000, 1000).
+        image_size (tuple[int, int] | None): Optional (width, height) in pixels for the output image. If None, defaults to (MAX_MAP_IMAGE_SIZE, MAX_MAP_IMAGE_SIZE).
         anonymize (bool): Deprecated and ignored.
         radius (int): Deprecated and ignored.
 
@@ -432,8 +435,8 @@ class Plugin(BasePlugin):
                 pass  # keep default
             image_size = (width, height)
 
-        width = max(1, min(image_size[0], 1000))
-        height = max(1, min(image_size[1], 1000))
+        width = max(1, min(image_size[0], MAX_MAP_IMAGE_SIZE))
+        height = max(1, min(image_size[1], MAX_MAP_IMAGE_SIZE))
         image_size = (width, height)
 
         from mmrelay.matrix_utils import (

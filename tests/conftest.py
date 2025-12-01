@@ -383,10 +383,10 @@ def meshtastic_loop_safety(monkeypatch):
     """
     Function-scoped pytest fixture that provides a dedicated asyncio event loop for tests that interact with mmrelay.meshtastic_utils.
 
-    Creates a fresh event loop, assigns it to mmrelay.meshtastic_utils.event_loop for the duration of the test module, yields the loop to tests, and on teardown cancels any remaining tasks, awaits their completion, closes the loop, and clears the global event loop reference.
+    Creates a fresh event loop, assigns it to mmrelay.meshtastic_utils.event_loop for the duration of each test function, yields the loop to tests, and on teardown cancels any remaining tasks, awaits their completion, closes the loop, and clears the global event loop reference.
 
     Yields:
-        asyncio.AbstractEventLoop: a new event loop isolated to the test module.
+        asyncio.AbstractEventLoop: a new event loop isolated to each test function.
     """
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)

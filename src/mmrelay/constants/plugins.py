@@ -11,6 +11,9 @@ from typing import Tuple
 # Message length limits
 MAX_FORECAST_LENGTH = 200
 
+# Map image size limits
+MAX_MAP_IMAGE_SIZE = 1000
+
 # Special node identifiers
 SPECIAL_NODE_MESSAGES = "!NODE_MSGS!"
 

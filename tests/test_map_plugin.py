@@ -387,7 +387,7 @@ class TestMapPlugin(unittest.TestCase):
         mock_connect_matrix,
         mock_connect_meshtastic_async,
         mock_get_map,
-        mock_send_image,
+        _mock_send_image,
     ):
         """
         Verify that receiving a "!map" Matrix room message causes the plugin to generate a map and send it to the room as "location.png".
@@ -432,7 +432,7 @@ class TestMapPlugin(unittest.TestCase):
 
             self.assertTrue(result)
             mock_get_map.assert_called_once()
-            mock_send_image.assert_called_once_with(
+            _mock_send_image.assert_called_once_with(
                 mock_matrix_client, mock_room.room_id, mock_image, "location.png"
             )
 
@@ -725,7 +725,7 @@ class TestMapPlugin(unittest.TestCase):
         mock_connect_matrix,
         mock_connect_meshtastic_async,
         mock_get_map,
-        mock_send_image,
+        _mock_send_image,
     ):
         """
         Ensure a friendly notice is sent when no nodes contain location data.
@@ -761,7 +761,7 @@ class TestMapPlugin(unittest.TestCase):
             self.assertTrue(result)
             self.plugin.send_matrix_message.assert_awaited_once()
             mock_get_map.assert_not_called()
-            mock_send_image.assert_not_called()
+            _mock_send_image.assert_not_called()
 
         asyncio.run(run_test())
 

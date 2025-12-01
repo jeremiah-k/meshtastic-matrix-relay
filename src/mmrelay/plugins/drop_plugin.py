@@ -49,7 +49,7 @@ class Plugin(BasePlugin):
                 and f"!{self.plugin_name}" in text
                 and re.search(r"!drop\s+(.+)$", text)
             )
-            return False  # Cannot process command when client is unavailable
+            return True if is_drop_command else False
         nodeInfo = meshtastic_client.getMyNodeInfo()
 
         # Attempt message drop to packet originator if not relay
