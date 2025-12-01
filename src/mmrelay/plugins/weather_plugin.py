@@ -35,15 +35,15 @@ class Plugin(BasePlugin):
         Normalize command/mode strings into the supported forecast modes.
 
         Returns one of:
-            - "weather": current conditions with minimal near-term context
-            - "hourly": a richer next-few-hours view
-            - "week": multi-day summary
+            - "weather": current conditions only
+            - "hourly": a compact next-few-hours view
+            - "weekly": multi-day summary
         """
         cmd = (mode or "weather").lower()
         if cmd == "hourly":
             return "hourly"
-        if cmd == "week":
-            return "week"
+        if cmd == "weekly":
+            return "weekly"
         return "weather"
 
     def generate_forecast(self, latitude, longitude, mode: str = "weather"):
@@ -58,7 +58,7 @@ class Plugin(BasePlugin):
         Parameters:
             latitude (float): Latitude in decimal degrees.
             longitude (float): Longitude in decimal degrees.
-            mode (str): One of "weather", "hourly", or "week" (legacy aliases accepted).
+            mode (str): One of "weather", "hourly", or "weekly".
 
         Returns:
             str: A one-line forecast string on success. On recoverable failures returns one of:
