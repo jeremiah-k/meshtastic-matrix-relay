@@ -10,6 +10,7 @@ Tests the telemetry data collection and graphing functionality including:
 - Device metrics parsing
 """
 
+import asyncio
 import os
 import sys
 import unittest
@@ -357,17 +358,9 @@ class TestTelemetryPlugin(unittest.TestCase):
         event.body = full_message
         event.source = {"content": {"formatted_body": ""}}
 
-        # Mock Matrix client get_displayname to return a string
-        with patch("mmrelay.matrix_utils.connect_matrix") as mock_connect:
-            mock_matrix_client = AsyncMock()
-            response_mock = MagicMock()
-            response_mock.displayname = "TestBot"
-            mock_matrix_client.get_displayname = AsyncMock(return_value=response_mock)
-            mock_connect.return_value = mock_matrix_client
-            import mmrelay.matrix_utils as mu
-
-            mu.matrix_client = mock_matrix_client
-            mu.bot_user_id = "@bot:matrix.org"
+        with patch("mmrelay.matrix_utils.bot_user_id", "@bot:matrix.org"), patch(
+            "mmrelay.matrix_utils.bot_user_name", "TestBot"
+        ):
 
             async def run_test():
                 """
@@ -378,9 +371,7 @@ class TestTelemetryPlugin(unittest.TestCase):
                 )
                 self.assertFalse(result)
 
-        import asyncio
-
-        asyncio.run(run_test())
+            asyncio.run(run_test())
 
     @patch("mmrelay.matrix_utils.connect_matrix")
     @patch("mmrelay.matrix_utils.upload_image")
@@ -490,18 +481,6 @@ class TestTelemetryPlugin(unittest.TestCase):
             mock_image_class.open.return_value = mock_image
             mock_image_class.frombytes.return_value = mock_image
 
-            # Mock Matrix operations
-            mock_matrix_client = AsyncMock()
-            mock_connect.return_value = mock_matrix_client
-            response_mock = MagicMock()
-            response_mock.displayname = "TestBot"
-            mock_matrix_client.get_displayname = AsyncMock(return_value=response_mock)
-            import mmrelay.matrix_utils as mu
-
-            mu.matrix_client = mock_matrix_client
-            mu.bot_user_id = "@bot:matrix.org"
-            mock_upload.return_value = {"content_uri": "mxc://example.com/image"}
-
             room = MagicMock()
             room.room_id = "!test:matrix.org"
             event = MagicMock()
@@ -509,29 +488,31 @@ class TestTelemetryPlugin(unittest.TestCase):
             event.body = full_message
             event.source = {"content": {"formatted_body": ""}}
 
-            async def run_test():
-                """
-                Verify that handling a room message for a specific node requests that node's data and includes the node and metric in the plot title.
+            with patch("mmrelay.matrix_utils.bot_user_id", "@bot:matrix.org"), patch(
+                "mmrelay.matrix_utils.bot_user_name", "TestBot"
+            ):
 
-                Asserts that handle_room_message invokes get_node_data with the given node identifier and that the plot title contains both the node name ("NodeABC") and the requested metric ("voltage").
-                """
-                result = await self.plugin.handle_room_message(
-                    room, event, full_message
-                )
+                async def run_test():
+                    """
+                    Verify that handling a room message for a specific node requests that node's data and includes the node and metric in the plot title.
 
-                self.assertTrue(result)
+                    Asserts that handle_room_message invokes get_node_data with the given node identifier and that the plot title contains both the node name ("NodeABC") and the requested metric ("voltage").
+                    """
+                    result = await self.plugin.handle_room_message(
+                        room, event, full_message
+                    )
 
-                # Should get data for specific node
-                self.plugin.get_node_data.assert_called_with("NodeABC")
+                    self.assertTrue(result)
 
-                # Should set title with node name
-                title_call = mock_ax.set_title.call_args[0][0]
-                self.assertIn("NodeABC", title_call)
-                self.assertIn("voltage", title_call)
+                    # Should get data for specific node
+                    self.plugin.get_node_data.assert_called_with("NodeABC")
 
-            import asyncio
+                    # Should set title with node name
+                    title_call = mock_ax.set_title.call_args[0][0]
+                    self.assertIn("NodeABC", title_call)
+                    self.assertIn("voltage", title_call)
 
-            asyncio.run(run_test())
+                asyncio.run(run_test())
 
 
 if __name__ == "__main__":

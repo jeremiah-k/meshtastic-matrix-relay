@@ -110,31 +110,25 @@ class TestHelpPlugin(unittest.TestCase):
         event.body = "full_message"
         event.source = {"content": {"formatted_body": ""}}
 
-        # Mock Matrix client get_displayname to return a string
-        with patch("mmrelay.matrix_utils.connect_matrix") as mock_connect:
-            mock_matrix_client = AsyncMock()
-            response_mock = MagicMock()
-            response_mock.displayname = "TestBot"
-            mock_matrix_client.get_displayname = AsyncMock(return_value=response_mock)
-            mock_connect.return_value = mock_matrix_client
-            import mmrelay.matrix_utils as mu
+        with patch("mmrelay.matrix_utils.bot_user_id", "@bot:matrix.org"), patch(
+            "mmrelay.matrix_utils.bot_user_name", "TestBot"
+        ):
 
-            mu.matrix_client = mock_matrix_client
-            mu.bot_user_id = "@bot:matrix.org"
+            async def run_test():
+                """
+                Verify that handle_room_message returns False and does not send a Matrix message when the event does not match the help command.
 
-        async def run_test():
-            """
-            Verify that handle_room_message returns False and does not send a Matrix message when the event does not match the help command.
+                Asserts that:
+                - The call result is False.
+                - send_matrix_message was not called.
+                """
+                result = await self.plugin.handle_room_message(
+                    room, event, "full_message"
+                )
+                self.assertFalse(result)
+                self.plugin.send_matrix_message.assert_not_called()
 
-            Asserts that:
-            - The call result is False.
-            - send_matrix_message was not called.
-            """
-            result = await self.plugin.handle_room_message(room, event, "full_message")
-            self.assertFalse(result)
-            self.plugin.send_matrix_message.assert_not_called()
-
-        asyncio.run(run_test())
+            asyncio.run(run_test())
 
     @patch("mmrelay.plugins.help_plugin.load_plugins")
     def test_handle_room_message_general_help(self, mock_load_plugins):
