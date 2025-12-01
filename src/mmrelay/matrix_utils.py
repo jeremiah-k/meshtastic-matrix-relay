@@ -896,11 +896,12 @@ def bot_command(
         return True
 
     mention_parts: list[str] = []
-    if bot_user_id:
-        mention_parts.append(re.escape(bot_user_id))
-    bot_name = bot_user_name or bot_user_id or ""
-    if bot_name:
-        mention_parts.append(re.escape(bot_name))
+    for ident in (bot_user_id, bot_user_name):
+        if ident:
+            try:
+                mention_parts.append(re.escape(str(ident)))
+            except Exception:
+                continue
 
     if not mention_parts:
         return False
