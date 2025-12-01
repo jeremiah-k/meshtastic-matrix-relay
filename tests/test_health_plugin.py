@@ -117,7 +117,7 @@ class TestHealthPlugin(unittest.TestCase):
     def test_generate_response_with_empty_nodes(self, mock_connect):
         """
         Verify that generate_response returns a user-facing message when no Meshtastic nodes are discovered.
-        
+
         Asserts that with an empty Meshtastic client node set, the plugin returns "No nodes discovered yet." instead of raising an error.
         """
         mock_meshtastic_client = MagicMock()

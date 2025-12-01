@@ -87,12 +87,12 @@ class BasePlugin(ABC):
     def __init__(self, plugin_name=None) -> None:
         """
         Initialize plugin state and load per-plugin configuration and runtime defaults.
-        
+
         Loads this plugin's configuration (searching "plugins", "community-plugins", then "custom-plugins"), builds mapped Matrix-to-meshtastic channels from the global `matrix_rooms` config (supporting dict or list formats), and establishes runtime attributes used by the plugin scheduler and messaging code (including `mapped_channels`, `channels`, and `response_delay`).
-        
+
         Parameters:
             plugin_name (str, optional): Override the class-level `plugin_name` for this instance.
-        
+
         Raises:
             ValueError: If no plugin name is available from the parameter, the instance, or the class attribute.
         """
@@ -487,9 +487,9 @@ class BasePlugin(ABC):
     def get_matrix_commands(self):
         """
         Return the Matrix command names this plugin responds to.
-        
+
         By default returns a single-item list containing the plugin's name; override to provide custom commands or aliases.
-        
+
         Returns:
             list[str]: Command names (without a leading '!' prefix)
         """
@@ -498,11 +498,11 @@ class BasePlugin(ABC):
     def get_matching_matrix_command(self, event) -> str | None:
         """
         Identify the first Matrix command that matches the given event.
-        
+
         Checks each command returned by get_matrix_commands() against the event using this plugin's bot-mention requirement.
-        
+
         Returns:
-        	The matching command string, or None if no command matches.
+                The matching command string, or None if no command matches.
         """
         from mmrelay.matrix_utils import bot_command
 
@@ -515,12 +515,12 @@ class BasePlugin(ABC):
     async def send_matrix_message(self, room_id, message, formatted=True):
         """
         Send a message to a Matrix room, optionally formatted as HTML.
-        
+
         Parameters:
             room_id (str): Matrix room identifier.
             message (str): Message content to send.
             formatted (bool): If True, send an HTML-formatted message (message is converted from Markdown); otherwise send plain text.
-        
+
         Returns:
             dict | None: The Matrix API response from the room send call, or `None` if the Matrix client could not be obtained.
         """
@@ -692,10 +692,10 @@ class BasePlugin(ABC):
     def get_require_bot_mention(self) -> bool:
         """
         Determine whether this plugin requires the bot to be mentioned.
-        
+
         Checks plugin-specific configuration first, then a cached global setting, and falls back
         to core/non-core defaults.
-        
+
         Returns:
             `true` if bot mentions are required for this plugin, `false` otherwise.
         """
@@ -719,13 +719,13 @@ class BasePlugin(ABC):
     ) -> bool:
         """
         Handle an incoming Meshtastic packet and perform plugin-specific processing.
-        
+
         Parameters:
             packet: Original Meshtastic packet (protobuf-derived dict or message).
             formatted_message (str): Clean, human-readable text payload.
             longname (str): Sender display name or node label.
             meshnet_name (str): Identifier of the originating mesh network.
-        
+
         Returns:
             `true` if the packet was handled, `false` otherwise.
         """
@@ -735,12 +735,12 @@ class BasePlugin(ABC):
     async def handle_room_message(self, room, event, full_message) -> bool:
         """
         Handle an incoming Matrix room message and perform plugin-specific processing.
-        
+
         Parameters:
             room: Matrix room object where the message was received.
             event: Matrix event object containing message metadata and sender.
             full_message: The full text content of the received message.
-        
+
         Returns:
             True if the message was handled by the plugin, False otherwise.
         """

@@ -34,7 +34,7 @@ from mmrelay.message_queue import MessageQueue
 def reset_global_state():
     """
     Reset mmrelay.meshtastic_utils module state and run garbage collection before and after a test.
-    
+
     This pytest fixture clears meshtastic-related globals (meshtastic_client, reconnecting, config, matrix_rooms,
     shutting_down, event_loop, reconnect_task, subscribed_to_messages, and subscribed_to_connection_lost) in
     mmrelay.meshtastic_utils to ensure test isolation, calls gc.collect() before yielding to the test, and calls

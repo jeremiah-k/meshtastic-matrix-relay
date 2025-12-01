@@ -74,11 +74,11 @@ _COMPONENT_LOGGERS = {
 def configure_component_debug_logging():
     """
     Configure external component loggers according to config["logging"]["debug"].
-    
+
     Reads the debug section of the global config and for each known component:
     - If enabled (True or a valid logging level string), sets the component loggers to the specified level and attaches the main application's handlers so their output appears alongside application logs.
     - If disabled (falsy or missing), sets the component loggers to a level higher than CRITICAL to suppress their output.
-    
+
     This function only applies its configuration once and is not thread-safe. Call it after the main application logger is configured and before importing modules that produce component logs.
     """
     global _component_debug_configured, config
@@ -144,10 +144,10 @@ def configure_component_debug_logging():
 def get_logger(name: str) -> logging.Logger:
     """
     Create and configure a logger with console output (colorized when available) and optional rotating file logging.
-    
+
     Parameters:
         name (str): Name of the logger. If file logging is enabled and `name` equals APP_DISPLAY_NAME, the global `log_file_path` will be set to the chosen logfile path.
-    
+
     Returns:
         logging.Logger: The configured logger instance.
     """

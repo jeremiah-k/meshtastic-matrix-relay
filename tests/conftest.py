@@ -364,11 +364,11 @@ class MockStaticmapsModule:
     def create_latlng(lat, lon):
         """
         Create a MockLatLng representing the given geographic coordinates.
-        
+
         Parameters:
             lat (float): Latitude in degrees.
             lon (float): Longitude in degrees.
-        
+
         Returns:
             MockLatLng: A mock LatLng object for the supplied coordinates.
         """
@@ -555,7 +555,7 @@ def reset_custom_data_dir():
 def reset_banner_flag():
     """
     Reset the mmrelay.main module's banner-printed flag before each test.
-    
+
     This autouse pytest fixture sets mmrelay.main._banner_printed to False and yields once so the test executes with the cleared flag.
     """
     import mmrelay.main
@@ -568,7 +568,7 @@ def reset_banner_flag():
 def reset_meshtastic_globals():
     """
     Reset and restore key globals in mmrelay.meshtastic_utils to ensure test isolation.
-    
+
     Saves the module-level state for attributes such as `config`, `meshtastic_client`,
     reconnect-related flags and tasks, and subscription flags; sets those attributes
     to a clean default state for the duration of a test, yields control to the
@@ -688,14 +688,14 @@ def mock_to_thread(monkeypatch):
     async def _to_thread(func, *args, **kwargs):
         """
         Execute a callable on the current thread and return its result.
-        
+
         Parameters:
-        	func (Callable): The callable to invoke.
-        	*args: Positional arguments to pass to `func`.
-        	**kwargs: Keyword arguments to pass to `func`.
-        
+                func (Callable): The callable to invoke.
+                *args: Positional arguments to pass to `func`.
+                **kwargs: Keyword arguments to pass to `func`.
+
         Returns:
-        	The value returned by `func`. Exceptions raised by `func` propagate to the caller.
+                The value returned by `func`. Exceptions raised by `func` propagate to the caller.
         """
         return func(*args, **kwargs)
 

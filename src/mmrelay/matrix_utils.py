@@ -3303,9 +3303,14 @@ async def on_room_message(
                 return False
         if hasattr(plugin_obj, "get_matrix_commands"):
             try:
-                require_mention = getattr(
+                require_mention_attr = getattr(
                     plugin_obj, "get_require_bot_mention", lambda: False
-                )()
+                )
+                require_mention = (
+                    require_mention_attr()
+                    if callable(require_mention_attr)
+                    else bool(require_mention_attr)
+                )
                 return any(
                     bot_command(cmd, event, require_mention=require_mention)
                     for cmd in plugin_obj.get_matrix_commands()

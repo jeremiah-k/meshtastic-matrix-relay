@@ -14,18 +14,18 @@ class Plugin(BasePlugin):
     def description(self) -> str:
         """
         Return a brief human-readable description of the plugin's purpose.
-        
+
         Returns:
             description (str): A short description indicating the plugin shows mesh health via average battery, SNR, and air utilization.
         """
         return "Show mesh health using avg battery, SNR, AirUtil"
 
     def generate_response(self) -> str:
-        """
+        r"""
         Generate a concise health summary for the mesh based on metrics reported by discovered Meshtastic nodes.
-        
+
         Queries a Meshtastic client for connected nodes, extracts battery levels, air utilization (tx), and SNR values, computes counts, averages, medians, and the number of nodes with battery < 10, and formats these into a multi-line human-readable summary. If the Meshtastic client cannot be obtained or no nodes are discovered, returns a short explanatory message.
-        
+
         Returns:
             str: A multi-line summary containing:
                 - Nodes: total number of nodes
@@ -33,7 +33,7 @@ class Plugin(BasePlugin):
                 - Nodes with Low Battery (< 10): count of low-battery nodes (0 if no battery data)
                 - Air Util: average and median air utilization, or "Air Util: N/A" if no air-util data
                 - SNR: average and median signal-to-noise ratio, or "SNR: N/A" if no SNR data
-        
+
             Special return values:
                 - "Unable to connect to Meshtastic device." if the Meshtastic client could not be created.
                 - "No nodes discovered yet." if the client has no discovered nodes.
@@ -110,13 +110,13 @@ class Plugin(BasePlugin):
     ) -> bool:
         """
         Indicates that this plugin does not handle incoming Meshtastic packets.
-        
+
         Parameters:
             packet: The raw Meshtastic packet payload.
             formatted_message (str): Human-readable representation of the packet.
             longname (str): Display name of the sending node.
             meshnet_name (str): Name of the mesh network the packet originated from.
-        
+
         Returns:
             bool: `False` since this plugin does not process Meshtastic messages.
         """
@@ -127,14 +127,14 @@ class Plugin(BasePlugin):
     ) -> bool:
         """
         Handle a Matrix room message that triggers this plugin and send a mesh health response.
-        
+
         If the incoming event matches this plugin, generate the mesh health summary (off the event loop) and send it to the room.
-        
+
         Parameters:
             room (MatrixRoom): The room where the message was received.
             event (RoomMessageText): The Matrix message event used to determine a match.
             full_message (str): The full text of the received message.
-        
+
         Returns:
             true if the message matched this plugin and was handled, false otherwise.
         """

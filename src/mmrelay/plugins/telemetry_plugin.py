@@ -16,7 +16,7 @@ class Plugin(BasePlugin):
     def commands(self):
         """
         Return the list of supported telemetry metric command names.
-        
+
         Returns:
             list[str]: Supported telemetry commands: "batteryLevel", "voltage", and "airUtilTx".
         """
@@ -26,7 +26,7 @@ class Plugin(BasePlugin):
     def description(self) -> str:
         """
         Short description of the plugin's visualization purpose.
-        
+
         Returns:
             str: Description text "Graph of avg Mesh telemetry value for last 12 hours".
         """
@@ -36,12 +36,12 @@ class Plugin(BasePlugin):
         # Calculate the start and end times
         """
         Generate a list of hourly datetime anchors spanning the past `hours` hours up to now.
-        
+
         Parameters:
-        	hours (int): Number of hours to look back from the current time (default 12).
-        
+                hours (int): Number of hours to look back from the current time (default 12).
+
         Returns:
-        	hourly_intervals (list[datetime.datetime]): List of datetime objects at hourly intervals from (now - hours) up to and including the current time.
+                hourly_intervals (list[datetime.datetime]): List of datetime objects at hourly intervals from (now - hours) up to and including the current time.
         """
         end_time = datetime.now()
         start_time = end_time - timedelta(hours=hours)
@@ -60,12 +60,12 @@ class Plugin(BasePlugin):
         # Support deviceMetrics only for now
         """
         Process an incoming Meshtastic packet and record deviceMetrics telemetry for the sender when present.
-        
+
         If the packet contains `decoded.telemetry.deviceMetrics` and `decoded.portnum == "TELEMETRY_APP"`, extracts `time`, `batteryLevel`, `voltage`, and `airUtilTx` (each telemetry field defaults to 0 if missing) and appends a telemetry record to the sender's node data via `set_node_data`.
-        
+
         Parameters:
             packet (dict): Meshtastic packet dictionary; expected to contain `decoded` with `portnum` and a `telemetry` object that includes `deviceMetrics`. Other parameters (formatted_message, longname, meshnet_name) are not inspected by this function.
-        
+
         Returns:
             False
         """
@@ -111,7 +111,7 @@ class Plugin(BasePlugin):
     def get_matrix_commands(self):
         """
         Return the telemetry command names supported for Matrix commands.
-        
+
         Returns:
             list[str]: A list of supported command names: ["batteryLevel", "voltage", "airUtilTx"].
         """
@@ -120,7 +120,7 @@ class Plugin(BasePlugin):
     def get_mesh_commands(self):
         """
         List the supported mesh commands for this plugin.
-        
+
         Returns:
             list: An empty list indicating no mesh commands are supported.
         """
@@ -130,14 +130,14 @@ class Plugin(BasePlugin):
         # Pass the event to matches()
         """
         Handle a Matrix room message requesting a telemetry graph and send the generated image to the originating room.
-        
+
         Parses a telemetry command (`!batteryLevel`, `!voltage`, or `!airUtilTx`) optionally followed by a node identifier, computes hourly averages for the last 12 hours (per-node or network-wide), generates a line plot of those averages, and uploads the image to the room.
-        
+
         Parameters:
             room: Matrix room object where the event originated; used to determine the destination room_id.
             event: Matrix event used to detect whether the message matches a supported telemetry command.
             full_message (str): Full plaintext message content used to parse the command and optional node identifier.
-        
+
         Returns:
             `true` if the message matched a telemetry command and the graph was generated and sent (or a user-facing notification was sent when a requested node had no data); `false` otherwise.
         """

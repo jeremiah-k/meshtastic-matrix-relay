@@ -238,7 +238,7 @@ class TestTelemetryPlugin(unittest.TestCase):
         async def run_test():
             """
             Verify the plugin ignores a non-telemetry Meshtastic packet.
-            
+
             Asserts that handle_meshtastic_message returns False and that no node data is stored (set_node_data is not called).
             """
             result = await self.plugin.handle_meshtastic_message(
@@ -273,7 +273,7 @@ class TestTelemetryPlugin(unittest.TestCase):
         async def run_test():
             """
             Verify that a non-telemetry Meshtastic packet is ignored by the plugin.
-            
+
             Calls handle_meshtastic_message with a non-telemetry packet and asserts it returns False and does not call set_node_data.
             """
             result = await self.plugin.handle_meshtastic_message(
@@ -415,7 +415,7 @@ class TestTelemetryPlugin(unittest.TestCase):
             async def run_test():
                 """
                 Run the async test that verifies handle_room_message processes a room message to produce and send a plot image.
-                
+
                 Verifies the handler returns a truthy result, creates a plot with expected labels ("Hour" x-axis, "batteryLevel" y-axis), and calls image upload and send operations.
                 """
                 result = await self.plugin.handle_room_message(
@@ -491,7 +491,7 @@ class TestTelemetryPlugin(unittest.TestCase):
             async def run_test():
                 """
                 Verify that handling a room message for a specific node requests that node's data and includes the node and metric in the plot title.
-                
+
                 Asserts that handle_room_message invokes get_node_data with the given node identifier and that the plot title contains both the node name ("NodeABC") and the requested metric ("voltage").
                 """
                 result = await self.plugin.handle_room_message(

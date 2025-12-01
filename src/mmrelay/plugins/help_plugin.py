@@ -33,13 +33,13 @@ class Plugin(BasePlugin):
     ) -> bool:
         """
         Indicate that this plugin does not handle incoming Meshtastic messages.
-        
+
         Parameters:
             packet: Raw Meshtastic packet data.
             formatted_message: Human-readable string representation of the message.
             longname: Sender's long display name.
             meshnet_name: Name of the mesh network the message originated from.
-        
+
         Returns:
             `True` if the message was handled by the plugin, `False` otherwise. This implementation always returns `False`.
         """
@@ -48,7 +48,7 @@ class Plugin(BasePlugin):
     def get_matrix_commands(self):
         """
         List Matrix commands provided by this plugin.
-        
+
         Returns:
             list: Command names handled by this plugin (e.g., ['help']).
         """

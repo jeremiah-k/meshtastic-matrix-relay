@@ -33,7 +33,7 @@ class Plugin(BasePlugin):
     def _normalize_mode(self, mode: str) -> str:
         """
         Normalize a mode/command string to one of the supported forecast modes.
-        
+
         Returns:
             str: One of "weather", "hourly", or "weekly". Unrecognized or empty input defaults to "weather".
         """
@@ -164,11 +164,11 @@ class Plugin(BasePlugin):
             def _safe_get(seq, idx):
                 """
                 Safely retrieve an item from a sequence or mapping by index/key.
-                
+
                 Parameters:
                     seq: Sequence or mapping to index into; may be None or not subscriptable.
                     idx: Index or key used to access `seq`.
-                
+
                 Returns:
                     The value at `seq[idx]` if accessible, or `None` if the index/key is missing or `seq` cannot be indexed.
                 """
@@ -180,12 +180,12 @@ class Plugin(BasePlugin):
             def get_hourly(idx):
                 """
                 Fetch hourly weather values at the given hourly index from the parsed API data arrays.
-                
+
                 Parameters:
-                	idx (int): Hour offset index into the hourly arrays (0-based).
-                
+                        idx (int): Hour offset index into the hourly arrays (0-based).
+
                 Returns:
-                	tuple: (temperature, precipitation, weather_code, is_day, humidity, wind_speed, wind_direction) where each element is the value at `idx` or `None` if that value is unavailable.
+                        tuple: (temperature, precipitation, weather_code, is_day, humidity, wind_speed, wind_direction) where each element is the value at `idx` or `None` if that value is unavailable.
                 """
                 temp = _safe_get(temps, idx)
                 precip = _safe_get(precips, idx)
@@ -345,7 +345,7 @@ class Plugin(BasePlugin):
     ) -> str:
         """
         Builds a concise hourly forecast string starting with a "Now" segment followed by the requested slot segments.
-        
+
         Parameters:
             current_temp (float | None): Current temperature or None if unavailable.
             current_weather_code (int): Weather code used to produce the descriptive text for the current time.
@@ -353,7 +353,7 @@ class Plugin(BasePlugin):
             forecast_hours (dict): Mapping from slot label to a tuple with at least (temperature, precipitation_percent, weather_code, is_day). Missing values may be None.
             temperature_unit (str): Unit symbol appended to temperatures (e.g., "°C" or "°F").
             slots (list[str]): Ordered slot labels to include after "Now" (for example ["+2h", "+5h", "+12h"]).
-        
+
         Returns:
             str: A compact forecast string where each segment is formatted as "<label>: <description> - <temp><unit> <precip>%" and segments with missing data show "Data unavailable"; the result is trimmed to the plugin's configured maximum length.
         """
@@ -383,10 +383,10 @@ class Plugin(BasePlugin):
     def _trim_to_max_bytes(text: str) -> str:
         """
         Trim a UTF-8 string so its UTF-8 encoding does not exceed MAX_FORECAST_LENGTH bytes.
-        
+
         Parameters:
             text (str): Input string to trim.
-        
+
         Returns:
             str: The original string if its UTF-8 encoding is within the limit, otherwise a truncated string whose UTF-8 encoding is at most MAX_FORECAST_LENGTH bytes (any partial trailing UTF-8 character is removed).
         """
@@ -560,7 +560,7 @@ class Plugin(BasePlugin):
     def get_matrix_commands(self):
         """
         List command names the plugin exposes to Matrix integrations.
-        
+
         Returns:
             list[str]: Command strings supported by this plugin.
         """
@@ -578,14 +578,14 @@ class Plugin(BasePlugin):
     async def handle_room_message(self, room, event, full_message) -> bool:
         """
         Handle a Matrix room message invoking the weather plugin and post a forecast to the room.
-        
+
         Parses the room message for a supported weather command, resolves coordinates from command arguments, mesh-derived location, or geocoding, generates a forecast for the resolved coordinates, and sends the forecast back to the Matrix room. If a location cannot be determined, posts "Cannot determine location" to the room.
-        
+
         Parameters:
             room: The Matrix room object where the event originated.
             event: The Matrix event object to evaluate for a plugin match.
             full_message (str): The raw message text used to extract command arguments.
-        
+
         Returns:
             bool: `True` if the event matched the plugin and was handled (a response was sent or attempted), `False` if the event did not match and was not handled.
         """
@@ -729,9 +729,9 @@ class Plugin(BasePlugin):
     def _geocode_location(self, query: str) -> tuple[float, float] | None:
         """
         Resolve a free-form location string to geographic coordinates using the Open-Meteo geocoding API.
-        
+
         Queries the Open-Meteo geocoding endpoint and returns the first result's latitude and longitude as floats.
-        
+
         Returns:
             tuple[float, float] | None: A (latitude, longitude) pair as floats if a result is found, `None` otherwise.
         """

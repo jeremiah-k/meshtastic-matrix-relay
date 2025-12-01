@@ -48,7 +48,7 @@ class MockPlugin(BasePlugin):
     async def handle_room_message(self, room, event, full_message) -> None:
         """
         Handle a Matrix room message event without processing it.
-        
+
         Parameters:
             room: The Matrix room where the event occurred.
             event: The Matrix event object.

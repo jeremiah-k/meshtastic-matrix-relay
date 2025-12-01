@@ -145,13 +145,18 @@ class Plugin(BasePlugin):
 
         if is_direct_message:
             # Send reply as DM
-            meshtastic_client.sendText(
+            await asyncio.to_thread(
+                meshtastic_client.sendText,
                 text=reply_message,
                 destinationId=fromId,
             )
         else:
             # Send reply back to the same channel
-            meshtastic_client.sendText(text=reply_message, channelIndex=channel)
+            await asyncio.to_thread(
+                meshtastic_client.sendText,
+                text=reply_message,
+                channelIndex=channel,
+            )
         return True
 
     def get_matrix_commands(self) -> list[str]:
@@ -183,7 +188,7 @@ class Plugin(BasePlugin):
             full_message: The raw or normalized message text content of the event.
 
         Returns:
-            bool: `true` if the message matched and a reply was sent, `false` otherwise.
+            bool: `True` if the message matched and a reply was sent, `False` otherwise.
         """
         if not self.matches(event):
             return False

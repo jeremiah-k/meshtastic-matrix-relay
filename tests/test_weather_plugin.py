@@ -23,6 +23,8 @@ import pytest
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from meshtastic.mesh_interface import BROADCAST_NUM
+
 from mmrelay.constants.messages import PORTNUM_TEXT_MESSAGE_APP
 from mmrelay.plugins.weather_plugin import Plugin
 
@@ -340,7 +342,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         )
         self.plugin.send_matrix_message.assert_called_once()
 
-    @patch("requests.get")
+    @patch("mmrelay.plugins.weather_plugin.requests.get")
     def test_generate_forecast_metric_units(self, mock_get):
         """
         Test that the weather forecast is generated correctly using metric units.
@@ -406,7 +408,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Precip 10%", forecast)
         self.assertNotIn("+1h", forecast)
 
-    @patch("requests.get")
+    @patch("mmrelay.plugins.weather_plugin.requests.get")
     def test_generate_forecast_imperial_units(self, mock_get):
         """
         Test that the weather forecast is generated with temperatures converted to Fahrenheit when imperial units are configured.
@@ -424,7 +426,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         self.assertIn("72.5°F", forecast)
         self.assertIn("Wind", forecast)
 
-    @patch("requests.get")
+    @patch("mmrelay.plugins.weather_plugin.requests.get")
     def test_generate_forecast_time_based_indexing_early_morning(self, mock_get):
         """Test time-based indexing when current time is early morning (2:00 AM)."""
         # Create weather data for early morning scenario
@@ -456,7 +458,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         self.assertIn("+6h", forecast)
         self.assertIn("+12h", forecast)
 
-    @patch("requests.get")
+    @patch("mmrelay.plugins.weather_plugin.requests.get")
     def test_generate_forecast_time_based_indexing_late_evening(self, mock_get):
         """Test time-based indexing when current time is late evening (22:00)."""
         # Create weather data for late evening scenario
@@ -487,7 +489,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         self.assertIn("+6h", forecast)
         self.assertIn("+12h", forecast)
 
-    @patch("requests.get")
+    @patch("mmrelay.plugins.weather_plugin.requests.get")
     def test_generate_forecast_bounds_checking(self, mock_get):
         """Test that forecast indices are properly bounded to prevent array overflow."""
         # Create weather data with limited hours (only 24 hours)
@@ -516,7 +518,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         self.assertIn("+3h", forecast)
         self.assertIn("+6h", forecast)
 
-    @patch("requests.get")
+    @patch("mmrelay.plugins.weather_plugin.requests.get")
     def test_generate_forecast_datetime_parsing_with_timezone(self, mock_get):
         """Test datetime parsing with different timezone formats."""
         timezone_data = {
@@ -544,7 +546,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         self.assertIn("25.0°C", forecast)
         self.assertIn("☀️ Clear sky", forecast)
 
-    @patch("requests.get")
+    @patch("mmrelay.plugins.weather_plugin.requests.get")
     def test_generate_forecast_timezone_offset_parsing(self, mock_get):
         """Test datetime parsing with timezone offset format."""
         offset_data = {
@@ -572,7 +574,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         self.assertIn("22.0°C", forecast)
         self.assertIn("⛅️ Partly cloudy", forecast)
 
-    @patch("requests.get")
+    @patch("mmrelay.plugins.weather_plugin.requests.get")
     def test_generate_forecast_invalid_time_defaults_to_zero(self, mock_get):
         """Test that malformed timestamps default to hour=0 without raising exceptions."""
         invalid_time_data = {
@@ -598,7 +600,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Now:", forecast)
         self.assertIn("20.0°C", forecast)  # Current temp
 
-    @patch("requests.get")
+    @patch("mmrelay.plugins.weather_plugin.requests.get")
     def test_generate_forecast_http_error(self, mock_get):
         """Test that HTTP errors are handled gracefully."""
         import requests
@@ -611,7 +613,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         # The test should pass with either error message since both indicate proper error handling
         self.assertIn("Error", forecast)
 
-    @patch("requests.get")
+    @patch("mmrelay.plugins.weather_plugin.requests.get")
     def test_generate_forecast_empty_hourly_data(self, mock_get):
         """Test that empty hourly data is handled gracefully."""
         empty_hourly_data = {
@@ -638,7 +640,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         forecast = self.plugin.generate_forecast(40.7128, -74.0060)
         self.assertEqual(forecast, "Weather data temporarily unavailable.")
 
-    @patch("requests.get")
+    @patch("mmrelay.plugins.weather_plugin.requests.get")
     def test_generate_forecast_timestamp_anchoring(self, mock_get):
         """Test that forecast indexing uses timestamp anchoring when available."""
         # Create data where timestamp anchoring would give different results than hour-of-day
@@ -670,7 +672,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         self.assertIn("+3h", forecast)
         self.assertIn("+6h", forecast)
 
-    @patch("requests.get")
+    @patch("mmrelay.plugins.weather_plugin.requests.get")
     def test_generate_forecast_night_weather_codes(self, mock_get):
         """
         Test that the forecast generation uses night-specific weather descriptions and emojis when night weather codes are present in the API response.
@@ -688,7 +690,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         # Should use night weather descriptions
         self.assertIn(_normalize_emoji("🌙🌤️ Mainly clear"), _normalize_emoji(forecast))
 
-    @patch("requests.get")
+    @patch("mmrelay.plugins.weather_plugin.requests.get")
     def test_generate_forecast_unknown_weather_code(self, mock_get):
         """
         Test that the forecast generation handles unknown weather codes gracefully.
@@ -748,6 +750,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
             packet, "formatted_message", "longname", "meshnet_name"
         )
         self.assertFalse(result)
+        mock_connect.assert_not_called()
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     async def test_handle_meshtastic_message_channel_not_enabled(self, mock_connect):
@@ -774,9 +777,10 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         self.plugin.is_channel_enabled.assert_called_once_with(
             0, is_direct_message=False
         )
+        mock_connect.assert_not_called()
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
-    @patch("requests.get")
+    @patch("mmrelay.plugins.weather_plugin.requests.get")
     async def test_handle_meshtastic_message_direct_message_with_location(
         self, mock_get, mock_connect
     ):
@@ -853,7 +857,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
             "decoded": {"portnum": PORTNUM_TEXT_MESSAGE_APP, "text": "!weather"},
             "channel": 0,
             "fromId": "!12345678",
-            "to": 4294967295,  # BROADCAST_NUM
+            "to": BROADCAST_NUM,  # BROADCAST_NUM
         }
 
         result = await self.plugin.handle_meshtastic_message(
@@ -892,7 +896,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
             },
             "channel": 0,
             "fromId": "!12345678",
-            "to": 4294967295,  # BROADCAST_NUM
+            "to": BROADCAST_NUM,  # BROADCAST_NUM
         }
 
         result = await self.plugin.handle_meshtastic_message(
@@ -922,7 +926,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
             "decoded": {"portnum": PORTNUM_TEXT_MESSAGE_APP, "text": "!weather Boston"},
             "channel": 0,
             "fromId": "!12345678",
-            "to": 4294967295,  # BROADCAST_NUM
+            "to": BROADCAST_NUM,  # BROADCAST_NUM
         }
 
         result = await self.plugin.handle_meshtastic_message(
@@ -956,7 +960,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
             "decoded": {"portnum": PORTNUM_TEXT_MESSAGE_APP, "text": "!weather"},
             "channel": 0,
             "fromId": "!requester",
-            "to": 4294967295,
+            "to": BROADCAST_NUM,
         }
 
         await self.plugin.handle_meshtastic_message(
@@ -969,7 +973,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         self.assertAlmostEqual(call_args.kwargs["longitude"], 20.0)
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
-    @patch("requests.get")
+    @patch("mmrelay.plugins.weather_plugin.requests.get")
     async def test_handle_meshtastic_message_broadcast_with_location(
         self, mock_get, mock_connect
     ):
@@ -999,7 +1003,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
             "decoded": {"portnum": PORTNUM_TEXT_MESSAGE_APP, "text": "!weather"},
             "channel": 0,
             "fromId": "!12345678",
-            "to": 4294967295,  # BROADCAST_NUM
+            "to": BROADCAST_NUM,  # BROADCAST_NUM
         }
 
         result = await self.plugin.handle_meshtastic_message(
@@ -1037,7 +1041,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
             "decoded": {"portnum": PORTNUM_TEXT_MESSAGE_APP, "text": "!weather"},
             "channel": 0,
             "fromId": "!unknown",
-            "to": 4294967295,
+            "to": BROADCAST_NUM,
         }
 
         result = await self.plugin.handle_meshtastic_message(
@@ -1141,7 +1145,6 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
 
     async def test_handle_meshtastic_message_broadcast_message_detection(self):
         """Test that broadcast messages are properly detected."""
-        from meshtastic.mesh_interface import BROADCAST_NUM
 
         # Mock packet for broadcast message
         packet = {

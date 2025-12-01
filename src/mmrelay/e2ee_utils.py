@@ -37,11 +37,11 @@ def get_e2ee_status(
 ) -> E2EEStatus:
     """
     Consolidates E2EE readiness information by inspecting the runtime platform, required crypto dependencies, configuration, and presence of Matrix credentials.
-    
+
     Parameters:
         config (Dict[str, Any]): Parsed application configuration; used to read `matrix.e2ee.enabled` and legacy `matrix.encryption.enabled`.
         config_path (Optional[str]): Optional path to the configuration file; when provided the directory containing this path is checked first for `credentials.json`, otherwise the application's base directory is used.
-    
+
     Returns:
         E2EEStatus: A dict with the following keys:
           - enabled (bool): E2EE enabled in configuration.
