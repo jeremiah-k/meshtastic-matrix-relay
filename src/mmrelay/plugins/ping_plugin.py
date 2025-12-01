@@ -118,8 +118,8 @@ class Plugin(BasePlugin):
         elif toId == BROADCAST_NUM:
             is_direct_message = False
         else:
-            # Message to someone else; do not respond
-            return False
+            # Treat unknown destinations as broadcast to mirror previous behavior
+            is_direct_message = False
 
         if not self.is_channel_enabled(channel, is_direct_message=is_direct_message):
             return False
