@@ -82,8 +82,9 @@ class Plugin(BasePlugin):
                 "offsets": [],
             },
             "hourly": {
-                "slots": ["+1h", "+3h", "+6h", "+12h", "+24h"],
-                "offsets": [1, 3, 6, 12, 24],
+                # Keep the hourly forecast compact to fit mesh payload limits
+                "slots": ["+3h", "+6h", "+12h"],
+                "offsets": [3, 6, 12],
             },
         }
         mode_offsets = hourly_config.get(mode_key, hourly_config["weather"])
@@ -314,7 +315,7 @@ class Plugin(BasePlugin):
                 f"{round(max_temp, 1)}{temperature_unit}/"
                 f"{round(min_temp, 1)}{temperature_unit}"
             )
-        return " | ".join(segments)[:MAX_FORECAST_LENGTH]
+        return self._trim_to_max_bytes(" | ".join(segments))
 
     def _build_hourly_forecast(
         self,
@@ -363,7 +364,17 @@ class Plugin(BasePlugin):
                     f"{temp}{temperature_unit} {precip}%"
                 )
 
-        return forecast[:MAX_FORECAST_LENGTH]
+        return self._trim_to_max_bytes(forecast)
+
+    @staticmethod
+    def _trim_to_max_bytes(text: str) -> str:
+        encoded = text.encode("utf-8")
+        if len(encoded) <= MAX_FORECAST_LENGTH:
+            return text
+        while len(encoded) > MAX_FORECAST_LENGTH and text:
+            text = text[:-1]
+            encoded = text.encode("utf-8")
+        return text
 
     @staticmethod
     def _weather_code_to_text(weather_code: int, is_day: int) -> str:

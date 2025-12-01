@@ -455,8 +455,9 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         # Current time is 2:00 AM (index 2)
         # Near-term forecasts are provided by hourly mode
         forecast = self.plugin.generate_forecast(40.7128, -74.0060, mode="hourly")
-        self.assertIn("+1h", forecast)
         self.assertIn("+3h", forecast)
+        self.assertIn("+6h", forecast)
+        self.assertIn("+12h", forecast)
 
     @patch("requests.get")
     def test_generate_forecast_time_based_indexing_late_evening(self, mock_get):
@@ -487,8 +488,9 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
 
         # Current time is 22:00 (index 22)
         forecast = self.plugin.generate_forecast(40.7128, -74.0060, mode="hourly")
-        self.assertIn("+1h", forecast)
         self.assertIn("+3h", forecast)
+        self.assertIn("+6h", forecast)
+        self.assertIn("+12h", forecast)
 
     @patch("requests.get")
     def test_generate_forecast_bounds_checking(self, mock_get):
@@ -518,8 +520,8 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
 
         # Current time is 21:00 (index 21)
         forecast = self.plugin.generate_forecast(40.7128, -74.0060, mode="hourly")
-        self.assertIn("+1h", forecast)
         self.assertIn("+3h", forecast)
+        self.assertIn("+6h", forecast)
 
     @patch("requests.get")
     def test_generate_forecast_datetime_parsing_with_timezone(self, mock_get):
@@ -672,8 +674,8 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         mock_get.return_value = mock_response
 
         forecast = self.plugin.generate_forecast(40.7128, -74.0060, mode="hourly")
-        self.assertIn("+1h", forecast)
         self.assertIn("+3h", forecast)
+        self.assertIn("+6h", forecast)
 
     @patch("requests.get")
     def test_generate_forecast_night_weather_codes(self, mock_get):
@@ -1125,8 +1127,8 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
 
                 # Should still return a forecast (using fallback indexing)
                 self.assertIn("Now:", result)
-                self.assertIn("+1h:", result)
                 self.assertIn("+3h:", result)
+                self.assertIn("+6h:", result)
 
                 # Should log warning about timestamp fallback
                 mock_logger.warning.assert_called_once_with(
