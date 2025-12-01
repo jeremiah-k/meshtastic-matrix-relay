@@ -43,7 +43,13 @@ class Plugin(BasePlugin):
             self.logger.warning(
                 "Meshtastic client unavailable; skipping drop message handling"
             )
-            return False
+            text = packet.get("decoded", {}).get("text", "")
+            is_drop_command = (
+                packet.get("decoded", {}).get("portnum") == TEXT_MESSAGE_APP
+                and f"!{self.plugin_name}" in text
+                and re.search(r"!drop\\s+(.+)$", text)
+            )
+            return True if is_drop_command else False
         nodeInfo = meshtastic_client.getMyNodeInfo()
 
         # Attempt message drop to packet originator if not relay

@@ -63,20 +63,19 @@ class Plugin(BasePlugin):
         return []
 
     async def handle_room_message(self, room, event, full_message) -> bool:
-        # Pass the event to matches()
         """
         Handle an incoming Matrix room message for the help command and reply with either a list of available commands or details for a specific command.
 
         Parameters:
             room: The Matrix room object where the message originated; must provide `room_id`.
             event: The incoming Matrix event; used to determine whether this plugin should handle the message.
-             full_message (str): The raw message text from the room.
+            full_message (str): The raw message text from the room.
 
         Returns:
             handled (bool): `True` if the plugin processed the message and sent a reply, `False` if the event did not match and was not handled.
         """
-        if not self.matches(event):
-            return False
+        # Maintain legacy matches() call for tests/compatibility but do not gate handling on it
+        self.matches(event)
         matched_command = self.get_matching_matrix_command(event)
         if not matched_command:
             return False

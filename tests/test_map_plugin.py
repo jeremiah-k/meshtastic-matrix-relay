@@ -499,7 +499,7 @@ class TestMapPlugin(unittest.TestCase):
         mock_connect_matrix,
         mock_connect_meshtastic_async,
         mock_get_map,
-        mock_send_image,
+        _mock_send_image,
     ):
         """
         Verify that handling a room command "!map zoom=15" triggers map generation with zoom=15 and that the handler returns True.
@@ -562,7 +562,7 @@ class TestMapPlugin(unittest.TestCase):
         mock_connect_matrix,
         mock_connect_meshtastic_async,
         mock_get_map,
-        mock_send_image,
+        _mock_send_image,
     ):
         """
         Tests that the plugin processes a "!map" command with a custom image size, ensuring the generated map uses the specified dimensions.
@@ -648,7 +648,7 @@ class TestMapPlugin(unittest.TestCase):
         mock_connect_matrix,
         mock_connect_meshtastic_async,
         mock_get_map,
-        mock_send_image,
+        _mock_send_image,
     ):
         """
         Verify that handling a room "!map" command substitutes an invalid zoom value with the plugin's default zoom.
@@ -715,10 +715,10 @@ class TestMapPlugin(unittest.TestCase):
         mock_connect_matrix,
         mock_connect_meshtastic_async,
         mock_get_map,
-        mock_send_image,
+        _mock_send_image,
     ):
         """
-        Verify that oversized image size parameters in a "!map" room command are capped to 1000×1000 pixels.
+        Verify that oversized image size parameters in a "!map" room command are capped to 1000x1000 pixels.
 
         Asserts that the plugin processes the command successfully and calls get_map with image_size set to (1000, 1000).
         """

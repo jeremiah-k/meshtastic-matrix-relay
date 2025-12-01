@@ -67,7 +67,7 @@ class Plugin(BasePlugin):
             packet (dict): Meshtastic packet dictionary; expected to contain `decoded` with `portnum` and a `telemetry` object that includes `deviceMetrics`. Other parameters (formatted_message, longname, meshnet_name) are not inspected by this function.
 
         Returns:
-            False
+            bool: Always `False`; this plugin records telemetry data but does not consume the message, allowing other handlers to process it.
         """
         if (
             "decoded" in packet

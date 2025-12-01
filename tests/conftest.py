@@ -381,7 +381,7 @@ sys.modules["staticmaps"] = MockStaticmapsModule()
 @pytest.fixture(autouse=True)
 def meshtastic_loop_safety(monkeypatch):
     """
-    Module-scoped pytest fixture that provides a dedicated asyncio event loop for tests that interact with mmrelay.meshtastic_utils.
+    Function-scoped pytest fixture that provides a dedicated asyncio event loop for tests that interact with mmrelay.meshtastic_utils.
 
     Creates a fresh event loop, assigns it to mmrelay.meshtastic_utils.event_loop for the duration of the test module, yields the loop to tests, and on teardown cancels any remaining tasks, awaits their completion, closes the loop, and clears the global event loop reference.
 

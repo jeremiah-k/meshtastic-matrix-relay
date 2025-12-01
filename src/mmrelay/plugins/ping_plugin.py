@@ -178,7 +178,6 @@ class Plugin(BasePlugin):
         return [self.plugin_name]
 
     async def handle_room_message(self, room, event, full_message) -> bool:
-        # Pass event to matches()
         """
         Handle a Matrix room message that matches this plugin's trigger and reply with "pong!".
 

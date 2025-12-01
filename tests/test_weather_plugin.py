@@ -1151,7 +1151,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
                 "portnum": PORTNUM_TEXT_MESSAGE_APP,
                 "text": "!weather",  # Use "text" not "payload"
             },
-            "from": 123456789,
+            "fromId": 123456789,
             "to": BROADCAST_NUM,  # Broadcast message
             "channel": 0,
         }
