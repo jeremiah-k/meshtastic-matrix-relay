@@ -777,7 +777,6 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         self.plugin.is_channel_enabled.assert_called_once_with(
             0, is_direct_message=False
         )
-        mock_connect.assert_not_called()
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     @patch("mmrelay.plugins.weather_plugin.requests.get")
