@@ -13,9 +13,12 @@ def match_case(source: str, target: str) -> str:
     """
     Match the case pattern of the source string and apply it to the target string.
 
+    If lengths differ, the target is truncated to the source length. An empty
+    source returns an empty string; an empty target is returned unchanged.
+
     If the source is all uppercase, make the target all uppercase.
     If the source is all lowercase, make the target all lowercase.
-    If the source is capitalized (first letter uppercase, rest lowercase), capitalize the target.
+    If the source is title-cased (first letter uppercase, rest lowercase), capitalize the target.
     Otherwise, match the case of each character from the source to the target.
 
     Args:
@@ -38,20 +41,13 @@ def match_case(source: str, target: str) -> str:
         return target.upper()
     elif source.islower():
         return target.lower()
-    elif source[0].isupper() and source[1:].islower():
+    elif source.istitle():
         return target.capitalize()
     else:
         # For mixed case, match the pattern of each character
-        result = []
-        for i, char in enumerate(source):
-            if i < len(target):
-                if char.isupper():
-                    result.append(target[i].upper())
-                elif char.islower():
-                    result.append(target[i].lower())
-                else:
-                    result.append(target[i])
-        return "".join(result)
+        return "".join(
+            t.upper() if s.isupper() else t.lower() for s, t in zip(source, target)
+        )
 
 
 class Plugin(BasePlugin):

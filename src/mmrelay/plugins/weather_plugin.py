@@ -371,10 +371,8 @@ class Plugin(BasePlugin):
         encoded = text.encode("utf-8")
         if len(encoded) <= MAX_FORECAST_LENGTH:
             return text
-        while len(encoded) > MAX_FORECAST_LENGTH and text:
-            text = text[:-1]
-            encoded = text.encode("utf-8")
-        return text
+        # Truncate byte string and decode, ignoring partial trailing characters.
+        return encoded[:MAX_FORECAST_LENGTH].decode("utf-8", "ignore")
 
     @staticmethod
     def _weather_code_to_text(weather_code: int, is_day: int) -> str:
