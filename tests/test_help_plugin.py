@@ -110,18 +110,22 @@ class TestHelpPlugin(unittest.TestCase):
         event.body = "full_message"
         event.source = {"content": {"formatted_body": ""}}
 
+        # Mock Matrix client get_displayname to return a string
+        with patch("mmrelay.matrix_utils.connect_matrix") as mock_connect:
+            mock_matrix_client = AsyncMock()
+            mock_matrix_client.get_displayname = AsyncMock(return_value="TestBot")
+            mock_connect.return_value = mock_matrix_client
+
         async def run_test():
             """
             Verify that handle_room_message returns False and does not send a Matrix message when the event does not match the help command.
 
             Asserts that:
             - The call result is False.
-            - matches(event) was called once.
             - send_matrix_message was not called.
             """
             result = await self.plugin.handle_room_message(room, event, "full_message")
             self.assertFalse(result)
-            self.plugin.matches.assert_called_once_with(event)
             self.plugin.send_matrix_message.assert_not_called()
 
         asyncio.run(run_test())

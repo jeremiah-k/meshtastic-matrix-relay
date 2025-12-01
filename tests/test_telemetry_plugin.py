@@ -357,12 +357,20 @@ class TestTelemetryPlugin(unittest.TestCase):
         event.body = full_message
         event.source = {"content": {"formatted_body": ""}}
 
-        async def run_test():
-            """
-            Runs the test for handling a Matrix room message and asserts that the result is False.
-            """
-            result = await self.plugin.handle_room_message(room, event, full_message)
-            self.assertFalse(result)
+        # Mock Matrix client get_displayname to return a string
+        with patch("mmrelay.matrix_utils.connect_matrix") as mock_connect:
+            mock_matrix_client = AsyncMock()
+            mock_matrix_client.get_displayname = AsyncMock(return_value="TestBot")
+            mock_connect.return_value = mock_matrix_client
+
+            async def run_test():
+                """
+                Runs the test for handling a Matrix room message and asserts that the result is False.
+                """
+                result = await self.plugin.handle_room_message(
+                    room, event, full_message
+                )
+                self.assertFalse(result)
 
         import asyncio
 
