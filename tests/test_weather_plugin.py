@@ -283,14 +283,14 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         Test that the plugin's get_matrix_commands method returns the expected list of matrix commands.
         """
         commands = self.plugin.get_matrix_commands()
-        self.assertEqual(commands, ["weather", "hourly", "week"])
+        self.assertEqual(commands, ["weather", "hourly", "weekly"])
 
     def test_get_mesh_commands(self):
         """
         Test that the plugin's get_mesh_commands method returns the expected list of mesh commands.
         """
         commands = self.plugin.get_mesh_commands()
-        self.assertEqual(commands, ["weather", "hourly", "week"])
+        self.assertEqual(commands, ["weather", "hourly", "weekly"])
 
     def test_parse_mesh_command_requires_prefix(self):
         """

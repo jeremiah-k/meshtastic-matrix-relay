@@ -15,7 +15,7 @@ from mmrelay.plugins.base_plugin import BasePlugin
 class Plugin(BasePlugin):
     plugin_name = "weather"
     is_core_plugin = True
-    mesh_commands = ("weather", "hourly", "week")
+    mesh_commands = ("weather", "hourly", "weekly")
 
     # No __init__ method needed with the simplified plugin system
     # The BasePlugin will automatically use the class-level plugin_name
@@ -51,9 +51,9 @@ class Plugin(BasePlugin):
         Generate a concise one-line weather forecast for the given GPS coordinates.
 
         Supports multiple modes:
-        - "weather": emphasize current conditions plus minimal near-term context (+1h, +3h)
-        - "hourly": current + richer near-term view (+1h, +3h, +6h, +12h, +24h)
-        - "week": daily summary for the next few days (up to 5)
+        - "weather": current conditions only (no future slots)
+        - "hourly": current + compact near-term view (+3h, +6h, +12h)
+        - "weekly": daily summary for the next few days (up to 5)
 
         Parameters:
             latitude (float): Latitude in decimal degrees.
@@ -74,7 +74,7 @@ class Plugin(BasePlugin):
 
         units = self.config.get("units", "metric")  # Default to metric
         temperature_unit = "°C" if units == "metric" else "°F"
-        daily_days = 5 if mode_key == "week" else 3
+        daily_days = 5 if mode_key == "weekly" else 3
 
         hourly_config = {
             "weather": {
@@ -210,7 +210,7 @@ class Plugin(BasePlugin):
             }
 
             # Generate one-line weather forecast
-            if mode_key == "week":
+            if mode_key == "weekly":
                 return self._build_daily_forecast(
                     data, units, temperature_unit, daily_days
                 )
@@ -242,7 +242,7 @@ class Plugin(BasePlugin):
                     parts.append(wind_part)
                 if precip_now is not None:
                     parts.append(f"Precip {precip_now}%")
-                return " | ".join(parts)[:MAX_FORECAST_LENGTH]
+                return self._trim_to_max_bytes(" | ".join(parts))
 
             slots = hourly_config.get(mode_key, hourly_config["weather"])["slots"]
             return self._build_hourly_forecast(

@@ -46,7 +46,8 @@ def match_case(source: str, target: str) -> str:
     else:
         # For mixed case, match the pattern of each character
         return "".join(
-            t.upper() if s.isupper() else t.lower() for s, t in zip(source, target)
+            t.upper() if s.isupper() else t.lower()
+            for s, t in zip(source, target, strict=False)
         )
 
 
@@ -79,10 +80,10 @@ class Plugin(BasePlugin):
         """
         if "decoded" in packet and "text" in packet["decoded"]:
             portnum = packet["decoded"].get("portnum")
-            if portnum is not None and portnum not in (
-                TEXT_MESSAGE_APP,
-                PORTNUM_TEXT_MESSAGE_APP,
-            ):
+            if portnum is not None and str(portnum) not in {
+                str(TEXT_MESSAGE_APP),
+                str(PORTNUM_TEXT_MESSAGE_APP),
+            }:
                 return False
 
             message = packet["decoded"]["text"].strip()
@@ -98,10 +99,8 @@ class Plugin(BasePlugin):
 
             from mmrelay.meshtastic_utils import connect_meshtastic
 
-            if "PYTEST_CURRENT_TEST" in os.environ:
-                meshtastic_client = connect_meshtastic()
-            else:
-                meshtastic_client = await asyncio.to_thread(connect_meshtastic)
+            # Ping is light-weight; connect synchronously to avoid thread overhead
+            meshtastic_client = connect_meshtastic()
 
             # Determine if the message is a direct message
             toId = packet.get("to")
@@ -116,14 +115,14 @@ class Plugin(BasePlugin):
 
             myId = meshtastic_client.myInfo.my_node_num  # Get relay's own node number
 
-            if toId == myId:
-                # Direct message to us
-                is_direct_message = True
-            elif toId == BROADCAST_NUM:
-                is_direct_message = False
-            else:
-                # Message to someone else; we may ignore it
-                is_direct_message = False
+        if toId == myId:
+            # Direct message to us
+            is_direct_message = True
+        elif toId == BROADCAST_NUM:
+            is_direct_message = False
+        else:
+            # Message to someone else; treat as non-direct/broadcast context
+            is_direct_message = False
 
             # Pass is_direct_message to is_channel_enabled
             if not self.is_channel_enabled(
