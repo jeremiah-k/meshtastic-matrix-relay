@@ -29,7 +29,6 @@ from mmrelay.matrix_utils import (
 from mmrelay.plugins.map_plugin import (
     Plugin,
     TextLabel,
-    anonymize_location,
     get_map,
     textsize,
 )
@@ -144,42 +143,6 @@ class TestTextSizeFunction(unittest.TestCase):
         mock_draw.textbbox.assert_called_once_with((0, 0), "Test text")
 
 
-class TestAnonymizeLocation(unittest.TestCase):
-    """Test cases for location anonymization."""
-
-    def test_anonymize_location_default_radius(self):
-        """
-        Verify that anonymize_location returns unchanged coordinates (firmware handles precision).
-        """
-        lat, lon = 37.7749, -122.4194
-        new_lat, new_lon = anonymize_location(lat, lon)
-
-        self.assertAlmostEqual(new_lat, lat)
-        self.assertAlmostEqual(new_lon, lon)
-
-    def test_anonymize_location_custom_radius(self):
-        """
-        Verify that anonymize_location ignores custom radius and returns original coordinates.
-        """
-        lat, lon = 37.7749, -122.4194
-        radius = 5000  # 5km
-        new_lat, new_lon = anonymize_location(lat, lon, radius)
-
-        self.assertAlmostEqual(new_lat, lat)
-        self.assertAlmostEqual(new_lon, lon)
-
-    def test_anonymize_location_zero_radius(self):
-        """
-        Verify that anonymizing a location with a zero radius returns coordinates nearly identical to the original.
-        """
-        lat, lon = 37.7749, -122.4194
-        new_lat, new_lon = anonymize_location(lat, lon, 0)
-
-        # With zero radius, coordinates should be very close to original
-        self.assertAlmostEqual(new_lat, lat, places=5)
-        self.assertAlmostEqual(new_lon, lon, places=5)
-
-
 class TestGetMap(unittest.TestCase):
     """Test cases for map generation."""
 
@@ -227,21 +190,6 @@ class TestGetMap(unittest.TestCase):
 
         mock_context.set_zoom.assert_called_once_with(10)
         mock_context.render_pillow.assert_called_once_with(800, 600)
-
-    @patch("mmrelay.plugins.map_plugin.anonymize_location")
-    @patch("staticmaps.Context")
-    def test_get_map_with_anonymization(self, mock_context_class, mock_anonymize):
-        """
-        Tests that anonymize_location is no longer invoked even when anonymization flag is passed.
-        """
-        mock_context = MagicMock()
-        mock_context_class.return_value = mock_context
-        mock_context.render_pillow.return_value = MagicMock()
-        mock_anonymize.return_value = (37.7750, -122.4195)
-
-        get_map(self.test_locations, anonymize=True, radius=5000)
-
-        mock_anonymize.assert_not_called()
 
 
 class TestImageUploadAndSend(unittest.TestCase):

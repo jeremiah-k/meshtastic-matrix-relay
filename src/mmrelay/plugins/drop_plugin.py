@@ -47,9 +47,9 @@ class Plugin(BasePlugin):
             is_drop_command = (
                 packet.get("decoded", {}).get("portnum") == TEXT_MESSAGE_APP
                 and f"!{self.plugin_name}" in text
-                and re.search(r"!drop\\s+(.+)$", text)
+                and re.search(r"!drop\s+(.+)$", text)
             )
-            return True if is_drop_command else False
+            return False  # Cannot process command when client is unavailable
         nodeInfo = meshtastic_client.getMyNodeInfo()
 
         # Attempt message drop to packet originator if not relay

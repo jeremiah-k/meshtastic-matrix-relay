@@ -16,10 +16,10 @@ from mmrelay.plugins.base_plugin import BasePlugin
 def precision_bits_to_meters(bits: int) -> float | None:
     """
     Convert S2 precision bits to an approximate radius in meters.
-    
+
     Parameters:
         bits (int): S2 precision bits; larger values represent finer precision.
-    
+
     Returns:
         The approximate radius in meters corresponding to `bits`, or `None` if `bits` is less than or equal to 0.
     """
@@ -40,9 +40,9 @@ logger = get_logger(__name__)
 async def _connect_meshtastic_async() -> object | None:
     """
     Obtain a Meshtastic client connection without blocking the event loop.
-    
+
     Runs the connection routine in a background thread to avoid blocking.
-    
+
     Returns:
         The Meshtastic client instance, or `None` if a connection could not be established.
     """
@@ -85,13 +85,13 @@ class TextLabel(staticmaps.Object):
         # Guess text extents.
         """
         Estimate the pixel bounds occupied by the label (half-width and vertical extents) relative to its anchor.
-        
+
         Returns:
-        	A 4-tuple of ints (left_px, top_px, right_px, bottom_px) representing pixel extents from the label anchor: 
-        	- left_px: half the label width to the left,
-        	- top_px: total height above the anchor including margins and arrow,
-        	- right_px: half the label width to the right,
-        	- bottom_px: total extent below the anchor (always 0 for this label).
+                A 4-tuple of ints (left_px, top_px, right_px, bottom_px) representing pixel extents from the label anchor:
+                - left_px: half the label width to the left,
+                - top_px: total height above the anchor including margins and arrow,
+                - right_px: half the label width to the right,
+                - bottom_px: total extent below the anchor (always 0 for this label).
         """
         tw = len(self._text) * self._font_size * 0.5
         th = self._font_size * 1.2
@@ -101,9 +101,9 @@ class TextLabel(staticmaps.Object):
     def render_pillow(self, renderer: staticmaps.PillowRenderer) -> None:
         """
         Render a balloon marker with an arrow and centered text at the object's geographic location using a Pillow renderer.
-        
+
         Draws a white-filled balloon with a red outline and black centered text; the renderer converts the label's latitude/longitude to pixel coordinates and provides the drawing context.
-        
+
         Parameters:
             renderer (staticmaps.PillowRenderer): Renderer that provides coordinate transformation, drawing surface, and offsets used to position and paint the label.
         """
@@ -235,25 +235,6 @@ class TextLabel(staticmaps.Object):
         )
 
 
-def anonymize_location(
-    lat: float,
-    lon: float,
-    _radius: float = 1000,  # deprecated; kept for compat
-) -> tuple[float, float]:
-    """
-    Return the same latitude and longitude without modification.
-    
-    Parameters:
-        lat (float): Latitude in decimal degrees.
-        lon (float): Longitude in decimal degrees.
-        _radius (float): Deprecated and ignored; retained for backward compatibility.
-    
-    Returns:
-        tuple[float, float]: A tuple (lat, lon) identical to the input values.
-    """
-    return lat, lon
-
-
 def get_map(
     locations: list[dict],
     zoom: int | None = None,
@@ -263,16 +244,16 @@ def get_map(
 ) -> PILImage.Image:
     """
     Render a static map with labeled markers and optional precision circles.
-    
+
     Each entry in `locations` must provide "lat", "lon", and "label". If an entry includes "precisionBits", a lightly shaded circle approximating that precision radius is drawn around the marker. The map is centered on the average of provided locations when any exist.
-    
+
     Parameters:
         locations (list[dict]): List of dicts with keys "lat" (float|str), "lon" (float|str), and "label" (str). Optional "precisionBits" (int|str) may be included to render a precision circle.
         zoom (int | None): Optional zoom level to apply to the map; if None the context default is used.
         image_size (tuple[int, int] | None): Optional (width, height) in pixels for the output image. If None, defaults to (1000, 1000).
         anonymize (bool): Deprecated and ignored.
         radius (int): Deprecated and ignored.
-    
+
     Returns:
         PIL.Image.Image: A Pillow Image containing the rendered map with labels and any precision circles.
     """
@@ -350,7 +331,7 @@ class Plugin(BasePlugin):
     def description(self):
         """
         Provide a short, human-readable description of the plugin for listings and help.
-        
+
         Returns:
             A one-line description string indicating this plugin generates maps of mesh radio nodes and supports the `zoom` and `size` options.
         """
@@ -363,13 +344,13 @@ class Plugin(BasePlugin):
     ) -> bool:
         """
         Handle an incoming Meshtastic packet and determine whether the plugin consumes it.
-        
+
         Parameters:
             packet: The raw Meshtastic packet object received from the mesh network.
             formatted_message (str): The human-readable, pre-formatted message derived from the packet.
             longname (str): The sender's long name or identifier.
             meshnet_name (str): The name of the mesh network the packet came from.
-        
+
         Returns:
             bool: `true` if the plugin handled the message and further processing should stop, `false` otherwise.
         """
@@ -378,7 +359,7 @@ class Plugin(BasePlugin):
     def get_matrix_commands(self):
         """
         List the Matrix command names handled by this plugin.
-        
+
         Returns:
             list[str]: A list of command strings that the plugin responds to (typically containing the plugin's name).
         """
@@ -387,7 +368,7 @@ class Plugin(BasePlugin):
     def get_mesh_commands(self):
         """
         Provide the list of mesh-specific command names handled by this plugin.
-        
+
         Returns:
             list[str]: A list of mesh command strings; empty when the plugin does not handle any mesh commands.
         """
@@ -397,14 +378,14 @@ class Plugin(BasePlugin):
         # Pass the whole event to matches() for compatibility w/ updated base_plugin.py
         """
         Handle "!map" commands by generating a static map of known mesh node locations and sending it to the Matrix room.
-        
+
         Parses optional tokens in the message for zoom (zoom=N) and image size (size=W,H), collects node positions (including firmware-provided precision when available), renders a map image, and uploads it to the room as "location.png".
-        
+
         Parameters:
             room: The Matrix room object where the message was received.
             event: The full Matrix event object (used for plugin matching).
             full_message (str): The raw message text to parse for the "!map" command and optional parameters.
-        
+
         Returns:
             bool: `True` if the command was handled and the map image was generated and sent; `False` if the message did not target this plugin or was not processed.
         """

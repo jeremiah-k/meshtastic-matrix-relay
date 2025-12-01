@@ -7,6 +7,9 @@ from mmrelay.constants.formats import TEXT_MESSAGE_APP
 from mmrelay.constants.messages import PORTNUM_TEXT_MESSAGE_APP
 from mmrelay.plugins.base_plugin import BasePlugin
 
+# Maximum punctuation length before using shortened response
+MAX_PUNCTUATION_LENGTH = 5
+
 
 def match_case(source: str, target: str) -> str:
     """
@@ -135,7 +138,9 @@ class Plugin(BasePlugin):
 
         # Construct reply message
         reply_message = (
-            "Pong..." if total_punc_length > 5 else pre_punc + base_response + post_punc
+            "Pong..."
+            if total_punc_length > MAX_PUNCTUATION_LENGTH
+            else pre_punc + base_response + post_punc
         )
 
         # Wait for the response delay

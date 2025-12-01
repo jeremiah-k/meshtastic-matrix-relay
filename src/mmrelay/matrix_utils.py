@@ -881,9 +881,9 @@ def bot_command(
 
     mention_parts: list[str] = []
     if bot_user_id:
-        mention_parts.append(re.escape(str(bot_user_id)))
+        mention_parts.append(re.escape(bot_user_id))
     if bot_user_name:
-        mention_parts.append(re.escape(str(bot_user_name)))
+        mention_parts.append(re.escape(bot_user_name))
 
     if not mention_parts:
         return False
