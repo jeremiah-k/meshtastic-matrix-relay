@@ -20,23 +20,7 @@ import unittest
 from typing import Any
 from unittest.mock import patch
 
-
-# Shared dummy RichHandler stand-in for environments where Rich is unavailable or patched out.
-class DummyRichHandler(logging.Handler):
-    """Test double for RichHandler when Rich is unavailable."""
-
-    def __init__(self, **kwargs: Any) -> None:
-        """
-        Initialize the dummy Rich handler and record the `rich_tracebacks` setting.
-
-        Parameters:
-            rich_tracebacks (bool | None): If provided, indicates whether rich-style tracebacks should be enabled for this handler.
-        """
-        super().__init__()
-        self.rich_tracebacks = kwargs.get("rich_tracebacks")
-
-
-# Add src to path for imports
+# Add src to path for imports before local imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.log_utils import (
@@ -44,6 +28,21 @@ from mmrelay.log_utils import (
     configure_component_debug_logging,
     get_logger,
 )
+
+
+# Shared dummy RichHandler stand-in for environments where Rich is unavailable or patched out.
+class DummyRichHandler(logging.Handler):
+    """Test double for RichHandler when Rich is unavailable."""
+
+    def __init__(self, **kwargs: Any) -> None:
+        """
+        Initialize the handler and record whether rich-style tracebacks are requested.
+
+        Parameters:
+            rich_tracebacks (bool | None): Whether to enable rich-style tracebacks for this handler; `None` means unspecified.
+        """
+        super().__init__()
+        self.rich_tracebacks = kwargs.get("rich_tracebacks")
 
 
 class TestLogUtils(unittest.TestCase):
@@ -517,9 +516,8 @@ class TestLogUtils(unittest.TestCase):
         """
         Verify that a logger can be created in a test environment without triggering CLI parsing or errors.
         """
-        # Set test environment
-        with patch.dict(os.environ, {"MMRELAY_TESTING": "1"}):
-            logger = get_logger("test_logger")
+        # Should create logger without issues even if argument parsing fails/runs
+        logger = get_logger("test_logger")
 
         # Should create logger without issues
         self.assertIsInstance(logger, logging.Logger)

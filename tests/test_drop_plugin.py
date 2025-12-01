@@ -15,15 +15,12 @@ import sys
 import unittest
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.plugins.drop_plugin import Plugin
 
 
-@pytest.mark.usefixtures("mock_event_loop")
 class TestDropPlugin(unittest.TestCase):
     """Test cases for the drop plugin."""
 
@@ -476,25 +473,28 @@ class TestDropPlugin(unittest.TestCase):
 
         asyncio.run(run_test())
 
-    def test_handle_room_message_without_matching_command(self):
+    @patch("mmrelay.plugins.drop_plugin.BasePlugin.matches")
+    def test_handle_room_message_without_matching_command(self, mock_matches):
         """
-        Test that Matrix room messages without matching commands are not handled by the plugin.
+        Verify that handle_room_message returns False when the plugin's matches method returns False.
 
-        Verifies that when the plugin's `matches` method returns False, `handle_room_message` returns None and does not process the message.
+        When the plugin's matches method returns False for an incoming room event, handle_room_message should return False and not process the message; the test also asserts that matches was called with the event.
         """
         # Mock the matches method to return False
-        self.plugin.matches = MagicMock(return_value=False)
+        mock_matches.return_value = False
 
         room = MagicMock()
         event = MagicMock()
 
         async def run_test():
             """
-            Asynchronously tests that the plugin's room message handler returns None when the message does not match any command.
+            Verify the room message handler does not handle messages that don't match any command.
+
+            Asserts that handle_room_message yields a negative match (returns False) and that BasePlugin.matches is called exactly once with the event.
             """
             result = await self.plugin.handle_room_message(room, event, "full_message")
-            self.assertIsNone(result)  # Returns None when no match
-            self.plugin.matches.assert_called_once_with(event)
+            self.assertFalse(result)  # Returns False when no match
+            mock_matches.assert_called_once_with(event)
 
         import asyncio
 

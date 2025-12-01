@@ -14,10 +14,7 @@ import asyncio
 import os
 import sys
 import unittest
-from statistics import StatisticsError
 from unittest.mock import AsyncMock, MagicMock, patch
-
-import pytest
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -25,7 +22,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from mmrelay.plugins.health_plugin import Plugin
 
 
-@pytest.mark.usefixtures("mock_event_loop")
 class TestHealthPlugin(unittest.TestCase):
     """Test cases for the health plugin."""
 
@@ -120,24 +116,58 @@ class TestHealthPlugin(unittest.TestCase):
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     def test_generate_response_with_empty_nodes(self, mock_connect):
         """
-        Test that generating a response with no nodes raises an exception due to empty data lists.
+        Verify that generate_response returns a user-facing message when no Meshtastic nodes are discovered.
 
-        Verifies that the plugin does not handle empty node data and raises an exception (such as StatisticsError) when attempting to compute statistics.
+        Asserts that with an empty Meshtastic client node set, the plugin returns "No nodes discovered yet." instead of raising an error.
         """
         mock_meshtastic_client = MagicMock()
         mock_meshtastic_client.nodes = {}
         mock_connect.return_value = mock_meshtastic_client
 
-        # The plugin has a bug - it doesn't check for empty lists before calling median()
-        with self.assertRaises(StatisticsError):  # Will raise StatisticsError
-            self.plugin.generate_response()
+        result = self.plugin.generate_response()
+        self.assertEqual(result, "No nodes discovered yet.")
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    def test_generate_response_with_nodes_but_no_health_metrics(self, mock_connect):
+        """
+        Test that generating a response with nodes but no health metrics returns appropriate message.
+
+        Verifies that the plugin handles the scenario where nodes are discovered but none
+        have health metrics (battery, air utilization, SNR), returning "No nodes with health metrics found."
+        instead of showing misleading 0.0% values.
+        """
+        # Nodes exist but have no health metrics
+        nodes_without_metrics = {
+            "node1": {
+                "user": {"longName": "Node 1"},
+                # No deviceMetrics or snr
+            },
+            "node2": {
+                "user": {"longName": "Node 2"},
+                "deviceMetrics": {},  # Empty deviceMetrics
+                # No snr
+            },
+            "node3": {
+                "user": {"longName": "Node 3"},
+                "deviceMetrics": {"batteryLevel": None},  # None battery level
+                "snr": None,  # None SNR
+            },
+        }
+
+        mock_meshtastic_client = MagicMock()
+        mock_meshtastic_client.nodes = nodes_without_metrics
+        mock_connect.return_value = mock_meshtastic_client
+
+        result = self.plugin.generate_response()
+        self.assertEqual(result, "Nodes: 3\nNo nodes with health metrics found.")
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     def test_generate_response_with_minimal_data(self, mock_connect):
         """
-        Test that generating a response with minimal node data raises an exception due to missing metrics.
+        Test that generating a response with minimal node data returns a graceful string response.
 
-        This test verifies that the plugin raises an exception (such as StatisticsError) when attempting to compute statistics on empty air utilization and SNR lists, exposing a bug in the response generation logic.
+        This test verifies that the plugin handles missing metrics gracefully and returns a string
+        containing "Nodes:" when some metrics are missing, rather than raising an exception.
         """
         minimal_nodes = {
             "node1": {
@@ -150,16 +180,19 @@ class TestHealthPlugin(unittest.TestCase):
         mock_meshtastic_client.nodes = minimal_nodes
         mock_connect.return_value = mock_meshtastic_client
 
-        # The plugin has a bug - it tries to calculate median on empty air_util_tx and snr lists
-        with self.assertRaises(StatisticsError):  # Will raise StatisticsError
-            self.plugin.generate_response()
+        result = self.plugin.generate_response()
+        self.assertIn("Nodes:", result)
+        self.assertIn("Battery: 50.0% / 50.0%", result)
+        self.assertIn("Air Util: N/A", result)
+        self.assertIn("SNR: N/A", result)
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     def test_generate_response_with_all_low_battery(self, mock_connect):
         """
-        Test that response generation raises an exception when all nodes have low battery and air utilization data is missing.
+        Test that response generation handles low battery nodes gracefully when air utilization data is missing.
 
-        This verifies that the plugin attempts to compute statistics on empty air utilization data, exposing a known bug.
+        This verifies that the plugin returns a string response containing "Nodes:" even when
+        air utilization data is missing, rather than raising an exception.
         """
         low_battery_nodes = {
             "node1": {"deviceMetrics": {"batteryLevel": 5}, "snr": 10.0},
@@ -170,9 +203,10 @@ class TestHealthPlugin(unittest.TestCase):
         mock_meshtastic_client.nodes = low_battery_nodes
         mock_connect.return_value = mock_meshtastic_client
 
-        # The plugin has a bug - it tries to calculate median on empty air_util_tx list
-        with self.assertRaises(StatisticsError):  # Will raise StatisticsError
-            self.plugin.generate_response()
+        result = self.plugin.generate_response()
+        self.assertIn("Nodes:", result)
+        self.assertIn("Nodes with Low Battery (< 10): 2", result)
+        self.assertIn("Battery: 6.5% / 6.5%", result)
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     def test_generate_response_filters_none_values(self, mock_connect):

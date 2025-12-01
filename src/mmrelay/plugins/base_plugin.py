@@ -1,5 +1,6 @@
 import inspect
 import os
+import re
 import threading
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Union
@@ -39,7 +40,7 @@ config = None
 _deprecated_warning_shown = False
 
 # Track delay values we've already warned about to prevent spam
-_warned_delay_values = set()
+_warned_delay_values: set[float] = set()
 _plugins_low_delay_warned = False
 
 
@@ -72,14 +73,14 @@ class BasePlugin(ABC):
     priority = 10
 
     @property
-    def description(self):
+    def description(self) -> str:
         """Get the plugin description for help text.
 
         Returns:
             str: Human-readable description of plugin functionality
 
         Override this property in subclasses to provide meaningful help text
-        that will be displayed by the help plugin.
+        that will be displayed by help plugin.
         """
         return ""
 
@@ -87,28 +88,13 @@ class BasePlugin(ABC):
         """
         Initialize plugin state and load per-plugin configuration and runtime defaults.
 
+        Loads this plugin's configuration (searching "plugins", "community-plugins", then "custom-plugins"), builds mapped Matrix-to-meshtastic channels from the global `matrix_rooms` config (supporting dict or list formats), and establishes runtime attributes used by the plugin scheduler and messaging code (including `mapped_channels`, `channels`, and `response_delay`).
+
         Parameters:
-            plugin_name (str, optional): Override the class-level plugin_name for this instance.
+            plugin_name (str, optional): Override the class-level `plugin_name` for this instance.
 
         Raises:
-            ValueError: If no plugin name is available from the parameter, instance, or class attribute.
-
-        Details:
-            - Loads per-plugin configuration from the global `config` by checking
-              "plugins", "community-plugins", then "custom-plugins"; defaults to
-              `{"active": False}` if not found.
-            - Builds `self.mapped_channels` from `config["matrix_rooms"]`, supporting
-              both dict and list formats.
-            - Sets `self.channels` from the plugin config (falls back to
-              `self.mapped_channels`) and coerces it to a list; logs a warning for
-              configured channels not present in `mapped_channels`.
-            - Initializes scheduling controls (`self._stop_event`,
-              `self._schedule_thread`) used by the plugin scheduler.
-            - Reads Meshtastic delay settings from `config["meshtastic"]`,
-              preferring `message_delay` with fallback to deprecated
-              `plugin_response_delay`, with one-time deprecation logging.
-            - Enforces a minimum delay of `MINIMUM_MESSAGE_DELAY`; values below the
-              minimum are clamped and emit a one-time warning per unique delay value.
+            ValueError: If no plugin name is available from the parameter, the instance, or the class attribute.
         """
         # Allow plugin_name to be passed as a parameter for simpler initialization
         # This maintains backward compatibility while providing a cleaner API
@@ -146,6 +132,8 @@ class BasePlugin(ABC):
 
         self.logger = get_logger(f"Plugin:{self.plugin_name}")
         self.config: Dict[str, Any] = {"active": False}
+        self.mapped_channels: list[int | None] = []
+        self._global_require_bot_mention: bool | None = None
         global config
         plugin_levels = ["plugins", "community-plugins", "custom-plugins"]
 
@@ -157,7 +145,6 @@ class BasePlugin(ABC):
                     break
 
             # Cache global plugin-level settings (for options like require_bot_mention)
-            self._global_require_bot_mention = None
             for section_name in ("plugins", "community-plugins", "custom-plugins"):
                 section_config = config.get(section_name, {})
                 if (
@@ -468,7 +455,7 @@ class BasePlugin(ABC):
 
         description = f"Plugin {self.plugin_name}: {text[:DEFAULT_TEXT_TRUNCATION_LENGTH]}{'...' if len(text) > DEFAULT_TEXT_TRUNCATION_LENGTH else ''}"
 
-        send_kwargs = {
+        send_kwargs: Dict[str, Any] = {
             "text": text,
             "channelIndex": channel,
         }
@@ -498,29 +485,44 @@ class BasePlugin(ABC):
             return channel in self.channels
 
     def get_matrix_commands(self):
-        """Get list of Matrix commands this plugin responds to.
+        """
+        Return the Matrix command names this plugin responds to.
+
+        By default returns a single-item list containing the plugin's name; override to provide custom commands or aliases.
 
         Returns:
-            list: List of command strings (without ! prefix)
-
-        Default implementation returns [plugin_name]. Override to provide
-        custom commands or multiple command aliases.
+            list[str]: Command names (without a leading '!' prefix)
         """
         return [self.plugin_name]
 
-    async def send_matrix_message(self, room_id, message, formatted=True):
-        """Send a message to a Matrix room.
+    def get_matching_matrix_command(self, event) -> str | None:
+        """
+        Identify the first Matrix command that matches the given event.
 
-        Args:
-            room_id (str): Matrix room identifier
-            message (str): Message content to send
-            formatted (bool): Whether to send as formatted HTML (default: True)
+        Checks each command returned by get_matrix_commands() against the event using this plugin's bot-mention requirement.
 
         Returns:
-            dict: Response from Matrix API room_send
+                The matching command string, or None if no command matches.
+        """
+        from mmrelay.matrix_utils import bot_command
 
-        Connects to Matrix using matrix_utils and sends a room message
-        with optional HTML formatting via markdown.
+        require_mention = self.get_require_bot_mention()
+        for command in self.get_matrix_commands():
+            if bot_command(command, event, require_mention=require_mention):
+                return command
+        return None
+
+    async def send_matrix_message(self, room_id, message, formatted=True):
+        """
+        Send a message to a Matrix room, optionally formatted as HTML.
+
+        Parameters:
+            room_id (str): Matrix room identifier.
+            message (str): Message content to send.
+            formatted (bool): If True, send an HTML-formatted message (message is converted from Markdown); otherwise send plain text.
+
+        Returns:
+            dict | None: The Matrix API response from the room send call, or `None` if the Matrix client could not be obtained.
         """
         from mmrelay.matrix_utils import connect_matrix
 
@@ -655,7 +657,7 @@ class BasePlugin(ABC):
             event: The Matrix room event to evaluate.
 
         Returns:
-            `true` if the event matches one of the plugin's Matrix commands, `false` otherwise.
+            True if the event matches one of the plugin's Matrix commands, False otherwise.
         """
         from mmrelay.matrix_utils import bot_command
 
@@ -667,20 +669,40 @@ class BasePlugin(ABC):
             for command in self.get_matrix_commands()
         )
 
-    def get_require_bot_mention(self) -> bool:
-        """Determine if bot mentions are required for this plugin.
+    def extract_command_args(self, command: str, text: str) -> str | None:
+        """
+        Extract arguments that follow a bot command in a message, tolerating an optional leading mention prefix and matching the command case-insensitively.
 
-        Checks plugin-specific configuration first, then global plugins configuration,
-        using appropriate defaults for core plugins.
+        If the message contains the command (e.g. "!cmd arg1 arg2" or "@bot: !cmd arg1"), returns the trailing argument string stripped of surrounding whitespace; if the command is present with no arguments returns an empty string; if the input does not match the command pattern or is not a string returns None.
 
         Returns:
-            bool: True if bot mentions are required, False otherwise
+            str: Arguments after the command, stripped of surrounding whitespace, or an empty string if no arguments are present; `None` if the command pattern does not match or input is not a string.
+        """
+        if not isinstance(text, str):
+            return None
+        pattern = rf"^(?:.+?:\s*)?!{re.escape(command)}(?:\s+(.*))?$"
+        match = re.match(pattern, text, flags=re.IGNORECASE)
+        if not match:
+            return None
+        args = match.group(1)
+        if args is None:
+            return ""
+        return args.strip()
+
+    def get_require_bot_mention(self) -> bool:
+        """
+        Determine whether this plugin requires the bot to be mentioned.
+
+        Checks plugin-specific configuration first, then a cached global setting, and falls back
+        to core/non-core defaults.
+
+        Returns:
+            `true` if bot mentions are required for this plugin, `false` otherwise.
         """
         # Check plugin-specific configuration first
         if CONFIG_KEY_REQUIRE_BOT_MENTION in self.config:
             return bool(self.config[CONFIG_KEY_REQUIRE_BOT_MENTION])
 
-        # Use cached global plugins configuration if available
         if getattr(self, "_global_require_bot_mention", None) is not None:
             return bool(self._global_require_bot_mention)
 
@@ -694,19 +716,32 @@ class BasePlugin(ABC):
     @abstractmethod
     async def handle_meshtastic_message(
         self, packet, formatted_message, longname, meshnet_name
-    ):
+    ) -> bool:
         """
-        Process an incoming Meshtastic packet and perform plugin-specific handling.
+        Handle an incoming Meshtastic packet and perform plugin-specific processing.
 
         Parameters:
-            packet: The original Meshtastic packet object (protobuf-derived dict or message) as received from the radio.
-            formatted_message (str): A cleaned, human-readable representation of the packet's text payload.
-            longname (str): Sender display name or node label associated with the packet.
-            meshnet_name (str): The mesh network identifier where the packet originated.
+            packet: Original Meshtastic packet (protobuf-derived dict or message).
+            formatted_message (str): Clean, human-readable text payload.
+            longname (str): Sender display name or node label.
+            meshnet_name (str): Identifier of the originating mesh network.
 
+        Returns:
+            `true` if the packet was handled, `false` otherwise.
         """
         pass  # Implement in subclass
 
     @abstractmethod
-    async def handle_room_message(self, room, event, full_message):
+    async def handle_room_message(self, room, event, full_message) -> bool:
+        """
+        Handle an incoming Matrix room message and perform plugin-specific processing.
+
+        Parameters:
+            room: Matrix room object where the message was received.
+            event: Matrix event object containing message metadata and sender.
+            full_message: The full text content of the received message.
+
+        Returns:
+            True if the message was handled by the plugin, False otherwise.
+        """
         pass  # Implement in subclass

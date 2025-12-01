@@ -10,13 +10,12 @@ Tests the telemetry data collection and graphing functionality including:
 - Device metrics parsing
 """
 
+import asyncio
 import os
 import sys
 import unittest
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
-
-import pytest
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -24,7 +23,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from mmrelay.plugins.telemetry_plugin import Plugin
 
 
-@pytest.mark.usefixtures("mock_event_loop")
 class TestTelemetryPlugin(unittest.TestCase):
     """Test cases for the telemetry plugin."""
 
@@ -42,6 +40,9 @@ class TestTelemetryPlugin(unittest.TestCase):
 
         # Mock Matrix client methods
         self.plugin.send_matrix_message = AsyncMock()
+        self.plugin.send_room_image = AsyncMock()
+        self.plugin.upload_image = AsyncMock()
+        self.plugin.get_require_bot_mention = MagicMock(return_value=False)
 
     def test_plugin_name(self):
         """
@@ -67,7 +68,7 @@ class TestTelemetryPlugin(unittest.TestCase):
         """
         Verify that the plugin's description method returns the expected summary string.
         """
-        description = self.plugin.description()
+        description = self.plugin.description
         self.assertEqual(
             description, "Graph of avg Mesh telemetry value for last 12 hours"
         )
@@ -237,16 +238,16 @@ class TestTelemetryPlugin(unittest.TestCase):
 
         async def run_test():
             """
-            Runs an asynchronous test to verify that a non-telemetry Meshtastic message is ignored by the plugin.
+            Verify the plugin ignores a non-telemetry Meshtastic packet.
 
-            Asserts that the handler returns None and does not attempt to store any data.
+            Asserts that handle_meshtastic_message returns False and that no node data is stored (set_node_data is not called).
             """
             result = await self.plugin.handle_meshtastic_message(
                 packet, "formatted_message", "longname", "meshnet_name"
             )
 
-            # Should return None (not processed)
-            self.assertIsNone(result)
+            # Should return False (not processed)
+            self.assertFalse(result)
 
             # Should not store any data
             self.plugin.set_node_data.assert_not_called()
@@ -272,16 +273,16 @@ class TestTelemetryPlugin(unittest.TestCase):
 
         async def run_test():
             """
-            Runs an asynchronous test to verify that a non-telemetry Meshtastic message is ignored by the plugin.
+            Verify that a telemetry packet missing deviceMetrics is ignored by the plugin.
 
-            Asserts that the handler returns None and does not attempt to store any data.
+            Calls handle_meshtastic_message with a telemetry packet lacking deviceMetrics and asserts it returns False and does not call set_node_data.
             """
             result = await self.plugin.handle_meshtastic_message(
                 packet, "formatted_message", "longname", "meshnet_name"
             )
 
-            # Should return None (not processed)
-            self.assertIsNone(result)
+            # Should return False (not processed)
+            self.assertFalse(result)
 
             # Should not store any data
             self.plugin.set_node_data.assert_not_called()
@@ -354,17 +355,23 @@ class TestTelemetryPlugin(unittest.TestCase):
         room = MagicMock()
         event = MagicMock()
         full_message = "some invalid message format"
+        event.body = full_message
+        event.source = {"content": {"formatted_body": ""}}
 
-        async def run_test():
-            """
-            Runs the test for handling a Matrix room message and asserts that the result is False.
-            """
-            result = await self.plugin.handle_room_message(room, event, full_message)
-            self.assertFalse(result)
+        with patch("mmrelay.matrix_utils.bot_user_id", "@bot:matrix.org"), patch(
+            "mmrelay.matrix_utils.bot_user_name", "TestBot"
+        ):
 
-        import asyncio
+            async def run_test():
+                """
+                Runs the test for handling a Matrix room message and asserts that the result is False.
+                """
+                result = await self.plugin.handle_room_message(
+                    room, event, full_message
+                )
+                self.assertFalse(result)
 
-        asyncio.run(run_test())
+            asyncio.run(run_test())
 
     @patch("mmrelay.matrix_utils.connect_matrix")
     @patch("mmrelay.matrix_utils.upload_image")
@@ -406,13 +413,15 @@ class TestTelemetryPlugin(unittest.TestCase):
             room = MagicMock()
             room.room_id = "!test:matrix.org"
             event = MagicMock()
-            full_message = "bot: !batteryLevel"
+            full_message = "!batteryLevel"
+            event.body = full_message
+            event.source = {"content": {"formatted_body": ""}}
 
             async def run_test():
                 """
-                Runs an asynchronous test to verify that handling a room message triggers graph creation and image upload/sending.
+                Run the async test that verifies handle_room_message processes a room message to produce and send a plot image.
 
-                Asserts that the plugin processes the message, generates a plot with correct labels, uploads the image, and sends it to the Matrix room.
+                Verifies the handler returns a truthy result, creates a plot with expected labels ("Hour" x-axis, "batteryLevel" y-axis), and calls image upload and send operations.
                 """
                 result = await self.plugin.handle_room_message(
                     room, event, full_message
@@ -472,37 +481,38 @@ class TestTelemetryPlugin(unittest.TestCase):
             mock_image_class.open.return_value = mock_image
             mock_image_class.frombytes.return_value = mock_image
 
-            # Mock Matrix operations
-            mock_matrix_client = AsyncMock()
-            mock_connect.return_value = mock_matrix_client
-            mock_upload.return_value = {"content_uri": "mxc://example.com/image"}
-
             room = MagicMock()
             room.room_id = "!test:matrix.org"
             event = MagicMock()
-            full_message = "bot: !voltage NodeABC"
+            full_message = "!voltage NodeABC"
+            event.body = full_message
+            event.source = {"content": {"formatted_body": ""}}
 
-            async def run_test():
-                """
-                Runs an asynchronous test to verify that handling a room message with a specific node triggers data retrieval for that node and sets the plot title accordingly.
-                """
-                result = await self.plugin.handle_room_message(
-                    room, event, full_message
-                )
+            with patch("mmrelay.matrix_utils.bot_user_id", "@bot:matrix.org"), patch(
+                "mmrelay.matrix_utils.bot_user_name", "TestBot"
+            ):
 
-                self.assertTrue(result)
+                async def run_test():
+                    """
+                    Verify that handling a room message for a specific node requests that node's data and includes the node and metric in the plot title.
 
-                # Should get data for specific node
-                self.plugin.get_node_data.assert_called_with("NodeABC")
+                    Asserts that handle_room_message invokes get_node_data with the given node identifier and that the plot title contains both the node name ("NodeABC") and the requested metric ("voltage").
+                    """
+                    result = await self.plugin.handle_room_message(
+                        room, event, full_message
+                    )
 
-                # Should set title with node name
-                title_call = mock_ax.set_title.call_args[0][0]
-                self.assertIn("NodeABC", title_call)
-                self.assertIn("voltage", title_call)
+                    self.assertTrue(result)
 
-            import asyncio
+                    # Should get data for specific node
+                    self.plugin.get_node_data.assert_called_with("NodeABC")
 
-            asyncio.run(run_test())
+                    # Should set title with node name
+                    title_call = mock_ax.set_title.call_args[0][0]
+                    self.assertIn("NodeABC", title_call)
+                    self.assertIn("voltage", title_call)
+
+                asyncio.run(run_test())
 
 
 if __name__ == "__main__":

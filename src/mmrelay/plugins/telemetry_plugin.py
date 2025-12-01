@@ -1,6 +1,5 @@
 import io
 import json
-import re
 from datetime import datetime, timedelta
 
 import matplotlib.pyplot as plt
@@ -15,13 +14,35 @@ class Plugin(BasePlugin):
     max_data_rows_per_node = 50
 
     def commands(self):
+        """
+        Return the list of supported telemetry metric command names.
+
+        Returns:
+            list[str]: Supported telemetry commands: "batteryLevel", "voltage", and "airUtilTx".
+        """
         return ["batteryLevel", "voltage", "airUtilTx"]
 
-    def description(self):
+    @property
+    def description(self) -> str:
+        """
+        Short description of the plugin's visualization purpose.
+
+        Returns:
+            str: Description text "Graph of avg Mesh telemetry value for last 12 hours".
+        """
         return "Graph of avg Mesh telemetry value for last 12 hours"
 
     def _generate_timeperiods(self, hours=12):
         # Calculate the start and end times
+        """
+        Generate a list of hourly datetime anchors spanning the past `hours` hours up to now.
+
+        Parameters:
+                hours (int): Number of hours to look back from the current time (default 12).
+
+        Returns:
+                hourly_intervals (list[datetime.datetime]): List of datetime objects at hourly intervals from (now - hours) up to and including the current time.
+        """
         end_time = datetime.now()
         start_time = end_time - timedelta(hours=hours)
 
@@ -35,8 +56,19 @@ class Plugin(BasePlugin):
 
     async def handle_meshtastic_message(
         self, packet, formatted_message, longname, meshnet_name
-    ):
+    ) -> bool:
         # Support deviceMetrics only for now
+        """
+        Process an incoming Meshtastic packet and record deviceMetrics telemetry for the sender when present.
+
+        If the packet contains `decoded.telemetry.deviceMetrics` and `decoded.portnum == "TELEMETRY_APP"`, extracts `time`, `batteryLevel`, `voltage`, and `airUtilTx` (each telemetry field defaults to 0 if missing) and appends a telemetry record to the sender's node data via `set_node_data`.
+
+        Parameters:
+            packet (dict): Meshtastic packet dictionary; expected to contain `decoded` with `portnum` and a `telemetry` object that includes `deviceMetrics`. Other parameters (formatted_message, longname, meshnet_name) are not inspected by this function.
+
+        Returns:
+            bool: Always `False`; this plugin records telemetry data but does not consume the message, allowing other handlers to process it.
+        """
         if (
             "decoded" in packet
             and "portnum" in packet["decoded"]
@@ -73,45 +105,62 @@ class Plugin(BasePlugin):
             self.set_node_data(meshtastic_id=packet["fromId"], node_data=telemetry_data)
             return False
 
+        # Return False for non-telemetry packets
+        return False
+
     def get_matrix_commands(self):
+        """
+        Return the telemetry command names supported for Matrix commands.
+
+        Returns:
+            list[str]: A list of supported command names: ["batteryLevel", "voltage", "airUtilTx"].
+        """
         return ["batteryLevel", "voltage", "airUtilTx"]
 
     def get_mesh_commands(self):
+        """
+        List the supported mesh commands for this plugin.
+
+        Returns:
+            list: An empty list indicating no mesh commands are supported.
+        """
         return []
 
-    async def handle_room_message(self, room, event, text):
+    async def handle_room_message(self, room, event, full_message) -> bool:
         # Pass the event to matches()
         """
-        Handle a room message that requests a telemetry graph and send the generated image to the Matrix room.
+        Handle a Matrix room message requesting a telemetry graph and send the generated image to the originating room.
 
-        Parses messages invoking one of the telemetry commands (!batteryLevel, !voltage, !airUtilTx) optionally followed by a node identifier, computes hourly averages for the last 12 hours (per-node or network-wide), renders a line plot of those averages, uploads the image to the originating room, and sends it.
+        Parses a telemetry command (`!batteryLevel`, `!voltage`, or `!airUtilTx`) optionally followed by a node identifier, computes hourly averages for the last 12 hours (per-node or network-wide), generates a line plot of those averages, and uploads the image to the room.
 
         Parameters:
             room: Matrix room object where the event originated; used to determine the destination room_id.
-            event: Matrix event used to test whether the message matches a supported bot command.
-            text (str): Full plaintext message content to parse the command and optional node identifier.
+            event: Matrix event used to detect whether the message matches a supported telemetry command.
+            full_message (str): Full plaintext message content used to parse the command and optional node identifier.
 
         Returns:
-            True if the message matched a telemetry command and the graph was generated and successfully sent; False otherwise.
+            `true` if the message matched a telemetry command and the graph was generated and sent (or a user-facing notification was sent when a requested node had no data); `false` otherwise.
         """
         if not self.matches(event):
             return False
 
-        # TODO: consolidate command parsing with bot_command/base matches to avoid duplicated regex logic.
-        match = re.match(
-            r"^(?:.+?:\s*)?!(batteryLevel|voltage|airUtilTx)(?:\s+(.+))?$",
-            text,
-        )
-        if not match:
+        parsed_command = self.get_matching_matrix_command(event)
+        if not parsed_command:
             return False
 
-        telemetry_option = match.group(1)
-        node = match.group(2)
+        args = self.extract_command_args(parsed_command, full_message) or ""
+        telemetry_option = parsed_command
+        node = args or None
 
         hourly_intervals = self._generate_timeperiods()
         from mmrelay.matrix_utils import connect_matrix
 
         matrix_client = await connect_matrix()
+        if matrix_client is None:
+            self.logger.warning(
+                "Matrix client unavailable; skipping telemetry graph generation"
+            )
+            return False
 
         # Compute the hourly averages for each node
         hourly_averages = {}
@@ -133,7 +182,15 @@ class Plugin(BasePlugin):
 
         if node:
             node_data_rows = self.get_node_data(node)
-            calculate_averages(node_data_rows)
+            if node_data_rows:
+                calculate_averages(node_data_rows)
+            else:
+                await self.send_matrix_message(
+                    room.room_id,
+                    f"No telemetry data found for node '{node}'.",
+                    formatted=False,
+                )
+                return True
         else:
             for node_data_json in self.get_data():
                 node_data_rows = json.loads(node_data_json[0])
@@ -174,7 +231,8 @@ class Plugin(BasePlugin):
 
         # Save the plot as a PIL image
         buf = io.BytesIO()
-        fig.canvas.print_png(buf)
+        fig.savefig(buf, format="png", bbox_inches="tight")
+        plt.close(fig)
         buf.seek(0)
         img = Image.open(buf)
         pil_image = Image.frombytes(mode="RGBA", size=img.size, data=img.tobytes())

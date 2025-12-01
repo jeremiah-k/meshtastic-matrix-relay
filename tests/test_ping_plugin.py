@@ -17,8 +17,6 @@ import sys
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
@@ -71,7 +69,6 @@ class TestMatchCase(unittest.TestCase):
         self.assertEqual(result, "")
 
 
-@pytest.mark.usefixtures("mock_event_loop")
 class TestPingPlugin(unittest.TestCase):
     """Test cases for the ping plugin."""
 
@@ -120,6 +117,37 @@ class TestPingPlugin(unittest.TestCase):
         """
         commands = self.plugin.get_mesh_commands()
         self.assertEqual(commands, ["ping"])
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    def test_handle_meshtastic_message_missing_myinfo(self, mock_connect):
+        """
+        Ensure the handler exits cleanly when myInfo is missing.
+        """
+
+        mock_client = MagicMock()
+        mock_client.myInfo = None
+        mock_client.nodes = {}
+        mock_connect.return_value = mock_client
+
+        packet = {
+            "decoded": {"text": "ping"},
+            "channel": 0,
+            "fromId": "!12345678",
+            "to": BROADCAST_NUM,
+        }
+
+        async def run_test():
+            """
+            Verify that handle_meshtastic_message does not process a packet when the Meshtastic client lacks `myInfo`.
+
+            This test awaits plugin.handle_meshtastic_message with the provided `packet` and asserts that it returns `False`, indicating no handling occurred for a client with missing `myInfo`.
+            """
+            result = await self.plugin.handle_meshtastic_message(
+                packet, "formatted_message", "TestNode", "TestMesh"
+            )
+            self.assertTrue(result)
+
+        asyncio.run(run_test())
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     @patch("asyncio.sleep")

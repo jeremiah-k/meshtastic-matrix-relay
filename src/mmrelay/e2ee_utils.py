@@ -36,26 +36,20 @@ def get_e2ee_status(
     config: Dict[str, Any], config_path: Optional[str] = None
 ) -> E2EEStatus:
     """
-    Return a consolidated E2EE status summary by inspecting the runtime platform, required crypto dependencies, configuration, and presence of Matrix credentials.
-
-    This inspects:
-    - platform support (disables on Windows/msys/cygwin),
-    - presence of Python olm/nio components,
-    - whether E2EE is enabled in the provided config (supports legacy `matrix.encryption.enabled`),
-    - whether Matrix credentials (credentials.json) can be found (uses config_path directory if provided, otherwise falls back to the application's base directory).
+    Consolidates E2EE readiness information by inspecting the runtime platform, required crypto dependencies, configuration, and presence of Matrix credentials.
 
     Parameters:
-        config (Dict[str, Any]): Parsed application configuration; used to read `matrix.e2ee.enabled` (and legacy `matrix.encryption.enabled`).
-        config_path (Optional[str]): Optional path to the configuration file directory to prioritize when checking for credentials.json.
+        config (Dict[str, Any]): Parsed application configuration; used to read `matrix.e2ee.enabled` and legacy `matrix.encryption.enabled`.
+        config_path (Optional[str]): Optional path to the configuration file; when provided the directory containing this path is checked first for `credentials.json`, otherwise the application's base directory is used.
 
     Returns:
         E2EEStatus: A dict with the following keys:
           - enabled (bool): E2EE enabled in configuration.
-          - available (bool): Platform + dependencies allow E2EE.
+          - available (bool): Platform and dependencies allow E2EE.
           - configured (bool): Authentication/credentials are present.
           - platform_supported (bool): True unless running on Windows/msys/cygwin.
           - dependencies_installed (bool): True if required olm/nio components are importable.
-          - credentials_available (bool): True if credentials.json is discovered.
+          - credentials_available (bool): True if `credentials.json` is discovered.
           - overall_status (str): One of "ready", "disabled", "unavailable", "incomplete", or "unknown".
           - issues (List[str]): Human-readable issues found that prevent full E2EE readiness.
     """
@@ -79,14 +73,13 @@ def get_e2ee_status(
     try:
         importlib.import_module("olm")
 
-        if os.getenv("MMRELAY_TESTING") != "1":
-            nio_crypto = importlib.import_module("nio.crypto")
-            if not hasattr(nio_crypto, "OlmDevice"):
-                raise ImportError("nio.crypto.OlmDevice is unavailable")
+        nio_crypto = importlib.import_module("nio.crypto")
+        if not hasattr(nio_crypto, "OlmDevice"):
+            raise ImportError("nio.crypto.OlmDevice is unavailable")
 
-            nio_store = importlib.import_module("nio.store")
-            if not hasattr(nio_store, "SqliteStore"):
-                raise ImportError("nio.store.SqliteStore is unavailable")
+        nio_store = importlib.import_module("nio.store")
+        if not hasattr(nio_store, "SqliteStore"):
+            raise ImportError("nio.store.SqliteStore is unavailable")
 
         status["dependencies_installed"] = True
     except ImportError:

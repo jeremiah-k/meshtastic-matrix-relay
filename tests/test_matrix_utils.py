@@ -1,5 +1,4 @@
 import asyncio
-import os
 import re
 import unittest
 from types import SimpleNamespace
@@ -3330,7 +3329,6 @@ async def test_connect_matrix_uploads_keys_when_needed(monkeypatch):
     monkeypatch.setattr(
         "mmrelay.matrix_utils._create_ssl_context", lambda: MagicMock(), raising=False
     )
-    monkeypatch.setenv("MMRELAY_TESTING", "1")
     monkeypatch.setattr(
         "mmrelay.matrix_utils.is_e2ee_enabled", lambda _cfg: True, raising=False
     )
@@ -3553,7 +3551,48 @@ async def test_connect_matrix_with_e2ee_credentials(
     }
 
     # Mock olm import to simulate E2EE availability
-    with patch.dict("sys.modules", {"olm": MagicMock()}):
+    mock_olm = MagicMock()
+    # Capture the real import_module so the side effect can delegate without recursion
+    import importlib as _importlib
+
+    real_import_module = _importlib.import_module
+
+    with (
+        patch.dict("sys.modules", {"olm": mock_olm}),
+        patch("importlib.import_module") as mock_import,
+    ):
+        # Make import_module return mocks for E2EE modules and delegate all other imports
+        def mock_import_side_effect(module_name, *args, **kwargs):
+            """
+            Provide a side-effect for importlib.import_module that returns mocks for E2EE-related modules or delegates to the real importer.
+
+            This function returns a mocked module object when `module_name` is one of the E2EE-related modules used in tests:
+            - "olm": returns the provided `mock_olm` object.
+            - "nio.crypto": returns a mock with an `OlmDevice` attribute.
+            - "nio.store": returns a mock with a `SqliteStore` attribute.
+
+            For any other module name, the call is forwarded to the original import function (`real_import_module`) with the same arguments and keyword arguments.
+
+            Parameters:
+                module_name (str): The dotted module name requested by the importer.
+
+            Returns:
+                module: A mock module for specific E2EE imports or the actual imported module for all other names.
+            """
+            if module_name == "olm":
+                return mock_olm
+            if module_name == "nio.crypto":
+                mock_crypto = MagicMock()
+                mock_crypto.OlmDevice = MagicMock()
+                return mock_crypto
+            if module_name == "nio.store":
+                mock_store = MagicMock()
+                mock_store.SqliteStore = MagicMock()
+                return mock_store
+            # Delegate everything else to the original import function
+            return real_import_module(module_name, *args, **kwargs)
+
+        mock_import.side_effect = mock_import_side_effect
         client = await connect_matrix(test_config)
 
         assert client is not None
@@ -4164,7 +4203,6 @@ class TestMatrixE2EEHasAttrChecks:
             patch("mmrelay.matrix_utils.AsyncClient") as mock_async_client,
             patch("mmrelay.matrix_utils.logger"),
             patch("mmrelay.matrix_utils.importlib.import_module") as mock_import,
-            patch.dict(os.environ, {"MMRELAY_TESTING": "0"}, clear=False),
         ):
             # Mock AsyncClient instance with proper async methods
             mock_client_instance = MagicMock()
@@ -4225,7 +4263,6 @@ class TestMatrixE2EEHasAttrChecks:
             patch("mmrelay.matrix_utils.AsyncClient") as mock_async_client,
             patch("mmrelay.matrix_utils.logger") as mock_logger,
             patch("mmrelay.matrix_utils.importlib.import_module") as mock_import,
-            patch.dict(os.environ, {"MMRELAY_TESTING": "0"}, clear=False),
         ):
             # Mock AsyncClient instance with proper async methods
             mock_client_instance = MagicMock()
@@ -4289,7 +4326,6 @@ class TestMatrixE2EEHasAttrChecks:
             patch("mmrelay.matrix_utils.AsyncClient") as mock_async_client,
             patch("mmrelay.matrix_utils.logger") as mock_logger,
             patch("mmrelay.matrix_utils.importlib.import_module") as mock_import,
-            patch.dict(os.environ, {"MMRELAY_TESTING": "0"}, clear=False),
         ):
             # Mock AsyncClient instance with proper async methods
             mock_client_instance = MagicMock()
@@ -4858,10 +4894,6 @@ async def test_connect_matrix_e2ee_missing_nio_crypto():
     """
     Test connect_matrix handles missing nio.crypto.OlmDevice gracefully.
     """
-    import os
-
-    os.environ["MMRELAY_TESTING"] = "0"
-
     config = {
         "matrix": {
             "homeserver": "https://matrix.org",
@@ -4919,10 +4951,6 @@ async def test_connect_matrix_e2ee_missing_sqlite_store():
     """
     Test connect_matrix handles missing nio.store.SqliteStore gracefully.
     """
-    import os
-
-    os.environ["MMRELAY_TESTING"] = "0"
-
     config = {
         "matrix": {
             "homeserver": "https://matrix.org",
@@ -5127,7 +5155,7 @@ def test_display_room_channel_mappings(e2ee_status, expected_log_for_room1):
 
         # Should have logged room mappings in order
         expected_calls = [
-            call("Matrix Rooms → Meshtastic Channels (2 configured):"),
+            call("Meshtastic Channels ↔ Matrix Rooms (2 configured):"),
             call("  Channel 0:"),
             call(expected_log_for_room1),
             call("  Channel 1:"),
@@ -5179,7 +5207,7 @@ def test_display_room_channel_mappings_dict_config():
         _display_room_channel_mappings(rooms, config, e2ee_status)
 
         expected_calls = [
-            call("Matrix Rooms → Meshtastic Channels (1 configured):"),
+            call("Meshtastic Channels ↔ Matrix Rooms (1 configured):"),
             call("  Channel 0:"),
             call("    ✅ Room 1"),
         ]
@@ -5203,7 +5231,7 @@ def test_display_room_channel_mappings_no_display_name():
         _display_room_channel_mappings(rooms, config, e2ee_status)
 
         expected_calls = [
-            call("Matrix Rooms → Meshtastic Channels (1 configured):"),
+            call("Meshtastic Channels ↔ Matrix Rooms (1 configured):"),
             call("  Channel 0:"),
             call("    🔒 !room1:matrix.org"),  # Should fall back to room_id
         ]

@@ -16,8 +16,6 @@ import tempfile
 import threading
 import unittest
 
-import pytest
-
 from mmrelay.db_runtime import DatabaseManager
 
 
@@ -419,7 +417,6 @@ class TestDatabaseManager(unittest.TestCase):
             ).fetchone()
             self.assertEqual(result[0], "sync_test")
 
-    @pytest.mark.usefixtures("mock_event_loop")
     def test_run_async_operation(self):
         """Test run_async for async operations with proper mocking."""
 

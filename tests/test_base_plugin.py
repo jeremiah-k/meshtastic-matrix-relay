@@ -21,7 +21,6 @@ import sys
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 import schedule
 
 # Add src to path for imports
@@ -48,20 +47,16 @@ class MockPlugin(BasePlugin):
 
     async def handle_room_message(self, room, event, full_message) -> None:
         """
-        Handle a Matrix room message event.
+        Handle a Matrix room message event without processing it.
 
         Parameters:
             room: The Matrix room where the event occurred.
             event: The Matrix event object.
             full_message: The full message content.
-
-        Returns:
-            None: Always returns None, indicating the message was not handled.
         """
         return None
 
 
-@pytest.mark.usefixtures("mock_event_loop")
 class TestBasePlugin(unittest.TestCase):
     """Test cases for the BasePlugin class."""
 

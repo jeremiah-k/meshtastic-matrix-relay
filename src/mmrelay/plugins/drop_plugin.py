@@ -1,9 +1,11 @@
+import asyncio
 import re
 
 from haversine import haversine
 
 from mmrelay.constants.database import DEFAULT_DISTANCE_KM_FALLBACK, DEFAULT_RADIUS_KM
 from mmrelay.constants.formats import TEXT_MESSAGE_APP
+from mmrelay.constants.plugins import SPECIAL_NODE_MESSAGES
 from mmrelay.meshtastic_utils import connect_meshtastic
 from mmrelay.plugins.base_plugin import BasePlugin
 
@@ -11,7 +13,7 @@ from mmrelay.plugins.base_plugin import BasePlugin
 class Plugin(BasePlugin):
     plugin_name = "drop"
     is_core_plugin = True
-    special_node = "!NODE_MSGS!"
+    special_node = SPECIAL_NODE_MESSAGES
 
     # No __init__ method needed with the simplified plugin system
     # The BasePlugin will automatically use the class-level plugin_name
@@ -27,16 +29,27 @@ class Plugin(BasePlugin):
 
     async def handle_meshtastic_message(
         self, packet, formatted_message, longname, meshnet_name
-    ):
+    ) -> bool:
         """
-        Handles incoming Meshtastic packets for the drop message plugin, delivering or storing dropped messages based on packet content and node location.
+        Handle delivery of stored drop messages and record new drops from an incoming Meshtastic packet.
 
-        When a packet is received, attempts to deliver any stored dropped messages to the sender if they are within a configured radius of the message's location and are not the original dropper. If the packet contains a properly formatted drop command, extracts the message and stores it with the sender's current location for future delivery.
+        If the packet originates from another node and that node's position is known, deliver any stored drops whose saved location lies within the configured radius to the originator (excluding messages the originator created). If the packet contains a "!drop <message>" command and the dropper's position is known, store the message together with the dropper's location and originator id for later delivery.
 
         Returns:
-            True if a drop command was processed and stored, False otherwise.
+            `True` if a drop command was processed (including cases where processing occurred but the dropper's position was unavailable), `False` otherwise.
         """
-        meshtastic_client = connect_meshtastic()
+        meshtastic_client = await asyncio.to_thread(connect_meshtastic)
+        if meshtastic_client is None:
+            self.logger.warning(
+                "Meshtastic client unavailable; skipping drop message handling"
+            )
+            text = packet.get("decoded", {}).get("text", "")
+            is_drop_command = (
+                packet.get("decoded", {}).get("portnum") == TEXT_MESSAGE_APP
+                and f"!{self.plugin_name}" in text
+                and re.search(r"!drop\s+(.+)$", text)
+            )
+            return True if is_drop_command else False
         nodeInfo = meshtastic_client.getMyNodeInfo()
 
         # Attempt message drop to packet originator if not relay
@@ -49,7 +62,7 @@ class Plugin(BasePlugin):
                 )
 
                 self.logger.debug(f"Packet originates from: {packet_location}")
-                messages = self.get_node_data(self.special_node)
+                messages = self.get_node_data(self.special_node) or []
                 unsent_messages = []
                 for message in messages:
                     # You cannot pickup what you dropped
@@ -71,8 +84,10 @@ class Plugin(BasePlugin):
                     if distance_km <= radius_km:
                         target_node = packet["fromId"]
                         self.logger.debug(f"Sending dropped message to {target_node}")
-                        meshtastic_client.sendText(
-                            text=message["text"], destinationId=target_node
+                        await asyncio.to_thread(
+                            meshtastic_client.sendText,
+                            text=message["text"],
+                            destinationId=target_node,
                         )
                     else:
                         unsent_messages.append(message)
@@ -97,13 +112,14 @@ class Plugin(BasePlugin):
 
             drop_message = match.group(1)
 
-            position = {}
-            for _node, info in meshtastic_client.nodes.items():
-                if info["user"]["id"] == packet["fromId"]:
-                    if "position" in info:
-                        position = info["position"]
-                    else:
-                        continue
+            from_id = packet.get("fromId")
+            if not from_id:
+                self.logger.debug(
+                    "Drop command missing fromId; cannot determine originator. Skipping ..."
+                )
+                return False
+
+            position = self.get_position(meshtastic_client, from_id) or {}
 
             if "latitude" not in position or "longitude" not in position:
                 self.logger.debug(
@@ -122,7 +138,18 @@ class Plugin(BasePlugin):
             self.logger.debug(f"Dropped a message: {drop_message}")
             return True
 
-    async def handle_room_message(self, room, event, full_message):
+        # Packet did not contain a drop command or was not processable
+        return False
+
+    async def handle_room_message(self, _room, event, _full_message) -> bool:
         # Pass the event to matches() instead of full_message
-        if self.matches(event):
-            return True
+        """
+        Route a room event to the plugin's matching logic.
+
+        Parameters:
+            event (object): The room event to evaluate; forwarded to matches().
+
+        Returns:
+            bool: True if the event matches the plugin's criteria, False otherwise.
+        """
+        return self.matches(event)

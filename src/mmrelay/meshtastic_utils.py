@@ -811,19 +811,13 @@ async def reconnect():
 
 def on_meshtastic_message(packet, interface):
     """
-    Handle an incoming Meshtastic packet and route it to configured Matrix rooms or installed plugins.
+    Route an incoming Meshtastic packet to configured Matrix rooms or installed plugins.
 
-    Processes the provided Meshtastic `packet` (a dict-like decoded message) according to interaction settings:
-    - relays reactions and replies to the mapped Matrix event/room when enabled,
-    - relays ordinary text messages to Matrix rooms mapped to the message's Meshtastic channel unless the message is a direct message to the relay node or a plugin handles it,
-    - dispatches non-text or otherwise unhandled packets to plugins for processing.
+    Processes a decoded Meshtastic packet (text, replies, and reaction indicators) according to configured interaction settings: relays reactions and replies to Matrix when enabled, relays ordinary text messages to Matrix rooms mapped to the packet's Meshtastic channel (unless the message is a direct message to the relay node or handled by a plugin), and dispatches non-text or otherwise unhandled packets to plugins. While processing it may schedule Matrix relay coroutines, invoke plugin handlers with a configured timeout, and update or consult stored sender metadata/message mappings.
 
     Parameters:
-        packet (dict): The Meshtastic packet (decoded fields expected in a nested `decoded` dict).
-        interface: The Meshtastic interface object used to resolve node information and send/receive context.
-
-    Side effects:
-        Schedules Matrix relay coroutines, invokes plugin handlers, and may persist sender metadata or message mapping information.
+        packet (dict): Decoded Meshtastic packet. Expected to include keys such as 'decoded' (a dict that may contain 'text', 'replyId', 'portnum', and optional 'emoji'), 'fromId' or 'from', 'to', and 'id'.
+        interface: Meshtastic interface object used to resolve node information. Must provide attributes/mappings required by the function (notably .myInfo.my_node_num and .nodes) to determine node IDs and per-node metadata.
     """
     global config, matrix_rooms
 
@@ -889,6 +883,9 @@ def on_meshtastic_message(packet, interface):
     # Determine if this is a direct message to the relay node
     from meshtastic.mesh_interface import BROADCAST_NUM
 
+    if not getattr(interface, "myInfo", None):
+        logger.warning("Meshtastic interface missing myInfo; cannot determine node id")
+        return None
     myId = interface.myInfo.my_node_num
 
     if toId == myId:

@@ -41,6 +41,9 @@ sys.modules["meshtastic.serial_interface"] = MagicMock()
 sys.modules["meshtastic.tcp_interface"] = MagicMock()
 sys.modules["meshtastic.mesh_interface"] = MagicMock()
 meshtastic_mock.BROADCAST_ADDR = "^all"
+meshtastic_mock.BROADCAST_NUM = 4294967295
+sys.modules["meshtastic.mesh_interface"].BROADCAST_NUM = 4294967295
+sys.modules["meshtastic.mesh_interface"].BROADCAST_ADDR = "^all"
 
 nio_mock = MagicMock()
 sys.modules["nio"] = nio_mock
@@ -71,6 +74,38 @@ sys.modules["pubsub"] = MagicMock()
 sys.modules["matplotlib"] = MagicMock()
 sys.modules["matplotlib.pyplot"] = MagicMock()
 sys.modules["requests"] = MagicMock()
+
+
+class RequestException(Exception):
+    pass
+
+
+class HTTPError(RequestException):
+    pass
+
+
+class ConnectionError(RequestException):
+    pass
+
+
+class Timeout(RequestException):
+    pass
+
+
+class MockRequestsExceptions:
+    RequestException = RequestException
+    HTTPError = HTTPError
+    ConnectionError = ConnectionError
+    Timeout = Timeout
+
+
+sys.modules["requests"].exceptions = MockRequestsExceptions()
+
+# Add top-level aliases for code that uses requests.RequestException directly
+sys.modules["requests"].RequestException = RequestException
+sys.modules["requests"].HTTPError = HTTPError
+sys.modules["requests"].ConnectionError = ConnectionError
+sys.modules["requests"].Timeout = Timeout
 sys.modules["markdown"] = MagicMock()
 sys.modules["haversine"] = MagicMock()
 sys.modules["schedule"] = MagicMock()
@@ -322,18 +357,20 @@ class MockStaticmapsModule:
     SvgRenderer = MagicMock
     PixelBoundsT = tuple
     tile_provider_OSM = object()
+    Color = MagicMock
+    Circle = MagicMock
 
     @staticmethod
     def create_latlng(lat, lon):
         """
-        Create a MockLatLng from latitude and longitude expressed in decimal degrees.
+        Create a MockLatLng representing the given geographic coordinates.
 
         Parameters:
-            lat (float): Latitude in decimal degrees.
-            lon (float): Longitude in decimal degrees.
+            lat (float): Latitude in degrees.
+            lon (float): Longitude in degrees.
 
         Returns:
-            MockLatLng: A mock LatLng object created via MockLatLng.from_degrees.
+            MockLatLng: A mock LatLng object for the supplied coordinates.
         """
         return MockLatLng.from_degrees(lat, lon)
 
@@ -344,12 +381,12 @@ sys.modules["staticmaps"] = MockStaticmapsModule()
 @pytest.fixture(autouse=True)
 def meshtastic_loop_safety(monkeypatch):
     """
-    Module-scoped pytest fixture that provides a dedicated asyncio event loop for tests that interact with mmrelay.meshtastic_utils.
+    Function-scoped pytest fixture that provides a dedicated asyncio event loop for tests that interact with mmrelay.meshtastic_utils.
 
-    Creates a fresh event loop, assigns it to mmrelay.meshtastic_utils.event_loop for the duration of the test module, yields the loop to tests, and on teardown cancels any remaining tasks, awaits their completion, closes the loop, and clears the global event loop reference.
+    Creates a fresh event loop, assigns it to mmrelay.meshtastic_utils.event_loop for the duration of each test function, yields the loop to tests, and on teardown cancels any remaining tasks, awaits their completion, closes the loop, and clears the global event loop reference.
 
     Yields:
-        asyncio.AbstractEventLoop: a new event loop isolated to the test module.
+        asyncio.AbstractEventLoop: a new event loop isolated to each test function.
     """
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
@@ -517,14 +554,56 @@ def reset_custom_data_dir():
 @pytest.fixture(autouse=True)
 def reset_banner_flag():
     """
-    Autouse pytest fixture that resets mmrelay.main._banner_printed to False before each test.
+    Reset the mmrelay.main module's banner-printed flag before each test.
 
-    This ensures the module-level banner-printed flag does not persist state between tests. The fixture yields once to allow the test to run with the reset state.
+    This autouse pytest fixture sets mmrelay.main._banner_printed to False and yields once so the test executes with the cleared flag.
     """
     import mmrelay.main
 
     mmrelay.main._banner_printed = False
     yield
+
+
+@pytest.fixture
+def reset_meshtastic_globals():
+    """
+    Reset and restore key globals in mmrelay.meshtastic_utils to ensure test isolation.
+
+    Saves the module-level state for attributes such as `config`, `meshtastic_client`,
+    reconnect-related flags and tasks, and subscription flags; sets those attributes
+    to a clean default state for the duration of a test, yields control to the
+    test, and restores the original values on teardown. The fixture intentionally
+    does not modify the module's logger or event loop references.
+    """
+    import mmrelay.meshtastic_utils as mu
+
+    # Store original values (excluding logger and event_loop to keep them functional)
+    original_values = {
+        "config": getattr(mu, "config", None),
+        "meshtastic_client": getattr(mu, "meshtastic_client", None),
+        "reconnecting": getattr(mu, "reconnecting", False),
+        "shutting_down": getattr(mu, "shutting_down", False),
+        "reconnect_task": getattr(mu, "reconnect_task", None),
+        "subscribed_to_messages": getattr(mu, "subscribed_to_messages", False),
+        "subscribed_to_connection_lost": getattr(
+            mu, "subscribed_to_connection_lost", False
+        ),
+    }
+
+    # Reset mutable globals to a clean state; keep logger and event_loop usable
+    mu.config = None
+    mu.meshtastic_client = None
+    mu.reconnecting = False
+    mu.shutting_down = False
+    mu.reconnect_task = None
+    mu.subscribed_to_messages = False
+    mu.subscribed_to_connection_lost = False
+
+    yield
+
+    # Restore original values (including Nones) to avoid state leakage
+    for attr_name, original_value in original_values.items():
+        setattr(mu, attr_name, original_value)
 
 
 @pytest.fixture
@@ -596,82 +675,28 @@ def comprehensive_cleanup():
     gc.collect()
 
 
-@pytest.fixture
-def mock_event_loop(monkeypatch):
+@pytest.fixture(autouse=True)
+def mock_to_thread(monkeypatch):
     """
-    Patch asyncio loop helpers so run_in_executor executes callables synchronously during tests.
+    Mock asyncio.to_thread to run synchronously for tests.
 
-    Replace asyncio.get_running_loop and asyncio.get_event_loop with wrappers that ensure the returned event loop's run_in_executor invokes the callable immediately on the current thread and returns an already-completed Future with the callable's result or exception. This prevents background thread creation from run_in_executor calls and makes test behavior and teardown deterministic.
+    This avoids creating separate threads during testing, ensuring that code designed to run
+    in a thread (via asyncio.to_thread) executes immediately in the main thread. This simplifies
+    testing with mocks (which are often not thread-safe) and ensures deterministic execution.
     """
 
-    original_get_running_loop = asyncio.get_running_loop
-    original_get_event_loop = asyncio.get_event_loop
-
-    def _patch_loop(loop: asyncio.AbstractEventLoop) -> asyncio.AbstractEventLoop:
+    async def _to_thread(func, *args, **kwargs):
         """
-        Patch an event loop so its `run_in_executor` executes callables immediately on the loop's thread.
-
-        Replaces `loop.run_in_executor` with a synchronous implementation that ignores the executor argument and returns an `asyncio.Future` already resolved with the callable's return value or exception. Also sets `loop._mmrelay_run_in_executor_patched = True` to mark the loop as patched. If `loop` is None or already patched, the input is returned unchanged.
+        Execute a callable on the current thread and return its result.
 
         Parameters:
-            loop (asyncio.AbstractEventLoop | None): Event loop to patch; may be None.
+                func (Callable): The callable to invoke.
+                *args: Positional arguments to pass to `func`.
+                **kwargs: Keyword arguments to pass to `func`.
 
         Returns:
-            asyncio.AbstractEventLoop | None: The same loop instance (patched) or None if input was None.
+                The value returned by `func`. Exceptions raised by `func` propagate to the caller.
         """
-        if loop is None:
-            return loop
-        if getattr(loop, "_mmrelay_run_in_executor_patched", False):
-            return loop
+        return func(*args, **kwargs)
 
-        def run_in_executor_sync(_executor, func, *args, **kwargs):
-            """
-            Invoke a callable immediately on the current thread.
-
-            Parameters:
-                _executor: Ignored; present for API compatibility with executor-style APIs.
-                func (Callable): Callable to invoke.
-                *args: Positional arguments forwarded to `func`.
-                **kwargs: Keyword arguments forwarded to `func`.
-
-            Returns:
-                asyncio.Future: Future whose result is the value returned by `func`, or whose exception is the exception raised by `func`.
-            """
-            future = loop.create_future()
-            try:
-                result = func(*args, **kwargs)
-            except Exception as exc:
-                future.set_exception(exc)
-            else:
-                future.set_result(result)
-            return future
-
-        loop.run_in_executor = run_in_executor_sync  # type: ignore[assignment]
-        loop._mmrelay_run_in_executor_patched = True  # type: ignore[attr-defined]
-        return loop
-
-    def patched_get_running_loop():
-        """
-        Get the currently running asyncio event loop patched for test compatibility.
-
-        The returned loop has its `run_in_executor` implementation replaced so executor callables run synchronously, enabling deterministic behavior in tests.
-
-        Returns:
-            asyncio.AbstractEventLoop: The active event loop whose `run_in_executor` executes callables synchronously.
-        """
-        loop = original_get_running_loop()
-        return _patch_loop(loop)
-
-    def patched_get_event_loop():
-        """
-        Return the current asyncio event loop after applying test-specific patches.
-
-        Calls the original event loop getter to obtain the active loop, then passes it to _patch_loop and returns the patched loop. The patched loop exposes a run_in_executor that executes callables synchronously and returns a completed Future with the callable's result or exception, preventing background thread creation during tests.
-        """
-        loop = original_get_event_loop()
-        return _patch_loop(loop)
-
-    monkeypatch.setattr(asyncio, "get_running_loop", patched_get_running_loop)
-    monkeypatch.setattr(asyncio, "get_event_loop", patched_get_event_loop)
-
-    yield
+    monkeypatch.setattr(asyncio, "to_thread", _to_thread)

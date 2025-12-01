@@ -322,7 +322,7 @@ def _display_room_channel_mappings(
 
     # Display header
     mapped_rooms = sum(len(room_list) for room_list in channels.values())
-    logger.info(f"Matrix Rooms → Meshtastic Channels ({mapped_rooms} configured):")
+    logger.info(f"Meshtastic Channels ↔ Matrix Rooms ({mapped_rooms} configured):")
 
     # Display rooms organized by channel (sorted by channel number)
     for channel in sorted(channels.keys()):
@@ -843,21 +843,39 @@ bot_start_time = int(
 matrix_client = None
 
 
-def bot_command(command: str, event, require_mention: bool = False) -> bool:
+async def get_displayname(user_id: str) -> str | None:
     """
-    Detect whether a Matrix event addresses the bot with the specified command.
+    Get the display name for a given user ID.
 
-    Checks both the plain body and HTML-formatted body (if present). It returns True when either body:
-    - begins with `!<command>` (only when require_mention=False), or
-    - begins with an explicit bot mention (bot MXID or display name) optionally followed by punctuation/whitespace and then `!<command>`.
+    Parameters:
+        user_id (str): The Matrix user ID.
+
+    Returns:
+        str | None: The display name, or None if not available.
+    """
+    if not matrix_client:
+        return None
+    response = await matrix_client.get_displayname(user_id)
+    return getattr(response, "displayname", None)
+
+
+def bot_command(
+    command: str,
+    event: RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote,
+    require_mention: bool = False,
+) -> bool:
+    """
+    Determine whether a Matrix event addresses the bot with the given command.
+
+    Checks the event's plain and HTML-formatted bodies. Matches when the message either starts with `!<command>` (only allowed when `require_mention` is False) or begins with an explicit mention of the bot (bot MXID or display name) optionally followed by punctuation/whitespace and then `!<command>`.
 
     Parameters:
         command (str): Command name to detect (without the leading `!`).
-        event: Matrix event object expected to provide `body` (plain text) and `source`/`content` with optional `formatted_body` (HTML).
-        require_mention (bool): If True, only accept commands that explicitly mention the bot. If False, accept both mentioned and non-mentioned commands.
+        event: Matrix event object expected to provide a plain `body` and a `source`/`content` with optional `formatted_body`.
+        require_mention (bool): If True, only accept commands that explicitly mention the bot; if False, accept bare `!<command>` messages as well.
 
     Returns:
-        bool: `True` if the message targets the bot with the given command, `False` otherwise.
+        bool: `True` if the message addresses the bot with the given command, `False` otherwise.
     """
     full_message = (getattr(event, "body", "") or "").strip()
     if not command:
@@ -877,11 +895,16 @@ def bot_command(command: str, event, require_mention: bool = False) -> bool:
     ):
         return True
 
-    mention_parts = []
-    if bot_user_id:
-        mention_parts.append(re.escape(bot_user_id))
-    if bot_user_name:
-        mention_parts.append(re.escape(bot_user_name))
+    mention_parts: list[str] = []
+    for ident in (bot_user_id, bot_user_name):
+        if ident:
+            try:
+                mention_parts.append(re.escape(str(ident)))
+            except Exception:
+                logger.debug(
+                    "Failed to escape identifier %r for bot_command pattern", ident
+                )
+                continue
 
     if not mention_parts:
         return False
@@ -895,31 +918,26 @@ def bot_command(command: str, event, require_mention: bool = False) -> bool:
 
 async def _connect_meshtastic():
     """
-    Get a Meshtastic connection usable from asynchronous code.
-
-    In test environments (MMRELAY_TESTING=1 or when running under pytest) returns the connector directly; otherwise invokes the synchronous connector in a thread executor to avoid blocking the event loop.
+    Obtain a Meshtastic interface suitable for use from async code.
 
     Returns:
-        Meshtastic interface or proxy object produced by the connector.
+        meshtastic_iface: The Meshtastic interface or proxy object produced by the synchronous connector.
     """
-    if os.getenv("MMRELAY_TESTING") == "1" or "PYTEST_CURRENT_TEST" in os.environ:
-        return connect_meshtastic()
-    loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(None, connect_meshtastic)
+    return await asyncio.to_thread(connect_meshtastic)
 
 
 async def _get_meshtastic_interface_and_channel(
     room_config: dict, purpose: str
 ) -> tuple[Any | None, int | None]:
     """
-    Get a Meshtastic connection and a validated channel number for the given room.
+    Obtain a Meshtastic interface and validate the room's Meshtastic channel.
 
     Parameters:
-        room_config (dict): Room configuration containing the key "meshtastic_channel" with a non-negative integer channel.
-        purpose (str): Short description of the action (used in error messages) to indicate why the connection/channel are needed.
+        room_config (dict): Room configuration expected to contain "meshtastic_channel" with a non-negative integer.
+        purpose (str): Short description of why the interface/channel are needed (used in error messages).
 
     Returns:
-        tuple: (meshtastic_interface, channel) where `meshtastic_interface` is the connected Meshtastic interface object and `channel` is the non-negative integer channel from the room config; returns (None, None) if the connection fails or the channel is missing/invalid.
+        tuple: (meshtastic_interface, channel) where `meshtastic_interface` is the connected Meshtastic interface object or `None` on failure, and `channel` is the non-negative integer channel from the room config or `None` if missing/invalid.
     """
     from mmrelay.meshtastic_utils import logger as meshtastic_logger
 
@@ -1013,13 +1031,13 @@ async def _handle_detection_sensor_packet(
 
 async def connect_matrix(passed_config=None):
     """
-    Initialize and prepare a Matrix AsyncClient using available credentials and configuration.
+    Prepare and return a configured Matrix AsyncClient using available credentials and configuration.
 
     Parameters:
-        passed_config (dict | None): Optional configuration override for this connection attempt; when provided it is used in place of the module-level config for this call.
+        passed_config (dict | None): Optional configuration override for this connection attempt; when provided it is used instead of the module-level config for this call.
 
     Returns:
-        AsyncClient | None: A connected and initialized AsyncClient ready for use, or `None` if connection or credentials are unavailable.
+        AsyncClient | None: An initialized AsyncClient ready for use, or `None` if connection or credential setup failed.
 
     Raises:
         ValueError: If the required top-level "matrix_rooms" configuration is missing.
@@ -1214,44 +1232,30 @@ async def connect_matrix(passed_config=None):
                 try:
                     importlib.import_module("olm")
 
-                    # Also check for other required E2EE dependencies unless tests skip them
-                    if os.getenv("MMRELAY_TESTING") != "1":
-                        try:
-                            nio_crypto = importlib.import_module("nio.crypto")
-                            if not hasattr(nio_crypto, "OlmDevice"):
-                                raise ImportError("nio.crypto.OlmDevice is unavailable")
+                    # Also check for other required E2EE dependencies
+                    try:
+                        nio_crypto = importlib.import_module("nio.crypto")
+                        if not hasattr(nio_crypto, "OlmDevice"):
+                            raise ImportError("nio.crypto.OlmDevice is unavailable")
 
-                            nio_store = importlib.import_module("nio.store")
-                            if not hasattr(nio_store, "SqliteStore"):
-                                raise ImportError(
-                                    "nio.store.SqliteStore is unavailable"
-                                )
+                        nio_store = importlib.import_module("nio.store")
+                        if not hasattr(nio_store, "SqliteStore"):
+                            raise ImportError("nio.store.SqliteStore is unavailable")
 
-                            logger.debug("All E2EE dependencies are available")
-                        except ImportError:
-                            logger.exception("Missing E2EE dependency")
-                            logger.error(
-                                "Please reinstall with: pipx install 'mmrelay[e2e]'"
-                            )
-                            logger.warning("E2EE will be disabled for this session.")
-                            e2ee_enabled = False
-                        else:
-                            # Dependencies are available, keep the config-determined value
-                            if e2ee_enabled:
-                                logger.info("End-to-End Encryption (E2EE) is enabled")
-                            else:
-                                logger.debug(
-                                    "E2EE dependencies available but E2EE is disabled in configuration"
-                                )
-                    else:
-                        logger.debug(
-                            "Skipping additional E2EE dependency imports in test mode"
+                        logger.debug("All E2EE dependencies are available")
+                    except ImportError:
+                        logger.exception("Missing E2EE dependency")
+                        logger.error(
+                            "Please reinstall with: pipx install 'mmrelay[e2e]'"
                         )
+                        logger.warning("E2EE will be disabled for this session.")
+                        e2ee_enabled = False
+                    else:
+                        # Dependencies are available and E2EE is enabled in config
+                        logger.info("End-to-End Encryption (E2EE) is enabled")
 
                     if e2ee_enabled:
-                        # Ensure nio still receives a store path even when dependency
-                        # checks are skipped (e.g. production runs without MMRELAY_TESTING);
-                        # without this the client will not load encryption state.
+                        # Ensure nio receives a store path for the client to load encryption state.
                         # Get store path from config or use default
                         if (
                             "encryption" in config["matrix"]
@@ -2883,18 +2887,13 @@ async def on_room_message(
     ],
 ) -> None:
     """
-    Handle an incoming Matrix room event and relay it to Meshtastic when applicable.
+    Handle a Matrix room event and, when applicable, bridge it to Meshtastic.
 
-    Processes text, notice, emote, and reaction events for configured rooms: ignores events from before the bot started and messages from the bot itself; applies per-room and global interaction settings; forwards reactions and replies to their corresponding Meshtastic targets when mappings exist; reformats and relays Matrix-origin messages to Meshtastic (including remote-meshnet emote reactions as radio text) and handles detection-sensor forwarding. Integrates with the plugin system and treats recognized bot commands as non-relayed.
+    Processes text, notice, emote, and reaction events for rooms configured in matrix_rooms: ignores events from before the bot started and messages sent by the bot; respects per-room and global interaction settings; forwards reactions and replies to Meshtastic when a corresponding mapping exists; reformats Matrix-origin messages (including remote-meshnet messages) for Meshtastic and handles detection-sensor forwarding. Integrates with the plugin system and treats matched commands as handled (not relayed).
 
     Parameters:
         room (MatrixRoom): The Matrix room where the event was received.
         event (RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote): The received room event.
-
-    Side effects:
-        - May enqueue Meshtastic send operations.
-        - May read/write persistent message mappings to support reply/reaction bridging.
-        - May call Matrix APIs (e.g., to fetch display names) and establish Meshtastic connections.
     """
     # DEBUG: Log all Matrix message events to trace reception
     logger.debug(
@@ -3297,13 +3296,50 @@ async def on_room_message(
         logger.debug("Message handled by plugin, not sending to mesh")
         return
 
-    def _matches_command(plugin_obj) -> bool:
+    def _matches_command(plugin_obj: Any) -> bool:
+        """
+        Determine whether the given plugin should handle the current Matrix event.
+
+        Checks the plugin's `matches(event)` predicate if present; otherwise, checks
+        `get_matrix_commands()` and tests each command against the bot command matcher,
+        honoring an optional `get_require_bot_mention()` flag. Plugin errors are caught
+        and logged; errors cause the plugin to be treated as not matching.
+
+        Parameters:
+            plugin_obj: Plugin instance or object that may implement `matches(event)`,
+                        `get_matrix_commands()`, and optionally `get_require_bot_mention()`.
+
+        Returns:
+            `True` if the plugin should handle the current event, `False` otherwise.
+        """
         if hasattr(plugin_obj, "matches"):
             try:
                 return bool(plugin_obj.matches(event))
             except Exception:
+                # Broad catch keeps a faulty plugin from crashing the bridge; we log details for diagnostics.
                 logger.exception(
                     "Error checking plugin match for %s",
+                    getattr(plugin_obj, "plugin_name", plugin_obj),
+                )
+                return False
+        if hasattr(plugin_obj, "get_matrix_commands"):
+            try:
+                require_mention_attr = getattr(
+                    plugin_obj, "get_require_bot_mention", lambda: False
+                )
+                require_mention = (
+                    require_mention_attr()
+                    if callable(require_mention_attr)
+                    else bool(require_mention_attr)
+                )
+                return any(
+                    bot_command(cmd, event, require_mention=require_mention)
+                    for cmd in plugin_obj.get_matrix_commands()
+                )
+            except Exception:
+                # Intentional: isolate plugin errors while surfacing them via logs.
+                logger.exception(
+                    "Error checking plugin commands for %s",
                     getattr(plugin_obj, "plugin_name", plugin_obj),
                 )
                 return False

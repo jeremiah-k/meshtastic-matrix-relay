@@ -1,4 +1,5 @@
 import logging
+import os
 from logging.handlers import RotatingFileHandler
 
 # Import Rich components only when not running as a service
@@ -44,6 +45,9 @@ config = None
 # Global variable to store the log file path
 log_file_path = None
 
+# Cache for parsed CLI arguments
+_cached_args = None
+
 # Track if component debug logging has been configured
 _component_debug_configured = False
 
@@ -69,13 +73,13 @@ _COMPONENT_LOGGERS = {
 
 def configure_component_debug_logging():
     """
-    Configure log levels and handlers for external component loggers based on config.
+    Configure external component loggers according to config["logging"]["debug"].
 
-    Reads `config["logging"]["debug"]` and for each component:
-    - If enabled (True or a valid log level string), sets the component's loggers to the specified level and attaches the main application's handlers to them. This makes component logs appear in the console and log file.
-    - If disabled (falsy or missing), silences the component by setting its loggers to a level higher than CRITICAL.
+    Reads the debug section of the global config and for each known component:
+    - If enabled (True or a valid logging level string), sets the component loggers to the specified level and attaches the main application's handlers so their output appears alongside application logs.
+    - If disabled (falsy or missing), sets the component loggers to a level higher than CRITICAL to suppress their output.
 
-    This function runs only once. It is not thread-safe and should be called early in the application startup, after the main logger is configured but before other modules are imported.
+    This function only applies its configuration once and is not thread-safe. Call it after the main application logger is configured and before importing modules that produce component logs.
     """
     global _component_debug_configured, config
 
@@ -137,14 +141,12 @@ def configure_component_debug_logging():
     _component_debug_configured = True
 
 
-def get_logger(name):
+def get_logger(name: str) -> logging.Logger:
     """
-    Create and return a logger configured for console output (colorized when available) and optional rotating file logging.
-
-    Reads logging-related settings from the global `config` and from command-line arguments to determine log level, whether colors and Rich tracebacks are enabled, logfile path, rotation size, and backup count. If a logfile is used, creates its directory if necessary and stores the path globally when the logger name matches the application display name.
+    Create and configure a logger with console output (colorized when available) and optional rotating file logging.
 
     Parameters:
-        name (str): The name of the logger to create.
+        name (str): Name of the logger. If file logging is enabled and `name` equals APP_DISPLAY_NAME, the global `log_file_path` will be set to the chosen logfile path.
 
     Returns:
         logging.Logger: The configured logger instance.
@@ -204,18 +206,20 @@ def get_logger(name):
     logger.addHandler(console_handler)
 
     # Check command line arguments for log file path (only if not in test environment)
-    args = None
-    try:
-        # Only parse arguments if we're not in a test environment
-        import os
+    global _cached_args
+    args = _cached_args
 
-        if not os.environ.get("MMRELAY_TESTING"):
+    if args is None:
+        try:
+            # Parse command-line arguments once and cache results; if parsing fails (e.g., in tests), continue without CLI arguments.
+            # Note: This is a first-parse-wins cache - subsequent changes to sys.argv won't be picked up.
             from mmrelay.cli import parse_arguments
 
             args = parse_arguments()
-    except (SystemExit, ImportError):
-        # If argument parsing fails (e.g., in tests), continue without CLI arguments
-        pass
+            _cached_args = args
+        except (SystemExit, ImportError):
+            # If argument parsing fails (e.g., in tests), continue without CLI arguments
+            pass
 
     # Check if file logging is enabled (default to True for better user experience)
     if (
