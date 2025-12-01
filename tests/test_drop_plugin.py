@@ -476,9 +476,9 @@ class TestDropPlugin(unittest.TestCase):
     @patch("mmrelay.plugins.drop_plugin.BasePlugin.matches")
     def test_handle_room_message_without_matching_command(self, mock_matches):
         """
-        Test that Matrix room messages without matching commands are not handled by the plugin.
-
-        Verifies that when the plugin's `matches` method returns False, `handle_room_message` returns False and does not process the message.
+        Verify that handle_room_message returns False when the plugin's matches method returns False.
+        
+        When the plugin's matches method returns False for an incoming room event, handle_room_message should return False and not process the message; the test also asserts that matches was called with the event.
         """
         # Mock the matches method to return False
         mock_matches.return_value = False
@@ -488,7 +488,9 @@ class TestDropPlugin(unittest.TestCase):
 
         async def run_test():
             """
-            Asynchronously tests that the plugin's room message handler returns False when the message does not match any command.
+            Verify the room message handler does not handle messages that don't match any command.
+            
+            Asserts that handle_room_message yields a negative match (returns False) and that BasePlugin.matches is called exactly once with the event.
             """
             result = await self.plugin.handle_room_message(room, event, "full_message")
             self.assertFalse(result)  # Returns False when no match

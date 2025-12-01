@@ -10,22 +10,12 @@ from mmrelay.plugins.base_plugin import BasePlugin
 
 def match_case(source: str, target: str) -> str:
     """
-    Match the case pattern of the source string and apply it to the target string.
-
-    If lengths differ, the target is truncated to the source length. An empty
-    source returns an empty string; an empty target is returned unchanged.
-
-    If the source is all uppercase, make the target all uppercase.
-    If the source is all lowercase, make the target all lowercase.
-    If the source is title-cased (first letter uppercase, rest lowercase), capitalize the target.
-    Otherwise, match the case of each character from the source to the target.
-
-    Args:
-        source (str): The string whose case pattern to match.
-        target (str): The string to apply the case pattern to.
-
+    Apply the letter-case pattern of `source` to `target`.
+    
+    If `source` is empty an empty string is returned. If `target` is empty it is returned unchanged. If `source` and `target` differ in length, `target` is truncated to `len(source)`. Common whole-string patterns are preserved: all-uppercase, all-lowercase, and title-case are applied to the entire `target`; mixed-case source patterns are applied character-by-character.
+    
     Returns:
-        str: The target string with the case pattern applied.
+        str: The `target` string with its letters' case adjusted to match `source`.
     """
     if not source:
         return ""
@@ -56,6 +46,12 @@ class Plugin(BasePlugin):
 
     @property
     def description(self):
+        """
+        Provide a short description of the plugin's purpose.
+        
+        Returns:
+            str: A human-readable description: "Check connectivity with the relay or respond to pings over the mesh"
+        """
         return "Check connectivity with the relay or respond to pings over the mesh"
 
     async def handle_meshtastic_message(
@@ -160,24 +156,35 @@ class Plugin(BasePlugin):
 
     def get_matrix_commands(self) -> list[str]:
         """
-        Provide Matrix command names exposed by this plugin.
-
+        Provide the Matrix command names exposed by this plugin.
+        
         Returns:
-            list[str]: A single-element list containing the plugin's command name.
+            list[str]: A list containing the plugin's Matrix command (the plugin_name).
         """
         return [self.plugin_name]
 
     def get_mesh_commands(self) -> list[str]:
         """
-        Provide Mesh command names exposed by this plugin.
-
+        List mesh command names exposed by this plugin.
+        
         Returns:
-            list[str]: A single-element list containing the plugin's command name.
+            list[str]: List of command names exposed by the plugin; typically a single-element list containing the plugin's name.
         """
         return [self.plugin_name]
 
     async def handle_room_message(self, room, event, full_message) -> bool:
         # Pass event to matches()
+        """
+        Handle a Matrix room message that matches this plugin's trigger and reply with "pong!".
+        
+        Parameters:
+            room: The Matrix room object where the event originated; used to obtain the room_id for the reply.
+            event: The Matrix event to evaluate against the plugin's matching rules.
+            full_message: The raw or normalized message text content of the event.
+        
+        Returns:
+            bool: `true` if the message matched and a reply was sent, `false` otherwise.
+        """
         if not self.matches(event):
             return False
 

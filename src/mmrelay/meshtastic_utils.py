@@ -811,13 +811,13 @@ async def reconnect():
 
 def on_meshtastic_message(packet, interface):
     """
-    Handle an incoming Meshtastic packet and route it to configured Matrix rooms or installed plugins.
-
-    Processes the decoded packet according to interaction settings: relays reactions and replies when enabled, relays ordinary text messages to Matrix rooms mapped to the packet's Meshtastic channel (unless the message is a direct message to the relay node or handled by a plugin), and dispatches non-text or otherwise unhandled packets to installed plugins. Side effects include scheduling Matrix relay coroutines, invoking plugin handlers (with configured timeouts), and updating or reading sender metadata/message mappings.
-
+    Route an incoming Meshtastic packet to configured Matrix rooms or installed plugins.
+    
+    Processes a decoded Meshtastic packet (text, replies, and reaction indicators) according to configured interaction settings: relays reactions and replies to Matrix when enabled, relays ordinary text messages to Matrix rooms mapped to the packet's Meshtastic channel (unless the message is a direct message to the relay node or handled by a plugin), and dispatches non-text or otherwise unhandled packets to plugins. While processing it may schedule Matrix relay coroutines, invoke plugin handlers with a configured timeout, and update or consult stored sender metadata/message mappings.
+    
     Parameters:
-        packet (dict): Decoded Meshtastic packet (expected to contain a nested 'decoded' dict with fields like 'text', 'replyId', 'portnum', etc.).
-        interface: Meshtastic interface object used to resolve node information and node metadata (must provide .myInfo and .nodes).
+        packet (dict): Decoded Meshtastic packet. Expected to include keys such as 'decoded' (a dict that may contain 'text', 'replyId', 'portnum', and optional 'emoji'), 'fromId' or 'from', 'to', and 'id'.
+        interface: Meshtastic interface object used to resolve node information. Must provide attributes/mappings required by the function (notably .myInfo.my_node_num and .nodes) to determine node IDs and per-node metadata.
     """
     global config, matrix_rooms
 

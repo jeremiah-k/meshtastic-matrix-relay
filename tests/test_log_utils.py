@@ -36,10 +36,10 @@ class DummyRichHandler(logging.Handler):
 
     def __init__(self, **kwargs: Any) -> None:
         """
-        Record the handler's preference for using rich-style tracebacks.
-
+        Initialize the handler and record whether rich-style tracebacks are requested.
+        
         Parameters:
-            rich_tracebacks (bool | None): Whether rich-style tracebacks are enabled for this handler; `None` means unspecified.
+            rich_tracebacks (bool | None): Whether to enable rich-style tracebacks for this handler; `None` means unspecified.
         """
         super().__init__()
         self.rich_tracebacks = kwargs.get("rich_tracebacks")

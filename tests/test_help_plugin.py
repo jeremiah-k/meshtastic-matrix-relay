@@ -26,7 +26,14 @@ class TestHelpPlugin(unittest.TestCase):
 
     def setUp(self):
         """
-        Initialize the test environment by creating a Plugin instance, mocking its logger and message sending method, and setting up mock plugins with predefined commands and descriptions.
+        Set up the test fixture by creating a Plugin instance and configuring its mocked collaborators.
+        
+        Configures:
+        - plugin: instantiated Plugin with a mocked logger and get_require_bot_mention returning False.
+        - send_matrix_message: asynchronous mock for sending Matrix messages.
+        - mock_plugin1: provides matrix commands ["nodes", "health"] and description "Show mesh nodes and health".
+        - mock_plugin2: provides matrix commands ["weather"] and description "Show weather forecast".
+        - mock_plugin3: provides matrix commands ["help"] and description "List supported relay commands".
         """
         self.plugin = Plugin()
         self.plugin.logger = MagicMock()
@@ -106,7 +113,12 @@ class TestHelpPlugin(unittest.TestCase):
 
         async def run_test():
             """
-            Asynchronously tests that handle_room_message returns False and does not send a message when the event does not match the help command.
+            Verify that handle_room_message returns False and does not send a Matrix message when the event does not match the help command.
+            
+            Asserts that:
+            - The call result is False.
+            - matches(event) was called once.
+            - send_matrix_message was not called.
             """
             result = await self.plugin.handle_room_message(room, event, "full_message")
             self.assertFalse(result)
@@ -140,9 +152,9 @@ class TestHelpPlugin(unittest.TestCase):
 
         async def run_test():
             """
-            Asynchronously tests that the help plugin sends a message listing all available commands when handling a general help request.
-
-            Verifies that the plugin's `handle_room_message` method returns True, calls the `matches` and `send_matrix_message` methods once, and that the sent message includes all expected command names.
+            Run assertions that handling a general "!help" room message results in a command list being sent.
+            
+            Verifies that handle_room_message reports success, that matches() is called with the event, that send_matrix_message() is called once for the target room, and that the sent message contains "Available commands:" and the expected commands "nodes", "health", "weather", and "help".
             """
             result = await self.plugin.handle_room_message(room, event, full_message)
 
@@ -189,9 +201,9 @@ class TestHelpPlugin(unittest.TestCase):
 
         async def run_test():
             """
-            Asynchronously tests that requesting help for a specific command sends the correct help message.
-
-            Verifies that invoking the help plugin with a specific command triggers sending a message containing the command and its description.
+            Run the test that requesting help for a specific command results in a single sent message containing the command and its description.
+            
+            Asserts that handle_room_message returns True, send_matrix_message was called once, and the sent message includes the command token (e.g. `!weather`) and its human-readable description.
             """
             result = await self.plugin.handle_room_message(room, event, full_message)
 
@@ -213,9 +225,9 @@ class TestHelpPlugin(unittest.TestCase):
     @patch("mmrelay.plugins.help_plugin.load_plugins")
     def test_handle_room_message_specific_help_not_found(self, mock_load_plugins):
         """
-        Test that requesting help for a nonexistent command results in an appropriate error message.
-
-        Verifies that when a specific help command is issued for a command that does not exist, the plugin responds with an error message indicating the command was not found.
+        Verify the help plugin responds with a "command not found" message when a specific nonexistent command is requested.
+        
+        Asserts that handle_room_message returns True, that send_matrix_message is called once, and that the sent message equals "No such command: nonexistent".
         """
         mock_load_plugins.return_value = [
             self.mock_plugin1,
@@ -356,10 +368,9 @@ class TestHelpPlugin(unittest.TestCase):
 
         async def run_test():
             """
-            Asynchronously tests that the help plugin returns an empty command list message when no plugins are loaded.
-
-            Returns:
-                None
+            Run the asynchronous test that verifies the help plugin reports no commands when no plugins are loaded.
+            
+            Asserts that handle_room_message returns True and that the sent Matrix message equals "Available commands: ".
             """
             result = await self.plugin.handle_room_message(room, event, full_message)
 

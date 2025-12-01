@@ -3563,6 +3563,22 @@ async def test_connect_matrix_with_e2ee_credentials(
     ):
         # Make import_module return mocks for E2EE modules and delegate all other imports
         def mock_import_side_effect(module_name, *args, **kwargs):
+            """
+            Provide a side-effect for importlib.import_module that returns mocks for E2EE-related modules or delegates to the real importer.
+            
+            This function returns a mocked module object when `module_name` is one of the E2EE-related modules used in tests:
+            - "olm": returns the provided `mock_olm` object.
+            - "nio.crypto": returns a mock with an `OlmDevice` attribute.
+            - "nio.store": returns a mock with a `SqliteStore` attribute.
+            
+            For any other module name, the call is forwarded to the original import function (`real_import_module`) with the same arguments and keyword arguments.
+            
+            Parameters:
+                module_name (str): The dotted module name requested by the importer.
+            
+            Returns:
+                module: A mock module for specific E2EE imports or the actual imported module for all other names.
+            """
             if module_name == "olm":
                 return mock_olm
             if module_name == "nio.crypto":

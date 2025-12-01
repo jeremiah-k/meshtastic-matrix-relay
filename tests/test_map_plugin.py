@@ -276,6 +276,11 @@ class TestImageUploadAndSend(unittest.TestCase):
 
         async def run_test():
             # Mock image save
+            """
+            Execute an asynchronous test that verifies upload_image uploads image bytes and returns the upload response.
+            
+            The test mocks an in-memory image buffer and the Matrix client's upload method, calls upload_image with the mocked client and image, and asserts that the returned value equals the mocked upload response and that client.upload was awaited exactly once.
+            """
             mock_buffer = MagicMock()
             mock_buffer.getvalue.return_value = b"fake_image_data"
 
@@ -325,6 +330,13 @@ class TestImageUploadAndSend(unittest.TestCase):
         """
 
         async def run_test():
+            """
+            Verify that send_image uploads the provided image and then sends the resulting upload response to the specified Matrix room.
+            
+            The test calls send_image with a mock client, room ID, image, and filename, then asserts that:
+            - upload_image was awaited once with the client, image, and filename.
+            - send_room_image was awaited once with the client, room ID, upload response, and filename.
+            """
             room_id = "!test:example.com"
             mock_upload_image.return_value = self.mock_upload_response
 
@@ -490,9 +502,9 @@ class TestMapPlugin(unittest.TestCase):
         mock_send_image,
     ):
         """
-        Verifies that a "!map zoom=15" room command causes map generation to be invoked with zoom=15 and that the handler returns True.
-
-        Mocks Matrix and Meshtastic clients, simulates a room message containing "zoom=15", and asserts get_map was called with the zoom parameter set to 15 and the plugin handler returned True.
+        Verify that handling a room command "!map zoom=15" triggers map generation with zoom=15 and that the handler returns True.
+        
+        Mocks Matrix and Meshtastic clients and a map image; asserts get_map was called with zoom=15 and the plugin handler returned True.
         """
 
         async def run_test():
@@ -560,9 +572,9 @@ class TestMapPlugin(unittest.TestCase):
 
         async def run_test():
             """
-            Test that a "!map size=500,400" room command triggers map generation with the specified image size.
-
-            Asserts the handler returns True and that get_map was invoked with image_size of (500, 400).
+            Verify that a "!map size=500,400" room command produces a map request using the specified image size.
+            
+            Asserts the plugin handler returns True and that get_map was called with image_size set to (500, 400). The test configures mock Matrix and Meshtastic clients and a single node with location data to exercise the handler's parsing of the size parameter.
             """
             mock_room = MagicMock()
             mock_room.room_id = "!test:example.com"
@@ -639,9 +651,9 @@ class TestMapPlugin(unittest.TestCase):
         mock_send_image,
     ):
         """
-        Verify that an invalid zoom parameter in a "!map" command is replaced with the default zoom when handling a room message.
-
-        Simulates a room event containing "!map zoom=50", awaits handle_room_message, asserts it returns True, and confirms get_map was invoked with zoom equal to 8.
+        Verify that handling a room "!map" command substitutes an invalid zoom value with the plugin's default zoom.
+        
+        Simulates receiving a room event containing "!map zoom=50", calls handle_room_message, asserts the handler returns True, and checks that get_map was invoked with zoom set to 8 (the default).
         """
         """
         Run the asynchronous scenario that verifies an invalid zoom parameter is reset.
@@ -651,9 +663,9 @@ class TestMapPlugin(unittest.TestCase):
 
         async def run_test():
             """
-            Verify that an invalid zoom parameter in a "!map" command is replaced with the default zoom level.
-
-            Simulates receiving "!map zoom=50" and asserts that get_map is called with the default zoom (8) rather than the invalid value.
+            Verify that an invalid zoom parameter in a map command is replaced by the configured default zoom.
+            
+            Simulates receiving the message "!map zoom=50" and asserts that Plugin.handle_room_message calls get_map with the plugin's default zoom value (8) instead of the invalid provided value.
             """
             mock_room = MagicMock()
             mock_room.room_id = "!test:example.com"
@@ -706,16 +718,16 @@ class TestMapPlugin(unittest.TestCase):
         mock_send_image,
     ):
         """
-        Tests that the plugin caps oversized image size parameters to 1000x1000 pixels when handling a "!map" command in a room message.
-
-        Ensures that if a user requests an image larger than the allowed maximum, the plugin enforces the size limit before generating and sending the map image.
+        Verify that oversized image size parameters in a "!map" room command are capped to 1000×1000 pixels.
+        
+        Asserts that the plugin processes the command successfully and calls get_map with image_size set to (1000, 1000).
         """
 
         async def run_test():
             """
-            Asynchronously tests that the plugin caps oversized image size parameters in the "!map" command to the maximum allowed dimensions when handling a room message.
-
-            Verifies that the map is generated with the capped image size and that the command is processed successfully.
+            Verify that handling a room "!map" command caps oversized image size parameters to the configured maximum.
+            
+            Simulates a room message with "size=2000,1500", sets up mocked Matrix and Meshtastic clients and a mocked map image, and asserts the plugin returns success and calls get_map with image_size (1000, 1000).
             """
             mock_room = MagicMock()
             mock_room.room_id = "!test:example.com"
@@ -772,6 +784,11 @@ class TestMapPlugin(unittest.TestCase):
         """
 
         async def run_test():
+            """
+            Execute the plugin's room-message handler for a "!map" command when no node locations are available.
+            
+            Runs handle_room_message with a mocked Matrix room/event and a Meshtastic client that has nodes without location data, then verifies that the handler returns True, that a user-facing matrix message is sent, and that no map generation or image-sending functions are invoked.
+            """
             mock_room = MagicMock()
             mock_room.room_id = "!test:example.com"
             mock_event = MagicMock()

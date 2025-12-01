@@ -363,14 +363,14 @@ class MockStaticmapsModule:
     @staticmethod
     def create_latlng(lat, lon):
         """
-        Create a MockLatLng representing the specified geographic coordinates.
-
+        Create a MockLatLng representing the given geographic coordinates.
+        
         Parameters:
-            lat (float): Latitude in decimal degrees.
-            lon (float): Longitude in decimal degrees.
-
+            lat (float): Latitude in degrees.
+            lon (float): Longitude in degrees.
+        
         Returns:
-            MockLatLng: A mock LatLng object for the given latitude and longitude.
+            MockLatLng: A mock LatLng object for the supplied coordinates.
         """
         return MockLatLng.from_degrees(lat, lon)
 
@@ -554,9 +554,9 @@ def reset_custom_data_dir():
 @pytest.fixture(autouse=True)
 def reset_banner_flag():
     """
-    Autouse pytest fixture that resets mmrelay.main._banner_printed to False before each test.
-
-    This ensures the module-level banner-printed flag does not persist state between tests. The fixture yields once to allow the test to run with the reset state.
+    Reset the mmrelay.main module's banner-printed flag before each test.
+    
+    This autouse pytest fixture sets mmrelay.main._banner_printed to False and yields once so the test executes with the cleared flag.
     """
     import mmrelay.main
 
@@ -567,10 +567,13 @@ def reset_banner_flag():
 @pytest.fixture
 def reset_meshtastic_globals():
     """
-    Pytest fixture that resets global variables in mmrelay.meshtastic_utils module.
-
-    Resets module-level globals like config, logger, meshtastic_client, event_loop,
-    and state flags to ensure clean test isolation between test runs.
+    Reset and restore key globals in mmrelay.meshtastic_utils to ensure test isolation.
+    
+    Saves the module-level state for attributes such as `config`, `meshtastic_client`,
+    reconnect-related flags and tasks, and subscription flags; sets those attributes
+    to a clean default state for the duration of a test, yields control to the
+    test, and restores the original values on teardown. The fixture intentionally
+    does not modify the module's logger or event loop references.
     """
     import mmrelay.meshtastic_utils as mu
 
@@ -683,6 +686,17 @@ def mock_to_thread(monkeypatch):
     """
 
     async def _to_thread(func, *args, **kwargs):
+        """
+        Execute a callable on the current thread and return its result.
+        
+        Parameters:
+        	func (Callable): The callable to invoke.
+        	*args: Positional arguments to pass to `func`.
+        	**kwargs: Keyword arguments to pass to `func`.
+        
+        Returns:
+        	The value returned by `func`. Exceptions raised by `func` propagate to the caller.
+        """
         return func(*args, **kwargs)
 
     monkeypatch.setattr(asyncio, "to_thread", _to_thread)

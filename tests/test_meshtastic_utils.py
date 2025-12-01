@@ -82,9 +82,9 @@ class TestMeshtasticUtils(unittest.TestCase):
 
     def test_on_meshtastic_message_basic(self):
         """
-        Test that a valid Meshtastic text message on a mapped channel is processed and relayed to Matrix.
-
-        Verifies that when a properly formatted text message is received on a channel mapped to a Matrix room, the message relay coroutine is scheduled for delivery to Matrix.
+        Verify that a Meshtastic text message on a channel mapped to a Matrix room schedules the Matrix relay coroutine.
+        
+        Sets up name, interaction, and storage mocks and invokes on_meshtastic_message with a valid text packet and mock interface, asserting that the message relay is scheduled for delivery to Matrix.
         """
         # Mock the required functions
         from concurrent.futures import Future
@@ -93,9 +93,10 @@ class TestMeshtasticUtils(unittest.TestCase):
 
         def _done_future(*args, **kwargs):
             """
-            Return a completed Future with a result of None.
-
-            This helper is used to mock asynchronous operations that are already finished.
+            Create a completed Future whose result is None.
+            
+            Returns:
+                Future: A Future object already resolved with result `None`.
             """
             f = Future()
             f.set_result(None)
@@ -286,6 +287,15 @@ class TestMeshtasticUtils(unittest.TestCase):
             def _drain_coro(coro, *_args, **_kwargs):
                 # Mirror mock_submit_coro fixture behavior: close coroutines
                 # so AsyncMock-based matrix_relay calls don't raise warnings.
+                """
+                Close a coroutine object to prevent un-awaited-coroutine warnings in tests.
+                
+                Parameters:
+                    coro: The coroutine object to close; if not a coroutine, the function has no effect.
+                
+                Notes:
+                    Accepts additional positional and keyword arguments for compatibility with fixtures that forward them; those are ignored.
+                """
                 if inspect.iscoroutine(coro):
                     coro.close()
                 return None
@@ -302,7 +312,7 @@ class TestMeshtasticUtils(unittest.TestCase):
 
     def test_on_meshtastic_message_reply_relay(self):
         """
-        Ensure reply packets (non-emoji) are relayed when replies are enabled.
+        Verify that non-emoji reply packets are relayed to Matrix when reply handling is enabled.
         """
         reply_packet = {
             "fromId": "!node",
@@ -345,6 +355,15 @@ class TestMeshtasticUtils(unittest.TestCase):
             def _drain_coro(coro, *_args, **_kwargs):
                 # Mirror mock_submit_coro fixture behavior: close coroutines
                 # so AsyncMock-based matrix_relay calls don't raise warnings.
+                """
+                Close a coroutine object to prevent un-awaited-coroutine warnings in tests.
+                
+                Parameters:
+                    coro: The coroutine object to close; if not a coroutine, the function has no effect.
+                
+                Notes:
+                    Accepts additional positional and keyword arguments for compatibility with fixtures that forward them; those are ignored.
+                """
                 if inspect.iscoroutine(coro):
                     coro.close()
                 return None
@@ -551,9 +570,14 @@ class TestMeshtasticUtils(unittest.TestCase):
         def _done_future(coro, *args, **kwargs):
             # Close the coroutine if it's a coroutine to prevent "never awaited" warnings
             """
-            Return a completed Future after closing the given coroutine to prevent unawaited coroutine warnings.
-
-            If the input is a coroutine, it is closed before the Future is returned.
+            Close `coro` if it is a coroutine to avoid "coroutine was never awaited" warnings and return a completed Future.
+            
+            Parameters:
+                coro: The object to inspect; if it is a coroutine it will be closed.
+                *args, **kwargs: Ignored.
+            
+            Returns:
+                asyncio.Future: A Future already resolved with the value `None`.
             """
             if inspect.iscoroutine(coro):
                 coro.close()
@@ -935,9 +959,14 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
         def _done_future(coro, *args, **kwargs):
             # Close the coroutine if it's a coroutine to prevent "never awaited" warnings
             """
-            Return a completed Future after closing the given coroutine to prevent unawaited coroutine warnings.
-
-            If the input is a coroutine, it is closed before the Future is returned.
+            Close `coro` if it is a coroutine to avoid "coroutine was never awaited" warnings and return a completed Future.
+            
+            Parameters:
+                coro: The object to inspect; if it is a coroutine it will be closed.
+                *args, **kwargs: Ignored.
+            
+            Returns:
+                asyncio.Future: A Future already resolved with the value `None`.
             """
             if inspect.iscoroutine(coro):
                 coro.close()
@@ -982,9 +1011,14 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
         def _done_future(coro, *args, **kwargs):
             # Close the coroutine if it's a coroutine to prevent "never awaited" warnings
             """
-            Return a completed Future after closing the given coroutine to prevent unawaited coroutine warnings.
-
-            If the input is a coroutine, it is closed before the Future is returned.
+            Close `coro` if it is a coroutine to avoid "coroutine was never awaited" warnings and return a completed Future.
+            
+            Parameters:
+                coro: The object to inspect; if it is a coroutine it will be closed.
+                *args, **kwargs: Ignored.
+            
+            Returns:
+                asyncio.Future: A Future already resolved with the value `None`.
             """
             if inspect.iscoroutine(coro):
                 coro.close()
@@ -1094,9 +1128,9 @@ def test_reconnect_attempts_connection(
     reset_meshtastic_globals,
 ):
     """
-    Test that the reconnect coroutine attempts to establish a Meshtastic connection.
-
-    Verifies that the reconnect logic calls the connection function with `force_connect=True` and does not actually sleep during the test.
+    Ensure the reconnect coroutine requests a Meshtastic connection attempt.
+    
+    Mocks asyncio.sleep to avoid delays and simulates a successful connection that sets shutdown to True so the coroutine exits after the first attempt. Verifies that the connection function is invoked with `force_connect=True`.
     """
 
     # Mock asyncio.sleep to prevent the test from actually sleeping
@@ -1104,6 +1138,14 @@ def test_reconnect_attempts_connection(
 
     # Simulate connect_meshtastic succeeding and signal shutdown after first attempt to exit cleanly
     def _connect_side_effect(*_args, **_kwargs):
+        """
+        Set the global shutdown flag in the meshtastic utilities and return a MagicMock.
+        
+        This helper sets mmrelay.meshtastic_utils.shutting_down to True as a side effect and provides a MagicMock instance for use in tests.
+        
+        Returns:
+            MagicMock: A new MagicMock instance.
+        """
         import mmrelay.meshtastic_utils as mu
 
         mu.shutting_down = True
