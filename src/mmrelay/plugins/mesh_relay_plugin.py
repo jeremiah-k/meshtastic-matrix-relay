@@ -1,5 +1,6 @@
 # Note: This plugin was experimental and is not functional.
 
+import asyncio
 import base64
 import json
 import re
@@ -207,7 +208,7 @@ class Plugin(BasePlugin):
 
         from mmrelay.meshtastic_utils import connect_meshtastic
 
-        meshtastic_client = connect_meshtastic()
+        meshtastic_client = await asyncio.to_thread(connect_meshtastic)
         meshPacket = mesh_pb2.MeshPacket()
         meshPacket.channel = channel
         meshPacket.decoded.payload = base64.b64decode(packet["decoded"]["payload"])

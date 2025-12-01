@@ -473,7 +473,7 @@ class Plugin(BasePlugin):
         elif toId == BROADCAST_NUM:
             is_direct_message = False
         else:
-            # Message to someone else; we may ignore it
+            # Some radios send placeholder destination IDs; treat as broadcast to avoid dropping valid requests
             is_direct_message = False
 
         # Pass is_direct_message to is_channel_enabled

@@ -42,6 +42,8 @@ sys.modules["meshtastic.tcp_interface"] = MagicMock()
 sys.modules["meshtastic.mesh_interface"] = MagicMock()
 meshtastic_mock.BROADCAST_ADDR = "^all"
 meshtastic_mock.BROADCAST_NUM = 4294967295
+sys.modules["meshtastic.mesh_interface"].BROADCAST_NUM = 4294967295
+sys.modules["meshtastic.mesh_interface"].BROADCAST_ADDR = "^all"
 
 nio_mock = MagicMock()
 sys.modules["nio"] = nio_mock

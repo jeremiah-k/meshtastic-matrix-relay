@@ -1,5 +1,4 @@
 import asyncio
-import os
 import re
 
 from meshtastic.mesh_interface import BROADCAST_NUM
@@ -99,8 +98,7 @@ class Plugin(BasePlugin):
 
         from mmrelay.meshtastic_utils import connect_meshtastic
 
-        # Ping is light-weight; connect synchronously to avoid thread overhead
-        meshtastic_client = connect_meshtastic()
+        meshtastic_client = await asyncio.to_thread(connect_meshtastic)
 
         toId = packet.get("to")
         if not meshtastic_client:
@@ -118,7 +116,7 @@ class Plugin(BasePlugin):
         elif toId == BROADCAST_NUM:
             is_direct_message = False
         else:
-            # Treat unknown destinations as broadcast to mirror previous behavior
+            # Some radios omit/zero-fill destination; treat as broadcast to avoid dropping valid pings
             is_direct_message = False
 
         if not self.is_channel_enabled(channel, is_direct_message=is_direct_message):
@@ -170,6 +168,12 @@ class Plugin(BasePlugin):
         return [self.plugin_name]
 
     def get_mesh_commands(self) -> list[str]:
+        """
+        Provide Mesh command names exposed by this plugin.
+
+        Returns:
+            list[str]: A single-element list containing the plugin's command name.
+        """
         return [self.plugin_name]
 
     async def handle_room_message(self, room, event, full_message) -> bool:

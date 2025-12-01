@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime
 
 from mmrelay.plugins.base_plugin import BasePlugin
@@ -95,8 +96,9 @@ $shortname $longname / $devicemodel / $battery $voltage / $snr / $hops / $lastse
         if not self.matches(event):
             return False
 
+        response = await asyncio.to_thread(self.generate_response)
         await self.send_matrix_message(
-            room_id=room.room_id, message=self.generate_response(), formatted=False
+            room_id=room.room_id, message=response, formatted=False
         )
 
         return True
