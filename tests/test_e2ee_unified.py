@@ -215,10 +215,10 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
             def import_side_effect(name):
                 """
                 Provide a replacement for import_module that returns predefined mocks for specific module names.
-                
+
                 Parameters:
                     name (str): The fully qualified module name requested.
-                
+
                 Returns:
                     object: A mock object to stand in for the requested module:
                       - a new MagicMock for "olm" and any unknown module name,
@@ -306,13 +306,10 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
         mock_exists.return_value = True
 
         with patch("mmrelay.e2ee_utils.importlib.import_module") as mock_import:
-            # Create mock modules where nio.crypto lacks OlmDevice
-            mock_olm = MagicMock()
-            mock_nio_crypto = MagicMock()
-            # Remove the OlmDevice attribute to simulate missing dependency
-            del mock_nio_crypto.OlmDevice
-            mock_nio_store = MagicMock()
-            mock_nio_store.SqliteStore = MagicMock()
+            # Create simple namespace modules where nio.crypto lacks OlmDevice
+            mock_olm = types.SimpleNamespace()
+            mock_nio_crypto = types.SimpleNamespace()  # no OlmDevice attribute
+            mock_nio_store = types.SimpleNamespace(SqliteStore=MagicMock())
 
             def import_side_effect(name):
                 """
@@ -326,9 +323,9 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
                 """
                 if name == "olm":
                     return mock_olm
-                elif name == "nio.crypto":
+                if name == "nio.crypto":
                     return mock_nio_crypto
-                elif name == "nio.store":
+                if name == "nio.store":
                     return mock_nio_store
                 return MagicMock()
 
@@ -356,10 +353,10 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
             def import_side_effect(name):
                 """
                 Return a test-double module object for a requested import name.
-                
+
                 Parameters:
                     name (str): Module name being imported (e.g., "olm", "nio.crypto", "nio.store").
-                
+
                 Returns:
                     object: A mock module corresponding to `name` (`mock_olm`, `mock_nio_crypto`, `mock_nio_store`), or a fresh `MagicMock` for any other module name.
                 """

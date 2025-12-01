@@ -843,17 +843,21 @@ bot_start_time = int(
 matrix_client = None
 
 
-def bot_command(command: str, event, require_mention: bool = False) -> bool:
+def bot_command(
+    command: str,
+    event: RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote,
+    require_mention: bool = False,
+) -> bool:
     """
     Determine whether a Matrix event addresses the bot with the given command.
-    
+
     Checks the event's plain and HTML-formatted bodies. Matches when the message either starts with `!<command>` (only allowed when `require_mention` is False) or begins with an explicit mention of the bot (bot MXID or display name) optionally followed by punctuation/whitespace and then `!<command>`.
-    
+
     Parameters:
         command (str): Command name to detect (without the leading `!`).
         event: Matrix event object expected to provide a plain `body` and a `source`/`content` with optional `formatted_body`.
         require_mention (bool): If True, only accept commands that explicitly mention the bot; if False, accept bare `!<command>` messages as well.
-    
+
     Returns:
         bool: `True` if the message addresses the bot with the given command, `False` otherwise.
     """
@@ -894,7 +898,7 @@ def bot_command(command: str, event, require_mention: bool = False) -> bool:
 async def _connect_meshtastic():
     """
     Obtain a Meshtastic interface suitable for use from async code.
-    
+
     Returns:
         meshtastic_iface: The Meshtastic interface or proxy object produced by the synchronous connector.
     """
@@ -906,11 +910,11 @@ async def _get_meshtastic_interface_and_channel(
 ) -> tuple[Any | None, int | None]:
     """
     Obtain a Meshtastic interface and validate the room's Meshtastic channel.
-    
+
     Parameters:
         room_config (dict): Room configuration expected to contain "meshtastic_channel" with a non-negative integer.
         purpose (str): Short description of why the interface/channel are needed (used in error messages).
-    
+
     Returns:
         tuple: (meshtastic_interface, channel) where `meshtastic_interface` is the connected Meshtastic interface object or `None` on failure, and `channel` is the non-negative integer channel from the room config or `None` if missing/invalid.
     """
@@ -1007,13 +1011,13 @@ async def _handle_detection_sensor_packet(
 async def connect_matrix(passed_config=None):
     """
     Prepare and return a configured Matrix AsyncClient using available credentials and configuration.
-    
+
     Parameters:
         passed_config (dict | None): Optional configuration override for this connection attempt; when provided it is used instead of the module-level config for this call.
-    
+
     Returns:
         AsyncClient | None: An initialized AsyncClient ready for use, or `None` if connection or credential setup failed.
-    
+
     Raises:
         ValueError: If the required top-level "matrix_rooms" configuration is missing.
         ConnectionError: If the initial Matrix sync fails or times out.
@@ -2863,9 +2867,9 @@ async def on_room_message(
 ) -> None:
     """
     Handle a Matrix room event and, when applicable, bridge it to Meshtastic.
-    
+
     Processes text, notice, emote, and reaction events for rooms configured in matrix_rooms: ignores events from before the bot started and messages sent by the bot; respects per-room and global interaction settings; forwards reactions and replies to Meshtastic when a corresponding mapping exists; reformats Matrix-origin messages (including remote-meshnet messages) for Meshtastic and handles detection-sensor forwarding. Integrates with the plugin system and treats matched commands as handled (not relayed).
-    
+
     Parameters:
         room (MatrixRoom): The Matrix room where the event was received.
         event (RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote): The received room event.
@@ -3271,19 +3275,19 @@ async def on_room_message(
         logger.debug("Message handled by plugin, not sending to mesh")
         return
 
-    def _matches_command(plugin_obj) -> bool:
+    def _matches_command(plugin_obj: Any) -> bool:
         """
         Determine whether the given plugin should handle the current Matrix event.
-        
+
         Checks the plugin's `matches(event)` predicate if present; otherwise, checks
         `get_matrix_commands()` and tests each command against the bot command matcher,
         honoring an optional `get_require_bot_mention()` flag. Plugin errors are caught
         and logged; errors cause the plugin to be treated as not matching.
-        
+
         Parameters:
             plugin_obj: Plugin instance or object that may implement `matches(event)`,
                         `get_matrix_commands()`, and optionally `get_require_bot_mention()`.
-        
+
         Returns:
             `True` if the plugin should handle the current event, `False` otherwise.
         """

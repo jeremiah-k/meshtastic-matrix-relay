@@ -107,6 +107,9 @@ class Plugin(BasePlugin):
 
         packet = self.process(packet)
         matrix_client = await connect_matrix()
+        if matrix_client is None:
+            self.logger.error("Matrix client is None; skipping mesh relay to Matrix")
+            return False
 
         packet_type = packet["decoded"]["portnum"]
         if "channel" in packet:

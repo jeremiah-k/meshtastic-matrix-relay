@@ -47,6 +47,8 @@ $shortname $longname / $devicemodel / $battery $voltage / $snr / $hops / $lastse
         from mmrelay.meshtastic_utils import connect_meshtastic
 
         meshtastic_client = connect_meshtastic()
+        if meshtastic_client is None:
+            return "Unable to connect to Meshtastic device."
 
         response = f"Nodes: {len(meshtastic_client.nodes)}\n"
 
@@ -91,13 +93,13 @@ $shortname $longname / $devicemodel / $battery $voltage / $snr / $hops / $lastse
     ) -> bool:
         """
         Handle an incoming Meshtastic packet message; currently does not process or consume the message.
-        
+
         Parameters:
             packet: Raw Meshtastic packet data received from the mesh.
             formatted_message (str): Human-readable representation of the packet payload.
             longname (str): Full device name of the packet sender.
             meshnet_name (str): Name of the mesh network the packet originated from.
-        
+
         Returns:
             `False` indicating the plugin did not handle the message.
         """
@@ -107,12 +109,12 @@ $shortname $longname / $devicemodel / $battery $voltage / $snr / $hops / $lastse
         # Pass the event to matches()
         """
         Handle an incoming room message and respond with the nodes summary when the plugin matches the event.
-        
+
         Parameters:
             room: The Matrix room object where the event occurred; used to send the response.
             event: The incoming event evaluated by self.matches() to decide whether to handle the message.
             full_message: The raw message text (not used by this handler).
-        
+
         Returns:
             bool: `True` if the event was handled and a response was sent, `False` otherwise.
         """
