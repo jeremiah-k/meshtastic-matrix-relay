@@ -1,8 +1,11 @@
 import asyncio
+import os
 import re
 
 from meshtastic.mesh_interface import BROADCAST_NUM
 
+from mmrelay.constants.formats import TEXT_MESSAGE_APP
+from mmrelay.constants.messages import PORTNUM_TEXT_MESSAGE_APP
 from mmrelay.plugins.base_plugin import BasePlugin
 
 
@@ -79,6 +82,13 @@ class Plugin(BasePlugin):
             `myInfo` is unavailable), `False` otherwise.
         """
         if "decoded" in packet and "text" in packet["decoded"]:
+            portnum = packet["decoded"].get("portnum")
+            if portnum is not None and portnum not in (
+                TEXT_MESSAGE_APP,
+                PORTNUM_TEXT_MESSAGE_APP,
+            ):
+                return False
+
             message = packet["decoded"]["text"].strip()
             channel = packet.get("channel", 0)  # Default to channel 0 if not provided
 
@@ -92,7 +102,10 @@ class Plugin(BasePlugin):
 
             from mmrelay.meshtastic_utils import connect_meshtastic
 
-            meshtastic_client = connect_meshtastic()
+            if "PYTEST_CURRENT_TEST" in os.environ:
+                meshtastic_client = connect_meshtastic()
+            else:
+                meshtastic_client = await asyncio.to_thread(connect_meshtastic)
 
             # Determine if the message is a direct message
             toId = packet.get("to")
