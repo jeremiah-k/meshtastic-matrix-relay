@@ -20,7 +20,7 @@ services:
       # - ${MMRELAY_HOME:-$HOME}/.mmrelay/config.yaml:/app/config.yaml:ro,Z
       # - ${MMRELAY_HOME:-$HOME}/.mmrelay:/app/data:Z
 
-      # For BLE connections, uncomment these lines (Linux only):
+      # For BLE connections, uncomment this line (Linux only):
       # - /var/run/dbus:/var/run/dbus:ro
 
     # For BLE connections, uncomment these options (Linux only). See DOCKER.md for alternatives.
@@ -37,13 +37,13 @@ services:
     # Note: Uses Watchtower fork https://github.com/nicholas-fedor/watchtower (maintained, fixes Docker API issues)
 
   # Uncomment below to enable automatic updates:
-  #watchtower:
-  #    image: nickfedor/watchtower:latest
-  #    container_name: watchtower-mmrelay
-  #    restart: unless-stopped
-  #    volumes:
-  #      - /var/run/docker.sock:/var/run/docker.sock
-  #    environment:
-  #      - WATCHTOWER_CLEANUP=true
-  #      - WATCHTOWER_SCHEDULE=0 2 * * *  # Daily at 2 AM
-  #    command: --label-enable
+  # watchtower:
+  #   image: nickfedor/watchtower:latest
+  #   container_name: watchtower-mmrelay
+  #   restart: unless-stopped
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock
+  #   environment:
+  #     - WATCHTOWER_CLEANUP=true
+  #     - WATCHTOWER_SCHEDULE=0 2 * * *  # Daily at 2 AM
+  #   command: --label-enable
