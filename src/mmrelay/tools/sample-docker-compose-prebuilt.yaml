@@ -34,10 +34,11 @@ services:
     # Optional: Watchtower for automatic updates (Recommended)
     # Uncomment to check for updates daily at 2 AM
     # Uses label-based filtering to update only labeled containers
+    # Note: Uses nicholas-fedor/watchtower fork (maintained, fixes Docker API issues)
 
   # Uncomment below to enable automatic updates:
   #watchtower:
-  #    image: containrrr/watchtower:latest
+  #    image: nickfedor/watchtower:latest
   #    container_name: watchtower-mmrelay
   #    restart: unless-stopped
   #    volumes:

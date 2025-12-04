@@ -526,6 +526,7 @@ Look for messages like:
 - No manual intervention required
 - Cleans up old images to save space
 - Only updates MMRelay container (safe for other services)
+- Uses maintained fork (nickfedor/watchtower) that fixes Docker API compatibility issues
 
 **Built from source:**
 
