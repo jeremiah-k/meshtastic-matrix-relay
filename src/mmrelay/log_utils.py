@@ -247,7 +247,16 @@ def get_logger(name: str) -> logging.Logger:
         # Create log directory if it doesn't exist
         log_dir = os.path.dirname(log_file)
         if log_dir:  # Ensure non-empty directory paths exist
-            os.makedirs(log_dir, exist_ok=True)
+            try:
+                os.makedirs(log_dir, exist_ok=True)
+            except (OSError, PermissionError) as e:
+                # Use the logger itself to report the error if available, otherwise print
+                error_msg = f"Error creating log directory {log_dir}: {e}"
+                if logger and logger.handlers:
+                    logger.error(error_msg)
+                else:
+                    print(error_msg)
+                return logger  # Return logger without file handler
 
         # Store the log file path for later use
         if name == APP_DISPLAY_NAME:
@@ -266,8 +275,21 @@ def get_logger(name: str) -> logging.Logger:
             file_handler = RotatingFileHandler(
                 log_file, maxBytes=max_bytes, backupCount=backup_count, encoding="utf-8"
             )
+        except (OSError, PermissionError) as e:
+            # Use the logger itself to report the error if available, otherwise print
+            error_msg = f"Error creating log file at {log_file}: {e}"
+            if logger and logger.handlers:
+                logger.error(error_msg)
+            else:
+                print(error_msg)
+            return logger  # Return logger without file handler
         except Exception as e:
-            print(f"Error creating log file at {log_file}: {e}")
+            # Catch any other unexpected exceptions
+            error_msg = f"Unexpected error creating log file at {log_file}: {e}"
+            if logger and logger.handlers:
+                logger.error(error_msg)
+            else:
+                print(error_msg)
             return logger  # Return logger without file handler
 
         file_handler.setFormatter(

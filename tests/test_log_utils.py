@@ -672,6 +672,142 @@ class TestLogUtils(unittest.TestCase):
                 # This is expected behavior - the test passes if we get a permission error
                 pass
 
+    def test_get_logger_file_creation_deep_path_error(self):
+        """
+        Test that `get_logger` handles permission errors gracefully when trying to create directories in protected paths.
+        """
+        import os
+        import tempfile
+
+        # Use a protected path that should cause permission error
+        protected_path = "/root/nonexistent/test.log"  # Should cause permission error
+
+        config = {
+            "logging": {
+                "log_to_file": True,
+                "filename": protected_path,
+            }
+        }
+
+        import mmrelay.log_utils
+
+        mmrelay.log_utils.config = config
+
+        # Should not raise exception, just return logger without file handler
+        logger = get_logger("test_logger_protected")
+        self.assertIsInstance(logger, logging.Logger)
+
+        # Should not have file handler due to permission error
+        file_handlers = [
+            h
+            for h in logger.handlers
+            if isinstance(h, logging.handlers.RotatingFileHandler)
+        ]
+        self.assertEqual(len(file_handlers), 0)
+
+    def test_get_logger_file_creation_deep_nested_success(self):
+        """
+        Test that `get_logger` successfully creates deep nested directory structures for log files.
+        """
+        import os
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Create a deeply nested path
+            deep_path = os.path.join(temp_dir, "level1", "level2", "level3", "test.log")
+
+            config = {
+                "logging": {
+                    "log_to_file": True,
+                    "filename": deep_path,
+                }
+            }
+
+            import mmrelay.log_utils
+
+            mmrelay.log_utils.config = config
+
+            # Clear any existing handlers
+            logger_name = "test_logger_deep_nested"
+            existing_logger = logging.getLogger(logger_name)
+            existing_logger.handlers.clear()
+
+            logger = get_logger(logger_name)
+            self.assertIsInstance(logger, logging.Logger)
+
+            # Should have file handler
+            file_handlers = [
+                h
+                for h in logger.handlers
+                if isinstance(h, logging.handlers.RotatingFileHandler)
+            ]
+            self.assertEqual(len(file_handlers), 1)
+
+            # Verify file was created
+            self.assertTrue(os.path.exists(deep_path))
+
+            # Test writing to the log
+            test_message = "Test deep nested logging"
+            logger.info(test_message)
+
+            # Verify message was written
+            with open(deep_path, "r", encoding="utf-8") as f:
+                content = f.read()
+                self.assertIn(test_message, content)
+
+    def test_get_logger_error_logging_with_existing_handlers(self):
+        """
+        Test that error logging works correctly when logger already has handlers.
+        """
+        import os
+        import tempfile
+
+        # Use a truly protected path that will cause permission error
+        invalid_path = "/root/definitely/does/not/exist/test.log"
+
+        config = {
+            "logging": {
+                "log_to_file": True,
+                "filename": invalid_path,
+            }
+        }
+
+        import mmrelay.log_utils
+
+        # First, create a logger with console handler only (no file logging)
+        logger_name = "test_logger_error_handling"
+
+        # Set config to disable file logging initially
+        mmrelay.log_utils.config = {"logging": {"log_to_file": False}}
+        logger = get_logger(logger_name)
+
+        # Should have at least console handler but no file handlers
+        self.assertGreater(len(logger.handlers), 0)
+        initial_handler_count = len(logger.handlers)
+
+        # Now change config to enable file logging with invalid path
+        mmrelay.log_utils.config = config
+
+        # Clear logger's handler cache to force re-evaluation
+        logger.handlers.clear()
+
+        # Try to add file handler (should fail gracefully)
+        logger = get_logger(logger_name)
+
+        # Should still be a valid logger
+        self.assertIsInstance(logger, logging.Logger)
+
+        # Should have console handler but no file handlers due to error
+        file_handlers = [
+            h
+            for h in logger.handlers
+            if isinstance(h, logging.handlers.RotatingFileHandler)
+        ]
+        self.assertEqual(len(file_handlers), 0)
+
+        # Should have at least console handler
+        self.assertGreater(len(logger.handlers), 0)
+
     def test_component_logging_with_handlers(self):
         """Verify that component loggers receive handlers from the main logger."""
         import io
