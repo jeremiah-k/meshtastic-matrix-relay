@@ -675,6 +675,26 @@ def _add_truncated_vars(format_vars, prefix, text):
             logger.debug(f"  {prefix}{i} = '{truncated_value}'")
 
 
+_PREFIX_DEFINITION_PATTERN = re.compile(r"^\[([^\]]+)\]:(\s*)")
+
+
+def _escape_leading_prefix_for_markdown(message: str) -> str:
+    """
+    Escape a leading `[...]:` prefix so Markdown does not treat it as a link definition and preserves special characters.
+
+    Escapes Markdown-sensitive characters (underscore, asterisk, backtick, tilde, and backslash) inside the prefix as well as the opening bracket.
+    """
+    if _PREFIX_DEFINITION_PATTERN.match(message):
+        match = _PREFIX_DEFINITION_PATTERN.match(message)
+        assert match is not None  # for type checkers
+        prefix_text = match.group(1)
+        spacing = match.group(2)
+        escaped_prefix = re.sub(r"([*_`~\\])", r"\\\1", prefix_text)
+        escaped = f"\\[{escaped_prefix}]:{spacing}"
+        return escaped + message[match.end() :]
+    return message
+
+
 def validate_prefix_format(format_string, available_vars):
     """Validate prefix format string against available variables.
 
@@ -2263,13 +2283,17 @@ async def matrix_relay(
         has_html = bool(re.search(r"</?[a-zA-Z][^>]*>", message))
         has_markdown = bool(re.search(r"[*_`~]", message))  # Basic markdown indicators
 
+        safe_message = (
+            _escape_leading_prefix_for_markdown(message) if has_markdown else message
+        )
+
         # Process markdown/HTML if available; otherwise, safe fallback
         if has_markdown or has_html:
             try:
                 import bleach  # type: ignore[import-untyped]  # lazy import
                 import markdown  # type: ignore[import-untyped]  # lazy import
 
-                raw_html = markdown.markdown(message)
+                raw_html = markdown.markdown(safe_message)
                 formatted_body = bleach.clean(
                     raw_html,
                     tags=[
@@ -2292,8 +2316,8 @@ async def matrix_relay(
                 )
                 plain_body = re.sub(r"</?[^>]*>", "", formatted_body)
             except ImportError:
-                formatted_body = html.escape(message).replace("\n", "<br/>")
-                plain_body = message
+                formatted_body = html.escape(safe_message).replace("\n", "<br/>")
+                plain_body = safe_message
         else:
             formatted_body = html.escape(message).replace("\n", "<br/>")
             plain_body = message

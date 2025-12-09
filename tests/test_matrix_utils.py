@@ -15,6 +15,7 @@ from mmrelay.matrix_utils import (
     _can_auto_create_credentials,
     _create_mapping_info,
     _display_room_channel_mappings,
+    _escape_leading_prefix_for_markdown,
     _get_detailed_matrix_error_message,
     _get_e2ee_error_message,
     _get_msgs_to_keep_config,
@@ -988,6 +989,35 @@ def test_add_truncated_vars_none_text():
     # Should convert None to empty string
     assert format_vars["display1"] == ""
     assert format_vars["display5"] == ""
+
+
+@pytest.mark.parametrize(
+    "name_part",
+    [
+        "Test_Node",
+        "_Name_",
+        "__Name__",
+        "*Name*",
+        "*_Name_*",
+        "Name_with_*_mix",
+        "Name~tilde",
+        "Name`code`",
+    ],
+)
+def test_escape_leading_prefix_for_markdown_with_markdown_chars(name_part):
+    """
+    Prefix-style messages containing markdown characters should render intact instead of being stripped or formatted.
+    """
+    original = f"[{name_part}/Mesh]: hello world"
+    safe = _escape_leading_prefix_for_markdown(original)
+
+    escaped_name = re.sub(r"([*_`~\\])", r"\\\1", name_part)
+    expected_prefix = f"\\[{escaped_name}/Mesh]:"
+    assert safe.startswith(expected_prefix)
+    assert safe.endswith("hello world")
+
+    unchanged = "No prefix here"
+    assert _escape_leading_prefix_for_markdown(unchanged) == unchanged
 
 
 # Prefix formatting function tests - converted from unittest.TestCase to standalone pytest functions
