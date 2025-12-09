@@ -336,22 +336,11 @@ def run_main(args):
     Returns:
         int: Exit code (0 on success or user-initiated interrupt, 1 on failure such as invalid config or runtime error).
     """
-    # Print the banner at startup
-    print_banner()
-
     # Load configuration
     from mmrelay.config import load_config
 
     # Load configuration with args
     config = load_config(args=args)
-
-    # Re-initialize logger now that config is loaded
-    # This ensures file logging is properly set up with the loaded config
-    global logger
-    if logger:
-        # Clear existing handlers to force re-initialization with new config
-        logger.handlers.clear()
-    logger = get_logger(name=APP_DISPLAY_NAME)
 
     # Handle --log-level option
     if args and args.log_level:
@@ -371,11 +360,21 @@ def run_main(args):
     from mmrelay.config import set_config
     from mmrelay.plugins import base_plugin
 
+    # Apply logging configuration first so all subsequent logs land in the file
+    set_config(log_utils, config)
+    log_utils.refresh_all_loggers()
+
+    # Ensure the module-level logger reflects the refreshed configuration
+    global logger
+    logger = get_logger(name=APP_DISPLAY_NAME)
+
+    # Print the banner once logging is fully configured (so it reaches the log file)
+    print_banner()
+
     # Use the centralized set_config function to set up the configuration for all modules
     set_config(matrix_utils, config)
     set_config(meshtastic_utils, config)
     set_config(plugin_loader, config)
-    set_config(log_utils, config)
     set_config(db_utils, config)
     set_config(base_plugin, config)
 

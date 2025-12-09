@@ -1,6 +1,8 @@
+import contextlib
 import logging
 import os
 from logging.handlers import RotatingFileHandler
+from typing import Dict, Set
 
 # Import Rich components only when not running as a service
 try:
@@ -50,6 +52,14 @@ _cached_args = None
 
 # Track if component debug logging has been configured
 _component_debug_configured = False
+
+# Track loggers configured through this module so we can reconfigure them when
+# configuration changes later in the startup sequence.
+_registered_logger_names: Set[str] = set()
+
+# Keep a generation counter so we know when to refresh handlers on existing loggers
+_config_generation = 0
+_logger_config_generations: Dict[str, int] = {}
 
 # Component logger mapping for data-driven configuration
 _COMPONENT_LOGGERS = {
@@ -141,17 +151,44 @@ def configure_component_debug_logging():
     _component_debug_configured = True
 
 
-def get_logger(name: str) -> logging.Logger:
-    """
-    Create and configure a logger with console output (colorized when available) and optional rotating file logging.
+def _should_log_to_file(args) -> bool:
+    """Determine whether file logging should be enabled based on config and CLI."""
+    logging_config = config.get("logging", {}) if config else {}
 
-    Parameters:
-        name (str): Name of the logger. If file logging is enabled and `name` equals APP_DISPLAY_NAME, the global `log_file_path` will be set to the chosen logfile path.
+    # Default to True for better user experience unless explicitly disabled
+    enabled = logging_config.get("log_to_file", True)
 
-    Returns:
-        logging.Logger: The configured logger instance.
+    # Command-line argument always wins and forces file logging on
+    if args and args.logfile:
+        enabled = True
+
+    return bool(enabled)
+
+
+def _resolve_log_file(args):
+    """Select the log file path based on CLI args, config, or default location."""
+    if args and args.logfile:
+        return args.logfile
+
+    config_log_file = config.get("logging", {}).get("filename") if config else None
+    if config_log_file:
+        return config_log_file
+
+    return os.path.join(get_log_dir(), "mmrelay.log")
+
+
+def _configure_logger(
+    logger: logging.Logger, *, force_refresh: bool = False
+) -> logging.Logger:
     """
-    logger = logging.getLogger(name=name)
+    Configure handlers and levels for a logger, optionally refreshing existing handlers.
+
+    Reconfiguration occurs when:
+      - The logger has no handlers
+      - The global config generation has advanced
+      - force_refresh is True
+    """
+    global _cached_args, log_file_path
 
     # Default to INFO level if config is not available
     log_level = logging.INFO
@@ -159,7 +196,6 @@ def get_logger(name: str) -> logging.Logger:
     rich_tracebacks_enabled = False  # Default to disabling rich tracebacks
 
     # Try to get log level and color settings from config
-    global config
     if config is not None and "logging" in config:
         if "level" in config["logging"]:
             try:
@@ -176,9 +212,35 @@ def get_logger(name: str) -> logging.Logger:
     logger.setLevel(log_level)
     logger.propagate = False
 
-    # Check if logger already has handlers to avoid duplicates
-    if logger.handlers:
+    # Check command line arguments for log file path (only if not in test environment)
+    args = _cached_args
+
+    if args is None:
+        try:
+            # Parse command-line arguments once and cache results; if parsing fails (e.g., in tests), continue without CLI arguments.
+            # Note: This is a first-parse-wins cache - subsequent changes to sys.argv won't be picked up.
+            from mmrelay.cli import parse_arguments
+
+            args = parse_arguments()
+            _cached_args = args
+        except (SystemExit, ImportError):
+            # If argument parsing fails (e.g., in tests), continue without CLI arguments
+            pass
+
+    needs_refresh = (
+        force_refresh
+        or not logger.handlers
+        or _logger_config_generations.get(logger.name) != _config_generation
+    )
+
+    if not needs_refresh:
         return logger
+
+    # Reset handlers so we can rebuild with the latest configuration
+    for handler in list(logger.handlers):
+        with contextlib.suppress(Exception):
+            handler.close()
+    logger.handlers.clear()
 
     # Add handler for console logging (with or without colors)
     if color_enabled and RICH_AVAILABLE:
@@ -205,44 +267,9 @@ def get_logger(name: str) -> logging.Logger:
         )
     logger.addHandler(console_handler)
 
-    # Check command line arguments for log file path (only if not in test environment)
-    global _cached_args
-    args = _cached_args
-
-    if args is None:
-        try:
-            # Parse command-line arguments once and cache results; if parsing fails (e.g., in tests), continue without CLI arguments.
-            # Note: This is a first-parse-wins cache - subsequent changes to sys.argv won't be picked up.
-            from mmrelay.cli import parse_arguments
-
-            args = parse_arguments()
-            _cached_args = args
-        except (SystemExit, ImportError):
-            # If argument parsing fails (e.g., in tests), continue without CLI arguments
-            pass
-
-    # Check if file logging is enabled (default to True for better user experience)
-    if (
-        config is not None
-        and config.get("logging", {}).get("log_to_file", True)
-        or (args and args.logfile)
-    ):
-        # Priority: 1. Command line argument, 2. Config file, 3. Default location (~/.mmrelay/logs)
-        if args and args.logfile:
-            log_file = args.logfile
-        else:
-            config_log_file = (
-                config.get("logging", {}).get("filename")
-                if config is not None
-                else None
-            )
-
-            if config_log_file:
-                # Use the log file specified in config
-                log_file = config_log_file
-            else:
-                # Default to standard log directory
-                log_file = os.path.join(get_log_dir(), "mmrelay.log")
+    # Determine whether to attach a file handler
+    if _should_log_to_file(args):
+        log_file = _resolve_log_file(args)
 
         # Create log directory if it doesn't exist
         log_dir = os.path.dirname(log_file)
@@ -259,8 +286,7 @@ def get_logger(name: str) -> logging.Logger:
                 return logger  # Return logger without file handler
 
         # Store the log file path for later use
-        if name == APP_DISPLAY_NAME:
-            global log_file_path
+        if logger.name == APP_DISPLAY_NAME:
             log_file_path = log_file
 
         # Create a file handler for logging
@@ -299,5 +325,39 @@ def get_logger(name: str) -> logging.Logger:
             )
         )
         logger.addHandler(file_handler)
+    elif logger.name == APP_DISPLAY_NAME:
+        log_file_path = None
 
+    _logger_config_generations[logger.name] = _config_generation
     return logger
+
+
+def get_logger(name: str) -> logging.Logger:
+    """
+    Create and configure a logger with console output (colorized when available) and optional rotating file logging.
+
+    Parameters:
+        name (str): Name of the logger. If file logging is enabled and `name` equals APP_DISPLAY_NAME, the global `log_file_path` will be set to the chosen logfile path.
+
+    Returns:
+        logging.Logger: The configured logger instance.
+    """
+    logger = logging.getLogger(name=name)
+    _registered_logger_names.add(name)
+
+    return _configure_logger(logger)
+
+
+def refresh_all_loggers(*, force_refresh: bool = True) -> None:
+    """
+    Reconfigure all loggers created through get_logger() using the latest config.
+
+    Increments the configuration generation to ensure handlers are rebuilt even if
+    they already exist.
+    """
+    global _config_generation
+
+    _config_generation += 1
+
+    for logger_name in list(_registered_logger_names):
+        _configure_logger(logging.getLogger(logger_name), force_refresh=force_refresh)

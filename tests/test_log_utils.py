@@ -64,6 +64,10 @@ class TestLogUtils(unittest.TestCase):
         mmrelay.log_utils.config = None
         mmrelay.log_utils.log_file_path = None
         mmrelay.log_utils._component_debug_configured = False
+        mmrelay.log_utils._registered_logger_names.clear()
+        mmrelay.log_utils._logger_config_generations.clear()
+        mmrelay.log_utils._config_generation = 0
+        mmrelay.log_utils._cached_args = None
 
         # Clear any existing loggers to avoid interference
         logging.getLogger().handlers.clear()
@@ -428,6 +432,46 @@ class TestLogUtils(unittest.TestCase):
             file_handler = file_handlers[0]
             self.assertEqual(file_handler.maxBytes, 5 * 1024 * 1024)
             self.assertEqual(file_handler.backupCount, 3)
+
+    @patch("mmrelay.log_utils.get_log_dir")
+    def test_refresh_all_loggers_applies_new_file_logging(self, mock_get_log_dir):
+        """
+        Ensure existing loggers pick up new file logging configuration after refresh.
+        """
+        mock_get_log_dir.return_value = self.test_dir
+
+        import mmrelay.log_utils as lu
+
+        # Start with file logging disabled
+        lu.config = {"logging": {"log_to_file": False}}
+
+        logger_name = "test_refresh_logger"
+        existing_logger = logging.getLogger(logger_name)
+        existing_logger.handlers.clear()
+
+        logger = get_logger(logger_name)
+        initial_file_handlers = [
+            h
+            for h in logger.handlers
+            if isinstance(h, logging.handlers.RotatingFileHandler)
+        ]
+        self.assertEqual(len(initial_file_handlers), 0)
+
+        # Enable file logging and trigger a refresh
+        refreshed_log_file = os.path.join(self.test_dir, "refreshed.log")
+        lu.config = {"logging": {"log_to_file": True, "filename": refreshed_log_file}}
+        lu.refresh_all_loggers()
+
+        refreshed_handlers = [
+            h
+            for h in logger.handlers
+            if isinstance(h, logging.handlers.RotatingFileHandler)
+        ]
+        self.assertEqual(len(refreshed_handlers), 1)
+        self.assertTrue(
+            refreshed_handlers[0].baseFilename.endswith("refreshed.log"),
+            f"Expected refreshed.log, got {refreshed_handlers[0].baseFilename}",
+        )
 
     def test_get_logger_main_relay_logger(self):
         """
