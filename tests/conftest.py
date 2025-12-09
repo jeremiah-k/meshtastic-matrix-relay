@@ -535,6 +535,8 @@ def _fast_submit(coro, loop=None):
     """
     if not inspect.iscoroutine(coro):
         return None
+    # Explicitly close to avoid "coroutine was never awaited" warnings
+    coro.close()
     done = Future()
     done.set_result(None)
     return done

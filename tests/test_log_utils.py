@@ -48,6 +48,39 @@ class DummyRichHandler(logging.Handler):
 class TestLogUtils(unittest.TestCase):
     """Test cases for logging utilities."""
 
+    @contextlib.contextmanager
+    def _patched_rich(
+        self,
+        lu_module,
+        *,
+        config,
+        original_rich_available,
+        original_rich_handler,
+        original_console,
+    ):
+        """
+        Temporarily enable Rich logging components for tests and restore state afterwards.
+        """
+        if not lu_module.RICH_AVAILABLE:
+            lu_module.RICH_AVAILABLE = True
+            lu_module.RichHandler = DummyRichHandler
+            lu_module.console = object()
+
+        original_config = getattr(lu_module, "config", None)
+        lu_module.config = config
+        try:
+            yield
+        finally:
+            self._close_all_handlers()
+            if not original_rich_available:
+                lu_module.RICH_AVAILABLE = original_rich_available
+                if original_rich_handler is not None:
+                    lu_module.RichHandler = original_rich_handler
+                else:
+                    delattr(lu_module, "RichHandler")
+                lu_module.console = original_console
+            lu_module.config = original_config
+
     def setUp(self):
         """
         Prepares a clean test environment by creating a temporary directory for log files and resetting global logging state.
@@ -186,16 +219,15 @@ class TestLogUtils(unittest.TestCase):
         original_rich_handler = getattr(lu, "RichHandler", None)
         original_console = getattr(lu, "console", None)
 
-        if not lu.RICH_AVAILABLE:
-            lu.RICH_AVAILABLE = True
-            lu.RichHandler = DummyRichHandler
-            lu.console = object()
-
-        lu.config = {"logging": {"log_to_file": False}}
-
-        logger_name = "test_logger_rich_default"
-        logging.getLogger(logger_name).handlers.clear()
-        try:
+        with self._patched_rich(
+            lu,
+            config={"logging": {"log_to_file": False}},
+            original_rich_available=original_rich_available,
+            original_rich_handler=original_rich_handler,
+            original_console=original_console,
+        ):
+            logger_name = "test_logger_rich_default"
+            logging.getLogger(logger_name).handlers.clear()
             logger = get_logger(logger_name)
 
             rich_handlers = [
@@ -206,16 +238,6 @@ class TestLogUtils(unittest.TestCase):
             ]
             self.assertGreater(len(rich_handlers), 0)
             self.assertFalse(rich_handlers[0].rich_tracebacks)
-        finally:
-            self._close_all_handlers()
-            if not original_rich_available:
-                lu.RICH_AVAILABLE = original_rich_available
-                if original_rich_handler is not None:
-                    lu.RichHandler = original_rich_handler
-                else:
-                    delattr(lu, "RichHandler")
-                lu.console = original_console
-            lu.config = None
 
     def test_get_logger_rich_tracebacks_enabled_via_config(self):
         """
@@ -227,21 +249,20 @@ class TestLogUtils(unittest.TestCase):
         original_rich_handler = getattr(lu, "RichHandler", None)
         original_console = getattr(lu, "console", None)
 
-        if not lu.RICH_AVAILABLE:
-            lu.RICH_AVAILABLE = True
-            lu.RichHandler = DummyRichHandler
-            lu.console = object()
-
-        lu.config = {
-            "logging": {
-                "rich_tracebacks": True,
-                "log_to_file": False,
-            }
-        }
-
-        logger_name = "test_logger_rich_enabled"
-        logging.getLogger(logger_name).handlers.clear()
-        try:
+        with self._patched_rich(
+            lu,
+            config={
+                "logging": {
+                    "rich_tracebacks": True,
+                    "log_to_file": False,
+                }
+            },
+            original_rich_available=original_rich_available,
+            original_rich_handler=original_rich_handler,
+            original_console=original_console,
+        ):
+            logger_name = "test_logger_rich_enabled"
+            logging.getLogger(logger_name).handlers.clear()
             logger = get_logger(logger_name)
 
             rich_handlers = [
@@ -252,16 +273,6 @@ class TestLogUtils(unittest.TestCase):
             ]
             self.assertGreater(len(rich_handlers), 0)
             self.assertTrue(rich_handlers[0].rich_tracebacks)
-        finally:
-            self._close_all_handlers()
-            if not original_rich_available:
-                lu.RICH_AVAILABLE = original_rich_available
-                if original_rich_handler is not None:
-                    lu.RichHandler = original_rich_handler
-                else:
-                    delattr(lu, "RichHandler")
-                lu.console = original_console
-            lu.config = None
 
     def test_get_logger_rich_tracebacks_with_fake_rich_default_disabled(self):
         """
