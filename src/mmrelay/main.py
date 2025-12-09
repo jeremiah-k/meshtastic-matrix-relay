@@ -345,7 +345,15 @@ def run_main(args):
     # Load configuration with args
     config = load_config(args=args)
 
-    # Handle the --log-level option
+    # Re-initialize logger now that config is loaded
+    # This ensures file logging is properly set up with the loaded config
+    global logger
+    if logger:
+        # Clear existing handlers to force re-initialization with new config
+        logger.handlers.clear()
+    logger = get_logger(name=APP_DISPLAY_NAME)
+
+    # Handle --log-level option
     if args and args.log_level:
         # Override the log level from config
         if "logging" not in config:
