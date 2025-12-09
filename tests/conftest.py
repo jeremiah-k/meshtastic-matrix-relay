@@ -16,6 +16,7 @@ sys.path.insert(
 import asyncio
 import contextlib
 import gc
+import inspect
 import logging
 
 # Preserve references to built-in modules that should NOT be mocked
@@ -471,18 +472,8 @@ def cleanup_asyncmock_objects(request):
 def mock_submit_coro(monkeypatch):
     """
     Replace mmrelay.meshtastic_utils._submit_coro with a test helper that ensures passed coroutines are executed and awaited so AsyncMock coroutines run to completion.
-    
+
     This pytest fixture patches the module-level _submit_coro to a mock implementation that schedules a coroutine on an available running event loop when possible, otherwise runs it synchronously in a temporary loop. It yields control to the test and restores the original function on teardown.
-    """
-    """
-    Execute a coroutine on a suitable event loop and return a Task or Future, or return None for non-coroutines.
-    
-    Parameters:
-        coro: The coroutine to execute. If not a coroutine object, the function returns None.
-        loop: Optional event loop to prefer when scheduling; ignored if not a running AbstractEventLoop.
-    
-    Returns:
-        Task or Future: A Task when scheduled on a running loop, a Future containing the result or exception when run synchronously, or `None` if `coro` is not a coroutine.
     """
     import asyncio
     import inspect
@@ -490,14 +481,14 @@ def mock_submit_coro(monkeypatch):
     def mock_submit(coro, loop=None):
         """
         Schedule and execute a coroutine on an available asyncio event loop.
-        
+
         Prefers the currently running event loop, falls back to a provided running loop, and if neither is available
         runs the coroutine synchronously in a temporary loop. If the argument is not a coroutine, nothing is scheduled.
-        
+
         Parameters:
             coro: The coroutine to execute.
             loop: Optional event loop to prefer when scheduling the coroutine.
-        
+
         Returns:
             `Task` if the coroutine is scheduled on a running loop, `Future` containing the result or exception if
             executed synchronously, or `None` if `coro` is not a coroutine.
@@ -534,6 +525,41 @@ def mock_submit_coro(monkeypatch):
 
     monkeypatch.setattr(mu, "_submit_coro", mock_submit)
     yield
+
+
+def _fast_submit(coro, loop=None):
+    """
+    Create a completed Future representing immediate coroutine submission.
+
+    Returns None for non-coroutines; otherwise completes the Future with None.
+    """
+    if not inspect.iscoroutine(coro):
+        return None
+    done = Future()
+    done.set_result(None)
+    return done
+
+
+def _fast_wait(result_future, timeout, loop=None):
+    """
+    Resolve a Future-like object to its value, returning False for None.
+    """
+    if result_future is None:
+        return False
+    if isinstance(result_future, Future):
+        return result_future.result(timeout=timeout)
+    return result_future
+
+
+@pytest.fixture
+def fast_async_helpers():
+    """
+    Provide helper functions to submit/await coroutines instantly in tests.
+
+    Returns:
+        tuple[Callable, Callable]: (fast_submit, fast_wait)
+    """
+    return _fast_submit, _fast_wait
 
 
 @pytest.fixture

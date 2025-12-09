@@ -14,12 +14,10 @@ Tests performance and stress scenarios including:
 
 import asyncio
 import gc
-import inspect
 import os
 import sys
 import threading
 import time
-from concurrent.futures import Future
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -341,7 +339,9 @@ class TestPerformanceStress:
     @pytest.mark.asyncio
     @pytest.mark.timeout(300)
     @pytest.mark.performance  # Changed from slow to performance
-    async def test_plugin_processing_performance(self, meshtastic_loop_safety):
+    async def test_plugin_processing_performance(
+        self, meshtastic_loop_safety, fast_async_helpers
+    ):
         """
         Test the performance of processing messages through multiple plugins.
 
@@ -420,45 +420,7 @@ class TestPerformanceStress:
                     "mmrelay.meshtastic_utils.event_loop", meshtastic_loop_safety
                 ):
 
-                    # Mock for _submit_coro that synchronously returns a completed Future for this test
-                    def fast_submit(coro, loop=None):
-                        """
-                        Create an already-completed Future representing an immediate submission of work.
-                        
-                        Parameters:
-                            coro: A coroutine object or any value. If a coroutine is passed, the returned Future is completed with `None`; if a non-coroutine value is passed, the Future is completed with that value.
-                            loop: Ignored legacy parameter kept for API compatibility.
-                        
-                        Returns:
-                            done (Future): A Future already resolved to the value described above, or completed with an exception if setting the result fails.
-                        """
-                        done = Future()
-                        try:
-                            if inspect.iscoroutine(coro):
-                                done.set_result(None)
-                            else:
-                                done.set_result(coro)
-                        except Exception as exc:  # pragma: no cover - defensive
-                            done.set_exception(exc)
-                        return done
-
-                    def fast_wait(result_future, timeout, loop=None):
-                        """
-                        Resolve a Future-like object to its result or return the provided value.
-                        
-                        Parameters:
-                            result_future: A Future instance, a direct value, or None. If None, the function returns False.
-                            timeout (float | int): Maximum seconds to wait when `result_future` is a Future.
-                            loop: Optional event loop parameter (present for API compatibility; ignored).
-                        
-                        Returns:
-                            The resolved value: `False` if `result_future` is None; the value produced by `result_future.result(timeout=timeout)` if it's a Future; otherwise `result_future` itself.
-                        """
-                        if result_future is None:
-                            return False
-                        if isinstance(result_future, Future):
-                            return result_future.result(timeout=timeout)
-                        return result_future
+                    fast_submit, fast_wait = fast_async_helpers
 
                     mock_submit.side_effect = fast_submit
                     mock_wait.side_effect = fast_wait
