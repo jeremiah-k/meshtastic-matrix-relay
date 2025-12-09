@@ -662,7 +662,16 @@ def message_storage_enabled(interactions):
 
 
 def _add_truncated_vars(format_vars, prefix, text):
-    """Helper function to add variable length truncation variables to format_vars dict."""
+    """
+    Populate `format_vars` with truncated variants of `text` using keys built from `prefix` and a numeric suffix.
+    
+    Adds entries for `prefix1` through `prefix{MAX_TRUNCATION_LENGTH}` to `format_vars`. Each value is the first N characters of `text` (empty string if `text` is None or shorter than N). This function mutates `format_vars` in place and logs the first few truncations for debugging.
+    
+    Parameters:
+        format_vars (dict): Mapping to populate with truncated values; mutated in place.
+        prefix (str): Base key name to which numeric suffixes (1..MAX_TRUNCATION_LENGTH) are appended.
+        text (str | None): Source text to truncate; treated as empty string when None.
+    """
     # Always add truncated variables, even for empty text (to prevent KeyError)
     text = text or ""  # Convert None to empty string
     logger.debug(f"Adding truncated vars for prefix='{prefix}', text='{text}'")
@@ -682,9 +691,12 @@ _MARKDOWN_ESCAPE_PATTERN = re.compile(r"([*_`~\\\[\]])")
 
 def _escape_leading_prefix_for_markdown(message: str) -> tuple[str, bool]:
     """
-    Escape a leading `[...]:` prefix so Markdown does not treat it as a link definition and preserves special characters.
-
-    Escapes Markdown-sensitive characters (underscore, asterisk, backtick, tilde, backslash, and brackets) inside the prefix as well as the opening bracket.
+    Escape a leading reference-style Markdown link definition prefix in a message.
+    
+    If the message begins with a bracketed prefix followed by a colon (e.g. "[name]: "), escape Markdown-sensitive characters inside the bracket and the opening bracket so the prefix is not parsed as a link definition. This preserves the rest of the message unchanged.
+    
+    Returns:
+        tuple[str, bool]: A pair (safe_message, escaped) where `safe_message` is the input message with the leading prefix escaped if present, and `escaped` is `True` when an escape was performed and `False` otherwise.
     """
     match = _PREFIX_DEFINITION_PATTERN.match(message)
     if not match:
@@ -698,14 +710,15 @@ def _escape_leading_prefix_for_markdown(message: str) -> tuple[str, bool]:
 
 
 def validate_prefix_format(format_string, available_vars):
-    """Validate prefix format string against available variables.
-
-    Args:
-        format_string (str): The format string to validate.
-        available_vars (dict): Dictionary of available variables with test values.
-
+    """
+    Validate that a str.format-compatible format string can be formatted using the provided test variables.
+    
+    Parameters:
+        format_string (str): The format string to validate (uses str.format syntax).
+        available_vars (dict): Mapping of placeholder names to sample values used to test formatting.
+    
     Returns:
-        tuple: (is_valid: bool, error_message: str or None)
+        tuple: (is_valid, error_message). is_valid is True if formatting succeeds, False otherwise. error_message is the exception message when invalid, or None when valid.
     """
     try:
         # Test format with dummy data
@@ -2217,23 +2230,23 @@ async def matrix_relay(
     reply_to_event_id=None,
 ):
     """
-    Relay a Meshtastic message into a Matrix room and optionally persist a Meshtastic⇄Matrix mapping for later interactions.
-
-    Formats the Meshtastic text into plain and HTML-safe formatted Matrix content, applies Matrix reply framing when reply_to_event_id is provided, enforces E2EE restrictions, sends the event via the configured Matrix client, and—when message-interactions are enabled—stores a mapping from the Meshtastic message to the created Matrix event for use by cross-network replies and reactions. Errors are logged; the function does not raise on send or storage failures.
-
+    Relay a Meshtastic-originated message into a Matrix room and optionally persist a Meshtastic⇄Matrix mapping.
+    
+    Formats the incoming Meshtastic text into plain and HTML-safe Matrix content (with Markdown/HTML handling and leading-prefix escaping), sends the event to the specified Matrix room (respecting emote/msgtype and emoji flags), and, when message-interactions are enabled, stores a mapping from the Meshtastic message to the created Matrix event to support cross-network replies and reactions. If reply_to_event_id is provided and an original mapping is found, the outgoing event will include an `m.in_reply_to` relation and an `mx-reply`-style quoted formatted_body. The function will not send to an encrypted room if the Matrix client does not have E2EE enabled. Errors during send or storage are logged; the function does not raise for those failures.
+    
     Parameters:
-        room_id (str): Matrix room ID or alias to send the message into.
-        message (str): Text of the Meshtastic message to relay.
-        longname (str): Sender long display name from Meshtastic.
-        shortname (str): Sender short display name from Meshtastic.
-        meshnet_name (str): Remote meshnet name associated with the incoming message.
-        portnum (int): Meshtastic application/port number for the message.
-        meshtastic_id (optional): Meshtastic message identifier; when provided and storage is enabled, used to persist a mapping to the created Matrix event.
-        meshtastic_replyId (optional): Original Meshtastic message ID being replied to; included as metadata on the Matrix event.
-        meshtastic_text (optional): Original Meshtastic text to store with the mapping; if omitted, the relayed message text is used.
-        emote (bool, optional): If True, send the Matrix event as `m.emote` instead of `m.text`.
-        emoji (bool, optional): If True, mark the event with an emoji flag used by downstream logic.
-        reply_to_event_id (str, optional): Matrix event_id being replied to; if provided the outgoing event will include an `m.in_reply_to` relation and quoted/HTML reply content when the original mapping can be found.
+        room_id: Matrix room ID or alias to send the message into.
+        message: Text of the Meshtastic message to relay.
+        longname: Sender long display name from Meshtastic (used for metadata and attribution).
+        shortname: Sender short display name from Meshtastic (used for metadata).
+        meshnet_name: Remote meshnet name associated with the incoming message.
+        portnum: Meshtastic application/port number for the message.
+        meshtastic_id: Optional Meshtastic message identifier; when provided and message storage is enabled, used to persist a mapping to the created Matrix event.
+        meshtastic_replyId: Optional original Meshtastic message ID being replied to; included as metadata on the Matrix event.
+        meshtastic_text: Optional original Meshtastic text to store with the mapping; if omitted the relayed `message` text is used.
+        emote: If True, send the Matrix event as an `m.emote` message type instead of `m.text`.
+        emoji: If True, mark the event with an emoji flag used by downstream logic.
+        reply_to_event_id: Optional Matrix event_id to reply to; when supplied the outgoing event will include an `m.in_reply_to` relation and quoted/HTML reply content if the original mapping can be resolved.
     """
     global config
 
