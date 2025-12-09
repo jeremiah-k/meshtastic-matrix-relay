@@ -176,38 +176,61 @@ class TestLogUtils(unittest.TestCase):
         # Note: The actual implementation may still use RichHandler, so we just check it works
         self.assertIsInstance(logger, logging.Logger)
 
-    @unittest.skipUnless(
-        RICH_AVAILABLE, "Rich is not available; skipping rich traceback tests."
-    )
     def test_get_logger_rich_tracebacks_default_disabled(self):
         """
         Rich tracebacks should be disabled by default when using the Rich handler.
         """
         import mmrelay.log_utils as lu
 
+        original_rich_available = lu.RICH_AVAILABLE
+        original_rich_handler = getattr(lu, "RichHandler", None)
+        original_console = getattr(lu, "console", None)
+
+        if not lu.RICH_AVAILABLE:
+            lu.RICH_AVAILABLE = True
+            lu.RichHandler = DummyRichHandler
+            lu.console = object()
+
         lu.config = {"logging": {"log_to_file": False}}
 
         logger_name = "test_logger_rich_default"
         logging.getLogger(logger_name).handlers.clear()
-        logger = get_logger(logger_name)
+        try:
+            logger = get_logger(logger_name)
 
-        rich_handlers = [
-            h
-            for h in logger.handlers
-            if hasattr(h, "rich_tracebacks")
-            and not isinstance(h, logging.handlers.RotatingFileHandler)
-        ]
-        self.assertGreater(len(rich_handlers), 0)
-        self.assertFalse(rich_handlers[0].rich_tracebacks)
+            rich_handlers = [
+                h
+                for h in logger.handlers
+                if hasattr(h, "rich_tracebacks")
+                and not isinstance(h, logging.handlers.RotatingFileHandler)
+            ]
+            self.assertGreater(len(rich_handlers), 0)
+            self.assertFalse(rich_handlers[0].rich_tracebacks)
+        finally:
+            self._close_all_handlers()
+            if not original_rich_available:
+                lu.RICH_AVAILABLE = original_rich_available
+                if original_rich_handler is not None:
+                    lu.RichHandler = original_rich_handler
+                else:
+                    delattr(lu, "RichHandler")
+                lu.console = original_console
+            lu.config = None
 
-    @unittest.skipUnless(
-        RICH_AVAILABLE, "Rich is not available; skipping rich traceback tests."
-    )
     def test_get_logger_rich_tracebacks_enabled_via_config(self):
         """
         Rich tracebacks should be enabled when configured explicitly.
         """
         import mmrelay.log_utils as lu
+
+        original_rich_available = lu.RICH_AVAILABLE
+        original_rich_handler = getattr(lu, "RichHandler", None)
+        original_console = getattr(lu, "console", None)
+
+        if not lu.RICH_AVAILABLE:
+            lu.RICH_AVAILABLE = True
+            lu.RichHandler = DummyRichHandler
+            lu.console = object()
 
         lu.config = {
             "logging": {
@@ -218,16 +241,27 @@ class TestLogUtils(unittest.TestCase):
 
         logger_name = "test_logger_rich_enabled"
         logging.getLogger(logger_name).handlers.clear()
-        logger = get_logger(logger_name)
+        try:
+            logger = get_logger(logger_name)
 
-        rich_handlers = [
-            h
-            for h in logger.handlers
-            if hasattr(h, "rich_tracebacks")
-            and not isinstance(h, logging.handlers.RotatingFileHandler)
-        ]
-        self.assertGreater(len(rich_handlers), 0)
-        self.assertTrue(rich_handlers[0].rich_tracebacks)
+            rich_handlers = [
+                h
+                for h in logger.handlers
+                if hasattr(h, "rich_tracebacks")
+                and not isinstance(h, logging.handlers.RotatingFileHandler)
+            ]
+            self.assertGreater(len(rich_handlers), 0)
+            self.assertTrue(rich_handlers[0].rich_tracebacks)
+        finally:
+            self._close_all_handlers()
+            if not original_rich_available:
+                lu.RICH_AVAILABLE = original_rich_available
+                if original_rich_handler is not None:
+                    lu.RichHandler = original_rich_handler
+                else:
+                    delattr(lu, "RichHandler")
+                lu.console = original_console
+            lu.config = None
 
     def test_get_logger_rich_tracebacks_with_fake_rich_default_disabled(self):
         """
