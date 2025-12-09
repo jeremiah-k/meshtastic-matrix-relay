@@ -676,6 +676,7 @@ def _add_truncated_vars(format_vars, prefix, text):
 
 
 _PREFIX_DEFINITION_PATTERN = re.compile(r"^\[([^\]]+)\]:(\s*)")
+_MARKDOWN_ESCAPE_PATTERN = re.compile(r"([*_`~\\])")
 
 
 def _escape_leading_prefix_for_markdown(message: str) -> str:
@@ -690,7 +691,7 @@ def _escape_leading_prefix_for_markdown(message: str) -> str:
 
     prefix_text = match.group(1)
     spacing = match.group(2)
-    escaped_prefix = re.sub(r"([*_`~\\])", r"\\\1", prefix_text)
+    escaped_prefix = _MARKDOWN_ESCAPE_PATTERN.sub(r"\\\1", prefix_text)
     escaped = f"\\[{escaped_prefix}]:{spacing}"
     return escaped + message[match.end() :]
 
@@ -2279,9 +2280,11 @@ async def matrix_relay(
         # Always use our own local meshnet_name for outgoing events
         local_meshnet_name = config["meshtastic"]["meshnet_name"]
 
-        # Check if message contains HTML tags or markdown formatting
+        # Check if message contains HTML tags or markdown formatting, or a prefix that could be parsed as a link definition
         has_html = bool(re.search(r"</?[a-zA-Z][^>]*>", message))
-        has_markdown = bool(re.search(r"[*_`~]", message))  # Basic markdown indicators
+        has_markdown = bool(re.search(r"[*_`~]", message)) or bool(
+            _PREFIX_DEFINITION_PATTERN.match(message)
+        )
 
         safe_message = _escape_leading_prefix_for_markdown(message)
 
@@ -2314,11 +2317,12 @@ async def matrix_relay(
                 )
                 plain_body = re.sub(r"</?[^>]*>", "", formatted_body)
             except ImportError:
-                formatted_body = html.escape(safe_message).replace("\n", "<br/>")
-                plain_body = safe_message
+                # Without markdown/bleach, preserve the original text to avoid showing escape characters
+                formatted_body = html.escape(message).replace("\n", "<br/>")
+                plain_body = message
         else:
-            formatted_body = html.escape(safe_message).replace("\n", "<br/>")
-            plain_body = safe_message
+            formatted_body = html.escape(message).replace("\n", "<br/>")
+            plain_body = message
 
         content = {
             "msgtype": "m.text" if not emote else "m.emote",

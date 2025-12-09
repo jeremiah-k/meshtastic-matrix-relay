@@ -1012,11 +1012,21 @@ def test_escape_leading_prefix_for_markdown_with_markdown_chars(name_part):
     original = f"[{name_part}/Mesh]: hello world"
     safe = _escape_leading_prefix_for_markdown(original)
 
-    escaped_name = re.sub(r"([*_`~\\])", r"\\\1", name_part)
+    escape_map = {
+        "\\": "\\\\",
+        "*": "\\*",
+        "_": "\\_",
+        "`": "\\`",
+        "~": "\\~",
+    }
+    escaped_name = "".join(escape_map.get(ch, ch) for ch in name_part)
     expected_prefix = f"\\[{escaped_name}/Mesh]:"
     assert safe.startswith(expected_prefix)
     assert safe.endswith("hello world")
 
+
+def test_escape_leading_prefix_for_markdown_non_prefix():
+    """Non-prefix strings should remain unchanged."""
     unchanged = "No prefix here"
     assert _escape_leading_prefix_for_markdown(unchanged) == unchanged
 
