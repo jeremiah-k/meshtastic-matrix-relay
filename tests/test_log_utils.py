@@ -833,7 +833,7 @@ class TestLogUtils(unittest.TestCase):
         mmrelay.log_utils.config = config
 
         # Clear logger's handler cache to force re-evaluation
-        logger.handlers.clear()
+        self._close_all_handlers()
 
         # Try to add file handler (should fail gracefully)
         logger = get_logger(logger_name)
@@ -872,6 +872,7 @@ class TestLogUtils(unittest.TestCase):
         mmrelay.log_utils._component_debug_configured = False  # Reset for this test
 
         # Clear handlers from previous tests to ensure isolation
+        self._close_all_handlers()
         logging.getLogger(APP_DISPLAY_NAME).handlers.clear()
         logging.getLogger("bleak").handlers.clear()
 
