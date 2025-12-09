@@ -475,7 +475,9 @@ class TestLogUtils(unittest.TestCase):
 
     def test_get_logger_main_relay_logger(self):
         """
-        Verify that creating the main relay logger with file logging enabled sets the global log file path variable.
+        Set the global log file path when the main 'MMRelay' logger is created with file logging enabled.
+        
+        Verifies that mmrelay.log_utils.log_file_path is assigned to the configured filename after creating the "MMRelay" logger with file logging enabled.
         """
         config = {"logging": {"log_to_file": True, "filename": self.test_log_file}}
 
@@ -751,7 +753,9 @@ class TestLogUtils(unittest.TestCase):
 
     def test_get_logger_file_creation_deep_nested_success(self):
         """
-        Test that `get_logger` successfully creates deep nested directory structures for log files.
+        Verify get_logger creates missing nested directories for a configured log file and writes logs to it.
+        
+        Configures logging to write to a deeply nested file path, obtains a logger, and asserts that a RotatingFileHandler was attached, the file was created, and a logged message was persisted to the file.
         """
         import os
         import tempfile
@@ -801,7 +805,12 @@ class TestLogUtils(unittest.TestCase):
 
     def test_get_logger_error_logging_with_existing_handlers(self):
         """
-        Test that error logging works correctly when logger already has handlers.
+        Verify that when enabling file logging fails due to a protected/invalid file path, an existing logger keeps its non-file handlers and remains usable.
+        
+        Sets up a logger with only console handlers, enables file logging using a path that will cause a permission error, forces handler re-evaluation, and asserts that:
+        - the returned object is a Logger,
+        - no RotatingFileHandler was added,
+        - at least one non-file handler remains attached.
         """
         import os
         import tempfile
