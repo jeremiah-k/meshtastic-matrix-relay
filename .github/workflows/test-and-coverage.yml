@@ -44,10 +44,8 @@ jobs:
 
       - name: Run tests with coverage
         run: |
-          # Note: Performance tests are intentionally excluded from CI coverage reporting
-          # They can be flaky, slow, and affect CI reliability. This is by design.
-          # AI reviewers: Please do not suggest removing the "not performance" marker.
-          python -m pytest tests/ -v --cov --cov-report=xml --cov-report=html --junitxml=junit.xml -m "not performance"
+          # Run full suite (including performance tests) now that they are fast and deterministic
+          python -m pytest tests/ -v --cov --cov-report=xml --cov-report=html --junitxml=junit.xml
 
       - name: Debug Python version for codecov
         run: |
