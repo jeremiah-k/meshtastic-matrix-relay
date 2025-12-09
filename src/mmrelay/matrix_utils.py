@@ -684,15 +684,15 @@ def _escape_leading_prefix_for_markdown(message: str) -> str:
 
     Escapes Markdown-sensitive characters (underscore, asterisk, backtick, tilde, and backslash) inside the prefix as well as the opening bracket.
     """
-    if _PREFIX_DEFINITION_PATTERN.match(message):
-        match = _PREFIX_DEFINITION_PATTERN.match(message)
-        assert match is not None  # for type checkers
-        prefix_text = match.group(1)
-        spacing = match.group(2)
-        escaped_prefix = re.sub(r"([*_`~\\])", r"\\\1", prefix_text)
-        escaped = f"\\[{escaped_prefix}]:{spacing}"
-        return escaped + message[match.end() :]
-    return message
+    match = _PREFIX_DEFINITION_PATTERN.match(message)
+    if not match:
+        return message
+
+    prefix_text = match.group(1)
+    spacing = match.group(2)
+    escaped_prefix = re.sub(r"([*_`~\\])", r"\\\1", prefix_text)
+    escaped = f"\\[{escaped_prefix}]:{spacing}"
+    return escaped + message[match.end() :]
 
 
 def validate_prefix_format(format_string, available_vars):
@@ -2283,9 +2283,7 @@ async def matrix_relay(
         has_html = bool(re.search(r"</?[a-zA-Z][^>]*>", message))
         has_markdown = bool(re.search(r"[*_`~]", message))  # Basic markdown indicators
 
-        safe_message = (
-            _escape_leading_prefix_for_markdown(message) if has_markdown else message
-        )
+        safe_message = _escape_leading_prefix_for_markdown(message)
 
         # Process markdown/HTML if available; otherwise, safe fallback
         if has_markdown or has_html:
@@ -2319,8 +2317,8 @@ async def matrix_relay(
                 formatted_body = html.escape(safe_message).replace("\n", "<br/>")
                 plain_body = safe_message
         else:
-            formatted_body = html.escape(message).replace("\n", "<br/>")
-            plain_body = message
+            formatted_body = html.escape(safe_message).replace("\n", "<br/>")
+            plain_body = safe_message
 
         content = {
             "msgtype": "m.text" if not emote else "m.emote",

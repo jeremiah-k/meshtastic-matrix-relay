@@ -1002,6 +1002,7 @@ def test_add_truncated_vars_none_text():
         "Name_with_*_mix",
         "Name~tilde",
         "Name`code`",
+        r"Name\with\slash",
     ],
 )
 def test_escape_leading_prefix_for_markdown_with_markdown_chars(name_part):
