@@ -470,29 +470,37 @@ def cleanup_asyncmock_objects(request):
 @pytest.fixture(autouse=True)
 def mock_submit_coro(monkeypatch):
     """
-    Pytest fixture that replaces the `_submit_coro` function in `meshtastic_utils` with a mock that synchronously runs and awaits coroutines in a temporary event loop.
-
-    This ensures that AsyncMock coroutines are properly awaited during tests, preventing "never awaited" warnings and allowing side effects to occur as expected.
+    Replace mmrelay.meshtastic_utils._submit_coro with a test helper that ensures passed coroutines are executed and awaited so AsyncMock coroutines run to completion.
+    
+    This pytest fixture patches the module-level _submit_coro to a mock implementation that schedules a coroutine on an available running event loop when possible, otherwise runs it synchronously in a temporary loop. It yields control to the test and restores the original function on teardown.
+    """
+    """
+    Execute a coroutine on a suitable event loop and return a Task or Future, or return None for non-coroutines.
+    
+    Parameters:
+        coro: The coroutine to execute. If not a coroutine object, the function returns None.
+        loop: Optional event loop to prefer when scheduling; ignored if not a running AbstractEventLoop.
+    
+    Returns:
+        Task or Future: A Task when scheduled on a running loop, a Future containing the result or exception when run synchronously, or `None` if `coro` is not a coroutine.
     """
     import asyncio
     import inspect
 
     def mock_submit(coro, loop=None):
         """
-        Runs a coroutine on an available event loop and returns a Future or Task with its result or exception.
-
-        If the input is not a coroutine, returns None. Prefers the currently running loop,
-        then a provided running loop, falling back to a temporary loop when needed. This ensures
-        AsyncMock coroutines are properly awaited during testing, preventing "never awaited" warnings
-        and triggering any side effects.
-
+        Schedule and execute a coroutine on an available asyncio event loop.
+        
+        Prefers the currently running event loop, falls back to a provided running loop, and if neither is available
+        runs the coroutine synchronously in a temporary loop. If the argument is not a coroutine, nothing is scheduled.
+        
         Parameters:
             coro: The coroutine to execute.
-            loop: Optional event loop to use if running; otherwise a running or temporary loop is used.
-
+            loop: Optional event loop to prefer when scheduling the coroutine.
+        
         Returns:
-            Task or Future: A Task (if scheduled on a running loop) or Future (if run synchronously)
-            containing the result or exception, or None if the input is not a coroutine.
+            `Task` if the coroutine is scheduled on a running loop, `Future` containing the result or exception if
+            executed synchronously, or `None` if `coro` is not a coroutine.
         """
         if not inspect.iscoroutine(coro):  # Not a coroutine
             return None
