@@ -1010,7 +1010,7 @@ def test_escape_leading_prefix_for_markdown_with_markdown_chars(name_part):
     Prefix-style messages containing markdown characters should render intact instead of being stripped or formatted.
     """
     original = f"[{name_part}/Mesh]: hello world"
-    safe = _escape_leading_prefix_for_markdown(original)
+    safe, escaped = _escape_leading_prefix_for_markdown(original)
 
     escape_map = {
         "\\": "\\\\",
@@ -1023,12 +1023,15 @@ def test_escape_leading_prefix_for_markdown_with_markdown_chars(name_part):
     expected_prefix = f"\\[{escaped_name}/Mesh]:"
     assert safe.startswith(expected_prefix)
     assert safe.endswith("hello world")
+    assert escaped
 
 
 def test_escape_leading_prefix_for_markdown_non_prefix():
     """Non-prefix strings should remain unchanged."""
     unchanged = "No prefix here"
-    assert _escape_leading_prefix_for_markdown(unchanged) == unchanged
+    processed, escaped = _escape_leading_prefix_for_markdown(unchanged)
+    assert processed == unchanged
+    assert escaped is False
 
 
 # Prefix formatting function tests - converted from unittest.TestCase to standalone pytest functions

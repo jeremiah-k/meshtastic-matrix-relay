@@ -679,7 +679,7 @@ _PREFIX_DEFINITION_PATTERN = re.compile(r"^\[([^\]]+)\]:(\s*)")
 _MARKDOWN_ESCAPE_PATTERN = re.compile(r"([*_`~\\])")
 
 
-def _escape_leading_prefix_for_markdown(message: str) -> str:
+def _escape_leading_prefix_for_markdown(message: str) -> tuple[str, bool]:
     """
     Escape a leading `[...]:` prefix so Markdown does not treat it as a link definition and preserves special characters.
 
@@ -687,13 +687,13 @@ def _escape_leading_prefix_for_markdown(message: str) -> str:
     """
     match = _PREFIX_DEFINITION_PATTERN.match(message)
     if not match:
-        return message
+        return message, False
 
     prefix_text = match.group(1)
     spacing = match.group(2)
     escaped_prefix = _MARKDOWN_ESCAPE_PATTERN.sub(r"\\\1", prefix_text)
     escaped = f"\\[{escaped_prefix}]:{spacing}"
-    return escaped + message[match.end() :]
+    return escaped + message[match.end() :], True
 
 
 def validate_prefix_format(format_string, available_vars):
@@ -2282,11 +2282,8 @@ async def matrix_relay(
 
         # Check if message contains HTML tags or markdown formatting, or a prefix that could be parsed as a link definition
         has_html = bool(re.search(r"</?[a-zA-Z][^>]*>", message))
-        has_markdown = bool(re.search(r"[*_`~]", message)) or bool(
-            _PREFIX_DEFINITION_PATTERN.match(message)
-        )
-
-        safe_message = _escape_leading_prefix_for_markdown(message)
+        safe_message, has_prefix = _escape_leading_prefix_for_markdown(message)
+        has_markdown = bool(re.search(r"[*_`~]", message)) or has_prefix
 
         # Process markdown/HTML if available; otherwise, safe fallback
         if has_markdown or has_html:
