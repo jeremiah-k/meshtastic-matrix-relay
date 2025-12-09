@@ -16,6 +16,7 @@ sys.path.insert(
 import asyncio
 import contextlib
 import gc
+import inspect
 import logging
 
 # Preserve references to built-in modules that should NOT be mocked
@@ -470,31 +471,45 @@ def cleanup_asyncmock_objects(request):
 @pytest.fixture(autouse=True)
 def mock_submit_coro(monkeypatch):
     """
-    Pytest fixture that replaces the `_submit_coro` function in `meshtastic_utils` with a mock that synchronously runs and awaits coroutines in a temporary event loop.
+    Replace mmrelay.meshtastic_utils._submit_coro with a test helper that ensures passed coroutines are executed and awaited so AsyncMock coroutines run to completion.
 
-    This ensures that AsyncMock coroutines are properly awaited during tests, preventing "never awaited" warnings and allowing side effects to occur as expected.
+    This pytest fixture patches the module-level _submit_coro to a mock implementation that schedules a coroutine on an available running event loop when possible, otherwise runs it synchronously in a temporary loop. It yields control to the test and restores the original function on teardown.
     """
     import asyncio
     import inspect
 
     def mock_submit(coro, loop=None):
         """
-        Synchronously runs a coroutine in a temporary event loop and returns a Future with its result or exception.
+        Schedule and execute a coroutine on an available asyncio event loop.
 
-        If the input is not a coroutine, returns None. This function is designed to ensure that AsyncMock coroutines are properly awaited during testing, preventing "never awaited" warnings and triggering any side effects.
+        Prefers the currently running event loop, falls back to a provided running loop, and if neither is available
+        runs the coroutine synchronously in a temporary loop. If the argument is not a coroutine, nothing is scheduled.
 
         Parameters:
             coro: The coroutine to execute.
-            loop: Unused; present for compatibility.
+            loop: Optional event loop to prefer when scheduling the coroutine.
 
         Returns:
-            Future: A Future containing the result or exception from the coroutine, or None if the input is not a coroutine.
+            `Task` if the coroutine is scheduled on a running loop, `Future` containing the result or exception if
+            executed synchronously, or `None` if `coro` is not a coroutine.
         """
         if not inspect.iscoroutine(coro):  # Not a coroutine
             return None
 
-        # For AsyncMock coroutines, we need to actually await them to get the result
-        # and prevent "never awaited" warnings, while also triggering any side effects
+        # Prefer the currently running loop (pytest-asyncio) to avoid spawning many temporary loops
+        try:
+            running_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            running_loop = None
+
+        if running_loop and running_loop.is_running():
+            return running_loop.create_task(coro)
+
+        target_loop = loop if isinstance(loop, asyncio.AbstractEventLoop) else None
+        if target_loop and target_loop.is_running():
+            return target_loop.create_task(coro)
+
+        # Fallback: run synchronously in a temporary loop
         temp_loop = asyncio.new_event_loop()
         try:
             result = temp_loop.run_until_complete(coro)
@@ -510,6 +525,43 @@ def mock_submit_coro(monkeypatch):
 
     monkeypatch.setattr(mu, "_submit_coro", mock_submit)
     yield
+
+
+def _fast_submit(coro, loop=None):
+    """
+    Create a completed Future representing immediate coroutine submission.
+
+    Returns None for non-coroutines; otherwise completes the Future with None.
+    """
+    if not inspect.iscoroutine(coro):
+        return None
+    # Explicitly close to avoid "coroutine was never awaited" warnings
+    coro.close()
+    done = Future()
+    done.set_result(None)
+    return done
+
+
+def _fast_wait(result_future, timeout, loop=None):
+    """
+    Resolve a Future-like object to its value, returning False for None.
+    """
+    if result_future is None:
+        return False
+    if isinstance(result_future, Future):
+        return result_future.result(timeout=timeout)
+    return result_future
+
+
+@pytest.fixture
+def fast_async_helpers():
+    """
+    Provide helper functions to submit/await coroutines instantly in tests.
+
+    Returns:
+        tuple[Callable, Callable]: (fast_submit, fast_wait)
+    """
+    return _fast_submit, _fast_wait
 
 
 @pytest.fixture

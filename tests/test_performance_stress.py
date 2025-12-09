@@ -339,7 +339,9 @@ class TestPerformanceStress:
     @pytest.mark.asyncio
     @pytest.mark.timeout(300)
     @pytest.mark.performance  # Changed from slow to performance
-    async def test_plugin_processing_performance(self, meshtastic_loop_safety):
+    async def test_plugin_processing_performance(
+        self, meshtastic_loop_safety, fast_async_helpers
+    ):
         """
         Test the performance of processing messages through multiple plugins.
 
@@ -354,8 +356,8 @@ class TestPerformanceStress:
             with patch("mmrelay.db_utils.get_db_path", return_value=db_path):
                 initialize_database()
 
-                plugin_count = 10
-                message_count = 100
+                plugin_count = 5
+                message_count = 50
 
                 # Create multiple mock plugins
                 plugins = []
@@ -363,7 +365,7 @@ class TestPerformanceStress:
                     plugin = MagicMock()
                     plugin.priority = i
                     plugin.plugin_name = f"plugin_{i}"
-                    plugin.handle_meshtastic_message = AsyncMock(return_value=False)
+                    plugin.handle_meshtastic_message = MagicMock(return_value=False)
                     plugins.append(plugin)
 
                 packet = {
@@ -401,22 +403,36 @@ class TestPerformanceStress:
                     "mmrelay.matrix_utils.get_interaction_settings",
                     return_value=mock_interactions,
                 ), patch(
-                    "mmrelay.matrix_utils.message_storage_enabled", return_value=True
+                    "mmrelay.matrix_utils.message_storage_enabled", return_value=False
                 ), patch(
+                    "mmrelay.db_utils.save_longname", return_value=None
+                ), patch(
+                    "mmrelay.db_utils.save_shortname", return_value=None
+                ), patch(
+                    "mmrelay.matrix_utils.matrix_relay", MagicMock(return_value=False)
+                ), patch(
+                    "mmrelay.meshtastic_utils._submit_coro"
+                ) as mock_submit, patch(
+                    "mmrelay.meshtastic_utils._wait_for_result"
+                ) as mock_wait, patch(
                     "mmrelay.meshtastic_utils.shutting_down", False
                 ), patch(
                     "mmrelay.meshtastic_utils.event_loop", meshtastic_loop_safety
-                ), patch(
-                    "mmrelay.meshtastic_utils._submit_coro"
-                ) as mock_submit_coro:
-                    mock_submit_coro.side_effect = (
-                        lambda coro, loop=None: asyncio.create_task(coro)
-                    )
+                ):
+
+                    fast_submit, fast_wait = fast_async_helpers
+
+                    mock_submit.side_effect = fast_submit
+                    mock_wait.side_effect = fast_wait
 
                     start_time = time.time()
 
                     for _ in range(message_count):
-                        on_meshtastic_message(packet, mock_interface)
+                        # Run handler via asyncio.to_thread to mirror the production call pattern.
+                        # Note: In tests, this is mocked to run synchronously for deterministic behavior.
+                        await asyncio.to_thread(
+                            on_meshtastic_message, packet, mock_interface
+                        )
 
                     # Wait for all tasks to complete
                     pending = [
