@@ -1003,6 +1003,7 @@ def test_add_truncated_vars_none_text():
         "Name~tilde",
         "Name`code`",
         r"Name\with\slash",
+        "User[test]",
     ],
 )
 def test_escape_leading_prefix_for_markdown_with_markdown_chars(name_part):
@@ -1018,6 +1019,8 @@ def test_escape_leading_prefix_for_markdown_with_markdown_chars(name_part):
         "_": "\\_",
         "`": "\\`",
         "~": "\\~",
+        "[": "\\[",
+        "]": "\\]",
     }
     escaped_name = "".join(escape_map.get(ch, ch) for ch in name_part)
     expected_prefix = f"\\[{escaped_name}/Mesh]:"

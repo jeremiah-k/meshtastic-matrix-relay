@@ -675,15 +675,16 @@ def _add_truncated_vars(format_vars, prefix, text):
             logger.debug(f"  {prefix}{i} = '{truncated_value}'")
 
 
-_PREFIX_DEFINITION_PATTERN = re.compile(r"^\[([^\]]+)\]:(\s*)")
-_MARKDOWN_ESCAPE_PATTERN = re.compile(r"([*_`~\\])")
+_PREFIX_DEFINITION_PATTERN = re.compile(r"^\[(.+?)\]:(\s*)")
+# Escape underscores, asterisks, backticks, tildes, backslashes, and brackets inside prefixes
+_MARKDOWN_ESCAPE_PATTERN = re.compile(r"([*_`~\\\[\]])")
 
 
 def _escape_leading_prefix_for_markdown(message: str) -> tuple[str, bool]:
     """
     Escape a leading `[...]:` prefix so Markdown does not treat it as a link definition and preserves special characters.
 
-    Escapes Markdown-sensitive characters (underscore, asterisk, backtick, tilde, and backslash) inside the prefix as well as the opening bracket.
+    Escapes Markdown-sensitive characters (underscore, asterisk, backtick, tilde, backslash, and brackets) inside the prefix as well as the opening bracket.
     """
     match = _PREFIX_DEFINITION_PATTERN.match(message)
     if not match:
