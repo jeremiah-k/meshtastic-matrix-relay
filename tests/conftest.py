@@ -479,16 +479,20 @@ def mock_submit_coro(monkeypatch):
 
     def mock_submit(coro, loop=None):
         """
-        Synchronously runs a coroutine in a temporary event loop and returns a Future with its result or exception.
+        Runs a coroutine on an available event loop and returns a Future or Task with its result or exception.
 
-        If the input is not a coroutine, returns None. This function is designed to ensure that AsyncMock coroutines are properly awaited during testing, preventing "never awaited" warnings and triggering any side effects.
+        If the input is not a coroutine, returns None. Prefers the currently running loop,
+        then a provided running loop, falling back to a temporary loop when needed. This ensures
+        AsyncMock coroutines are properly awaited during testing, preventing "never awaited" warnings
+        and triggering any side effects.
 
         Parameters:
             coro: The coroutine to execute.
-            loop: Unused; present for compatibility.
+            loop: Optional event loop to use if running; otherwise a running or temporary loop is used.
 
         Returns:
-            Future: A Future containing the result or exception from the coroutine, or None if the input is not a coroutine.
+            Task or Future: A Task (if scheduled on a running loop) or Future (if run synchronously)
+            containing the result or exception, or None if the input is not a coroutine.
         """
         if not inspect.iscoroutine(coro):  # Not a coroutine
             return None

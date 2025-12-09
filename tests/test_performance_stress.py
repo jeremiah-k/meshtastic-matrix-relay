@@ -14,10 +14,12 @@ Tests performance and stress scenarios including:
 
 import asyncio
 import gc
+import inspect
 import os
 import sys
 import threading
 import time
+from concurrent.futures import Future
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -418,10 +420,7 @@ class TestPerformanceStress:
                     "mmrelay.meshtastic_utils.event_loop", meshtastic_loop_safety
                 ):
 
-                    import inspect
-                    from concurrent.futures import Future
-
-                    # Ensure submitted coroutines are executed on a running loop and reported as completed futures
+                    # Mock for _submit_coro that synchronously returns a completed Future for this test
                     def fast_submit(coro, loop=None):
                         done = Future()
                         try:
@@ -446,8 +445,8 @@ class TestPerformanceStress:
                     start_time = time.time()
 
                     for _ in range(message_count):
-                        # Run handler from a worker thread to mirror production usage and avoid
-                        # scheduling conflicts with the running event loop.
+                        # Run handler via asyncio.to_thread to mirror the production call pattern.
+                        # Note: In tests, this is mocked to run synchronously for deterministic behavior.
                         await asyncio.to_thread(
                             on_meshtastic_message, packet, mock_interface
                         )
