@@ -280,7 +280,7 @@ def _configure_logger(
                 # Use the logger itself to report the error if available, otherwise print
                 error_msg = f"Error creating log directory {log_dir}: {e}"
                 if logger and logger.handlers:
-                    logger.error(error_msg)
+                    logger.exception(error_msg)
                 else:
                     print(error_msg)
                 return logger  # Return logger without file handler
@@ -305,7 +305,7 @@ def _configure_logger(
             # Use the logger itself to report the error if available, otherwise print
             error_msg = f"Error creating log file at {log_file}: {e}"
             if logger and logger.handlers:
-                logger.error(error_msg)
+                logger.exception(error_msg)
             else:
                 print(error_msg)
             return logger  # Return logger without file handler
@@ -313,7 +313,7 @@ def _configure_logger(
             # Catch any other unexpected exceptions
             error_msg = f"Unexpected error creating log file at {log_file}: {e}"
             if logger and logger.handlers:
-                logger.error(error_msg)
+                logger.exception(error_msg)
             else:
                 print(error_msg)
             return logger  # Return logger without file handler

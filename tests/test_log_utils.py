@@ -827,7 +827,6 @@ class TestLogUtils(unittest.TestCase):
 
         # Should have at least console handler but no file handlers
         self.assertGreater(len(logger.handlers), 0)
-        initial_handler_count = len(logger.handlers)
 
         # Now change config to enable file logging with invalid path
         mmrelay.log_utils.config = config
