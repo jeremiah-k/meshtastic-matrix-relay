@@ -502,7 +502,7 @@ def mock_submit_coro(monkeypatch):
         if running_loop and running_loop.is_running():
             return running_loop.create_task(coro)
 
-        target_loop = loop
+        target_loop = loop if isinstance(loop, asyncio.AbstractEventLoop) else None
         if target_loop and target_loop.is_running():
             return target_loop.create_task(coro)
 
