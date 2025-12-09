@@ -47,12 +47,6 @@ config = None
 # Global variable to store the log file path
 log_file_path = None
 
-# Cache for parsed CLI arguments
-_cached_args = None
-
-# Track if component debug logging has been configured
-_component_debug_configured = False
-
 # Track loggers configured through this module so we can reconfigure them when
 # configuration changes later in the startup sequence.
 _registered_logger_names: Set[str] = set()
@@ -87,12 +81,12 @@ def configure_component_debug_logging():
 
     For each known external component, enable or suppress its loggers: if the component's debug setting is truthy or a valid logging level string, set that component's loggers to the specified level (a boolean value is treated as DEBUG) and attach the main application logger's handlers so their output appears alongside application logs; if the setting is falsy or missing, set the component's loggers to a level above CRITICAL to suppress their output.
 
-    This function applies its configuration only once and is not thread-safe. Call it after the main application logger is configured and before importing modules that produce component logs.
+    This function is idempotent and not thread-safe. Call it after the main application logger is configured and before importing modules that produce component logs.
     """
-    global _component_debug_configured, config
+    global config
 
-    # Only configure once
-    if _component_debug_configured or config is None:
+    # Only configure when config is available
+    if config is None:
         return
 
     # Get the main application logger and its handlers to attach to component loggers
@@ -146,8 +140,6 @@ def configure_component_debug_logging():
             for logger_name in loggers:
                 logging.getLogger(logger_name).setLevel(logging.CRITICAL + 1)
 
-    _component_debug_configured = True
-
 
 def _should_log_to_file(args) -> bool:
     """
@@ -193,15 +185,13 @@ def _resolve_log_file(args):
     return os.path.join(get_log_dir(), "mmrelay.log")
 
 
-def _configure_logger(
-    logger: logging.Logger, *, args=None, force_refresh: bool = False
-) -> logging.Logger:
+def _configure_logger(logger: logging.Logger, *, args=None) -> logging.Logger:
     """
     Configure a Logger object's level, handlers, and formatting based on the current application configuration and optional CLI arguments.
 
-    Reconfiguration is performed when the logger has no handlers, when the module configuration generation has changed, or when `force_refresh` is True. This function attaches a console handler (colorized via Rich when available and enabled) and, if enabled, a rotating file handler; it may set the module-level `log_file_path` when configuring the main application logger to write to a file.
+    Reconfiguration is performed when the logger has no handlers or when the module configuration generation has changed. This function attaches a console handler (colorized via Rich when available and enabled) and, if enabled, a rotating file handler; it may set the module-level `log_file_path` when configuring the main application logger to write to a file.
     """
-    global _cached_args, log_file_path
+    global log_file_path
 
     # Default to INFO level if config is not available
     log_level = logging.INFO
@@ -226,13 +216,10 @@ def _configure_logger(
     logger.propagate = False
 
     # Capture CLI args from callers (main passes them) to avoid tight coupling to the CLI module here
-    effective_args = args or _cached_args
-    if args is not None:
-        _cached_args = args
+    effective_args = args
 
     needs_refresh = (
-        force_refresh
-        or not logger.handlers
+        not logger.handlers
         or _logger_config_generations.get(logger.name) != _config_generation
     )
 
@@ -279,7 +266,7 @@ def _configure_logger(
         if log_dir:  # Ensure non-empty directory paths exist
             try:
                 os.makedirs(log_dir, exist_ok=True)
-            except (OSError, PermissionError) as e:
+            except OSError as e:
                 # Use the logger itself to report the error if available, otherwise print
                 error_msg = f"Error creating log directory {log_dir}: {e}"
                 if logger and logger.handlers:
@@ -304,7 +291,7 @@ def _configure_logger(
             file_handler = RotatingFileHandler(
                 log_file, maxBytes=max_bytes, backupCount=backup_count, encoding="utf-8"
             )
-        except (OSError, PermissionError) as e:
+        except OSError as e:
             # Use the logger itself to report the error if available, otherwise print
             error_msg = f"Error creating log file at {log_file}: {e}"
             if logger and logger.handlers:
@@ -355,13 +342,11 @@ def refresh_all_loggers(args=None) -> None:
     """
     Reconfigure all loggers created via get_logger() so they reflect the current logging configuration.
 
-    Increments the internal configuration generation and re-applies configuration to each registered logger.
+    Increments the internal configuration generation and re-applies configuration to each registered logger. Not thread-safe; intended for startup or controlled configuration reload paths.
     """
     global _config_generation
 
     _config_generation += 1
 
     for logger_name in list(_registered_logger_names):
-        _configure_logger(
-            logging.getLogger(logger_name), args=args, force_refresh=False
-        )
+        _configure_logger(logging.getLogger(logger_name), args=args)

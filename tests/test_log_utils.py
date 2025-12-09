@@ -63,11 +63,9 @@ class TestLogUtils(unittest.TestCase):
 
         mmrelay.log_utils.config = None
         mmrelay.log_utils.log_file_path = None
-        mmrelay.log_utils._component_debug_configured = False
         mmrelay.log_utils._registered_logger_names.clear()
         mmrelay.log_utils._logger_config_generations.clear()
         mmrelay.log_utils._config_generation = 0
-        mmrelay.log_utils._cached_args = None
 
         # Clear any existing loggers to avoid interference
         logging.getLogger().handlers.clear()
@@ -505,9 +503,6 @@ class TestLogUtils(unittest.TestCase):
         # Should not raise exception
         configure_component_debug_logging()
 
-        # Should not have configured debug logging
-        self.assertFalse(mmrelay.log_utils._component_debug_configured)
-
     def test_configure_component_debug_logging_with_config(self):
         """
         Verifies that component debug logging is correctly configured based on the provided config, enabling DEBUG level for specified components and leaving others unchanged.
@@ -524,9 +519,6 @@ class TestLogUtils(unittest.TestCase):
 
         configure_component_debug_logging()
 
-        # Should have configured debug logging
-        self.assertTrue(mmrelay.log_utils._component_debug_configured)
-
         # Check that specific loggers were set to DEBUG
         self.assertEqual(logging.getLogger("nio").level, logging.DEBUG)
         self.assertEqual(logging.getLogger("nio.client").level, logging.DEBUG)
@@ -535,9 +527,9 @@ class TestLogUtils(unittest.TestCase):
         # Bleak should not be set to DEBUG (was False in config)
         self.assertNotEqual(logging.getLogger("bleak").level, logging.DEBUG)
 
-    def test_configure_component_debug_logging_only_once(self):
+    def test_configure_component_debug_logging_reapplies(self):
         """
-        Verify that component debug logging configuration is applied only once, ensuring subsequent calls do not override existing logger levels.
+        Verify that component debug logging can be invoked multiple times to reapply configuration.
         """
         config = {"logging": {"debug": {"matrix_nio": True}}}
 
@@ -545,18 +537,16 @@ class TestLogUtils(unittest.TestCase):
 
         mmrelay.log_utils.config = config
 
-        # First call should configure
         configure_component_debug_logging()
-        self.assertTrue(mmrelay.log_utils._component_debug_configured)
 
         # Set a logger to a different level
         logging.getLogger("nio").setLevel(logging.WARNING)
 
-        # Second call should not reconfigure
+        # Second call should reconfigure back to DEBUG
         configure_component_debug_logging()
 
-        # Logger should still be at WARNING, not DEBUG
-        self.assertEqual(logging.getLogger("nio").level, logging.WARNING)
+        # Logger should be reset to DEBUG
+        self.assertEqual(logging.getLogger("nio").level, logging.DEBUG)
 
     def test_get_logger_in_test_environment(self):
         """
@@ -585,7 +575,6 @@ class TestLogUtils(unittest.TestCase):
         import mmrelay.log_utils
 
         mmrelay.log_utils.config = config
-        mmrelay.log_utils._component_debug_configured = False
 
         configure_component_debug_logging()
 
@@ -603,13 +592,11 @@ class TestLogUtils(unittest.TestCase):
         import mmrelay.log_utils
 
         mmrelay.log_utils.config = config1
-        mmrelay.log_utils._component_debug_configured = False
 
         configure_component_debug_logging()
         boolean_level = logging.getLogger("nio").level
 
         # Reset and test string "debug"
-        mmrelay.log_utils._component_debug_configured = False
         config2 = {"logging": {"debug": {"matrix_nio": "debug"}}}
         mmrelay.log_utils.config = config2
 
@@ -630,7 +617,6 @@ class TestLogUtils(unittest.TestCase):
         import mmrelay.log_utils
 
         mmrelay.log_utils.config = config
-        mmrelay.log_utils._component_debug_configured = False
 
         configure_component_debug_logging()
 
@@ -652,7 +638,6 @@ class TestLogUtils(unittest.TestCase):
         import mmrelay.log_utils
 
         mmrelay.log_utils.config = config
-        mmrelay.log_utils._component_debug_configured = False
 
         configure_component_debug_logging()
 
@@ -664,7 +649,7 @@ class TestLogUtils(unittest.TestCase):
         """
         Ensure configuring component debug logging when the debug config is None does not raise and suppresses all component loggers.
 
-        Verifies that calling configure_component_debug_logging with a logging.debug value of None marks component debug as configured and sets known component loggers (nio, bleak, meshtastic) to a suppressed level (CRITICAL + 1).
+        Verifies that calling configure_component_debug_logging with a logging.debug value of None suppresses known component loggers (nio, bleak, meshtastic) to a level above CRITICAL.
         """
         config = {
             "logging": {"debug": None}
@@ -673,13 +658,9 @@ class TestLogUtils(unittest.TestCase):
         import mmrelay.log_utils
 
         mmrelay.log_utils.config = config
-        mmrelay.log_utils._component_debug_configured = False
 
         # Should not raise exception
         configure_component_debug_logging()
-
-        # Should have configured debug logging
-        self.assertTrue(mmrelay.log_utils._component_debug_configured)
 
         # All component loggers should be suppressed (CRITICAL + 1)
         self.assertEqual(logging.getLogger("nio").level, logging.CRITICAL + 1)
@@ -881,7 +862,6 @@ class TestLogUtils(unittest.TestCase):
         }
 
         mmrelay.log_utils.config = config
-        mmrelay.log_utils._component_debug_configured = False  # Reset for this test
 
         # Clear handlers from previous tests to ensure isolation
         self._close_all_handlers()
