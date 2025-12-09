@@ -691,12 +691,9 @@ _MARKDOWN_ESCAPE_PATTERN = re.compile(r"([*_`~\\\[\]])")
 
 def _escape_leading_prefix_for_markdown(message: str) -> tuple[str, bool]:
     """
-    Escape a leading reference-style Markdown link definition prefix in a message.
-    
-    If the message begins with a bracketed prefix followed by a colon (e.g. "[name]: "), escape Markdown-sensitive characters inside the bracket and the opening bracket so the prefix is not parsed as a link definition. This preserves the rest of the message unchanged.
-    
-    Returns:
-        tuple[str, bool]: A pair (safe_message, escaped) where `safe_message` is the input message with the leading prefix escaped if present, and `escaped` is `True` when an escape was performed and `False` otherwise.
+    Escape a leading `[...]:` prefix so Markdown does not treat it as a link definition and preserves special characters.
+
+    Escapes Markdown-sensitive characters (underscore, asterisk, backtick, tilde, backslash, and brackets) inside the prefix as well as the opening bracket.
     """
     match = _PREFIX_DEFINITION_PATTERN.match(message)
     if not match:
