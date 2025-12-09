@@ -476,7 +476,7 @@ class TestLogUtils(unittest.TestCase):
     def test_get_logger_main_relay_logger(self):
         """
         Set the global log file path when the main 'MMRelay' logger is created with file logging enabled.
-        
+
         Verifies that mmrelay.log_utils.log_file_path is assigned to the configured filename after creating the "MMRelay" logger with file logging enabled.
         """
         config = {"logging": {"log_to_file": True, "filename": self.test_log_file}}
@@ -725,8 +725,8 @@ class TestLogUtils(unittest.TestCase):
         import os
         import tempfile
 
-        # Use a protected path that should cause permission error
-        protected_path = "/root/nonexistent/test.log"  # Should cause permission error
+        # Use any path; simulate a permission error when creating its directory
+        protected_path = os.path.join(self.test_dir, "protected", "test.log")
 
         config = {
             "logging": {
@@ -739,8 +739,11 @@ class TestLogUtils(unittest.TestCase):
 
         mmrelay.log_utils.config = config
 
-        # Should not raise exception, just return logger without file handler
-        logger = get_logger("test_logger_protected")
+        # Simulate a permission error when creating the log directory
+        with patch(
+            "mmrelay.log_utils.os.makedirs", side_effect=PermissionError("denied")
+        ):
+            logger = get_logger("test_logger_protected")
         self.assertIsInstance(logger, logging.Logger)
 
         # Should not have file handler due to permission error
@@ -754,7 +757,7 @@ class TestLogUtils(unittest.TestCase):
     def test_get_logger_file_creation_deep_nested_success(self):
         """
         Verify get_logger creates missing nested directories for a configured log file and writes logs to it.
-        
+
         Configures logging to write to a deeply nested file path, obtains a logger, and asserts that a RotatingFileHandler was attached, the file was created, and a logged message was persisted to the file.
         """
         import os
@@ -806,7 +809,7 @@ class TestLogUtils(unittest.TestCase):
     def test_get_logger_error_logging_with_existing_handlers(self):
         """
         Verify that when enabling file logging fails due to a protected/invalid file path, an existing logger keeps its non-file handlers and remains usable.
-        
+
         Sets up a logger with only console handlers, enables file logging using a path that will cause a permission error, forces handler re-evaluation, and asserts that:
         - the returned object is a Logger,
         - no RotatingFileHandler was added,
@@ -815,36 +818,37 @@ class TestLogUtils(unittest.TestCase):
         import os
         import tempfile
 
-        # Use a truly protected path that will cause permission error
-        invalid_path = "/root/definitely/does/not/exist/test.log"
-
         config = {
             "logging": {
                 "log_to_file": True,
-                "filename": invalid_path,
+                "filename": os.path.join(self.test_dir, "invalid", "test.log"),
             }
         }
 
-        import mmrelay.log_utils
+        import mmrelay.log_utils as lu
 
         # First, create a logger with console handler only (no file logging)
         logger_name = "test_logger_error_handling"
 
         # Set config to disable file logging initially
-        mmrelay.log_utils.config = {"logging": {"log_to_file": False}}
+        lu.config = {"logging": {"log_to_file": False}}
         logger = get_logger(logger_name)
 
         # Should have at least console handler but no file handlers
         self.assertGreater(len(logger.handlers), 0)
 
         # Now change config to enable file logging with invalid path
-        mmrelay.log_utils.config = config
+        lu.config = config
 
         # Clear logger's handler cache to force re-evaluation
         self._close_all_handlers()
 
         # Try to add file handler (should fail gracefully)
-        logger = get_logger(logger_name)
+        with patch(
+            "mmrelay.log_utils.RotatingFileHandler",
+            side_effect=PermissionError("denied"),
+        ):
+            logger = get_logger(logger_name)
 
         # Should still be a valid logger
         self.assertIsInstance(logger, logging.Logger)

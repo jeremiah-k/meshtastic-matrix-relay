@@ -165,7 +165,8 @@ def _should_log_to_file(args) -> bool:
     enabled = logging_config.get("log_to_file", True)
 
     # Command-line argument always wins and forces file logging on
-    if args and args.logfile:
+    logfile = getattr(args, "logfile", None) if args is not None else None
+    if logfile:
         enabled = True
 
     return bool(enabled)
@@ -181,8 +182,9 @@ def _resolve_log_file(args):
     Returns:
         str: Filesystem path to the log file chosen according to the precedence: `args.logfile`, `config["logging"]["filename"]`, or the default "<log_dir>/mmrelay.log".
     """
-    if args and args.logfile:
-        return args.logfile
+    logfile = getattr(args, "logfile", None) if args is not None else None
+    if logfile:
+        return logfile
 
     config_log_file = config.get("logging", {}).get("filename") if config else None
     if config_log_file:
@@ -239,7 +241,7 @@ def _configure_logger(
 
     # Reset handlers so we can rebuild with the latest configuration
     for handler in list(logger.handlers):
-        with contextlib.suppress(Exception):
+        with contextlib.suppress(OSError, ValueError):
             handler.close()
     logger.handlers.clear()
 
