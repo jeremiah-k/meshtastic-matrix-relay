@@ -84,9 +84,9 @@ _COMPONENT_LOGGERS = {
 def configure_component_debug_logging():
     """
     Apply per-component debug logging from config["logging"]["debug"].
-    
+
     For each known external component, enable or suppress its loggers: if the component's debug setting is truthy or a valid logging level string, set that component's loggers to the specified level (a boolean value is treated as DEBUG) and attach the main application logger's handlers so their output appears alongside application logs; if the setting is falsy or missing, set the component's loggers to a level above CRITICAL to suppress their output.
-    
+
     This function applies its configuration only once and is not thread-safe. Call it after the main application logger is configured and before importing modules that produce component logs.
     """
     global _component_debug_configured, config
@@ -152,10 +152,10 @@ def configure_component_debug_logging():
 def _should_log_to_file(args) -> bool:
     """
     Decide whether logging to a file is enabled according to configuration and CLI options.
-    
+
     Parameters:
         args (argparse.Namespace | None): Parsed CLI arguments; if present and `args.logfile` is truthy, file logging is forced on.
-    
+
     Returns:
         bool: `True` if file logging should be enabled, `False` otherwise.
     """
@@ -174,10 +174,10 @@ def _should_log_to_file(args) -> bool:
 def _resolve_log_file(args):
     """
     Determine the log file path, preferring a CLI-provided value, then the configuration, and falling back to the default log directory.
-    
+
     Parameters:
         args: An argparse-like namespace or object; may be None. If present and has a truthy `logfile` attribute, that value is used.
-    
+
     Returns:
         str: Filesystem path to the log file chosen according to the precedence: `args.logfile`, `config["logging"]["filename"]`, or the default "<log_dir>/mmrelay.log".
     """
@@ -192,18 +192,12 @@ def _resolve_log_file(args):
 
 
 def _configure_logger(
-    logger: logging.Logger, *, force_refresh: bool = False
+    logger: logging.Logger, *, args=None, force_refresh: bool = False
 ) -> logging.Logger:
     """
-    Configure a Logger object's level, handlers, and formatting based on the current application configuration and CLI arguments.
-    
+    Configure a Logger object's level, handlers, and formatting based on the current application configuration and optional CLI arguments.
+
     Reconfiguration is performed when the logger has no handlers, when the module configuration generation has changed, or when `force_refresh` is True. This function attaches a console handler (colorized via Rich when available and enabled) and, if enabled, a rotating file handler; it may set the module-level `log_file_path` when configuring the main application logger to write to a file.
-    
-    Parameters:
-        force_refresh (bool): If True, force rebuilding the logger's handlers even if the configuration generation appears up to date.
-    
-    Returns:
-        logging.Logger: The same `logger` instance after applying configuration.
     """
     global _cached_args, log_file_path
 
@@ -229,20 +223,10 @@ def _configure_logger(
     logger.setLevel(log_level)
     logger.propagate = False
 
-    # Check command line arguments for log file path (only if not in test environment)
-    args = _cached_args
-
-    if args is None:
-        try:
-            # Parse command-line arguments once and cache results; if parsing fails (e.g., in tests), continue without CLI arguments.
-            # Note: This is a first-parse-wins cache - subsequent changes to sys.argv won't be picked up.
-            from mmrelay.cli import parse_arguments
-
-            args = parse_arguments()
-            _cached_args = args
-        except (SystemExit, ImportError):
-            # If argument parsing fails (e.g., in tests), continue without CLI arguments
-            pass
+    # Capture CLI args from callers (main passes them) to avoid tight coupling to the CLI module here
+    effective_args = args or _cached_args
+    if args is not None:
+        _cached_args = args
 
     needs_refresh = (
         force_refresh
@@ -285,8 +269,8 @@ def _configure_logger(
     logger.addHandler(console_handler)
 
     # Determine whether to attach a file handler
-    if _should_log_to_file(args):
-        log_file = _resolve_log_file(args)
+    if _should_log_to_file(effective_args):
+        log_file = _resolve_log_file(effective_args)
 
         # Create log directory if it doesn't exist
         log_dir = os.path.dirname(log_file)
@@ -349,34 +333,33 @@ def _configure_logger(
     return logger
 
 
-def get_logger(name: str) -> logging.Logger:
+def get_logger(name: str, args=None) -> logging.Logger:
     """
     Create or retrieve a named logger configured with console output and optional rotating file logging.
-    
+
     Parameters:
         name (str): Logger name. If file logging is enabled and this equals APP_DISPLAY_NAME, the module-level `log_file_path` will be set to the resolved logfile path.
-    
+
     Returns:
         logging.Logger: The configured logger instance.
     """
     logger = logging.getLogger(name=name)
     _registered_logger_names.add(name)
 
-    return _configure_logger(logger)
+    return _configure_logger(logger, args=args)
 
 
-def refresh_all_loggers(*, force_refresh: bool = True) -> None:
+def refresh_all_loggers(args=None) -> None:
     """
     Reconfigure all loggers created via get_logger() so they reflect the current logging configuration.
-    
-    Increments the internal configuration generation and re-applies configuration to each registered logger, optionally forcing handler refresh even if no generation change is detected.
-    
-    Parameters:
-    	force_refresh (bool): If `True`, instruct each logger to rebuild handlers regardless of their recorded configuration generation; if `False`, loggers may be skipped when their configuration is already up-to-date.
+
+    Increments the internal configuration generation and re-applies configuration to each registered logger.
     """
     global _config_generation
 
     _config_generation += 1
 
     for logger_name in list(_registered_logger_names):
-        _configure_logger(logging.getLogger(logger_name), force_refresh=force_refresh)
+        _configure_logger(
+            logging.getLogger(logger_name), args=args, force_refresh=False
+        )

@@ -362,11 +362,11 @@ def run_main(args):
 
     # Apply logging configuration first so all subsequent logs land in the file
     set_config(log_utils, config)
-    log_utils.refresh_all_loggers()
+    log_utils.refresh_all_loggers(args=args)
 
     # Ensure the module-level logger reflects the refreshed configuration
     global logger
-    logger = get_logger(name=APP_DISPLAY_NAME)
+    logger = get_logger(name=APP_DISPLAY_NAME, args=args)
 
     # Print the banner once logging is fully configured (so it reaches the log file)
     print_banner()
@@ -386,7 +386,7 @@ def run_main(args):
     from mmrelay.log_utils import log_file_path
 
     # Create a logger with a different name to avoid conflicts with the one in config.py
-    config_rich_logger = get_logger("ConfigInfo")
+    config_rich_logger = get_logger("ConfigInfo", args=args)
 
     # Now log the config file and log file locations with the properly formatted logger
     if config_path:
