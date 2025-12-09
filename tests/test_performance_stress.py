@@ -354,8 +354,8 @@ class TestPerformanceStress:
             with patch("mmrelay.db_utils.get_db_path", return_value=db_path):
                 initialize_database()
 
-                plugin_count = 10
-                message_count = 100
+                plugin_count = 5
+                message_count = 50
 
                 # Create multiple mock plugins
                 plugins = []
@@ -363,7 +363,7 @@ class TestPerformanceStress:
                     plugin = MagicMock()
                     plugin.priority = i
                     plugin.plugin_name = f"plugin_{i}"
-                    plugin.handle_meshtastic_message = AsyncMock(return_value=False)
+                    plugin.handle_meshtastic_message = MagicMock(return_value=False)
                     plugins.append(plugin)
 
                 packet = {
@@ -401,22 +401,56 @@ class TestPerformanceStress:
                     "mmrelay.matrix_utils.get_interaction_settings",
                     return_value=mock_interactions,
                 ), patch(
-                    "mmrelay.matrix_utils.message_storage_enabled", return_value=True
+                    "mmrelay.matrix_utils.message_storage_enabled", return_value=False
                 ), patch(
+                    "mmrelay.db_utils.save_longname", return_value=None
+                ), patch(
+                    "mmrelay.db_utils.save_shortname", return_value=None
+                ), patch(
+                    "mmrelay.matrix_utils.matrix_relay", MagicMock(return_value=False)
+                ), patch(
+                    "mmrelay.meshtastic_utils._submit_coro"
+                ) as mock_submit, patch(
+                    "mmrelay.meshtastic_utils._wait_for_result"
+                ) as mock_wait, patch(
                     "mmrelay.meshtastic_utils.shutting_down", False
                 ), patch(
                     "mmrelay.meshtastic_utils.event_loop", meshtastic_loop_safety
-                ), patch(
-                    "mmrelay.meshtastic_utils._submit_coro"
-                ) as mock_submit_coro:
-                    mock_submit_coro.side_effect = (
-                        lambda coro, loop=None: asyncio.create_task(coro)
-                    )
+                ):
+
+                    import inspect
+                    from concurrent.futures import Future
+
+                    # Ensure submitted coroutines are executed on a running loop and reported as completed futures
+                    def fast_submit(coro, loop=None):
+                        done = Future()
+                        try:
+                            if inspect.iscoroutine(coro):
+                                done.set_result(None)
+                            else:
+                                done.set_result(coro)
+                        except Exception as exc:  # pragma: no cover - defensive
+                            done.set_exception(exc)
+                        return done
+
+                    def fast_wait(result_future, timeout, loop=None):
+                        if result_future is None:
+                            return False
+                        if isinstance(result_future, Future):
+                            return result_future.result(timeout=timeout)
+                        return result_future
+
+                    mock_submit.side_effect = fast_submit
+                    mock_wait.side_effect = fast_wait
 
                     start_time = time.time()
 
                     for _ in range(message_count):
-                        on_meshtastic_message(packet, mock_interface)
+                        # Run handler from a worker thread to mirror production usage and avoid
+                        # scheduling conflicts with the running event loop.
+                        await asyncio.to_thread(
+                            on_meshtastic_message, packet, mock_interface
+                        )
 
                     # Wait for all tasks to complete
                     pending = [

@@ -493,8 +493,20 @@ def mock_submit_coro(monkeypatch):
         if not inspect.iscoroutine(coro):  # Not a coroutine
             return None
 
-        # For AsyncMock coroutines, we need to actually await them to get the result
-        # and prevent "never awaited" warnings, while also triggering any side effects
+        # Prefer the currently running loop (pytest-asyncio) to avoid spawning many temporary loops
+        try:
+            running_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            running_loop = None
+
+        if running_loop and running_loop.is_running():
+            return running_loop.create_task(coro)
+
+        target_loop = loop
+        if target_loop and target_loop.is_running():
+            return target_loop.create_task(coro)
+
+        # Fallback: run synchronously in a temporary loop
         temp_loop = asyncio.new_event_loop()
         try:
             result = temp_loop.run_until_complete(coro)
