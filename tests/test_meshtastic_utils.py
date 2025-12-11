@@ -74,6 +74,7 @@ class TestMeshtasticUtils(unittest.TestCase):
         import mmrelay.meshtastic_utils
 
         mmrelay.meshtastic_utils.meshtastic_client = None
+        mmrelay.meshtastic_utils.meshtastic_iface = None
         mmrelay.meshtastic_utils.config = None
         mmrelay.meshtastic_utils.matrix_rooms = []
         mmrelay.meshtastic_utils.reconnecting = False
@@ -503,6 +504,7 @@ class TestMeshtasticUtils(unittest.TestCase):
             noProto=False,
             debugOut=None,
             noNodes=False,
+            auto_reconnect=False,
         )
 
     @patch("mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface")
@@ -1052,11 +1054,13 @@ def reset_meshtastic_globals():
     import mmrelay.meshtastic_utils
 
     mmrelay.meshtastic_utils.meshtastic_client = None
+    mmrelay.meshtastic_utils.meshtastic_iface = None
     mmrelay.meshtastic_utils.shutting_down = False
     mmrelay.meshtastic_utils.reconnecting = False
     yield
     # Cleanup after test
     mmrelay.meshtastic_utils.meshtastic_client = None
+    mmrelay.meshtastic_utils.meshtastic_iface = None
     mmrelay.meshtastic_utils.shutting_down = False
     mmrelay.meshtastic_utils.reconnecting = False
 

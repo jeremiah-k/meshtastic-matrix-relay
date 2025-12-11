@@ -7,7 +7,7 @@ import threading
 import time
 from concurrent.futures import Future
 from concurrent.futures import TimeoutError as FuturesTimeoutError
-from typing import TYPE_CHECKING, Any, Awaitable, List
+from typing import TYPE_CHECKING, Any, Awaitable, List, Optional
 
 # type: ignore[assignment]  # Suppress complex type issues with asyncio/concurrent.futures integration
 
@@ -98,7 +98,8 @@ logger = get_logger(name="Meshtastic")
 
 
 # Global variables for the Meshtastic connection and event loop management
-meshtastic_client = None
+meshtastic_client: Optional[Any] = None
+meshtastic_iface: Optional[meshtastic.ble_interface.BLEInterface] = None
 event_loop = None  # Will be set from main.py
 
 meshtastic_lock = (
@@ -442,7 +443,7 @@ def connect_meshtastic(passed_config=None, force_connect=False):
     Returns:
         The connected Meshtastic client instance on success, or None if connection cannot be established or shutdown is in progress.
     """
-    global meshtastic_client, shutting_down, reconnecting, config, matrix_rooms
+    global meshtastic_client, shutting_down, reconnecting, config, matrix_rooms, meshtastic_iface
     if shutting_down:
         logger.debug("Shutdown in progress. Not attempting to connect.")
         return None
@@ -463,12 +464,18 @@ def connect_meshtastic(passed_config=None, force_connect=False):
         if meshtastic_client and not force_connect:
             return meshtastic_client
 
-        # Close previous connection if exists
+        # Close previous connection if exists, unless it is the persistent BLE interface
         if meshtastic_client:
-            try:
-                meshtastic_client.close()
-            except Exception as e:
-                logger.warning(f"Error closing previous connection: {e}")
+            is_persistent_ble = (meshtastic_client == meshtastic_iface) and (
+                meshtastic_iface is not None
+            )
+
+            if not is_persistent_ble:
+                try:
+                    meshtastic_client.close()
+                except Exception as e:
+                    logger.warning(f"Error closing previous connection: {e}")
+
             meshtastic_client = None
 
         # Check if config is available
@@ -558,13 +565,22 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                 if ble_address:
                     logger.info(f"Connecting to BLE address {ble_address}")
 
-                    # Connect without progress indicator
-                    client = meshtastic.ble_interface.BLEInterface(
-                        address=ble_address,
-                        noProto=False,
-                        debugOut=None,
-                        noNodes=False,
-                    )
+                    if meshtastic_iface is None:
+                        # Create a single BLEInterface instance for the process lifetime
+                        # Use auto_reconnect=False to let mmrelay manage retries
+                        meshtastic_iface = meshtastic.ble_interface.BLEInterface(
+                            address=ble_address,
+                            noProto=False,
+                            debugOut=None,
+                            noNodes=False,
+                            auto_reconnect=False,
+                        )
+
+                    # Connect using the existing interface
+                    # This handles both initial connect and reconnects without creating zombies
+                    meshtastic_iface.connect()
+                    client = meshtastic_iface
+
                 else:
                     logger.error("No BLE address provided.")
                     return None
@@ -662,6 +678,11 @@ def connect_meshtastic(passed_config=None, force_connect=False):
             attempts += 1
             if retry_limit == 0 or attempts <= retry_limit:
                 wait_time = min(2**attempts, 60)  # Consistent exponential backoff
+
+                # Enforce minimum backoff for BLE to avoid zombie threads and gate suppression
+                if connection_type == CONNECTION_TYPE_BLE:
+                    wait_time = max(wait_time, 30)
+
                 logger.warning(
                     "Connection attempt %s failed: %s. Retrying in %s seconds...",
                     attempts,
@@ -679,6 +700,11 @@ def connect_meshtastic(passed_config=None, force_connect=False):
             attempts += 1
             if retry_limit == 0 or attempts <= retry_limit:
                 wait_time = min(2**attempts, 60)
+
+                # Enforce minimum backoff for BLE
+                if connection_type == CONNECTION_TYPE_BLE:
+                    wait_time = max(wait_time, 30)
+
                 logger.warning(
                     "An unexpected error occurred on attempt %s: %s. Retrying in %s seconds...",
                     attempts,
@@ -705,7 +731,7 @@ def on_lost_meshtastic_connection(interface=None, detection_source="unknown"):
     Parameters:
         detection_source (str): Identifier for where or how the loss was detected; used in log messages.
     """
-    global meshtastic_client, reconnecting, shutting_down, event_loop, reconnect_task
+    global meshtastic_client, reconnecting, shutting_down, event_loop, reconnect_task, meshtastic_iface
     with meshtastic_lock:
         if shutting_down:
             logger.debug("Shutdown in progress. Not attempting to reconnect.")
@@ -719,16 +745,25 @@ def on_lost_meshtastic_connection(interface=None, detection_source="unknown"):
         logger.error(f"Lost connection ({detection_source}). Reconnecting...")
 
         if meshtastic_client:
-            try:
-                meshtastic_client.close()
-            except OSError as e:
-                if e.errno == ERRNO_BAD_FILE_DESCRIPTOR:
-                    # Bad file descriptor, already closed
-                    pass
-                else:
+            # Check if this is the persistent BLE interface
+            is_persistent_ble = (meshtastic_client == meshtastic_iface) and (
+                meshtastic_iface is not None
+            )
+
+            if not is_persistent_ble:
+                try:
+                    meshtastic_client.close()
+                except OSError as e:
+                    if e.errno == ERRNO_BAD_FILE_DESCRIPTOR:
+                        # Bad file descriptor, already closed
+                        pass
+                    else:
+                        logger.warning(f"Error closing Meshtastic client: {e}")
+                except Exception as e:
                     logger.warning(f"Error closing Meshtastic client: {e}")
-            except Exception as e:
-                logger.warning(f"Error closing Meshtastic client: {e}")
+            else:
+                logger.debug("Persisting BLE interface for reconnection.")
+
         meshtastic_client = None
 
         if event_loop and not event_loop.is_closed():
@@ -746,7 +781,7 @@ async def reconnect():
     reconnecting flag is cleared before it returns. asyncio.CancelledError is handled (logged)
     and causes the routine to stop.
     """
-    global meshtastic_client, reconnecting, shutting_down
+    global meshtastic_client, reconnecting, shutting_down, meshtastic_iface
     backoff_time = DEFAULT_BACKOFF_TIME
     try:
         while not shutting_down:
@@ -797,6 +832,14 @@ async def reconnect():
                 )
                 if meshtastic_client:
                     logger.info("Reconnected successfully.")
+
+                    # Grace period for BLE to avoid fighting with other controllers or gate
+                    # The interface needs time to stabilize, and we want to avoid immediate
+                    # re-triggers or overlapping logic.
+                    if meshtastic_iface and meshtastic_client == meshtastic_iface:
+                        logger.debug("Entering BLE reconnection grace period (45s).")
+                        await asyncio.sleep(45)
+
                     break
             except Exception:
                 if shutting_down:

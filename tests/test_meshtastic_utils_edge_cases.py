@@ -43,6 +43,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         import mmrelay.meshtastic_utils
 
         mmrelay.meshtastic_utils.meshtastic_client = None
+        mmrelay.meshtastic_utils.meshtastic_iface = None
         mmrelay.meshtastic_utils.reconnecting = False
         mmrelay.meshtastic_utils.config = None
         mmrelay.meshtastic_utils.matrix_rooms = []

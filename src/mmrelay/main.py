@@ -268,7 +268,20 @@ async def main(config):
 
         matrix_logger.info("Closing Matrix client...")
         await matrix_client.close()
+
+        # Collect clients to close (active client + persistent BLE interface)
+        clients_to_close = []
         if meshtastic_utils.meshtastic_client:
+            clients_to_close.append(meshtastic_utils.meshtastic_client)
+
+        # Add persistent interface if it exists and wasn't already added
+        if (
+            getattr(meshtastic_utils, "meshtastic_iface", None)
+            and meshtastic_utils.meshtastic_iface not in clients_to_close
+        ):
+            clients_to_close.append(meshtastic_utils.meshtastic_iface)
+
+        for client in clients_to_close:
             meshtastic_logger.info("Closing Meshtastic client...")
             try:
                 # Timeout wrapper to prevent infinite hanging during shutdown
@@ -276,14 +289,14 @@ async def main(config):
                 # operations, especially with BLE connections. This timeout ensures
                 # the application can shut down gracefully within 10 seconds.
 
-                def _close_meshtastic():
+                def _close_meshtastic(c):
                     """
                     Closes the Meshtastic client connection synchronously.
                     """
-                    meshtastic_utils.meshtastic_client.close()
+                    c.close()
 
                 with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                    future = executor.submit(_close_meshtastic)
+                    future = executor.submit(_close_meshtastic, client)
                     future.result(timeout=10.0)  # 10-second timeout
 
                 meshtastic_logger.info("Meshtastic client closed successfully")
