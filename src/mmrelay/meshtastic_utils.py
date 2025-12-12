@@ -98,6 +98,9 @@ logger = get_logger(__name__)
 meshtastic_lock = (
     threading.Lock()
 )  # To prevent race conditions on meshtastic_client access
+meshtastic_iface_lock = (
+    threading.Lock()
+)  # To prevent race conditions on BLE interface singleton creation
 
 reconnecting = False
 shutting_down = False
@@ -519,9 +522,12 @@ def connect_meshtastic(passed_config=None, force_connect=False):
         connection_timeout = int(
             meshtastic_settings.get("connection_timeout", DEFAULT_CONNECTION_TIMEOUT)
         )
+        if connection_timeout < 1:
+            raise ValueError("connection_timeout must be >= 1")
     except (TypeError, ValueError):
         logger.warning(
-            "Invalid 'connection_timeout' value in config. Falling back to default of %s seconds.",
+            "Invalid meshtastic.connection_timeout value %r; using %ss fallback.",
+            meshtastic_settings.get("connection_timeout"),
             DEFAULT_CONNECTION_TIMEOUT,
         )
         connection_timeout = DEFAULT_CONNECTION_TIMEOUT
@@ -579,37 +585,38 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                             meshtastic_iface.close()
                         meshtastic_iface = None
 
-                    if meshtastic_iface is None:
-                        # Create a single BLEInterface instance for the process lifetime
-                        # Check if auto_reconnect parameter is supported (forked version)
-                        ble_init_sig = inspect.signature(
-                            meshtastic.ble_interface.BLEInterface.__init__
-                        )
-                        ble_kwargs = {
-                            "address": ble_address,
-                            "noProto": False,
-                            "debugOut": None,
-                            "noNodes": False,
-                            "timeout": connection_timeout,
-                        }
-
-                        # Add auto_reconnect only if supported (forked version)
-                        if "auto_reconnect" in ble_init_sig.parameters:
-                            ble_kwargs["auto_reconnect"] = False
-                            logger.debug(
-                                "Using forked meshtastic library with auto_reconnect support"
+                    with meshtastic_iface_lock:
+                        if meshtastic_iface is None:
+                            # Create a single BLEInterface instance for the process lifetime
+                            # Check if auto_reconnect parameter is supported (forked version)
+                            ble_init_sig = inspect.signature(
+                                meshtastic.ble_interface.BLEInterface.__init__
                             )
-                        else:
-                            logger.debug("Using official meshtastic library")
+                            ble_kwargs = {
+                                "address": ble_address,
+                                "noProto": False,
+                                "debugOut": None,
+                                "noNodes": False,
+                                "timeout": connection_timeout,
+                            }
 
-                        try:
-                            meshtastic_iface = meshtastic.ble_interface.BLEInterface(
-                                **ble_kwargs
-                            )
-                        except Exception as e:
-                            # BLEInterface constructor failed - this is a critical error
-                            logger.exception(f"BLE interface creation failed: {e}")
-                            return None
+                            # Add auto_reconnect only if supported (forked version)
+                            if "auto_reconnect" in ble_init_sig.parameters:
+                                ble_kwargs["auto_reconnect"] = False
+                                logger.debug(
+                                    "Using forked meshtastic library with auto_reconnect support"
+                                )
+                            else:
+                                logger.debug("Using official meshtastic library")
+
+                            try:
+                                meshtastic_iface = (
+                                    meshtastic.ble_interface.BLEInterface(**ble_kwargs)
+                                )
+                            except Exception:
+                                # BLEInterface constructor failed - let retry/backoff handle it
+                                logger.exception("BLE interface creation failed")
+                                raise
 
                     # Connect using the existing interface if it has connect method (forked version)
                     # Official version connects automatically during init

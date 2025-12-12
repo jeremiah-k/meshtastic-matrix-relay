@@ -123,11 +123,14 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             "meshtastic": {"connection_type": "ble", "ble_address": "00:11:22:33:44:55"}
         }
 
+        # Import the actual BLE exception types from the module
+        import mmrelay.meshtastic_utils as mu
+
+        ble_exceptions = (mu.BleakError, mu.BleakDBusError)
+
         with patch(
             "mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface",
-            side_effect=Exception(
-                "Device not found"
-            ),  # Use generic Exception since both BLEError and ConnectionRefusedError are possible
+            side_effect=mu.BleakError("Device not found"),
         ):
             with patch("time.sleep"):  # Speed up test
                 with (
