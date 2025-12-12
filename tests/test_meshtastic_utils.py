@@ -498,14 +498,20 @@ class TestMeshtasticUtils(unittest.TestCase):
         result = connect_meshtastic(passed_config=config)
 
         self.assertEqual(result, mock_client)
-        mock_ble.assert_called_once_with(
-            address="AA:BB:CC:DD:EE:FF",
-            noProto=False,
-            debugOut=None,
-            noNodes=False,
-            auto_reconnect=False,
-            timeout=60,
-        )
+        # Check that BLEInterface was called with correct parameters
+        mock_ble.assert_called_once()
+        call_kwargs = mock_ble.call_args[1]
+
+        # Verify required parameters
+        self.assertEqual(call_kwargs["address"], "AA:BB:CC:DD:EE:FF")
+        self.assertEqual(call_kwargs["noProto"], False)
+        self.assertEqual(call_kwargs["debugOut"], None)
+        self.assertEqual(call_kwargs["noNodes"], False)
+        self.assertEqual(call_kwargs["timeout"], 60)
+
+        # auto_reconnect should be present if supported, but not required
+        if "auto_reconnect" in call_kwargs:
+            self.assertEqual(call_kwargs["auto_reconnect"], False)
 
     @patch("mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface")
     @patch("mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface")

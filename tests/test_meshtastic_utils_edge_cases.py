@@ -125,7 +125,9 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
 
         with patch(
             "mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface",
-            side_effect=ConnectionRefusedError("Device not found"),
+            side_effect=Exception(
+                "Device not found"
+            ),  # Use generic Exception since both BLEError and ConnectionRefusedError are possible
         ):
             with patch("time.sleep"):  # Speed up test
                 with (

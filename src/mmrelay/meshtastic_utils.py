@@ -562,19 +562,40 @@ def connect_meshtastic(passed_config=None, force_connect=False):
 
                     if meshtastic_iface is None:
                         # Create a single BLEInterface instance for the process lifetime
-                        # Use auto_reconnect=False to let mmrelay manage retries
-                        meshtastic_iface = meshtastic.ble_interface.BLEInterface(
-                            address=ble_address,
-                            noProto=False,
-                            debugOut=None,
-                            noNodes=False,
-                            auto_reconnect=False,
-                            timeout=connection_timeout,
+                        # Check if auto_reconnect parameter is supported (forked version)
+                        ble_init_sig = inspect.signature(
+                            meshtastic.ble_interface.BLEInterface.__init__
                         )
+                        ble_kwargs = {
+                            "address": ble_address,
+                            "noProto": False,
+                            "debugOut": None,
+                            "noNodes": False,
+                            "timeout": connection_timeout,
+                        }
 
-                    # Connect using the existing interface
-                    # This handles both initial connect and reconnects without creating zombies
-                    meshtastic_iface.connect()
+                        # Add auto_reconnect only if supported (forked version)
+                        if "auto_reconnect" in ble_init_sig.parameters:
+                            ble_kwargs["auto_reconnect"] = False
+                            logger.debug(
+                                "Using forked meshtastic library with auto_reconnect support"
+                            )
+                        else:
+                            logger.debug("Using official meshtastic library")
+
+                        try:
+                            meshtastic_iface = meshtastic.ble_interface.BLEInterface(
+                                **ble_kwargs
+                            )
+                        except Exception as e:
+                            # BLEInterface constructor failed - this is a critical error
+                            logger.exception(f"BLE interface creation failed: {e}")
+                            return None
+
+                    # Connect using the existing interface if it has connect method (forked version)
+                    # Official version connects automatically during init
+                    if hasattr(meshtastic_iface, "connect"):
+                        meshtastic_iface.connect()
                     client = meshtastic_iface
 
                 else:
