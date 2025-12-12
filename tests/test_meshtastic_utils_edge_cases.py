@@ -130,8 +130,6 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         # Import the actual BLE exception types from the module
         import mmrelay.meshtastic_utils as mu
 
-        ble_exceptions = (mu.BleakError, mu.BleakDBusError)
-
         with patch(
             "mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface",
             side_effect=mu.BleakError("Device not found"),

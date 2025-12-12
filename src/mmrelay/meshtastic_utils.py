@@ -7,7 +7,7 @@ import threading
 import time
 from concurrent.futures import Future
 from concurrent.futures import TimeoutError as FuturesTimeoutError
-from typing import TYPE_CHECKING, Any, Awaitable
+from typing import TYPE_CHECKING, Any, Awaitable, List
 
 # type: ignore[assignment]  # Suppress complex type issues with asyncio/concurrent.futures integration
 
@@ -91,6 +91,7 @@ config = None
 meshtastic_client = None
 meshtastic_iface = None  # BLE interface instance for process lifetime
 event_loop = None  # Will be set from main.py
+matrix_rooms: List[dict] = []  # Will be populated from config
 
 # Initialize logger
 logger = get_logger(__name__)
