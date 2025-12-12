@@ -515,9 +515,16 @@ def connect_meshtastic(passed_config=None, force_connect=False):
         retry_limit = INFINITE_RETRIES
 
     # Get connection timeout from config or use default
-    connection_timeout = int(
-        meshtastic_settings.get("connection_timeout", DEFAULT_CONNECTION_TIMEOUT)
-    )
+    try:
+        connection_timeout = int(
+            meshtastic_settings.get("connection_timeout", DEFAULT_CONNECTION_TIMEOUT)
+        )
+    except (TypeError, ValueError):
+        logger.warning(
+            "Invalid 'connection_timeout' value in config. Falling back to default of %s seconds.",
+            DEFAULT_CONNECTION_TIMEOUT,
+        )
+        connection_timeout = DEFAULT_CONNECTION_TIMEOUT
 
     attempts = 0
     timeout_attempts = 0
@@ -559,6 +566,18 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                 ble_address = config["meshtastic"].get(CONFIG_KEY_BLE_ADDRESS)
                 if ble_address:
                     logger.info(f"Connecting to BLE address {ble_address}")
+
+                    # If the BLE address has changed, we need to re-create the interface
+                    if (
+                        meshtastic_iface
+                        and getattr(meshtastic_iface, "address", None) != ble_address
+                    ):
+                        logger.info(
+                            "BLE address has changed. Re-creating BLE interface."
+                        )
+                        with contextlib.suppress(Exception):
+                            meshtastic_iface.close()
+                        meshtastic_iface = None
 
                     if meshtastic_iface is None:
                         # Create a single BLEInterface instance for the process lifetime
