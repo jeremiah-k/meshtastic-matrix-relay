@@ -7,7 +7,7 @@ import threading
 import time
 from concurrent.futures import Future
 from concurrent.futures import TimeoutError as FuturesTimeoutError
-from typing import TYPE_CHECKING, Any, Awaitable, List
+from typing import TYPE_CHECKING, Any, Awaitable, Dict, List, Union
 
 # type: ignore[assignment]  # Suppress complex type issues with asyncio/concurrent.futures integration
 
@@ -91,7 +91,7 @@ config = None
 meshtastic_client = None
 meshtastic_iface = None  # BLE interface instance for process lifetime
 event_loop = None  # Will be set from main.py
-matrix_rooms: List[dict] = []  # Will be populated from config
+matrix_rooms: Union[Dict[str, Any], list] = []  # Will be populated from config
 
 # Initialize logger
 logger = get_logger(__name__)
@@ -548,7 +548,7 @@ def connect_meshtastic(passed_config=None, force_connect=False):
             )
         except (ValueError, TypeError, AttributeError):
             # Use empty signature as fallback for mock environments
-            ble_init_sig = inspect.signature(lambda **kwargs: None)
+            ble_init_sig = inspect.signature(lambda **_: None)
 
     attempts = 0
     timeout_attempts = 0
@@ -591,22 +591,24 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                 if ble_address:
                     logger.info(f"Connecting to BLE address {ble_address}")
 
-                    # If the BLE address has changed, we need to re-create the interface
-                    if (
-                        meshtastic_iface
-                        and getattr(meshtastic_iface, "address", None) != ble_address
-                    ):
-                        logger.info(
-                            "BLE address has changed. Re-creating BLE interface."
-                        )
-                        with contextlib.suppress(Exception):
-                            meshtastic_iface.close()
-                        meshtastic_iface = None
-
+                    iface = None
                     with meshtastic_iface_lock:
+                        # If the BLE address has changed, re-create the interface
+                        if (
+                            meshtastic_iface
+                            and getattr(meshtastic_iface, "address", None)
+                            != ble_address
+                        ):
+                            logger.info(
+                                "BLE address has changed. Re-creating BLE interface."
+                            )
+                            with contextlib.suppress(BleakError, OSError):
+                                meshtastic_iface.close()
+                            meshtastic_iface = None
+
                         if meshtastic_iface is None:
                             # Create a single BLEInterface instance for the process lifetime
-                            # Use pre-computed signature to check if auto_reconnect parameter is supported
+                            # Supports both official meshtastic library and our fork with auto_reconnect
                             ble_kwargs = {
                                 "address": ble_address,
                                 "noProto": False,
@@ -636,13 +638,15 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                                 logger.exception("BLE interface creation failed")
                                 raise
 
-                        # Connect using the existing interface if it has connect method (forked version)
-                        # Official version connects automatically during init
-                        if hasattr(meshtastic_iface, "connect"):
-                            meshtastic_iface.connect()
+                        iface = meshtastic_iface
 
-                        # Set client to the successfully created interface
-                        client = meshtastic_iface
+                    # Connect outside the singleton-creation lock to avoid blocking other threads
+                    # Official version connects automatically during init (no connect() method)
+                    # Forked version has separate connect() method that we need to call
+                    if iface is not None and hasattr(iface, "connect"):
+                        iface.connect()
+
+                    client = iface
 
                 else:
                     logger.error("No BLE address provided.")
