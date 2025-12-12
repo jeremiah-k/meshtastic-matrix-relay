@@ -607,7 +607,14 @@ def connect_meshtastic(passed_config=None, force_connect=False):
             # Acquire lock only for the final setup and subscription
             with meshtastic_lock:
                 meshtastic_client = client
-                nodeInfo = meshtastic_client.getMyNodeInfo()
+
+                logger.debug("Retrieving node info...")
+                try:
+                    nodeInfo = meshtastic_client.getMyNodeInfo()
+                    logger.debug("Node info retrieved.")
+                except Exception as e:
+                    logger.warning(f"Failed to retrieve node info: {e}")
+                    nodeInfo = None
 
                 # Safely access node info fields
                 user_info = nodeInfo.get("user", {}) if nodeInfo else {}
@@ -615,7 +622,9 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                 hw_model = user_info.get("hwModel", "unknown")
 
                 # Get firmware version from device metadata
+                logger.debug("Retrieving device metadata...")
                 metadata = _get_device_metadata(meshtastic_client)
+                logger.debug("Device metadata retrieved.")
                 firmware_version = metadata["firmware_version"]
 
                 if metadata.get("success"):
@@ -827,9 +836,17 @@ async def reconnect():
                     break
                 loop = asyncio.get_running_loop()
                 # Pass force_connect=True without overwriting the global config
-                meshtastic_client = await loop.run_in_executor(
-                    None, connect_meshtastic, None, True
-                )
+                # Wrap in wait_for to prevent indefinite hangs if the connection thread gets stuck
+                try:
+                    meshtastic_client = await asyncio.wait_for(
+                        loop.run_in_executor(None, connect_meshtastic, None, True),
+                        timeout=120,  # 2 minute timeout for the entire connection attempt
+                    )
+                except asyncio.TimeoutError:
+                    logger.error("Reconnection attempt timed out (executor blocked).")
+                    meshtastic_client = None
+                    # Fall through to backoff logic
+
                 if meshtastic_client:
                     logger.info("Reconnected successfully.")
 
