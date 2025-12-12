@@ -523,8 +523,6 @@ def connect_meshtastic(passed_config=None, force_connect=False):
         connection_timeout = int(
             meshtastic_settings.get("connection_timeout", DEFAULT_CONNECTION_TIMEOUT)
         )
-        if connection_timeout < 1:
-            raise ValueError("connection_timeout must be >= 1")
     except (TypeError, ValueError):
         logger.warning(
             "Invalid meshtastic.connection_timeout value %r; using %ss fallback.",
@@ -532,6 +530,14 @@ def connect_meshtastic(passed_config=None, force_connect=False):
             DEFAULT_CONNECTION_TIMEOUT,
         )
         connection_timeout = DEFAULT_CONNECTION_TIMEOUT
+    else:
+        if connection_timeout < 1:
+            logger.warning(
+                "Invalid meshtastic.connection_timeout value %r; using %ss fallback.",
+                connection_timeout,
+                DEFAULT_CONNECTION_TIMEOUT,
+            )
+            connection_timeout = DEFAULT_CONNECTION_TIMEOUT
 
     # Pre-compute BLE interface signature outside retry loop to avoid mocking issues
     ble_init_sig = None
@@ -540,7 +546,7 @@ def connect_meshtastic(passed_config=None, force_connect=False):
             ble_init_sig = inspect.signature(
                 meshtastic.ble_interface.BLEInterface.__init__
             )
-        except Exception:
+        except (ValueError, TypeError, AttributeError):
             # Use empty signature as fallback for mock environments
             ble_init_sig = inspect.signature(lambda **kwargs: None)
 
@@ -625,7 +631,7 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                                 meshtastic_iface = (
                                     meshtastic.ble_interface.BLEInterface(**ble_kwargs)
                                 )
-                            except Exception:
+                            except (BleakError, BleakDBusError):
                                 # BLEInterface constructor failed - let retry/backoff handle it
                                 logger.exception("BLE interface creation failed")
                                 raise
