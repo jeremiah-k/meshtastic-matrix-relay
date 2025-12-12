@@ -7,7 +7,7 @@ import threading
 import time
 from concurrent.futures import Future
 from concurrent.futures import TimeoutError as FuturesTimeoutError
-from typing import TYPE_CHECKING, Any, Awaitable, List
+from typing import TYPE_CHECKING, Any, Awaitable
 
 # type: ignore[assignment]  # Suppress complex type issues with asyncio/concurrent.futures integration
 
@@ -88,19 +88,12 @@ except ImportError:
 
 # Global config variable that will be set from config.py
 config = None
-
-# Do not import plugin_loader here to avoid circular imports
-
-# Initialize matrix rooms configuration
-matrix_rooms: List[dict] = []
-
-# Initialize logger for Meshtastic
-logger = get_logger(name="Meshtastic")
-
-
-# Global variables for the Meshtastic connection and event loop management
 meshtastic_client = None
+meshtastic_iface = None  # BLE interface instance for process lifetime
 event_loop = None  # Will be set from main.py
+
+# Initialize logger
+logger = get_logger(__name__)
 
 meshtastic_lock = (
     threading.Lock()
@@ -443,7 +436,7 @@ def connect_meshtastic(passed_config=None, force_connect=False):
     Returns:
         The connected Meshtastic client instance on success, or None if connection cannot be established or shutdown is in progress.
     """
-    global meshtastic_client, shutting_down, reconnecting, config, matrix_rooms
+    global meshtastic_client, meshtastic_iface, shutting_down, reconnecting, config, matrix_rooms
     if shutting_down:
         logger.debug("Shutdown in progress. Not attempting to connect.")
         return None
