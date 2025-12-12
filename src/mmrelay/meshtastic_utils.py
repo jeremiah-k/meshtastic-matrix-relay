@@ -7,7 +7,7 @@ import threading
 import time
 from concurrent.futures import Future
 from concurrent.futures import TimeoutError as FuturesTimeoutError
-from typing import TYPE_CHECKING, Any, Awaitable, List
+from typing import TYPE_CHECKING, Any, Awaitable, Dict, List, Union
 
 # type: ignore[assignment]  # Suppress complex type issues with asyncio/concurrent.futures integration
 
@@ -57,6 +57,7 @@ from mmrelay.constants.network import (
     CONNECTION_TYPE_SERIAL,
     CONNECTION_TYPE_TCP,
     DEFAULT_BACKOFF_TIME,
+    DEFAULT_CONNECTION_TIMEOUT,
     ERRNO_BAD_FILE_DESCRIPTOR,
     INFINITE_RETRIES,
 )
@@ -87,23 +88,20 @@ except ImportError:
 
 # Global config variable that will be set from config.py
 config = None
-
-# Do not import plugin_loader here to avoid circular imports
-
-# Initialize matrix rooms configuration
-matrix_rooms: List[dict] = []
-
-# Initialize logger for Meshtastic
-logger = get_logger(name="Meshtastic")
-
-
-# Global variables for the Meshtastic connection and event loop management
 meshtastic_client = None
+meshtastic_iface = None  # BLE interface instance for process lifetime
 event_loop = None  # Will be set from main.py
+matrix_rooms: Union[Dict[str, Any], list] = []  # Will be populated from config
+
+# Initialize logger
+logger = get_logger(__name__)
 
 meshtastic_lock = (
     threading.Lock()
 )  # To prevent race conditions on meshtastic_client access
+meshtastic_iface_lock = (
+    threading.Lock()
+)  # To prevent race conditions on BLE interface singleton creation
 
 reconnecting = False
 shutting_down = False
@@ -442,7 +440,7 @@ def connect_meshtastic(passed_config=None, force_connect=False):
     Returns:
         The connected Meshtastic client instance on success, or None if connection cannot be established or shutdown is in progress.
     """
-    global meshtastic_client, shutting_down, reconnecting, config, matrix_rooms
+    global meshtastic_client, meshtastic_iface, shutting_down, reconnecting, config, matrix_rooms
     if shutting_down:
         logger.debug("Shutdown in progress. Not attempting to connect.")
         return None
@@ -519,6 +517,39 @@ def connect_meshtastic(passed_config=None, force_connect=False):
         retry_limit = int(retry_limit_raw)
     except (TypeError, ValueError):
         retry_limit = INFINITE_RETRIES
+
+    # Get connection timeout from config or use default
+    try:
+        connection_timeout = int(
+            meshtastic_settings.get("connection_timeout", DEFAULT_CONNECTION_TIMEOUT)
+        )
+    except (TypeError, ValueError):
+        logger.warning(
+            "Invalid meshtastic.connection_timeout value %r; using %ss fallback.",
+            meshtastic_settings.get("connection_timeout"),
+            DEFAULT_CONNECTION_TIMEOUT,
+        )
+        connection_timeout = DEFAULT_CONNECTION_TIMEOUT
+    else:
+        if connection_timeout < 1:
+            logger.warning(
+                "Invalid meshtastic.connection_timeout value %r; using %ss fallback.",
+                connection_timeout,
+                DEFAULT_CONNECTION_TIMEOUT,
+            )
+            connection_timeout = DEFAULT_CONNECTION_TIMEOUT
+
+    # Pre-compute BLE interface signature outside retry loop to avoid mocking issues
+    ble_init_sig = None
+    if connection_type == CONNECTION_TYPE_BLE:
+        try:
+            ble_init_sig = inspect.signature(
+                meshtastic.ble_interface.BLEInterface.__init__
+            )
+        except (ValueError, TypeError, AttributeError):
+            # Use empty signature as fallback for mock environments
+            ble_init_sig = inspect.signature(lambda **_: None)
+
     attempts = 0
     timeout_attempts = 0
     successful = False
@@ -550,7 +581,9 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                     attempts += 1
                     continue
 
-                client = meshtastic.serial_interface.SerialInterface(serial_port)
+                client = meshtastic.serial_interface.SerialInterface(
+                    serial_port, timeout=connection_timeout
+                )
 
             elif connection_type == CONNECTION_TYPE_BLE:
                 # BLE connection
@@ -558,13 +591,63 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                 if ble_address:
                     logger.info(f"Connecting to BLE address {ble_address}")
 
-                    # Connect without progress indicator
-                    client = meshtastic.ble_interface.BLEInterface(
-                        address=ble_address,
-                        noProto=False,
-                        debugOut=None,
-                        noNodes=False,
-                    )
+                    iface = None
+                    with meshtastic_iface_lock:
+                        # If the BLE address has changed, re-create the interface
+                        if (
+                            meshtastic_iface
+                            and getattr(meshtastic_iface, "address", None)
+                            != ble_address
+                        ):
+                            logger.info(
+                                "BLE address has changed. Re-creating BLE interface."
+                            )
+                            with contextlib.suppress(BleakError, OSError):
+                                meshtastic_iface.close()
+                            meshtastic_iface = None
+
+                        if meshtastic_iface is None:
+                            # Create a single BLEInterface instance for the process lifetime
+                            # Supports both official meshtastic library and our fork with auto_reconnect
+                            ble_kwargs = {
+                                "address": ble_address,
+                                "noProto": False,
+                                "debugOut": None,
+                                "noNodes": False,
+                                "timeout": connection_timeout,
+                            }
+
+                            # Add auto_reconnect only if supported (forked version)
+                            if (
+                                ble_init_sig
+                                and "auto_reconnect" in ble_init_sig.parameters
+                            ):
+                                ble_kwargs["auto_reconnect"] = False
+                                logger.debug(
+                                    "Using forked meshtastic library with auto_reconnect support"
+                                )
+                            else:
+                                logger.debug("Using official meshtastic library")
+
+                            try:
+                                meshtastic_iface = (
+                                    meshtastic.ble_interface.BLEInterface(**ble_kwargs)
+                                )
+                            except (BleakError, BleakDBusError):
+                                # BLEInterface constructor failed - let retry/backoff handle it
+                                logger.exception("BLE interface creation failed")
+                                raise
+
+                        iface = meshtastic_iface
+
+                    # Connect outside the singleton-creation lock to avoid blocking other threads
+                    # Official version connects automatically during init (no connect() method)
+                    # Forked version has separate connect() method that we need to call
+                    if iface is not None and hasattr(iface, "connect"):
+                        iface.connect()
+
+                    client = iface
+
                 else:
                     logger.error("No BLE address provided.")
                     return None
@@ -581,7 +664,9 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                 logger.info(f"Connecting to host {target_host}")
 
                 # Connect without progress indicator
-                client = meshtastic.tcp_interface.TCPInterface(hostname=target_host)
+                client = meshtastic.tcp_interface.TCPInterface(
+                    hostname=target_host, timeout=connection_timeout
+                )
             else:
                 logger.error(f"Unknown connection type: {connection_type}")
                 return None

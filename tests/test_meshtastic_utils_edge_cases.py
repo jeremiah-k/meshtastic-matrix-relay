@@ -120,12 +120,19 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         Simulates a BLE connection attempt where the device cannot be found, verifying that connect_meshtastic handles the error gracefully and logs the failure.
         """
         config = {
-            "meshtastic": {"connection_type": "ble", "ble_address": "00:11:22:33:44:55"}
+            "meshtastic": {
+                "connection_type": "ble",
+                "ble_address": "00:11:22:33:44:55",
+                "retries": 1,  # Limit retries to avoid infinite loop in test
+            }
         }
+
+        # Import the actual BLE exception types from the module
+        import mmrelay.meshtastic_utils as mu
 
         with patch(
             "mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface",
-            side_effect=ConnectionRefusedError("Device not found"),
+            side_effect=mu.BleakError("Device not found"),
         ):
             with patch("time.sleep"):  # Speed up test
                 with (
