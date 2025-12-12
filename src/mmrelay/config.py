@@ -598,6 +598,12 @@ _MESHTASTIC_ENV_VAR_MAPPINGS = [
         "type": "float",
         "min_value": 2.0,
     },
+    {
+        "env_var": "MMRELAY_MESHTASTIC_CONNECTION_TIMEOUT",
+        "config_key": "connection_timeout",
+        "type": "int",
+        "min_value": 1,
+    },
 ]
 
 _LOGGING_ENV_VAR_MAPPINGS = [

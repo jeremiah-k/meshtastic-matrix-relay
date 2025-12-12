@@ -57,6 +57,7 @@ from mmrelay.constants.network import (
     CONNECTION_TYPE_SERIAL,
     CONNECTION_TYPE_TCP,
     DEFAULT_BACKOFF_TIME,
+    DEFAULT_CONNECTION_TIMEOUT,
     ERRNO_BAD_FILE_DESCRIPTOR,
     INFINITE_RETRIES,
 )
@@ -519,6 +520,12 @@ def connect_meshtastic(passed_config=None, force_connect=False):
         retry_limit = int(retry_limit_raw)
     except (TypeError, ValueError):
         retry_limit = INFINITE_RETRIES
+
+    # Get connection timeout from config or use default
+    connection_timeout = int(
+        meshtastic_settings.get("connection_timeout", DEFAULT_CONNECTION_TIMEOUT)
+    )
+
     attempts = 0
     timeout_attempts = 0
     successful = False
@@ -550,7 +557,9 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                     attempts += 1
                     continue
 
-                client = meshtastic.serial_interface.SerialInterface(serial_port)
+                client = meshtastic.serial_interface.SerialInterface(
+                    serial_port, timeout=connection_timeout
+                )
 
             elif connection_type == CONNECTION_TYPE_BLE:
                 # BLE connection
@@ -558,13 +567,23 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                 if ble_address:
                     logger.info(f"Connecting to BLE address {ble_address}")
 
-                    # Connect without progress indicator
-                    client = meshtastic.ble_interface.BLEInterface(
-                        address=ble_address,
-                        noProto=False,
-                        debugOut=None,
-                        noNodes=False,
-                    )
+                    if meshtastic_iface is None:
+                        # Create a single BLEInterface instance for the process lifetime
+                        # Use auto_reconnect=False to let mmrelay manage retries
+                        meshtastic_iface = meshtastic.ble_interface.BLEInterface(
+                            address=ble_address,
+                            noProto=False,
+                            debugOut=None,
+                            noNodes=False,
+                            auto_reconnect=False,
+                            timeout=connection_timeout,
+                        )
+
+                    # Connect using the existing interface
+                    # This handles both initial connect and reconnects without creating zombies
+                    meshtastic_iface.connect()
+                    client = meshtastic_iface
+
                 else:
                     logger.error("No BLE address provided.")
                     return None
@@ -581,7 +600,9 @@ def connect_meshtastic(passed_config=None, force_connect=False):
                 logger.info(f"Connecting to host {target_host}")
 
                 # Connect without progress indicator
-                client = meshtastic.tcp_interface.TCPInterface(hostname=target_host)
+                client = meshtastic.tcp_interface.TCPInterface(
+                    hostname=target_host, timeout=connection_timeout
+                )
             else:
                 logger.error(f"Unknown connection type: {connection_type}")
                 return None

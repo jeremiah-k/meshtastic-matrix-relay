@@ -21,6 +21,7 @@ CONFIG_KEY_CONNECTION_TYPE = "connection_type"
 
 # Connection retry and timing
 DEFAULT_BACKOFF_TIME = 10  # seconds
+DEFAULT_CONNECTION_TIMEOUT = 60  # seconds
 DEFAULT_RETRY_ATTEMPTS = 1
 INFINITE_RETRIES = 0  # 0 means infinite retries
 MINIMUM_MESSAGE_DELAY = 2.0  # Minimum delay for message queue fallback
