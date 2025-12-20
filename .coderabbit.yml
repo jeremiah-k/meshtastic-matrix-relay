@@ -5,6 +5,7 @@ reviews:
   profile: chill
   request_changes_workflow: false
   high_level_summary: true
+  high_level_summary_instructions: "Create a simple/humble (no marketing language, we're not selling anything), yet detailed summary with: 1) A overview paragraph, 2) Bullet-point list of key changes grouped by category (features, fixes, refactors), 3) If necessary, a note on any breaking changes or migration steps needed."
   poem: true
   review_status: false
   collapse_walkthrough: false
