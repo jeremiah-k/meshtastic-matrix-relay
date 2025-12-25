@@ -178,7 +178,7 @@ def _fire_and_forget(coro: Any, loop: asyncio.AbstractEventLoop | None = None) -
     if task is None:
         return
 
-    def _handle_exception(t: Any) -> None:
+    def _handle_exception(t: asyncio.Future | Future) -> None:
         """
         Callback for fire-and-forget tasks that logs any exception raised by the task.
 
@@ -186,7 +186,7 @@ def _fire_and_forget(coro: Any, loop: asyncio.AbstractEventLoop | None = None) -
         Ignores asyncio.CancelledError and logs a debug message when retrieving the exception itself fails.
 
         Parameters:
-            t (Any): A task or future (or object exposing `.exception()`) whose exception should be checked and logged.
+            t (asyncio.Future | Future): A task or future whose exception should be checked and logged.
         """
         try:
             if exc := t.exception():
