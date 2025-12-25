@@ -163,15 +163,13 @@ def _submit_coro(coro, loop=None):
 
 def _fire_and_forget(coro: Any, loop: asyncio.AbstractEventLoop | None = None) -> None:
     """
-    Schedule a coroutine to run without awaiting its result, with proper error handling.
-
-    This is useful for fire-and-forget tasks where we don't want to block the caller,
-    but still want to log any exceptions that occur. Without this, unhandled exceptions
-    in fire-and-forget tasks cause "Task exception was never retrieved" warnings.
-
+    Schedule a coroutine to run in the background and log any non-cancellation exceptions.
+    
+    Schedules the given coroutine for execution on the provided or module-default event loop and attaches a done callback that logs exceptions raised by the task; does nothing if the argument is not a coroutine or if scheduling fails.
+    
     Parameters:
-        coro: The coroutine object to execute. If not a coroutine, function does nothing.
-        loop: Optional target asyncio event loop. If omitted, the module-level `event_loop` is used.
+        coro: The coroutine to execute in the background.
+        loop: Optional asyncio event loop to run the coroutine on; if omitted, the module-level event loop is used.
     """
     if not inspect.iscoroutine(coro):
         return
@@ -181,6 +179,15 @@ def _fire_and_forget(coro: Any, loop: asyncio.AbstractEventLoop | None = None) -
         return
 
     def _handle_exception(t: Any) -> None:
+        """
+        Callback for fire-and-forget tasks that logs any exception raised by the task.
+        
+        If the provided task or future has an exception, logs it at error level including traceback.
+        Ignores asyncio.CancelledError and logs a debug message when retrieving the exception itself fails.
+        
+        Parameters:
+            t (Any): A task or future (or object exposing `.exception()`) whose exception should be checked and logged.
+        """
         try:
             if exc := t.exception():
                 logger.error("Exception in fire-and-forget task", exc_info=exc)
@@ -196,16 +203,16 @@ def _make_awaitable(
     future: Any, loop: asyncio.AbstractEventLoop | None = None
 ) -> Awaitable[Any] | Any:
     """
-    Return an awaitable for given future-like object, binding it to provided event loop when necessary.
-
-    If `future` already implements a waitable protocol, it is returned unchanged. For non-awaitable futures, returned awaitable resolves to the future's result and will be associated with `loop` when one is supplied.
-
+    Convert a future-like object into an awaitable, optionally binding it to a given event loop.
+    
+    If `future` already implements the awaitable protocol, it is returned unchanged. Otherwise the function wraps the future so awaiting it yields the future's result; when `loop` is provided the wrapper is bound to that event loop.
+    
     Parameters:
         future: A future-like object or an awaitable.
         loop (asyncio.AbstractEventLoop | None): Event loop to bind non-awaitable futures to; if `None`, no explicit loop binding is applied.
-
+    
     Returns:
-        An awaitable that yields to the resolved value of `future`, or `future` itself if it is already awaitable.
+        An awaitable that yields the resolved value of `future`, or `future` itself if it already supports awaiting.
     """
     if hasattr(future, "__await__"):
         return future
@@ -842,13 +849,13 @@ async def reconnect():
 
 def on_meshtastic_message(packet, interface):
     """
-    Route an incoming Meshtastic packet to configured Matrix rooms or installed plugins.
-
-    Processes a decoded Meshtastic packet (text, replies, and reaction indicators) according to configured interaction settings: relays reactions and replies to Matrix when enabled, relays ordinary text messages to Matrix rooms mapped to the packet's Meshtastic channel (unless the message is a direct message to the relay node or handled by a plugin), and dispatches non-text or otherwise unhandled packets to plugins. While processing it may schedule Matrix relay coroutines, invoke plugin handlers with a configured timeout, and update or consult stored sender metadata/message mappings.
-
+    Route a decoded Meshtastic packet to configured Matrix rooms or installed plugins according to runtime configuration.
+    
+    Processes an incoming Meshtastic packet: forwards reactions and replies to Matrix when enabled, relays ordinary text messages to Matrix rooms mapped to the packet's Meshtastic channel (unless the message is a direct message to the relay node or handled by a plugin), and dispatches non-text or otherwise unhandled packets to installed plugins. The function respects interaction settings (reactions/replies), consults node metadata via the provided interface, may schedule asynchronous Matrix relay coroutines, and applies a per-plugin timeout when awaiting plugin handlers.
+    
     Parameters:
-        packet (dict): Decoded Meshtastic packet. Expected to include keys such as 'decoded' (a dict that may contain 'text', 'replyId', 'portnum', and optional 'emoji'), 'fromId' or 'from', 'to', and 'id'.
-        interface: Meshtastic interface object used to resolve node information. Must provide attributes/mappings required by the function (notably .myInfo.my_node_num and .nodes) to determine node IDs and per-node metadata.
+        packet (dict): Decoded Meshtastic packet. Expected keys include 'decoded' (may contain 'text', 'replyId', 'portnum', and optional 'emoji'), 'fromId' or 'from' (sender id), 'to' (destination id), 'id' (packet id), and optional 'channel'.
+        interface: Meshtastic interface used to resolve node information and the relay node id. Must provide attributes/mappings used by the function (notably .myInfo.my_node_num and .nodes).
     """
     global config, matrix_rooms
 
