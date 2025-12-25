@@ -24,7 +24,6 @@ from unittest.mock import patch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.log_utils import (
-    RICH_AVAILABLE,
     configure_component_debug_logging,
     get_logger,
 )
@@ -749,7 +748,6 @@ class TestLogUtils(unittest.TestCase):
         Test that `get_logger` handles permission errors gracefully when trying to create directories in protected paths.
         """
         import os
-        import tempfile
 
         # Use any path; simulate a permission error when creating its directory
         protected_path = os.path.join(self.test_dir, "protected", "test.log")
@@ -842,7 +840,6 @@ class TestLogUtils(unittest.TestCase):
         - at least one non-file handler remains attached.
         """
         import os
-        import tempfile
 
         config = {
             "logging": {

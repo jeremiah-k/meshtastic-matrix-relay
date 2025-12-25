@@ -173,10 +173,21 @@ async def main(config):
         meshtastic_utils.shutting_down = True  # Set the shutting_down flag
         shutdown_event.set()
 
+    def signal_handler():
+        """
+        Handle shutdown signals synchronously.
+
+        Signal handlers must be synchronous and should avoid async operations.
+        This handler sets the shutdown flag and event, allowing the main loop
+        to handle cleanup asynchronously.
+        """
+        meshtastic_utils.shutting_down = True
+        shutdown_event.set()
+
     # Handle signals differently based on the platform
     if sys.platform != WINDOWS_PLATFORM:
         for sig in (signal.SIGINT, signal.SIGTERM):
-            loop.add_signal_handler(sig, lambda: asyncio.create_task(shutdown()))
+            loop.add_signal_handler(sig, signal_handler)
     else:
         # On Windows, we can't use add_signal_handler, so we'll handle KeyboardInterrupt
         pass
