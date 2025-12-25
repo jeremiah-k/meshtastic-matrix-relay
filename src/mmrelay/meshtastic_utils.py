@@ -180,16 +180,16 @@ def _fire_and_forget(coro: Any, loop: asyncio.AbstractEventLoop | None = None) -
     if task is None:
         return
 
-    def _handle_exception(t: asyncio.Task) -> None:
+    def _handle_exception(t: Any) -> None:
         try:
-            exc = t.exception()
-            if exc and not isinstance(exc, asyncio.CancelledError):
-                logger.exception("Exception in fire-and-forget task")
+            if exc := t.exception():
+                logger.error("Exception in fire-and-forget task", exc_info=exc)
+        except asyncio.CancelledError:
+            pass
         except Exception as e:
-            logger.debug(f"Error handling fire-and-forget exception: {e}")
+            logger.debug(f"Error retrieving exception from fire-and-forget task: {e}")
 
-    if isinstance(task, asyncio.Task):
-        task.add_done_callback(_handle_exception)
+    task.add_done_callback(_handle_exception)
 
 
 def _make_awaitable(
