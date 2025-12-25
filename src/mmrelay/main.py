@@ -165,19 +165,18 @@ async def main(config):
 
     def _set_shutdown_flag():
         """
-        Set the shutdown flag and event to signal application shutdown.
-
-        This is a shared helper function used by both the shutdown() function
-        and the signal_handler to avoid code duplication.
+        Mark the application as shutting down and notify waiting tasks.
+        
+        Sets the global shutdown flag and triggers the shutdown_event so shutdown handlers and loops can proceed.
         """
         meshtastic_utils.shutting_down = True
         shutdown_event.set()
 
     def shutdown():
         """
-        Signal the application to begin shutdown.
-
-        Set the Meshtastic shutdown flag and set the local shutdown event so any coroutines waiting on that event can start cleanup.
+        Request application shutdown and notify waiting coroutines.
+        
+        Logs that a shutdown was requested, sets the global shutdown flag, and signals the local shutdown event so tasks waiting on it can begin cleanup.
         """
         matrix_logger.info("Shutdown signal received. Closing down...")
         _set_shutdown_flag()
