@@ -833,7 +833,7 @@ class TestLogUtils(unittest.TestCase):
     def test_get_logger_error_logging_with_existing_handlers(self):
         """
         Ensure an existing logger retains its non-file handlers and remains usable when enabling file logging fails due to a permission error.
-        
+
         Sets up a logger with console handlers only, enables file logging with a path that triggers a PermissionError when creating a RotatingFileHandler, and verifies that:
         - the result is a Logger,
         - no RotatingFileHandler was added,

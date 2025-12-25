@@ -166,7 +166,7 @@ async def main(config):
     def _set_shutdown_flag():
         """
         Mark the application as shutting down and notify waiting tasks.
-        
+
         Sets the global shutdown flag and triggers the shutdown_event so shutdown handlers and loops can proceed.
         """
         meshtastic_utils.shutting_down = True
@@ -175,7 +175,7 @@ async def main(config):
     def shutdown():
         """
         Request application shutdown and notify waiting coroutines.
-        
+
         Logs that a shutdown was requested, sets the global shutdown flag, and signals the local shutdown event so tasks waiting on it can begin cleanup.
         """
         matrix_logger.info("Shutdown signal received. Closing down...")
@@ -186,10 +186,10 @@ async def main(config):
         Handle shutdown signals synchronously.
 
         Signal handlers must be synchronous and should avoid async operations.
-        This handler sets the shutdown flag and event, allowing the main loop
+        This handler initiates the shutdown sequence, allowing the main loop
         to handle cleanup asynchronously.
         """
-        _set_shutdown_flag()
+        shutdown()
 
     # Handle signals differently based on the platform
     if sys.platform != WINDOWS_PLATFORM:

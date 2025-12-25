@@ -664,9 +664,9 @@ def message_storage_enabled(interactions):
 def _add_truncated_vars(format_vars, prefix, text):
     """
     Add truncated variants of `text` to `format_vars` under keys formed as `prefix1` … `prefix{MAX_TRUNCATION_LENGTH}`.
-    
+
     Each key maps to the first N characters of `text` (or an empty string if `text` is None or shorter than N). The function mutates `format_vars` in place.
-    
+
     Parameters:
         format_vars (dict): Mapping to populate; mutated in place.
         prefix (str): Base name for keys; numeric suffixes 1..MAX_TRUNCATION_LENGTH are appended.
@@ -692,9 +692,9 @@ _MARKDOWN_ESCAPE_PATTERN = re.compile(r"([*_`~\\\[\]])")
 def _escape_leading_prefix_for_markdown(message: str) -> tuple[str, bool]:
     """
     Escape a leading reference-style Markdown link definition prefix so it is not parsed as a link definition.
-    
+
     If the message starts with a bracketed prefix followed by a colon (for example, "[name]: "), this function escapes Markdown-sensitive characters inside the brackets and the opening bracket, leaving the remainder of the message unchanged.
-    
+
     Returns:
         (safe_message, escaped) (tuple[str, bool]): `safe_message` is the input message with the leading prefix escaped when present; `escaped` is `True` if an escape was performed, `False` otherwise.
     """
@@ -3591,7 +3591,7 @@ async def send_image(
 async def on_room_member(room: MatrixRoom, event: RoomMemberEvent) -> None:
     """
     Handle room member events to observe room-specific display name changes.
-    
+
     This callback is registered so the Matrix client processes member state updates; no explicit action is required here because room-specific display names are available via the room state immediately after this event.
     """
     # The callback is registered to ensure matrix-nio processes the event,

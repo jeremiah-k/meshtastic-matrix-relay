@@ -164,9 +164,9 @@ def _submit_coro(coro, loop=None):
 def _fire_and_forget(coro: Any, loop: asyncio.AbstractEventLoop | None = None) -> None:
     """
     Schedule a coroutine to run in the background and log any non-cancellation exceptions.
-    
+
     Schedules the given coroutine for execution on the provided or module-default event loop and attaches a done callback that logs exceptions raised by the task; does nothing if the argument is not a coroutine or if scheduling fails.
-    
+
     Parameters:
         coro: The coroutine to execute in the background.
         loop: Optional asyncio event loop to run the coroutine on; if omitted, the module-level event loop is used.
@@ -181,10 +181,10 @@ def _fire_and_forget(coro: Any, loop: asyncio.AbstractEventLoop | None = None) -
     def _handle_exception(t: Any) -> None:
         """
         Callback for fire-and-forget tasks that logs any exception raised by the task.
-        
+
         If the provided task or future has an exception, logs it at error level including traceback.
         Ignores asyncio.CancelledError and logs a debug message when retrieving the exception itself fails.
-        
+
         Parameters:
             t (Any): A task or future (or object exposing `.exception()`) whose exception should be checked and logged.
         """
@@ -204,13 +204,13 @@ def _make_awaitable(
 ) -> Awaitable[Any] | Any:
     """
     Convert a future-like object into an awaitable, optionally binding it to a given event loop.
-    
+
     If `future` already implements the awaitable protocol, it is returned unchanged. Otherwise the function wraps the future so awaiting it yields the future's result; when `loop` is provided the wrapper is bound to that event loop.
-    
+
     Parameters:
         future: A future-like object or an awaitable.
         loop (asyncio.AbstractEventLoop | None): Event loop to bind non-awaitable futures to; if `None`, no explicit loop binding is applied.
-    
+
     Returns:
         An awaitable that yields the resolved value of `future`, or `future` itself if it already supports awaiting.
     """
@@ -850,9 +850,9 @@ async def reconnect():
 def on_meshtastic_message(packet, interface):
     """
     Route a decoded Meshtastic packet to configured Matrix rooms or installed plugins according to runtime configuration.
-    
+
     Processes an incoming Meshtastic packet: forwards reactions and replies to Matrix when enabled, relays ordinary text messages to Matrix rooms mapped to the packet's Meshtastic channel (unless the message is a direct message to the relay node or handled by a plugin), and dispatches non-text or otherwise unhandled packets to installed plugins. The function respects interaction settings (reactions/replies), consults node metadata via the provided interface, may schedule asynchronous Matrix relay coroutines, and applies a per-plugin timeout when awaiting plugin handlers.
-    
+
     Parameters:
         packet (dict): Decoded Meshtastic packet. Expected keys include 'decoded' (may contain 'text', 'replyId', 'portnum', and optional 'emoji'), 'fromId' or 'from' (sender id), 'to' (destination id), 'id' (packet id), and optional 'channel'.
         interface: Meshtastic interface used to resolve node information and the relay node id. Must provide attributes/mappings used by the function (notably .myInfo.my_node_num and .nodes).
