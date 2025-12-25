@@ -161,20 +161,51 @@ def _submit_coro(coro, loop=None):
             return f
 
 
+def _fire_and_forget(coro: Any, loop: asyncio.AbstractEventLoop | None = None) -> None:
+    """
+    Schedule a coroutine to run without awaiting its result, with proper error handling.
+
+    This is useful for fire-and-forget tasks where we don't want to block the caller,
+    but still want to log any exceptions that occur. Without this, unhandled exceptions
+    in fire-and-forget tasks cause "Task exception was never retrieved" warnings.
+
+    Parameters:
+        coro: The coroutine object to execute. If not a coroutine, function does nothing.
+        loop: Optional target asyncio event loop. If omitted, the module-level `event_loop` is used.
+    """
+    if not inspect.iscoroutine(coro):
+        return
+
+    task = _submit_coro(coro, loop=loop)
+    if task is None:
+        return
+
+    def _handle_exception(t: asyncio.Task) -> None:
+        try:
+            exc = t.exception()
+            if exc and not isinstance(exc, asyncio.CancelledError):
+                logger.exception("Exception in fire-and-forget task")
+        except Exception as e:
+            logger.debug(f"Error handling fire-and-forget exception: {e}")
+
+    if isinstance(task, asyncio.Task):
+        task.add_done_callback(_handle_exception)
+
+
 def _make_awaitable(
     future: Any, loop: asyncio.AbstractEventLoop | None = None
 ) -> Awaitable[Any] | Any:
     """
-    Return an awaitable for the given future-like object, binding it to the provided event loop when necessary.
+    Return an awaitable for given future-like object, binding it to provided event loop when necessary.
 
-    If `future` already implements the awaitable protocol, it is returned unchanged. For non-awaitable futures, the returned awaitable resolves to the future's result and will be associated with `loop` when one is supplied.
+    If `future` already implements a waitable protocol, it is returned unchanged. For non-awaitable futures, returned awaitable resolves to the future's result and will be associated with `loop` when one is supplied.
 
     Parameters:
         future: A future-like object or an awaitable.
         loop (asyncio.AbstractEventLoop | None): Event loop to bind non-awaitable futures to; if `None`, no explicit loop binding is applied.
 
     Returns:
-        An awaitable that yields the resolved value of `future`, or `future` itself if it is already awaitable.
+        An awaitable that yields to the resolved value of `future`, or `future` itself if it is already awaitable.
     """
     if hasattr(future, "__await__"):
         return future
@@ -925,7 +956,7 @@ def on_meshtastic_message(packet, interface):
             )
 
             # Relay the reaction as emote to Matrix, preserving the original meshnet name
-            _submit_coro(
+            _fire_and_forget(
                 matrix_relay(
                     matrix_room_id,
                     reaction_message,
@@ -965,7 +996,7 @@ def on_meshtastic_message(packet, interface):
             logger.info(f"Relaying Meshtastic reply from {longname} to Matrix")
 
             # Relay the reply to Matrix with proper reply formatting
-            _submit_coro(
+            _fire_and_forget(
                 matrix_relay(
                     matrix_room_id,
                     formatted_message,
@@ -1150,7 +1181,7 @@ def on_meshtastic_message(packet, interface):
                 # Storing the message_map (if enabled) occurs inside matrix_relay() now,
                 # controlled by relay_reactions.
                 try:
-                    _submit_coro(
+                    _fire_and_forget(
                         matrix_relay(
                             room["id"],
                             formatted_message,
