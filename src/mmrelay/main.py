@@ -163,15 +163,24 @@ async def main(config):
     # Set up shutdown event
     shutdown_event = asyncio.Event()
 
-    async def shutdown():
+    def _set_shutdown_flag():
+        """
+        Set the shutdown flag and event to signal application shutdown.
+
+        This is a shared helper function used by both the shutdown() function
+        and the signal_handler to avoid code duplication.
+        """
+        meshtastic_utils.shutting_down = True
+        shutdown_event.set()
+
+    def shutdown():
         """
         Signal the application to begin shutdown.
 
         Set the Meshtastic shutdown flag and set the local shutdown event so any coroutines waiting on that event can start cleanup.
         """
         matrix_logger.info("Shutdown signal received. Closing down...")
-        meshtastic_utils.shutting_down = True  # Set the shutting_down flag
-        shutdown_event.set()
+        _set_shutdown_flag()
 
     def signal_handler():
         """
@@ -181,8 +190,7 @@ async def main(config):
         This handler sets the shutdown flag and event, allowing the main loop
         to handle cleanup asynchronously.
         """
-        meshtastic_utils.shutting_down = True
-        shutdown_event.set()
+        _set_shutdown_flag()
 
     # Handle signals differently based on the platform
     if sys.platform != WINDOWS_PLATFORM:
@@ -269,7 +277,7 @@ async def main(config):
                 matrix_logger.exception("Error syncing with Matrix server")
                 await asyncio.sleep(5)  # Wait briefly before retrying
     except KeyboardInterrupt:
-        await shutdown()
+        shutdown()
     finally:
         # Cleanup
         matrix_logger.info("Stopping plugins...")
