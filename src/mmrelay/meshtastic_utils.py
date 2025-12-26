@@ -65,7 +65,7 @@ MAX_TIMEOUT_RETRIES_INFINITE = 5
 
 # Import BLE exceptions conditionally
 try:
-    from bleak.exc import BleakDBusError, BleakError
+    from bleak.exc import BleakDBusError, BleakError  # type: ignore[no-redef]
 except ImportError:
     # Define dummy exception classes if bleak is not available
     class BleakDBusError(Exception):  # type: ignore[no-redef]
@@ -246,7 +246,7 @@ def _wait_for_result(
 
     # Handle asyncio Future/Task instances
     if isinstance(result_future, asyncio.Future):
-        awaitable = result_future
+        awaitable: Awaitable[Any] = result_future
     elif hasattr(result_future, "result") and callable(result_future.result):
         # Generic future-like object with .result API (used by some tests)
         try:
@@ -254,7 +254,7 @@ def _wait_for_result(
         except TypeError:
             return result_future.result()
     else:
-        awaitable: Any = _make_awaitable(result_future, loop=target_loop)
+        awaitable = _make_awaitable(result_future, loop=target_loop)
 
     async def _runner():
         """

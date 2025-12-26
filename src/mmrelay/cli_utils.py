@@ -26,11 +26,12 @@ import asyncio
 import logging
 import os
 import ssl
+from typing import Any
 
 try:
     import certifi
 except ImportError:
-    certifi: Module | None = None
+    certifi: Any = None  # type: ignore[assignment]
 
 # Import Matrix-related modules for logout functionality
 try:

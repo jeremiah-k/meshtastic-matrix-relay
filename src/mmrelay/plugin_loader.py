@@ -63,11 +63,14 @@ _global_scheduler_thread = None
 _global_scheduler_stop_event = None
 
 
+# Plugin dependency directory (may not be set if base dir can't be resolved)
+_PLUGIN_DEPS_DIR: str | None = None
+
 try:
     _PLUGIN_DEPS_DIR = os.path.join(get_base_dir(), "plugins", "deps")
 except (OSError, RuntimeError, ValueError) as exc:  # pragma: no cover
     logger.debug("Unable to resolve base dir for plugin deps at import time: %s", exc)
-    _PLUGIN_DEPS_DIR: str | None = None
+    _PLUGIN_DEPS_DIR = None
 else:
     try:
         os.makedirs(_PLUGIN_DEPS_DIR, exist_ok=True)
@@ -75,7 +78,7 @@ else:
         logger.debug(
             f"Unable to create plugin dependency directory '{_PLUGIN_DEPS_DIR}': {exc}"
         )
-        _PLUGIN_DEPS_DIR: str | None = None
+        _PLUGIN_DEPS_DIR = None
     else:
         deps_path = os.fspath(_PLUGIN_DEPS_DIR)
         if deps_path not in sys.path:
