@@ -1341,6 +1341,55 @@ class TestMainAsyncFunction(unittest.TestCase):
         self.assertTrue(mu.shutting_down)
         self.assertTrue(captured_handlers)
 
+    def test_main_windows_keyboard_interrupt_triggers_shutdown(self):
+        """
+        Verify the Windows signal path executes and KeyboardInterrupt triggers shutdown.
+        """
+        config = {
+            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+            "matrix": {"homeserver": "https://matrix.org"},
+            "meshtastic": {"connection_type": "serial"},
+        }
+
+        mock_matrix_client = AsyncMock()
+        mock_matrix_client.add_event_callback = MagicMock()
+        mock_matrix_client.close = AsyncMock()
+
+        mock_matrix_client.sync_forever = AsyncMock()
+
+        import mmrelay.main as main_module
+
+        with (
+            patch("mmrelay.main.initialize_database"),
+            patch("mmrelay.main.load_plugins"),
+            patch("mmrelay.main.start_message_queue"),
+            patch(
+                "mmrelay.main.connect_matrix",
+                new_callable=AsyncMock,
+                return_value=mock_matrix_client,
+            ),
+            patch("mmrelay.main.connect_meshtastic", return_value=None),
+            patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock),
+            patch("mmrelay.main.get_message_queue") as mock_get_queue,
+            patch(
+                "mmrelay.main.meshtastic_utils.check_connection",
+                new_callable=AsyncMock,
+            ),
+            patch("mmrelay.main.asyncio.wait", side_effect=KeyboardInterrupt),
+            patch("mmrelay.main.shutdown_plugins"),
+            patch("mmrelay.main.stop_message_queue"),
+            patch("mmrelay.main.sys.platform", main_module.WINDOWS_PLATFORM),
+        ):
+            mock_queue = MagicMock()
+            mock_queue.ensure_processor_started = MagicMock()
+            mock_get_queue.return_value = mock_queue
+
+            asyncio.run(main(config))
+
+        import mmrelay.meshtastic_utils as mu
+
+        self.assertTrue(mu.shutting_down)
+
     def test_main_async_event_loop_setup(self):
         """
         Verify that the async main startup accesses the running event loop.
