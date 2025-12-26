@@ -30,7 +30,7 @@ import ssl
 try:
     import certifi
 except ImportError:
-    certifi = None
+    certifi: Module | None = None
 
 # Import Matrix-related modules for logout functionality
 try:

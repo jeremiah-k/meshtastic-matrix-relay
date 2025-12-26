@@ -464,6 +464,6 @@ def run_main(args):
 if __name__ == "__main__":
     import sys
 
-    from mmrelay.cli import main
+    from mmrelay.cli import main as cli_main
 
-    sys.exit(main())
+    sys.exit(cli_main())

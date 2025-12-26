@@ -67,7 +67,7 @@ try:
     _PLUGIN_DEPS_DIR = os.path.join(get_base_dir(), "plugins", "deps")
 except (OSError, RuntimeError, ValueError) as exc:  # pragma: no cover
     logger.debug("Unable to resolve base dir for plugin deps at import time: %s", exc)
-    _PLUGIN_DEPS_DIR = None
+    _PLUGIN_DEPS_DIR: str | None = None
 else:
     try:
         os.makedirs(_PLUGIN_DEPS_DIR, exist_ok=True)
@@ -75,7 +75,7 @@ else:
         logger.debug(
             f"Unable to create plugin dependency directory '{_PLUGIN_DEPS_DIR}': {exc}"
         )
-        _PLUGIN_DEPS_DIR = None
+        _PLUGIN_DEPS_DIR: str | None = None
     else:
         deps_path = os.fspath(_PLUGIN_DEPS_DIR)
         if deps_path not in sys.path:

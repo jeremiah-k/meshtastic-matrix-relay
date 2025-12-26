@@ -86,7 +86,7 @@ class Plugin(BasePlugin):
             },
         }
         mode_offsets = hourly_config.get(mode_key, hourly_config["weather"])
-        offsets = mode_offsets["offsets"]
+        offsets = mode_offsets["offsets"]  # type: ignore[index]
 
         url = (
             f"https://api.open-meteo.com/v1/forecast?"
@@ -211,7 +211,7 @@ class Plugin(BasePlugin):
                     t, p, w, dflag, *rest = values
                     if t is not None:
                         t = t * 9 / 5 + 32
-                    forecast_hours[key] = (t, p, w, dflag, *rest)
+                    forecast_hours[key] = (t, p, w, dflag, *rest)  # type: ignore[arg-type]
 
             if current_temp is not None:
                 current_temp = round(current_temp, 1)
@@ -261,7 +261,7 @@ class Plugin(BasePlugin):
                     parts.append(f"Precip {precip_now}%")
                 return self._trim_to_max_bytes(" | ".join(parts))
 
-            slots = hourly_config.get(mode_key, hourly_config["weather"])["slots"]
+            slots = hourly_config.get(mode_key, hourly_config["weather"])["slots"]  # type: ignore[index]
             return self._build_hourly_forecast(
                 current_temp,
                 current_weather_code,

@@ -15,7 +15,7 @@ import threading
 from collections.abc import Awaitable, Callable
 from contextlib import contextmanager
 from functools import partial
-from typing import Any, Optional
+from typing import Any, Generator, Optional
 
 
 class DatabaseManager:
@@ -149,7 +149,7 @@ class DatabaseManager:
     # ------------------------------------------------------------------ #
 
     @contextmanager
-    def read(self) -> sqlite3.Cursor:
+    def read(self) -> Generator[sqlite3.Cursor, None, None]:
         """
         Provide a cursor for performing read-only database operations.
 
@@ -166,7 +166,7 @@ class DatabaseManager:
             cursor.close()
 
     @contextmanager
-    def write(self) -> sqlite3.Cursor:
+    def write(self) -> Generator[sqlite3.Cursor, None, None]:
         """
         Provide a context manager that yields a cursor for transactional write operations.
 

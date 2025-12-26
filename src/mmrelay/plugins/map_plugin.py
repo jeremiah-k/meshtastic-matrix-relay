@@ -32,7 +32,7 @@ def precision_bits_to_meters(bits: int) -> float | None:
 
 
 try:
-    import cairo  # type: ignore[import-untyped]
+    import cairo  # type: ignore[import-not-found]
 except ImportError:  # pragma: no cover - optional dependency
     cairo = None
 
@@ -411,10 +411,10 @@ class Plugin(BasePlugin):
         image_size = size_match.groups() if size_match else (None, None)
 
         try:
-            zoom = int(zoom)
+            zoom = int(zoom)  # type: ignore[arg-type]
         except (TypeError, ValueError):
             try:
-                zoom = int(self.config.get("zoom", 8))
+                zoom = int(self.config.get("zoom", 8))  # type: ignore[arg-type]
             except (TypeError, ValueError):
                 zoom = 8
 
@@ -422,7 +422,7 @@ class Plugin(BasePlugin):
             zoom = 8
 
         try:
-            image_size = (int(image_size[0]), int(image_size[1]))
+            image_size = (int(image_size[0]), int(image_size[1]))  # type: ignore[arg-type]
         except (TypeError, ValueError):
             width, height = 1000, 1000
             try:
@@ -468,7 +468,7 @@ class Plugin(BasePlugin):
             return True
 
         locations = []
-        for _node, info in meshtastic_client.nodes.items():
+        for _node, info in meshtastic_client.nodes.items():  # type: ignore[attr-defined]
             pos = info.get("position") if isinstance(info, dict) else None
             user = info.get("user") if isinstance(info, dict) else None
             if (

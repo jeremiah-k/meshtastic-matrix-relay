@@ -7,20 +7,7 @@ import threading
 import time
 from concurrent.futures import Future
 from concurrent.futures import TimeoutError as FuturesTimeoutError
-from typing import TYPE_CHECKING, Any, Awaitable, Coroutine, List
-
-# type: ignore[assignment]  # Suppress complex type issues with asyncio/concurrent.futures integration
-
-if TYPE_CHECKING:
-    # Type checking imports - these won't be executed at runtime
-    try:
-        from bleak.exc import BleakDBusError as BleakDBusErrorType
-        from bleak.exc import BleakError as BleakErrorType
-    except ImportError:
-        from typing import Type
-
-        BleakDBusErrorType = Type[Exception]
-        BleakErrorType = Type[Exception]
+from typing import Any, Awaitable, Coroutine, List
 
 import meshtastic
 import meshtastic.ble_interface
@@ -70,6 +57,9 @@ from mmrelay.db_utils import (
 from mmrelay.log_utils import get_logger
 from mmrelay.runtime_utils import is_running_as_service
 
+# type: ignore[assignment]  # Suppress complex type issues with asyncio/concurrent.futures integration
+
+
 # Maximum number of timeout retries when retries are configured as infinite.
 MAX_TIMEOUT_RETRIES_INFINITE = 5
 
@@ -78,10 +68,10 @@ try:
     from bleak.exc import BleakDBusError, BleakError
 except ImportError:
     # Define dummy exception classes if bleak is not available
-    class BleakDBusError(Exception):
+    class BleakDBusError(Exception):  # type: ignore[no-redef]
         pass
 
-    class BleakError(Exception):
+    class BleakError(Exception):  # type: ignore[no-redef]
         pass
 
 
@@ -264,7 +254,7 @@ def _wait_for_result(
         except TypeError:
             return result_future.result()
     else:
-        awaitable = _make_awaitable(result_future, loop=target_loop)
+        awaitable: Any = _make_awaitable(result_future, loop=target_loop)
 
     async def _runner():
         """
