@@ -1222,6 +1222,88 @@ class TestCoroutineSubmission(unittest.TestCase):
         coro.close()
 
 
+class TestAsyncHelperUtilities(unittest.TestCase):
+    """Test cases for fire-and-forget and awaitable helper behavior."""
+
+    class _ExceptionTask:
+        def __init__(self, exc: Exception | None) -> None:
+            self._exc = exc
+            self._callbacks = []
+
+        def add_done_callback(self, callback):
+            self._callbacks.append(callback)
+
+        def exception(self):
+            if self._exc is None:
+                return None
+            raise self._exc
+
+        def trigger(self) -> None:
+            for callback in self._callbacks:
+                callback(self)
+
+    def test_fire_and_forget_ignores_cancelled_error(self):
+        """Ensure fire-and-forget ignores CancelledError in callbacks."""
+        from mmrelay.meshtastic_utils import _fire_and_forget
+
+        async def _noop():
+            return None
+
+        fake_task = self._ExceptionTask(asyncio.CancelledError())
+
+        def _submit(coro, loop=None):
+            coro.close()
+            return fake_task
+
+        with (
+            patch("mmrelay.meshtastic_utils._submit_coro", side_effect=_submit),
+            patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+        ):
+            _fire_and_forget(_noop())
+            fake_task.trigger()
+
+            mock_logger.debug.assert_not_called()
+            mock_logger.error.assert_not_called()
+
+    def test_fire_and_forget_logs_exception_retrieval_failure(self):
+        """Ensure fire-and-forget logs when exception retrieval fails."""
+        from mmrelay.meshtastic_utils import _fire_and_forget
+
+        async def _noop():
+            return None
+
+        fake_task = self._ExceptionTask(RuntimeError("boom"))
+
+        def _submit(coro, loop=None):
+            coro.close()
+            return fake_task
+
+        with (
+            patch("mmrelay.meshtastic_utils._submit_coro", side_effect=_submit),
+            patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+        ):
+            _fire_and_forget(_noop())
+            fake_task.trigger()
+
+            mock_logger.debug.assert_called_once()
+            mock_logger.error.assert_not_called()
+
+    def test_make_awaitable_returns_existing_awaitable(self):
+        """Ensure _make_awaitable returns objects that are already awaitable."""
+        from mmrelay.meshtastic_utils import _make_awaitable
+
+        class DummyAwaitable:
+            def __await__(self):
+                if False:
+                    yield None
+                return "done"
+
+        dummy = DummyAwaitable()
+        result = _make_awaitable(dummy)
+
+        self.assertIs(result, dummy)
+
+
 class TestSubmitCoroActualImplementation(unittest.TestCase):
     """Test the actual _submit_coro implementation without global mocking."""
 

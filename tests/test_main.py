@@ -1273,6 +1273,74 @@ class TestMainAsyncFunction(unittest.TestCase):
         # Verify join_matrix_room was called for each room
         self.assertEqual(mock_join.call_count, 2)
 
+    def test_main_signal_handler_sets_shutdown_flag(self):
+        """
+        Verify that signal handling triggers shutdown flag and event setup.
+
+        This test replaces the event loop's add_signal_handler to synchronously invoke
+        the registered handler, ensuring the shutdown path executes without relying on
+        OS signal delivery.
+        """
+        config = {
+            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+            "matrix": {"homeserver": "https://matrix.org"},
+            "meshtastic": {"connection_type": "serial"},
+        }
+
+        mock_matrix_client = AsyncMock()
+        mock_matrix_client.add_event_callback = MagicMock()
+        mock_matrix_client.close = AsyncMock()
+
+        captured_handlers = []
+        real_get_running_loop = asyncio.get_running_loop
+
+        def _patched_get_running_loop():
+            loop = real_get_running_loop()
+            if not hasattr(loop, "_signal_handler_patched"):
+
+                def _fake_add_signal_handler(_sig, handler):
+                    captured_handlers.append(handler)
+                    handler()
+
+                loop.add_signal_handler = _fake_add_signal_handler
+                loop._signal_handler_patched = True
+            return loop
+
+        with (
+            patch(
+                "mmrelay.main.asyncio.get_running_loop",
+                side_effect=_patched_get_running_loop,
+            ),
+            patch("mmrelay.main.initialize_database"),
+            patch("mmrelay.main.load_plugins"),
+            patch("mmrelay.main.start_message_queue"),
+            patch(
+                "mmrelay.main.connect_matrix",
+                new_callable=AsyncMock,
+                return_value=mock_matrix_client,
+            ),
+            patch("mmrelay.main.connect_meshtastic", return_value=None),
+            patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock),
+            patch("mmrelay.main.get_message_queue") as mock_get_queue,
+            patch(
+                "mmrelay.main.meshtastic_utils.check_connection",
+                new_callable=AsyncMock,
+            ),
+            patch("mmrelay.main.shutdown_plugins"),
+            patch("mmrelay.main.stop_message_queue"),
+            patch("mmrelay.main.sys.platform", "linux"),
+        ):
+            mock_queue = MagicMock()
+            mock_queue.ensure_processor_started = MagicMock()
+            mock_get_queue.return_value = mock_queue
+
+            asyncio.run(main(config))
+
+        import mmrelay.meshtastic_utils as mu
+
+        self.assertTrue(mu.shutting_down)
+        self.assertTrue(captured_handlers)
+
     def test_main_async_event_loop_setup(self):
         """
         Verify that the async main startup accesses the running event loop.
