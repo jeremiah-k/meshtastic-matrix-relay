@@ -732,10 +732,10 @@ class TestMainFunctionEdgeCases(unittest.TestCase):
 
         # Test the specific condition: when meshtastic_client is None,
         # update functions should not be called
-        with patch("mmrelay.main.update_longnames") as mock_update_long, patch(
-            "mmrelay.main.update_shortnames"
-        ) as mock_update_short:
-
+        with (
+            patch("mmrelay.main.update_longnames") as mock_update_long,
+            patch("mmrelay.main.update_shortnames") as mock_update_short,
+        ):
             # Simulate the condition where meshtastic_client is None
             import mmrelay.meshtastic_utils
 
@@ -801,9 +801,13 @@ def test_main_database_wipe_config(
     mock_connect_mesh.return_value = MagicMock()
 
     # Mock the message queue to avoid hanging and combine contexts for clarity
-    with patch("mmrelay.main.get_message_queue") as mock_get_queue, patch(
-        "mmrelay.main.meshtastic_utils.check_connection", new_callable=AsyncMock
-    ) as mock_check_conn, patch("mmrelay.main.wipe_message_map") as mock_wipe:
+    with (
+        patch("mmrelay.main.get_message_queue") as mock_get_queue,
+        patch(
+            "mmrelay.main.meshtastic_utils.check_connection", new_callable=AsyncMock
+        ) as mock_check_conn,
+        patch("mmrelay.main.wipe_message_map") as mock_wipe,
+    ):
         mock_queue = MagicMock()
         mock_queue.ensure_processor_started = MagicMock()
         mock_get_queue.return_value = mock_queue
@@ -1194,28 +1198,26 @@ class TestMainAsyncFunction(unittest.TestCase):
         mock_matrix_client.close = AsyncMock()
         mock_matrix_client.sync_forever = AsyncMock(side_effect=KeyboardInterrupt)
 
-        with patch("mmrelay.main.initialize_database") as mock_init_db, patch(
-            "mmrelay.main.load_plugins"
-        ) as mock_load_plugins, patch(
-            "mmrelay.main.start_message_queue"
-        ) as mock_start_queue, patch(
-            "mmrelay.main.connect_matrix",
-            new_callable=AsyncMock,
-            return_value=mock_matrix_client,
-        ) as mock_connect_matrix, patch(
-            "mmrelay.main.connect_meshtastic", return_value=MagicMock()
-        ) as mock_connect_mesh, patch(
-            "mmrelay.main.join_matrix_room", new_callable=AsyncMock
-        ), patch(
-            "mmrelay.main.asyncio.sleep", side_effect=KeyboardInterrupt
-        ), patch(
-            "mmrelay.meshtastic_utils.asyncio.sleep", side_effect=KeyboardInterrupt
-        ), patch(
-            "mmrelay.matrix_utils.asyncio.sleep", side_effect=KeyboardInterrupt
-        ), contextlib.suppress(
-            KeyboardInterrupt
+        with (
+            patch("mmrelay.main.initialize_database") as mock_init_db,
+            patch("mmrelay.main.load_plugins") as mock_load_plugins,
+            patch("mmrelay.main.start_message_queue") as mock_start_queue,
+            patch(
+                "mmrelay.main.connect_matrix",
+                new_callable=AsyncMock,
+                return_value=mock_matrix_client,
+            ) as mock_connect_matrix,
+            patch(
+                "mmrelay.main.connect_meshtastic", return_value=MagicMock()
+            ) as mock_connect_mesh,
+            patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock),
+            patch("mmrelay.main.asyncio.sleep", side_effect=KeyboardInterrupt),
+            patch(
+                "mmrelay.meshtastic_utils.asyncio.sleep", side_effect=KeyboardInterrupt
+            ),
+            patch("mmrelay.matrix_utils.asyncio.sleep", side_effect=KeyboardInterrupt),
+            contextlib.suppress(KeyboardInterrupt),
         ):
-
             asyncio.run(main(config))
 
         # Verify initialization sequence
@@ -1248,30 +1250,145 @@ class TestMainAsyncFunction(unittest.TestCase):
         mock_matrix_client.close = AsyncMock()
         mock_matrix_client.sync_forever = AsyncMock(side_effect=KeyboardInterrupt)
 
-        with patch("mmrelay.main.initialize_database"), patch(
-            "mmrelay.main.load_plugins"
-        ), patch("mmrelay.main.start_message_queue"), patch(
-            "mmrelay.main.connect_matrix",
-            new_callable=AsyncMock,
-            return_value=mock_matrix_client,
-        ), patch(
-            "mmrelay.main.connect_meshtastic", return_value=MagicMock()
-        ), patch(
-            "mmrelay.main.join_matrix_room", new_callable=AsyncMock
-        ) as mock_join, patch(
-            "mmrelay.main.asyncio.sleep", side_effect=KeyboardInterrupt
-        ), patch(
-            "mmrelay.meshtastic_utils.asyncio.sleep", side_effect=KeyboardInterrupt
-        ), patch(
-            "mmrelay.matrix_utils.asyncio.sleep", side_effect=KeyboardInterrupt
-        ), contextlib.suppress(
-            KeyboardInterrupt
+        with (
+            patch("mmrelay.main.initialize_database"),
+            patch("mmrelay.main.load_plugins"),
+            patch("mmrelay.main.start_message_queue"),
+            patch(
+                "mmrelay.main.connect_matrix",
+                new_callable=AsyncMock,
+                return_value=mock_matrix_client,
+            ),
+            patch("mmrelay.main.connect_meshtastic", return_value=MagicMock()),
+            patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock) as mock_join,
+            patch("mmrelay.main.asyncio.sleep", side_effect=KeyboardInterrupt),
+            patch(
+                "mmrelay.meshtastic_utils.asyncio.sleep", side_effect=KeyboardInterrupt
+            ),
+            patch("mmrelay.matrix_utils.asyncio.sleep", side_effect=KeyboardInterrupt),
+            contextlib.suppress(KeyboardInterrupt),
         ):
-
             asyncio.run(main(config))
 
         # Verify join_matrix_room was called for each room
         self.assertEqual(mock_join.call_count, 2)
+
+    def test_main_signal_handler_sets_shutdown_flag(self):
+        """
+        Verify that signal handling triggers shutdown flag and event setup.
+
+        This test replaces the event loop's add_signal_handler to synchronously invoke
+        the registered handler, ensuring the shutdown path executes without relying on
+        OS signal delivery.
+        """
+        config = {
+            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+            "matrix": {"homeserver": "https://matrix.org"},
+            "meshtastic": {"connection_type": "serial"},
+        }
+
+        mock_matrix_client = AsyncMock()
+        mock_matrix_client.add_event_callback = MagicMock()
+        mock_matrix_client.close = AsyncMock()
+
+        captured_handlers = []
+        real_get_running_loop = asyncio.get_running_loop
+
+        def _patched_get_running_loop():
+            loop = real_get_running_loop()
+            if not hasattr(loop, "_signal_handler_patched"):
+
+                def _fake_add_signal_handler(_sig, handler):
+                    captured_handlers.append(handler)
+                    handler()
+
+                loop.add_signal_handler = _fake_add_signal_handler
+                loop._signal_handler_patched = True
+            return loop
+
+        with (
+            patch(
+                "mmrelay.main.asyncio.get_running_loop",
+                side_effect=_patched_get_running_loop,
+            ),
+            patch("mmrelay.main.initialize_database"),
+            patch("mmrelay.main.load_plugins"),
+            patch("mmrelay.main.start_message_queue"),
+            patch(
+                "mmrelay.main.connect_matrix",
+                new_callable=AsyncMock,
+                return_value=mock_matrix_client,
+            ),
+            patch("mmrelay.main.connect_meshtastic", return_value=None),
+            patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock),
+            patch("mmrelay.main.get_message_queue") as mock_get_queue,
+            patch(
+                "mmrelay.main.meshtastic_utils.check_connection",
+                new_callable=AsyncMock,
+            ),
+            patch("mmrelay.main.shutdown_plugins"),
+            patch("mmrelay.main.stop_message_queue"),
+            patch("mmrelay.main.sys.platform", "linux"),
+        ):
+            mock_queue = MagicMock()
+            mock_queue.ensure_processor_started = MagicMock()
+            mock_get_queue.return_value = mock_queue
+
+            asyncio.run(main(config))
+
+        import mmrelay.meshtastic_utils as mu
+
+        self.assertTrue(mu.shutting_down)
+        self.assertTrue(captured_handlers)
+
+    def test_main_windows_keyboard_interrupt_triggers_shutdown(self):
+        """
+        Verify the Windows signal path executes and KeyboardInterrupt triggers shutdown.
+        """
+        config = {
+            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+            "matrix": {"homeserver": "https://matrix.org"},
+            "meshtastic": {"connection_type": "serial"},
+        }
+
+        mock_matrix_client = AsyncMock()
+        mock_matrix_client.add_event_callback = MagicMock()
+        mock_matrix_client.close = AsyncMock()
+
+        mock_matrix_client.sync_forever = AsyncMock()
+
+        import mmrelay.main as main_module
+
+        with (
+            patch("mmrelay.main.initialize_database"),
+            patch("mmrelay.main.load_plugins"),
+            patch("mmrelay.main.start_message_queue"),
+            patch(
+                "mmrelay.main.connect_matrix",
+                new_callable=AsyncMock,
+                return_value=mock_matrix_client,
+            ),
+            patch("mmrelay.main.connect_meshtastic", return_value=None),
+            patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock),
+            patch("mmrelay.main.get_message_queue") as mock_get_queue,
+            patch(
+                "mmrelay.main.meshtastic_utils.check_connection",
+                new_callable=AsyncMock,
+            ),
+            patch("mmrelay.main.asyncio.wait", side_effect=KeyboardInterrupt),
+            patch("mmrelay.main.shutdown_plugins"),
+            patch("mmrelay.main.stop_message_queue"),
+            patch("mmrelay.main.sys.platform", main_module.WINDOWS_PLATFORM),
+        ):
+            mock_queue = MagicMock()
+            mock_queue.ensure_processor_started = MagicMock()
+            mock_get_queue.return_value = mock_queue
+
+            asyncio.run(main(config))
+
+        import mmrelay.meshtastic_utils as mu
+
+        self.assertTrue(mu.shutting_down)
 
     def test_main_async_event_loop_setup(self):
         """
@@ -1286,22 +1403,17 @@ class TestMainAsyncFunction(unittest.TestCase):
             "meshtastic": {"connection_type": "serial"},
         }
 
-        with patch("mmrelay.main.asyncio.get_running_loop") as mock_get_loop, patch(
-            "mmrelay.main.initialize_database", side_effect=KeyboardInterrupt
-        ), patch("mmrelay.main.load_plugins"), patch(
-            "mmrelay.main.start_message_queue"
-        ), patch(
-            "mmrelay.main.connect_matrix", new_callable=AsyncMock
-        ), patch(
-            "mmrelay.main.connect_meshtastic"
-        ), patch(
-            "mmrelay.main.join_matrix_room", new_callable=AsyncMock
-        ), patch(
-            "mmrelay.config.load_config", return_value=config
-        ), contextlib.suppress(
-            KeyboardInterrupt
+        with (
+            patch("mmrelay.main.asyncio.get_running_loop") as mock_get_loop,
+            patch("mmrelay.main.initialize_database", side_effect=KeyboardInterrupt),
+            patch("mmrelay.main.load_plugins"),
+            patch("mmrelay.main.start_message_queue"),
+            patch("mmrelay.main.connect_matrix", new_callable=AsyncMock),
+            patch("mmrelay.main.connect_meshtastic"),
+            patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock),
+            patch("mmrelay.config.load_config", return_value=config),
+            contextlib.suppress(KeyboardInterrupt),
         ):
-
             mock_loop = MagicMock()
             mock_get_loop.return_value = mock_loop
 

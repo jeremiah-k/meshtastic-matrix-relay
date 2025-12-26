@@ -24,7 +24,6 @@ from unittest.mock import patch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.log_utils import (
-    RICH_AVAILABLE,
     configure_component_debug_logging,
     get_logger,
 )
@@ -749,7 +748,6 @@ class TestLogUtils(unittest.TestCase):
         Test that `get_logger` handles permission errors gracefully when trying to create directories in protected paths.
         """
         import os
-        import tempfile
 
         # Use any path; simulate a permission error when creating its directory
         protected_path = os.path.join(self.test_dir, "protected", "test.log")
@@ -834,15 +832,14 @@ class TestLogUtils(unittest.TestCase):
 
     def test_get_logger_error_logging_with_existing_handlers(self):
         """
-        Verify that when enabling file logging fails due to a protected/invalid file path, an existing logger keeps its non-file handlers and remains usable.
+        Ensure an existing logger retains its non-file handlers and remains usable when enabling file logging fails due to a permission error.
 
-        Sets up a logger with only console handlers, enables file logging using a path that will cause a permission error, forces handler re-evaluation, and asserts that:
-        - the returned object is a Logger,
+        Sets up a logger with console handlers only, enables file logging with a path that triggers a PermissionError when creating a RotatingFileHandler, and verifies that:
+        - the result is a Logger,
         - no RotatingFileHandler was added,
         - at least one non-file handler remains attached.
         """
         import os
-        import tempfile
 
         config = {
             "logging": {

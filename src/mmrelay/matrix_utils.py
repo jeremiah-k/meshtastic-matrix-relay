@@ -663,14 +663,14 @@ def message_storage_enabled(interactions):
 
 def _add_truncated_vars(format_vars, prefix, text):
     """
-    Populate `format_vars` with truncated variants of `text` using keys built from `prefix` and a numeric suffix.
-    
-    Adds entries for `prefix1` through `prefix{MAX_TRUNCATION_LENGTH}` to `format_vars`. Each value is the first N characters of `text` (empty string if `text` is None or shorter than N). This function mutates `format_vars` in place and logs the first few truncations for debugging.
-    
+    Add truncated variants of `text` to `format_vars` under keys formed as `prefix1` … `prefix{MAX_TRUNCATION_LENGTH}`.
+
+    Each key maps to the first N characters of `text` (or an empty string if `text` is None or shorter than N). The function mutates `format_vars` in place.
+
     Parameters:
-        format_vars (dict): Mapping to populate with truncated values; mutated in place.
-        prefix (str): Base key name to which numeric suffixes (1..MAX_TRUNCATION_LENGTH) are appended.
-        text (str | None): Source text to truncate; treated as empty string when None.
+        format_vars (dict): Mapping to populate; mutated in place.
+        prefix (str): Base name for keys; numeric suffixes 1..MAX_TRUNCATION_LENGTH are appended.
+        text (str | None): Source string to truncate; treated as empty string when None.
     """
     # Always add truncated variables, even for empty text (to prevent KeyError)
     text = text or ""  # Convert None to empty string
@@ -691,12 +691,12 @@ _MARKDOWN_ESCAPE_PATTERN = re.compile(r"([*_`~\\\[\]])")
 
 def _escape_leading_prefix_for_markdown(message: str) -> tuple[str, bool]:
     """
-    Escape a leading reference-style Markdown link definition prefix in a message.
-    
-    If the message begins with a bracketed prefix followed by a colon (e.g. "[name]: "), escape Markdown-sensitive characters inside the bracket and the opening bracket so the prefix is not parsed as a link definition. This preserves the rest of the message unchanged.
-    
+    Escape a leading reference-style Markdown link definition prefix so it is not parsed as a link definition.
+
+    If the message starts with a bracketed prefix followed by a colon (for example, "[name]: "), this function escapes Markdown-sensitive characters inside the brackets and the opening bracket, leaving the remainder of the message unchanged.
+
     Returns:
-        tuple[str, bool]: A pair (safe_message, escaped) where `safe_message` is the input message with the leading prefix escaped if present, and `escaped` is `True` when an escape was performed and `False` otherwise.
+        (safe_message, escaped) (tuple[str, bool]): `safe_message` is the input message with the leading prefix escaped when present; `escaped` is `True` if an escape was performed, `False` otherwise.
     """
     match = _PREFIX_DEFINITION_PATTERN.match(message)
     if not match:
@@ -712,11 +712,11 @@ def _escape_leading_prefix_for_markdown(message: str) -> tuple[str, bool]:
 def validate_prefix_format(format_string, available_vars):
     """
     Validate that a str.format-compatible format string can be formatted using the provided test variables.
-    
+
     Parameters:
         format_string (str): The format string to validate (uses str.format syntax).
         available_vars (dict): Mapping of placeholder names to sample values used to test formatting.
-    
+
     Returns:
         tuple: (is_valid, error_message). is_valid is True if formatting succeeds, False otherwise. error_message is the exception message when invalid, or None when valid.
     """
@@ -2231,9 +2231,9 @@ async def matrix_relay(
 ):
     """
     Relay a Meshtastic-originated message into a Matrix room and optionally persist a Meshtastic⇄Matrix mapping.
-    
+
     Formats the incoming Meshtastic text into plain and HTML-safe Matrix content (with Markdown/HTML handling and leading-prefix escaping), sends the event to the specified Matrix room (respecting emote/msgtype and emoji flags), and, when message-interactions are enabled, stores a mapping from the Meshtastic message to the created Matrix event to support cross-network replies and reactions. If reply_to_event_id is provided and an original mapping is found, the outgoing event will include an `m.in_reply_to` relation and an `mx-reply`-style quoted formatted_body. The function will not send to an encrypted room if the Matrix client does not have E2EE enabled. Errors during send or storage are logged; the function does not raise for those failures.
-    
+
     Parameters:
         room_id: Matrix room ID or alias to send the message into.
         message: Text of the Meshtastic message to relay.
@@ -3590,12 +3590,9 @@ async def send_image(
 
 async def on_room_member(room: MatrixRoom, event: RoomMemberEvent) -> None:
     """
-    Callback to handle room member events, specifically tracking room-specific display name changes.
-    This ensures we detect when users update their display names in specific rooms.
+    Handle room member events to observe room-specific display name changes.
 
-    Note: This callback doesn't need to do any explicit processing since matrix-nio
-    automatically updates the room state and room.user_name() will return the
-    updated room-specific display name immediately after this event.
+    This callback is registered so the Matrix client processes member state updates; no explicit action is required here because room-specific display names are available via the room state immediately after this event.
     """
     # The callback is registered to ensure matrix-nio processes the event,
     # but no explicit action is needed since room.user_name() automatically

@@ -163,20 +163,38 @@ async def main(config):
     # Set up shutdown event
     shutdown_event = asyncio.Event()
 
-    async def shutdown():
+    def _set_shutdown_flag():
         """
-        Signal the application to begin shutdown.
+        Mark the application as shutting down and notify waiting tasks.
 
-        Set the Meshtastic shutdown flag and set the local shutdown event so any coroutines waiting on that event can start cleanup.
+        Sets the global shutdown flag and triggers the shutdown_event so shutdown handlers and loops can proceed.
+        """
+        meshtastic_utils.shutting_down = True
+        shutdown_event.set()
+
+    def shutdown():
+        """
+        Request application shutdown and notify waiting coroutines.
+
+        Logs that a shutdown was requested, sets the global shutdown flag, and signals the local shutdown event so tasks waiting on it can begin cleanup.
         """
         matrix_logger.info("Shutdown signal received. Closing down...")
-        meshtastic_utils.shutting_down = True  # Set the shutting_down flag
-        shutdown_event.set()
+        _set_shutdown_flag()
+
+    def signal_handler():
+        """
+        Handle shutdown signals synchronously.
+
+        Signal handlers must be synchronous and should avoid async operations.
+        This handler initiates the shutdown sequence, allowing the main loop
+        to handle cleanup asynchronously.
+        """
+        shutdown()
 
     # Handle signals differently based on the platform
     if sys.platform != WINDOWS_PLATFORM:
         for sig in (signal.SIGINT, signal.SIGTERM):
-            loop.add_signal_handler(sig, lambda: asyncio.create_task(shutdown()))
+            loop.add_signal_handler(sig, signal_handler)
     else:
         # On Windows, we can't use add_signal_handler, so we'll handle KeyboardInterrupt
         pass
@@ -258,7 +276,7 @@ async def main(config):
                 matrix_logger.exception("Error syncing with Matrix server")
                 await asyncio.sleep(5)  # Wait briefly before retrying
     except KeyboardInterrupt:
-        await shutdown()
+        shutdown()
     finally:
         # Cleanup
         matrix_logger.info("Stopping plugins...")
