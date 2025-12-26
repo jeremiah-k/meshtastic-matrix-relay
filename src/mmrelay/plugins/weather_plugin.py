@@ -207,11 +207,13 @@ class Plugin(BasePlugin):
             if units == "imperial":
                 if current_temp is not None:
                     current_temp = current_temp * 9 / 5 + 32
+                imperial_forecasts = {}
                 for key, values in forecast_hours.items():
                     t, p, w, dflag, *rest = values
                     if t is not None:
                         t = t * 9 / 5 + 32
-                    forecast_hours[key] = (t, p, w, dflag, *rest)  # type: ignore[arg-type]
+                    imperial_forecasts[key] = (t, p, w, dflag, *rest)
+                forecast_hours = imperial_forecasts
 
             if current_temp is not None:
                 current_temp = round(current_temp, 1)
