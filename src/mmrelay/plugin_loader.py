@@ -13,13 +13,14 @@ import tempfile
 import threading
 import time
 from contextlib import contextmanager
+from types import ModuleType
 from typing import Any, NamedTuple
 from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 
 try:
     import schedule
 except ImportError:
-    schedule = None
+    schedule: ModuleType | None = None  # type: ignore[assignment,no-redef]
 
 from mmrelay.config import get_app_path, get_base_dir
 from mmrelay.constants.plugins import (

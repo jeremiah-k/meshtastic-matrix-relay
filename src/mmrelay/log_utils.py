@@ -248,7 +248,7 @@ def _configure_logger(logger: logging.Logger, *, args=None) -> logging.Logger:
         console_handler.setFormatter(logging.Formatter("%(name)s: %(message)s"))
     else:
         # Use standard handler without colors
-        console_handler: logging.Handler = logging.StreamHandler()
+        console_handler: logging.Handler = logging.StreamHandler()  # type: ignore[no-redef]
         console_handler.setFormatter(
             logging.Formatter(
                 fmt="%(asctime)s %(levelname)s:%(name)s:%(message)s",

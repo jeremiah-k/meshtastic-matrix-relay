@@ -57,9 +57,6 @@ from mmrelay.db_utils import (
 from mmrelay.log_utils import get_logger
 from mmrelay.runtime_utils import is_running_as_service
 
-# type: ignore[assignment]  # Suppress complex type issues with asyncio/concurrent.futures integration
-
-
 # Maximum number of timeout retries when retries are configured as infinite.
 MAX_TIMEOUT_RETRIES_INFINITE = 5
 
