@@ -1228,8 +1228,8 @@ class TestAsyncHelperUtilities(unittest.TestCase):
     class _ExceptionTask:
         def __init__(
             self,
-            return_exc: Exception | None = None,
-            raise_exc: Exception | None = None,
+            return_exc: BaseException | None = None,
+            raise_exc: BaseException | None = None,
         ) -> None:
             self._return_exc = return_exc
             self._raise_exc = raise_exc
@@ -1319,6 +1319,29 @@ class TestAsyncHelperUtilities(unittest.TestCase):
             self.assertIn("exc_info", call_kwargs)
             self.assertIsInstance(call_kwargs["exc_info"], ValueError)
             self.assertEqual(str(call_kwargs["exc_info"]), "Task failed")
+
+    def test_fire_and_forget_ignores_returned_cancelled_error(self):
+        """Ensure fire-and-forget ignores CancelledError instances returned by task.exception()."""
+        from mmrelay.meshtastic_utils import _fire_and_forget
+
+        async def _noop():
+            return None
+
+        fake_task = self._ExceptionTask(return_exc=asyncio.CancelledError())
+
+        def _submit(coro, loop=None):
+            coro.close()
+            return fake_task
+
+        with (
+            patch("mmrelay.meshtastic_utils._submit_coro", side_effect=_submit),
+            patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+        ):
+            _fire_and_forget(_noop())
+            fake_task.trigger()
+
+            mock_logger.debug.assert_not_called()
+            mock_logger.error.assert_not_called()
 
     def test_make_awaitable_returns_existing_awaitable(self):
         """Ensure _make_awaitable returns objects that are already awaitable."""

@@ -191,7 +191,7 @@ def _fire_and_forget(
             t (asyncio.Future | Future): A task or future whose exception should be checked and logged.
         """
         try:
-            if exc := t.exception():
+            if (exc := t.exception()) and not isinstance(exc, asyncio.CancelledError):
                 logger.error("Exception in fire-and-forget task", exc_info=exc)
         except asyncio.CancelledError:
             pass
