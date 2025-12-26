@@ -7,7 +7,7 @@ import threading
 import time
 from concurrent.futures import Future
 from concurrent.futures import TimeoutError as FuturesTimeoutError
-from typing import TYPE_CHECKING, Any, Awaitable, List
+from typing import TYPE_CHECKING, Any, Awaitable, Coroutine, List
 
 # type: ignore[assignment]  # Suppress complex type issues with asyncio/concurrent.futures integration
 
@@ -161,14 +161,16 @@ def _submit_coro(coro, loop=None):
             return f
 
 
-def _fire_and_forget(coro: Any, loop: asyncio.AbstractEventLoop | None = None) -> None:
+def _fire_and_forget(
+    coro: Coroutine[Any, Any, Any], loop: asyncio.AbstractEventLoop | None = None
+) -> None:
     """
     Schedule a coroutine to run in the background and log any non-cancellation exceptions.
 
     Schedules the given coroutine for execution on the provided or module-default event loop and attaches a done callback that logs exceptions raised by the task; does nothing if the argument is not a coroutine or if scheduling fails.
 
     Parameters:
-        coro: The coroutine to execute in the background.
+        coro (Coroutine[Any, Any, Any]): The coroutine to execute in the background.
         loop: Optional asyncio event loop to run the coroutine on; if omitted, the module-level event loop is used.
     """
     if not inspect.iscoroutine(coro):
