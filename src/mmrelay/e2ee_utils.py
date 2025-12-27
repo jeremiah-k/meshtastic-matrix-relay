@@ -184,7 +184,7 @@ def get_room_encryption_warnings(
     Returns:
         List[str]: Formatted warning lines (empty if no relevant warnings).
     """
-    warnings = []
+    warnings: list[str] = []
 
     if e2ee_status["overall_status"] == "ready":
         # No warnings needed when E2EE is fully ready
@@ -243,7 +243,7 @@ def format_room_list(rooms: Dict[str, Any], e2ee_status: Dict[str, Any]) -> List
     Returns:
         List[str]: One formatted line per room suitable for user display.
     """
-    room_lines = []
+    room_lines: list[str] = []
 
     # Handle invalid rooms input
     if not rooms or not hasattr(rooms, "items"):

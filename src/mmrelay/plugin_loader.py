@@ -13,13 +13,14 @@ import tempfile
 import threading
 import time
 from contextlib import contextmanager
+from types import ModuleType
 from typing import Any, NamedTuple
 from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 
 try:
     import schedule
 except ImportError:
-    schedule = None
+    schedule: ModuleType | None = None  # type: ignore[assignment,no-redef]
 
 from mmrelay.config import get_app_path, get_base_dir
 from mmrelay.constants.plugins import (
@@ -62,6 +63,9 @@ PIPX_ENVIRONMENT_KEYS = ("PIPX_HOME", "PIPX_LOCAL_VENVS", "PIPX_BIN_DIR")
 _global_scheduler_thread = None
 _global_scheduler_stop_event = None
 
+
+# Plugin dependency directory (may not be set if base dir can't be resolved)
+_PLUGIN_DEPS_DIR: str | None = None
 
 try:
     _PLUGIN_DEPS_DIR = os.path.join(get_base_dir(), "plugins", "deps")

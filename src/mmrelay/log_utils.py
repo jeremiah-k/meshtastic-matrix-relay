@@ -2,7 +2,7 @@ import contextlib
 import logging
 import os
 from logging.handlers import RotatingFileHandler
-from typing import Dict, Set
+from typing import Any, Dict, Set
 
 # Import Rich components only when not running as a service
 try:
@@ -28,7 +28,7 @@ from mmrelay.constants.messages import (
 )
 
 # Initialize Rich console only if available
-console = Console() if RICH_AVAILABLE else None
+console = Console() if RICH_AVAILABLE else None  # type: ignore[name-defined]
 
 # Define custom log level styles - not used directly but kept for reference
 # Rich 14.0.0+ supports level_styles parameter, but we're using an approach
@@ -151,7 +151,7 @@ def _should_log_to_file(args) -> bool:
     Returns:
         bool: `True` if file logging should be enabled, `False` otherwise.
     """
-    logging_config = config.get("logging", {}) if config else {}
+    logging_config: dict[str, Any] = config.get("logging", {}) if config else {}
 
     # Default to True for better user experience unless explicitly disabled
     enabled = logging_config.get("log_to_file", True)
@@ -235,7 +235,7 @@ def _configure_logger(logger: logging.Logger, *, args=None) -> logging.Logger:
     # Add handler for console logging (with or without colors)
     if color_enabled and RICH_AVAILABLE:
         # Use Rich handler with colors
-        console_handler = RichHandler(
+        console_handler: logging.Handler = RichHandler(  # type: ignore[name-defined]
             rich_tracebacks=rich_tracebacks_enabled,
             console=console,
             show_time=True,
@@ -248,7 +248,7 @@ def _configure_logger(logger: logging.Logger, *, args=None) -> logging.Logger:
         console_handler.setFormatter(logging.Formatter("%(name)s: %(message)s"))
     else:
         # Use standard handler without colors
-        console_handler = logging.StreamHandler()
+        console_handler: logging.Handler = logging.StreamHandler()  # type: ignore[no-redef]
         console_handler.setFormatter(
             logging.Formatter(
                 fmt="%(asctime)s %(levelname)s:%(name)s:%(message)s",

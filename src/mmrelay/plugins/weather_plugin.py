@@ -15,7 +15,7 @@ from mmrelay.plugins.base_plugin import BasePlugin
 class Plugin(BasePlugin):
     plugin_name = "weather"
     is_core_plugin = True
-    mesh_commands = ("weather", "hourly", "weekly")
+    mesh_commands = ("weather", "hourly", "daily")
 
     # No __init__ method needed with the simplified plugin system
     # The BasePlugin will automatically use the class-level plugin_name
@@ -35,13 +35,13 @@ class Plugin(BasePlugin):
         Normalize a mode/command string to one of the supported forecast modes.
 
         Returns:
-            str: One of "weather", "hourly", or "weekly". Unrecognized or empty input defaults to "weather".
+            str: One of "weather", "hourly", or "daily". Unrecognized or empty input defaults to "weather".
         """
         cmd = (mode or "weather").lower()
         if cmd == "hourly":
             return "hourly"
-        if cmd == "weekly":
-            return "weekly"
+        if cmd == "daily":
+            return "daily"
         return "weather"
 
     def generate_forecast(self, latitude, longitude, mode: str = "weather"):
@@ -51,12 +51,12 @@ class Plugin(BasePlugin):
         Supports multiple modes:
         - "weather": current conditions only (no future slots)
         - "hourly": current + compact near-term view (+3h, +6h, +12h)
-        - "weekly": daily summary for the next few days (up to 5)
+        - "daily": daily summary for the next few days (up to 5)
 
         Parameters:
             latitude (float): Latitude in decimal degrees.
             longitude (float): Longitude in decimal degrees.
-            mode (str): One of "weather", "hourly", or "weekly".
+            mode (str): One of "weather", "hourly", or "daily".
 
         Returns:
             str: A one-line forecast string on success. On recoverable failures returns one of:
@@ -72,7 +72,7 @@ class Plugin(BasePlugin):
 
         units = self.config.get("units", "metric")  # Default to metric
         temperature_unit = "°C" if units == "metric" else "°F"
-        daily_days = 5 if mode_key == "weekly" else 3
+        daily_days = 5 if mode_key == "daily" else 3
 
         hourly_config = {
             "weather": {
@@ -86,7 +86,7 @@ class Plugin(BasePlugin):
             },
         }
         mode_offsets = hourly_config.get(mode_key, hourly_config["weather"])
-        offsets = mode_offsets["offsets"]
+        offsets = mode_offsets["offsets"]  # type: ignore[index]
 
         url = (
             f"https://api.open-meteo.com/v1/forecast?"
@@ -207,11 +207,13 @@ class Plugin(BasePlugin):
             if units == "imperial":
                 if current_temp is not None:
                     current_temp = current_temp * 9 / 5 + 32
+                imperial_forecasts = {}
                 for key, values in forecast_hours.items():
                     t, p, w, dflag, *rest = values
                     if t is not None:
                         t = t * 9 / 5 + 32
-                    forecast_hours[key] = (t, p, w, dflag, *rest)
+                    imperial_forecasts[key] = (t, p, w, dflag, *rest)
+                forecast_hours = imperial_forecasts
 
             if current_temp is not None:
                 current_temp = round(current_temp, 1)
@@ -227,7 +229,7 @@ class Plugin(BasePlugin):
             }
 
             # Generate one-line weather forecast
-            if mode_key == "weekly":
+            if mode_key == "daily":
                 return self._build_daily_forecast(
                     data, units, temperature_unit, daily_days
                 )
@@ -261,7 +263,7 @@ class Plugin(BasePlugin):
                     parts.append(f"Precip {precip_now}%")
                 return self._trim_to_max_bytes(" | ".join(parts))
 
-            slots = hourly_config.get(mode_key, hourly_config["weather"])["slots"]
+            slots = hourly_config.get(mode_key, hourly_config["weather"])["slots"]  # type: ignore[index]
             return self._build_hourly_forecast(
                 current_temp,
                 current_weather_code,

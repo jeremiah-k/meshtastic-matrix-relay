@@ -7,20 +7,7 @@ import threading
 import time
 from concurrent.futures import Future
 from concurrent.futures import TimeoutError as FuturesTimeoutError
-from typing import TYPE_CHECKING, Any, Awaitable, Coroutine, List
-
-# type: ignore[assignment]  # Suppress complex type issues with asyncio/concurrent.futures integration
-
-if TYPE_CHECKING:
-    # Type checking imports - these won't be executed at runtime
-    try:
-        from bleak.exc import BleakDBusError as BleakDBusErrorType
-        from bleak.exc import BleakError as BleakErrorType
-    except ImportError:
-        from typing import Type
-
-        BleakDBusErrorType = Type[Exception]
-        BleakErrorType = Type[Exception]
+from typing import Any, Awaitable, Coroutine, List
 
 import meshtastic
 import meshtastic.ble_interface
@@ -75,13 +62,13 @@ MAX_TIMEOUT_RETRIES_INFINITE = 5
 
 # Import BLE exceptions conditionally
 try:
-    from bleak.exc import BleakDBusError, BleakError
+    from bleak.exc import BleakDBusError, BleakError  # type: ignore[no-redef]
 except ImportError:
     # Define dummy exception classes if bleak is not available
-    class BleakDBusError(Exception):
+    class BleakDBusError(Exception):  # type: ignore[no-redef]
         pass
 
-    class BleakError(Exception):
+    class BleakError(Exception):  # type: ignore[no-redef]
         pass
 
 
@@ -256,7 +243,7 @@ def _wait_for_result(
 
     # Handle asyncio Future/Task instances
     if isinstance(result_future, asyncio.Future):
-        awaitable = result_future
+        awaitable: Awaitable[Any] = result_future
     elif hasattr(result_future, "result") and callable(result_future.result):
         # Generic future-like object with .result API (used by some tests)
         try:

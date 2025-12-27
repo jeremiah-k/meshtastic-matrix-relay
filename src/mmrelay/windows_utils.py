@@ -39,14 +39,14 @@ def setup_windows_console() -> None:
     try:
         # Enable UTF-8 output on Windows
         if hasattr(sys.stdout, "reconfigure"):
-            sys.stdout.reconfigure(encoding="utf-8")
+            sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[attr-defined]
         if hasattr(sys.stderr, "reconfigure"):
-            sys.stderr.reconfigure(encoding="utf-8")
+            sys.stderr.reconfigure(encoding="utf-8")  # type: ignore[attr-defined]
 
         # Enable ANSI color codes on Windows 10+
         import ctypes
 
-        kernel32 = ctypes.windll.kernel32
+        kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
         ENABLE_VTP = 0x0004  # ENABLE_VIRTUAL_TERMINAL_PROCESSING
         for handle in (-11, -12):  # STD_OUTPUT_HANDLE, STD_ERROR_HANDLE
             h = kernel32.GetStdHandle(handle)

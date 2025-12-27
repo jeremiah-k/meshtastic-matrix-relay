@@ -217,8 +217,12 @@ def _resolve_database_options() -> Tuple[bool, int, Dict[str, Any]]:
         busy_timeout_ms (int): Busy timeout in milliseconds to use for SQLite connections.
         extra_pragmas (dict): Mapping of pragma names to values, starting from DEFAULT_EXTRA_PRAGMAS and overridden by config-provided pragmas.
     """
-    database_cfg = config.get("database", {}) if isinstance(config, dict) else {}
-    legacy_cfg = config.get("db", {}) if isinstance(config, dict) else {}
+    database_cfg: dict[str, Any] = (
+        config.get("database", {}) if isinstance(config, dict) else {}
+    )
+    legacy_cfg: dict[str, Any] = (
+        config.get("db", {}) if isinstance(config, dict) else {}
+    )
 
     enable_wal = _parse_bool(
         database_cfg.get(
