@@ -845,6 +845,195 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
                 # Verify Matrix relay was NOT called (DM was handled by plugin even though it timed out)
                 mock_matrix_relay.assert_not_called()
 
+    def test_on_meshtastic_message_non_text_plugin_timeout_prevents_relay(self):
+        """
+        Test that plugin timeout for non-text messages prevents relay to Matrix.
+
+        Verifies that when a plugin times out handling a non-text message (e.g., telemetry),
+        the message is NOT relayed to Matrix because found_matching_plugin is set to True.
+        This covers the non-text message path (lines 1195+ in meshtastic_utils.py).
+        """
+        packet = {
+            "decoded": {
+                "portnum": "TELEMETRY_APP",
+                "telemetry": {
+                    "deviceMetrics": {
+                        "batteryLevel": 85,
+                        "voltage": 4.1,
+                    },
+                },
+            },
+            "fromId": "!12345678",
+            "channel": 0,
+            "to": 4294967295,  # BROADCAST_NUM
+        }
+        interface = MagicMock()
+        interface.nodes = {
+            "!12345678": {"user": {"id": "!12345678", "longName": "TestNode"}}
+        }
+
+        class TimeoutFuture:
+            def __init__(self):
+                self.calls = []
+
+            def result(self, timeout=None):
+                self.calls.append(timeout)
+                raise ConcurrentTimeoutError("Plugin timeout")
+
+        future = TimeoutFuture()
+
+        plugin = MagicMock()
+        plugin.plugin_name = "telemetry_plugin"
+        plugin.handle_meshtastic_message = AsyncMock(return_value=True)
+
+        config = {
+            "meshtastic": {"meshnet_name": "test"},
+            "matrix_rooms": [{"meshtastic_channel": 0, "id": "!room:matrix"}],
+        }
+
+        with (
+            patch("mmrelay.plugin_loader.load_plugins", return_value=[plugin]),
+            patch("mmrelay.meshtastic_utils._submit_coro", return_value=future),
+            patch("mmrelay.meshtastic_utils.config", config),
+            patch("mmrelay.meshtastic_utils.matrix_rooms", config["matrix_rooms"]),
+            patch("mmrelay.meshtastic_utils.event_loop", MagicMock()),
+            patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+        ):
+            on_meshtastic_message(packet, interface)
+
+            # Verify timeout was logged
+            mock_logger.warning.assert_any_call(
+                "Plugin %s did not respond within %ss: %s",
+                "telemetry_plugin",
+                5.0,
+                ANY,
+            )
+            # Verify debug log was called (confirming found_matching_plugin was True)
+            mock_logger.debug.assert_any_call(
+                "Processed TELEMETRY_APP with plugin telemetry_plugin"
+            )
+
+    def test_on_meshtastic_message_non_text_plugin_no_match_continues(self):
+        """
+        Test that non-text message continues to next plugin when first plugin doesn't match.
+
+        Verifies that when a plugin doesn't handle a non-text message (returns False),
+        found_matching_plugin stays False and checking `if found_matching_plugin:` at line 1238
+        evaluates to False, allowing the loop to continue checking other plugins.
+        This covers the False branch of line 1238 in non-text path.
+        """
+        packet = {
+            "decoded": {
+                "portnum": "POSITION_APP",
+                "position": {
+                    "latitudeI": 377711000,
+                    "longitudeI": -1224200000,
+                },
+            },
+            "fromId": "!12345678",
+            "channel": 0,
+            "to": 4294967295,
+        }
+        interface = MagicMock()
+        interface.nodes = {
+            "!12345678": {"user": {"id": "!12345678", "longName": "TestNode"}}
+        }
+
+        plugin1 = MagicMock()
+        plugin1.plugin_name = "first_plugin"
+        plugin1.handle_meshtastic_message = AsyncMock(return_value=False)
+
+        plugin2 = MagicMock()
+        plugin2.plugin_name = "second_plugin"
+        plugin2.handle_meshtastic_message = AsyncMock(return_value=True)
+
+        config = {
+            "meshtastic": {"meshnet_name": "test"},
+            "matrix_rooms": [{"meshtastic_channel": 0, "id": "!room:matrix"}],
+        }
+
+        with (
+            patch(
+                "mmrelay.plugin_loader.load_plugins", return_value=[plugin1, plugin2]
+            ),
+            patch("mmrelay.meshtastic_utils.config", config),
+            patch("mmrelay.meshtastic_utils.matrix_rooms", config["matrix_rooms"]),
+            patch("mmrelay.meshtastic_utils.event_loop", MagicMock()),
+            patch(
+                "mmrelay.matrix_utils.matrix_relay", new_callable=AsyncMock
+            ) as mock_matrix_relay,
+        ):
+            on_meshtastic_message(packet, interface)
+
+            # Both plugins should have been called
+            plugin1.handle_meshtastic_message.assert_called_once()
+            plugin2.handle_meshtastic_message.assert_called_once()
+            # Matrix relay should NOT have been called (second plugin handled it)
+            mock_matrix_relay.assert_not_called()
+
+    def test_on_meshtastic_message_non_text_plugin_match_skips_remaining(self):
+        """
+        Test that when a non-text message is handled, remaining plugins are skipped.
+
+        Verifies that when first plugin handles a non-text message (returns True),
+        found_matching_plugin becomes True, and subsequent plugins in the list are skipped
+        because `if not found_matching_plugin:` at line 1204 evaluates to False.
+        This covers the False branch of line 1204 in non-text path.
+        """
+        packet = {
+            "decoded": {
+                "portnum": "POSITION_APP",
+                "position": {
+                    "latitudeI": 377711000,
+                    "longitudeI": -1224200000,
+                },
+            },
+            "fromId": "!12345678",
+            "channel": 0,
+            "to": 4294967295,
+        }
+        interface = MagicMock()
+        interface.nodes = {
+            "!12345678": {"user": {"id": "!12345678", "longName": "TestNode"}}
+        }
+
+        plugin1 = MagicMock()
+        plugin1.plugin_name = "position_plugin"
+        plugin1.handle_meshtastic_message = AsyncMock(return_value=True)
+
+        plugin2 = MagicMock()
+        plugin2.plugin_name = "other_plugin"
+        plugin2.handle_meshtastic_message = AsyncMock(return_value=False)
+
+        config = {
+            "meshtastic": {"meshnet_name": "test"},
+            "matrix_rooms": [{"meshtastic_channel": 0, "id": "!room:matrix"}],
+        }
+
+        with (
+            patch(
+                "mmrelay.plugin_loader.load_plugins", return_value=[plugin1, plugin2]
+            ),
+            patch("mmrelay.meshtastic_utils.config", config),
+            patch("mmrelay.meshtastic_utils.matrix_rooms", config["matrix_rooms"]),
+            patch("mmrelay.meshtastic_utils.event_loop", MagicMock()),
+            patch(
+                "mmrelay.matrix_utils.matrix_relay", new_callable=AsyncMock
+            ) as mock_matrix_relay,
+            patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+        ):
+            on_meshtastic_message(packet, interface)
+
+            # Only first plugin should have been called (second was skipped)
+            plugin1.handle_meshtastic_message.assert_called_once()
+            plugin2.handle_meshtastic_message.assert_not_called()
+            # Debug log should confirm first plugin handled it
+            mock_logger.debug.assert_any_call(
+                "Processed POSITION_APP with plugin position_plugin"
+            )
+            # Matrix relay should NOT have been called
+            mock_matrix_relay.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
