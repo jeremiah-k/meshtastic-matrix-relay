@@ -4885,6 +4885,10 @@ async def test_connect_matrix_credentials_load_exception_uses_config(monkeypatch
         lambda *_args, **_kwargs: None,
         raising=False,
     )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.AsyncClient",
+        lambda *_args, **_kwargs: mock_client,
+    )
     monkeypatch.setattr("mmrelay.matrix_utils.matrix_client", None, raising=False)
 
     config = {
@@ -4899,6 +4903,10 @@ async def test_connect_matrix_credentials_load_exception_uses_config(monkeypatch
     with (
         patch("mmrelay.matrix_utils.os.path.exists", return_value=True),
         patch("builtins.open", side_effect=OSError("boom")),
+        patch(
+            "mmrelay.e2ee_utils.get_e2ee_status", return_value={"overall_status": "ok"}
+        ),
+        patch("mmrelay.e2ee_utils.get_room_encryption_warnings", return_value=[]),
         patch("mmrelay.matrix_utils.logger") as mock_logger,
     ):
         client = await connect_matrix(config)
@@ -4937,6 +4945,10 @@ async def test_connect_matrix_ignores_config_access_token_when_credentials_prese
         lambda *_args, **_kwargs: None,
         raising=False,
     )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.AsyncClient",
+        lambda *_args, **_kwargs: mock_client,
+    )
     monkeypatch.setattr("mmrelay.matrix_utils.matrix_client", None, raising=False)
 
     config = {
@@ -4960,6 +4972,10 @@ async def test_connect_matrix_ignores_config_access_token_when_credentials_prese
                 "device_id": "DEV",
             },
         ),
+        patch(
+            "mmrelay.e2ee_utils.get_e2ee_status", return_value={"overall_status": "ok"}
+        ),
+        patch("mmrelay.e2ee_utils.get_room_encryption_warnings", return_value=[]),
         patch("mmrelay.matrix_utils.logger") as mock_logger,
     ):
         client = await connect_matrix(config)
@@ -5108,6 +5124,10 @@ async def test_connect_matrix_e2ee_windows_disables(monkeypatch):
         lambda *_args, **_kwargs: None,
         raising=False,
     )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.AsyncClient",
+        lambda *_args, **_kwargs: mock_client,
+    )
 
     config = {
         "matrix": {
@@ -5119,7 +5139,13 @@ async def test_connect_matrix_e2ee_windows_disables(monkeypatch):
         "matrix_rooms": [{"id": "!room:example", "meshtastic_channel": 0}],
     }
 
-    with patch("mmrelay.matrix_utils.os.path.exists", return_value=False):
+    with (
+        patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
+        patch(
+            "mmrelay.e2ee_utils.get_e2ee_status", return_value={"overall_status": "ok"}
+        ),
+        patch("mmrelay.e2ee_utils.get_room_encryption_warnings", return_value=[]),
+    ):
         await connect_matrix(config)
 
     _, kwargs = mx.AsyncClientConfig.call_args
@@ -5236,16 +5262,6 @@ async def test_connect_matrix_e2ee_store_path_precedence_encryption(monkeypatch)
     )
     monkeypatch.setattr("mmrelay.matrix_utils.matrix_client", None, raising=False)
     monkeypatch.setattr(
-        "mmrelay.matrix_utils.get_e2ee_status",
-        lambda *_args, **_kwargs: {"overall_status": "ok"},
-        raising=False,
-    )
-    monkeypatch.setattr(
-        "mmrelay.matrix_utils.get_room_encryption_warnings",
-        lambda *_args, **_kwargs: [],
-        raising=False,
-    )
-    monkeypatch.setattr(
         "mmrelay.matrix_utils._resolve_aliases_in_mapping",
         AsyncMock(return_value=None),
         raising=False,
@@ -5326,16 +5342,6 @@ async def test_connect_matrix_e2ee_store_path_uses_e2ee_section(monkeypatch):
     )
     monkeypatch.setattr("mmrelay.matrix_utils.matrix_client", None, raising=False)
     monkeypatch.setattr(
-        "mmrelay.matrix_utils.get_e2ee_status",
-        lambda *_args, **_kwargs: {"overall_status": "ok"},
-        raising=False,
-    )
-    monkeypatch.setattr(
-        "mmrelay.matrix_utils.get_room_encryption_warnings",
-        lambda *_args, **_kwargs: [],
-        raising=False,
-    )
-    monkeypatch.setattr(
         "mmrelay.matrix_utils._resolve_aliases_in_mapping",
         AsyncMock(return_value=None),
         raising=False,
@@ -5414,16 +5420,6 @@ async def test_connect_matrix_e2ee_store_path_default(monkeypatch):
     )
     monkeypatch.setattr("mmrelay.matrix_utils.matrix_client", None, raising=False)
     monkeypatch.setattr(
-        "mmrelay.matrix_utils.get_e2ee_status",
-        lambda *_args, **_kwargs: {"overall_status": "ok"},
-        raising=False,
-    )
-    monkeypatch.setattr(
-        "mmrelay.matrix_utils.get_room_encryption_warnings",
-        lambda *_args, **_kwargs: [],
-        raising=False,
-    )
-    monkeypatch.setattr(
         "mmrelay.matrix_utils._resolve_aliases_in_mapping",
         AsyncMock(return_value=None),
         raising=False,
@@ -5435,6 +5431,11 @@ async def test_connect_matrix_e2ee_store_path_default(monkeypatch):
     )
 
     default_path = "/tmp/default-store"
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.get_e2ee_store_dir",
+        lambda: default_path,
+        raising=False,
+    )
     client_calls = []
 
     def fake_async_client(*_args, **_kwargs):
@@ -5447,7 +5448,6 @@ async def test_connect_matrix_e2ee_store_path_default(monkeypatch):
         raising=False,
     )
     with (
-        patch("mmrelay.matrix_utils.get_e2ee_store_dir", return_value=default_path),
         patch("mmrelay.matrix_utils.os.makedirs") as mock_makedirs,
         patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
         patch(
@@ -5498,16 +5498,6 @@ async def test_connect_matrix_whoami_missing_device_id_warns(monkeypatch):
     monkeypatch.setattr(
         "mmrelay.matrix_utils._display_room_channel_mappings",
         lambda *_args, **_kwargs: None,
-        raising=False,
-    )
-    monkeypatch.setattr(
-        "mmrelay.matrix_utils.get_e2ee_status",
-        lambda *_args, **_kwargs: {"overall_status": "ok"},
-        raising=False,
-    )
-    monkeypatch.setattr(
-        "mmrelay.matrix_utils.get_room_encryption_warnings",
-        lambda *_args, **_kwargs: [],
         raising=False,
     )
     monkeypatch.setattr("mmrelay.matrix_utils.matrix_client", None, raising=False)
@@ -5663,7 +5653,7 @@ async def test_connect_matrix_save_credentials_failure_warns(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_connect_matrix_keys_upload_failure_logs(monkeypatch, caplog):
+async def test_connect_matrix_keys_upload_failure_logs(monkeypatch):
     """Key upload errors should be logged and not raise."""
     mock_client = MagicMock()
     mock_client.rooms = {}
@@ -5708,6 +5698,12 @@ async def test_connect_matrix_keys_upload_failure_logs(monkeypatch, caplog):
         lambda *_args, **_kwargs: None,
         raising=False,
     )
+    mock_logger = MagicMock()
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.logger",
+        mock_logger,
+        raising=False,
+    )
 
     config = {
         "matrix": {
@@ -5719,7 +5715,6 @@ async def test_connect_matrix_keys_upload_failure_logs(monkeypatch, caplog):
         "matrix_rooms": [{"id": "!room:example", "meshtastic_channel": 0}],
     }
 
-    caplog.set_level(logging.ERROR)
     with (
         patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
         patch(
@@ -5730,7 +5725,9 @@ async def test_connect_matrix_keys_upload_failure_logs(monkeypatch, caplog):
         client = await connect_matrix(config)
 
     assert client is mock_client
-    assert "Consider regenerating credentials with: mmrelay auth login" in caplog.text
+    mock_logger.error.assert_any_call(
+        "Consider regenerating credentials with: mmrelay auth login"
+    )
 
 
 @pytest.mark.asyncio
