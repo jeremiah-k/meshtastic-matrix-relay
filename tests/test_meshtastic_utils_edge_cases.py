@@ -35,6 +35,16 @@ from mmrelay.meshtastic_utils import (
 class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
     """Test cases for Meshtastic utilities edge cases and error handling."""
 
+    class _TimeoutFuture:
+        """Helper class to simulate a future that always times out."""
+
+        def __init__(self):
+            self.calls = []
+
+        def result(self, timeout=None):
+            self.calls.append(timeout)
+            raise ConcurrentTimeoutError("Plugin timeout")
+
     def setUp(self):
         """
         Resets global state variables in mmrelay.meshtastic_utils to ensure each test runs in isolation.
@@ -723,15 +733,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             "!12345678": {"user": {"id": "!12345678", "longName": "TestNode"}}
         }
 
-        class TimeoutFuture:
-            def __init__(self):
-                self.calls = []
-
-            def result(self, timeout=None):
-                self.calls.append(timeout)
-                raise ConcurrentTimeoutError("Plugin timeout")
-
-        future = TimeoutFuture()
+        future = self._TimeoutFuture()
 
         plugin = MagicMock()
         plugin.plugin_name = "test_plugin"
@@ -800,15 +802,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
                 "!67890": {"user": {"id": "!67890", "longName": "TestNode"}}
             }
 
-            class TimeoutFuture:
-                def __init__(self):
-                    self.calls = []
-
-                def result(self, timeout=None):
-                    self.calls.append(timeout)
-                    raise ConcurrentTimeoutError("Plugin timeout")
-
-            future = TimeoutFuture()
+            future = self._TimeoutFuture()
 
             plugin = MagicMock()
             plugin.plugin_name = "test_plugin"
@@ -872,16 +866,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             "!12345678": {"user": {"id": "!12345678", "longName": "TestNode"}}
         }
 
-        class TimeoutFuture:
-            def __init__(self):
-                self.calls = []
-
-            def result(self, timeout=None):
-                self.calls.append(timeout)
-                raise ConcurrentTimeoutError("Plugin timeout")
-
-        future = TimeoutFuture()
-
+        future = self._TimeoutFuture()
         plugin = MagicMock()
         plugin.plugin_name = "telemetry_plugin"
         plugin.handle_meshtastic_message = AsyncMock(return_value=True)
