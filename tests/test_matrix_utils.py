@@ -29,6 +29,7 @@ from mmrelay.matrix_utils import (
     bot_command,
     connect_matrix,
     format_reply_message,
+    get_displayname,
     get_interaction_settings,
     get_matrix_prefix,
     get_meshtastic_prefix,
@@ -931,6 +932,13 @@ def test_get_interaction_settings_defaults():
     assert result == expected
 
 
+def test_get_interaction_settings_none_config():
+    """Test interaction settings when config is None."""
+    result = get_interaction_settings(None)
+    expected = {"reactions": False, "replies": False}
+    assert result == expected
+
+
 def test_message_storage_enabled_true():
     """
     Test that message storage is enabled when either reactions or replies are enabled in the interaction settings.
@@ -1255,6 +1263,28 @@ def test_format_reply_message_remote_without_longname():
     assert result == "Tr/Mt.P: Hi"
 
 
+def test_format_reply_message_remote_strips_prefix_and_uses_override(monkeypatch):
+    """Remote replies strip matching prefixes before rebuilding the reply text."""
+    config = {}
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.get_matrix_prefix", lambda *_args, **_kwargs: "PREFIX"
+    )
+
+    result = format_reply_message(
+        config,
+        "Alice",
+        "Ignored",
+        longname="Alice",
+        shortname="Al",
+        meshnet_name="RemoteMesh",
+        local_meshnet_name="LocalMesh",
+        mesh_text_override="PREFIX",
+    )
+
+    assert result.startswith("Al/Remo:")
+    assert "PREFIX" in result
+
+
 # Bot command detection tests - refactored to use test class with fixtures for better maintainability
 
 
@@ -1415,8 +1445,62 @@ class TestBotCommand:
         result = bot_command("help", mock_event, require_mention=False)
         assert result
 
+    def test_empty_command_returns_false(self):
+        """Empty commands should never match."""
+        mock_event = MagicMock()
+        mock_event.body = "!help"
+        mock_event.source = {"content": {"formatted_body": "!help"}}
+
+        result = bot_command("", mock_event)
+        assert result is False
+
+    def test_bad_identifier_skips_mention_parts(self):
+        """Bad bot identifiers should be ignored when building mention patterns."""
+
+        class BadIdent:
+            def __str__(self):
+                raise ValueError("boom")
+
+        mock_event = MagicMock()
+        mock_event.body = "hello"
+        mock_event.source = {"content": {"formatted_body": "hello"}}
+
+        with (
+            patch("mmrelay.matrix_utils.bot_user_id", BadIdent()),
+            patch("mmrelay.matrix_utils.bot_user_name", None),
+            patch("mmrelay.matrix_utils.logger") as mock_logger,
+        ):
+            result = bot_command("help", mock_event, require_mention=True)
+
+        assert result is False
+        mock_logger.debug.assert_called()
+
 
 # Async Matrix function tests - converted from unittest.TestCase to standalone pytest functions
+
+
+async def test_get_displayname_returns_none_when_client_missing(monkeypatch):
+    """Return None when no Matrix client is available."""
+    monkeypatch.setattr("mmrelay.matrix_utils.matrix_client", None, raising=False)
+
+    result = await get_displayname("@user:example.org")
+
+    assert result is None
+
+
+async def test_get_displayname_returns_displayname(monkeypatch):
+    """Return displayname attribute when client responds with one."""
+    mock_client = MagicMock()
+    mock_client.get_displayname = AsyncMock(
+        return_value=SimpleNamespace(displayname="Alice")
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.matrix_client", mock_client, raising=False
+    )
+
+    result = await get_displayname("@user:example.org")
+
+    assert result == "Alice"
 
 
 @pytest.fixture
@@ -2309,6 +2393,94 @@ async def test_get_user_display_name_no_displayname(_mock_logger, mock_matrix_cl
     assert result == "@user:matrix.org"
 
 
+async def test_get_user_display_name_profile_response(monkeypatch):
+    """Use ProfileGetDisplayNameResponse instances when available."""
+
+    class DummyResponse:
+        def __init__(self, displayname):
+            self.displayname = displayname
+
+    class DummyError:
+        pass
+
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.ProfileGetDisplayNameResponse",
+        DummyResponse,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.ProfileGetDisplayNameError", DummyError, raising=False
+    )
+
+    mock_client = MagicMock()
+    mock_client.get_displayname = AsyncMock(return_value=DummyResponse("Global Name"))
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.matrix_client", mock_client, raising=False
+    )
+
+    mock_room = MagicMock()
+    mock_room.user_name.return_value = None
+    mock_event = MagicMock()
+    mock_event.sender = "@user:matrix.org"
+
+    result = await get_user_display_name(mock_room, mock_event)
+
+    assert result == "Global Name"
+
+
+async def test_get_user_display_name_error_response(monkeypatch):
+    """Fall back to sender ID for ProfileGetDisplayNameError responses."""
+
+    class DummyResponse:
+        pass
+
+    class DummyError:
+        def __init__(self, message):
+            self.message = message
+
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.ProfileGetDisplayNameResponse",
+        DummyResponse,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.ProfileGetDisplayNameError", DummyError, raising=False
+    )
+
+    mock_client = MagicMock()
+    mock_client.get_displayname = AsyncMock(return_value=DummyError("No access"))
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.matrix_client", mock_client, raising=False
+    )
+
+    mock_room = MagicMock()
+    mock_room.user_name.return_value = None
+    mock_event = MagicMock()
+    mock_event.sender = "@user:matrix.org"
+
+    result = await get_user_display_name(mock_room, mock_event)
+
+    assert result == "@user:matrix.org"
+
+
+async def test_get_user_display_name_handles_comm_errors(monkeypatch):
+    """Return sender ID when get_displayname raises a comm exception."""
+    mock_client = MagicMock()
+    mock_client.get_displayname = AsyncMock(side_effect=asyncio.TimeoutError)
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.matrix_client", mock_client, raising=False
+    )
+
+    mock_room = MagicMock()
+    mock_room.user_name.return_value = None
+    mock_event = MagicMock()
+    mock_event.sender = "@user:matrix.org"
+
+    result = await get_user_display_name(mock_room, mock_event)
+
+    assert result == "@user:matrix.org"
+
+
 async def test_send_reply_to_meshtastic_with_reply_id():
     """Test sending a reply to Meshtastic with reply_id."""
     mock_room_config = {"meshtastic_channel": 0}
@@ -2465,6 +2637,186 @@ async def test_send_reply_to_meshtastic_no_reply_id():
         mock_queue.assert_called_once()
         call_kwargs = mock_queue.call_args.kwargs
         assert call_kwargs.get("reply_id") is None
+
+
+async def test_send_reply_to_meshtastic_returns_when_interface_missing(monkeypatch):
+    """Return early when the Meshtastic interface cannot be obtained."""
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils._get_meshtastic_interface_and_channel",
+        AsyncMock(return_value=(None, None)),
+        raising=False,
+    )
+    mock_queue = MagicMock()
+    monkeypatch.setattr("mmrelay.matrix_utils.queue_message", mock_queue, raising=False)
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.config", {"meshtastic": {}}, raising=False
+    )
+
+    await send_reply_to_meshtastic(
+        reply_message="Test reply",
+        full_display_name="Alice",
+        room_config={"meshtastic_channel": 0},
+        room=MagicMock(),
+        event=MagicMock(),
+        text="Original text",
+        storage_enabled=False,
+        local_meshnet_name="TestMesh",
+        reply_id=123,
+    )
+
+    mock_queue.assert_not_called()
+
+
+async def test_send_reply_to_meshtastic_structured_reply_queue_size(monkeypatch):
+    """Structured replies log queue size details when queued."""
+    mock_interface = MagicMock()
+    mock_queue = MagicMock(return_value=True)
+    queue_state = MagicMock()
+    queue_state.get_queue_size.return_value = 2
+
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils._get_meshtastic_interface_and_channel",
+        AsyncMock(return_value=(mock_interface, 1)),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.get_meshtastic_config_value",
+        MagicMock(return_value=True),
+        raising=False,
+    )
+    monkeypatch.setattr("mmrelay.matrix_utils.queue_message", mock_queue, raising=False)
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.get_message_queue", MagicMock(return_value=queue_state)
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.config", {"meshtastic": {}}, raising=False
+    )
+
+    await send_reply_to_meshtastic(
+        reply_message="Test reply",
+        full_display_name="Alice",
+        room_config={"meshtastic_channel": 0},
+        room=MagicMock(),
+        event=MagicMock(),
+        text="Original text",
+        storage_enabled=False,
+        local_meshnet_name="TestMesh",
+        reply_id=123,
+    )
+
+    assert mock_queue.called
+
+
+async def test_send_reply_to_meshtastic_structured_reply_failure(monkeypatch):
+    """Structured replies return after queueing failures."""
+    mock_interface = MagicMock()
+    mock_queue = MagicMock(return_value=False)
+
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils._get_meshtastic_interface_and_channel",
+        AsyncMock(return_value=(mock_interface, 1)),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.get_meshtastic_config_value",
+        MagicMock(return_value=True),
+        raising=False,
+    )
+    monkeypatch.setattr("mmrelay.matrix_utils.queue_message", mock_queue, raising=False)
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.config", {"meshtastic": {}}, raising=False
+    )
+
+    await send_reply_to_meshtastic(
+        reply_message="Test reply",
+        full_display_name="Alice",
+        room_config={"meshtastic_channel": 0},
+        room=MagicMock(),
+        event=MagicMock(),
+        text="Original text",
+        storage_enabled=False,
+        local_meshnet_name="TestMesh",
+        reply_id=123,
+    )
+
+    assert mock_queue.called
+
+
+async def test_send_reply_to_meshtastic_fallback_queue_size(monkeypatch):
+    """Fallback replies log queue size details when queued."""
+    mock_interface = MagicMock()
+    mock_interface.sendText = MagicMock()
+    mock_queue = MagicMock(return_value=True)
+    queue_state = MagicMock()
+    queue_state.get_queue_size.return_value = 2
+
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils._get_meshtastic_interface_and_channel",
+        AsyncMock(return_value=(mock_interface, 1)),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.get_meshtastic_config_value",
+        MagicMock(return_value=True),
+        raising=False,
+    )
+    monkeypatch.setattr("mmrelay.matrix_utils.queue_message", mock_queue, raising=False)
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.get_message_queue", MagicMock(return_value=queue_state)
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.config", {"meshtastic": {}}, raising=False
+    )
+
+    await send_reply_to_meshtastic(
+        reply_message="Test reply",
+        full_display_name="Alice",
+        room_config={"meshtastic_channel": 0},
+        room=MagicMock(),
+        event=MagicMock(),
+        text="Original text",
+        storage_enabled=False,
+        local_meshnet_name="TestMesh",
+        reply_id=None,
+    )
+
+    assert mock_queue.called
+
+
+async def test_send_reply_to_meshtastic_fallback_failure(monkeypatch):
+    """Fallback replies return after queueing failures."""
+    mock_interface = MagicMock()
+    mock_interface.sendText = MagicMock()
+    mock_queue = MagicMock(return_value=False)
+
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils._get_meshtastic_interface_and_channel",
+        AsyncMock(return_value=(mock_interface, 1)),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.get_meshtastic_config_value",
+        MagicMock(return_value=True),
+        raising=False,
+    )
+    monkeypatch.setattr("mmrelay.matrix_utils.queue_message", mock_queue, raising=False)
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.config", {"meshtastic": {}}, raising=False
+    )
+
+    await send_reply_to_meshtastic(
+        reply_message="Test reply",
+        full_display_name="Alice",
+        room_config={"meshtastic_channel": 0},
+        room=MagicMock(),
+        event=MagicMock(),
+        text="Original text",
+        storage_enabled=False,
+        local_meshnet_name="TestMesh",
+        reply_id=None,
+    )
+
+    assert mock_queue.called
 
 
 # Image upload function tests - converted from unittest.TestCase to standalone pytest functions
@@ -5553,6 +5905,20 @@ class TestUncoveredMatrixUtils(unittest.TestCase):
         self.assertEqual(result4, "")
 
     @patch("mmrelay.matrix_utils.logger")
+    def test_normalize_bot_user_id_ipv6_and_ports(self, mock_logger):
+        """Test _normalize_bot_user_id with IPv6 hosts and ports."""
+        from mmrelay.matrix_utils import _normalize_bot_user_id
+
+        result1 = _normalize_bot_user_id("https://[2001:db8::1]:8448/path", "alice")
+        self.assertEqual(result1, "@alice:[2001:db8::1]")
+
+        result2 = _normalize_bot_user_id("example.com", "@bob:[2001:db8::1]:8448")
+        self.assertEqual(result2, "@bob:[2001:db8::1]")
+
+        result3 = _normalize_bot_user_id("[::1]:8448", "carol")
+        self.assertEqual(result3, "@carol:[::1]")
+
+    @patch("mmrelay.matrix_utils.logger")
     def test_get_detailed_matrix_error_message_bytes(self, mock_logger):
         """Test _get_detailed_matrix_error_message with bytes input."""
         from mmrelay.matrix_utils import _get_detailed_matrix_error_message
@@ -5625,6 +5991,33 @@ class TestUncoveredMatrixUtils(unittest.TestCase):
         # Test with normal string
         result = _get_detailed_matrix_error_message("Some error message")
         self.assertEqual(result, "Some error message")
+
+    def test_get_detailed_matrix_error_message_transport_status_non_int(self):
+        """Test transport_response with non-int status_code."""
+        from mmrelay.matrix_utils import _get_detailed_matrix_error_message
+
+        mock_response = MagicMock()
+        mock_response.message = None
+        mock_response.status_code = None
+        mock_response.transport_response = SimpleNamespace(status_code="bad")
+
+        result = _get_detailed_matrix_error_message(mock_response)
+
+        self.assertEqual(result, "Network connectivity issue or server unreachable")
+
+    def test_get_detailed_matrix_error_message_attribute_error(self):
+        """Test fallback for unexpected attribute errors."""
+        from mmrelay.matrix_utils import _get_detailed_matrix_error_message
+
+        class ExplodingResponse:
+            def __getattr__(self, _name):
+                raise ValueError("boom")
+
+        result = _get_detailed_matrix_error_message(ExplodingResponse())
+        self.assertEqual(
+            result,
+            "Unable to determine specific error - likely a network connectivity issue",
+        )
 
     @patch("mmrelay.matrix_utils.logger")
     def test_update_room_id_in_mapping_list(self, mock_logger):
@@ -5822,6 +6215,40 @@ async def test_handle_detection_sensor_packet_success():
         )
 
         mock_queue_message.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_handle_detection_sensor_packet_queue_size_gt_one():
+    """Test _handle_detection_sensor_packet logs when queue has multiple entries."""
+    config = {"meshtastic": {"broadcast_enabled": True, "detection_sensor": True}}
+    room_config = {"meshtastic_channel": 0}
+    full_display_name = "Test User"
+    text = "Test message"
+
+    mock_interface = MagicMock()
+    mock_queue = MagicMock()
+    mock_queue.get_queue_size.return_value = 3
+
+    with (
+        patch("mmrelay.matrix_utils.get_meshtastic_config_value") as mock_get_config,
+        patch(
+            "mmrelay.matrix_utils._get_meshtastic_interface_and_channel",
+            new_callable=AsyncMock,
+        ) as mock_get_iface,
+        patch("mmrelay.matrix_utils.queue_message") as mock_queue_message,
+        patch("mmrelay.matrix_utils.get_message_queue") as mock_get_queue,
+        patch("mmrelay.meshtastic_utils.logger") as mock_mesh_logger,
+    ):
+        mock_get_config.side_effect = [True, True]
+        mock_get_iface.return_value = (mock_interface, 0)
+        mock_queue_message.return_value = True
+        mock_get_queue.return_value = mock_queue
+
+        await _handle_detection_sensor_packet(
+            config, room_config, full_display_name, text
+        )
+
+        mock_mesh_logger.info.assert_called()
 
 
 @pytest.mark.asyncio
