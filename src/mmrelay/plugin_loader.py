@@ -899,6 +899,7 @@ def _run(
             )
             if delay:
                 time.sleep(delay)
+    raise RuntimeError("Should not reach here")
 
 
 def _run_git(
