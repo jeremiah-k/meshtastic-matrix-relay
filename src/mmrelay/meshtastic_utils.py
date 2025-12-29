@@ -1142,7 +1142,7 @@ def on_meshtastic_message(packet, interface):
                             plugin_timeout,
                             exc,
                         )
-                        found_matching_plugin = False
+                        found_matching_plugin = True
                     if found_matching_plugin:
                         logger.debug(f"Processed by plugin {plugin.plugin_name}")
                 except Exception:
@@ -1234,7 +1234,7 @@ def on_meshtastic_message(packet, interface):
                             plugin_timeout,
                             exc,
                         )
-                        found_matching_plugin = False
+                        found_matching_plugin = True
                     if found_matching_plugin:
                         logger.debug(
                             f"Processed {portnum} with plugin {plugin.plugin_name}"

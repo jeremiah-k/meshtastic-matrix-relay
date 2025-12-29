@@ -356,7 +356,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
                 7.5,
                 timeout_exc,
             )
-            self.assertEqual(mock_submit_coro.call_count, 2)
+            self.assertEqual(mock_submit_coro.call_count, 1)
 
     def test_on_meshtastic_message_invalid_plugin_timeout_falls_back(self):
         """Ensure invalid plugin_timeout values log a warning and fall back to default."""
@@ -414,7 +414,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             patch(
                 "mmrelay.meshtastic_utils._submit_coro",
                 side_effect=[future, MagicMock()],
-            ),
+            ) as mock_submit_coro,
             patch("mmrelay.meshtastic_utils.config", config),
             patch("mmrelay.meshtastic_utils.matrix_rooms", rooms),
             patch("mmrelay.meshtastic_utils.get_longname", return_value="Long"),
@@ -438,6 +438,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
                 5.0,
                 timeout_exc,
             )
+            self.assertEqual(mock_submit_coro.call_count, 1)
 
     def test_on_meshtastic_message_matrix_relay_failure(self):
         """
