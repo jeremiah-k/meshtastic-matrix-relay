@@ -1117,7 +1117,7 @@ async def test_on_room_message_remote_meshnet_empty_after_prefix_skips(
     monkeypatch, mock_room, mock_event
 ):
     """Remote meshnet messages should be skipped if only a prefix remains."""
-    prefix = "[RemoteUser/remote]: "
+    prefix = "[RemoteUser/remote]:"
     mock_event.body = prefix
     mock_event.source = {
         "content": {
