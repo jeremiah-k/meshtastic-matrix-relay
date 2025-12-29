@@ -779,65 +779,51 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         Verifies that when a plugin times out on a direct message, the message is NOT relayed
         to Matrix because found_matching_plugin is set to True.
         """
-        from mmrelay.meshtastic_utils import connect_meshtastic
+        packet = {
+            "decoded": {"text": "!test", "portnum": 1},
+            "fromId": "!67890",
+            "channel": 0,
+            "to": 12345,  # Direct message to relay node
+        }
+        interface = MagicMock()
+        interface.nodes = {"!67890": {"user": {"id": "!67890", "longName": "TestNode"}}}
 
-        # Mock myNodeInfo to provide relay's node ID
-        mock_my_info = MagicMock()
-        mock_my_info.my_node_num = 12345
+        future = self._TimeoutFuture()
 
-        mock_client = MagicMock()
-        mock_client.myInfo = mock_my_info
+        plugin = MagicMock()
+        plugin.plugin_name = "test_plugin"
+        plugin.handle_meshtastic_message = AsyncMock(return_value=False)
 
-        with patch(
-            "mmrelay.meshtastic_utils.connect_meshtastic", return_value=mock_client
+        config = {
+            "meshtastic": {"meshnet_name": "test"},
+            "matrix_rooms": [{"meshtastic_channel": 0, "id": "!room:matrix"}],
+        }
+
+        with (
+            patch("mmrelay.plugin_loader.load_plugins", return_value=[plugin]),
+            patch("mmrelay.meshtastic_utils._submit_coro", return_value=future),
+            patch("mmrelay.meshtastic_utils.config", config),
+            patch("mmrelay.meshtastic_utils.matrix_rooms", config["matrix_rooms"]),
+            patch("mmrelay.meshtastic_utils.get_longname", return_value="TestNode"),
+            patch("mmrelay.meshtastic_utils.get_shortname", return_value="TN"),
+            patch("mmrelay.matrix_utils.get_matrix_prefix", return_value=""),
+            patch(
+                "mmrelay.matrix_utils.matrix_relay", new_callable=AsyncMock
+            ) as mock_matrix_relay,
+            patch("mmrelay.meshtastic_utils.event_loop", MagicMock()),
+            patch("mmrelay.meshtastic_utils.logger") as mock_logger,
         ):
-            packet = {
-                "decoded": {"text": "!test", "portnum": 1},
-                "fromId": "!67890",
-                "channel": 0,
-                "to": 12345,  # Direct message to relay node
-            }
-            interface = MagicMock()
-            interface.nodes = {
-                "!67890": {"user": {"id": "!67890", "longName": "TestNode"}}
-            }
+            on_meshtastic_message(packet, interface)
 
-            future = self._TimeoutFuture()
-
-            plugin = MagicMock()
-            plugin.plugin_name = "test_plugin"
-            plugin.handle_meshtastic_message = AsyncMock(return_value=False)
-
-            config = {
-                "meshtastic": {"meshnet_name": "test"},
-                "matrix_rooms": [{"meshtastic_channel": 0, "id": "!room:matrix"}],
-            }
-
-            with (
-                patch("mmrelay.plugin_loader.load_plugins", return_value=[plugin]),
-                patch("mmrelay.meshtastic_utils._submit_coro", return_value=future),
-                patch("mmrelay.meshtastic_utils.config", config),
-                patch("mmrelay.meshtastic_utils.matrix_rooms", config["matrix_rooms"]),
-                patch("mmrelay.meshtastic_utils.get_longname", return_value="TestNode"),
-                patch("mmrelay.meshtastic_utils.get_shortname", return_value="TN"),
-                patch("mmrelay.matrix_utils.get_matrix_prefix", return_value=""),
-                patch(
-                    "mmrelay.matrix_utils.matrix_relay", new_callable=AsyncMock
-                ) as mock_matrix_relay,
-                patch("mmrelay.meshtastic_utils.event_loop", MagicMock()),
-                patch("mmrelay.meshtastic_utils.logger") as mock_logger,
-            ):
-                on_meshtastic_message(packet, interface)
-
-                # Verify timeout was logged
-                mock_logger.warning.assert_any_call(
-                    "Plugin %s did not respond within %ss: %s",
-                    "test_plugin",
-                    5.0,
-                    ANY,
-                )
-                # Verify Matrix relay was NOT called (DM was handled by plugin even though it timed out)
-                mock_matrix_relay.assert_not_called()
+            # Verify timeout was logged
+            mock_logger.warning.assert_any_call(
+                "Plugin %s did not respond within %ss: %s",
+                "test_plugin",
+                5.0,
+                ANY,
+            )
+            # Verify Matrix relay was NOT called (DM was handled by plugin even though it timed out)
+            mock_matrix_relay.assert_not_called()
 
     def test_on_meshtastic_message_non_text_plugin_timeout_prevents_relay(self):
         """
