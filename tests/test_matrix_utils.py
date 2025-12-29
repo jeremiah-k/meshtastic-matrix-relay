@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 import re
 import ssl
@@ -5253,6 +5254,237 @@ async def test_connect_matrix_e2ee_store_path_from_config(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_connect_matrix_e2ee_store_path_precedence_encryption(monkeypatch):
+    """Encryption store_path should take precedence over e2ee store_path."""
+    mock_client = MagicMock()
+    mock_client.rooms = {}
+    mock_client.sync = AsyncMock(return_value=SimpleNamespace())
+    mock_client.should_upload_keys = False
+    mock_client.get_displayname = AsyncMock(
+        return_value=SimpleNamespace(displayname="Bot")
+    )
+
+    def fake_import(name):
+        if name == "nio.crypto":
+            return SimpleNamespace(OlmDevice=True)
+        if name == "nio.store":
+            return SimpleNamespace(SqliteStore=True)
+        if name == "olm":
+            return MagicMock()
+        return MagicMock()
+
+    monkeypatch.setattr("mmrelay.matrix_utils.sys.platform", "linux", raising=False)
+    monkeypatch.setattr(
+        "mmrelay.config.is_e2ee_enabled", lambda _cfg: True, raising=False
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.importlib.import_module", fake_import, raising=False
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils._create_ssl_context", lambda: MagicMock(), raising=False
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.AsyncClient",
+        lambda *_args, **_kwargs: mock_client,
+    )
+    monkeypatch.setattr("mmrelay.matrix_utils.matrix_client", None, raising=False)
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.get_e2ee_status",
+        lambda *_args, **_kwargs: {"overall_status": "ok"},
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.get_room_encryption_warnings",
+        lambda *_args, **_kwargs: [],
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils._resolve_aliases_in_mapping",
+        AsyncMock(return_value=None),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils._display_room_channel_mappings",
+        lambda *_args, **_kwargs: None,
+        raising=False,
+    )
+
+    encryption_path = os.path.expanduser("~/enc-store")
+    e2ee_path = os.path.expanduser("~/e2ee-store")
+    with (
+        patch("mmrelay.matrix_utils.os.makedirs") as mock_makedirs,
+        patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
+    ):
+        config = {
+            "matrix": {
+                "homeserver": "https://example.org",
+                "access_token": "token",
+                "bot_user_id": "@bot:example.org",
+                "encryption": {"enabled": True, "store_path": encryption_path},
+                "e2ee": {"store_path": e2ee_path},
+            },
+            "matrix_rooms": [{"id": "!room:example", "meshtastic_channel": 0}],
+        }
+
+        await connect_matrix(config)
+
+    mock_makedirs.assert_called_once_with(encryption_path, exist_ok=True)
+
+
+@pytest.mark.asyncio
+async def test_connect_matrix_e2ee_store_path_uses_e2ee_section(monkeypatch):
+    """e2ee store_path should be used when encryption store_path is absent."""
+    mock_client = MagicMock()
+    mock_client.rooms = {}
+    mock_client.sync = AsyncMock(return_value=SimpleNamespace())
+    mock_client.should_upload_keys = False
+    mock_client.get_displayname = AsyncMock(
+        return_value=SimpleNamespace(displayname="Bot")
+    )
+
+    def fake_import(name):
+        if name == "nio.crypto":
+            return SimpleNamespace(OlmDevice=True)
+        if name == "nio.store":
+            return SimpleNamespace(SqliteStore=True)
+        if name == "olm":
+            return MagicMock()
+        return MagicMock()
+
+    monkeypatch.setattr("mmrelay.matrix_utils.sys.platform", "linux", raising=False)
+    monkeypatch.setattr(
+        "mmrelay.config.is_e2ee_enabled", lambda _cfg: True, raising=False
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.importlib.import_module", fake_import, raising=False
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils._create_ssl_context", lambda: MagicMock(), raising=False
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.AsyncClient",
+        lambda *_args, **_kwargs: mock_client,
+    )
+    monkeypatch.setattr("mmrelay.matrix_utils.matrix_client", None, raising=False)
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.get_e2ee_status",
+        lambda *_args, **_kwargs: {"overall_status": "ok"},
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.get_room_encryption_warnings",
+        lambda *_args, **_kwargs: [],
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils._resolve_aliases_in_mapping",
+        AsyncMock(return_value=None),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils._display_room_channel_mappings",
+        lambda *_args, **_kwargs: None,
+        raising=False,
+    )
+
+    e2ee_path = os.path.expanduser("~/e2ee-store")
+    with (
+        patch("mmrelay.matrix_utils.os.makedirs") as mock_makedirs,
+        patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
+    ):
+        config = {
+            "matrix": {
+                "homeserver": "https://example.org",
+                "access_token": "token",
+                "bot_user_id": "@bot:example.org",
+                "e2ee": {"enabled": True, "store_path": e2ee_path},
+            },
+            "matrix_rooms": [{"id": "!room:example", "meshtastic_channel": 0}],
+        }
+
+        await connect_matrix(config)
+
+    mock_makedirs.assert_called_once_with(e2ee_path, exist_ok=True)
+
+
+@pytest.mark.asyncio
+async def test_connect_matrix_e2ee_store_path_default(monkeypatch):
+    """Default store path should be used when no store_path is configured."""
+    mock_client = MagicMock()
+    mock_client.rooms = {}
+    mock_client.sync = AsyncMock(return_value=SimpleNamespace())
+    mock_client.should_upload_keys = False
+    mock_client.get_displayname = AsyncMock(
+        return_value=SimpleNamespace(displayname="Bot")
+    )
+
+    def fake_import(name):
+        if name == "nio.crypto":
+            return SimpleNamespace(OlmDevice=True)
+        if name == "nio.store":
+            return SimpleNamespace(SqliteStore=True)
+        if name == "olm":
+            return MagicMock()
+        return MagicMock()
+
+    monkeypatch.setattr("mmrelay.matrix_utils.sys.platform", "linux", raising=False)
+    monkeypatch.setattr(
+        "mmrelay.config.is_e2ee_enabled", lambda _cfg: True, raising=False
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.importlib.import_module", fake_import, raising=False
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils._create_ssl_context", lambda: MagicMock(), raising=False
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.AsyncClient",
+        lambda *_args, **_kwargs: mock_client,
+    )
+    monkeypatch.setattr("mmrelay.matrix_utils.matrix_client", None, raising=False)
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.get_e2ee_status",
+        lambda *_args, **_kwargs: {"overall_status": "ok"},
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.get_room_encryption_warnings",
+        lambda *_args, **_kwargs: [],
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils._resolve_aliases_in_mapping",
+        AsyncMock(return_value=None),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils._display_room_channel_mappings",
+        lambda *_args, **_kwargs: None,
+        raising=False,
+    )
+
+    default_path = "/tmp/default-store"
+    with (
+        patch("mmrelay.matrix_utils.get_e2ee_store_dir", return_value=default_path),
+        patch("mmrelay.matrix_utils.os.makedirs") as mock_makedirs,
+        patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
+    ):
+        config = {
+            "matrix": {
+                "homeserver": "https://example.org",
+                "access_token": "token",
+                "bot_user_id": "@bot:example.org",
+                "encryption": {"enabled": True},
+            },
+            "matrix_rooms": [{"id": "!room:example", "meshtastic_channel": 0}],
+        }
+
+        await connect_matrix(config)
+
+    mock_makedirs.assert_called_once_with(default_path, exist_ok=True)
+
+
+@pytest.mark.asyncio
 async def test_connect_matrix_whoami_missing_device_id_warns(monkeypatch):
     """Missing device_id from whoami should warn and continue."""
     mock_client = MagicMock()
@@ -5947,6 +6179,88 @@ async def test_connect_matrix_e2ee_store_missing_db_files_warns(
         "No existing E2EE store files found" in call.args[0]
         for call in mock_logger.warning.call_args_list
     )
+
+
+@pytest.mark.asyncio
+async def test_connect_matrix_e2ee_key_sharing_delay(monkeypatch):
+    """E2EE-enabled connections should wait for key sharing delay."""
+    mock_client = MagicMock()
+    mock_client.rooms = {}
+    mock_client.sync = AsyncMock(return_value=SimpleNamespace())
+    mock_client.should_upload_keys = False
+    mock_client.get_displayname = AsyncMock(
+        return_value=SimpleNamespace(displayname="Bot")
+    )
+
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.AsyncClient",
+        lambda *_args, **_kwargs: mock_client,
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils._create_ssl_context", lambda: MagicMock(), raising=False
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.get_e2ee_status",
+        lambda *_args, **_kwargs: {"overall_status": "ok"},
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.get_room_encryption_warnings",
+        lambda *_args, **_kwargs: [],
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils._resolve_aliases_in_mapping",
+        AsyncMock(return_value=None),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils._display_room_channel_mappings",
+        lambda *_args, **_kwargs: None,
+        raising=False,
+    )
+    monkeypatch.setattr("mmrelay.matrix_utils.matrix_client", None, raising=False)
+
+    mock_olm = MagicMock()
+    import importlib as _importlib
+
+    real_import_module = _importlib.import_module
+
+    def mock_import_side_effect(module_name, *args, **kwargs):
+        if module_name == "olm":
+            return mock_olm
+        if module_name == "nio.crypto":
+            mock_crypto = MagicMock()
+            mock_crypto.OlmDevice = MagicMock()
+            return mock_crypto
+        if module_name == "nio.store":
+            mock_store = MagicMock()
+            mock_store.SqliteStore = MagicMock()
+            return mock_store
+        return real_import_module(module_name, *args, **kwargs)
+
+    sleep_mock = AsyncMock()
+    with (
+        patch("mmrelay.config.is_e2ee_enabled", return_value=True),
+        patch("importlib.import_module", side_effect=mock_import_side_effect),
+        patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
+        patch("mmrelay.matrix_utils.os.makedirs"),
+        patch("mmrelay.matrix_utils.os.listdir", return_value=["test.db"]),
+        patch("mmrelay.matrix_utils.asyncio.sleep", sleep_mock),
+    ):
+        config = {
+            "matrix": {
+                "homeserver": "https://example.org",
+                "access_token": "token",
+                "bot_user_id": "@bot:example.org",
+                "encryption": {"enabled": True, "store_path": "/tmp/store"},
+            },
+            "matrix_rooms": [{"id": "!room:example", "meshtastic_channel": 0}],
+        }
+
+        await connect_matrix(config)
+
+    sleep_mock.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -7105,6 +7419,141 @@ async def test_login_matrix_bot_api_login_debug_failure_logs(
     assert any(
         "Failed to test API call" in call.args[0]
         for call in mock_logger.error.call_args_list
+    )
+
+
+@patch("mmrelay.matrix_utils.save_credentials")
+@patch("mmrelay.matrix_utils.AsyncClient")
+@patch("mmrelay.matrix_utils._create_ssl_context", return_value=None)
+@patch("mmrelay.matrix_utils._normalize_bot_user_id", return_value="@user:matrix.org")
+async def test_login_matrix_bot_debug_env_sets_log_levels(
+    _mock_normalize,
+    _mock_ssl_context,
+    mock_async_client,
+    _mock_save_credentials,
+):
+    """MMRELAY_DEBUG_NIO should enable debug logging for nio/aiohttp loggers."""
+    mock_discovery_client = AsyncMock()
+    mock_main_client = AsyncMock()
+    mock_async_client.side_effect = [mock_discovery_client, mock_main_client]
+
+    mock_discovery_client.discovery_info.return_value = SimpleNamespace(
+        homeserver_url="https://matrix.org"
+    )
+    mock_discovery_client.close = AsyncMock()
+    mock_main_client.login.return_value = MagicMock(
+        access_token="token", device_id="DEV", user_id="@user:matrix.org"
+    )
+    mock_main_client.whoami.return_value = MagicMock(user_id="@user:matrix.org")
+    mock_main_client.close = AsyncMock()
+
+    logger_instances = {}
+
+    def fake_get_logger(name):
+        logger = logger_instances.setdefault(name, MagicMock())
+        return logger
+
+    with (
+        patch("mmrelay.matrix_utils.os.getenv", return_value="1"),
+        patch("mmrelay.matrix_utils.logging.getLogger", side_effect=fake_get_logger),
+        patch("mmrelay.config.load_config", return_value={}),
+        patch("mmrelay.config.is_e2ee_enabled", return_value=False),
+        patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
+    ):
+        result = await login_matrix_bot(
+            homeserver="https://matrix.org",
+            username="user",
+            password="pass",
+            logout_others=False,
+        )
+
+    assert result is True
+    for name in ("nio", "nio.client", "nio.http_client", "nio.responses", "aiohttp"):
+        logger_instances[name].setLevel.assert_called_once_with(logging.DEBUG)
+
+
+@patch("mmrelay.matrix_utils.save_credentials")
+@patch("mmrelay.matrix_utils.AsyncClient")
+@patch("mmrelay.matrix_utils._create_ssl_context", return_value=None)
+@patch("mmrelay.matrix_utils._normalize_bot_user_id", return_value="@user:matrix.org")
+async def test_login_matrix_bot_discovery_type_error_logs_warning(
+    _mock_normalize,
+    _mock_ssl_context,
+    mock_async_client,
+    _mock_save_credentials,
+):
+    """Type errors during discovery response handling should warn and continue."""
+    mock_discovery_client = AsyncMock()
+    mock_main_client = AsyncMock()
+    mock_async_client.side_effect = [mock_discovery_client, mock_main_client]
+
+    mock_discovery_client.discovery_info.return_value = object()
+    mock_discovery_client.close = AsyncMock()
+    mock_main_client.login.return_value = MagicMock(
+        access_token="token", device_id="DEV", user_id="@user:matrix.org"
+    )
+    mock_main_client.whoami.return_value = MagicMock(user_id="@user:matrix.org")
+    mock_main_client.close = AsyncMock()
+
+    with (
+        patch("mmrelay.matrix_utils.DiscoveryInfoResponse", "not-a-type"),
+        patch("mmrelay.matrix_utils.DiscoveryInfoError", "not-a-type"),
+        patch("mmrelay.config.load_config", return_value={}),
+        patch("mmrelay.config.is_e2ee_enabled", return_value=False),
+        patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
+        patch("mmrelay.matrix_utils.logger") as mock_logger,
+    ):
+        result = await login_matrix_bot(
+            homeserver="https://matrix.org",
+            username="user",
+            password="pass",
+            logout_others=False,
+        )
+
+    assert result is True
+    assert any(
+        "Server discovery error" in call.args[0]
+        for call in mock_logger.warning.call_args_list
+    )
+
+
+@patch("mmrelay.matrix_utils.AsyncClient")
+@patch("mmrelay.matrix_utils._create_ssl_context", return_value=None)
+@patch("mmrelay.matrix_utils._normalize_bot_user_id", return_value="@user:matrix.org")
+async def test_login_matrix_bot_cleanup_error_logs_debug(
+    _mock_normalize,
+    _mock_ssl_context,
+    mock_async_client,
+):
+    """Cleanup errors during login failure should be logged at debug."""
+    mock_discovery_client = AsyncMock()
+    mock_main_client = AsyncMock()
+    mock_async_client.side_effect = [mock_discovery_client, mock_main_client]
+
+    mock_discovery_client.discovery_info.return_value = SimpleNamespace(
+        homeserver_url="https://matrix.org"
+    )
+    mock_discovery_client.close = AsyncMock()
+    mock_main_client.login.side_effect = NioLocalTransportError("fail")
+    mock_main_client.close = AsyncMock(side_effect=ConnectionError("cleanup fail"))
+
+    with (
+        patch("mmrelay.config.load_config", return_value={}),
+        patch("mmrelay.config.is_e2ee_enabled", return_value=False),
+        patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
+        patch("mmrelay.matrix_utils.logger") as mock_logger,
+    ):
+        result = await login_matrix_bot(
+            homeserver="https://matrix.org",
+            username="user",
+            password="pass",
+            logout_others=False,
+        )
+
+    assert result is False
+    assert any(
+        "Ignoring error during client cleanup" in call.args[0]
+        for call in mock_logger.debug.call_args_list
     )
 
 
