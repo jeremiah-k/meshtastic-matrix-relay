@@ -12,6 +12,7 @@ from mmrelay.config import get_e2ee_store_dir, load_credentials, save_credential
 from mmrelay.matrix_utils import (
     ImageUploadError,
     NioLocalProtocolError,
+    NioLocalTransportError,
     _add_truncated_vars,
     _can_auto_create_credentials,
     _create_mapping_info,
@@ -824,6 +825,630 @@ async def test_on_room_message_detection_sensor_connect_failure(
         await on_room_message(mock_room, mock_event)
 
     mock_queue_message.assert_not_called()
+
+
+async def test_on_room_message_ignores_old_messages(mock_room, mock_event):
+    """Messages sent before the bot start time should be ignored."""
+    mock_event.server_timestamp = 100
+
+    with (
+        patch("mmrelay.matrix_utils.queue_message") as mock_queue_message,
+        patch("mmrelay.matrix_utils.bot_start_time", 200),
+    ):
+        await on_room_message(mock_room, mock_event)
+
+    mock_queue_message.assert_not_called()
+
+
+async def test_on_room_message_config_none_logs_and_returns(
+    monkeypatch, mock_room, mock_event
+):
+    """Missing config should log errors and return without relaying."""
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.matrix_rooms",
+        [{"id": mock_room.room_id, "meshtastic_channel": 0}],
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.bot_user_id", "@bot:matrix.org", raising=False
+    )
+    monkeypatch.setattr("mmrelay.matrix_utils.bot_start_time", 0, raising=False)
+    monkeypatch.setattr("mmrelay.matrix_utils.config", None, raising=False)
+
+    with (
+        patch("mmrelay.matrix_utils.logger") as mock_logger,
+        patch("mmrelay.matrix_utils.queue_message") as mock_queue_message,
+    ):
+        await on_room_message(mock_room, mock_event)
+
+    mock_logger.error.assert_any_call(
+        "No configuration available for Matrix message processing."
+    )
+    mock_logger.error.assert_any_call(
+        "No configuration available. Cannot process Matrix message."
+    )
+    mock_queue_message.assert_not_called()
+
+
+async def test_on_room_message_suppressed_message_returns(
+    mock_room, mock_event, test_config
+):
+    """Suppressed messages should exit early without relaying."""
+    mock_event.source = {
+        "content": {"body": "Suppressed message", "mmrelay_suppress": True}
+    }
+
+    with (
+        patch("mmrelay.matrix_utils.queue_message") as mock_queue_message,
+        patch("mmrelay.matrix_utils.bot_start_time", 0),
+        patch("mmrelay.matrix_utils.config", test_config),
+        patch("mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]),
+        patch("mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]),
+    ):
+        await on_room_message(mock_room, mock_event)
+
+    mock_queue_message.assert_not_called()
+
+
+async def test_on_room_message_remote_reaction_relay_success(monkeypatch, mock_room):
+    """Remote meshnet reactions should be relayed to the local mesh when enabled."""
+    from mmrelay.matrix_utils import RoomMessageEmote
+
+    class MockEmote(RoomMessageEmote):  # type: ignore[misc]
+        def __init__(self):
+            self.source = {
+                "content": {
+                    "body": 'reacted :) to "hello"',
+                    "meshtastic_replyId": 123,
+                    "meshtastic_longname": "RemoteUser",
+                    "meshtastic_meshnet": "remote_mesh",
+                    "meshtastic_text": "Original text from mesh",
+                }
+            }
+            self.sender = "@user:remote"
+            self.server_timestamp = 1
+
+    mock_event = MockEmote()
+
+    config = {
+        "meshtastic": {
+            "meshnet_name": "local_mesh",
+            "broadcast_enabled": True,
+            "message_interactions": {"reactions": True, "replies": False},
+        },
+        "matrix_rooms": [{"id": mock_room.room_id, "meshtastic_channel": 0}],
+        "matrix": {"bot_user_id": "@bot:matrix.org"},
+    }
+
+    class DummyInterface:
+        def __init__(self):
+            self.sendText = MagicMock()
+
+    monkeypatch.setattr("mmrelay.matrix_utils.bot_start_time", 0, raising=False)
+    monkeypatch.setattr("mmrelay.matrix_utils.config", config, raising=False)
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.matrix_rooms", config["matrix_rooms"], raising=False
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.bot_user_id",
+        config["matrix"]["bot_user_id"],
+        raising=False,
+    )
+
+    with (
+        patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
+        patch(
+            "mmrelay.matrix_utils._get_meshtastic_interface_and_channel",
+            AsyncMock(return_value=(DummyInterface(), 0)),
+        ),
+        patch("mmrelay.matrix_utils.queue_message", return_value=True) as mock_queue,
+    ):
+        await on_room_message(mock_room, mock_event)
+
+    mock_queue.assert_called_once()
+    queued_kwargs = mock_queue.call_args.kwargs
+    assert "reacted" in queued_kwargs["text"]
+    assert queued_kwargs["description"] == "Remote reaction from remote_mesh"
+
+
+async def test_on_room_message_reaction_missing_mapping_logs_debug(
+    monkeypatch, mock_room
+):
+    """Reactions without a message mapping should not be relayed."""
+    from nio import ReactionEvent
+
+    class MockReactionEvent(ReactionEvent):
+        def __init__(self, source, sender, server_timestamp):
+            self.source = source
+            self.sender = sender
+            self.server_timestamp = server_timestamp
+
+    mock_event = MockReactionEvent(
+        source={"content": {"m.relates_to": {"event_id": "missing", "key": "x"}}},
+        sender="@user:matrix.org",
+        server_timestamp=1,
+    )
+
+    config = {
+        "meshtastic": {
+            "meshnet_name": "local_mesh",
+            "message_interactions": {"reactions": True, "replies": False},
+        },
+        "matrix_rooms": [{"id": mock_room.room_id, "meshtastic_channel": 0}],
+        "matrix": {"bot_user_id": "@bot:matrix.org"},
+    }
+
+    monkeypatch.setattr("mmrelay.matrix_utils.bot_start_time", 0, raising=False)
+    monkeypatch.setattr("mmrelay.matrix_utils.config", config, raising=False)
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.matrix_rooms", config["matrix_rooms"], raising=False
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.bot_user_id",
+        config["matrix"]["bot_user_id"],
+        raising=False,
+    )
+
+    with (
+        patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
+        patch(
+            "mmrelay.matrix_utils.get_message_map_by_matrix_event_id",
+            return_value=None,
+        ),
+        patch("mmrelay.matrix_utils.logger") as mock_logger,
+        patch("mmrelay.matrix_utils.queue_message") as mock_queue_message,
+    ):
+        await on_room_message(mock_room, mock_event)
+
+    mock_queue_message.assert_not_called()
+    assert any(
+        "Original message for reaction not found" in call.args[0]
+        for call in mock_logger.debug.call_args_list
+    )
+
+
+async def test_on_room_message_local_reaction_queue_failure_logs(
+    monkeypatch, mock_room
+):
+    """Local reaction failures should log an error."""
+    from nio import ReactionEvent
+
+    class MockReactionEvent(ReactionEvent):
+        def __init__(self, source, sender, server_timestamp):
+            self.source = source
+            self.sender = sender
+            self.server_timestamp = server_timestamp
+
+    mock_event = MockReactionEvent(
+        source={"content": {"m.relates_to": {"event_id": "orig", "key": "x"}}},
+        sender="@user:matrix.org",
+        server_timestamp=1,
+    )
+
+    config = {
+        "meshtastic": {
+            "meshnet_name": "local_mesh",
+            "broadcast_enabled": True,
+            "message_interactions": {"reactions": True, "replies": False},
+        },
+        "matrix_rooms": [{"id": mock_room.room_id, "meshtastic_channel": 0}],
+        "matrix": {"bot_user_id": "@bot:matrix.org"},
+    }
+
+    monkeypatch.setattr("mmrelay.matrix_utils.bot_start_time", 0, raising=False)
+    monkeypatch.setattr("mmrelay.matrix_utils.config", config, raising=False)
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.matrix_rooms", config["matrix_rooms"], raising=False
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.bot_user_id",
+        config["matrix"]["bot_user_id"],
+        raising=False,
+    )
+
+    class DummyInterface:
+        def __init__(self):
+            self.sendText = MagicMock()
+
+    with (
+        patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
+        patch(
+            "mmrelay.matrix_utils.get_message_map_by_matrix_event_id",
+            return_value=("mesh_id", mock_room.room_id, "text", "meshnet"),
+        ),
+        patch(
+            "mmrelay.matrix_utils._get_meshtastic_interface_and_channel",
+            AsyncMock(return_value=(DummyInterface(), 0)),
+        ),
+        patch(
+            "mmrelay.matrix_utils.get_user_display_name",
+            AsyncMock(return_value="User"),
+        ),
+        patch("mmrelay.matrix_utils.queue_message", return_value=False) as mock_queue,
+        patch("mmrelay.matrix_utils.logger") as mock_logger,
+    ):
+        await on_room_message(mock_room, mock_event)
+
+    mock_queue.assert_called_once()
+    mock_logger.error.assert_any_call("Failed to relay local reaction to Meshtastic")
+
+
+async def test_on_room_message_reply_handled_short_circuits(
+    monkeypatch, mock_room, mock_event
+):
+    """Handled replies should not be relayed as normal messages."""
+    mock_event.source = {
+        "content": {"m.relates_to": {"m.in_reply_to": {"event_id": "orig"}}}
+    }
+
+    config = {
+        "meshtastic": {
+            "meshnet_name": "local_mesh",
+            "message_interactions": {"reactions": False, "replies": True},
+        },
+        "matrix_rooms": [{"id": mock_room.room_id, "meshtastic_channel": 0}],
+        "matrix": {"bot_user_id": "@bot:matrix.org"},
+    }
+
+    monkeypatch.setattr("mmrelay.matrix_utils.bot_start_time", 0, raising=False)
+    monkeypatch.setattr("mmrelay.matrix_utils.config", config, raising=False)
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.matrix_rooms", config["matrix_rooms"], raising=False
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.bot_user_id",
+        config["matrix"]["bot_user_id"],
+        raising=False,
+    )
+
+    with (
+        patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
+        patch("mmrelay.matrix_utils.handle_matrix_reply", AsyncMock(return_value=True)),
+        patch("mmrelay.matrix_utils.queue_message") as mock_queue_message,
+    ):
+        await on_room_message(mock_room, mock_event)
+
+    mock_queue_message.assert_not_called()
+
+
+async def test_on_room_message_remote_meshnet_empty_after_prefix_skips(
+    monkeypatch, mock_room, mock_event
+):
+    """Remote meshnet messages should be skipped if only a prefix remains."""
+    prefix = "[RemoteUser/remote]: "
+    mock_event.body = prefix
+    mock_event.source = {
+        "content": {
+            "body": prefix,
+            "meshtastic_longname": "RemoteUser",
+            "meshtastic_meshnet": "remote",
+        }
+    }
+
+    config = {
+        "meshtastic": {
+            "meshnet_name": "local_mesh",
+            "message_interactions": {"reactions": False, "replies": False},
+        },
+        "matrix_rooms": [{"id": mock_room.room_id, "meshtastic_channel": 0}],
+        "matrix": {"bot_user_id": "@bot:matrix.org"},
+    }
+
+    monkeypatch.setattr("mmrelay.matrix_utils.bot_start_time", 0, raising=False)
+    monkeypatch.setattr("mmrelay.matrix_utils.config", config, raising=False)
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.matrix_rooms", config["matrix_rooms"], raising=False
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.bot_user_id",
+        config["matrix"]["bot_user_id"],
+        raising=False,
+    )
+
+    with (
+        patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
+        patch("mmrelay.matrix_utils.get_matrix_prefix", return_value=prefix),
+        patch("mmrelay.matrix_utils.logger") as mock_logger,
+        patch("mmrelay.matrix_utils.queue_message") as mock_queue_message,
+    ):
+        await on_room_message(mock_room, mock_event)
+
+    mock_queue_message.assert_not_called()
+    mock_logger.warning.assert_any_call(
+        "Remote meshnet message from %s had empty text after formatting; skipping relay",
+        "remote",
+    )
+
+
+async def test_on_room_message_portnum_string_digits(
+    monkeypatch, mock_room, mock_event, test_config
+):
+    """Numeric string portnum values should be handled without errors."""
+    mock_event.source = {"content": {"body": "Message", "meshtastic_portnum": "123"}}
+
+    test_config["meshtastic"]["broadcast_enabled"] = True
+
+    class DummyInterface:
+        def __init__(self):
+            self.sendText = MagicMock()
+
+    class DummyQueue:
+        def get_queue_size(self):
+            return 1
+
+    monkeypatch.setattr("mmrelay.matrix_utils.bot_start_time", 0, raising=False)
+    monkeypatch.setattr("mmrelay.matrix_utils.config", test_config, raising=False)
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"], raising=False
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.bot_user_id",
+        test_config["matrix"]["bot_user_id"],
+        raising=False,
+    )
+
+    with (
+        patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
+        patch(
+            "mmrelay.matrix_utils._get_meshtastic_interface_and_channel",
+            AsyncMock(return_value=(DummyInterface(), 0)),
+        ),
+        patch("mmrelay.matrix_utils.get_message_queue", return_value=DummyQueue()),
+        patch("mmrelay.matrix_utils.queue_message", return_value=True) as mock_queue,
+        patch(
+            "mmrelay.matrix_utils.get_user_display_name",
+            AsyncMock(return_value="User"),
+        ),
+    ):
+        await on_room_message(mock_room, mock_event)
+
+    mock_queue.assert_called_once()
+
+
+async def test_on_room_message_plugin_handle_exception_logs_and_continues(
+    monkeypatch, mock_room, mock_event, test_config
+):
+    """Plugin handler exceptions should be logged and not stop relaying."""
+
+    class ExplodingPlugin:
+        plugin_name = "boom"
+
+        async def handle_room_message(self, _room, _event, _text):
+            raise RuntimeError("boom")
+
+    class DummyInterface:
+        def __init__(self):
+            self.sendText = MagicMock()
+
+    class DummyQueue:
+        def get_queue_size(self):
+            return 1
+
+    test_config["meshtastic"]["broadcast_enabled"] = True
+
+    monkeypatch.setattr("mmrelay.matrix_utils.bot_start_time", 0, raising=False)
+    monkeypatch.setattr("mmrelay.matrix_utils.config", test_config, raising=False)
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"], raising=False
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.bot_user_id",
+        test_config["matrix"]["bot_user_id"],
+        raising=False,
+    )
+
+    with (
+        patch("mmrelay.plugin_loader.load_plugins", return_value=[ExplodingPlugin()]),
+        patch(
+            "mmrelay.matrix_utils._get_meshtastic_interface_and_channel",
+            AsyncMock(return_value=(DummyInterface(), 0)),
+        ),
+        patch("mmrelay.matrix_utils.get_message_queue", return_value=DummyQueue()),
+        patch("mmrelay.matrix_utils.queue_message", return_value=True) as mock_queue,
+        patch("mmrelay.matrix_utils.logger") as mock_logger,
+        patch(
+            "mmrelay.matrix_utils.get_user_display_name",
+            AsyncMock(return_value="User"),
+        ),
+    ):
+        await on_room_message(mock_room, mock_event)
+
+    mock_queue.assert_called_once()
+    mock_logger.error.assert_any_call("Error processing message with plugin %s", "boom")
+    mock_logger.exception.assert_any_call(
+        "Error processing message with plugin %s", "boom"
+    )
+
+
+async def test_on_room_message_plugin_match_exception_does_not_block(
+    monkeypatch, mock_room, mock_event, test_config
+):
+    """Plugin match errors should be logged and ignored."""
+
+    class MatchExplodingPlugin:
+        plugin_name = "matcher"
+
+        async def handle_room_message(self, _room, _event, _text):
+            return False
+
+        def matches(self, _event):
+            raise RuntimeError("boom")
+
+    class CommandExplodingPlugin:
+        plugin_name = "commands"
+
+        async def handle_room_message(self, _room, _event, _text):
+            return False
+
+        def get_matrix_commands(self):
+            raise RuntimeError("boom")
+
+    class DummyInterface:
+        def __init__(self):
+            self.sendText = MagicMock()
+
+    class DummyQueue:
+        def get_queue_size(self):
+            return 1
+
+    test_config["meshtastic"]["broadcast_enabled"] = True
+
+    monkeypatch.setattr("mmrelay.matrix_utils.bot_start_time", 0, raising=False)
+    monkeypatch.setattr("mmrelay.matrix_utils.config", test_config, raising=False)
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"], raising=False
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.bot_user_id",
+        test_config["matrix"]["bot_user_id"],
+        raising=False,
+    )
+
+    with (
+        patch(
+            "mmrelay.plugin_loader.load_plugins",
+            return_value=[MatchExplodingPlugin(), CommandExplodingPlugin()],
+        ),
+        patch(
+            "mmrelay.matrix_utils._get_meshtastic_interface_and_channel",
+            AsyncMock(return_value=(DummyInterface(), 0)),
+        ),
+        patch("mmrelay.matrix_utils.get_message_queue", return_value=DummyQueue()),
+        patch("mmrelay.matrix_utils.queue_message", return_value=True) as mock_queue,
+        patch("mmrelay.matrix_utils.logger") as mock_logger,
+        patch(
+            "mmrelay.matrix_utils.get_user_display_name",
+            AsyncMock(return_value="User"),
+        ),
+    ):
+        await on_room_message(mock_room, mock_event)
+
+    mock_queue.assert_called_once()
+    assert any(
+        "Error checking plugin match" in call.args[0]
+        for call in mock_logger.exception.call_args_list
+    )
+    assert any(
+        "Error checking plugin commands" in call.args[0]
+        for call in mock_logger.exception.call_args_list
+    )
+
+
+async def test_on_room_message_no_meshtastic_interface_returns(
+    monkeypatch, mock_room, mock_event, test_config
+):
+    """If Meshtastic connection fails, messages should not be queued."""
+    monkeypatch.setattr("mmrelay.matrix_utils.bot_start_time", 0, raising=False)
+    monkeypatch.setattr("mmrelay.matrix_utils.config", test_config, raising=False)
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"], raising=False
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.bot_user_id",
+        test_config["matrix"]["bot_user_id"],
+        raising=False,
+    )
+
+    with (
+        patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
+        patch(
+            "mmrelay.matrix_utils._get_meshtastic_interface_and_channel",
+            AsyncMock(return_value=(None, None)),
+        ),
+        patch("mmrelay.matrix_utils.queue_message") as mock_queue_message,
+        patch(
+            "mmrelay.matrix_utils.get_user_display_name",
+            AsyncMock(return_value="User"),
+        ),
+    ):
+        await on_room_message(mock_room, mock_event)
+
+    mock_queue_message.assert_not_called()
+
+
+async def test_on_room_message_broadcast_disabled_no_queue(
+    monkeypatch, mock_room, mock_event, test_config
+):
+    """broadcast_enabled=False should avoid queueing messages."""
+    test_config["meshtastic"]["broadcast_enabled"] = False
+
+    class DummyInterface:
+        def __init__(self):
+            self.sendText = MagicMock()
+
+    monkeypatch.setattr("mmrelay.matrix_utils.bot_start_time", 0, raising=False)
+    monkeypatch.setattr("mmrelay.matrix_utils.config", test_config, raising=False)
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"], raising=False
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.bot_user_id",
+        test_config["matrix"]["bot_user_id"],
+        raising=False,
+    )
+
+    with (
+        patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
+        patch(
+            "mmrelay.matrix_utils._get_meshtastic_interface_and_channel",
+            AsyncMock(return_value=(DummyInterface(), 0)),
+        ),
+        patch("mmrelay.matrix_utils.queue_message") as mock_queue_message,
+        patch("mmrelay.matrix_utils.logger") as mock_logger,
+        patch(
+            "mmrelay.matrix_utils.get_user_display_name",
+            AsyncMock(return_value="User"),
+        ),
+    ):
+        await on_room_message(mock_room, mock_event)
+
+    mock_queue_message.assert_not_called()
+    assert any(
+        "broadcast_enabled is False" in call.args[0]
+        for call in mock_logger.debug.call_args_list
+    )
+
+
+async def test_on_room_message_queue_failure_logs_error(
+    monkeypatch, mock_room, mock_event, test_config
+):
+    """Queue failures should log and stop processing."""
+    test_config["meshtastic"]["broadcast_enabled"] = True
+
+    class DummyInterface:
+        def __init__(self):
+            self.sendText = MagicMock()
+
+    monkeypatch.setattr("mmrelay.matrix_utils.bot_start_time", 0, raising=False)
+    monkeypatch.setattr("mmrelay.matrix_utils.config", test_config, raising=False)
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"], raising=False
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.bot_user_id",
+        test_config["matrix"]["bot_user_id"],
+        raising=False,
+    )
+
+    with (
+        patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
+        patch(
+            "mmrelay.matrix_utils._get_meshtastic_interface_and_channel",
+            AsyncMock(return_value=(DummyInterface(), 0)),
+        ),
+        patch("mmrelay.matrix_utils.queue_message", return_value=False) as mock_queue,
+        patch("mmrelay.meshtastic_utils.logger") as mock_meshtastic_logger,
+        patch(
+            "mmrelay.matrix_utils.get_user_display_name",
+            AsyncMock(return_value="User"),
+        ),
+    ):
+        await on_room_message(mock_room, mock_event)
+
+    mock_queue.assert_called_once()
+    mock_meshtastic_logger.error.assert_any_call(
+        "Failed to relay message to Meshtastic"
+    )
 
 
 # Matrix utility function tests - converted from unittest.TestCase to standalone pytest functions
@@ -2615,6 +3240,126 @@ async def test_matrix_relay_store_failure_logs(
     assert any(
         "Error storing message map" in call.args[0]
         for call in mock_logger.error.call_args_list
+    )
+
+
+@patch("mmrelay.matrix_utils.connect_matrix")
+@patch("mmrelay.matrix_utils.get_interaction_settings")
+@patch("mmrelay.matrix_utils.message_storage_enabled", return_value=False)
+@patch("mmrelay.matrix_utils.logger")
+async def test_matrix_relay_reply_missing_mapping_logs_warning(
+    mock_logger, _mock_storage_enabled, mock_get_interactions, mock_connect_matrix
+):
+    """Missing reply mappings should warn but still send."""
+    mock_get_interactions.return_value = {"reactions": False, "replies": False}
+
+    mock_room = MagicMock()
+    mock_room.encrypted = False
+    mock_room.display_name = "Room"
+
+    mock_client = MagicMock()
+    mock_client.user_id = "@bot:matrix.org"
+    mock_client.rooms = {"!room:matrix.org": mock_room}
+    mock_client.room_send = AsyncMock(return_value=MagicMock(event_id="$event123"))
+    mock_connect_matrix.return_value = mock_client
+
+    config = {
+        "meshtastic": {"meshnet_name": "TestMesh"},
+        "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+    }
+
+    with (
+        patch("mmrelay.matrix_utils.config", config),
+        patch(
+            "mmrelay.matrix_utils.get_message_map_by_matrix_event_id",
+            return_value=None,
+        ),
+    ):
+        await matrix_relay(
+            room_id="!room:matrix.org",
+            message="Reply text",
+            longname="Alice",
+            shortname="A",
+            meshnet_name="TestMesh",
+            portnum=1,
+            reply_to_event_id="$missing",
+        )
+
+    mock_client.room_send.assert_called_once()
+    assert any(
+        "Could not find original message for reply_to_event_id" in call.args[0]
+        for call in mock_logger.warning.call_args_list
+    )
+
+
+@patch("mmrelay.matrix_utils.connect_matrix")
+@patch("mmrelay.matrix_utils.get_interaction_settings")
+@patch("mmrelay.matrix_utils.message_storage_enabled", return_value=False)
+@patch("mmrelay.matrix_utils.logger")
+async def test_matrix_relay_send_timeout_logs_and_returns(
+    mock_logger, _mock_storage_enabled, mock_get_interactions, mock_connect_matrix
+):
+    """Timeouts during room_send should be logged and return."""
+    mock_get_interactions.return_value = {"reactions": False, "replies": False}
+
+    mock_client = MagicMock()
+    mock_client.rooms = {"!room:matrix.org": MagicMock(encrypted=False)}
+    mock_client.room_send = AsyncMock(side_effect=asyncio.TimeoutError)
+    mock_connect_matrix.return_value = mock_client
+
+    config = {
+        "meshtastic": {"meshnet_name": "TestMesh"},
+        "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+    }
+
+    with patch("mmrelay.matrix_utils.config", config):
+        await matrix_relay(
+            room_id="!room:matrix.org",
+            message="Hello Matrix",
+            longname="Alice",
+            shortname="A",
+            meshnet_name="TestMesh",
+            portnum=1,
+        )
+
+    mock_logger.exception.assert_any_call(
+        "Timeout sending message to Matrix room %s", "!room:matrix.org"
+    )
+
+
+@patch("mmrelay.matrix_utils.connect_matrix")
+@patch("mmrelay.matrix_utils.get_interaction_settings")
+@patch("mmrelay.matrix_utils.message_storage_enabled", return_value=False)
+@patch("mmrelay.matrix_utils.logger")
+async def test_matrix_relay_send_nio_error_logs_and_returns(
+    mock_logger, _mock_storage_enabled, mock_get_interactions, mock_connect_matrix
+):
+    """NIO send errors should be logged and return."""
+    mock_get_interactions.return_value = {"reactions": False, "replies": False}
+
+    mock_client = MagicMock()
+    mock_client.rooms = {"!room:matrix.org": MagicMock(encrypted=False)}
+    mock_client.room_send = AsyncMock(side_effect=NioLocalTransportError("fail"))
+    mock_connect_matrix.return_value = mock_client
+
+    config = {
+        "meshtastic": {"meshnet_name": "TestMesh"},
+        "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+    }
+
+    with patch("mmrelay.matrix_utils.config", config):
+        await matrix_relay(
+            room_id="!room:matrix.org",
+            message="Hello Matrix",
+            longname="Alice",
+            shortname="A",
+            meshnet_name="TestMesh",
+            portnum=1,
+        )
+
+    assert any(
+        "Error sending message to Matrix room" in call.args[0]
+        for call in mock_logger.exception.call_args_list
     )
 
 
@@ -7405,6 +8150,31 @@ async def test_on_decryption_failure():
             # Should have logged the initial error plus the client unavailable error
             assert mock_logger.error.call_count == 2
             mock_client.to_device.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_on_decryption_failure_missing_device_id():
+    """Missing device_id should prevent key requests and log an error."""
+    mock_room = MagicMock()
+    mock_room.room_id = "!room123:matrix.org"
+    mock_event = MagicMock()
+    mock_event.event_id = "$event123"
+
+    with (
+        patch("mmrelay.matrix_utils.matrix_client") as mock_client,
+        patch("mmrelay.matrix_utils.logger") as mock_logger,
+    ):
+        mock_client.user_id = "@bot:matrix.org"
+        mock_client.device_id = None
+        mock_client.to_device = AsyncMock()
+
+        await on_decryption_failure(mock_room, mock_event)
+
+        mock_logger.error.assert_any_call(
+            "Cannot request keys for event %s: client has no device_id",
+            "$event123",
+        )
+        mock_client.to_device.assert_not_called()
 
 
 @pytest.mark.asyncio
