@@ -41,7 +41,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         def __init__(self):
             """
             Initialize the instance.
-            
+
             Creates an empty list `calls` used to record timeout values.
             """
             self.calls = []
@@ -49,12 +49,12 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         def result(self, timeout=None):
             """
             Simulate retrieving a future's result that always times out and records the provided timeout.
-            
+
             Appends the given `timeout` value to `self.calls` and then raises a ConcurrentTimeoutError to simulate a plugin timeout.
-            
+
             Parameters:
                 timeout (float | None): The timeout value passed when requesting the result; may be None.
-            
+
             Raises:
                 ConcurrentTimeoutError: Always raised with message "Plugin timeout".
             """
@@ -64,7 +64,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
     def setUp(self):
         """
         Reset mmrelay.meshtastic_utils global state so each test runs in isolation.
-        
+
         Resets the following module-level variables to their default test values:
         - meshtastic_client -> None
         - reconnecting -> False
@@ -745,7 +745,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
     def test_on_meshtastic_message_plugin_timeout_prevents_relay(self):
         """
         Ensure a plugin timeout prevents the message from being relayed to Matrix.
-        
+
         Verifies that when a plugin times out while processing an incoming Meshtastic message:
         - the plugin timeout is logged,
         - the Matrix relay is not invoked, and
@@ -857,7 +857,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
     def test_on_meshtastic_message_non_text_plugin_timeout_prevents_relay(self):
         """
         Ensure a plugin timeout for non-text (telemetry) messages prevents relaying the message to Matrix.
-        
+
         Asserts that when a plugin handling a telemetry packet times out, a timeout warning is logged and the message is treated as handled (so it is not relayed to Matrix); also verifies a debug log indicating the plugin processed the telemetry message.
         """
         packet = {
@@ -914,7 +914,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
     def test_on_meshtastic_message_non_text_plugin_no_match_continues(self):
         """
         Verify non-text message processing continues to subsequent plugins when an earlier plugin does not handle it.
-        
+
         Ensures that if a plugin's handle_meshtastic_message returns False for a non-text packet, the dispatcher continues to the next plugin, and when a later plugin handles the message the Matrix relay is not invoked.
         """
         packet = {
@@ -969,7 +969,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
     def test_on_meshtastic_message_non_text_plugin_match_skips_remaining(self):
         """
         Ensure a non-text Meshtastic message handled by a plugin prevents remaining plugins from running.
-        
+
         Asserts that when the first plugin returns True for a non-text message (e.g., a POSITION_APP packet),
         subsequent plugins are not invoked, the Matrix relay is not called, and a debug message is emitted
         indicating the handling plugin's name.
