@@ -752,3 +752,60 @@ def mock_to_thread(monkeypatch):
         return func(*args, **kwargs)
 
     monkeypatch.setattr(asyncio, "to_thread", _to_thread)
+
+
+@pytest.fixture
+def mock_room():
+    """Mock Matrix room fixture for testing room message handling."""
+    mock_room = MagicMock()
+    mock_room.room_id = "!room:matrix.org"
+    return mock_room
+
+
+@pytest.fixture
+def mock_event():
+    """Mock Matrix event fixture for testing message events."""
+    mock_event = MagicMock()
+    mock_event.sender = "@user:matrix.org"
+    mock_event.body = "Hello, world!"
+    mock_event.source = {"content": {"body": "Hello, world!"}}
+    mock_event.server_timestamp = 1234567890
+    return mock_event
+
+
+@pytest.fixture
+def test_config():
+    """
+    Fixture providing a sample configuration for Meshtastic ↔ Matrix integration used by tests.
+
+    Returns:
+        dict: Configuration with keys:
+          - meshtastic: dict with
+              - broadcast_enabled (bool): whether broadcasting to mesh is enabled.
+              - prefix_enabled (bool): whether Meshtastic message prefixes are applied.
+              - prefix_format (str): format string for message prefixes (supports truncated vars).
+              - message_interactions (dict): interaction toggles, e.g. {'reactions': bool, 'replies': bool}.
+              - meshnet_name (str): logical mesh network name used in templates.
+          - matrix_rooms: list of room mappings where each item is a dict containing:
+              - id (str): Matrix room ID (e.g. "!room:matrix.org").
+              - meshtastic_channel (int): Meshtastic channel number.
+              - inbound (bool): whether to relay messages from Matrix to Meshtastic.
+              - outbound (bool): whether to relay messages from Meshtastic to Matrix.
+    """
+    return {
+        "meshtastic": {
+            "broadcast_enabled": True,
+            "prefix_enabled": True,
+            "prefix_format": "Mesh: {truncated_sender}: ",
+            "message_interactions": {"reactions": True, "replies": True},
+            "meshnet_name": "Meshtastic",
+        },
+        "matrix_rooms": [
+            {
+                "id": "!room:matrix.org",
+                "meshtastic_channel": 0,
+                "inbound": True,
+                "outbound": True,
+            }
+        ],
+    }
