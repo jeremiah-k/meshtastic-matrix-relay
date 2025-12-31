@@ -94,10 +94,10 @@ def test_connect_meshtastic_serial_missing_port_returns_none(
     )
 
 
-@patch("mmrelay.meshtastic_utils.time.sleep")
 @patch("mmrelay.meshtastic_utils.serial_port_exists", return_value=False)
+@patch("mmrelay.meshtastic_utils.time.sleep")
 def test_connect_meshtastic_serial_port_not_found_retries(
-    mock_exists, mock_sleep, reset_meshtastic_globals
+    mock_sleep, mock_exists, reset_meshtastic_globals
 ):
     config = {
         "meshtastic": {
@@ -222,10 +222,10 @@ def test_connect_meshtastic_timeout_respects_retry_limit(
     )
 
 
-@patch("mmrelay.meshtastic_utils.time.sleep")
 @patch("mmrelay.meshtastic_utils.serial_port_exists", return_value=True)
+@patch("mmrelay.meshtastic_utils.time.sleep")
 def test_connect_meshtastic_serial_exception_retries_then_fails(
-    mock_exists, mock_sleep, reset_meshtastic_globals
+    mock_sleep, mock_exists, reset_meshtastic_globals
 ):
     serial_error = serial.SerialException("serial")
 

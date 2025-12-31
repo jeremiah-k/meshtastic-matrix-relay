@@ -67,7 +67,7 @@ def test_wait_for_result_target_loop_running_uses_threadsafe(monkeypatch):
     assert result == "threadsafe"
 
 
-def test_wait_for_result_running_loop_threadsafe(monkeypatch):
+def test_wait_for_result_running_loop_threadsafe():
     class DummyLoop:
         def is_closed(self):
             return False
