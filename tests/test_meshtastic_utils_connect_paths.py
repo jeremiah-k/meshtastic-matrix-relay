@@ -171,6 +171,14 @@ def test_connect_meshtastic_logs_firmware_version_on_success(
 
 def test_connect_meshtastic_timeout_breaks_on_shutdown(reset_meshtastic_globals):
     def _timeout_then_shutdown(*_args, **_kwargs):
+        """
+        Mark the Meshtastic utilities as shutting down and raise a timeout error.
+        
+        Sets mu.shutting_down to True to signal shutdown and then raises a TimeoutError with the message "timeout".
+        
+        Raises:
+            TimeoutError: Always raised when this helper is called.
+        """
         mu.shutting_down = True
         raise TimeoutError("timeout")
 

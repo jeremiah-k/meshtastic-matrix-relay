@@ -7,6 +7,17 @@ from mmrelay.meshtastic_utils import check_connection
 
 
 def _make_health_config(connection_type="tcp", enabled=True, heartbeat=60):
+    """
+    Builds a nested configuration dictionary for meshtastic connection health checks.
+    
+    Parameters:
+        connection_type (str): Connection transport type (e.g., "tcp" or "ble"). Defaults to "tcp".
+        enabled (bool): Whether health checks are enabled. Defaults to True.
+        heartbeat (int): Heartbeat interval in seconds used for health check scheduling. Defaults to 60.
+    
+    Returns:
+        dict: Configuration mapping with keys "meshtastic" -> {"connection_type", "health_check": {"enabled", "heartbeat_interval"}}.
+    """
     return {
         "meshtastic": {
             "connection_type": connection_type,
@@ -16,6 +27,12 @@ def _make_health_config(connection_type="tcp", enabled=True, heartbeat=60):
 
 
 def _sleep_and_shutdown(_seconds):
+    """
+    Mark the application as shutting down; intended as a placeholder to use where asyncio.sleep is expected.
+    
+    Parameters:
+        _seconds (float): Ignored — present only to match the asyncio.sleep signature.
+    """
     mu.shutting_down = True
     return None
 
