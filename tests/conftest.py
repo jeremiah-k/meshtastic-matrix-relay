@@ -739,16 +739,88 @@ def mock_to_thread(monkeypatch):
 
     async def _to_thread(func, *args, **kwargs):
         """
-        Execute a callable on the current thread and return its result.
+        Execute the given callable on the current thread and return its result.
 
         Parameters:
-                func (Callable): The callable to invoke.
-                *args: Positional arguments to pass to `func`.
-                **kwargs: Keyword arguments to pass to `func`.
+            func (Callable): The callable to invoke.
+            *args: Positional arguments to pass to func.
+            **kwargs: Keyword arguments to pass to func.
 
         Returns:
-                The value returned by `func`. Exceptions raised by `func` propagate to the caller.
+            The value returned by func. Exceptions raised by func propagate to the caller.
         """
         return func(*args, **kwargs)
 
     monkeypatch.setattr(asyncio, "to_thread", _to_thread)
+
+
+@pytest.fixture
+def mock_room():
+    """
+    Provide a MagicMock representing a Matrix room for tests.
+
+    Returns:
+        MagicMock: A mock room object with `room_id` set to "!room:matrix.org".
+    """
+    mock_room = MagicMock()
+    mock_room.room_id = "!room:matrix.org"
+    return mock_room
+
+
+@pytest.fixture
+def mock_event():
+    """
+    Create a mock Matrix message event object for tests.
+
+    The returned MagicMock simulates a typical incoming message event and has the
+    attributes `sender`, `body`, `source`, and `server_timestamp` set to sample
+    values.
+
+    Returns:
+        MagicMock: Mock event with `sender` set to "@user:matrix.org",
+        `body` set to "Hello, world!", `source` set to {"content": {"body": "Hello, world!"}},
+        and `server_timestamp` set to 1234567890.
+    """
+    mock_event = MagicMock()
+    mock_event.sender = "@user:matrix.org"
+    mock_event.body = "Hello, world!"
+    mock_event.source = {"content": {"body": "Hello, world!"}}
+    mock_event.server_timestamp = 1234567890
+    return mock_event
+
+
+@pytest.fixture
+def test_config():
+    """
+    Fixture providing a sample configuration for Meshtastic ↔ Matrix integration used by tests.
+
+    Returns:
+        dict: Configuration with keys:
+          - meshtastic: dict with
+              - broadcast_enabled (bool): whether broadcasting to mesh is enabled.
+              - prefix_enabled (bool): whether Meshtastic message prefixes are applied.
+              - prefix_format (str): format string for message prefixes (supports truncated vars).
+              - message_interactions (dict): interaction toggles, e.g. {'reactions': bool, 'replies': bool}.
+              - meshnet_name (str): logical mesh network name used in templates.
+          - matrix_rooms: list of room mappings where each item is a dict containing:
+              - id (str): Matrix room ID (e.g. "!room:matrix.org").
+              - meshtastic_channel (int): Meshtastic channel number.
+          - matrix: dict with
+              - bot_user_id (str): Matrix user ID of the bot.
+    """
+    return {
+        "meshtastic": {
+            "broadcast_enabled": True,
+            "prefix_enabled": True,
+            "prefix_format": "{display5}[M]: ",
+            "message_interactions": {"reactions": False, "replies": False},
+            "meshnet_name": "test_mesh",
+        },
+        "matrix_rooms": [
+            {
+                "id": "!room:matrix.org",
+                "meshtastic_channel": 0,
+            }
+        ],
+        "matrix": {"bot_user_id": "@bot:matrix.org"},
+    }
