@@ -417,6 +417,13 @@ def test_example(mock_inner, mock_outer):
     pass
 ```
 
+#### Meshtastic Message Handler Early-Exit Guards
+
+`on_meshtastic_message` returns early if the interface lacks `myInfo` or if a
+packet is directed to another node. When tests expect relays or plugin handling,
+set `interface.myInfo.my_node_num` and ensure `packet["to"]` is either
+`BROADCAST_NUM` or the relay node id.
+
 ### Parametrized Tests with Patch Decorators
 
 When using `@pytest.mark.parametrize` with `@patch` decorators in `unittest.TestCase` classes, the parametrized arguments may not be passed correctly, causing `TypeError: missing 1 required positional argument`.

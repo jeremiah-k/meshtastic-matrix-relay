@@ -18,6 +18,7 @@ from concurrent.futures import TimeoutError as ConcurrentTimeoutError
 from unittest.mock import AsyncMock, MagicMock, Mock, mock_open, patch
 
 import pytest
+from meshtastic.mesh_interface import BROADCAST_NUM
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -135,6 +136,7 @@ class TestMeshtasticUtils(unittest.TestCase):
         # Packet missing channel but using string portnum
         packet_no_channel = self.mock_packet.copy()
         packet_no_channel["channel"] = None
+        packet_no_channel["to"] = BROADCAST_NUM
 
         with (
             patch("mmrelay.meshtastic_utils.config", self.mock_config),
@@ -160,6 +162,8 @@ class TestMeshtasticUtils(unittest.TestCase):
             mock_storage.return_value = True
 
             mock_interface = MagicMock()
+            mock_interface.myInfo = MagicMock()
+            mock_interface.myInfo.my_node_num = 12345
 
             # Call the function
             on_meshtastic_message(packet_no_channel, mock_interface)
@@ -609,9 +613,13 @@ class TestMeshtasticUtils(unittest.TestCase):
             mock_storage.return_value = True
 
             mock_interface = MagicMock()
+            mock_interface.myInfo = MagicMock()
+            mock_interface.myInfo.my_node_num = 12345
+            packet = self.mock_packet.copy()
+            packet["to"] = BROADCAST_NUM
 
             # Call the function
-            on_meshtastic_message(self.mock_packet, mock_interface)
+            on_meshtastic_message(packet, mock_interface)
 
             # Meshtastic->Matrix messages are still relayed regardless of broadcast_enabled
             # (broadcast_enabled only affects Matrix->Meshtastic direction)

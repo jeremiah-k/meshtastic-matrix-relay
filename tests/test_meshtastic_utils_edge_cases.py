@@ -816,6 +816,8 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         }
         interface = MagicMock()
         interface.nodes = {"!67890": {"user": {"id": "!67890", "longName": "TestNode"}}}
+        interface.myInfo = MagicMock()
+        interface.myInfo.my_node_num = 12345
 
         future = self._TimeoutFuture()
 
