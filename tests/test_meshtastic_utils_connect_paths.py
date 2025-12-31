@@ -108,7 +108,7 @@ def test_connect_meshtastic_serial_port_not_found_retries(
     result = connect_meshtastic(passed_config=config)
 
     assert result is None
-    assert mock_sleep.call_count == 2
+    assert mock_sleep.call_count == 1
 
 
 def test_connect_meshtastic_ble_missing_address_returns_none(

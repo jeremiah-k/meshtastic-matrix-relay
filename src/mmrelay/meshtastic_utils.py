@@ -570,12 +570,9 @@ def connect_meshtastic(passed_config=None, force_connect=False):
 
                 # Check if serial port exists before connecting
                 if not serial_port_exists(serial_port):
-                    logger.warning(
-                        f"Serial port {serial_port} does not exist. Waiting..."
+                    raise serial.SerialException(
+                        f"Serial port {serial_port} does not exist."
                     )
-                    time.sleep(5)
-                    attempts += 1
-                    continue
 
                 client = meshtastic.serial_interface.SerialInterface(serial_port)
 

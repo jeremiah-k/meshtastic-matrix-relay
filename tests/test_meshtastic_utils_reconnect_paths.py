@@ -94,6 +94,7 @@ async def test_reconnect_logs_cancelled(reset_meshtastic_globals):
         patch("mmrelay.meshtastic_utils.is_running_as_service", return_value=True),
         patch(
             "mmrelay.meshtastic_utils.asyncio.sleep",
+            new_callable=AsyncMock,
             side_effect=asyncio.CancelledError,
         ),
         patch("mmrelay.meshtastic_utils.logger") as mock_logger,
