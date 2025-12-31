@@ -894,7 +894,6 @@ async def test_logout_matrix_bot_no_credentials():
 
 
 @pytest.mark.asyncio
-@patch("mmrelay.cli_utils._cleanup_local_session_data", return_value=True)
 @pytest.mark.parametrize(
     "credentials",
     [
@@ -902,7 +901,8 @@ async def test_logout_matrix_bot_no_credentials():
         pytest.param({"homeserver": "matrix.org"}, id="missing_user_id"),
     ],
 )
-@pytest.mark.asyncio
+@patch("mmrelay.cli_utils.AsyncClient", MagicMock(spec=True))
+@patch("mmrelay.cli_utils._cleanup_local_session_data", return_value=True)
 async def test_logout_matrix_bot_invalid_credentials(mock_cleanup, credentials):
     """Test logout with invalid/incomplete credentials falls back to local cleanup."""
     with patch("mmrelay.matrix_utils.load_credentials", return_value=credentials):
