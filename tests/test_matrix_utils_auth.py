@@ -17,6 +17,15 @@ from mmrelay.matrix_utils import (
 
 @pytest.fixture
 def matrix_config(test_config):
+    """
+    Create a test configuration dictionary that includes Matrix credentials.
+    
+    Parameters:
+    	test_config (dict): Base configuration to copy and extend.
+    
+    Returns:
+    	config (dict): A shallow copy of `test_config` with a "matrix" key containing test homeserver, access token, and bot user id.
+    """
     config = dict(test_config)
     config["matrix"] = {
         "homeserver": "https://matrix.org",
@@ -44,12 +53,30 @@ async def test_connect_matrix_success(matrix_config):
         mock_client_instance.rooms = {}
 
         async def mock_whoami():
+            """
+            Create a fake whoami response for tests.
+            
+            Returns:
+                MagicMock: A mock object with a `device_id` attribute set to `"test_device_id"`.
+            """
             return MagicMock(device_id="test_device_id")
 
         async def mock_sync(*args, **kwargs):
+            """
+            Provide an asynchronous MagicMock for use in tests.
+            
+            Returns:
+                A MagicMock instance.
+            """
             return MagicMock()
 
         async def mock_get_displayname(*args, **kwargs):
+            """
+            Create an async mock that simulates a client's get_displayname response.
+            
+            Returns:
+                MagicMock: mock object with a `displayname` attribute set to "Test Bot".
+            """
             return MagicMock(displayname="Test Bot")
 
         mock_client_instance.whoami = mock_whoami
@@ -79,9 +106,21 @@ async def test_connect_matrix_without_credentials(matrix_config):
         mock_client_instance.device_id = None
 
         async def mock_sync(*args, **kwargs):
+            """
+            Provide an asynchronous MagicMock for use in tests.
+            
+            Returns:
+                A MagicMock instance.
+            """
             return MagicMock()
 
         async def mock_get_displayname(*args, **kwargs):
+            """
+            Create an async mock that simulates a client's get_displayname response.
+            
+            Returns:
+                MagicMock: mock object with a `displayname` attribute set to "Test Bot".
+            """
             return MagicMock(displayname="Test Bot")
 
         mock_client_instance.sync = mock_sync
@@ -118,17 +157,44 @@ async def test_connect_matrix_alias_resolution_success(
         mock_client_instance.rooms = {}
 
         async def mock_whoami():
+            """
+            Create a fake whoami response for tests.
+            
+            Returns:
+                MagicMock: A mock object with a `device_id` attribute set to `"test_device_id"`.
+            """
             return MagicMock(device_id="test_device_id")
 
         async def mock_sync(*_args, **_kwargs):
+            """
+            Provide an async-compatible replacement for a sync operation that yields a MagicMock.
+            
+            Returns:
+                MagicMock: a mock object representing the result of the asynchronous operation.
+            """
             return MagicMock()
 
         async def mock_get_displayname(*_args, **_kwargs):
+            """
+            Return a mock object exposing a `displayname` attribute set to "Test Bot".
+            
+            Returns:
+                mock (MagicMock): A mock object whose `displayname` attribute equals "Test Bot".
+            """
             return MagicMock(displayname="Test Bot")
 
         mock_room_resolve_alias = MagicMock()
 
         async def mock_room_resolve_alias_impl(_alias):
+            """
+            Create a mock response for resolving a room alias with a fixed resolved room ID.
+            
+            Parameters:
+                _alias (str): Alias to resolve (ignored by this mock implementation).
+            
+            Returns:
+                response: A mock object with `room_id` set to "!resolved:matrix.org" and `message` set to an empty string.
+            """
             response = MagicMock()
             response.room_id = "!resolved:matrix.org"
             response.message = ""
@@ -188,17 +254,44 @@ async def test_connect_matrix_alias_resolution_failure(
         mock_client_instance.rooms = {}
 
         async def mock_whoami():
+            """
+            Create a fake whoami response for tests.
+            
+            Returns:
+                MagicMock: A mock object with a `device_id` attribute set to `"test_device_id"`.
+            """
             return MagicMock(device_id="test_device_id")
 
         async def mock_sync(*_args, **_kwargs):
+            """
+            Provide an async-compatible replacement for a sync operation that yields a MagicMock.
+            
+            Returns:
+                MagicMock: a mock object representing the result of the asynchronous operation.
+            """
             return MagicMock()
 
         async def mock_get_displayname(*_args, **_kwargs):
+            """
+            Return a mock object exposing a `displayname` attribute set to "Test Bot".
+            
+            Returns:
+                mock (MagicMock): A mock object whose `displayname` attribute equals "Test Bot".
+            """
             return MagicMock(displayname="Test Bot")
 
         mock_room_resolve_alias = MagicMock()
 
         async def mock_room_resolve_alias_impl(_alias):
+            """
+            Simulate a failed room alias resolution by returning a mock response with no room_id and an error message.
+            
+            Parameters:
+                _alias (str): The alias to resolve (ignored by this implementation).
+            
+            Returns:
+                MagicMock: A mock response object with `room_id` set to `None` and `message` set to "Room not found".
+            """
             response = MagicMock()
             response.room_id = None
             response.message = "Room not found"
@@ -269,15 +362,39 @@ async def test_connect_matrix_with_e2ee_credentials(
     mock_client_instance.rooms = {}
 
     async def mock_sync(*args, **kwargs):
+        """
+        Async test helper that provides a MagicMock instance as a stand-in for a synchronous sync result.
+        
+        Returns:
+            MagicMock: A MagicMock instance.
+        """
         return MagicMock()
 
     async def mock_whoami(*args, **kwargs):
+        """
+        Provide a mocked 'whoami' response for tests with a fixed device identifier.
+        
+        Returns:
+            MagicMock: An object with a `device_id` attribute set to "TEST_DEVICE".
+        """
         return MagicMock(device_id="TEST_DEVICE")
 
     async def mock_keys_upload(*args, **kwargs):
+        """
+        Create an awaitable used in tests to simulate a keys upload operation.
+        
+        Returns:
+            MagicMock: mock object representing the result of the upload.
+        """
         return MagicMock()
 
     async def mock_get_displayname(*args, **kwargs):
+        """
+        Provide a MagicMock object with a fixed display name of "Test Bot".
+        
+        Returns:
+            MagicMock: A MagicMock instance whose `displayname` attribute is "Test Bot".
+        """
         return MagicMock(displayname="Test Bot")
 
     mock_client_instance.sync = mock_sync
@@ -595,6 +712,15 @@ async def test_login_matrix_bot_debug_env_sets_log_levels(
     logger_instances = {}
 
     def fake_get_logger(name):
+        """
+        Return a mock logger instance associated with the given name.
+        
+        Parameters:
+            name (str): The logger name/key to retrieve.
+        
+        Returns:
+            MagicMock: A MagicMock acting as a logger for `name`. The instance is cached and the same object is returned on subsequent calls with the same name.
+        """
         logger = logger_instances.setdefault(name, MagicMock())
         return logger
 
