@@ -475,6 +475,7 @@ def test_iter_room_alias_entries_empty_id():
     assert alias3 == "#alias3"
 
 
+@pytest.mark.asyncio
 async def test_resolve_aliases_in_mapping_unsupported_type():
     """
     Test that _resolve_aliases_in_mapping handles unsupported mapping types gracefully.
@@ -489,6 +490,7 @@ async def test_resolve_aliases_in_mapping_unsupported_type():
         mock_logger.warning.assert_called_once()
 
 
+@pytest.mark.asyncio
 async def test_resolve_aliases_in_mapping_resolver_failure():
     """
     Test that _resolve_aliases_in_mapping handles resolver failures gracefully.

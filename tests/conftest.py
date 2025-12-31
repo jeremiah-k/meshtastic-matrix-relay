@@ -789,23 +789,22 @@ def test_config():
           - matrix_rooms: list of room mappings where each item is a dict containing:
               - id (str): Matrix room ID (e.g. "!room:matrix.org").
               - meshtastic_channel (int): Meshtastic channel number.
-              - inbound (bool): whether to relay messages from Matrix to Meshtastic.
-              - outbound (bool): whether to relay messages from Meshtastic to Matrix.
+          - matrix: dict with
+              - bot_user_id (str): Matrix user ID of the bot.
     """
     return {
         "meshtastic": {
             "broadcast_enabled": True,
             "prefix_enabled": True,
-            "prefix_format": "Mesh: {truncated_sender}: ",
-            "message_interactions": {"reactions": True, "replies": True},
-            "meshnet_name": "Meshtastic",
+            "prefix_format": "{display5}[M]: ",
+            "message_interactions": {"reactions": False, "replies": False},
+            "meshnet_name": "test_mesh",
         },
         "matrix_rooms": [
             {
                 "id": "!room:matrix.org",
                 "meshtastic_channel": 0,
-                "inbound": True,
-                "outbound": True,
             }
         ],
+        "matrix": {"bot_user_id": "@bot:matrix.org"},
     }

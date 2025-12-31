@@ -21,7 +21,7 @@ from mmrelay.matrix_utils import (
 # Configuration & Mapping Tests
 
 
-def test_create_mapping_info_defaults(mock_room):
+def test_create_mapping_info_defaults():
     """
     Test that _create_mapping_info returns a mapping dictionary with default values when optional parameters are not provided.
     """
