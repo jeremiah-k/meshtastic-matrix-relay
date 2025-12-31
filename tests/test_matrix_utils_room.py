@@ -273,6 +273,15 @@ async def test_resolve_aliases_in_mapping_list():
     ]
 
     async def mock_resolver(alias):
+        """
+        Resolve specific Matrix room aliases to canonical room IDs.
+        
+        Parameters:
+        	alias (str): Matrix room alias or identifier to resolve.
+        
+        Returns:
+        	str: The canonical room ID for known aliases (`!resolved1:matrix.org` for `#room1:matrix.org`, `!resolved3:matrix.org` for `#room3:matrix.org`), or the original `alias` unchanged.
+        """
         if alias == "#room1:matrix.org":
             return "!resolved1:matrix.org"
         elif alias == "#room3:matrix.org":
@@ -296,6 +305,15 @@ async def test_resolve_aliases_in_mapping_dict():
     }
 
     async def mock_resolver(alias):
+        """
+        Resolve test Matrix room aliases to predefined room IDs, falling back to the input.
+        
+        Parameters:
+            alias (str): Matrix room alias or identifier to resolve.
+        
+        Returns:
+            str: The resolved Matrix room ID for known aliases, otherwise the original identifier.
+        """
         if alias == "#alias1:matrix.org":
             return "!resolved1:matrix.org"
         elif alias == "#alias3:matrix.org":

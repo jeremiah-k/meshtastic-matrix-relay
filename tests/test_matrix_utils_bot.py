@@ -10,7 +10,13 @@ class TestBotCommand:
 
     @pytest.fixture(autouse=True)
     def mock_bot_globals(self):
-        """Fixture to mock bot user globals for all tests in this class."""
+        """
+        Provide a pytest fixture that patches the module-level bot identifiers for tests in this class.
+        
+        Patches mmrelay.matrix_utils.bot_user_id to "@bot:matrix.org" and
+        mmrelay.matrix_utils.bot_user_name to "Bot" for the duration of each test, then yields
+        control to the test. Intended for use as an autouse fixture within the test class.
+        """
         with (
             patch("mmrelay.matrix_utils.bot_user_id", "@bot:matrix.org"),
             patch("mmrelay.matrix_utils.bot_user_name", "Bot"),
@@ -176,6 +182,12 @@ class TestBotCommand:
 
         class BadIdent:
             def __str__(self):
+                """
+                Raise a ValueError with message "boom".
+                
+                Raises:
+                    ValueError: Always raised when attempting to produce the string representation.
+                """
                 raise ValueError("boom")
 
         mock_event = MagicMock()
