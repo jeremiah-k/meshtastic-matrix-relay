@@ -70,12 +70,16 @@ async def test_reconnect_rich_progress_breaks_on_shutdown(reset_meshtastic_globa
 
 @pytest.mark.asyncio
 async def test_reconnect_logs_exception_and_backs_off(reset_meshtastic_globals):
-    class DummyLoop:
-        async def run_in_executor(self, *_args, **_kwargs):
-            raise RuntimeError("boom")
-
     def _mark_shutdown(*_args, **_kwargs):
         mu.shutting_down = True
+
+    running_loop = asyncio.get_running_loop()
+    failed_future = running_loop.create_future()
+    failed_future.set_exception(RuntimeError("boom"))
+
+    class DummyLoop:
+        def run_in_executor(self, *_args, **_kwargs):
+            return failed_future
 
     with (
         patch("mmrelay.meshtastic_utils.is_running_as_service", return_value=True),
