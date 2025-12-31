@@ -20,10 +20,10 @@ lint:
     - dotenv-linter@4.0.0
     - hadolint@2.14.0
     - taplo@0.10.0
-    - actionlint@1.7.9
+    - actionlint@1.7.10
     - bandit@1.9.2
     - black@25.12.0
-    - checkov@3.2.496
+    - checkov@3.2.497
     - git-diff-check
     - isort@7.0.0
     - markdownlint@0.47.0
