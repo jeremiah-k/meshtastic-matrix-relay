@@ -1,32 +1,12 @@
 import asyncio
 import sys
 import types
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 import mmrelay.meshtastic_utils as mu
 from mmrelay.meshtastic_utils import reconnect
-
-
-class _FakeProgress:
-    updates = None
-
-    def __init__(self, *args, **kwargs):
-        pass
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc, tb):
-        return False
-
-    def add_task(self, *_args, **_kwargs):
-        return "task"
-
-    def update(self, *_args, **_kwargs):
-        if self.updates is not None:
-            self.updates.append(1)
 
 
 class _DummyColumn:
@@ -53,38 +33,34 @@ def _mark_shutdown(*_args, **_kwargs):
 
 @pytest.mark.asyncio
 async def test_reconnect_rich_progress_breaks_on_shutdown(reset_meshtastic_globals):
-    progress_updates = []
+    mock_progress_instance = MagicMock()
+    mock_progress_class = MagicMock()
+    mock_progress_class.return_value.__enter__.return_value = mock_progress_instance
 
     fake_rich = types.ModuleType("rich")
     fake_progress = types.ModuleType("rich.progress")
-    _FakeProgress.updates = progress_updates
-    fake_progress.Progress = _FakeProgress
+    fake_progress.Progress = mock_progress_class
     fake_progress.BarColumn = _DummyColumn
     fake_progress.TextColumn = _DummyColumn
     fake_progress.TimeRemainingColumn = _DummyColumn
     fake_rich.progress = fake_progress
 
-    try:
-        with (
-            patch.dict(
-                sys.modules, {"rich": fake_rich, "rich.progress": fake_progress}
-            ),
-            patch("mmrelay.meshtastic_utils.DEFAULT_BACKOFF_TIME", 1),
-            patch("mmrelay.meshtastic_utils.is_running_as_service", return_value=False),
-            patch(
-                "mmrelay.meshtastic_utils.asyncio.sleep",
-                new_callable=AsyncMock,
-                side_effect=_sleep_and_shutdown,
-            ),
-            patch("mmrelay.meshtastic_utils.connect_meshtastic") as mock_connect,
-            patch("mmrelay.meshtastic_utils.logger") as mock_logger,
-        ):
-            await reconnect()
-    finally:
-        _FakeProgress.updates = None
+    with (
+        patch.dict(sys.modules, {"rich": fake_rich, "rich.progress": fake_progress}),
+        patch("mmrelay.meshtastic_utils.DEFAULT_BACKOFF_TIME", 1),
+        patch("mmrelay.meshtastic_utils.is_running_as_service", return_value=False),
+        patch(
+            "mmrelay.meshtastic_utils.asyncio.sleep",
+            new_callable=AsyncMock,
+            side_effect=_sleep_and_shutdown,
+        ),
+        patch("mmrelay.meshtastic_utils.connect_meshtastic") as mock_connect,
+        patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+    ):
+        await reconnect()
 
     mock_connect.assert_not_called()
-    assert len(progress_updates) == 1
+    mock_progress_instance.update.assert_called_once()
     mock_logger.debug.assert_any_call(
         "Shutdown in progress. Aborting reconnection attempts."
     )
