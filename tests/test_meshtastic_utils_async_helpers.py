@@ -39,11 +39,10 @@ def test_wait_for_result_result_method_typeerror_fallback():
     assert result == "value"
 
 
-def test_wait_for_result_target_loop_running_uses_threadsafe(monkeypatch):
+def test_wait_for_result_target_loop_running_uses_threadsafe():
     loop = asyncio.new_event_loop()
-
-    monkeypatch.setattr(loop, "is_running", lambda: True)
-    monkeypatch.setattr(loop, "is_closed", lambda: False)
+    future = loop.create_future()
+    future.set_result("done")
 
     result_future = MagicMock()
     result_future.result.return_value = "threadsafe"
@@ -52,15 +51,15 @@ def test_wait_for_result_target_loop_running_uses_threadsafe(monkeypatch):
         coro.close()
         return result_future
 
-    with patch(
-        "mmrelay.meshtastic_utils.asyncio.run_coroutine_threadsafe",
-        side_effect=fake_threadsafe,
+    with (
+        patch.object(loop, "is_running", return_value=True),
+        patch.object(loop, "is_closed", return_value=False),
+        patch(
+            "mmrelay.meshtastic_utils.asyncio.run_coroutine_threadsafe",
+            side_effect=fake_threadsafe,
+        ),
     ):
-
-        async def _sample():
-            return "ignored"
-
-        result = _wait_for_result(_sample(), timeout=0.1, loop=loop)
+        result = _wait_for_result(future, timeout=0.1, loop=loop)
 
     loop.close()
 
@@ -82,21 +81,23 @@ def test_wait_for_result_running_loop_threadsafe():
         coro.close()
         return result_future
 
-    with (
-        patch(
-            "mmrelay.meshtastic_utils.asyncio.get_running_loop",
-            return_value=DummyLoop(),
-        ),
-        patch(
-            "mmrelay.meshtastic_utils.asyncio.run_coroutine_threadsafe",
-            side_effect=fake_threadsafe,
-        ),
-    ):
-
-        async def _sample():
-            return "ignored"
-
-        result = _wait_for_result(_sample(), timeout=0.1)
+    loop = asyncio.new_event_loop()
+    try:
+        future = loop.create_future()
+        future.set_result("done")
+        with (
+            patch(
+                "mmrelay.meshtastic_utils.asyncio.get_running_loop",
+                return_value=DummyLoop(),
+            ),
+            patch(
+                "mmrelay.meshtastic_utils.asyncio.run_coroutine_threadsafe",
+                side_effect=fake_threadsafe,
+            ),
+        ):
+            result = _wait_for_result(future, timeout=0.1)
+    finally:
+        loop.close()
 
     assert result == "running"
 

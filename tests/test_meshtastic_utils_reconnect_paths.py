@@ -31,10 +31,15 @@ async def test_reconnect_rich_progress_breaks_on_shutdown(reset_meshtastic_globa
 
     fake_rich = types.ModuleType("rich")
     fake_progress = types.ModuleType("rich.progress")
+
+    class DummyColumn:
+        def __init__(self, *args, **kwargs):
+            pass
+
     fake_progress.Progress = FakeProgress
-    fake_progress.BarColumn = object
-    fake_progress.TextColumn = object
-    fake_progress.TimeRemainingColumn = object
+    fake_progress.BarColumn = DummyColumn
+    fake_progress.TextColumn = DummyColumn
+    fake_progress.TimeRemainingColumn = DummyColumn
     fake_rich.progress = fake_progress
 
     def _sleep(_seconds):
