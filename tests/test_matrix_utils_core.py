@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -218,8 +218,8 @@ def test_escape_leading_prefix_for_markdown_with_markdown_chars(name_part):
         "_": "\\_",
         "`": "\\`",
         "~": "\\~",
-        "[": "\[",
-        "]": "\]",
+        "[": "\\[",
+        "]": "\\]",
     }
     escaped_name = "".join(escape_map.get(ch, ch) for ch in name_part)
     expected_prefix = f"\\[{escaped_name}/Mesh]:"

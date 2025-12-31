@@ -4,7 +4,7 @@ import re
 import ssl
 import unittest
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, PropertyMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
 
@@ -3467,7 +3467,6 @@ async def test_on_room_message_command_short_circuits(
 
         def matches(self, event):
             """Use bot_command to detect this plugin's commands."""
-            from mmrelay.matrix_utils import bot_command
 
             return any(
                 bot_command(cmd, event, require_mention=False)
@@ -4052,7 +4051,7 @@ async def test_connect_matrix_e2ee_store_path_from_config(monkeypatch):
         raising=False,
     )
     with (
-        patch("mmrelay.matrix_utils.os.makedirs") as mock_makedirs,
+        patch("mmrelay.matrix_utils.os.makedirs"),
         patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
         patch(
             "mmrelay.e2ee_utils.get_e2ee_status", return_value={"overall_status": "ok"}
@@ -4131,7 +4130,7 @@ async def test_connect_matrix_e2ee_store_path_precedence_encryption(monkeypatch)
         raising=False,
     )
     with (
-        patch("mmrelay.matrix_utils.os.makedirs") as mock_makedirs,
+        patch("mmrelay.matrix_utils.os.makedirs"),
         patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
         patch(
             "mmrelay.e2ee_utils.get_e2ee_status", return_value={"overall_status": "ok"}
@@ -4210,7 +4209,7 @@ async def test_connect_matrix_e2ee_store_path_uses_e2ee_section(monkeypatch):
         raising=False,
     )
     with (
-        patch("mmrelay.matrix_utils.os.makedirs") as mock_makedirs,
+        patch("mmrelay.matrix_utils.os.makedirs"),
         patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
         patch(
             "mmrelay.e2ee_utils.get_e2ee_status", return_value={"overall_status": "ok"}
@@ -4293,7 +4292,7 @@ async def test_connect_matrix_e2ee_store_path_default(monkeypatch):
         raising=False,
     )
     with (
-        patch("mmrelay.matrix_utils.os.makedirs") as mock_makedirs,
+        patch("mmrelay.matrix_utils.os.makedirs"),
         patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
         patch(
             "mmrelay.e2ee_utils.get_e2ee_status", return_value={"overall_status": "ok"}
@@ -6246,7 +6245,6 @@ class TestUncoveredMatrixUtils(unittest.TestCase):
     @patch("mmrelay.matrix_utils.logger")
     def test_is_room_alias_with_various_inputs(self, mock_logger):
         """Test _is_room_alias function with different input types."""
-        from mmrelay.matrix_utils import _is_room_alias
 
         # Test with valid alias
         self.assertTrue(_is_room_alias("#room:example.com"))
@@ -6262,7 +6260,6 @@ class TestUncoveredMatrixUtils(unittest.TestCase):
     @patch("mmrelay.matrix_utils.logger")
     def test_iter_room_alias_entries_list_format(self, mock_logger):
         """Test _iter_room_alias_entries with list format."""
-        from mmrelay.matrix_utils import _iter_room_alias_entries
 
         # Test with list of strings
         mapping = ["#room1:example.com", "#room2:example.com"]
@@ -6300,7 +6297,6 @@ class TestUncoveredMatrixUtils(unittest.TestCase):
     @patch("mmrelay.matrix_utils.logger")
     def test_normalize_bot_user_id_various_formats(self, mock_logger):
         """Test _normalize_bot_user_id with different input formats."""
-        from mmrelay.matrix_utils import _normalize_bot_user_id
 
         # Test with full MXID
         result1 = _normalize_bot_user_id("example.com", "@user:example.com")
@@ -6321,7 +6317,6 @@ class TestUncoveredMatrixUtils(unittest.TestCase):
     @patch("mmrelay.matrix_utils.logger")
     def test_normalize_bot_user_id_ipv6_and_ports(self, mock_logger):
         """Test _normalize_bot_user_id with IPv6 hosts and ports."""
-        from mmrelay.matrix_utils import _normalize_bot_user_id
 
         result1 = _normalize_bot_user_id("https://[2001:db8::1]:8448/path", "alice")
         self.assertEqual(result1, "@alice:[2001:db8::1]")
@@ -6335,7 +6330,6 @@ class TestUncoveredMatrixUtils(unittest.TestCase):
     @patch("mmrelay.matrix_utils.logger")
     def test_get_detailed_matrix_error_message_bytes(self, mock_logger):
         """Test _get_detailed_matrix_error_message with bytes input."""
-        from mmrelay.matrix_utils import _get_detailed_matrix_error_message
 
         # Test with valid UTF-8 bytes
         result = _get_detailed_matrix_error_message(b"Error message")
@@ -6350,7 +6344,6 @@ class TestUncoveredMatrixUtils(unittest.TestCase):
     @patch("mmrelay.matrix_utils.logger")
     def test_get_detailed_matrix_error_message_object_attributes(self, mock_logger):
         """Test _get_detailed_matrix_error_message with object having attributes."""
-        from mmrelay.matrix_utils import _get_detailed_matrix_error_message
 
         # Test with message attribute
         mock_response = MagicMock()
@@ -6374,7 +6367,6 @@ class TestUncoveredMatrixUtils(unittest.TestCase):
 
     def test_get_detailed_matrix_error_message_transport_status_non_int(self):
         """Test transport_response with non-int status_code."""
-        from mmrelay.matrix_utils import _get_detailed_matrix_error_message
 
         mock_response = MagicMock()
         mock_response.message = None
@@ -6387,7 +6379,6 @@ class TestUncoveredMatrixUtils(unittest.TestCase):
 
     def test_get_detailed_matrix_error_message_attribute_error(self):
         """Test fallback for unexpected attribute errors."""
-        from mmrelay.matrix_utils import _get_detailed_matrix_error_message
 
         class ExplodingResponse:
             def __getattr__(self, _name):
@@ -6402,7 +6393,6 @@ class TestUncoveredMatrixUtils(unittest.TestCase):
     @patch("mmrelay.matrix_utils.logger")
     def test_update_room_id_in_mapping_unsupported_type(self, mock_logger):
         """Test _update_room_id_in_mapping with unsupported mapping type."""
-        from mmrelay.matrix_utils import _update_room_id_in_mapping
 
         mapping = "not a list or dict"
         result = _update_room_id_in_mapping(

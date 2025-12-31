@@ -1,15 +1,13 @@
 import asyncio
 import logging
-import os
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from mmrelay.cli_utils import _cleanup_local_session_data, logout_matrix_bot
 from mmrelay.config import get_e2ee_store_dir, load_credentials, save_credentials
 from mmrelay.matrix_utils import (
-    NioLocalProtocolError,
     NioLocalTransportError,
     _can_auto_create_credentials,
     connect_matrix,

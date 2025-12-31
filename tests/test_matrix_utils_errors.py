@@ -1,7 +1,5 @@
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from mmrelay.matrix_utils import (
     _get_detailed_matrix_error_message,
     _get_e2ee_error_message,
