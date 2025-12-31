@@ -13,6 +13,14 @@ from mmrelay.meshtastic_utils import on_meshtastic_message
 
 
 def _base_config():
+    """
+    Return a minimal base configuration used by tests.
+    
+    Returns:
+        dict: Configuration with:
+            - "meshtastic": dict containing "connection_type" set to "serial" and the meshnet name under CONFIG_KEY_MESHNET_NAME (value "TestNet").
+            - "matrix_rooms": list with a single room dict containing "id" set to "!room:test" and "meshtastic_channel" set to 0.
+    """
     return {
         "meshtastic": {
             "connection_type": "serial",
@@ -23,6 +31,17 @@ def _base_config():
 
 
 def _base_packet():
+    """
+    Create a representative Meshtastic packet dictionary used by tests.
+    
+    Returns:
+        dict: A packet containing:
+            - fromId: sender node id (123)
+            - to: recipient id (BROADCAST_NUM)
+            - decoded: payload with `text` ("Hello") and `portnum` (TEXT_MESSAGE_APP)
+            - channel: channel index (0)
+            - id: message id (999)
+    """
     return {
         "fromId": 123,
         "to": BROADCAST_NUM,
@@ -33,6 +52,16 @@ def _base_packet():
 
 
 def _make_interface(node_id=999, nodes=None):
+    """
+    Create a MagicMock that simulates a Meshtastic interface for tests.
+    
+    Parameters:
+        node_id (int): The node number to assign to interface.myInfo.my_node_num.
+        nodes (dict | None): Mapping of node IDs to node info objects to attach to interface.nodes; uses an empty dict if None.
+    
+    Returns:
+        MagicMock: A mock interface with `myInfo.my_node_num` and `nodes` set as provided.
+    """
     interface = MagicMock()
     interface.myInfo.my_node_num = node_id
     interface.nodes = nodes or {}
@@ -40,6 +69,15 @@ def _make_interface(node_id=999, nodes=None):
 
 
 def _set_globals(config):
+    """
+    Assign the provided configuration to meshtastic_utils module globals.
+    
+    Set mu.config to the given config and mu.matrix_rooms to the value of the config's
+    "matrix_rooms" key or an empty list if that key is missing.
+    
+    Parameters:
+        config (dict): Configuration mapping to apply to mmrelay.meshtastic_utils.
+    """
     mu.config = config
     mu.matrix_rooms = config.get("matrix_rooms", [])
 
@@ -298,6 +336,12 @@ def test_on_meshtastic_message_logs_when_matrix_rooms_falsy(
 ):
     class FalsyRooms(list):
         def __bool__(self):
+            """
+            Indicates that instances of this class are always considered false in boolean contexts.
+            
+            Returns:
+                bool: `False` always.
+            """
             return False
 
     config = _base_config()
