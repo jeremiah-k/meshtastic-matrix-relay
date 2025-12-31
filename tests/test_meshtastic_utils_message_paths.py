@@ -1,3 +1,4 @@
+from contextlib import ExitStack, contextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from meshtastic.mesh_interface import BROADCAST_NUM
@@ -82,6 +83,62 @@ def _set_globals(config):
     mu.matrix_rooms = config.get("matrix_rooms", [])
 
 
+@contextmanager
+def _patch_message_deps(
+    interaction_settings=None,
+    longname="Long",
+    shortname="Short",
+    message_map=None,
+    plugins=None,
+    matrix_prefix="[p] ",
+    patch_logger=True,
+    patch_relay=True,
+):
+    if interaction_settings is None:
+        interaction_settings = {"reactions": False, "replies": False}
+    if plugins is None:
+        plugins = []
+
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch(
+                "mmrelay.matrix_utils.get_interaction_settings",
+                return_value=interaction_settings,
+            )
+        )
+        stack.enter_context(
+            patch("mmrelay.meshtastic_utils.get_longname", return_value=longname)
+        )
+        stack.enter_context(
+            patch("mmrelay.meshtastic_utils.get_shortname", return_value=shortname)
+        )
+        stack.enter_context(
+            patch(
+                "mmrelay.meshtastic_utils.get_message_map_by_meshtastic_id",
+                return_value=message_map,
+            )
+        )
+        stack.enter_context(
+            patch("mmrelay.plugin_loader.load_plugins", return_value=plugins)
+        )
+        stack.enter_context(
+            patch("mmrelay.matrix_utils.get_matrix_prefix", return_value=matrix_prefix)
+        )
+        mock_relay = (
+            stack.enter_context(
+                patch("mmrelay.matrix_utils.matrix_relay", new_callable=AsyncMock)
+            )
+            if patch_relay
+            else None
+        )
+        mock_logger = (
+            stack.enter_context(patch("mmrelay.meshtastic_utils.logger"))
+            if patch_logger
+            else None
+        )
+        yield mock_logger, mock_relay
+
+
 def test_on_meshtastic_message_filters_reaction_when_disabled(
     reset_meshtastic_globals,
 ):
@@ -111,20 +168,9 @@ def test_on_meshtastic_message_reaction_missing_original(reset_meshtastic_global
     packet = _base_packet()
     packet["decoded"].update({"emoji": EMOJI_FLAG_VALUE, "replyId": 42})
 
-    with (
-        patch(
-            "mmrelay.matrix_utils.get_interaction_settings",
-            return_value={"reactions": True, "replies": True},
-        ),
-        patch("mmrelay.meshtastic_utils.get_longname", return_value="Long"),
-        patch("mmrelay.meshtastic_utils.get_shortname", return_value="Short"),
-        patch(
-            "mmrelay.meshtastic_utils.get_message_map_by_meshtastic_id",
-            return_value=None,
-        ),
-        patch("mmrelay.matrix_utils.matrix_relay", new_callable=AsyncMock),
-        patch("mmrelay.meshtastic_utils.logger") as mock_logger,
-    ):
+    with _patch_message_deps(
+        interaction_settings={"reactions": True, "replies": True},
+    ) as (mock_logger, _mock_relay):
         on_meshtastic_message(packet, _make_interface())
 
     assert any(
@@ -139,20 +185,9 @@ def test_on_meshtastic_message_reply_missing_original(reset_meshtastic_globals):
     packet = _base_packet()
     packet["decoded"].update({"replyId": 77})
 
-    with (
-        patch(
-            "mmrelay.matrix_utils.get_interaction_settings",
-            return_value={"reactions": True, "replies": True},
-        ),
-        patch("mmrelay.meshtastic_utils.get_longname", return_value="Long"),
-        patch("mmrelay.meshtastic_utils.get_shortname", return_value="Short"),
-        patch(
-            "mmrelay.meshtastic_utils.get_message_map_by_meshtastic_id",
-            return_value=None,
-        ),
-        patch("mmrelay.matrix_utils.matrix_relay", new_callable=AsyncMock),
-        patch("mmrelay.meshtastic_utils.logger") as mock_logger,
-    ):
+    with _patch_message_deps(
+        interaction_settings={"reactions": True, "replies": True},
+    ) as (mock_logger, _mock_relay):
         on_meshtastic_message(packet, _make_interface())
 
     assert any(
@@ -170,19 +205,7 @@ def test_on_meshtastic_message_channel_fallback_numeric_portnum(
     packet["channel"] = None
     packet["decoded"]["portnum"] = PORTNUM_TEXT_MESSAGE_APP
 
-    with (
-        patch(
-            "mmrelay.matrix_utils.get_interaction_settings",
-            return_value={"reactions": False, "replies": False},
-        ),
-        patch("mmrelay.meshtastic_utils.get_longname", return_value="Long"),
-        patch("mmrelay.meshtastic_utils.get_shortname", return_value="Short"),
-        patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
-        patch("mmrelay.matrix_utils.get_matrix_prefix", return_value="[p] "),
-        patch(
-            "mmrelay.matrix_utils.matrix_relay", new_callable=AsyncMock
-        ) as mock_relay,
-    ):
+    with _patch_message_deps(patch_logger=False) as (_mock_logger, mock_relay):
         on_meshtastic_message(packet, _make_interface())
 
     mock_relay.assert_awaited_once()
@@ -249,17 +272,13 @@ def test_on_meshtastic_message_saves_node_names_from_interface(
     }
 
     with (
-        patch(
-            "mmrelay.matrix_utils.get_interaction_settings",
-            return_value={"reactions": False, "replies": False},
+        _patch_message_deps(
+            longname=None,
+            shortname=None,
+            patch_logger=False,
         ),
-        patch("mmrelay.meshtastic_utils.get_longname", return_value=None),
-        patch("mmrelay.meshtastic_utils.get_shortname", return_value=None),
         patch("mmrelay.meshtastic_utils.save_longname") as mock_save_long,
         patch("mmrelay.meshtastic_utils.save_shortname") as mock_save_short,
-        patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
-        patch("mmrelay.matrix_utils.get_matrix_prefix", return_value="[p] "),
-        patch("mmrelay.matrix_utils.matrix_relay", new_callable=AsyncMock),
     ):
         on_meshtastic_message(packet, _make_interface(nodes=nodes))
 

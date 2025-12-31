@@ -5,6 +5,25 @@ from unittest.mock import MagicMock, patch
 from mmrelay.meshtastic_utils import _get_name_safely, _make_awaitable, _wait_for_result
 
 
+class _DummyLoop:
+    def is_closed(self):
+        return False
+
+    def is_running(self):
+        return True
+
+
+def _make_threadsafe_runner(result_value):
+    result_future = MagicMock()
+    result_future.result.return_value = result_value
+
+    def _fake_threadsafe(coro, _loop):
+        coro.close()
+        return result_future
+
+    return _fake_threadsafe
+
+
 def test_make_awaitable_wraps_future(meshtastic_loop_safety):
     future = Future()
     wrapped = _make_awaitable(future, loop=meshtastic_loop_safety)
@@ -50,29 +69,12 @@ def test_wait_for_result_target_loop_running_uses_threadsafe():
     future = loop.create_future()
     future.set_result("done")
 
-    result_future = MagicMock()
-    result_future.result.return_value = "threadsafe"
-
-    def fake_threadsafe(coro, _loop):
-        """
-        Close the provided coroutine and return a pre-bound result future.
-
-        Parameters:
-            coro (coroutine): The coroutine object to close; its execution is discarded.
-            _loop: The event loop passed for signature compatibility (unused).
-
-        Returns:
-            result_future: A future-like object previously bound in the surrounding scope.
-        """
-        coro.close()
-        return result_future
-
     with (
         patch.object(loop, "is_running", return_value=True),
         patch.object(loop, "is_closed", return_value=False),
         patch(
             "mmrelay.meshtastic_utils.asyncio.run_coroutine_threadsafe",
-            side_effect=fake_threadsafe,
+            side_effect=_make_threadsafe_runner("threadsafe"),
         ),
     ):
         result = _wait_for_result(future, timeout=0.1, loop=loop)
@@ -83,42 +85,6 @@ def test_wait_for_result_target_loop_running_uses_threadsafe():
 
 
 def test_wait_for_result_running_loop_threadsafe():
-    class DummyLoop:
-        def is_closed(self):
-            """
-            Report whether the resource is closed.
-
-            Returns:
-                True if the resource is closed, False otherwise.
-            """
-            return False
-
-        def is_running(self):
-            """
-            Report whether the loop is running.
-
-            Returns:
-                bool: `True` if the loop is running, `False` otherwise.
-            """
-            return True
-
-    result_future = MagicMock()
-    result_future.result.return_value = "running"
-
-    def fake_threadsafe(coro, _loop):
-        """
-        Close the provided coroutine and return a pre-bound result future.
-
-        Parameters:
-            coro (coroutine): The coroutine object to close; its execution is discarded.
-            _loop: The event loop passed for signature compatibility (unused).
-
-        Returns:
-            result_future: A future-like object previously bound in the surrounding scope.
-        """
-        coro.close()
-        return result_future
-
     loop = asyncio.new_event_loop()
     try:
         future = loop.create_future()
@@ -126,11 +92,11 @@ def test_wait_for_result_running_loop_threadsafe():
         with (
             patch(
                 "mmrelay.meshtastic_utils.asyncio.get_running_loop",
-                return_value=DummyLoop(),
+                return_value=_DummyLoop(),
             ),
             patch(
                 "mmrelay.meshtastic_utils.asyncio.run_coroutine_threadsafe",
-                side_effect=fake_threadsafe,
+                side_effect=_make_threadsafe_runner("running"),
             ),
         ):
             result = _wait_for_result(future, timeout=0.1)
