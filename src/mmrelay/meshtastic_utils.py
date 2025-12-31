@@ -928,11 +928,13 @@ def on_meshtastic_message(packet, interface):
 
     if toId == myId:
         is_direct_message = True
-    elif toId == BROADCAST_NUM:
+    elif toId == BROADCAST_NUM or toId is None:
         is_direct_message = False
     else:
-        # Message to someone else; ignoring for broadcasting logic
-        is_direct_message = False
+        logger.debug(
+            "Ignoring message intended for node %s (not broadcast or relay).", toId
+        )
+        return
 
     meshnet_name = config[CONFIG_SECTION_MESHTASTIC][CONFIG_KEY_MESHNET_NAME]
 

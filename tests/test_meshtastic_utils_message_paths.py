@@ -317,6 +317,24 @@ def test_on_meshtastic_message_direct_message_skips_relay(reset_meshtastic_globa
     )
 
 
+def test_on_meshtastic_message_ignores_messages_for_other_nodes(
+    reset_meshtastic_globals,
+):
+    config = _base_config()
+    _set_globals(config)
+    packet = _base_packet()
+    packet["to"] = 1000
+    interface = _make_interface(node_id=999)
+
+    with _patch_message_deps() as (mock_logger, mock_relay):
+        on_meshtastic_message(packet, interface)
+
+    mock_relay.assert_not_called()
+    mock_logger.debug.assert_any_call(
+        "Ignoring message intended for node %s (not broadcast or relay).", 1000
+    )
+
+
 def test_on_meshtastic_message_logs_when_matrix_rooms_falsy(
     reset_meshtastic_globals,
 ):
