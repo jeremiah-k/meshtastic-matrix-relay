@@ -19,6 +19,8 @@ import unittest
 from concurrent.futures import TimeoutError as ConcurrentTimeoutError
 from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
+from meshtastic.mesh_interface import BROADCAST_NUM
+
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
@@ -485,7 +487,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             "decoded": {"text": "test message", "portnum": 1},
             "fromId": "!12345678",
             "channel": 0,
-            "to": 4294967295,  # BROADCAST_NUM
+            "to": BROADCAST_NUM,
         }
 
         mock_interface = MagicMock()
@@ -755,7 +757,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             "decoded": {"text": "!test", "portnum": 1},
             "fromId": "!12345678",
             "channel": 0,
-            "to": 4294967295,  # BROADCAST_NUM
+            "to": BROADCAST_NUM,
         }
         interface = MagicMock()
         interface.nodes = {
@@ -816,6 +818,8 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         }
         interface = MagicMock()
         interface.nodes = {"!67890": {"user": {"id": "!67890", "longName": "TestNode"}}}
+        interface.myInfo = MagicMock()
+        interface.myInfo.my_node_num = 12345
 
         future = self._TimeoutFuture()
 
@@ -872,7 +876,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             },
             "fromId": "!12345678",
             "channel": 0,
-            "to": 4294967295,  # BROADCAST_NUM
+            "to": BROADCAST_NUM,
         }
         interface = MagicMock()
         interface.nodes = {
@@ -927,7 +931,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             },
             "fromId": "!12345678",
             "channel": 0,
-            "to": 4294967295,
+            "to": BROADCAST_NUM,
         }
         interface = MagicMock()
         interface.nodes = {
@@ -984,7 +988,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             },
             "fromId": "!12345678",
             "channel": 0,
-            "to": 4294967295,
+            "to": BROADCAST_NUM,
         }
         interface = MagicMock()
         interface.nodes = {

@@ -570,12 +570,9 @@ def connect_meshtastic(passed_config=None, force_connect=False):
 
                 # Check if serial port exists before connecting
                 if not serial_port_exists(serial_port):
-                    logger.warning(
-                        f"Serial port {serial_port} does not exist. Waiting..."
+                    raise serial.SerialException(
+                        f"Serial port {serial_port} does not exist."
                     )
-                    time.sleep(5)
-                    attempts += 1
-                    continue
 
                 client = meshtastic.serial_interface.SerialInterface(serial_port)
 
@@ -928,11 +925,13 @@ def on_meshtastic_message(packet, interface):
 
     if toId == myId:
         is_direct_message = True
-    elif toId == BROADCAST_NUM:
+    elif toId == BROADCAST_NUM or toId is None:
         is_direct_message = False
     else:
-        # Message to someone else; ignoring for broadcasting logic
-        is_direct_message = False
+        logger.debug(
+            "Ignoring message intended for node %s (not broadcast or relay).", toId
+        )
+        return
 
     meshnet_name = config[CONFIG_SECTION_MESHTASTIC][CONFIG_KEY_MESHNET_NAME]
 

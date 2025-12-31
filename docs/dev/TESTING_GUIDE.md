@@ -403,6 +403,28 @@ Common issues:
 - Mock applied in wrong order (decorators apply bottom-to-top)
 - Function not actually calling the mocked dependency
 
+### Patch Decorator Argument Order
+
+When stacking `@patch` decorators, the innermost decorator (closest to the
+function) provides the first mock argument:
+
+```python
+@patch("mmrelay.module.outer_dependency")
+@patch("mmrelay.module.inner_dependency")
+def test_example(mock_inner, mock_outer):
+    # mock_inner -> inner_dependency
+    # mock_outer -> outer_dependency
+    pass
+```
+
+### Meshtastic Message Handler Early-Exit Guards
+
+The `on_meshtastic_message` handler (in `mmrelay.meshtastic_utils`) returns
+early if the interface lacks `myInfo` or if a packet is directed to another
+node. When tests expect relays or plugin handling, set
+`interface.myInfo.my_node_num` and ensure `packet["to"]` is either
+`BROADCAST_NUM` or the relay node id.
+
 ### Parametrized Tests with Patch Decorators
 
 When using `@pytest.mark.parametrize` with `@patch` decorators in `unittest.TestCase` classes, the parametrized arguments may not be passed correctly, causing `TypeError: missing 1 required positional argument`.
