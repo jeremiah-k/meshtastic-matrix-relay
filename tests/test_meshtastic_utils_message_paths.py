@@ -295,28 +295,18 @@ def test_on_meshtastic_message_falls_back_to_sender_id(
     )
 
 
-def test_on_meshtastic_message_direct_message_skips_relay(
-    reset_meshtastic_globals, fast_async_helpers
-):
+def test_on_meshtastic_message_direct_message_skips_relay(reset_meshtastic_globals):
     config = _base_config()
     _set_globals(config)
     packet = _base_packet()
     packet["to"] = 999
     interface = _make_interface(node_id=999)
 
-    fast_submit, fast_wait = fast_async_helpers
-    plugin = MagicMock()
-    plugin.plugin_name = "plugin"
-    plugin.handle_meshtastic_message = AsyncMock(return_value=False)
-
     with (
         patch(
             "mmrelay.matrix_utils.get_interaction_settings",
             return_value={"reactions": False, "replies": False},
         ),
-        patch("mmrelay.plugin_loader.load_plugins", return_value=[plugin]),
-        patch("mmrelay.meshtastic_utils._submit_coro", side_effect=fast_submit),
-        patch("mmrelay.meshtastic_utils._wait_for_result", side_effect=fast_wait),
         patch(
             "mmrelay.matrix_utils.matrix_relay", new_callable=AsyncMock
         ) as mock_relay,
@@ -332,7 +322,7 @@ def test_on_meshtastic_message_direct_message_skips_relay(
 
 
 def test_on_meshtastic_message_logs_when_matrix_rooms_falsy(
-    reset_meshtastic_globals, fast_async_helpers
+    reset_meshtastic_globals,
 ):
     class FalsyRooms(list):
         def __bool__(self):
@@ -350,17 +340,11 @@ def test_on_meshtastic_message_logs_when_matrix_rooms_falsy(
     mu.matrix_rooms = falsy_rooms
     packet = _base_packet()
 
-    fast_submit, fast_wait = fast_async_helpers
-
     with (
         patch(
             "mmrelay.matrix_utils.get_interaction_settings",
             return_value={"reactions": False, "replies": False},
         ),
-        patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
-        patch("mmrelay.meshtastic_utils._submit_coro", side_effect=fast_submit),
-        patch("mmrelay.meshtastic_utils._wait_for_result", side_effect=fast_wait),
-        patch("mmrelay.matrix_utils.get_matrix_prefix", return_value="[p] "),
         patch("mmrelay.meshtastic_utils.logger") as mock_logger,
     ):
         on_meshtastic_message(packet, _make_interface())
