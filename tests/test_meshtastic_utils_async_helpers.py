@@ -34,7 +34,7 @@ def test_wait_for_result_result_method_typeerror_fallback():
         def result(self):
             """
             Retrieve the object's result value.
-            
+
             Returns:
                 str: The result string "value".
             """
@@ -56,11 +56,11 @@ def test_wait_for_result_target_loop_running_uses_threadsafe():
     def fake_threadsafe(coro, _loop):
         """
         Close the provided coroutine and return a pre-bound result future.
-        
+
         Parameters:
             coro (coroutine): The coroutine object to close; its execution is discarded.
             _loop: The event loop passed for signature compatibility (unused).
-        
+
         Returns:
             result_future: A future-like object previously bound in the surrounding scope.
         """
@@ -87,7 +87,7 @@ def test_wait_for_result_running_loop_threadsafe():
         def is_closed(self):
             """
             Report whether the resource is closed.
-            
+
             Returns:
                 True if the resource is closed, False otherwise.
             """
@@ -96,7 +96,7 @@ def test_wait_for_result_running_loop_threadsafe():
         def is_running(self):
             """
             Report whether the loop is running.
-            
+
             Returns:
                 bool: `True` if the loop is running, `False` otherwise.
             """
@@ -108,11 +108,11 @@ def test_wait_for_result_running_loop_threadsafe():
     def fake_threadsafe(coro, _loop):
         """
         Close the provided coroutine and return a pre-bound result future.
-        
+
         Parameters:
             coro (coroutine): The coroutine object to close; its execution is discarded.
             _loop: The event loop passed for signature compatibility (unused).
-        
+
         Returns:
             result_future: A future-like object previously bound in the surrounding scope.
         """
@@ -150,7 +150,7 @@ def test_wait_for_result_running_loop_not_running():
             async def _sample():
                 """
                 Provide the literal string "sync-loop".
-                
+
                 Returns:
                     str: The string "sync-loop".
                 """
@@ -167,7 +167,7 @@ def test_wait_for_result_new_loop_path():
     async def _sample():
         """
         Return the literal string "new-loop".
-        
+
         Returns:
             result (str): The string "new-loop".
         """
@@ -182,10 +182,10 @@ def test_get_name_safely_returns_sender_on_exception():
     def _bad_lookup(_sender):
         """
         Raise a TypeError to simulate a failing name lookup.
-        
+
         Parameters:
             _sender: Ignored; present only to match the expected callable signature.
-        
+
         Raises:
             TypeError: always raised with message "boom".
         """

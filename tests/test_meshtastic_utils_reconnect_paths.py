@@ -17,7 +17,7 @@ async def test_reconnect_rich_progress_breaks_on_shutdown(reset_meshtastic_globa
         def __init__(self, *args, **kwargs):
             """
             Initialize the instance.
-            
+
             Parameters:
                 *args: Positional arguments accepted for compatibility and ignored.
                 **kwargs: Keyword arguments accepted for compatibility and ignored.
@@ -27,7 +27,7 @@ async def test_reconnect_rich_progress_breaks_on_shutdown(reset_meshtastic_globa
         def __enter__(self):
             """
             Provide the context manager's entrance value for use with a `with` statement.
-            
+
             Returns:
                 self: The context manager instance to be bound to the target of the `with` statement.
             """
@@ -36,12 +36,12 @@ async def test_reconnect_rich_progress_breaks_on_shutdown(reset_meshtastic_globa
         def __exit__(self, exc_type, exc, tb):
             """
             Ensure exceptions are propagated rather than suppressed when used as a context manager.
-            
+
             Parameters:
                 exc_type (type | None): Exception class if an exception was raised inside the context, otherwise None.
                 exc (BaseException | None): Exception instance raised inside the context, otherwise None.
                 tb (types.TracebackType | None): Traceback object for the exception, otherwise None.
-            
+
             Returns:
                 bool: `False` to indicate the context manager does not suppress exceptions (they should be re-raised).
             """
@@ -50,7 +50,7 @@ async def test_reconnect_rich_progress_breaks_on_shutdown(reset_meshtastic_globa
         def add_task(self, *_args, **_kwargs):
             """
             Add a new background task and return its identifier.
-            
+
             Returns:
                 str: Identifier for the created task (currently the literal "task").
             """
@@ -59,9 +59,9 @@ async def test_reconnect_rich_progress_breaks_on_shutdown(reset_meshtastic_globa
         def update(self, *_args, **_kwargs):
             """
             Record a progress update by appending a marker to the shared list.
-            
+
             Appends the integer `1` to the outer-scope list `progress_updates` to indicate that a progress update occurred. Accepts arbitrary positional and keyword arguments for compatibility but ignores them.
-            
+
             Parameters:
                 _args: Ignored positional arguments.
                 _kwargs: Ignored keyword arguments.
@@ -75,7 +75,7 @@ async def test_reconnect_rich_progress_breaks_on_shutdown(reset_meshtastic_globa
         def __init__(self, *args, **kwargs):
             """
             Initialize the instance.
-            
+
             Parameters:
                 *args: Positional arguments accepted for compatibility and ignored.
                 **kwargs: Keyword arguments accepted for compatibility and ignored.
@@ -91,9 +91,9 @@ async def test_reconnect_rich_progress_breaks_on_shutdown(reset_meshtastic_globa
     def _sleep(_seconds):
         """
         Mark the module as shutting down.
-        
+
         Sets mmrelay.meshtastic_utils.shutting_down to True and ignores the provided `_seconds` value.
-        
+
         Parameters:
             _seconds (float): Ignored; present to match the asyncio.sleep signature.
         """
@@ -127,7 +127,7 @@ async def test_reconnect_logs_exception_and_backs_off(reset_meshtastic_globals):
     def _mark_shutdown(*_args, **_kwargs):
         """
         Mark the mesh relay as shutting down.
-        
+
         Sets mmrelay.meshtastic_utils.shutting_down to True. Accepts arbitrary positional and keyword
         arguments so it can be used as a callback or side-effect function.
         """
@@ -141,7 +141,7 @@ async def test_reconnect_logs_exception_and_backs_off(reset_meshtastic_globals):
         def run_in_executor(self, *_args, **_kwargs):
             """
             Provide a Future that is already failed with a RuntimeError.
-            
+
             Returns:
                 asyncio.Future: A future already completed with RuntimeError("boom").
             """
