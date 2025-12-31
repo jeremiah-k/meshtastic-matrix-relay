@@ -14,15 +14,25 @@ from mmrelay.matrix_utils import (
     login_matrix_bot,
 )
 
+
+@pytest.fixture
+def matrix_config(test_config):
+    config = dict(test_config)
+    config["matrix"] = {
+        "homeserver": "https://matrix.org",
+        "access_token": "test_token",
+        "bot_user_id": "@test:matrix.org",
+    }
+    return config
+
+
 # Matrix Connection Tests
 
 
-async def test_connect_matrix_success(test_config):
+async def test_connect_matrix_success(matrix_config):
     """
     Test that a Matrix client connects successfully using the provided configuration.
     """
-    matrix_config = test_config  # Use fixture
-
     with (
         patch("mmrelay.matrix_utils.matrix_client", None),
         patch("mmrelay.matrix_utils.AsyncClient") as mock_async_client,
@@ -53,11 +63,10 @@ async def test_connect_matrix_success(test_config):
         assert result == mock_client_instance
 
 
-async def test_connect_matrix_without_credentials(test_config):
+async def test_connect_matrix_without_credentials(matrix_config):
     """
     Test that `connect_matrix` returns the Matrix client successfully when using legacy config without credentials.json.
     """
-    matrix_config = test_config
     with (
         patch("mmrelay.matrix_utils.matrix_client", None),
         patch("mmrelay.matrix_utils.AsyncClient") as mock_async_client,
@@ -699,7 +708,7 @@ async def test_login_matrix_bot_cleanup_error_logs_debug(
 async def test_login_matrix_bot_username_warnings(
     _mock_ssl_context, mock_async_client, _mock_save_credentials
 ):
-    """Unusual usernames should emit warnings."""
+    """Usernames with unusual characters should emit warnings."""
     mock_discovery_client = AsyncMock()
     mock_main_client = AsyncMock()
     mock_async_client.side_effect = [mock_discovery_client, mock_main_client]
@@ -721,12 +730,12 @@ async def test_login_matrix_bot_username_warnings(
     ):
         await login_matrix_bot(
             homeserver="https://matrix.org",
-            username="@full:id.org",
+            username="user!bad",
             password="pass",
             logout_others=False,
         )
         assert any(
-            "Username should not be a full MXID" in call.args[0]
+            "Username contains unusual characters" in call.args[0]
             for call in mock_logger.warning.call_args_list
         )
 
