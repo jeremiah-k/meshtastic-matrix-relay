@@ -16,6 +16,7 @@ from mmrelay.matrix_utils import (
 # Join Room Tests
 
 
+@pytest.mark.asyncio
 @patch("mmrelay.matrix_utils.matrix_client")
 @patch("mmrelay.matrix_utils.logger")
 async def test_join_matrix_room_by_id(_mock_logger, mock_matrix_client):
@@ -32,6 +33,7 @@ async def test_join_matrix_room_by_id(_mock_logger, mock_matrix_client):
     mock_matrix_client.join.assert_called_once_with("!room:matrix.org")
 
 
+@pytest.mark.asyncio
 @patch("mmrelay.matrix_utils.matrix_client")
 @patch("mmrelay.matrix_utils.logger")
 async def test_join_matrix_room_already_joined(_mock_logger, mock_matrix_client):
@@ -48,6 +50,7 @@ async def test_join_matrix_room_already_joined(_mock_logger, mock_matrix_client)
     )
 
 
+@pytest.mark.asyncio
 @patch("mmrelay.matrix_utils.logger")
 async def test_join_matrix_room_resolves_alias(mock_logger, monkeypatch):
     mock_client = MagicMock()
@@ -72,6 +75,7 @@ async def test_join_matrix_room_resolves_alias(mock_logger, monkeypatch):
     assert matrix_rooms_config[0]["id"] == resolved_id
 
 
+@pytest.mark.asyncio
 @patch("mmrelay.matrix_utils.logger")
 async def test_join_matrix_room_resolve_alias_handles_nio_errors(
     mock_logger, monkeypatch
@@ -96,6 +100,7 @@ async def test_join_matrix_room_resolve_alias_handles_nio_errors(
     mock_logger.exception.assert_called_once()
 
 
+@pytest.mark.asyncio
 @patch("mmrelay.matrix_utils.logger")
 async def test_join_matrix_room_resolve_alias_missing_room_id(mock_logger, monkeypatch):
     """If alias resolution returns no room_id, the function should log and return without joining."""
@@ -119,6 +124,7 @@ async def test_join_matrix_room_resolve_alias_missing_room_id(mock_logger, monke
     )
 
 
+@pytest.mark.asyncio
 @patch("mmrelay.matrix_utils.logger")
 async def test_join_matrix_room_rejects_non_string_identifier(mock_logger):
     mock_client = MagicMock()
@@ -275,12 +281,12 @@ async def test_resolve_aliases_in_mapping_list():
     async def mock_resolver(alias):
         """
         Resolve specific Matrix room aliases to canonical room IDs.
-        
+
         Parameters:
-        	alias (str): Matrix room alias or identifier to resolve.
-        
+                alias (str): Matrix room alias or identifier to resolve.
+
         Returns:
-        	str: The canonical room ID for known aliases (`!resolved1:matrix.org` for `#room1:matrix.org`, `!resolved3:matrix.org` for `#room3:matrix.org`), or the original `alias` unchanged.
+                str: The canonical room ID for known aliases (`!resolved1:matrix.org` for `#room1:matrix.org`, `!resolved3:matrix.org` for `#room3:matrix.org`), or the original `alias` unchanged.
         """
         if alias == "#room1:matrix.org":
             return "!resolved1:matrix.org"
@@ -307,10 +313,10 @@ async def test_resolve_aliases_in_mapping_dict():
     async def mock_resolver(alias):
         """
         Resolve test Matrix room aliases to predefined room IDs, falling back to the input.
-        
+
         Parameters:
             alias (str): Matrix room alias or identifier to resolve.
-        
+
         Returns:
             str: The resolved Matrix room ID for known aliases, otherwise the original identifier.
         """

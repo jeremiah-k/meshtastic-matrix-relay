@@ -740,12 +740,12 @@ def mock_to_thread(monkeypatch):
     async def _to_thread(func, *args, **kwargs):
         """
         Execute the given callable on the current thread and return its result.
-        
+
         Parameters:
             func (Callable): The callable to invoke.
             *args: Positional arguments to pass to func.
             **kwargs: Keyword arguments to pass to func.
-        
+
         Returns:
             The value returned by func. Exceptions raised by func propagate to the caller.
         """
@@ -758,7 +758,7 @@ def mock_to_thread(monkeypatch):
 def mock_room():
     """
     Provide a MagicMock representing a Matrix room for tests.
-    
+
     Returns:
         MagicMock: A mock room object with `room_id` set to "!room:matrix.org".
     """
@@ -771,11 +771,11 @@ def mock_room():
 def mock_event():
     """
     Create a mock Matrix message event object for tests.
-    
+
     The returned MagicMock simulates a typical incoming message event and has the
     attributes `sender`, `body`, `source`, and `server_timestamp` set to sample
     values.
-    
+
     Returns:
         MagicMock: Mock event with `sender` set to "@user:matrix.org",
         `body` set to "Hello, world!", `source` set to {"content": {"body": "Hello, world!"}},

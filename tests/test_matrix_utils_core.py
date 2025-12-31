@@ -37,24 +37,20 @@ def test_create_mapping_info_defaults():
     assert result["meshnet"] is None
 
 
-def test_create_mapping_info_none_values():
+@pytest.mark.parametrize(
+    "event_id, room_id, text",
+    [
+        pytest.param(None, "!room:matrix.org", "Hello", id="none_event_id"),
+        pytest.param("$event123", "", "Hello", id="empty_room_id"),
+        pytest.param("$event123", "!room:matrix.org", None, id="none_text"),
+        pytest.param("$event123", "!room:matrix.org", "", id="empty_text"),
+    ],
+)
+def test_create_mapping_info_none_values(event_id, room_id, text):
     """
     Test that _create_mapping_info returns None when required parameters are None or empty.
     """
-    # Test with None matrix_event_id
-    result = _create_mapping_info(None, "!room:matrix.org", "Hello")
-    assert result is None
-
-    # Test with empty room_id
-    result = _create_mapping_info("$event123", "", "Hello")
-    assert result is None
-
-    # Test with None text
-    result = _create_mapping_info("$event123", "!room:matrix.org", None)
-    assert result is None
-
-    # Test with empty text
-    result = _create_mapping_info("$event123", "!room:matrix.org", "")
+    result = _create_mapping_info(event_id, room_id, text)
     assert result is None
 
 

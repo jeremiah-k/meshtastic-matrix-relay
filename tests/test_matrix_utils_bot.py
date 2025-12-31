@@ -12,7 +12,7 @@ class TestBotCommand:
     def mock_bot_globals(self):
         """
         Provide a pytest fixture that patches the module-level bot identifiers for tests in this class.
-        
+
         Patches mmrelay.matrix_utils.bot_user_id to "@bot:matrix.org" and
         mmrelay.matrix_utils.bot_user_name to "Bot" for the duration of each test, then yields
         control to the test. Intended for use as an autouse fixture within the test class.
@@ -184,7 +184,7 @@ class TestBotCommand:
             def __str__(self):
                 """
                 Raise a ValueError with message "boom".
-                
+
                 Raises:
                     ValueError: Always raised when attempting to produce the string representation.
                 """

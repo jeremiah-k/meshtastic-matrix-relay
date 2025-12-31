@@ -19,12 +19,12 @@ from mmrelay.matrix_utils import (
 def matrix_config(test_config):
     """
     Create a test configuration dictionary that includes Matrix credentials.
-    
+
     Parameters:
-    	test_config (dict): Base configuration to copy and extend.
-    
+        test_config (dict): Base configuration to copy and extend.
+
     Returns:
-    	config (dict): A shallow copy of `test_config` with a "matrix" key containing test homeserver, access token, and bot user id.
+        config (dict): A shallow copy of `test_config` with a "matrix" key containing test homeserver, access token, and bot user id.
     """
     config = dict(test_config)
     config["matrix"] = {
@@ -38,6 +38,7 @@ def matrix_config(test_config):
 # Matrix Connection Tests
 
 
+@pytest.mark.asyncio
 async def test_connect_matrix_success(matrix_config):
     """
     Test that a Matrix client connects successfully using the provided configuration.
@@ -55,7 +56,7 @@ async def test_connect_matrix_success(matrix_config):
         async def mock_whoami():
             """
             Create a fake whoami response for tests.
-            
+
             Returns:
                 MagicMock: A mock object with a `device_id` attribute set to `"test_device_id"`.
             """
@@ -64,7 +65,7 @@ async def test_connect_matrix_success(matrix_config):
         async def mock_sync(*args, **kwargs):
             """
             Provide an asynchronous MagicMock for use in tests.
-            
+
             Returns:
                 A MagicMock instance.
             """
@@ -73,7 +74,7 @@ async def test_connect_matrix_success(matrix_config):
         async def mock_get_displayname(*args, **kwargs):
             """
             Create an async mock that simulates a client's get_displayname response.
-            
+
             Returns:
                 MagicMock: mock object with a `displayname` attribute set to "Test Bot".
             """
@@ -90,6 +91,7 @@ async def test_connect_matrix_success(matrix_config):
         assert result == mock_client_instance
 
 
+@pytest.mark.asyncio
 async def test_connect_matrix_without_credentials(matrix_config):
     """
     Test that `connect_matrix` returns the Matrix client successfully when using legacy config without credentials.json.
@@ -108,7 +110,7 @@ async def test_connect_matrix_without_credentials(matrix_config):
         async def mock_sync(*args, **kwargs):
             """
             Provide an asynchronous MagicMock for use in tests.
-            
+
             Returns:
                 A MagicMock instance.
             """
@@ -117,7 +119,7 @@ async def test_connect_matrix_without_credentials(matrix_config):
         async def mock_get_displayname(*args, **kwargs):
             """
             Create an async mock that simulates a client's get_displayname response.
-            
+
             Returns:
                 MagicMock: mock object with a `displayname` attribute set to "Test Bot".
             """
@@ -132,6 +134,7 @@ async def test_connect_matrix_without_credentials(matrix_config):
         assert result == mock_client_instance
 
 
+@pytest.mark.asyncio
 @patch("mmrelay.matrix_utils.matrix_client", None)
 @patch("mmrelay.matrix_utils.AsyncClient")
 @patch("mmrelay.matrix_utils.logger")
@@ -159,7 +162,7 @@ async def test_connect_matrix_alias_resolution_success(
         async def mock_whoami():
             """
             Create a fake whoami response for tests.
-            
+
             Returns:
                 MagicMock: A mock object with a `device_id` attribute set to `"test_device_id"`.
             """
@@ -168,7 +171,7 @@ async def test_connect_matrix_alias_resolution_success(
         async def mock_sync(*_args, **_kwargs):
             """
             Provide an async-compatible replacement for a sync operation that yields a MagicMock.
-            
+
             Returns:
                 MagicMock: a mock object representing the result of the asynchronous operation.
             """
@@ -177,7 +180,7 @@ async def test_connect_matrix_alias_resolution_success(
         async def mock_get_displayname(*_args, **_kwargs):
             """
             Return a mock object exposing a `displayname` attribute set to "Test Bot".
-            
+
             Returns:
                 mock (MagicMock): A mock object whose `displayname` attribute equals "Test Bot".
             """
@@ -188,10 +191,10 @@ async def test_connect_matrix_alias_resolution_success(
         async def mock_room_resolve_alias_impl(_alias):
             """
             Create a mock response for resolving a room alias with a fixed resolved room ID.
-            
+
             Parameters:
                 _alias (str): Alias to resolve (ignored by this mock implementation).
-            
+
             Returns:
                 response: A mock object with `room_id` set to "!resolved:matrix.org" and `message` set to an empty string.
             """
@@ -229,6 +232,7 @@ async def test_connect_matrix_alias_resolution_success(
         assert config["matrix_rooms"][1]["id"] == "!resolved:matrix.org"
 
 
+@pytest.mark.asyncio
 @patch("mmrelay.matrix_utils.matrix_client", None)
 @patch("mmrelay.matrix_utils.AsyncClient")
 @patch("mmrelay.matrix_utils.logger")
@@ -256,7 +260,7 @@ async def test_connect_matrix_alias_resolution_failure(
         async def mock_whoami():
             """
             Create a fake whoami response for tests.
-            
+
             Returns:
                 MagicMock: A mock object with a `device_id` attribute set to `"test_device_id"`.
             """
@@ -265,7 +269,7 @@ async def test_connect_matrix_alias_resolution_failure(
         async def mock_sync(*_args, **_kwargs):
             """
             Provide an async-compatible replacement for a sync operation that yields a MagicMock.
-            
+
             Returns:
                 MagicMock: a mock object representing the result of the asynchronous operation.
             """
@@ -274,7 +278,7 @@ async def test_connect_matrix_alias_resolution_failure(
         async def mock_get_displayname(*_args, **_kwargs):
             """
             Return a mock object exposing a `displayname` attribute set to "Test Bot".
-            
+
             Returns:
                 mock (MagicMock): A mock object whose `displayname` attribute equals "Test Bot".
             """
@@ -285,10 +289,10 @@ async def test_connect_matrix_alias_resolution_failure(
         async def mock_room_resolve_alias_impl(_alias):
             """
             Simulate a failed room alias resolution by returning a mock response with no room_id and an error message.
-            
+
             Parameters:
                 _alias (str): The alias to resolve (ignored by this implementation).
-            
+
             Returns:
                 MagicMock: A mock response object with `room_id` set to `None` and `message` set to "Room not found".
             """
@@ -364,7 +368,7 @@ async def test_connect_matrix_with_e2ee_credentials(
     async def mock_sync(*args, **kwargs):
         """
         Async test helper that provides a MagicMock instance as a stand-in for a synchronous sync result.
-        
+
         Returns:
             MagicMock: A MagicMock instance.
         """
@@ -373,7 +377,7 @@ async def test_connect_matrix_with_e2ee_credentials(
     async def mock_whoami(*args, **kwargs):
         """
         Provide a mocked 'whoami' response for tests with a fixed device identifier.
-        
+
         Returns:
             MagicMock: An object with a `device_id` attribute set to "TEST_DEVICE".
         """
@@ -382,7 +386,7 @@ async def test_connect_matrix_with_e2ee_credentials(
     async def mock_keys_upload(*args, **kwargs):
         """
         Create an awaitable used in tests to simulate a keys upload operation.
-        
+
         Returns:
             MagicMock: mock object representing the result of the upload.
         """
@@ -391,7 +395,7 @@ async def test_connect_matrix_with_e2ee_credentials(
     async def mock_get_displayname(*args, **kwargs):
         """
         Provide a MagicMock object with a fixed display name of "Test Bot".
-        
+
         Returns:
             MagicMock: A MagicMock instance whose `displayname` attribute is "Test Bot".
         """
@@ -421,6 +425,7 @@ async def test_connect_matrix_with_e2ee_credentials(
 # Login Tests
 
 
+@pytest.mark.asyncio
 @patch("mmrelay.matrix_utils.input")
 @patch("mmrelay.cli_utils._create_ssl_context")
 @patch("mmrelay.matrix_utils.getpass.getpass")
@@ -466,6 +471,7 @@ async def test_login_matrix_bot_success(
     assert mock_async_client.call_count == 2
 
 
+@pytest.mark.asyncio
 @patch("mmrelay.matrix_utils.input")
 async def test_login_matrix_bot_with_parameters(mock_input):
     """Test login_matrix_bot with provided parameters."""
@@ -493,6 +499,7 @@ async def test_login_matrix_bot_with_parameters(mock_input):
             mock_input.assert_not_called()
 
 
+@pytest.mark.asyncio
 @patch("mmrelay.matrix_utils.getpass.getpass")
 @patch("mmrelay.matrix_utils.input")
 async def test_login_matrix_bot_login_failure(mock_input, mock_getpass):
@@ -515,6 +522,7 @@ async def test_login_matrix_bot_login_failure(mock_input, mock_getpass):
         assert mock_client.close.call_count == 2
 
 
+@pytest.mark.asyncio
 @patch("mmrelay.matrix_utils.save_credentials")
 @patch("mmrelay.matrix_utils.AsyncClient")
 @patch("mmrelay.cli_utils._create_ssl_context", return_value=None)
@@ -558,6 +566,7 @@ async def test_login_matrix_bot_adds_scheme_and_discovery_timeout(
     assert mock_async_client.call_args_list[1].args[0] == "https://matrix.org"
 
 
+@pytest.mark.asyncio
 @patch("mmrelay.matrix_utils.save_credentials")
 @patch("mmrelay.matrix_utils.AsyncClient")
 @patch("mmrelay.cli_utils._create_ssl_context", return_value=None)
@@ -608,6 +617,7 @@ async def test_login_matrix_bot_discovery_response_with_homeserver_url_attribute
     assert mock_async_client.call_args_list[1].args[0] == "https://actual.org"
 
 
+@pytest.mark.asyncio
 @patch("mmrelay.matrix_utils.save_credentials")
 @patch("mmrelay.matrix_utils.AsyncClient")
 @patch("mmrelay.cli_utils._create_ssl_context", return_value=None)
@@ -653,6 +663,7 @@ async def test_login_matrix_bot_discovery_response_unexpected_no_attr(
     )
 
 
+@pytest.mark.asyncio
 @patch("mmrelay.matrix_utils.AsyncClient")
 @patch("mmrelay.cli_utils._create_ssl_context", return_value=None)
 async def test_login_matrix_bot_username_normalization_failure_returns_false(
@@ -684,6 +695,7 @@ async def test_login_matrix_bot_username_normalization_failure_returns_false(
     mock_logger.error.assert_any_call("Username normalization failed")
 
 
+@pytest.mark.asyncio
 @patch("mmrelay.matrix_utils.save_credentials")
 @patch("mmrelay.matrix_utils.AsyncClient")
 @patch("mmrelay.matrix_utils._create_ssl_context", return_value=None)
@@ -714,10 +726,10 @@ async def test_login_matrix_bot_debug_env_sets_log_levels(
     def fake_get_logger(name):
         """
         Return a mock logger instance associated with the given name.
-        
+
         Parameters:
             name (str): The logger name/key to retrieve.
-        
+
         Returns:
             MagicMock: A MagicMock acting as a logger for `name`. The instance is cached and the same object is returned on subsequent calls with the same name.
         """
@@ -743,6 +755,7 @@ async def test_login_matrix_bot_debug_env_sets_log_levels(
         logger_instances[name].setLevel.assert_called_once_with(logging.DEBUG)
 
 
+@pytest.mark.asyncio
 @patch("mmrelay.matrix_utils.save_credentials")
 @patch("mmrelay.matrix_utils.AsyncClient")
 @patch("mmrelay.matrix_utils._create_ssl_context", return_value=None)
@@ -788,6 +801,7 @@ async def test_login_matrix_bot_discovery_type_error_logs_warning(
     )
 
 
+@pytest.mark.asyncio
 @patch("mmrelay.matrix_utils.AsyncClient")
 @patch("mmrelay.matrix_utils._create_ssl_context", return_value=None)
 @patch("mmrelay.matrix_utils._normalize_bot_user_id", return_value="@user:matrix.org")
@@ -828,6 +842,7 @@ async def test_login_matrix_bot_cleanup_error_logs_debug(
     )
 
 
+@pytest.mark.asyncio
 @patch("mmrelay.matrix_utils.save_credentials")
 @patch("mmrelay.matrix_utils.AsyncClient")
 @patch("mmrelay.matrix_utils._create_ssl_context", return_value=None)
@@ -879,30 +894,21 @@ async def test_logout_matrix_bot_no_credentials():
 
 
 @pytest.mark.asyncio
-@patch("mmrelay.cli_utils.AsyncClient", MagicMock(spec=True))
-async def test_logout_matrix_bot_invalid_credentials():
+@patch("mmrelay.cli_utils._cleanup_local_session_data", return_value=True)
+@pytest.mark.parametrize(
+    "credentials",
+    [
+        pytest.param({"user_id": "test"}, id="missing_homeserver"),
+        pytest.param({"homeserver": "matrix.org"}, id="missing_user_id"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_logout_matrix_bot_invalid_credentials(mock_cleanup, credentials):
     """Test logout with invalid/incomplete credentials falls back to local cleanup."""
-    with patch(
-        "mmrelay.cli_utils._cleanup_local_session_data", return_value=True
-    ) as mock_cleanup:
-        # Test missing homeserver - should fall back to local cleanup
-        with patch(
-            "mmrelay.matrix_utils.load_credentials", return_value={"user_id": "test"}
-        ):
-            result = await logout_matrix_bot(password="test_password")
-            assert result is True
-            mock_cleanup.assert_called_once()
-
-        mock_cleanup.reset_mock()
-
-        # Test missing user_id
-        with patch(
-            "mmrelay.matrix_utils.load_credentials",
-            return_value={"homeserver": "matrix.org"},
-        ):
-            result = await logout_matrix_bot(password="test_password")
-            assert result is True
-            mock_cleanup.assert_called_once()
+    with patch("mmrelay.matrix_utils.load_credentials", return_value=credentials):
+        result = await logout_matrix_bot(password="test_password")
+        assert result is True
+        mock_cleanup.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -1143,38 +1149,40 @@ def test_can_auto_create_credentials_success():
     assert result is True
 
 
-def test_can_auto_create_credentials_none_bot_user_id():
-    """Test failure when required fields are None."""
-    matrix_config = {
-        "homeserver": "https://matrix.example.org",
-        "bot_user_id": None,
-        "password": "test_password",
-    }
-
-    result = _can_auto_create_credentials(matrix_config)
-    assert result is False
-
-
-def test_can_auto_create_credentials_none_values_homeserver():
+@pytest.mark.parametrize(
+    "invalid_config",
+    [
+        pytest.param(
+            {
+                "homeserver": "https://matrix.example.org",
+                "bot_user_id": None,
+                "password": "test_password",
+            },
+            id="none_bot_user_id",
+        ),
+        pytest.param(
+            {
+                "homeserver": None,
+                "bot_user_id": "@bot:matrix.org",
+                "password": "password123",
+            },
+            id="none_homeserver",
+        ),
+        pytest.param(
+            {
+                "homeserver": "https://matrix.org",
+                "bot_user_id": None,
+                "password": "password123",
+            },
+            id="none_bot_user_id_alt",
+        ),
+    ],
+)
+def test_can_auto_create_credentials_with_invalid_values(invalid_config):
     """
     Test _can_auto_create_credentials returns False when values are None.
     """
-    config = {
-        "homeserver": None,
-        "bot_user_id": "@bot:matrix.org",
-        "password": "password123",
-    }
-
-    result = _can_auto_create_credentials(config)
-    assert result is False
-
-    config = {
-        "homeserver": "https://matrix.org",
-        "bot_user_id": None,
-        "password": "password123",
-    }
-
-    result = _can_auto_create_credentials(config)
+    result = _can_auto_create_credentials(invalid_config)
     assert result is False
 
 
