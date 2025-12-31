@@ -147,7 +147,7 @@ def test_on_meshtastic_message_channel_fallback_numeric_portnum(
     ):
         on_meshtastic_message(packet, _make_interface())
 
-    mock_relay.assert_awaited()
+    mock_relay.assert_awaited_once()
 
 
 def test_on_meshtastic_message_unknown_portnum_logs_debug(

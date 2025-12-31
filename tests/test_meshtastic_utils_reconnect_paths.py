@@ -61,7 +61,7 @@ async def test_reconnect_rich_progress_breaks_on_shutdown(reset_meshtastic_globa
         await reconnect()
 
     mock_connect.assert_not_called()
-    assert progress_updates
+    assert len(progress_updates) == 1
     assert any(
         "Shutdown in progress" in call.args[0]
         for call in mock_logger.debug.call_args_list
