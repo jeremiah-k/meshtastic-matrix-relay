@@ -44,9 +44,8 @@ def test_connect_meshtastic_network_alias_warns_and_uses_tcp(reset_meshtastic_gl
 
     assert result is mock_client
     mock_tcp.assert_called_once_with(hostname="127.0.0.1")
-    assert any(
-        "Using 'network' connection type" in call.args[0]
-        for call in mock_logger.warning.call_args_list
+    mock_logger.warning.assert_any_call(
+        "Using 'network' connection type (legacy). 'tcp' is now the preferred name and 'network' will be deprecated in a future version."
     )
 
 
@@ -57,9 +56,8 @@ def test_connect_meshtastic_retry_limit_deprecated_warning(reset_meshtastic_glob
         result = connect_meshtastic(passed_config=config)
 
     assert result is None
-    assert any(
-        "'retry_limit' is deprecated" in call.args[0]
-        for call in mock_logger.warning.call_args_list
+    mock_logger.warning.assert_any_call(
+        "'retry_limit' is deprecated in meshtastic config; use 'retries' instead"
     )
 
 
@@ -134,9 +132,8 @@ def test_connect_meshtastic_tcp_missing_host_returns_none(
         result = connect_meshtastic(passed_config=config)
 
     assert result is None
-    assert any(
-        "No host specified in Meshtastic configuration" in call.args[0]
-        for call in mock_logger.error.call_args_list
+    mock_logger.error.assert_any_call(
+        "No host specified in Meshtastic configuration for TCP connection."
     )
 
 
@@ -163,9 +160,8 @@ def test_connect_meshtastic_logs_firmware_version_on_success(
         result = connect_meshtastic(passed_config=config)
 
     assert result is mock_client
-    assert any(
-        "Meshtastic Firmware version 1.2.3" in call.args[0]
-        for call in mock_logger.info.call_args_list
+    mock_logger.info.assert_any_call(
+        "Connected to Node / HW / Meshtastic Firmware version 1.2.3"
     )
 
 
@@ -217,10 +213,7 @@ def test_connect_meshtastic_timeout_respects_retry_limit(
 
     assert result is None
     assert mock_sleep.call_count == 1
-    assert any(
-        "Connection failed after" in call.args[0]
-        for call in mock_logger.exception.call_args_list
-    )
+    mock_logger.exception.assert_any_call("Connection failed after %s attempts", 2)
 
 
 @patch("mmrelay.meshtastic_utils.serial_port_exists", return_value=True)
@@ -248,10 +241,7 @@ def test_connect_meshtastic_serial_exception_retries_then_fails(
 
     assert result is None
     assert mock_sleep.call_count == 1
-    assert any(
-        "Connection failed after" in call.args[0]
-        for call in mock_logger.exception.call_args_list
-    )
+    mock_logger.exception.assert_any_call("Connection failed after %s attempts", 2)
 
 
 @patch("mmrelay.meshtastic_utils.time.sleep")
@@ -276,10 +266,7 @@ def test_connect_meshtastic_unexpected_exception_exhausts_retries(
 
     assert result is None
     assert mock_sleep.call_count == 1
-    assert any(
-        "Connection failed after" in call.args[0]
-        for call in mock_logger.exception.call_args_list
-    )
+    mock_logger.exception.assert_any_call("Connection failed after %s attempts", 2)
 
 
 def test_on_lost_meshtastic_connection_ignores_bad_fd(reset_meshtastic_globals):
@@ -311,9 +298,8 @@ def test_on_lost_meshtastic_connection_logs_close_error(reset_meshtastic_globals
         mock_loop.is_closed.return_value = True
         on_lost_meshtastic_connection(detection_source="test")
 
-    assert any(
-        "Error closing Meshtastic client" in call.args[0]
-        for call in mock_logger.warning.call_args_list
+    mock_logger.warning.assert_any_call(
+        "Error closing Meshtastic client: [Errno 5] close"
     )
 
 
@@ -331,7 +317,4 @@ def test_on_lost_meshtastic_connection_logs_unexpected_close_error(
         mock_loop.is_closed.return_value = True
         on_lost_meshtastic_connection(detection_source="test")
 
-    assert any(
-        "Error closing Meshtastic client" in call.args[0]
-        for call in mock_logger.warning.call_args_list
-    )
+    mock_logger.warning.assert_any_call("Error closing Meshtastic client: boom")

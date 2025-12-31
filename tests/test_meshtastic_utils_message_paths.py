@@ -156,9 +156,8 @@ def test_on_meshtastic_message_filters_reaction_when_disabled(
     ):
         on_meshtastic_message(packet, _make_interface())
 
-    assert any(
-        "Filtered out reaction packet" in call.args[0]
-        for call in mock_logger.debug.call_args_list
+    mock_logger.debug.assert_any_call(
+        "Filtered out reaction packet due to reactions being disabled."
     )
 
 
@@ -173,10 +172,7 @@ def test_on_meshtastic_message_reaction_missing_original(reset_meshtastic_global
     ) as (mock_logger, _mock_relay):
         on_meshtastic_message(packet, _make_interface())
 
-    assert any(
-        "Original message for reaction not found" in call.args[0]
-        for call in mock_logger.debug.call_args_list
-    )
+    mock_logger.debug.assert_any_call("Original message for reaction not found in DB.")
 
 
 def test_on_meshtastic_message_reply_missing_original(reset_meshtastic_globals):
@@ -190,10 +186,7 @@ def test_on_meshtastic_message_reply_missing_original(reset_meshtastic_globals):
     ) as (mock_logger, _mock_relay):
         on_meshtastic_message(packet, _make_interface())
 
-    assert any(
-        "Original message for reply not found" in call.args[0]
-        for call in mock_logger.debug.call_args_list
-    )
+    mock_logger.debug.assert_any_call("Original message for reply not found in DB.")
 
 
 def test_on_meshtastic_message_channel_fallback_numeric_portnum(
@@ -229,9 +222,7 @@ def test_on_meshtastic_message_unknown_portnum_logs_debug(
     ):
         on_meshtastic_message(packet, _make_interface())
 
-    assert any(
-        "Unknown portnum" in call.args[0] for call in mock_logger.debug.call_args_list
-    )
+    mock_logger.debug.assert_any_call("Unknown portnum 9999, cannot determine channel")
 
 
 def test_on_meshtastic_message_detection_sensor_disabled(
@@ -252,9 +243,8 @@ def test_on_meshtastic_message_detection_sensor_disabled(
     ):
         on_meshtastic_message(packet, _make_interface())
 
-    assert any(
-        "Detection sensor packet received" in call.args[0]
-        for call in mock_logger.debug.call_args_list
+    mock_logger.debug.assert_any_call(
+        "Detection sensor packet received, but detection sensor processing is disabled."
     )
 
 
@@ -308,10 +298,7 @@ def test_on_meshtastic_message_falls_back_to_sender_id(
         on_meshtastic_message(packet, _make_interface(nodes={}))
 
     mock_prefix.assert_called_once_with(config, "123", "123", "TestNet")
-    assert any(
-        "Node info for sender 123" in call.args[0]
-        for call in mock_logger.debug.call_args_list
-    )
+    mock_logger.debug.assert_any_call("Node info for sender 123 not available yet.")
 
 
 def test_on_meshtastic_message_direct_message_skips_relay(reset_meshtastic_globals):
@@ -321,22 +308,12 @@ def test_on_meshtastic_message_direct_message_skips_relay(reset_meshtastic_globa
     packet["to"] = 999
     interface = _make_interface(node_id=999)
 
-    with (
-        patch(
-            "mmrelay.matrix_utils.get_interaction_settings",
-            return_value={"reactions": False, "replies": False},
-        ),
-        patch(
-            "mmrelay.matrix_utils.matrix_relay", new_callable=AsyncMock
-        ) as mock_relay,
-        patch("mmrelay.meshtastic_utils.logger") as mock_logger,
-    ):
+    with _patch_message_deps() as (mock_logger, mock_relay):
         on_meshtastic_message(packet, interface)
 
     mock_relay.assert_not_called()
-    assert any(
-        "Received a direct message" in call.args[0]
-        for call in mock_logger.debug.call_args_list
+    mock_logger.debug.assert_any_call(
+        "Received a direct message from Long: Hello. Not relaying to Matrix."
     )
 
 
@@ -359,18 +336,11 @@ def test_on_meshtastic_message_logs_when_matrix_rooms_falsy(
     mu.matrix_rooms = falsy_rooms
     packet = _base_packet()
 
-    with (
-        patch(
-            "mmrelay.matrix_utils.get_interaction_settings",
-            return_value={"reactions": False, "replies": False},
-        ),
-        patch("mmrelay.meshtastic_utils.logger") as mock_logger,
-    ):
+    with _patch_message_deps() as (mock_logger, _mock_relay):
         on_meshtastic_message(packet, _make_interface())
 
-    assert any(
-        "matrix_rooms is empty" in call.args[0]
-        for call in mock_logger.error.call_args_list
+    mock_logger.error.assert_any_call(
+        "matrix_rooms is empty. Cannot relay message to Matrix."
     )
 
 
@@ -418,9 +388,8 @@ def test_on_meshtastic_message_non_text_plugin_returns_none(
     ):
         on_meshtastic_message(packet, _make_interface())
 
-    assert any(
-        "returned no awaitable" in call.args[0]
-        for call in mock_logger.warning.call_args_list
+    mock_logger.warning.assert_any_call(
+        "Plugin %s returned no awaitable; skipping.", "noawait"
     )
 
 
@@ -444,7 +413,4 @@ def test_on_meshtastic_message_non_text_plugin_exception(reset_meshtastic_global
     ):
         on_meshtastic_message(packet, _make_interface())
 
-    assert any(
-        "Plugin boom failed" in call.args[0]
-        for call in mock_logger.exception.call_args_list
-    )
+    mock_logger.exception.assert_any_call("Plugin boom failed")

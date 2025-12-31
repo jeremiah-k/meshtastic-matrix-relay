@@ -64,9 +64,8 @@ async def test_check_connection_ble_skips_health_checks(reset_meshtastic_globals
     ):
         await check_connection()
 
-    assert any(
-        "BLE connection uses real-time disconnection detection" in call.args[0]
-        for call in mock_logger.info.call_args_list
+    mock_logger.info.assert_any_call(
+        "BLE connection uses real-time disconnection detection - health checks disabled"
     )
 
 
@@ -89,9 +88,8 @@ async def test_check_connection_metadata_fallback_succeeds(reset_meshtastic_glob
     ):
         await check_connection()
 
-    assert any(
-        "Metadata parse failed but device responded" in call.args[0]
-        for call in mock_logger.debug.call_args_list
+    mock_logger.debug.assert_any_call(
+        "Metadata parse failed but device responded to getMyNodeInfo(); skipping reconnect this cycle"
     )
 
 
@@ -120,9 +118,8 @@ async def test_check_connection_triggers_reconnect_on_probe_failure(
         await check_connection()
 
     mock_lost.assert_called_once()
-    assert any(
-        "connection health check failed" in call.args[0]
-        for call in mock_logger.error.call_args_list
+    mock_logger.error.assert_any_call(
+        "Tcp connection health check failed: Metadata and nodeInfo probes failed"
     )
 
 
@@ -142,9 +139,8 @@ async def test_check_connection_skips_when_reconnecting(reset_meshtastic_globals
     ):
         await check_connection()
 
-    assert any(
-        "Skipping connection check - reconnection in progress" in call.args[0]
-        for call in mock_logger.debug.call_args_list
+    mock_logger.debug.assert_any_call(
+        "Skipping connection check - reconnection in progress"
     )
 
 
@@ -163,10 +159,7 @@ async def test_check_connection_skips_when_no_client(reset_meshtastic_globals):
     ):
         await check_connection()
 
-    assert any(
-        "Skipping connection check - no client available" in call.args[0]
-        for call in mock_logger.debug.call_args_list
-    )
+    mock_logger.debug.assert_any_call("Skipping connection check - no client available")
 
 
 @pytest.mark.asyncio
