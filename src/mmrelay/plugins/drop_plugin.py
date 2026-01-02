@@ -133,7 +133,7 @@ class Plugin(BasePlugin):
                 )
                 return False
 
-            position = self.get_position(meshtastic_client, str(dropping_from_id)) or {}
+            position = self.get_position(meshtastic_client, dropping_from_id) or {}
 
             if "latitude" not in position or "longitude" not in position:
                 self.logger.debug(

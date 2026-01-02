@@ -108,7 +108,7 @@ $shortname $longname / $devicemodel / $battery $voltage / $snr / $hops / $lastse
 
     async def handle_room_message(
         self, room: Any, event: Any, full_message: str
-    ) -> bool:  # noqa: ARG002
+    ) -> bool:
         # Pass the event to matches()
         """
         Handle an incoming room message and respond with the nodes summary when the plugin matches the event.

@@ -9,14 +9,12 @@ Usage:
 """
 
 import sys
-from typing import Callable
 
 if __name__ == "__main__":
     try:
         from mmrelay.cli import main
 
-        main_typed: Callable[[], int] = main
-        sys.exit(main_typed())
+        sys.exit(main())
     except ImportError as e:
         print(f"Error importing MMRelay CLI: {e}", file=sys.stderr)
         print("Please ensure MMRelay is properly installed.", file=sys.stderr)

@@ -170,7 +170,7 @@ def check_windows_requirements() -> Optional[str]:
     return None
 
 
-def test_config_generation_windows(args: Optional[Any] = None) -> dict[str, Any]:
+def test_config_generation_windows(args: Any = None) -> dict[str, Any]:
     """
     Run Windows-only diagnostics for MMRelay configuration generation.
 

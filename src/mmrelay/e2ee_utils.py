@@ -106,7 +106,7 @@ def get_e2ee_status(
         # Fallback to base directory check only
         from mmrelay.config import get_base_dir
 
-        base_credentials_path = os.path.join(get_base_dir(), CREDENTIALS_FILENAME)  # type: ignore
+        base_credentials_path = os.path.join(get_base_dir(), CREDENTIALS_FILENAME)  # type: ignore[no-untyped-call]
         status["credentials_available"] = os.path.exists(base_credentials_path)
 
     if not status["credentials_available"]:
@@ -154,7 +154,7 @@ def _check_credentials_available(config_path: str) -> bool:
     try:
         from mmrelay.config import get_base_dir
 
-        base_credentials_path = os.path.join(get_base_dir(), CREDENTIALS_FILENAME)  # type: ignore
+        base_credentials_path = os.path.join(get_base_dir(), CREDENTIALS_FILENAME)  # type: ignore[no-untyped-call]
         return os.path.exists(base_credentials_path)
     except (ImportError, OSError):
         # If we can't determine base directory, assume no credentials
