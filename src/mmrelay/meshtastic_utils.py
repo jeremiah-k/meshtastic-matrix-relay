@@ -102,14 +102,14 @@ def _submit_coro(
     loop: asyncio.AbstractEventLoop | None = None,
 ) -> Future[Any] | None:
     """
-    Schedule a coroutine to run on an appropriate asyncio event loop and return a Future for its result.
-
+    Schedule a coroutine to run on an available asyncio event loop.
+    
     Parameters:
-        coro: The coroutine object to execute. If not a coroutine, the function returns None.
-        loop: Optional target asyncio event loop. If omitted, the module-level `event_loop` is used.
-
+        coro: The coroutine object to execute. If not a coroutine, this function returns None.
+        loop: Optional target asyncio event loop to run the coroutine on. If omitted, the module-level `event_loop` is used when available.
+    
     Returns:
-        A Future-like object representing the coroutine's eventual result, or `None` if `coro` is not a coroutine.
+        A Future that will hold the coroutine's result, or `None` if `coro` is not a coroutine.
     """
     if not inspect.iscoroutine(coro):
         # Defensive guard for tests that mistakenly patch async funcs to return None
@@ -358,17 +358,14 @@ def _get_name_or_none(
     name_func: Callable[[Any], str | None], sender: Any
 ) -> str | None:
     """
-    Safely retrieve a name (longname or shortname) for a sender, returning None on failure.
-
-    This function is used for the complex fallback logic where we want to try the database
-    first, then fall back to interface data, and finally to sender ID.
-
+    Retrieve a name for a sender using the provided lookup function, or return None if the lookup fails.
+    
     Parameters:
-        name_func: Function to call (get_longname or get_shortname)
-        sender: The sender ID to look up
-
+        name_func (Callable[[Any], str | None]): Function that returns a name given the sender (e.g., longname or shortname).
+        sender (Any): Sender identifier passed to `name_func`.
+    
     Returns:
-        str | None: The retrieved name or None if database lookup failed
+        str | None: The name returned by `name_func`, or `None` if the function raises TypeError or AttributeError.
     """
     try:
         return name_func(sender)
@@ -442,16 +439,13 @@ def _get_device_metadata(client: Any) -> dict[str, Any]:
 
 def serial_port_exists(port_name: str) -> bool:
     """
-    Return True if a serial port with the given device name is present on the system.
-
-    Checks available serial ports via pyserial's list_ports and compares their `.device`
-    strings to the provided port_name.
-
+    Check whether a serial port with the specified device name exists on the system.
+    
     Parameters:
         port_name (str): Device name to check (e.g., '/dev/ttyUSB0' on Unix or 'COM3' on Windows).
-
+    
     Returns:
-        bool: True if the port is found, False otherwise.
+        True if a matching port device name is present, False otherwise.
     """
     ports = [p.device for p in serial.tools.list_ports.comports()]
     return port_name in ports
@@ -462,16 +456,16 @@ def connect_meshtastic(
     force_connect: bool = False,
 ) -> Any:
     """
-    Establish and return a Meshtastic client connection (serial, BLE, or TCP), with configurable retries, exponential backoff, and single-time event subscription.
-
-    Attempts to (re)connect using the module configuration and updates module-level state on success (meshtastic_client, matrix_rooms, and event subscriptions). Supports the legacy "network" alias for TCP, verifies serial port presence before connecting, and honors a retry limit (or infinite retries when unspecified). On successful connection the client's node info and firmware metadata are probed and message/connection-lost handlers are subscribed once for the process lifetime.
-
+    Establishes a Meshtastic client connection using the configured connection type (serial, BLE, or TCP).
+    
+    On success updates the module-level client state (meshtastic_client), may update matrix_rooms when a config is provided, and subscribes to meshtastic receive and connection-lost events once for the process lifetime. Honors shutdown and reconnect state and will respect `force_connect` to replace an existing connection.
+    
     Parameters:
-        passed_config (dict, optional): If provided, replaces the module-level configuration (and may update matrix_rooms).
-        force_connect (bool, optional): When True, forces creating a new connection even if one already exists.
-
+        passed_config (dict[str, Any] | None): Optional configuration to use in place of the module-level config; if provided and contains "matrix_rooms", that value will be used to update module-level matrix_rooms.
+        force_connect (bool): If True, forces creating a new connection even if a client already exists.
+    
     Returns:
-        The connected Meshtastic client instance on success, or None if connection cannot be established or shutdown is in progress.
+        The connected Meshtastic client instance on success, or `None` if a connection could not be established or shutdown is in progress.
     """
     global meshtastic_client, shutting_down, reconnecting, config, matrix_rooms
     if shutting_down:

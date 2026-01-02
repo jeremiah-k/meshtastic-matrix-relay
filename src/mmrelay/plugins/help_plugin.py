@@ -23,10 +23,11 @@ class Plugin(BasePlugin):
 
     @property
     def description(self) -> str:
-        """Get plugin description.
-
+        """
+        Provide a short human-readable description of the plugin.
+        
         Returns:
-            str: Description of help functionality
+            str: Brief description of the plugin's functionality.
         """
         return "List supported relay commands"
 
@@ -34,16 +35,16 @@ class Plugin(BasePlugin):
         self, packet: Any, formatted_message: Any, longname: Any, meshnet_name: Any
     ) -> bool:
         """
-        Indicate that this plugin does not handle incoming Meshtastic messages.
-
+        State that this plugin does not handle messages originating from Meshtastic.
+        
         Parameters:
             packet: Raw Meshtastic packet data.
-            formatted_message: Human-readable string representation of the message.
+            formatted_message: Human-readable representation of the message.
             longname: Sender's long display name.
             meshnet_name: Name of the mesh network the message originated from.
-
+        
         Returns:
-            `True` if the message was handled by the plugin, `False` otherwise. This implementation always returns `False`.
+            True if the message was handled by the plugin, False otherwise. This implementation always returns False.
         """
         return False
 
@@ -57,10 +58,11 @@ class Plugin(BasePlugin):
         return [self.plugin_name]
 
     def get_mesh_commands(self) -> list[str]:
-        """Get mesh commands handled by this plugin.
-
+        """
+        List mesh commands provided by this plugin.
+        
         Returns:
-            list: Empty list (help only works via Matrix)
+            list: An empty list — this plugin does not provide any mesh commands (help is available via Matrix only).
         """
         return []
 
@@ -68,15 +70,17 @@ class Plugin(BasePlugin):
         self, room: Any, event: Any, full_message: str
     ) -> bool:
         """
-        Handle an incoming Matrix room message for the help command and reply with either a list of available commands or details for a specific command.
-
+        Provide help for Matrix room messages by replying with either a list of available commands or details for a specific command.
+        
+        If the incoming event matches this plugin's Matrix help command, sends a reply to the room: either a comma-separated list of all available Matrix commands from loaded plugins or a description for a requested command.
+        
         Parameters:
-            room: The Matrix room object where the message originated; must provide `room_id`.
-            event: The incoming Matrix event; used to determine whether this plugin should handle the message.
-            full_message (str): The raw message text from the room.
-
+            room: Matrix room object; its `room_id` is used to send the reply.
+            event: Incoming Matrix event used to determine whether this plugin should handle the message.
+            full_message (str): Raw message text from the room.
+        
         Returns:
-            handled (bool): `True` if the plugin processed the message and sent a reply, `False` if the event did not match and was not handled.
+            `True` if the message matched this plugin and a reply was sent, `False` otherwise.
         """
         # Maintain legacy matches() call for tests/compatibility but do not gate handling on it
         self.matches(event)

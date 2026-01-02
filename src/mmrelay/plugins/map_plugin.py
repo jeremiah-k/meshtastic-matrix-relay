@@ -50,9 +50,7 @@ logger = get_logger(__name__)
 async def _connect_meshtastic_async() -> object | None:
     """
     Obtain a Meshtastic client connection without blocking the event loop.
-
-    Runs the connection routine in a background thread to avoid blocking.
-
+    
     Returns:
         The Meshtastic client instance, or `None` if a connection could not be established.
     """
@@ -65,10 +63,13 @@ def textsize(
     self: _PILImageDraw.ImageDraw, text: Any, *args: Any, **kwargs: Any
 ) -> tuple[float, float]:
     """
-    Compute the width and height of the given text as it would be rendered by this ImageDraw instance.
-
+    Return the width and height of the given text as rendered by this ImageDraw instance.
+    
+    Parameters:
+        text (Any): The text to measure. Additional rendering options may be passed via positional and keyword arguments.
+    
     Returns:
-        (width, height): Tuple containing the text's horizontal and vertical size in pixels.
+        (width, height) (tuple[float, float]): Width and height of the rendered text in pixels.
     """
     left, top, right, bottom = self.textbbox((0, 0), text, *args, **kwargs)
     return right - left, bottom - top
@@ -80,6 +81,14 @@ _PILImageDraw.ImageDraw.textsize = textsize  # type: ignore[attr-defined]
 
 class TextLabel(staticmaps.Object):  # type: ignore[misc]
     def __init__(self, latlng: s2sphere.LatLng, text: str, fontSize: int = 12) -> None:
+        """
+        Initialize a TextLabel anchored at a geographic LatLng with the provided text and font size.
+        
+        Parameters:
+            latlng (s2sphere.LatLng): Geographic anchor point for the label.
+            text (str): Label text to render.
+            fontSize (int): Font size in pixels used for rendering (default 12).
+        """
         staticmaps.Object.__init__(self)
         self._latlng = latlng
         self._text = text
@@ -255,19 +264,23 @@ def get_map(
     radius: int = 10000,  # noqa: ARG001
 ) -> PILImage.Image:
     """
-    Render a static map with labeled markers and optional precision circles.
-
-    Each entry in `locations` must provide "lat", "lon", and "label". If an entry includes "precisionBits", a lightly shaded circle approximating that precision radius is drawn around the marker. The map is centered on the average of provided locations when any exist.
-
+    Render a static map showing labeled markers and optional precision-radius circles.
+    
+    Each item in `locations` should contain "lat", "lon", and "label"; if "precisionBits" is present and parseable it will be converted to an approximate radius (meters) and drawn as a lightly shaded circle around the marker. The map is centered on the average of provided locations when any are given.
+    
     Parameters:
-        locations (list[dict]): List of dicts with keys "lat" (float|str), "lon" (float|str), and "label" (str). Optional "precisionBits" (int|str) may be included to render a precision circle.
-        zoom (int | None): Optional zoom level to apply to the map; if None the context default is used.
-        image_size (tuple[int, int] | None): Optional (width, height) in pixels for the output image. If None, defaults to (MAX_MAP_IMAGE_SIZE, MAX_MAP_IMAGE_SIZE).
-        anonymize (bool): Deprecated and ignored.
-        radius (int): Deprecated and ignored.
-
+        locations (list[dict]): Sequence of location dictionaries. Each dictionary must provide:
+            - "lat": latitude (coercible to float).
+            - "lon": longitude (coercible to float).
+            - "label": text to render at the location.
+            - Optional "precisionBits": integer (or string) used to compute a precision radius in meters.
+        zoom (int | None): Optional map zoom level to apply; if None the context default is used.
+        image_size (tuple[int, int] | None): Optional output size as (width, height) in pixels; if None a default 1000x1000 image is produced.
+        anonymize (bool): Ignored (deprecated).
+        radius (int): Ignored (deprecated).
+    
     Returns:
-        PIL.Image.Image: A Pillow Image containing the rendered map with labels and any precision circles.
+        PIL.Image.Image: Pillow Image containing the rendered map with markers and any precision circles.
     """
     context = staticmaps.Context()
     context.set_tile_provider(staticmaps.tile_provider_OSM)
@@ -344,10 +357,10 @@ class Plugin(BasePlugin):
     @property
     def description(self) -> str:
         """
-        Provide a short, human-readable description of the plugin for listings and help.
-
+        Short human-readable description of the plugin for listings and help.
+        
         Returns:
-            A one-line description string indicating this plugin generates maps of mesh radio nodes and supports the `zoom` and `size` options.
+            description (str): One-line human-readable description of the plugin.
         """
         return (
             "Map of mesh radio nodes. Supports `zoom` and `size` options to customize"
@@ -357,16 +370,16 @@ class Plugin(BasePlugin):
         self, packet: object, formatted_message: str, longname: str, meshnet_name: str
     ) -> bool:
         """
-        Handle an incoming Meshtastic packet and determine whether the plugin consumes it.
-
+        Decide whether this plugin consumes an incoming Meshtastic packet.
+        
         Parameters:
-            packet: The raw Meshtastic packet object received from the mesh network.
-            formatted_message (str): The human-readable, pre-formatted message derived from the packet.
-            longname (str): The sender's long name or identifier.
-            meshnet_name (str): The name of the mesh network the packet came from.
-
+            packet (object): Raw Meshtastic packet received from the mesh network.
+            formatted_message (str): Human-readable, pre-formatted message derived from the packet.
+            longname (str): Sender's long name or identifier.
+            meshnet_name (str): Name of the mesh network the packet originated from.
+        
         Returns:
-            bool: `true` if the plugin handled the message and further processing should stop, `false` otherwise.
+            True if the plugin handled the message and further processing should stop, False otherwise.
         """
         return False
 
@@ -393,17 +406,17 @@ class Plugin(BasePlugin):
     ) -> bool:
         # Pass the whole event to matches() for compatibility w/ updated base_plugin.py
         """
-        Handle "!map" commands by generating a static map of known mesh node locations and sending it to the Matrix room.
-
-        Parses optional tokens in the message for zoom (zoom=N) and image size (size=W,H), collects node positions (including firmware-provided precision when available), renders a map image, and uploads it to the room as "location.png".
-
+        Generate a static map of known mesh node locations for a received "!map" command and send it to the Matrix room.
+        
+        Parses optional `zoom=N` and `size=W,H` tokens from the message, collects node positions (including `precisionBits` when available), renders a map image, and uploads it to the room as "location.png".
+        
         Parameters:
-            room: The Matrix room object where the message was received.
-            event: The full Matrix event object (used for plugin matching).
-            full_message (str): The raw message text to parse for the "!map" command and optional parameters.
-
+            room: The Matrix room where the message was received; used to send responses and the resulting image.
+            event: The full Matrix event object; passed to plugin matching logic.
+            full_message: The raw message text to parse for the "!map" command and optional parameters.
+        
         Returns:
-            bool: `True` if the command was handled and the map image was generated and sent; `False` if the message did not target this plugin or was not processed.
+            `True` if the command was handled and the map image was generated and sent; `False` otherwise.
         """
         if not self.matches(event):
             return False

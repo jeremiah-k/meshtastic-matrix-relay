@@ -6,6 +6,20 @@ from mmrelay.plugins.base_plugin import BasePlugin
 
 
 def get_relative_time(timestamp: float) -> str:
+    """
+    Convert a POSIX timestamp into a concise, human-readable relative time string.
+    
+    Parameters:
+    	timestamp (float): POSIX timestamp (seconds since the epoch) to compare with the current time.
+    
+    Returns:
+    	str: A relative time description:
+    		- "Just now" for times less than 60 seconds ago
+    		- "<N> minutes ago" for times between 60 seconds and 1 hour
+    		- "<N> hours ago" for times between 1 hour and 24 hours
+    		- "<N> days ago" for times between 1 day and 7 days
+    		- a formatted date "Mon DD, YYYY" for times older than 7 days
+    """
     now = datetime.now()
     dt = datetime.fromtimestamp(timestamp)
 
@@ -39,12 +53,27 @@ class Plugin(BasePlugin):
 
     @property
     def description(self) -> str:
+        """
+        Provide the plugin description and the output format used when listing mesh nodes.
+        
+        Returns:
+            A multiline string describing the plugin and the node line format. The string includes placeholders:
+            `$shortname`, `$longname`, `$devicemodel`, `$battery`, `$voltage`, `$snr`, `$hops`, and `$lastseen`.
+        """
         return """Show mesh radios and node data
 
 $shortname $longname / $devicemodel / $battery $voltage / $snr / $hops / $lastseen
 """
 
     def generate_response(self) -> str:
+        """
+        Builds a textual summary of known Meshtastic nodes and their reported metrics.
+        
+        The returned string begins with "Nodes: <count>" and includes one line per node with short name, long name, hardware model, battery percentage, voltage, SNR (in dB) when available, hop distance, and last-heard relative time. If the Meshtastic device cannot be contacted, returns the error message "Unable to connect to Meshtastic device."
+        
+        Returns:
+            response (str): The multi-line nodes summary or an error message when no Meshtastic client is available.
+        """
         from mmrelay.meshtastic_utils import connect_meshtastic
 
         meshtastic_client = connect_meshtastic()
@@ -111,13 +140,13 @@ $shortname $longname / $devicemodel / $battery $voltage / $snr / $hops / $lastse
     ) -> bool:
         # Pass the event to matches()
         """
-        Handle an incoming room message and respond with the nodes summary when the plugin matches the event.
-
+        Handle an incoming Matrix room event and send the nodes summary when the plugin matches.
+        
         Parameters:
-            room: The Matrix room object where the event occurred; used to send the response.
-            event: The incoming event evaluated by self.matches() to decide whether to handle the message.
-            full_message: The raw message text (not used by this handler).
-
+            room (Any): Matrix room object where the event occurred; used to send the response.
+            event (Any): Incoming event evaluated by self.matches() to decide whether to handle the message.
+            full_message (str): Raw message text (not used by this handler).
+        
         Returns:
             bool: `True` if the event was handled and a response was sent, `False` otherwise.
         """
