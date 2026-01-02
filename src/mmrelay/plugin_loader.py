@@ -1740,7 +1740,6 @@ def load_plugins_from_directory(directory: str, recursive: bool = False) -> list
                         )
                         continue
                     plugin_module = importlib.util.module_from_spec(spec)
-                    spec.loader.exec_module(plugin_module)
 
                     # Create a compatibility layer for plugins
                     # This allows plugins to import from 'plugins' or 'mmrelay.plugins'
