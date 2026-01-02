@@ -4,7 +4,7 @@ import asyncio
 import base64
 import json
 import re
-from typing import Any
+from typing import Any, cast
 
 from meshtastic import mesh_pb2  # type: ignore[import-untyped]
 
@@ -52,10 +52,10 @@ class Plugin(BasePlugin):
     def process(self, packet: Any) -> dict[str, Any]:
         """
         Normalize a packet and encode any binary payloads for safe transport.
-        
+
         Parameters:
             packet (Any): Raw packet data to normalize and prepare.
-        
+
         Returns:
             dict[str, Any]: The normalized packet; if `decoded.payload` was bytes it is replaced with a base64-encoded UTF-8 string.
         """
@@ -72,7 +72,7 @@ class Plugin(BasePlugin):
     def get_matrix_commands(self) -> list[str]:
         """
         Get the Matrix commands this plugin handles.
-        
+
         Returns:
             list[str]: Empty list when the plugin handles all Matrix traffic instead of specific commands.
         """
@@ -81,7 +81,7 @@ class Plugin(BasePlugin):
     def get_mesh_commands(self) -> list[str]:
         """
         Indicate which Meshtastic/mesh commands this plugin handles.
-        
+
         Returns:
             list[str]: An empty list because this plugin handles all mesh traffic rather than specific commands.
         """
@@ -196,8 +196,10 @@ class Plugin(BasePlugin):
 
         channel = None
         if config is not None:
-            matrix_rooms = config.get("matrix_rooms", [])
-            for room_config in matrix_rooms:  # type: ignore[misc]
+            matrix_rooms: list[dict[str, Any]] = cast(
+                list[dict[str, Any]], config.get("matrix_rooms", [])
+            )
+            for room_config in matrix_rooms:
                 if room_config["id"] == room.room_id:
                     channel = room_config["meshtastic_channel"]
 
