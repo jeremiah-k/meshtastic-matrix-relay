@@ -1,3 +1,7 @@
+from typing import TYPE_CHECKING, Any
+
+from nio import MatrixRoom, RoomMessageText  # type: ignore[import-untyped]
+
 from mmrelay.plugins.base_plugin import BasePlugin
 
 
@@ -20,7 +24,11 @@ class Plugin(BasePlugin):
     priority = 1
 
     async def handle_meshtastic_message(
-        self, packet, formatted_message, longname, meshnet_name
+        self,
+        packet: dict[str, Any],
+        formatted_message: str,
+        longname: str,
+        meshnet_name: str,
     ) -> bool:
         """
         Log a received Meshtastic packet after removing raw binary data.
@@ -34,12 +42,14 @@ class Plugin(BasePlugin):
         Returns:
             `False` to indicate this plugin does not intercept the message and allows further processing.
         """
-        packet = self.strip_raw(packet)
+        packet = self.strip_raw(packet)  # type: ignore[no-untyped-call]
 
         self.logger.debug(f"Packet received: {packet}")
         return False
 
-    async def handle_room_message(self, room, event, full_message) -> bool:
+    async def handle_room_message(
+        self, room: MatrixRoom, event: RoomMessageText, full_message: str
+    ) -> bool:
         """
         Declines to handle room messages so they remain available to other plugins.
 

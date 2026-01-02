@@ -1,9 +1,13 @@
 import asyncio
 import statistics
+from typing import TYPE_CHECKING
 
-from nio import MatrixRoom, RoomMessageText
+from nio import MatrixRoom, RoomMessageText  # type: ignore[import-untyped]
 
 from mmrelay.plugins.base_plugin import BasePlugin
+
+if TYPE_CHECKING:
+    from meshtastic.mesh_interface import MeshInterface  # type: ignore[import-untyped]
 
 
 class Plugin(BasePlugin):
@@ -41,7 +45,7 @@ class Plugin(BasePlugin):
         """
         from mmrelay.meshtastic_utils import connect_meshtastic
 
-        meshtastic_client = connect_meshtastic()
+        meshtastic_client: MeshInterface | None = connect_meshtastic()  # type: ignore[no-untyped-call]
         if meshtastic_client is None:
             return "Unable to connect to Meshtastic device."
         battery_levels = []
@@ -106,7 +110,11 @@ class Plugin(BasePlugin):
  {snr_line}"""
 
     async def handle_meshtastic_message(
-        self, packet, formatted_message: str, longname: str, meshnet_name: str
+        self,
+        packet: dict[str, object],
+        formatted_message: str,
+        longname: str,
+        meshnet_name: str,
     ) -> bool:
         """
         Indicates that this plugin does not handle incoming Meshtastic packets.
@@ -138,10 +146,10 @@ class Plugin(BasePlugin):
         Returns:
             true if the message matched this plugin and was handled, false otherwise.
         """
-        if not self.matches(event):
+        if not self.matches(event):  # type: ignore[no-untyped-call]
             return False
 
         response = await asyncio.to_thread(self.generate_response)
-        await self.send_matrix_message(room.room_id, response, formatted=False)
+        await self.send_matrix_message(room.room_id, response, formatted=False)  # type: ignore[no-untyped-call]
 
         return True

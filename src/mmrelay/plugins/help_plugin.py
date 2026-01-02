@@ -1,3 +1,5 @@
+from typing import Any
+
 from mmrelay.plugin_loader import load_plugins
 from mmrelay.plugins.base_plugin import BasePlugin
 
@@ -20,7 +22,7 @@ class Plugin(BasePlugin):
     plugin_name = "help"
 
     @property
-    def description(self):
+    def description(self) -> str:
         """Get plugin description.
 
         Returns:
@@ -29,7 +31,7 @@ class Plugin(BasePlugin):
         return "List supported relay commands"
 
     async def handle_meshtastic_message(
-        self, packet, formatted_message, longname, meshnet_name
+        self, packet: Any, formatted_message: Any, longname: Any, meshnet_name: Any
     ) -> bool:
         """
         Indicate that this plugin does not handle incoming Meshtastic messages.
@@ -45,7 +47,7 @@ class Plugin(BasePlugin):
         """
         return False
 
-    def get_matrix_commands(self):
+    def get_matrix_commands(self) -> list[str]:
         """
         List Matrix commands provided by this plugin.
 
@@ -54,7 +56,7 @@ class Plugin(BasePlugin):
         """
         return [self.plugin_name]
 
-    def get_mesh_commands(self):
+    def get_mesh_commands(self) -> list[str]:
         """Get mesh commands handled by this plugin.
 
         Returns:
@@ -62,7 +64,9 @@ class Plugin(BasePlugin):
         """
         return []
 
-    async def handle_room_message(self, room, event, full_message) -> bool:
+    async def handle_room_message(
+        self, room: Any, event: Any, full_message: str
+    ) -> bool:
         """
         Handle an incoming Matrix room message for the help command and reply with either a list of available commands or details for a specific command.
 
@@ -75,13 +79,13 @@ class Plugin(BasePlugin):
             handled (bool): `True` if the plugin processed the message and sent a reply, `False` if the event did not match and was not handled.
         """
         # Maintain legacy matches() call for tests/compatibility but do not gate handling on it
-        self.matches(event)
+        self.matches(event)  # type: ignore[no-untyped-call]
         matched_command = self.get_matching_matrix_command(event)
         if not matched_command:
             return False
         command = self.extract_command_args(matched_command, full_message) or ""
 
-        plugins = load_plugins()
+        plugins = load_plugins()  # type: ignore[no-untyped-call]
 
         if command:
             reply = f"No such command: {command}"
@@ -95,5 +99,5 @@ class Plugin(BasePlugin):
                 commands.extend(plugin.get_matrix_commands())
             reply = "Available commands: " + ", ".join(commands)
 
-        await self.send_matrix_message(room.room_id, reply)
+        await self.send_matrix_message(room.room_id, reply)  # type: ignore[no-untyped-call]
         return True

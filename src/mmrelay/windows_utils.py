@@ -7,7 +7,7 @@ for better compatibility and user experience on Windows systems.
 
 import os
 import sys
-from typing import Optional
+from typing import Any, Optional
 
 from mmrelay.constants.app import WINDOWS_PLATFORM
 
@@ -39,9 +39,9 @@ def setup_windows_console() -> None:
     try:
         # Enable UTF-8 output on Windows
         if hasattr(sys.stdout, "reconfigure"):
-            sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[attr-defined]
+            sys.stdout.reconfigure(encoding="utf-8")
         if hasattr(sys.stderr, "reconfigure"):
-            sys.stderr.reconfigure(encoding="utf-8")  # type: ignore[attr-defined]
+            sys.stderr.reconfigure(encoding="utf-8")
 
         # Enable ANSI color codes on Windows 10+
         import ctypes
@@ -170,7 +170,7 @@ def check_windows_requirements() -> Optional[str]:
     return None
 
 
-def test_config_generation_windows(args=None) -> dict:
+def test_config_generation_windows(args: Optional[Any] = None) -> dict[str, Any]:
     """
     Run Windows-only diagnostics for MMRelay configuration generation.
 
@@ -250,7 +250,7 @@ def test_config_generation_windows(args=None) -> dict:
         try:
             from mmrelay.config import get_config_paths
 
-            paths = get_config_paths(args)
+            paths = get_config_paths(args)  # type: ignore[no-untyped-call]
             results["config_paths"] = {"status": "ok", "details": f"Paths: {paths}"}
         except (ImportError, OSError) as e:
             results["config_paths"] = {"status": "error", "details": str(e)}
@@ -259,7 +259,7 @@ def test_config_generation_windows(args=None) -> dict:
         try:
             from mmrelay.config import get_config_paths
 
-            paths = get_config_paths(args)
+            paths = get_config_paths(args)  # type: ignore[no-untyped-call]
             created_dirs = []
             for path in paths:
                 dir_path = os.path.dirname(path)

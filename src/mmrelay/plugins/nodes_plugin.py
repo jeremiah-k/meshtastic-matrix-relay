@@ -1,10 +1,11 @@
 import asyncio
 from datetime import datetime
+from typing import Any
 
 from mmrelay.plugins.base_plugin import BasePlugin
 
 
-def get_relative_time(timestamp):
+def get_relative_time(timestamp: float) -> str:
     now = datetime.now()
     dt = datetime.fromtimestamp(timestamp)
 
@@ -37,16 +38,16 @@ class Plugin(BasePlugin):
     is_core_plugin = True
 
     @property
-    def description(self):
+    def description(self) -> str:
         return """Show mesh radios and node data
 
 $shortname $longname / $devicemodel / $battery $voltage / $snr / $hops / $lastseen
 """
 
-    def generate_response(self):
+    def generate_response(self) -> str:
         from mmrelay.meshtastic_utils import connect_meshtastic
 
-        meshtastic_client = connect_meshtastic()
+        meshtastic_client = connect_meshtastic()  # type: ignore[no-untyped-call]
         if meshtastic_client is None:
             return "Unable to connect to Meshtastic device."
 
@@ -89,7 +90,7 @@ $shortname $longname / $devicemodel / $battery $voltage / $snr / $hops / $lastse
         return response
 
     async def handle_meshtastic_message(
-        self, packet, formatted_message, longname, meshnet_name
+        self, packet: Any, formatted_message: str, longname: str, meshnet_name: str
     ) -> bool:
         """
         Handle an incoming Meshtastic packet message; currently does not process or consume the message.
@@ -106,7 +107,7 @@ $shortname $longname / $devicemodel / $battery $voltage / $snr / $hops / $lastse
         return False
 
     async def handle_room_message(
-        self, room, event, full_message
+        self, room: Any, event: Any, full_message: str
     ) -> bool:  # noqa: ARG002
         # Pass the event to matches()
         """
@@ -120,7 +121,7 @@ $shortname $longname / $devicemodel / $battery $voltage / $snr / $hops / $lastse
         Returns:
             bool: `True` if the event was handled and a response was sent, `False` otherwise.
         """
-        if not self.matches(event):
+        if not self.matches(event):  # type: ignore[no-untyped-call]
             return False
 
         response = await asyncio.to_thread(self.generate_response)

@@ -106,7 +106,7 @@ def get_e2ee_status(
         # Fallback to base directory check only
         from mmrelay.config import get_base_dir
 
-        base_credentials_path = os.path.join(get_base_dir(), CREDENTIALS_FILENAME)
+        base_credentials_path = os.path.join(get_base_dir(), CREDENTIALS_FILENAME)  # type: ignore
         status["credentials_available"] = os.path.exists(base_credentials_path)
 
     if not status["credentials_available"]:
@@ -154,7 +154,7 @@ def _check_credentials_available(config_path: str) -> bool:
     try:
         from mmrelay.config import get_base_dir
 
-        base_credentials_path = os.path.join(get_base_dir(), CREDENTIALS_FILENAME)
+        base_credentials_path = os.path.join(get_base_dir(), CREDENTIALS_FILENAME)  # type: ignore
         return os.path.exists(base_credentials_path)
     except (ImportError, OSError):
         # If we can't determine base directory, assume no credentials
@@ -281,7 +281,7 @@ def format_room_list(rooms: Dict[str, Any], e2ee_status: Dict[str, Any]) -> List
 
 
 # Standard warning message templates
-def get_e2ee_warning_messages():
+def get_e2ee_warning_messages() -> dict[str, str]:
     """
     Return a mapping of standard user-facing E2EE warning messages.
 

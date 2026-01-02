@@ -1,3 +1,4 @@
+import argparse
 import contextlib
 import logging
 import os
@@ -28,7 +29,7 @@ from mmrelay.constants.messages import (
 )
 
 # Initialize Rich console only if available
-console = Console() if RICH_AVAILABLE else None  # type: ignore[name-defined]
+console = Console() if RICH_AVAILABLE else None
 
 # Define custom log level styles - not used directly but kept for reference
 # Rich 14.0.0+ supports level_styles parameter, but we're using an approach
@@ -75,7 +76,7 @@ _COMPONENT_LOGGERS = {
 }
 
 
-def configure_component_debug_logging():
+def configure_component_debug_logging() -> None:
     """
     Apply per-component debug logging from config["logging"]["debug"].
 
@@ -141,7 +142,7 @@ def configure_component_debug_logging():
                 logging.getLogger(logger_name).setLevel(logging.CRITICAL + 1)
 
 
-def _should_log_to_file(args) -> bool:
+def _should_log_to_file(args: argparse.Namespace | None) -> bool:
     """
     Decide whether logging to a file is enabled according to configuration and CLI options.
 
@@ -164,7 +165,7 @@ def _should_log_to_file(args) -> bool:
     return bool(enabled)
 
 
-def _resolve_log_file(args):
+def _resolve_log_file(args: argparse.Namespace | None) -> str:
     """
     Determine the log file path, preferring a CLI-provided value, then the configuration, and falling back to the default log directory.
 
@@ -175,17 +176,19 @@ def _resolve_log_file(args):
         str: Filesystem path to the log file chosen according to the precedence: `args.logfile`, `config["logging"]["filename"]`, or the default "<log_dir>/mmrelay.log".
     """
     logfile = getattr(args, "logfile", None) if args is not None else None
-    if logfile:
+    if isinstance(logfile, str) and logfile:
         return logfile
 
     config_log_file = config.get("logging", {}).get("filename") if config else None
-    if config_log_file:
+    if isinstance(config_log_file, str) and config_log_file:
         return config_log_file
 
-    return os.path.join(get_log_dir(), "mmrelay.log")
+    return os.path.join(get_log_dir(), "mmrelay.log")  # type: ignore[no-untyped-call]
 
 
-def _configure_logger(logger: logging.Logger, *, args=None) -> logging.Logger:
+def _configure_logger(
+    logger: logging.Logger, *, args: argparse.Namespace | None = None
+) -> logging.Logger:
     """
     Configure a Logger object's level, handlers, and formatting based on the current application configuration and optional CLI arguments.
 
@@ -235,7 +238,7 @@ def _configure_logger(logger: logging.Logger, *, args=None) -> logging.Logger:
     # Add handler for console logging (with or without colors)
     if color_enabled and RICH_AVAILABLE:
         # Use Rich handler with colors
-        console_handler: logging.Handler = RichHandler(  # type: ignore[name-defined]
+        console_handler: logging.Handler = RichHandler(
             rich_tracebacks=rich_tracebacks_enabled,
             console=console,
             show_time=True,
@@ -322,7 +325,7 @@ def _configure_logger(logger: logging.Logger, *, args=None) -> logging.Logger:
     return logger
 
 
-def get_logger(name: str, args=None) -> logging.Logger:
+def get_logger(name: str, args: argparse.Namespace | None = None) -> logging.Logger:
     """
     Create or retrieve a named logger configured with console output and optional rotating file logging.
 
@@ -338,7 +341,7 @@ def get_logger(name: str, args=None) -> logging.Logger:
     return _configure_logger(logger, args=args)
 
 
-def refresh_all_loggers(args=None) -> None:
+def refresh_all_loggers(args: argparse.Namespace | None = None) -> None:
     """
     Reconfigure all loggers created via get_logger() so they reflect the current logging configuration.
 

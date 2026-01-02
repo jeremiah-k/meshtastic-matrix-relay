@@ -1,7 +1,8 @@
 import asyncio
 import re
+from typing import Any
 
-from meshtastic.mesh_interface import BROADCAST_NUM
+from meshtastic.mesh_interface import BROADCAST_NUM  # type: ignore[import-untyped]
 
 from mmrelay.constants.formats import TEXT_MESSAGE_APP
 from mmrelay.constants.messages import PORTNUM_TEXT_MESSAGE_APP
@@ -48,7 +49,7 @@ class Plugin(BasePlugin):
     is_core_plugin = True
 
     @property
-    def description(self):
+    def description(self) -> str:
         """
         Provide a short description of the plugin's purpose.
 
@@ -58,7 +59,11 @@ class Plugin(BasePlugin):
         return "Check connectivity with the relay or respond to pings over the mesh"
 
     async def handle_meshtastic_message(
-        self, packet, formatted_message, longname, meshnet_name
+        self,
+        packet: dict[str, Any],
+        formatted_message: str,
+        longname: str,
+        meshnet_name: str,
     ) -> bool:
         """
         Handle an incoming Meshtastic packet and respond to a matched "ping" message when appropriate.
@@ -118,7 +123,7 @@ class Plugin(BasePlugin):
             # Some radios omit/zero-fill destination; treat as broadcast to avoid dropping valid pings
             is_direct_message = False
 
-        if not self.is_channel_enabled(channel, is_direct_message=is_direct_message):
+        if not self.is_channel_enabled(channel, is_direct_message=is_direct_message):  # type: ignore[no-untyped-call]
             return False
 
         # Log that the plugin is processing the message
@@ -144,7 +149,7 @@ class Plugin(BasePlugin):
         )
 
         # Wait for the response delay
-        await asyncio.sleep(self.get_response_delay())
+        await asyncio.sleep(self.get_response_delay())  # type: ignore[no-untyped-call]
 
         fromId = packet.get("fromId")
 
@@ -182,7 +187,9 @@ class Plugin(BasePlugin):
         """
         return [self.plugin_name]
 
-    async def handle_room_message(self, room, event, full_message) -> bool:
+    async def handle_room_message(
+        self, room: Any, event: Any, full_message: str
+    ) -> bool:
         """
         Handle a Matrix room message that matches this plugin's trigger and reply with "pong!".
 
@@ -194,8 +201,8 @@ class Plugin(BasePlugin):
         Returns:
             bool: `True` if the message matched and a reply was sent, `False` otherwise.
         """
-        if not self.matches(event):
+        if not self.matches(event):  # type: ignore[no-untyped-call]
             return False
 
-        await self.send_matrix_message(room.room_id, "pong!")
+        await self.send_matrix_message(room.room_id, "pong!")  # type: ignore[no-untyped-call]
         return True

@@ -4,6 +4,7 @@ import asyncio
 import base64
 import json
 import re
+from typing import Any, cast
 
 from meshtastic import mesh_pb2
 
@@ -30,7 +31,7 @@ class Plugin(BasePlugin):
     plugin_name = "mesh_relay"
     max_data_rows_per_node = DEFAULT_MAX_DATA_ROWS_PER_NODE_MESH_RELAY
 
-    def normalize(self, dict_obj):
+    def normalize(self, dict_obj: Any) -> dict[str, Any]:
         """
         Converts packet data in various formats (dict, JSON string, or plain string) into a normalized dictionary with raw data fields removed.
 
@@ -46,9 +47,9 @@ class Plugin(BasePlugin):
             except (json.JSONDecodeError, TypeError):
                 dict_obj = {"decoded": {"text": dict_obj}}
 
-        return self.strip_raw(dict_obj)
+        return cast(dict[str, Any], self.strip_raw(dict_obj))  # type: ignore[no-untyped-call]
 
-    def process(self, packet):
+    def process(self, packet: Any) -> dict[str, Any]:
         """Process and prepare packet data for relay.
 
         Args:
@@ -60,17 +61,17 @@ class Plugin(BasePlugin):
         Normalizes packet format and encodes binary payloads as base64
         for JSON serialization and Matrix transmission.
         """
-        packet = self.normalize(packet)
+        result = self.normalize(packet)
 
-        if "decoded" in packet and "payload" in packet["decoded"]:
-            if isinstance(packet["decoded"]["payload"], bytes):
-                packet["decoded"]["payload"] = base64.b64encode(
-                    packet["decoded"]["payload"]
+        if "decoded" in result and "payload" in result["decoded"]:
+            if isinstance(result["decoded"]["payload"], bytes):
+                result["decoded"]["payload"] = base64.b64encode(
+                    result["decoded"]["payload"]
                 ).decode("utf-8")
 
-        return packet
+        return result
 
-    def get_matrix_commands(self):
+    def get_matrix_commands(self) -> list[str]:
         """Get Matrix commands handled by this plugin.
 
         Returns:
@@ -78,7 +79,7 @@ class Plugin(BasePlugin):
         """
         return []
 
-    def get_mesh_commands(self):
+    def get_mesh_commands(self) -> list[Any]:
         """Get mesh commands handled by this plugin.
 
         Returns:
@@ -87,7 +88,7 @@ class Plugin(BasePlugin):
         return []
 
     async def handle_meshtastic_message(
-        self, packet, formatted_message, longname, meshnet_name
+        self, packet: Any, formatted_message: str, longname: str, meshnet_name: str
     ) -> bool:
         """
         Relay a Meshtastic packet to the configured Matrix room for its channel.
@@ -106,7 +107,7 @@ class Plugin(BasePlugin):
         from mmrelay.matrix_utils import connect_matrix
 
         packet = self.process(packet)
-        matrix_client = await connect_matrix()
+        matrix_client = await connect_matrix()  # type: ignore[no-untyped-call]
         if matrix_client is None:
             self.logger.error("Matrix client is None; skipping mesh relay to Matrix")
             return False
@@ -144,7 +145,7 @@ class Plugin(BasePlugin):
 
         return True
 
-    def matches(self, event):
+    def matches(self, event: Any) -> bool:
         """
         Determine whether a Matrix event's message body contains the bridged-packet marker.
 
@@ -165,7 +166,9 @@ class Plugin(BasePlugin):
             return bool(match)
         return False
 
-    async def handle_room_message(self, room, event, full_message) -> bool:
+    async def handle_room_message(
+        self, room: Any, event: Any, full_message: str
+    ) -> bool:
         """
         Relay an embedded Meshtastic packet from a Matrix room message to the Meshtastic mesh.
 
