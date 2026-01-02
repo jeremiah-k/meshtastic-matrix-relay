@@ -28,6 +28,16 @@ class Plugin(BasePlugin):
     def get_position(
         self, meshtastic_client: "MeshInterface", node_id: str
     ) -> dict[str, Any] | None:
+        """
+        Retrieve the geographic position for a Meshtastic node by its node ID.
+        
+        Parameters:
+            meshtastic_client (MeshInterface): Connected Meshtastic client containing node information.
+            node_id (str): The node's user ID to look up.
+        
+        Returns:
+            position (dict[str, Any] | None): The node's `position` dictionary (typically containing latitude and longitude) if the node is found and has position data; `None` if the node is not found or has no `position`.
+        """
         for _node, info in meshtastic_client.nodes.items():  # type: ignore[attr-defined]
             if info["user"]["id"] == node_id:
                 if "position" in info:

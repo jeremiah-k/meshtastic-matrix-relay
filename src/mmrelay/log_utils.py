@@ -190,9 +190,14 @@ def _configure_logger(
     logger: logging.Logger, *, args: argparse.Namespace | None = None
 ) -> logging.Logger:
     """
-    Configure a Logger object's level, handlers, and formatting based on the current application configuration and optional CLI arguments.
-
-    Reconfiguration is performed when the logger has no handlers or when the module configuration generation has changed. This function attaches a console handler (colorized via Rich when available and enabled) and, if enabled, a rotating file handler; it may set the module-level `log_file_path` when configuring the main application logger to write to a file.
+    Configure a Logger's level, handlers, and formatting based on application configuration and optional CLI arguments.
+    
+    Parameters:
+        logger (logging.Logger): The logger to configure.
+        args (argparse.Namespace | None): Optional CLI arguments that can influence file logging and logfile path resolution.
+    
+    Returns:
+        logging.Logger: The same logger instance after applying level, console handler, and optional rotating file handler.
     """
     global log_file_path
 
@@ -343,9 +348,12 @@ def get_logger(name: str, args: argparse.Namespace | None = None) -> logging.Log
 
 def refresh_all_loggers(args: argparse.Namespace | None = None) -> None:
     """
-    Reconfigure all loggers created via get_logger() so they reflect the current logging configuration.
-
-    Increments the internal configuration generation and re-applies configuration to each registered logger. Not thread-safe; intended for startup or controlled configuration reload paths.
+    Reconfigure all registered loggers to apply the current logging configuration.
+    
+    Increments the internal configuration generation, then re-applies configuration to every logger created via get_logger(). Not thread-safe; intended for startup or controlled configuration reload paths.
+    
+    Parameters:
+        args (argparse.Namespace | None): Optional CLI arguments that influence logging configuration (for example, a provided logfile). If None, global configuration is used.
     """
     global _config_generation
 

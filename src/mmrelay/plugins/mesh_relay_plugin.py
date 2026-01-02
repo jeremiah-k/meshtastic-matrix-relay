@@ -50,16 +50,14 @@ class Plugin(BasePlugin):
         return self.strip_raw(dict_obj)
 
     def process(self, packet: Any) -> dict[str, Any]:
-        """Process and prepare packet data for relay.
-
-        Args:
-            packet: Raw packet data to process
-
+        """
+        Normalize a packet and encode any binary payloads for safe transport.
+        
+        Parameters:
+            packet (Any): Raw packet data to normalize and prepare.
+        
         Returns:
-            dict: Processed packet with base64-encoded binary payloads
-
-        Normalizes packet format and encodes binary payloads as base64
-        for JSON serialization and Matrix transmission.
+            dict[str, Any]: The normalized packet; if `decoded.payload` was bytes it is replaced with a base64-encoded UTF-8 string.
         """
         result = self.normalize(packet)
 
@@ -72,18 +70,20 @@ class Plugin(BasePlugin):
         return result
 
     def get_matrix_commands(self) -> list[str]:
-        """Get Matrix commands handled by this plugin.
-
+        """
+        Get the Matrix commands this plugin handles.
+        
         Returns:
-            list: Empty list (this plugin handles all traffic, not specific commands)
+            list[str]: Empty list when the plugin handles all Matrix traffic instead of specific commands.
         """
         return []
 
     def get_mesh_commands(self) -> list[str]:
-        """Get mesh commands handled by this plugin.
-
+        """
+        Indicate which Meshtastic/mesh commands this plugin handles.
+        
         Returns:
-            list: Empty list (this plugin handles all traffic, not specific commands)
+            list[str]: An empty list because this plugin handles all mesh traffic rather than specific commands.
         """
         return []
 

@@ -76,14 +76,16 @@ def print_banner() -> None:
 
 async def main(config: dict[str, Any]) -> None:
     """
-    Coordinate the relay between Meshtastic and Matrix: initialize state, start queues and plugins, connect and join rooms, register event handlers, run the Matrix sync loop with retries, and perform orderly shutdown (optionally wiping the message map on start/stop).
-
+    Coordinate startup, runtime, and orderly shutdown of the relay between Meshtastic and Matrix.
+    
+    Initializes database and plugins, starts the message queue and Meshtastic connection, connects and joins configured Matrix rooms, registers Matrix event handlers, runs the Matrix sync loop with retry and health-monitoring logic, and performs a coordinated shutdown (optionally wiping the message map on start and stop).
+    
     Parameters:
-        config (dict): Application configuration. Expected keys used by this function include:
-            - "matrix_rooms": list of room dicts with at least an "id" entry.
-            - "meshtastic": optional dict; may contain "message_delay".
-            - "database" (preferred) or legacy "db": optional dict containing "msg_map" with "wipe_on_restart" boolean.
-
+        config (dict[str, Any]): Application configuration. Relevant keys:
+            - "matrix_rooms": list of room dictionaries, each containing at least an "id" key.
+            - "meshtastic": optional dict; may include "message_delay" to configure outbound pacing.
+            - "database" (preferred) or legacy "db": optional dict containing "msg_map" with a "wipe_on_restart" boolean to control wiping the message map at startup and shutdown.
+    
     Raises:
         ConnectionError: If a Matrix client cannot be obtained and operation cannot continue.
     """
@@ -164,9 +166,9 @@ async def main(config: dict[str, Any]) -> None:
 
     def _set_shutdown_flag() -> None:
         """
-        Mark the application as shutting down and notify waiting tasks.
-
-        Sets the global shutdown flag and triggers the shutdown_event so shutdown handlers and loops can proceed.
+        Mark the application as shutting down and wake tasks waiting for shutdown.
+        
+        Sets the global shutdown indicator and signals the shutdown_event so any awaiting loops or handlers can proceed with shutdown.
         """
         meshtastic_utils.shutting_down = True
         shutdown_event.set()
@@ -182,11 +184,7 @@ async def main(config: dict[str, Any]) -> None:
 
     def signal_handler() -> None:
         """
-        Handle shutdown signals synchronously.
-
-        Signal handlers must be synchronous and should avoid async operations.
-        This handler initiates the shutdown sequence, allowing the main loop
-        to handle cleanup asynchronously.
+        Trigger the application's shutdown sequence from a synchronous signal handler.
         """
         shutdown()
 
@@ -295,7 +293,9 @@ async def main(config: dict[str, Any]) -> None:
 
                 def _close_meshtastic() -> None:
                     """
-                    Closes the Meshtastic client connection synchronously.
+                    Close the Meshtastic client connection if one exists.
+                    
+                    If no Meshtastic client is present, this function does nothing.
                     """
                     if meshtastic_utils.meshtastic_client:
                         meshtastic_utils.meshtastic_client.close()
