@@ -6,7 +6,7 @@ import json
 import re
 from typing import Any
 
-from meshtastic import mesh_pb2  # type: ignore[import-not-found]
+from meshtastic import mesh_pb2  # type: ignore[import-untyped]
 
 from mmrelay.constants.database import DEFAULT_MAX_DATA_ROWS_PER_NODE_MESH_RELAY
 from mmrelay.plugins.base_plugin import BasePlugin, config

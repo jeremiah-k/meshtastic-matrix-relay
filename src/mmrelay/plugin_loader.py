@@ -13,13 +13,15 @@ import tempfile
 import threading
 import time
 from contextlib import contextmanager
-from typing import Any, NamedTuple
+from types import ModuleType
+from typing import Any, Iterator, NamedTuple
 from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 
+schedule: ModuleType | None
 try:
     import schedule
 except ImportError:
-    schedule = None  # type: ignore[assignment]
+    schedule = None
 
 from mmrelay.config import get_app_path, get_base_dir
 from mmrelay.constants.plugins import (
@@ -184,7 +186,7 @@ def _collect_requirements(
 
 
 @contextmanager
-def _temp_sys_path(path: str) -> Any:
+def _temp_sys_path(path: str) -> Iterator[None]:
     """
     Temporarily prepends a directory to Python's import search path for the duration of a with-block.
 
@@ -2193,7 +2195,6 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
                     _redact_url(repo_url),
                 )
                 continue
-            assert repo_name_from_url is not None
 
             # Try each directory in order
             plugin_found = False

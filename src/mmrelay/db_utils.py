@@ -3,7 +3,7 @@ import json
 import os
 import sqlite3
 import threading
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Tuple, cast
 
 from mmrelay.config import get_data_dir
 from mmrelay.db_runtime import DatabaseManager
@@ -481,7 +481,7 @@ def get_plugin_data_for_node(plugin_name: str, meshtastic_id: int | str) -> list
         return []
 
     try:
-        return json.loads(result[0] if result else "[]")  # type: ignore[no-any-return]
+        return cast(list[Any], json.loads(result[0] if result else "[]"))
     except (json.JSONDecodeError, TypeError):
         logger.exception(
             "Failed to decode JSON data for plugin %s, node %s",
@@ -526,7 +526,7 @@ def get_plugin_data(plugin_name: str) -> list[tuple[Any, ...]]:
         )
         return []
 
-    return result  # type: ignore[no-any-return]
+    return cast(list[tuple[Any, ...]], result)
 
 
 def get_longname(meshtastic_id: str) -> str | None:
@@ -555,7 +555,7 @@ def get_longname(meshtastic_id: str) -> str | None:
             "SELECT longname FROM longnames WHERE meshtastic_id=?",
             (meshtastic_id,),
         )
-        return cursor.fetchone()  # type: ignore[no-any-return]
+        return cast(tuple[Any, ...] | None, cursor.fetchone())
 
     try:
         result = manager.run_sync(_fetch)
@@ -641,7 +641,7 @@ def get_shortname(meshtastic_id: str) -> str | None:
             "SELECT shortname FROM shortnames WHERE meshtastic_id=?",
             (meshtastic_id,),
         )
-        return cursor.fetchone()  # type: ignore[no-any-return]
+        return cast(tuple[Any, ...] | None, cursor.fetchone())
 
     try:
         result = manager.run_sync(_fetch)
@@ -806,7 +806,7 @@ def get_message_map_by_meshtastic_id(
             "SELECT matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet FROM message_map WHERE meshtastic_id=?",
             (meshtastic_id,),
         )
-        return cursor.fetchone()  # type: ignore[no-any-return]
+        return cast(tuple[Any, ...] | None, cursor.fetchone())
 
     try:
         result = manager.run_sync(_fetch)
@@ -856,7 +856,7 @@ def get_message_map_by_matrix_event_id(
             "SELECT meshtastic_id, matrix_room_id, meshtastic_text, meshtastic_meshnet FROM message_map WHERE matrix_event_id=?",
             (matrix_event_id,),
         )
-        return cursor.fetchone()  # type: ignore[no-any-return]
+        return cast(tuple[Any, ...] | None, cursor.fetchone())
 
     try:
         result = manager.run_sync(_fetch)

@@ -34,7 +34,7 @@ class QueuedMessage:
     """Represents a message in the queue with metadata."""
 
     timestamp: float
-    send_function: Callable[[], Any]
+    send_function: Callable[..., Any]
     args: tuple[Any, ...]
     kwargs: dict[str, Any]
     description: str
@@ -606,7 +606,7 @@ def stop_message_queue() -> None:
 
 
 def queue_message(
-    send_function: Callable[[], Any],
+    send_function: Callable[..., Any],
     *args: Any,
     description: str = "",
     mapping_info: Optional[dict[str, Any]] = None,
