@@ -1,6 +1,7 @@
 import io
 import json
 from datetime import datetime, timedelta
+from typing import Any
 
 import matplotlib.pyplot as plt
 from PIL import Image
@@ -13,7 +14,7 @@ class Plugin(BasePlugin):
     is_core_plugin = True
     max_data_rows_per_node = 50
 
-    def commands(self):
+    def commands(self) -> list[str]:
         """
         Return the list of supported telemetry metric command names.
 
@@ -32,8 +33,7 @@ class Plugin(BasePlugin):
         """
         return "Graph of avg Mesh telemetry value for last 12 hours"
 
-    def _generate_timeperiods(self, hours=12):
-        # Calculate the start and end times
+    def _generate_timeperiods(self, hours: int = 12) -> list[datetime]:
         """
         Generate a list of hourly datetime anchors spanning the past `hours` hours up to now.
 
@@ -55,7 +55,11 @@ class Plugin(BasePlugin):
         return hourly_intervals
 
     async def handle_meshtastic_message(
-        self, packet, formatted_message, longname, meshnet_name
+        self,
+        packet: dict[str, Any],
+        formatted_message: str,
+        longname: str,
+        meshnet_name: str,
     ) -> bool:
         # Support deviceMetrics only for now
         """
@@ -77,7 +81,7 @@ class Plugin(BasePlugin):
             and "deviceMetrics" in packet["decoded"]["telemetry"]
         ):
             telemetry_data = []
-            data = self.get_node_data(meshtastic_id=packet["fromId"])
+            data = self.get_node_data(meshtastic_id=packet["fromId"])  # type: ignore[no-untyped-call]
             if data:
                 telemetry_data = data
             packet_data = packet["decoded"]["telemetry"]
@@ -102,13 +106,15 @@ class Plugin(BasePlugin):
                     ),
                 }
             )
-            self.set_node_data(meshtastic_id=packet["fromId"], node_data=telemetry_data)
+            self.set_node_data(  # type: ignore[no-untyped-call]
+                meshtastic_id=packet["fromId"], node_data=telemetry_data
+            )
             return False
 
         # Return False for non-telemetry packets
         return False
 
-    def get_matrix_commands(self):
+    def get_matrix_commands(self) -> list[str]:
         """
         Return the telemetry command names supported for Matrix commands.
 
@@ -117,7 +123,7 @@ class Plugin(BasePlugin):
         """
         return ["batteryLevel", "voltage", "airUtilTx"]
 
-    def get_mesh_commands(self):
+    def get_mesh_commands(self) -> list[str]:
         """
         List the supported mesh commands for this plugin.
 
@@ -126,7 +132,9 @@ class Plugin(BasePlugin):
         """
         return []
 
-    async def handle_room_message(self, room, event, full_message) -> bool:
+    async def handle_room_message(
+        self, room: Any, event: Any, full_message: str
+    ) -> bool:
         # Pass the event to matches()
         """
         Handle a Matrix room message requesting a telemetry graph and send the generated image to the originating room.
@@ -141,7 +149,7 @@ class Plugin(BasePlugin):
         Returns:
             `true` if the message matched a telemetry command and the graph was generated and sent (or a user-facing notification was sent when a requested node had no data); `false` otherwise.
         """
-        if not self.matches(event):
+        if not self.matches(event):  # type: ignore[no-untyped-call]
             return False
 
         parsed_command = self.get_matching_matrix_command(event)
@@ -155,7 +163,7 @@ class Plugin(BasePlugin):
         hourly_intervals = self._generate_timeperiods()
         from mmrelay.matrix_utils import connect_matrix
 
-        matrix_client = await connect_matrix()
+        matrix_client = await connect_matrix()  # type: ignore[no-untyped-call]
         if matrix_client is None:
             self.logger.warning(
                 "Matrix client unavailable; skipping telemetry graph generation"
@@ -163,9 +171,9 @@ class Plugin(BasePlugin):
             return False
 
         # Compute the hourly averages for each node
-        hourly_averages = {}
+        hourly_averages: dict[int, list[float]] = {}
 
-        def calculate_averages(node_data_rows):
+        def calculate_averages(node_data_rows: list[dict[str, Any]]) -> None:
             for record in node_data_rows:
                 record_time = datetime.fromtimestamp(
                     record["time"]
@@ -181,18 +189,18 @@ class Plugin(BasePlugin):
                         break
 
         if node:
-            node_data_rows = self.get_node_data(node)
+            node_data_rows = self.get_node_data(node)  # type: ignore[no-untyped-call]
             if node_data_rows:
                 calculate_averages(node_data_rows)
             else:
-                await self.send_matrix_message(
+                await self.send_matrix_message(  # type: ignore[no-untyped-call]
                     room.room_id,
                     f"No telemetry data found for node '{node}'.",
                     formatted=False,
                 )
                 return True
         else:
-            for node_data_json in self.get_data():
+            for node_data_json in self.get_data():  # type: ignore[no-untyped-call]
                 node_data_rows = json.loads(node_data_json[0])
                 calculate_averages(node_data_rows)
 

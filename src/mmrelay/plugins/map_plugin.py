@@ -1,6 +1,7 @@
 import asyncio
 import os
 import re
+from typing import Protocol
 
 import PIL.ImageDraw
 import s2sphere
@@ -14,6 +15,12 @@ from mmrelay.constants.plugins import (
 )
 from mmrelay.log_utils import get_logger
 from mmrelay.plugins.base_plugin import BasePlugin
+
+
+class MatrixRoom(Protocol):
+    """Protocol for Matrix room objects used by plugins."""
+
+    room_id: str
 
 
 def precision_bits_to_meters(bits: int) -> float | None:
@@ -54,14 +61,16 @@ async def _connect_meshtastic_async() -> object | None:
     return await asyncio.to_thread(connect_meshtastic)
 
 
-def textsize(self: PIL.ImageDraw.ImageDraw, *args, **kwargs):
+def textsize(
+    self: PIL.ImageDraw.ImageDraw, *args: object, **kwargs: object
+) -> tuple[float, float]:
     """
     Compute the width and height of the given text as it would be rendered by this ImageDraw instance.
 
     Returns:
         (width, height): Tuple containing the text's horizontal and vertical size in pixels.
     """
-    left, top, right, bottom = self.textbbox((0, 0), *args, **kwargs)
+    left, top, right, bottom = self.textbbox((0, 0), *args, **kwargs)  # type: ignore[arg-type, type-var]
     return right - left, bottom - top
 
 
@@ -69,7 +78,7 @@ def textsize(self: PIL.ImageDraw.ImageDraw, *args, **kwargs):
 PIL.ImageDraw.ImageDraw.textsize = textsize  # type: ignore[attr-defined]
 
 
-class TextLabel(staticmaps.Object):
+class TextLabel(staticmaps.Object):  # type: ignore[misc]
     def __init__(self, latlng: s2sphere.LatLng, text: str, fontSize: int = 12) -> None:
         staticmaps.Object.__init__(self)
         self._latlng = latlng
@@ -239,7 +248,7 @@ class TextLabel(staticmaps.Object):
 
 
 def get_map(
-    locations: list[dict],
+    locations: list[dict[str, float | int | str | None]],
     zoom: int | None = None,
     image_size: tuple[int, int] | None = None,
     anonymize: bool = False,  # noqa: ARG001
@@ -270,12 +279,14 @@ def get_map(
 
     # Center the map on the average location so nodes are not pushed to the edge
     if locations:
-        avg_lat = sum(float(loc["lat"]) for loc in locations) / len(locations)
-        avg_lon = sum(float(loc["lon"]) for loc in locations) / len(locations)
+        avg_lat = sum(float(loc["lat"] or 0) for loc in locations) / len(locations)
+        avg_lon = sum(float(loc["lon"] or 0) for loc in locations) / len(locations)
         context.set_center(staticmaps.create_latlng(avg_lat, avg_lon))
 
     for location in locations:
-        radio = staticmaps.create_latlng(float(location["lat"]), float(location["lon"]))
+        radio = staticmaps.create_latlng(
+            float(location["lat"] or 0), float(location["lon"] or 0)
+        )
         precision_bits = location.get("precisionBits")
         precision_radius_m = None
         if precision_bits is not None:
@@ -292,13 +303,13 @@ def get_map(
                     color=color_cls(0, 0, 0, 64),
                 )
             )
-        context.add_object(TextLabel(radio, location["label"], fontSize=50))
+        context.add_object(TextLabel(radio, str(location["label"]), fontSize=50))
 
     # render non-anti-aliased png
     if image_size:
-        return context.render_pillow(image_size[0], image_size[1])  # type: ignore[return-value]
+        return context.render_pillow(image_size[0], image_size[1])  # type: ignore[no-any-return]
     else:
-        return context.render_pillow(1000, 1000)  # type: ignore[return-value]
+        return context.render_pillow(1000, 1000)  # type: ignore[no-any-return]
 
 
 class Plugin(BasePlugin):
@@ -324,14 +335,14 @@ class Plugin(BasePlugin):
     is_core_plugin = True
     plugin_name = "map"
 
-    def __init__(self):
+    def __init__(self) -> None:
         """
         Create a Plugin instance and perform BasePlugin initialization.
         """
         super().__init__()
 
     @property
-    def description(self):
+    def description(self) -> str:
         """
         Provide a short, human-readable description of the plugin for listings and help.
 
@@ -343,7 +354,7 @@ class Plugin(BasePlugin):
         )
 
     async def handle_meshtastic_message(
-        self, packet, formatted_message, longname, meshnet_name
+        self, packet: object, formatted_message: str, longname: str, meshnet_name: str
     ) -> bool:
         """
         Handle an incoming Meshtastic packet and determine whether the plugin consumes it.
@@ -359,7 +370,7 @@ class Plugin(BasePlugin):
         """
         return False
 
-    def get_matrix_commands(self):
+    def get_matrix_commands(self) -> list[str]:
         """
         List the Matrix command names handled by this plugin.
 
@@ -368,7 +379,7 @@ class Plugin(BasePlugin):
         """
         return [self.plugin_name]
 
-    def get_mesh_commands(self):
+    def get_mesh_commands(self) -> list[str]:
         """
         Provide the list of mesh-specific command names handled by this plugin.
 
@@ -377,7 +388,9 @@ class Plugin(BasePlugin):
         """
         return []
 
-    async def handle_room_message(self, room, event, full_message) -> bool:
+    async def handle_room_message(
+        self, room: MatrixRoom, event: object, full_message: str
+    ) -> bool:
         # Pass the whole event to matches() for compatibility w/ updated base_plugin.py
         """
         Handle "!map" commands by generating a static map of known mesh node locations and sending it to the Matrix room.
@@ -392,7 +405,7 @@ class Plugin(BasePlugin):
         Returns:
             bool: `True` if the command was handled and the map image was generated and sent; `False` if the message did not target this plugin or was not processed.
         """
-        if not self.matches(event):
+        if not self.matches(event):  # type: ignore[no-untyped-call]
             return False
 
         args = self.extract_command_args("map", full_message)
@@ -414,7 +427,7 @@ class Plugin(BasePlugin):
             zoom = int(zoom)  # type: ignore[arg-type]
         except (TypeError, ValueError):
             try:
-                zoom = int(self.config.get("zoom", 8))  # type: ignore[arg-type]
+                zoom = int(self.config.get("zoom", 8))
             except (TypeError, ValueError):
                 zoom = 8
 
@@ -445,10 +458,10 @@ class Plugin(BasePlugin):
             send_image,
         )
 
-        matrix_client = await connect_matrix()
+        matrix_client = await connect_matrix()  # type: ignore[no-untyped-call]
         if matrix_client is None:
             logger.error("Failed to connect to Matrix client; cannot generate map")
-            await self.send_matrix_message(
+            await self.send_matrix_message(  # type: ignore[no-untyped-call]
                 room.room_id,
                 "Cannot generate map: Matrix client unavailable.",
                 formatted=False,
@@ -460,7 +473,7 @@ class Plugin(BasePlugin):
 
         if not meshtastic_client or not has_nodes:
             self.logger.error("Meshtastic client unavailable; cannot generate map")
-            await self.send_matrix_message(
+            await self.send_matrix_message(  # type: ignore[no-untyped-call]
                 room.room_id,
                 "Cannot generate map: Meshtastic client unavailable.",
                 formatted=False,
@@ -488,7 +501,7 @@ class Plugin(BasePlugin):
                 )
 
         if not locations:
-            await self.send_matrix_message(
+            await self.send_matrix_message(  # type: ignore[no-untyped-call]
                 room.room_id,
                 "Cannot generate map: No nodes with location data found.",
                 formatted=False,

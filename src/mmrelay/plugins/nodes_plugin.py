@@ -125,7 +125,7 @@ $shortname $longname / $devicemodel / $battery $voltage / $snr / $hops / $lastse
             return False
 
         response = await asyncio.to_thread(self.generate_response)
-        await self.send_matrix_message(
+        await self.send_matrix_message(  # type: ignore[no-untyped-call]
             room_id=room.room_id, message=response, formatted=False
         )
 

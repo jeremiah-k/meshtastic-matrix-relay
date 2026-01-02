@@ -2,9 +2,10 @@ import asyncio
 import math
 import re
 from datetime import datetime
+from typing import Any
 
 import requests  # type: ignore[import-untyped]
-from meshtastic.mesh_interface import BROADCAST_NUM
+from meshtastic.mesh_interface import BROADCAST_NUM  # type: ignore[import-untyped]
 
 from mmrelay.constants.formats import TEXT_MESSAGE_APP
 from mmrelay.constants.messages import PORTNUM_TEXT_MESSAGE_APP
@@ -44,7 +45,9 @@ class Plugin(BasePlugin):
             return "daily"
         return "weather"
 
-    def generate_forecast(self, latitude, longitude, mode: str = "weather"):
+    def generate_forecast(
+        self, latitude: float, longitude: float, mode: str = "weather"
+    ) -> str:
         """
         Generate a concise one-line weather forecast for the given GPS coordinates.
 
@@ -161,7 +164,7 @@ class Plugin(BasePlugin):
             }
             index_map["now"] = min(base_index, max_index)
 
-            def _safe_get(seq, idx):
+            def _safe_get(seq: Any, idx: Any) -> Any:
                 """
                 Safely retrieve an item from a sequence or mapping by index/key.
 
@@ -177,7 +180,7 @@ class Plugin(BasePlugin):
                 except (IndexError, TypeError, KeyError):
                     return None
 
-            def get_hourly(idx):
+            def get_hourly(idx: int) -> tuple[Any, Any, Any, Any, Any, Any, Any]:
                 """
                 Fetch hourly weather values at the given hourly index from the parsed API data arrays.
 
@@ -281,7 +284,7 @@ class Plugin(BasePlugin):
 
     def _build_daily_forecast(
         self,
-        data: dict,
+        data: dict[str, Any],
         units: str,
         temperature_unit: str,
         daily_days: int,
@@ -341,7 +344,7 @@ class Plugin(BasePlugin):
         current_temp: float | None,
         current_weather_code: int,
         is_day: int,
-        forecast_hours: dict,
+        forecast_hours: dict[str, Any],
         temperature_unit: str,
         slots: list[str],
     ) -> str:
@@ -444,7 +447,11 @@ class Plugin(BasePlugin):
         return weather_mapping.get(weather_code, "❓ Unknown")
 
     async def handle_meshtastic_message(
-        self, packet, formatted_message, longname, meshnet_name
+        self,
+        packet: dict[str, Any],
+        formatted_message: str,
+        longname: str,
+        meshnet_name: str,
     ) -> bool:
         """
         Handle an incoming Meshtastic text message and respond with a weather forecast when a supported command is detected.
@@ -501,7 +508,7 @@ class Plugin(BasePlugin):
             is_direct_message = False
 
         # Pass is_direct_message to is_channel_enabled
-        if not self.is_channel_enabled(channel, is_direct_message=is_direct_message):
+        if not self.is_channel_enabled(channel, is_direct_message=is_direct_message):  # type: ignore[no-untyped-call]
             # Channel not enabled for plugin
             return False
 
@@ -543,7 +550,7 @@ class Plugin(BasePlugin):
             )
 
         # Wait for the response delay
-        await asyncio.sleep(self.get_response_delay())
+        await asyncio.sleep(self.get_response_delay())  # type: ignore[no-untyped-call]
 
         if is_direct_message:
             # Respond via DM
@@ -559,7 +566,7 @@ class Plugin(BasePlugin):
             )
         return True
 
-    def get_matrix_commands(self):
+    def get_matrix_commands(self) -> list[str]:
         """
         List command names the plugin exposes to Matrix integrations.
 
@@ -568,7 +575,7 @@ class Plugin(BasePlugin):
         """
         return list(self.mesh_commands)
 
-    def get_mesh_commands(self):
+    def get_mesh_commands(self) -> list[str]:
         """
         List available mesh commands exposed by this plugin.
 
@@ -577,7 +584,9 @@ class Plugin(BasePlugin):
         """
         return list(self.mesh_commands)
 
-    async def handle_room_message(self, room, event, full_message) -> bool:
+    async def handle_room_message(
+        self, room: Any, event: Any, full_message: str
+    ) -> bool:
         """
         Handle a Matrix room message invoking the weather plugin and post a forecast to the room.
 
@@ -591,7 +600,7 @@ class Plugin(BasePlugin):
         Returns:
             bool: `True` if the event matched the plugin and was handled (a response was sent or attempted), `False` if the event did not match and was not handled.
         """
-        if not self.matches(event):
+        if not self.matches(event):  # type: ignore[no-untyped-call]
             return False
 
         parsed_command = self.get_matching_matrix_command(event)
@@ -614,7 +623,7 @@ class Plugin(BasePlugin):
                 coords = self._determine_mesh_location(meshtastic_client)
 
         if coords is None:
-            await self.send_matrix_message(
+            await self.send_matrix_message(  # type: ignore[no-untyped-call]
                 room.room_id,
                 "Cannot determine location",
                 formatted=False,
@@ -627,7 +636,7 @@ class Plugin(BasePlugin):
             longitude=coords[1],
             mode=parsed_command,
         )
-        await self.send_matrix_message(room.room_id, forecast, formatted=False)
+        await self.send_matrix_message(room.room_id, forecast, formatted=False)  # type: ignore[no-untyped-call]
         return True
 
     async def _resolve_location_from_args(
@@ -649,7 +658,9 @@ class Plugin(BasePlugin):
             return coords
         return await asyncio.to_thread(self._geocode_location, arg_text)
 
-    def _determine_mesh_location(self, meshtastic_client):
+    def _determine_mesh_location(
+        self, meshtastic_client: Any
+    ) -> tuple[float, float] | None:
         """
         Compute an approximate mesh location by averaging known node coordinates.
 
