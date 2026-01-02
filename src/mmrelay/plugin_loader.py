@@ -67,7 +67,7 @@ _global_scheduler_stop_event: threading.Event | None = None
 _PLUGIN_DEPS_DIR: str | None = None
 
 try:
-    _PLUGIN_DEPS_DIR = os.path.join(get_base_dir(), "plugins", "deps")  # type: ignore[no-untyped-call]
+    _PLUGIN_DEPS_DIR = os.path.join(get_base_dir(), "plugins", "deps")
 except (OSError, RuntimeError, ValueError) as exc:  # pragma: no cover
     logger.debug("Unable to resolve base dir for plugin deps at import time: %s", exc)
     _PLUGIN_DEPS_DIR = None
@@ -798,7 +798,7 @@ def _get_plugin_dirs(plugin_type: str) -> list[str]:
     dirs = []
 
     # Check user directory first (preferred location)
-    user_dir = os.path.join(get_base_dir(), "plugins", plugin_type)  # type: ignore[no-untyped-call]
+    user_dir = os.path.join(get_base_dir(), "plugins", plugin_type)
     try:
         os.makedirs(user_dir, exist_ok=True)
         dirs.append(user_dir)
@@ -806,7 +806,7 @@ def _get_plugin_dirs(plugin_type: str) -> list[str]:
         logger.warning(f"Cannot create user plugin directory {user_dir}: {e}")
 
     # Check local directory (backward compatibility)
-    local_dir = os.path.join(get_app_path(), "plugins", plugin_type)  # type: ignore[no-untyped-call]
+    local_dir = os.path.join(get_app_path(), "plugins", plugin_type)
     try:
         os.makedirs(local_dir, exist_ok=True)
         dirs.append(local_dir)
@@ -2212,13 +2212,13 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
                         break
                     except Exception:
                         logger.exception(
-                            "Failed to load community plugin %s", repo_name
+                            "Failed to load community plugin %s", plugin_name
                         )
                         continue
 
             if not plugin_found:
                 logger.warning(
-                    f"Community plugin '{repo_name}' not found in any of the plugin directories"
+                    f"Community plugin '{plugin_name}' not found in any of the plugin directories"
                 )
         else:
             logger.error(

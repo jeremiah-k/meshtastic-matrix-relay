@@ -142,7 +142,7 @@ class Plugin(BasePlugin):
 
         Parameters:
             room (MatrixRoom): The room where the message was received.
-            event (RoomMessageText): The Matrix message event used to determine a match.
+            event (dict[str, Any]): The Matrix message event used to determine a match.
             full_message (str): The full text of the received message.
 
         Returns:

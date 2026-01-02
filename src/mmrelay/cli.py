@@ -419,7 +419,7 @@ def _validate_matrix_authentication(
 
 
 def _validate_e2ee_config(
-    config: dict[str, Any], matrix_section: Mapping[str, Any] | None, config_path: str
+    _config: dict[str, Any], matrix_section: Mapping[str, Any] | None, config_path: str
 ) -> bool:
     """
     Validate end-to-end encryption (E2EE) configuration and Matrix authentication for the given config.

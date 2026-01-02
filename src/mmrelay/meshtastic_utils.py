@@ -7,7 +7,7 @@ import threading
 import time
 from concurrent.futures import Future
 from concurrent.futures import TimeoutError as FuturesTimeoutError
-from typing import Any, Awaitable, Callable, Coroutine, List, cast
+from typing import Any, Awaitable, Callable, Coroutine, cast
 
 import meshtastic  # type: ignore[import-untyped]
 import meshtastic.ble_interface  # type: ignore[import-untyped]
@@ -74,7 +74,7 @@ config = None
 # Do not import plugin_loader here to avoid circular imports
 
 # Initialize matrix rooms configuration
-matrix_rooms: List[dict[str, Any]] = []
+matrix_rooms: list[dict[str, Any]] = []
 
 # Initialize logger for Meshtastic
 logger = get_logger(name="Meshtastic")

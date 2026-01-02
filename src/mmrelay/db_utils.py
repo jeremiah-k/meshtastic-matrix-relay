@@ -125,7 +125,7 @@ def get_db_path() -> str:
                 return custom_path
 
     # Use the standard data directory
-    data_dir = get_data_dir()  # type: ignore[no-untyped-call]
+    data_dir = get_data_dir()
     # Ensure the data directory exists before using it
     try:
         os.makedirs(data_dir, exist_ok=True)
@@ -971,7 +971,7 @@ async def async_store_message_map(
         matrix_event_id (str): Matrix event ID to map to.
         matrix_room_id (str): Matrix room ID where the Matrix event was posted.
         meshtastic_text (str): Text content of the Meshtastic message.
-        meshtastic_meshnet (bool | None): Optional flag indicating whether the message originated from Meshnet; may be None.
+        meshtastic_meshnet (str | None): Optional meshnet identifier associated with the message; stored when provided.
     """
     manager = _get_db_manager()
 

@@ -250,7 +250,7 @@ def test_config_generation_windows(args: Any = None) -> dict[str, Any]:
         try:
             from mmrelay.config import get_config_paths
 
-            paths = get_config_paths(args)  # type: ignore[no-untyped-call]
+            paths = get_config_paths(args)
             results["config_paths"] = {"status": "ok", "details": f"Paths: {paths}"}
         except (ImportError, OSError) as e:
             results["config_paths"] = {"status": "error", "details": str(e)}
@@ -259,7 +259,7 @@ def test_config_generation_windows(args: Any = None) -> dict[str, Any]:
         try:
             from mmrelay.config import get_config_paths
 
-            paths = get_config_paths(args)  # type: ignore[no-untyped-call]
+            paths = get_config_paths(args)
             created_dirs = []
             for path in paths:
                 dir_path = os.path.dirname(path)

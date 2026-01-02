@@ -100,10 +100,6 @@ from mmrelay.log_utils import get_logger
 from mmrelay.meshtastic_utils import connect_meshtastic, sendTextReply
 
 # Import meshtastic protobuf for port numbers when needed
-try:
-    import meshtastic.protobuf.portnums_pb2  # noqa: F401, type: ignore[import-not-found]
-except ImportError:
-    pass
 from mmrelay.message_queue import get_message_queue, queue_message
 
 # Import nio exception types with error handling for test environments

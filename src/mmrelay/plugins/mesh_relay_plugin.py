@@ -106,6 +106,9 @@ class Plugin(BasePlugin):
         Returns:
             True if the packet was sent to a mapped Matrix room, False otherwise.
         """
+        # formatted_message, longname, and meshnet_name are part of the public
+        # plugin callback API but not used for routing in this plugin.
+        _ = (formatted_message, longname, meshnet_name)
         from mmrelay.matrix_utils import connect_matrix
 
         matrix_client = await connect_matrix()
@@ -186,7 +189,9 @@ class Plugin(BasePlugin):
         Returns:
             True if a packet was successfully sent to the mesh, False otherwise.
         """
-        # Use the event for matching instead of full_message
+        # Use the event for matching instead of full_message; keep full_message
+        # in the signature for API compatibility.
+        _ = full_message
         if not self.matches(event):
             return False
 

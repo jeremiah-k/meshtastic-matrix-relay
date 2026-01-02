@@ -667,7 +667,7 @@ class BasePlugin(ABC):
         """
         # Get the plugin-specific data directory
         assert self.plugin_name is not None
-        plugin_dir: str = get_plugin_data_dir(self.plugin_name)  # type: ignore[no-untyped-call]
+        plugin_dir: str = get_plugin_data_dir(self.plugin_name)
 
         # If a subdirectory is specified, create and return it
         if subdir:

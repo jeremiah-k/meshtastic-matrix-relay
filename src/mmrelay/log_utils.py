@@ -183,7 +183,7 @@ def _resolve_log_file(args: argparse.Namespace | None) -> str:
     if isinstance(config_log_file, str) and config_log_file:
         return config_log_file
 
-    return os.path.join(get_log_dir(), "mmrelay.log")  # type: ignore[no-untyped-call]
+    return os.path.join(get_log_dir(), "mmrelay.log")
 
 
 def _configure_logger(
