@@ -3,10 +3,11 @@ import logging
 import os
 import re
 import sys
+from typing import Any, cast
 
-import platformdirs
-import yaml
-from yaml.loader import SafeLoader
+import platformdirs  # type: ignore[import-not-found]
+import yaml  # type: ignore[import-untyped]
+from yaml.loader import SafeLoader  # type: ignore[import-untyped]
 
 # Import application constants
 from mmrelay.cli_utils import msg_suggest_check_config, msg_suggest_generate_config
@@ -19,7 +20,7 @@ from mmrelay.constants.config import (
 )
 
 # Global variable to store the custom data directory
-custom_data_dir = None
+custom_data_dir: str | None = None
 
 
 def set_secure_file_permissions(file_path: str, mode: int = 0o600) -> None:
@@ -42,7 +43,7 @@ def set_secure_file_permissions(file_path: str, mode: int = 0o600) -> None:
 
 
 # Custom base directory for Unix systems
-def get_base_dir():
+def get_base_dir() -> str:
     """Returns the base directory for all application files.
 
     If a custom data directory has been set via --data-dir, that will be used.
@@ -58,10 +59,10 @@ def get_base_dir():
         return os.path.expanduser(os.path.join("~", "." + APP_NAME))
     else:
         # Use platformdirs default for Windows
-        return platformdirs.user_data_dir(APP_NAME, APP_AUTHOR)
+        return platformdirs.user_data_dir(APP_NAME, APP_AUTHOR)  # type: ignore[no-any-return]
 
 
-def get_app_path():
+def get_app_path() -> str:
     """
     Returns the base directory of the application, whether running from source or as an executable.
     """
@@ -73,7 +74,7 @@ def get_app_path():
         return os.path.dirname(os.path.abspath(__file__))
 
 
-def get_config_paths(args=None):
+def get_config_paths(args: Any = None) -> list[str]:
     """
     Return a prioritized list of possible configuration file paths for the application.
 
@@ -118,7 +119,7 @@ def get_config_paths(args=None):
     return paths
 
 
-def get_data_dir():
+def get_data_dir() -> str:
     """
     Return the directory for application data, creating it if it does not exist.
 
@@ -143,7 +144,7 @@ def get_data_dir():
     return data_dir
 
 
-def get_plugin_data_dir(plugin_name=None):
+def get_plugin_data_dir(plugin_name: str | None = None) -> str:
     """
     Returns the directory for storing plugin-specific data files.
     If plugin_name is provided, returns a plugin-specific subdirectory.
@@ -169,7 +170,7 @@ def get_plugin_data_dir(plugin_name=None):
     return plugins_data_dir
 
 
-def get_log_dir():
+def get_log_dir() -> str:
     """
     Return the path to the application's log directory, creating it if missing.
 
@@ -194,7 +195,7 @@ def get_log_dir():
     return log_dir
 
 
-def get_e2ee_store_dir():
+def get_e2ee_store_dir() -> str:
     """
     Get the absolute path to the application's end-to-end encryption (E2EE) data store directory, creating it if necessary.
 
@@ -220,7 +221,7 @@ def get_e2ee_store_dir():
     return store_dir
 
 
-def _convert_env_bool(value, var_name):
+def _convert_env_bool(value: str, var_name: str) -> bool:
     """
     Convert a string from an environment variable into a boolean.
 
@@ -247,7 +248,12 @@ def _convert_env_bool(value, var_name):
         )
 
 
-def _convert_env_int(value, var_name, min_value=None, max_value=None):
+def _convert_env_int(
+    value: str,
+    var_name: str,
+    min_value: int | None = None,
+    max_value: int | None = None,
+) -> int:
     """
     Convert environment variable string to integer with optional range validation.
 
@@ -275,7 +281,12 @@ def _convert_env_int(value, var_name, min_value=None, max_value=None):
     return int_value
 
 
-def _convert_env_float(value, var_name, min_value=None, max_value=None):
+def _convert_env_float(
+    value: str,
+    var_name: str,
+    min_value: float | None = None,
+    max_value: float | None = None,
+) -> float:
     """
     Convert an environment variable string to a float and optionally validate its range.
 
@@ -303,7 +314,7 @@ def _convert_env_float(value, var_name, min_value=None, max_value=None):
     return float_value
 
 
-def load_meshtastic_config_from_env():
+def load_meshtastic_config_from_env() -> dict[str, Any] | None:
     """
     Load Meshtastic-related configuration from environment variables.
 
@@ -320,7 +331,7 @@ def load_meshtastic_config_from_env():
     return config
 
 
-def load_logging_config_from_env():
+def load_logging_config_from_env() -> dict[str, Any] | None:
     """
     Load logging configuration from environment variables.
 
@@ -339,7 +350,7 @@ def load_logging_config_from_env():
     return config
 
 
-def load_database_config_from_env():
+def load_database_config_from_env() -> dict[str, Any] | None:
     """
     Build a database configuration fragment from environment variables.
 
@@ -353,7 +364,7 @@ def load_database_config_from_env():
     return config
 
 
-def is_e2ee_enabled(config):
+def is_e2ee_enabled(config: dict[str, Any]) -> bool:
     """
     Check if End-to-End Encryption (E2EE) is enabled in the configuration.
 
@@ -377,13 +388,15 @@ def is_e2ee_enabled(config):
     if not matrix_cfg:
         return False
 
-    encryption_enabled = matrix_cfg.get("encryption", {}).get("enabled", False)
-    e2ee_enabled = matrix_cfg.get("e2ee", {}).get("enabled", False)
+    encryption_enabled = cast(
+        bool, matrix_cfg.get("encryption", {}).get("enabled", False)
+    )
+    e2ee_enabled = cast(bool, matrix_cfg.get("e2ee", {}).get("enabled", False))
 
     return encryption_enabled or e2ee_enabled
 
 
-def check_e2ee_enabled_silently(args=None):
+def check_e2ee_enabled_silently(args: Any = None) -> bool:
     """
     Check silently whether End-to-End Encryption (E2EE) is enabled in the first readable configuration file.
 
@@ -416,7 +429,7 @@ def check_e2ee_enabled_silently(args=None):
     return False
 
 
-def apply_env_config_overrides(config):
+def apply_env_config_overrides(config: dict[str, Any] | None) -> dict[str, Any]:
     """
     Apply environment-derived configuration overrides to a configuration dictionary.
 
@@ -456,12 +469,13 @@ def apply_env_config_overrides(config):
     return config
 
 
-def load_credentials():
+def load_credentials() -> dict[str, Any] | None:
     """
     Load Matrix credentials from the application's credentials.json file.
 
     Searches for "credentials.json" in the application's base configuration directory (get_base_dir()). If the file exists and contains valid JSON, returns the parsed credentials as a dict. On missing file, parse errors, or filesystem access errors, returns None.
     """
+    config_dir = ""
     try:
         config_dir = get_base_dir()
         credentials_path = os.path.join(config_dir, "credentials.json")
@@ -470,7 +484,7 @@ def load_credentials():
 
         if os.path.exists(credentials_path):
             with open(credentials_path, "r", encoding="utf-8") as f:
-                credentials = json.load(f)
+                credentials = cast(dict[str, Any], json.load(f))
             logger.debug(f"Successfully loaded credentials from {credentials_path}")
             return credentials
         else:
@@ -488,7 +502,7 @@ def load_credentials():
         return None
 
 
-def save_credentials(credentials):
+def save_credentials(credentials: dict[str, Any]) -> None:
     """
     Persist a JSON-serializable credentials mapping to <base_dir>/credentials.json.
 
@@ -504,6 +518,7 @@ def save_credentials(credentials):
     Returns:
         None
     """
+    config_dir = ""
     try:
         config_dir = get_base_dir()
         # Ensure the directory exists and is writable
@@ -552,11 +567,11 @@ if not logger.handlers:
 logger.propagate = False
 
 # Initialize empty config
-relay_config = {}
-config_path = None
+relay_config: dict[str, Any] = {}
+config_path: str | None = None
 
 # Environment variable mappings for configuration sections
-_MESHTASTIC_ENV_VAR_MAPPINGS = [
+_MESHTASTIC_ENV_VAR_MAPPINGS: list[dict[str, Any]] = [
     {
         "env_var": "MMRELAY_MESHTASTIC_CONNECTION_TYPE",
         "config_key": "connection_type",
@@ -600,7 +615,7 @@ _MESHTASTIC_ENV_VAR_MAPPINGS = [
     },
 ]
 
-_LOGGING_ENV_VAR_MAPPINGS = [
+_LOGGING_ENV_VAR_MAPPINGS: list[dict[str, Any]] = [
     {
         "env_var": "MMRELAY_LOGGING_LEVEL",
         "config_key": "level",
@@ -611,12 +626,14 @@ _LOGGING_ENV_VAR_MAPPINGS = [
     {"env_var": "MMRELAY_LOG_FILE", "config_key": "filename", "type": "string"},
 ]
 
-_DATABASE_ENV_VAR_MAPPINGS = [
+_DATABASE_ENV_VAR_MAPPINGS: list[dict[str, Any]] = [
     {"env_var": "MMRELAY_DATABASE_PATH", "config_key": "path", "type": "string"},
 ]
 
 
-def _load_config_from_env_mapping(mappings):
+def _load_config_from_env_mapping(
+    mappings: list[dict[str, Any]],
+) -> dict[str, Any] | None:
     """
     Build a configuration dictionary from environment variables based on a mapping specification.
 
@@ -648,6 +665,7 @@ def _load_config_from_env_mapping(mappings):
             continue
 
         try:
+            value: Any
             if mapping["type"] == "string":
                 value = env_value
             elif mapping["type"] == "int":
@@ -692,7 +710,7 @@ def _load_config_from_env_mapping(mappings):
     return config if config else None
 
 
-def set_config(module, passed_config):
+def set_config(module: Any, passed_config: dict[str, Any]) -> dict[str, Any]:
     """
     Assign the given configuration to a module and apply known, optional module-specific settings.
 
@@ -747,7 +765,7 @@ def set_config(module, passed_config):
     return passed_config
 
 
-def load_config(config_file=None, args=None):
+def load_config(config_file: str | None = None, args: Any = None) -> dict[str, Any]:
     """
     Load the application configuration from a YAML file or from environment variables.
 
@@ -817,7 +835,9 @@ def load_config(config_file=None, args=None):
         return {}
 
 
-def validate_yaml_syntax(config_content, config_path):
+def validate_yaml_syntax(
+    config_content: str, config_path: str
+) -> tuple[bool, str | None, Any]:
     """
     Validate YAML text for syntax and common style issues, parse it with PyYAML, and return results.
 
@@ -881,10 +901,11 @@ def validate_yaml_syntax(config_content, config_path):
         error_msg = f"YAML parsing error in {config_path}:\n"
 
         # Extract line and column information if available
-        if hasattr(e, "problem_mark"):
-            mark = e.problem_mark
-            error_line = mark.line + 1
-            error_column = mark.column + 1
+        mark = getattr(e, "problem_mark", None)
+        if mark is not None:
+            mark_any = cast(Any, mark)
+            error_line = mark_any.line + 1
+            error_column = mark_any.column + 1
             error_msg += f"  Line {error_line}, Column {error_column}: "
 
             # Show the problematic line
@@ -920,7 +941,9 @@ def validate_yaml_syntax(config_content, config_path):
         return False, error_msg, None
 
 
-def get_meshtastic_config_value(config, key, default=None, required=False):
+def get_meshtastic_config_value(
+    config: dict[str, Any], key: str, default: Any = None, required: bool = False
+) -> Any:
     """
     Return a value from the "meshtastic" section of the provided configuration.
 

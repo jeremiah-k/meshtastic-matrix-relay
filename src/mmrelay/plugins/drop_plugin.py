@@ -2,8 +2,8 @@ import asyncio
 import re
 from typing import TYPE_CHECKING, Any
 
-from haversine import haversine  # type: ignore[import-untyped]
-from nio import MatrixRoom, RoomMessageText  # type: ignore[import-untyped]
+from haversine import haversine  # type: ignore[import-not-found]
+from nio import MatrixRoom  # type: ignore[import-not-found]
 
 from mmrelay.constants.database import DEFAULT_DISTANCE_KM_FALLBACK, DEFAULT_RADIUS_KM
 from mmrelay.constants.formats import TEXT_MESSAGE_APP
@@ -12,7 +12,9 @@ from mmrelay.meshtastic_utils import connect_meshtastic
 from mmrelay.plugins.base_plugin import BasePlugin
 
 if TYPE_CHECKING:
-    from meshtastic.mesh_interface import MeshInterface  # type: ignore[import-untyped]
+    from meshtastic.mesh_interface import (
+        MeshInterface,  # type: ignore[import-not-found]
+    )
 
 
 class Plugin(BasePlugin):
@@ -26,7 +28,7 @@ class Plugin(BasePlugin):
     def get_position(
         self, meshtastic_client: "MeshInterface", node_id: str
     ) -> dict[str, Any] | None:
-        for _node, info in meshtastic_client.nodes.items():
+        for _node, info in meshtastic_client.nodes.items():  # type: ignore[attr-defined]
             if info["user"]["id"] == node_id:
                 if "position" in info:
                     pos: dict[str, Any] = info["position"]
@@ -75,8 +77,10 @@ class Plugin(BasePlugin):
                 )
 
                 self.logger.debug(f"Packet originates from: {packet_location}")
-                messages = self.get_node_data(self.special_node) or []  # type: ignore[no-untyped-call]
-                unsent_messages = []
+                messages: list[dict[str, Any]] = (
+                    self.get_node_data(self.special_node) or []
+                )
+                unsent_messages: list[dict[str, Any]] = []
                 for message in messages:
                     # You cannot pickup what you dropped
                     if "originator" in message and message["originator"] == from_id:
@@ -101,7 +105,7 @@ class Plugin(BasePlugin):
                         )
                     else:
                         unsent_messages.append(message)
-                self.set_node_data(self.special_node, unsent_messages)  # type: ignore[no-untyped-call]
+                self.set_node_data(self.special_node, unsent_messages)
                 total_unsent_messages = len(unsent_messages)
                 if total_unsent_messages > 0:
                     self.logger.debug(f"{total_unsent_messages} message(s) remaining")
@@ -137,7 +141,7 @@ class Plugin(BasePlugin):
                 )
                 return True
 
-            self.store_node_data(  # type: ignore[no-untyped-call]
+            self.store_node_data(
                 self.special_node,
                 {
                     "location": (position["latitude"], position["longitude"]),
@@ -152,7 +156,7 @@ class Plugin(BasePlugin):
         return False
 
     async def handle_room_message(
-        self, _room: MatrixRoom, event: RoomMessageText, _full_message: str
+        self, room: MatrixRoom, event: dict[str, Any], full_message: str
     ) -> bool:
         # Pass the event to matches() instead of full_message
         """
@@ -164,4 +168,4 @@ class Plugin(BasePlugin):
         Returns:
             bool: True if the event matches the plugin's criteria, False otherwise.
         """
-        return self.matches(event)  # type: ignore[no-untyped-call, no-any-return]
+        return self.matches(event)

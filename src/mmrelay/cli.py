@@ -8,6 +8,7 @@ import os
 import shutil
 import sys
 from collections.abc import Mapping
+from typing import Any
 
 import yaml
 
@@ -53,7 +54,7 @@ from mmrelay.tools import get_sample_config_path
 # =============================================================================
 
 
-def parse_arguments():
+def parse_arguments() -> argparse.Namespace:
     """
     Parse command-line arguments for the Meshtastic Matrix Relay CLI.
 
@@ -218,7 +219,7 @@ def parse_arguments():
     return args
 
 
-def get_version():
+def get_version() -> str:
     """
     Returns the current version of the application.
 
@@ -228,14 +229,14 @@ def get_version():
     return __version__
 
 
-def print_version():
+def print_version() -> None:
     """
     Print the version in a simple format.
     """
     print(f"MMRelay version {__version__}")
 
 
-def _validate_e2ee_dependencies():
+def _validate_e2ee_dependencies() -> bool:
     """
     Check whether end-to-end encryption (E2EE) is usable on the current platform.
 
@@ -269,7 +270,7 @@ def _validate_e2ee_dependencies():
         return False
 
 
-def _validate_credentials_json(config_path):
+def _validate_credentials_json(config_path: str) -> bool:
     """
     Validate that a credentials.json file exists (adjacent to config_path or in the base directory) and contains the required Matrix session fields.
 
@@ -314,7 +315,7 @@ def _validate_credentials_json(config_path):
         return False
 
 
-def _is_valid_non_empty_string(value) -> bool:
+def _is_valid_non_empty_string(value: Any) -> bool:
     """
     Return True if value is a string containing non-whitespace characters.
 
@@ -327,7 +328,7 @@ def _is_valid_non_empty_string(value) -> bool:
     return isinstance(value, str) and value.strip() != ""
 
 
-def _has_valid_password_auth(matrix_section):
+def _has_valid_password_auth(matrix_section: Mapping[str, Any] | None) -> bool:
     """
     Return True if the given Matrix config section contains valid password-based authentication settings.
 
@@ -360,7 +361,9 @@ def _has_valid_password_auth(matrix_section):
     )
 
 
-def _validate_matrix_authentication(config_path, matrix_section):
+def _validate_matrix_authentication(
+    config_path: str, matrix_section: Mapping[str, Any] | None
+) -> bool:
     """
     Determine whether Matrix authentication is configured and usable.
 
@@ -415,7 +418,9 @@ def _validate_matrix_authentication(config_path, matrix_section):
         return False
 
 
-def _validate_e2ee_config(config, matrix_section, config_path):
+def _validate_e2ee_config(
+    config: dict[str, Any], matrix_section: Mapping[str, Any] | None, config_path: str
+) -> bool:
     """
     Validate end-to-end encryption (E2EE) configuration and Matrix authentication for the given config.
 
@@ -469,7 +474,7 @@ def _validate_e2ee_config(config, matrix_section, config_path):
     return True
 
 
-def _analyze_e2ee_setup(config, config_path):
+def _analyze_e2ee_setup(config: dict[str, Any], config_path: str) -> dict[str, Any]:
     """
     Analyze local E2EE readiness without contacting Matrix.
 
@@ -501,7 +506,7 @@ def _analyze_e2ee_setup(config, config_path):
             next steps (e.g., enable E2EE in config, install dependencies, run
             auth login).
     """
-    analysis = {
+    analysis: dict[str, Any] = {
         "config_enabled": False,
         "dependencies_available": False,
         "credentials_available": False,
@@ -599,7 +604,7 @@ def _find_credentials_json_path(config_path: str | None) -> str | None:
     return standard if os.path.exists(standard) else None
 
 
-def _print_unified_e2ee_analysis(e2ee_status):
+def _print_unified_e2ee_analysis(e2ee_status: dict[str, Any]) -> None:
     """
     Print a concise, user-facing analysis of E2EE readiness.
 
@@ -660,7 +665,7 @@ def _print_unified_e2ee_analysis(e2ee_status):
             print(f"   {instruction}")
 
 
-def _print_e2ee_analysis(analysis):
+def _print_e2ee_analysis(analysis: dict[str, Any]) -> None:
     """
     Print a user-facing analysis of end-to-end encryption (E2EE) readiness to standard output.
 
@@ -745,7 +750,7 @@ def _print_e2ee_analysis(analysis):
             )
 
 
-def _print_environment_summary():
+def _print_environment_summary() -> None:
     """
     Print a concise environment summary including platform, Python version, and Matrix E2EE capability.
 
@@ -776,7 +781,7 @@ def _print_environment_summary():
             print("   Install: pipx install 'mmrelay[e2e]'")
 
 
-def check_config(args=None):
+def check_config(args: argparse.Namespace | None = None) -> bool:
     """
     Validate the application's YAML configuration file and its required sections.
 
@@ -907,7 +912,7 @@ def check_config(args=None):
                     )
 
                     e2ee_status = get_e2ee_status(config, config_path)
-                    _print_unified_e2ee_analysis(e2ee_status)
+                    _print_unified_e2ee_analysis(e2ee_status)  # type: ignore[arg-type]
 
                     # Check if there are critical E2EE issues
                     if not e2ee_status.get("platform_supported", True):
@@ -931,13 +936,13 @@ def check_config(args=None):
                 for i, room in enumerate(config["matrix_rooms"]):
                     if not isinstance(room, dict):
                         print(
-                            f"Error: Room {i+1} in 'matrix_rooms' must be a dictionary"
+                            f"Error: Room {i + 1} in 'matrix_rooms' must be a dictionary"
                         )
                         return False
 
                     if "id" not in room:
                         print(
-                            f"Error: Room {i+1} in 'matrix_rooms' is missing the 'id' field"
+                            f"Error: Room {i + 1} in 'matrix_rooms' is missing the 'id' field"
                         )
                         return False
 
@@ -997,7 +1002,7 @@ def check_config(args=None):
                     return False
 
                 # Check for other important optional configurations and provide guidance
-                optional_configs = {
+                optional_configs: dict[str, dict[str, Any]] = {
                     "broadcast_enabled": {
                         "type": bool,
                         "description": "Enable Matrix to Meshtastic message forwarding (required for two-way communication)",
@@ -1016,7 +1021,7 @@ def check_config(args=None):
                     },
                 }
 
-                warnings = []
+                warnings: list[str] = []
                 for option, config_info in optional_configs.items():
                     if option in meshtastic_section:
                         value = meshtastic_section[option]
@@ -1081,7 +1086,7 @@ def check_config(args=None):
     return False
 
 
-def main():
+def main() -> int:
     """
     Entry point for the MMRelay command-line interface; parses arguments, dispatches commands, and returns an appropriate process exit code.
 
@@ -1176,7 +1181,7 @@ def main():
         return 1
 
 
-def handle_subcommand(args):
+def handle_subcommand(args: argparse.Namespace) -> int:
     """
     Dispatch the modern grouped CLI subcommand to the appropriate handler and return an exit code.
 
@@ -1197,7 +1202,7 @@ def handle_subcommand(args):
         return 1
 
 
-def handle_config_command(args):
+def handle_config_command(args: argparse.Namespace) -> int:
     """
     Dispatch the "config" command group to the selected subcommand handler.
 
@@ -1223,7 +1228,7 @@ def handle_config_command(args):
         return 1
 
 
-def handle_auth_command(args):
+def handle_auth_command(args: argparse.Namespace) -> int:
     """
     Dispatch the "auth" CLI subcommand to the appropriate handler.
 
@@ -1250,7 +1255,7 @@ def handle_auth_command(args):
         return handle_auth_login(args)
 
 
-def handle_auth_login(args):
+def handle_auth_login(args: argparse.Namespace) -> int:
     """
     Run the Matrix bot login flow and return a CLI-style exit code.
 
@@ -1300,7 +1305,7 @@ def handle_auth_login(args):
             missing_params.append("--password")
 
         error_message = f"""❌ Error: All authentication parameters are required when using command-line options.
-   Missing: {', '.join(missing_params)}
+   Missing: {", ".join(missing_params)}
 
 💡 Options:
    • For secure interactive authentication: mmrelay auth login
@@ -1336,7 +1341,7 @@ def handle_auth_login(args):
 
     try:
         result = asyncio.run(
-            login_matrix_bot(
+            login_matrix_bot(  # type: ignore[no-untyped-call]
                 homeserver=homeserver,
                 username=username,
                 password=password,
@@ -1352,7 +1357,7 @@ def handle_auth_login(args):
         return 1
 
 
-def handle_auth_status(args):
+def handle_auth_status(args: argparse.Namespace) -> int:
     """
     Print the Matrix authentication status by locating and reading a credentials.json file.
 
@@ -1424,7 +1429,7 @@ def handle_auth_status(args):
     return 1
 
 
-def handle_auth_logout(args):
+def handle_auth_logout(args: argparse.Namespace) -> int:
     """
     Log out the Matrix bot and remove local session artifacts.
 
@@ -1496,7 +1501,7 @@ def handle_auth_logout(args):
         return 1
 
 
-def handle_service_command(args):
+def handle_service_command(args: argparse.Namespace) -> int:
     """
     Dispatch service-related subcommands.
 
@@ -1522,7 +1527,7 @@ def handle_service_command(args):
         return 1
 
 
-def _diagnose_config_paths(args):
+def _diagnose_config_paths(args: argparse.Namespace) -> None:
     """
     Prints a diagnostic summary of resolved configuration file search paths and their directory accessibility.
 
@@ -1548,7 +1553,7 @@ def _diagnose_config_paths(args):
     print()
 
 
-def _diagnose_sample_config_accessibility():
+def _diagnose_sample_config_accessibility() -> bool:
     """
     Check availability of the bundled sample configuration and print a short diagnostic.
 
@@ -1584,7 +1589,7 @@ def _diagnose_sample_config_accessibility():
     return sample_exists
 
 
-def _diagnose_platform_specific(args):
+def _diagnose_platform_specific(args: argparse.Namespace) -> bool:
     """
     Run platform-specific diagnostic checks and print a concise report.
 
@@ -1651,7 +1656,7 @@ def _diagnose_platform_specific(args):
     return on_windows
 
 
-def _get_minimal_config_template():
+def _get_minimal_config_template() -> str:
     """
     Return a minimal MMRelay YAML configuration template used as a fallback when the packaged sample_config.yaml cannot be located.
 
@@ -1698,7 +1703,7 @@ logging:
 """
 
 
-def _diagnose_minimal_config_template():
+def _diagnose_minimal_config_template() -> None:
     """
     Validate the built-in minimal YAML configuration template and print a concise pass/fail status.
 
@@ -1715,7 +1720,7 @@ def _diagnose_minimal_config_template():
     print()
 
 
-def handle_config_diagnose(args):
+def handle_config_diagnose(args: argparse.Namespace) -> int:
     """
     Run a set of non-destructive diagnostics for the MMRelay configuration subsystem and print a concise, human-readable report.
 
@@ -1778,7 +1783,7 @@ if __name__ == "__main__":
     sys.exit(main())
 
 
-def handle_cli_commands(args):
+def handle_cli_commands(args: argparse.Namespace) -> bool:
     """
     Handle legacy CLI flags (--version, --install-service, --generate-config, --check-config).
 
@@ -1827,7 +1832,7 @@ def handle_cli_commands(args):
     return False
 
 
-def generate_sample_config():
+def generate_sample_config() -> bool:
     """
     Generate a sample configuration file at the highest-priority config path if no config already exists.
 

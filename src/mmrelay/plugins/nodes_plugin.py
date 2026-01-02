@@ -47,7 +47,7 @@ $shortname $longname / $devicemodel / $battery $voltage / $snr / $hops / $lastse
     def generate_response(self) -> str:
         from mmrelay.meshtastic_utils import connect_meshtastic
 
-        meshtastic_client = connect_meshtastic()  # type: ignore[no-untyped-call]
+        meshtastic_client = connect_meshtastic()
         if meshtastic_client is None:
             return "Unable to connect to Meshtastic device."
 
@@ -121,11 +121,11 @@ $shortname $longname / $devicemodel / $battery $voltage / $snr / $hops / $lastse
         Returns:
             bool: `True` if the event was handled and a response was sent, `False` otherwise.
         """
-        if not self.matches(event):  # type: ignore[no-untyped-call]
+        if not self.matches(event):
             return False
 
         response = await asyncio.to_thread(self.generate_response)
-        await self.send_matrix_message(  # type: ignore[no-untyped-call]
+        await self.send_matrix_message(
             room_id=room.room_id, message=response, formatted=False
         )
 

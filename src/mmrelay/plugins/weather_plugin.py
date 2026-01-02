@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any
 
 import requests  # type: ignore[import-untyped]
-from meshtastic.mesh_interface import BROADCAST_NUM  # type: ignore[import-untyped]
+from meshtastic.mesh_interface import BROADCAST_NUM  # type: ignore[import-not-found]
 
 from mmrelay.constants.formats import TEXT_MESSAGE_APP
 from mmrelay.constants.messages import PORTNUM_TEXT_MESSAGE_APP
@@ -508,7 +508,7 @@ class Plugin(BasePlugin):
             is_direct_message = False
 
         # Pass is_direct_message to is_channel_enabled
-        if not self.is_channel_enabled(channel, is_direct_message=is_direct_message):  # type: ignore[no-untyped-call]
+        if not self.is_channel_enabled(channel, is_direct_message=is_direct_message):
             # Channel not enabled for plugin
             return False
 
@@ -550,7 +550,7 @@ class Plugin(BasePlugin):
             )
 
         # Wait for the response delay
-        await asyncio.sleep(self.get_response_delay())  # type: ignore[no-untyped-call]
+        await asyncio.sleep(self.get_response_delay())
 
         if is_direct_message:
             # Respond via DM
@@ -600,7 +600,7 @@ class Plugin(BasePlugin):
         Returns:
             bool: `True` if the event matched the plugin and was handled (a response was sent or attempted), `False` if the event did not match and was not handled.
         """
-        if not self.matches(event):  # type: ignore[no-untyped-call]
+        if not self.matches(event):
             return False
 
         parsed_command = self.get_matching_matrix_command(event)
@@ -623,7 +623,7 @@ class Plugin(BasePlugin):
                 coords = self._determine_mesh_location(meshtastic_client)
 
         if coords is None:
-            await self.send_matrix_message(  # type: ignore[no-untyped-call]
+            await self.send_matrix_message(
                 room.room_id,
                 "Cannot determine location",
                 formatted=False,
@@ -636,7 +636,7 @@ class Plugin(BasePlugin):
             longitude=coords[1],
             mode=parsed_command,
         )
-        await self.send_matrix_message(room.room_id, forecast, formatted=False)  # type: ignore[no-untyped-call]
+        await self.send_matrix_message(room.room_id, forecast, formatted=False)
         return True
 
     async def _resolve_location_from_args(

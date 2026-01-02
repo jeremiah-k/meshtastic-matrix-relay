@@ -6,6 +6,14 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, Union
 
 import markdown
+from nio import (  # type: ignore[import-untyped]
+    ReactionEvent,
+    RoomMessageEmote,
+    RoomMessageNotice,
+    RoomMessageText,
+    RoomSendError,
+    RoomSendResponse,
+)
 
 from mmrelay.config import get_plugin_data_dir
 from mmrelay.constants.config import (
@@ -67,7 +75,7 @@ class BasePlugin(ABC):
     """
 
     # Class-level default attributes
-    plugin_name = None  # Must be overridden in subclasses
+    plugin_name: str | None = None  # Must be overridden in subclasses
     is_core_plugin: bool | None = None
     max_data_rows_per_node = DEFAULT_MAX_DATA_ROWS_PER_NODE_BASE
     priority = 10
@@ -84,7 +92,7 @@ class BasePlugin(ABC):
         """
         return ""
 
-    def __init__(self, plugin_name=None) -> None:
+    def __init__(self, plugin_name: str | None = None) -> None:
         """
         Initialize plugin state and load per-plugin configuration and runtime defaults.
 
@@ -101,6 +109,7 @@ class BasePlugin(ABC):
         super().__init__()
 
         self._stop_event = threading.Event()
+        self._my_node_id: int | None = None
 
         # If plugin_name is provided as a parameter, use it
         if plugin_name is not None:
@@ -158,7 +167,9 @@ class BasePlugin(ABC):
 
             # Get the list of mapped channels
             # Handle both list format and dict format for matrix_rooms
-            matrix_rooms: Union[Dict[str, Any], list] = config.get("matrix_rooms", [])
+            matrix_rooms: Union[Dict[str, Any], list[Any]] = config.get(
+                "matrix_rooms", []
+            )
             if isinstance(matrix_rooms, dict):
                 # Dict format: {"room_name": {"id": "...", "meshtastic_channel": 0}}
                 self.mapped_channels = [
@@ -357,7 +368,7 @@ class BasePlugin(ABC):
         """
         pass  # Implement in subclass if needed
 
-    def strip_raw(self, data):
+    def strip_raw(self, data: Any) -> Any:
         """Recursively remove 'raw' keys from data structures.
 
         Args:
@@ -377,7 +388,7 @@ class BasePlugin(ABC):
             data = [self.strip_raw(item) for item in data]
         return data
 
-    def get_response_delay(self):
+    def get_response_delay(self) -> float:
         """
         Return the configured delay in seconds before sending a Meshtastic response.
 
@@ -388,7 +399,7 @@ class BasePlugin(ABC):
         """
         return self.response_delay
 
-    def get_my_node_id(self):
+    def get_my_node_id(self) -> int | None:
         """Get the relay's Meshtastic node ID.
 
         Returns:
@@ -412,7 +423,7 @@ class BasePlugin(ABC):
             return self._my_node_id
         return None
 
-    def is_direct_message(self, packet):
+    def is_direct_message(self, packet: dict[str, Any]) -> bool:
         """Check if a Meshtastic packet is a direct message to this relay.
 
         Args:
@@ -425,14 +436,18 @@ class BasePlugin(ABC):
         is addressed directly to the relay node, eliminating the need for plugins
         to call connect_meshtastic() directly for DM detection.
         """
-        toId = packet.get("to")
+        toId: int | None = packet.get("to")
         if toId is None:
             return False
 
         myId = self.get_my_node_id()
+        if myId is None:
+            return False
         return toId == myId
 
-    def send_message(self, text: str, channel: int = 0, destination_id=None) -> bool:
+    def send_message(
+        self, text: str, channel: int = 0, destination_id: int | None = None
+    ) -> bool:
         """
         Send a message to the Meshtastic network using the message queue.
 
@@ -468,7 +483,9 @@ class BasePlugin(ABC):
             **send_kwargs,
         )
 
-    def is_channel_enabled(self, channel, is_direct_message=False):
+    def is_channel_enabled(
+        self, channel: int | None, is_direct_message: bool = False
+    ) -> bool:
         """
         Determine whether the plugin should respond to a message on the specified channel or direct message.
 
@@ -484,7 +501,7 @@ class BasePlugin(ABC):
         else:
             return channel in self.channels
 
-    def get_matrix_commands(self):
+    def get_matrix_commands(self) -> list[str]:
         """
         Return the Matrix command names this plugin responds to.
 
@@ -493,9 +510,14 @@ class BasePlugin(ABC):
         Returns:
             list[str]: Command names (without a leading '!' prefix)
         """
+        if self.plugin_name is None:
+            return []
         return [self.plugin_name]
 
-    def get_matching_matrix_command(self, event) -> str | None:
+    def get_matching_matrix_command(
+        self,
+        event: RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote,
+    ) -> str | None:
         """
         Identify the first Matrix command that matches the given event.
 
@@ -512,7 +534,9 @@ class BasePlugin(ABC):
                 return command
         return None
 
-    async def send_matrix_message(self, room_id, message, formatted=True):
+    async def send_matrix_message(
+        self, room_id: str, message: str, formatted: bool = True
+    ) -> RoomSendResponse | RoomSendError | None:
         """
         Send a message to a Matrix room, optionally formatted as HTML.
 
@@ -526,7 +550,7 @@ class BasePlugin(ABC):
         """
         from mmrelay.matrix_utils import connect_matrix
 
-        matrix_client = await connect_matrix()
+        matrix_client = await connect_matrix()  # type: ignore[no-untyped-call]
 
         if matrix_client is None:
             self.logger.error("Failed to connect to Matrix client")
@@ -543,7 +567,7 @@ class BasePlugin(ABC):
             },
         )
 
-    def get_mesh_commands(self):
+    def get_mesh_commands(self) -> list[str]:
         """Get list of mesh/radio commands this plugin responds to.
 
         Returns:
@@ -554,7 +578,7 @@ class BasePlugin(ABC):
         """
         return []
 
-    def store_node_data(self, meshtastic_id, node_data):
+    def store_node_data(self, meshtastic_id: str, node_data: Any) -> None:
         """Store data for a specific node, appending to existing data.
 
         Args:
@@ -564,6 +588,7 @@ class BasePlugin(ABC):
         Retrieves existing data, appends new data, trims to max_data_rows_per_node,
         and stores back to database. Use for accumulating time-series data.
         """
+        assert self.plugin_name is not None
         data = self.get_node_data(meshtastic_id=meshtastic_id)
         if isinstance(node_data, list):
             data.extend(node_data)
@@ -572,7 +597,7 @@ class BasePlugin(ABC):
         data = data[-self.max_data_rows_per_node :]
         store_plugin_data(self.plugin_name, meshtastic_id, data)
 
-    def set_node_data(self, meshtastic_id, node_data):
+    def set_node_data(self, meshtastic_id: str, node_data: Any) -> None:
         """Replace all data for a specific node.
 
         Args:
@@ -583,21 +608,23 @@ class BasePlugin(ABC):
         max_data_rows_per_node if needed. Use when you want to reset
         or completely replace a node's data.
         """
+        assert self.plugin_name is not None
         node_data = node_data[-self.max_data_rows_per_node :]
         store_plugin_data(self.plugin_name, meshtastic_id, node_data)
 
-    def delete_node_data(self, meshtastic_id):
+    def delete_node_data(self, meshtastic_id: str) -> None:
         """Delete all stored data for a specific node.
 
         Args:
             meshtastic_id (str): Node identifier
 
         Returns:
-            bool: True if deletion succeeded, False otherwise
+            None
         """
-        return delete_plugin_data(self.plugin_name, meshtastic_id)
+        assert self.plugin_name is not None
+        delete_plugin_data(self.plugin_name, meshtastic_id)
 
-    def get_node_data(self, meshtastic_id):
+    def get_node_data(self, meshtastic_id: str) -> list[Any]:
         """Retrieve stored data for a specific node.
 
         Args:
@@ -606,9 +633,10 @@ class BasePlugin(ABC):
         Returns:
             list: Stored data for the node (JSON deserialized)
         """
+        assert self.plugin_name is not None
         return get_plugin_data_for_node(self.plugin_name, meshtastic_id)
 
-    def get_data(self):
+    def get_data(self) -> list[Any]:
         """Retrieve all stored data for this plugin across all nodes.
 
         Returns:
@@ -617,9 +645,10 @@ class BasePlugin(ABC):
         Returns raw data without JSON deserialization. Use get_node_data()
         for individual node data that's automatically deserialized.
         """
+        assert self.plugin_name is not None
         return get_plugin_data(self.plugin_name)
 
-    def get_plugin_data_dir(self, subdir=None):
+    def get_plugin_data_dir(self, subdir: str | None = None) -> str:
         """
         Returns the directory for storing plugin-specific data files.
 
@@ -637,7 +666,8 @@ class BasePlugin(ABC):
             self.get_plugin_data_dir("data_files") returns ~/.mmrelay/data/plugins/your_plugin_name/data_files/
         """
         # Get the plugin-specific data directory
-        plugin_dir = get_plugin_data_dir(self.plugin_name)
+        assert self.plugin_name is not None
+        plugin_dir: str = get_plugin_data_dir(self.plugin_name)  # type: ignore[no-untyped-call]
 
         # If a subdirectory is specified, create and return it
         if subdir:
@@ -647,7 +677,10 @@ class BasePlugin(ABC):
 
         return plugin_dir
 
-    def matches(self, event):
+    def matches(
+        self,
+        event: RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote,
+    ) -> bool:
         """
         Determine whether a Matrix event invokes this plugin's Matrix commands.
 
@@ -715,7 +748,11 @@ class BasePlugin(ABC):
 
     @abstractmethod
     async def handle_meshtastic_message(
-        self, packet, formatted_message, longname, meshnet_name
+        self,
+        packet: dict[str, Any],
+        formatted_message: str,
+        longname: str,
+        meshnet_name: str,
     ) -> bool:
         """
         Handle an incoming Meshtastic packet and perform plugin-specific processing.
@@ -732,7 +769,9 @@ class BasePlugin(ABC):
         pass  # Implement in subclass
 
     @abstractmethod
-    async def handle_room_message(self, room, event, full_message) -> bool:
+    async def handle_room_message(
+        self, room: Any, event: dict[str, Any], full_message: str
+    ) -> bool:
         """
         Handle an incoming Matrix room message and perform plugin-specific processing.
 

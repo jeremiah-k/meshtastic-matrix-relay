@@ -81,7 +81,7 @@ class Plugin(BasePlugin):
             and "deviceMetrics" in packet["decoded"]["telemetry"]
         ):
             telemetry_data = []
-            data = self.get_node_data(meshtastic_id=packet["fromId"])  # type: ignore[no-untyped-call]
+            data = self.get_node_data(meshtastic_id=packet["fromId"])
             if data:
                 telemetry_data = data
             packet_data = packet["decoded"]["telemetry"]
@@ -106,9 +106,7 @@ class Plugin(BasePlugin):
                     ),
                 }
             )
-            self.set_node_data(  # type: ignore[no-untyped-call]
-                meshtastic_id=packet["fromId"], node_data=telemetry_data
-            )
+            self.set_node_data(meshtastic_id=packet["fromId"], node_data=telemetry_data)
             return False
 
         # Return False for non-telemetry packets
@@ -149,7 +147,7 @@ class Plugin(BasePlugin):
         Returns:
             `true` if the message matched a telemetry command and the graph was generated and sent (or a user-facing notification was sent when a requested node had no data); `false` otherwise.
         """
-        if not self.matches(event):  # type: ignore[no-untyped-call]
+        if not self.matches(event):
             return False
 
         parsed_command = self.get_matching_matrix_command(event)
@@ -163,7 +161,7 @@ class Plugin(BasePlugin):
         hourly_intervals = self._generate_timeperiods()
         from mmrelay.matrix_utils import connect_matrix
 
-        matrix_client = await connect_matrix()  # type: ignore[no-untyped-call]
+        matrix_client = await connect_matrix()
         if matrix_client is None:
             self.logger.warning(
                 "Matrix client unavailable; skipping telemetry graph generation"
@@ -189,18 +187,18 @@ class Plugin(BasePlugin):
                         break
 
         if node:
-            node_data_rows = self.get_node_data(node)  # type: ignore[no-untyped-call]
+            node_data_rows = self.get_node_data(node)
             if node_data_rows:
                 calculate_averages(node_data_rows)
             else:
-                await self.send_matrix_message(  # type: ignore[no-untyped-call]
+                await self.send_matrix_message(
                     room.room_id,
                     f"No telemetry data found for node '{node}'.",
                     formatted=False,
                 )
                 return True
         else:
-            for node_data_json in self.get_data():  # type: ignore[no-untyped-call]
+            for node_data_json in self.get_data():
                 node_data_rows = json.loads(node_data_json[0])
                 calculate_averages(node_data_rows)
 

@@ -2,7 +2,7 @@ import asyncio
 import re
 from typing import Any
 
-from meshtastic.mesh_interface import BROADCAST_NUM  # type: ignore[import-untyped]
+from meshtastic.mesh_interface import BROADCAST_NUM  # type: ignore[import-not-found]
 
 from mmrelay.constants.formats import TEXT_MESSAGE_APP
 from mmrelay.constants.messages import PORTNUM_TEXT_MESSAGE_APP
@@ -123,7 +123,7 @@ class Plugin(BasePlugin):
             # Some radios omit/zero-fill destination; treat as broadcast to avoid dropping valid pings
             is_direct_message = False
 
-        if not self.is_channel_enabled(channel, is_direct_message=is_direct_message):  # type: ignore[no-untyped-call]
+        if not self.is_channel_enabled(channel, is_direct_message=is_direct_message):
             return False
 
         # Log that the plugin is processing the message
@@ -149,7 +149,7 @@ class Plugin(BasePlugin):
         )
 
         # Wait for the response delay
-        await asyncio.sleep(self.get_response_delay())  # type: ignore[no-untyped-call]
+        await asyncio.sleep(self.get_response_delay())
 
         fromId = packet.get("fromId")
 
@@ -201,8 +201,8 @@ class Plugin(BasePlugin):
         Returns:
             bool: `True` if the message matched and a reply was sent, `False` otherwise.
         """
-        if not self.matches(event):  # type: ignore[no-untyped-call]
+        if not self.matches(event):
             return False
 
-        await self.send_matrix_message(room.room_id, "pong!")  # type: ignore[no-untyped-call]
+        await self.send_matrix_message(room.room_id, "pong!")
         return True

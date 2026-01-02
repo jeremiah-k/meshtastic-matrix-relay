@@ -1,6 +1,6 @@
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-from nio import MatrixRoom, RoomMessageText  # type: ignore[import-untyped]
+from nio import MatrixRoom  # type: ignore[import-not-found]
 
 from mmrelay.plugins.base_plugin import BasePlugin
 
@@ -42,13 +42,13 @@ class Plugin(BasePlugin):
         Returns:
             `False` to indicate this plugin does not intercept the message and allows further processing.
         """
-        packet = self.strip_raw(packet)  # type: ignore[no-untyped-call]
+        packet = self.strip_raw(packet)
 
         self.logger.debug(f"Packet received: {packet}")
         return False
 
     async def handle_room_message(
-        self, room: MatrixRoom, event: RoomMessageText, full_message: str
+        self, room: MatrixRoom, event: dict[str, Any], full_message: str
     ) -> bool:
         """
         Declines to handle room messages so they remain available to other plugins.

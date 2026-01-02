@@ -79,13 +79,13 @@ class Plugin(BasePlugin):
             handled (bool): `True` if the plugin processed the message and sent a reply, `False` if the event did not match and was not handled.
         """
         # Maintain legacy matches() call for tests/compatibility but do not gate handling on it
-        self.matches(event)  # type: ignore[no-untyped-call]
+        self.matches(event)
         matched_command = self.get_matching_matrix_command(event)
         if not matched_command:
             return False
         command = self.extract_command_args(matched_command, full_message) or ""
 
-        plugins = load_plugins()  # type: ignore[no-untyped-call]
+        plugins = load_plugins()
 
         if command:
             reply = f"No such command: {command}"
@@ -99,5 +99,5 @@ class Plugin(BasePlugin):
                 commands.extend(plugin.get_matrix_commands())
             reply = "Available commands: " + ", ".join(commands)
 
-        await self.send_matrix_message(room.room_id, reply)  # type: ignore[no-untyped-call]
+        await self.send_matrix_message(room.room_id, reply)
         return True

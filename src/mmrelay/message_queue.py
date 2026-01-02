@@ -14,7 +14,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from functools import partial
 from queue import Empty, Full, Queue
-from typing import Callable, Optional
+from typing import Any, Callable, Optional, cast
 
 from mmrelay.constants.database import DEFAULT_MSGS_TO_KEEP
 from mmrelay.constants.network import MINIMUM_MESSAGE_DELAY, RECOMMENDED_MINIMUM_DELAY
@@ -34,12 +34,12 @@ class QueuedMessage:
     """Represents a message in the queue with metadata."""
 
     timestamp: float
-    send_function: Callable
-    args: tuple
-    kwargs: dict
+    send_function: Callable[[], Any]
+    args: tuple[Any, ...]
+    kwargs: dict[str, Any]
     description: str
     # Optional message mapping information for replies/reactions
-    mapping_info: Optional[dict] = None
+    mapping_info: Optional[dict[str, Any]] = None
 
 
 class MessageQueue:
@@ -51,7 +51,7 @@ class MessageQueue:
     pauses during reconnections.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """
         Create a new MessageQueue, initializing its internal queue, timing and state variables, and a thread lock.
 
@@ -67,19 +67,21 @@ class MessageQueue:
             _in_flight (bool): True while a message send is actively running in the executor.
             _has_current (bool): True when there is a current message being processed (even if not yet dispatched to the executor).
         """
-        self._queue = Queue(maxsize=MAX_QUEUE_SIZE)
-        self._processor_task = None
+        self._queue: Queue[QueuedMessage] = Queue(maxsize=MAX_QUEUE_SIZE)
+        self._processor_task: Optional[asyncio.Task[None]] = None
         self._running = False
         self._lock = threading.Lock()
         self._last_send_time = 0.0
         self._last_send_mono = 0.0
         self._message_delay = DEFAULT_MESSAGE_DELAY
-        self._executor = None  # Dedicated ThreadPoolExecutor for this MessageQueue
+        self._executor: Optional[ThreadPoolExecutor] = (
+            None  # Dedicated ThreadPoolExecutor for this MessageQueue
+        )
         self._in_flight = False
         self._has_current = False
         self._dropped_messages = 0
 
-    def start(self, message_delay: float = DEFAULT_MESSAGE_DELAY):
+    def start(self, message_delay: float = DEFAULT_MESSAGE_DELAY) -> None:
         """
         Start the message queue processor and set the inter-message delay.
 
@@ -133,7 +135,7 @@ class MessageQueue:
                     "No event loop available, queue processor will start later"
                 )
 
-    def stop(self):
+    def stop(self) -> None:
         """
         Stop the message queue processor and clean up internal resources.
 
@@ -168,8 +170,8 @@ class MessageQueue:
                     from asyncio import run_coroutine_threadsafe, shield
 
                     with contextlib.suppress(Exception):
-                        fut = run_coroutine_threadsafe(
-                            shield(self._processor_task), task_loop
+                        fut: Any = run_coroutine_threadsafe(
+                            cast(Any, shield(self._processor_task)), task_loop
                         )
                         # Wait for completion; ignore exceptions raised due to cancellation
                         fut.result(timeout=1.0)
@@ -188,7 +190,7 @@ class MessageQueue:
                     loop_chk = asyncio.get_running_loop()
                     on_loop_thread = loop_chk.is_running()
 
-                def _shutdown(exec_ref):
+                def _shutdown(exec_ref: ThreadPoolExecutor) -> None:
                     """
                     Shut down an executor, waiting for running tasks to finish; falls back for executors that don't support `cancel_futures`.
 
@@ -214,11 +216,11 @@ class MessageQueue:
 
     def enqueue(
         self,
-        send_function: Callable,
-        *args,
+        send_function: Callable[[], Any],
+        *args: Any,
         description: str = "",
-        mapping_info: Optional[dict] = None,
-        **kwargs,
+        mapping_info: Optional[dict[str, Any]] = None,
+        **kwargs: Any,
     ) -> bool:
         """
         Enqueue a message for ordered, rate-limited sending.
@@ -288,7 +290,7 @@ class MessageQueue:
         """
         return self._running
 
-    def get_status(self) -> dict:
+    def get_status(self) -> dict[str, Any]:
         """
         Return current status of the message queue.
 
@@ -338,7 +340,7 @@ class MessageQueue:
             await asyncio.sleep(0.1)
         return True
 
-    def ensure_processor_started(self):
+    def ensure_processor_started(self) -> None:
         """
         Start the queue processor task if the queue is running and no processor task exists.
 
@@ -356,7 +358,7 @@ class MessageQueue:
                         f"Message queue processor started with {self._message_delay}s message delay"
                     )
 
-    async def _process_queue(self):
+    async def _process_queue(self) -> None:
         """
         Process queued messages in FIFO order, sending each when the connection is ready and the configured inter-message delay has elapsed.
 
@@ -525,7 +527,9 @@ class MessageQueue:
             ).start()
             return False
 
-    async def _handle_message_mapping(self, result, mapping_info):
+    async def _handle_message_mapping(
+        self, result: Any, mapping_info: dict[str, Any]
+    ) -> None:
         """
         Persist a mapping from a sent Meshtastic message to a Matrix event and optionally prune old mappings.
 
@@ -584,7 +588,7 @@ def get_message_queue() -> MessageQueue:
     return _message_queue
 
 
-def start_message_queue(message_delay: float = DEFAULT_MESSAGE_DELAY):
+def start_message_queue(message_delay: float = DEFAULT_MESSAGE_DELAY) -> None:
     """
     Start the global message queue processor with the given minimum delay between messages.
 
@@ -594,7 +598,7 @@ def start_message_queue(message_delay: float = DEFAULT_MESSAGE_DELAY):
     _message_queue.start(message_delay)
 
 
-def stop_message_queue():
+def stop_message_queue() -> None:
     """
     Stops the global message queue processor, preventing further message processing until restarted.
     """
@@ -602,11 +606,11 @@ def stop_message_queue():
 
 
 def queue_message(
-    send_function: Callable,
-    *args,
+    send_function: Callable[[], Any],
+    *args: Any,
     description: str = "",
-    mapping_info: Optional[dict] = None,
-    **kwargs,
+    mapping_info: Optional[dict[str, Any]] = None,
+    **kwargs: Any,
 ) -> bool:
     """
     Enqueues a message for sending via the global message queue.
@@ -628,7 +632,7 @@ def queue_message(
     )
 
 
-def get_queue_status() -> dict:
+def get_queue_status() -> dict[str, Any]:
     """
     Get a snapshot of the global message queue's current status.
 

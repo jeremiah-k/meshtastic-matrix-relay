@@ -7,15 +7,15 @@ import threading
 import time
 from concurrent.futures import Future
 from concurrent.futures import TimeoutError as FuturesTimeoutError
-from typing import Any, Awaitable, Coroutine, List
+from typing import Any, Awaitable, Callable, Coroutine, List, cast
 
-import meshtastic
-import meshtastic.ble_interface
-import meshtastic.serial_interface
-import meshtastic.tcp_interface
-import serial  # For serial port exceptions
-import serial.tools.list_ports  # Import serial tools for port listing
-from meshtastic.protobuf import mesh_pb2, portnums_pb2
+import meshtastic  # type: ignore[import-untyped]
+import meshtastic.ble_interface  # type: ignore[import-untyped]
+import meshtastic.serial_interface  # type: ignore[import-untyped]
+import meshtastic.tcp_interface  # type: ignore[import-untyped]
+import serial  # type: ignore[import-untyped]  # For serial port exceptions
+import serial.tools.list_ports  # type: ignore[import-untyped]  # Import serial tools for port listing
+from meshtastic.protobuf import mesh_pb2, portnums_pb2  # type: ignore[import-untyped]
 from pubsub import pub
 
 from mmrelay.config import get_meshtastic_config_value
@@ -62,14 +62,10 @@ MAX_TIMEOUT_RETRIES_INFINITE = 5
 
 # Import BLE exceptions conditionally
 try:
-    from bleak.exc import BleakDBusError, BleakError  # type: ignore[no-redef]
+    from bleak.exc import BleakDBusError, BleakError
 except ImportError:
-    # Define dummy exception classes if bleak is not available
-    class BleakDBusError(Exception):  # type: ignore[no-redef]
-        pass
-
-    class BleakError(Exception):  # type: ignore[no-redef]
-        pass
+    BleakDBusError = Exception  # type: ignore[misc,assignment]
+    BleakError = Exception  # type: ignore[misc,assignment]
 
 
 # Global config variable that will be set from config.py
@@ -78,7 +74,7 @@ config = None
 # Do not import plugin_loader here to avoid circular imports
 
 # Initialize matrix rooms configuration
-matrix_rooms: List[dict] = []
+matrix_rooms: List[dict[str, Any]] = []
 
 # Initialize logger for Meshtastic
 logger = get_logger(name="Meshtastic")
@@ -101,7 +97,10 @@ subscribed_to_messages = False
 subscribed_to_connection_lost = False
 
 
-def _submit_coro(coro, loop=None):
+def _submit_coro(
+    coro: Any,
+    loop: asyncio.AbstractEventLoop | None = None,
+) -> Future[Any] | None:
     """
     Schedule a coroutine to run on an appropriate asyncio event loop and return a Future for its result.
 
@@ -121,7 +120,7 @@ def _submit_coro(coro, loop=None):
     # Fallback: schedule on a real loop if present; tests can override this.
     try:
         running = asyncio.get_running_loop()
-        return running.create_task(coro)
+        return cast(Future[Any], running.create_task(coro))
     except RuntimeError:
         # No running loop: check if we can safely create a new loop
         try:
@@ -135,17 +134,17 @@ def _submit_coro(coro, loop=None):
             asyncio.set_event_loop(new_loop)
             try:
                 result = new_loop.run_until_complete(coro)
-                f = Future()
-                f.set_result(result)
-                return f
+                result_future: Future[Any] = Future()
+                result_future.set_result(result)
+                return result_future
             finally:
                 new_loop.close()
                 asyncio.set_event_loop(None)
         except Exception as e:
             # Ultimate fallback: create a completed Future with the exception
-            f = Future()
-            f.set_exception(e)
-            return f
+            error_future: Future[Any] = Future()
+            error_future.set_exception(e)
+            return error_future
 
 
 def _fire_and_forget(
@@ -167,7 +166,7 @@ def _fire_and_forget(
     if task is None:
         return
 
-    def _handle_exception(t: asyncio.Future | Future) -> None:
+    def _handle_exception(t: asyncio.Future[Any] | Future[Any]) -> None:
         """
         Callback for fire-and-forget tasks that logs any exception raised by the task.
 
@@ -253,7 +252,7 @@ def _wait_for_result(
     else:
         awaitable = _make_awaitable(result_future, loop=target_loop)
 
-    async def _runner():
+    async def _runner() -> Any:
         """
         Await the captured awaitable and fail if it does not complete within the captured timeout.
 
@@ -293,7 +292,7 @@ def _wait_for_result(
         asyncio.set_event_loop(None)
 
 
-def _resolve_plugin_timeout(cfg: dict | None, default: float = 5.0) -> float:
+def _resolve_plugin_timeout(cfg: dict[str, Any] | None, default: float = 5.0) -> float:
     """
     Resolve and return a positive plugin timeout value from the given configuration.
 
@@ -335,7 +334,7 @@ def _resolve_plugin_timeout(cfg: dict | None, default: float = 5.0) -> float:
     return default
 
 
-def _get_name_safely(name_func, sender):
+def _get_name_safely(name_func: Callable[[Any], str | None], sender: Any) -> str:
     """
     Safely retrieve a name (longname or shortname) for a sender with fallback to sender ID.
 
@@ -355,7 +354,9 @@ def _get_name_safely(name_func, sender):
         return str(sender)
 
 
-def _get_name_or_none(name_func, sender):
+def _get_name_or_none(
+    name_func: Callable[[Any], str | None], sender: Any
+) -> str | None:
     """
     Safely retrieve a name (longname or shortname) for a sender, returning None on failure.
 
@@ -375,7 +376,7 @@ def _get_name_or_none(name_func, sender):
         return None
 
 
-def _get_device_metadata(client):
+def _get_device_metadata(client: Any) -> dict[str, Any]:
     """
     Extract firmware version and raw metadata output from a Meshtastic client.
 
@@ -439,7 +440,7 @@ def _get_device_metadata(client):
     return result
 
 
-def serial_port_exists(port_name):
+def serial_port_exists(port_name: str) -> bool:
     """
     Return True if a serial port with the given device name is present on the system.
 
@@ -456,7 +457,10 @@ def serial_port_exists(port_name):
     return port_name in ports
 
 
-def connect_meshtastic(passed_config=None, force_connect=False):
+def connect_meshtastic(
+    passed_config: dict[str, Any] | None = None,
+    force_connect: bool = False,
+) -> Any:
     """
     Establish and return a Meshtastic client connection (serial, BLE, or TCP), with configurable retries, exponential backoff, and single-time event subscription.
 
@@ -717,7 +721,10 @@ def connect_meshtastic(passed_config=None, force_connect=False):
     return meshtastic_client
 
 
-def on_lost_meshtastic_connection(interface=None, detection_source="unknown"):
+def on_lost_meshtastic_connection(
+    interface: Any = None,
+    detection_source: str = "unknown",
+) -> None:
     """
     Mark the Meshtastic connection as lost, close the current client, and initiate an asynchronous reconnect.
 
@@ -759,7 +766,7 @@ def on_lost_meshtastic_connection(interface=None, detection_source="unknown"):
             reconnect_task = event_loop.create_task(reconnect())
 
 
-async def reconnect():
+async def reconnect() -> None:
     """
     Attempt to re-establish a Meshtastic connection with exponential backoff.
 
@@ -833,7 +840,7 @@ async def reconnect():
         reconnecting = False
 
 
-def on_meshtastic_message(packet, interface):
+def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
     """
     Route an incoming Meshtastic packet to configured Matrix rooms or installed plugins according to runtime configuration.
 
@@ -877,7 +884,7 @@ def on_meshtastic_message(packet, interface):
     from mmrelay.matrix_utils import get_interaction_settings
 
     # Get interaction settings
-    interactions = get_interaction_settings(config)
+    interactions = get_interaction_settings(config)  # type: ignore[no-untyped-call]
 
     # Filter packets based on interaction settings
     if packet.get("decoded", {}).get("portnum") == TEXT_MESSAGE_APP:
@@ -916,7 +923,7 @@ def on_meshtastic_message(packet, interface):
     emoji_flag = "emoji" in decoded and decoded["emoji"] == EMOJI_FLAG_VALUE
 
     # Determine if this is a direct message to the relay node
-    from meshtastic.mesh_interface import BROADCAST_NUM
+    from meshtastic.mesh_interface import BROADCAST_NUM  # type: ignore[import-untyped]
 
     if not getattr(interface, "myInfo", None):
         logger.warning("Meshtastic interface missing myInfo; cannot determine node id")
@@ -1254,7 +1261,7 @@ def on_meshtastic_message(packet, interface):
                     # Continue processing other plugins
 
 
-async def check_connection():
+async def check_connection() -> None:
     """
     Periodically verify the Meshtastic connection and initiate a reconnect when the device appears unresponsive.
 
@@ -1350,13 +1357,13 @@ async def check_connection():
 
 
 def sendTextReply(
-    interface,
+    interface: Any,
     text: str,
     reply_id: int,
-    destinationId=meshtastic.BROADCAST_ADDR,
+    destinationId: Any = meshtastic.BROADCAST_ADDR,
     wantAck: bool = False,
     channelIndex: int = 0,
-):
+) -> Any:
     """
     Send a Meshtastic text reply that references a previous Meshtastic message.
 

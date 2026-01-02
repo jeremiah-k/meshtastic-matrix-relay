@@ -35,14 +35,14 @@ except ImportError:
 
 # Import Matrix-related modules for logout functionality
 try:
-    from nio import AsyncClient
-    from nio.exceptions import (
+    from nio import AsyncClient  # type: ignore[import-untyped]
+    from nio.exceptions import (  # type: ignore[import-untyped]
         LocalProtocolError,
         LocalTransportError,
         RemoteProtocolError,
         RemoteTransportError,
     )
-    from nio.responses import LoginError, LogoutError
+    from nio.responses import LoginError, LogoutError  # type: ignore[import-untyped]
 
     # Create aliases for backward compatibility
     NioLoginError = LoginError
@@ -330,7 +330,7 @@ def _create_ssl_context() -> ssl.SSLContext | None:
             return None
 
 
-def _cleanup_local_session_data() -> None:
+def _cleanup_local_session_data() -> bool:
     """
     Remove local Matrix session artifacts: credentials.json and any E2EE store directories.
 
@@ -416,7 +416,7 @@ def _cleanup_local_session_data() -> None:
 
 def _handle_matrix_error(
     exception: Exception, context: str, log_level: str = "error"
-) -> str | None:
+) -> bool:
     """
     Classify a Matrix-related exception and emit user-facing and logged messages.
 
@@ -551,7 +551,7 @@ def _handle_matrix_error(
     return True
 
 
-async def logout_matrix_bot(password: str):
+async def logout_matrix_bot(password: str) -> bool:
     """
     Log out the configured Matrix account (if any), verify credentials, and remove local session data.
 
@@ -571,7 +571,7 @@ async def logout_matrix_bot(password: str):
     """
 
     # Import inside function to avoid circular imports
-    from mmrelay.matrix_utils import (
+    from mmrelay.matrix_utils import (  # type: ignore[attr-defined]
         MATRIX_LOGIN_TIMEOUT,
         load_credentials,
     )

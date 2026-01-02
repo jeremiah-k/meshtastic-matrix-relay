@@ -8,22 +8,24 @@ import concurrent.futures
 import functools
 import signal
 import sys
+from typing import Any
 
 from aiohttp import ClientError
-from nio import (
+from nio import (  # type: ignore[import-untyped]
     MegolmEvent,
     ReactionEvent,
     RoomMessageEmote,
     RoomMessageNotice,
     RoomMessageText,
 )
-from nio.events.room_events import RoomMemberEvent
+from nio.events.room_events import RoomMemberEvent  # type: ignore[import-untyped]
 
 # Import version from package
 # Import meshtastic_utils as a module to set event_loop
 from mmrelay import __version__, meshtastic_utils
 from mmrelay.cli_utils import msg_suggest_check_config, msg_suggest_generate_config
 from mmrelay.constants.app import APP_DISPLAY_NAME, WINDOWS_PLATFORM
+from mmrelay.constants.queue import DEFAULT_MESSAGE_DELAY
 from mmrelay.db_utils import (
     initialize_database,
     update_longnames,
@@ -44,7 +46,6 @@ from mmrelay.matrix_utils import (
 from mmrelay.meshtastic_utils import connect_meshtastic
 from mmrelay.meshtastic_utils import logger as meshtastic_logger
 from mmrelay.message_queue import (
-    DEFAULT_MESSAGE_DELAY,
     get_message_queue,
     start_message_queue,
     stop_message_queue,
@@ -59,7 +60,7 @@ logger = get_logger(name=APP_DISPLAY_NAME)
 _banner_printed = False
 
 
-def print_banner():
+def print_banner() -> None:
     """
     Log the MMRelay startup banner with version information once.
 
@@ -73,7 +74,7 @@ def print_banner():
         _banner_printed = True
 
 
-async def main(config):
+async def main(config: dict[str, Any]) -> None:
     """
     Coordinate the relay between Meshtastic and Matrix: initialize state, start queues and plugins, connect and join rooms, register event handlers, run the Matrix sync loop with retries, and perform orderly shutdown (optionally wiping the message map on start/stop).
 
@@ -87,9 +88,7 @@ async def main(config):
         ConnectionError: If a Matrix client cannot be obtained and operation cannot continue.
     """
     # Extract Matrix configuration
-    from typing import List
-
-    matrix_rooms: List[dict] = config["matrix_rooms"]
+    matrix_rooms: list[dict[str, Any]] = config["matrix_rooms"]
 
     loop = asyncio.get_running_loop()
     meshtastic_utils.event_loop = loop
@@ -135,7 +134,7 @@ async def main(config):
     )
 
     # Connect to Matrix
-    matrix_client = await connect_matrix(passed_config=config)
+    matrix_client = await connect_matrix(passed_config=config)  # type: ignore[no-untyped-call]
 
     # Check if Matrix connection was successful
     if matrix_client is None:
@@ -163,7 +162,7 @@ async def main(config):
     # Set up shutdown event
     shutdown_event = asyncio.Event()
 
-    def _set_shutdown_flag():
+    def _set_shutdown_flag() -> None:
         """
         Mark the application as shutting down and notify waiting tasks.
 
@@ -172,7 +171,7 @@ async def main(config):
         meshtastic_utils.shutting_down = True
         shutdown_event.set()
 
-    def shutdown():
+    def shutdown() -> None:
         """
         Request application shutdown and notify waiting coroutines.
 
@@ -181,7 +180,7 @@ async def main(config):
         matrix_logger.info("Shutdown signal received. Closing down...")
         _set_shutdown_flag()
 
-    def signal_handler():
+    def signal_handler() -> None:
         """
         Handle shutdown signals synchronously.
 
@@ -294,11 +293,12 @@ async def main(config):
                 # operations, especially with BLE connections. This timeout ensures
                 # the application can shut down gracefully within 10 seconds.
 
-                def _close_meshtastic():
+                def _close_meshtastic() -> None:
                     """
                     Closes the Meshtastic client connection synchronously.
                     """
-                    meshtastic_utils.meshtastic_client.close()
+                    if meshtastic_utils.meshtastic_client:
+                        meshtastic_utils.meshtastic_client.close()
 
                 with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
                     future = executor.submit(_close_meshtastic)
@@ -342,7 +342,7 @@ async def main(config):
         matrix_logger.info("Shutdown complete.")
 
 
-def run_main(args):
+def run_main(args: Any) -> int:
     """
     Start the application: load configuration, validate required keys, and run the main async runner.
 

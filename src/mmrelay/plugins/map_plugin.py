@@ -1,13 +1,13 @@
 import asyncio
 import os
 import re
-from typing import Protocol
+from typing import Any, Protocol
 
 import PIL.ImageDraw
 import s2sphere
 import staticmaps
 from nio import AsyncClient
-from PIL import Image as PILImage
+from PIL import Image as PILImage, ImageFont, ImageDraw as _PILImageDraw
 
 from mmrelay.constants.plugins import (
     S2_PRECISION_BITS_TO_METERS_CONSTANT,
@@ -62,7 +62,7 @@ async def _connect_meshtastic_async() -> object | None:
 
 
 def textsize(
-    self: PIL.ImageDraw.ImageDraw, *args: object, **kwargs: object
+    self: _PILImageDraw.ImageDraw, text: Any, *args: Any, **kwargs: Any
 ) -> tuple[float, float]:
     """
     Compute the width and height of the given text as it would be rendered by this ImageDraw instance.
@@ -70,12 +70,12 @@ def textsize(
     Returns:
         (width, height): Tuple containing the text's horizontal and vertical size in pixels.
     """
-    left, top, right, bottom = self.textbbox((0, 0), *args, **kwargs)  # type: ignore[arg-type, type-var]
+    left, top, right, bottom = self.textbbox((0, 0), text, *args, **kwargs)
     return right - left, bottom - top
 
 
 # Monkeypatch fix for https://github.com/flopp/py-staticmaps/issues/39
-PIL.ImageDraw.ImageDraw.textsize = textsize  # type: ignore[attr-defined]
+_PILImageDraw.ImageDraw.textsize = textsize  # type: ignore[attr-defined]
 
 
 class TextLabel(staticmaps.Object):  # type: ignore[misc]
@@ -405,7 +405,7 @@ class Plugin(BasePlugin):
         Returns:
             bool: `True` if the command was handled and the map image was generated and sent; `False` if the message did not target this plugin or was not processed.
         """
-        if not self.matches(event):  # type: ignore[no-untyped-call]
+        if not self.matches(event):
             return False
 
         args = self.extract_command_args("map", full_message)
@@ -458,10 +458,10 @@ class Plugin(BasePlugin):
             send_image,
         )
 
-        matrix_client = await connect_matrix()  # type: ignore[no-untyped-call]
+        matrix_client = await connect_matrix()
         if matrix_client is None:
             logger.error("Failed to connect to Matrix client; cannot generate map")
-            await self.send_matrix_message(  # type: ignore[no-untyped-call]
+            await self.send_matrix_message(
                 room.room_id,
                 "Cannot generate map: Matrix client unavailable.",
                 formatted=False,
@@ -473,7 +473,7 @@ class Plugin(BasePlugin):
 
         if not meshtastic_client or not has_nodes:
             self.logger.error("Meshtastic client unavailable; cannot generate map")
-            await self.send_matrix_message(  # type: ignore[no-untyped-call]
+            await self.send_matrix_message(
                 room.room_id,
                 "Cannot generate map: Meshtastic client unavailable.",
                 formatted=False,
@@ -501,7 +501,7 @@ class Plugin(BasePlugin):
                 )
 
         if not locations:
-            await self.send_matrix_message(  # type: ignore[no-untyped-call]
+            await self.send_matrix_message(
                 room.room_id,
                 "Cannot generate map: No nodes with location data found.",
                 formatted=False,

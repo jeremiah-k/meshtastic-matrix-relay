@@ -1,13 +1,15 @@
 import asyncio
 import statistics
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from nio import MatrixRoom, RoomMessageText  # type: ignore[import-untyped]
+from nio import MatrixRoom  # type: ignore[import-not-found]
 
 from mmrelay.plugins.base_plugin import BasePlugin
 
 if TYPE_CHECKING:
-    from meshtastic.mesh_interface import MeshInterface  # type: ignore[import-untyped]
+    from meshtastic.mesh_interface import (
+        MeshInterface,  # type: ignore[import-not-found]
+    )
 
 
 class Plugin(BasePlugin):
@@ -45,7 +47,7 @@ class Plugin(BasePlugin):
         """
         from mmrelay.meshtastic_utils import connect_meshtastic
 
-        meshtastic_client: MeshInterface | None = connect_meshtastic()  # type: ignore[no-untyped-call]
+        meshtastic_client: MeshInterface | None = connect_meshtastic()
         if meshtastic_client is None:
             return "Unable to connect to Meshtastic device."
         battery_levels = []
@@ -131,7 +133,7 @@ class Plugin(BasePlugin):
         return False
 
     async def handle_room_message(
-        self, room: MatrixRoom, event: RoomMessageText, full_message: str
+        self, room: MatrixRoom, event: dict[str, Any], full_message: str
     ) -> bool:
         """
         Handle a Matrix room message that triggers this plugin and send a mesh health response.
@@ -146,10 +148,10 @@ class Plugin(BasePlugin):
         Returns:
             true if the message matched this plugin and was handled, false otherwise.
         """
-        if not self.matches(event):  # type: ignore[no-untyped-call]
+        if not self.matches(event):
             return False
 
         response = await asyncio.to_thread(self.generate_response)
-        await self.send_matrix_message(room.room_id, response, formatted=False)  # type: ignore[no-untyped-call]
+        await self.send_matrix_message(room.room_id, response, formatted=False)
 
         return True

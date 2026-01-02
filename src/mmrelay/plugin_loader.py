@@ -13,14 +13,13 @@ import tempfile
 import threading
 import time
 from contextlib import contextmanager
-from types import ModuleType
 from typing import Any, NamedTuple
 from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 
 try:
     import schedule
 except ImportError:
-    schedule: ModuleType | None = None  # type: ignore[assignment,no-redef]
+    schedule = None  # type: ignore[assignment]
 
 from mmrelay.config import get_app_path, get_base_dir
 from mmrelay.constants.plugins import (
@@ -34,7 +33,7 @@ from mmrelay.log_utils import get_logger
 config = None
 
 logger = get_logger(name="Plugins")
-sorted_active_plugins = []
+sorted_active_plugins: list[Any] = []
 plugins_loaded = False
 
 
@@ -60,15 +59,15 @@ PIPX_ENVIRONMENT_KEYS = ("PIPX_HOME", "PIPX_LOCAL_VENVS", "PIPX_BIN_DIR")
 
 
 # Global scheduler management
-_global_scheduler_thread = None
-_global_scheduler_stop_event = None
+_global_scheduler_thread: threading.Thread | None = None
+_global_scheduler_stop_event: threading.Event | None = None
 
 
 # Plugin dependency directory (may not be set if base dir can't be resolved)
 _PLUGIN_DEPS_DIR: str | None = None
 
 try:
-    _PLUGIN_DEPS_DIR = os.path.join(get_base_dir(), "plugins", "deps")
+    _PLUGIN_DEPS_DIR = os.path.join(get_base_dir(), "plugins", "deps")  # type: ignore[no-untyped-call]
 except (OSError, RuntimeError, ValueError) as exc:  # pragma: no cover
     logger.debug("Unable to resolve base dir for plugin deps at import time: %s", exc)
     _PLUGIN_DEPS_DIR = None
@@ -185,7 +184,7 @@ def _collect_requirements(
 
 
 @contextmanager
-def _temp_sys_path(path: str):
+def _temp_sys_path(path: str) -> Any:
     """
     Temporarily prepends a directory to Python's import search path for the duration of a with-block.
 
@@ -205,7 +204,7 @@ def _temp_sys_path(path: str):
             pass
 
 
-def _get_security_settings() -> dict:
+def _get_security_settings() -> dict[str, Any]:
     """
     Return the security settings mapping from the global configuration.
 
@@ -554,7 +553,7 @@ def _clean_python_cache(directory: str) -> None:
         logger.info(f"Cleaned {' and '.join(log_parts)} from {directory}")
 
 
-def _reset_caches_for_tests():
+def _reset_caches_for_tests() -> None:
     """
     Reset the global plugin loader caches to their initial state for testing purposes.
 
@@ -799,7 +798,7 @@ def _get_plugin_dirs(plugin_type: str) -> list[str]:
     dirs = []
 
     # Check user directory first (preferred location)
-    user_dir = os.path.join(get_base_dir(), "plugins", plugin_type)
+    user_dir = os.path.join(get_base_dir(), "plugins", plugin_type)  # type: ignore[no-untyped-call]
     try:
         os.makedirs(user_dir, exist_ok=True)
         dirs.append(user_dir)
@@ -807,7 +806,7 @@ def _get_plugin_dirs(plugin_type: str) -> list[str]:
         logger.warning(f"Cannot create user plugin directory {user_dir}: {e}")
 
     # Check local directory (backward compatibility)
-    local_dir = os.path.join(get_app_path(), "plugins", plugin_type)
+    local_dir = os.path.join(get_app_path(), "plugins", plugin_type)  # type: ignore[no-untyped-call]
     try:
         os.makedirs(local_dir, exist_ok=True)
         dirs.append(local_dir)
@@ -845,7 +844,7 @@ def _run(
     retry_attempts: int = 1,
     retry_delay: float = 1,
     **kwargs: Any,
-) -> subprocess.CompletedProcess:
+) -> subprocess.CompletedProcess[str]:
     # Validate command to prevent shell injection
     """
     Run a subprocess command with validated arguments, optional retries, and a configurable timeout.
@@ -904,7 +903,7 @@ def _run(
 
 def _run_git(
     cmd: list[str], timeout: float = 120, **kwargs: Any
-) -> subprocess.CompletedProcess:
+) -> subprocess.CompletedProcess[str]:
     """
     Run a git command using the module's safe subprocess runner with conservative retry defaults.
 
@@ -927,7 +926,7 @@ def _run_git(
     return _run(cmd, timeout=timeout, **kwargs)
 
 
-def _check_auto_install_enabled(config):
+def _check_auto_install_enabled(config: Any) -> bool:
     """
     Determine if automatic dependency installation is enabled in the provided configuration.
 
@@ -944,7 +943,7 @@ def _check_auto_install_enabled(config):
     return bool(config.get("security", {}).get("auto_install_deps", True))
 
 
-def _raise_install_error(pkg_name):
+def _raise_install_error(pkg_name: str) -> None:
     """
     Emit a warning that automatic dependency installation is disabled and raise a subprocess.CalledProcessError.
 
@@ -1707,7 +1706,7 @@ def clone_or_update_repo(repo_url: str, ref: dict[str, str], plugins_dir: str) -
     )
 
 
-def load_plugins_from_directory(directory, recursive=False):
+def load_plugins_from_directory(directory: str, recursive: bool = False) -> list[Any]:
     """
     Discovers and instantiates Plugin classes from Python modules in the given directory.
 
@@ -1741,6 +1740,9 @@ def load_plugins_from_directory(directory, recursive=False):
                         )
                         continue
                     plugin_module = importlib.util.module_from_spec(spec)
+                    if not spec.loader:
+                        logger.warning(f"Skipping plugin {plugin_path}: no loader.")
+                        continue
 
                     # Create a compatibility layer for plugins
                     # This allows plugins to import from 'plugins' or 'mmrelay.plugins'
@@ -1759,7 +1761,8 @@ def load_plugins_from_directory(directory, recursive=False):
 
                     try:
                         with _temp_sys_path(plugin_dir):
-                            spec.loader.exec_module(plugin_module)
+                            if spec.loader:
+                                spec.loader.exec_module(plugin_module)
                         if hasattr(plugin_module, "Plugin"):
                             plugins.append(plugin_module.Plugin())
                         else:
@@ -1844,7 +1847,8 @@ def load_plugins_from_directory(directory, recursive=False):
                             # Try to load the module again
                             try:
                                 with _temp_sys_path(plugin_dir):
-                                    spec.loader.exec_module(plugin_module)
+                                    if spec.loader:
+                                        spec.loader.exec_module(plugin_module)
 
                                 if hasattr(plugin_module, "Plugin"):
                                     plugins.append(plugin_module.Plugin())
@@ -1879,7 +1883,7 @@ def load_plugins_from_directory(directory, recursive=False):
     return plugins
 
 
-def schedule_job(plugin_name: str, interval: int = 1):
+def schedule_job(plugin_name: str, interval: int = 1) -> Any:
     """
     Create a job that runs every specified interval for a plugin.
 
@@ -1904,7 +1908,7 @@ def clear_plugin_jobs(plugin_name: str) -> None:
         schedule.clear(plugin_name)
 
 
-def start_global_scheduler():
+def start_global_scheduler() -> None:
     """
     Start the global scheduler thread for all plugins.
 
@@ -1926,9 +1930,10 @@ def start_global_scheduler():
 
     _global_scheduler_stop_event = threading.Event()
 
-    def scheduler_loop():
+    def scheduler_loop() -> None:
         """Main scheduler loop that runs pending jobs."""
         logger.debug("Global scheduler thread started")
+        assert _global_scheduler_stop_event is not None
         while not _global_scheduler_stop_event.is_set():
             if schedule:
                 schedule.run_pending()
@@ -1943,7 +1948,7 @@ def start_global_scheduler():
     logger.info("Global plugin scheduler started")
 
 
-def stop_global_scheduler():
+def stop_global_scheduler() -> None:
     """
     Stop the global scheduler thread.
 
@@ -1976,7 +1981,7 @@ def stop_global_scheduler():
     logger.info("Global plugin scheduler stopped")
 
 
-def load_plugins(passed_config=None):
+def load_plugins(passed_config: Any = None) -> list[Any]:
     """
     Load and start the application's configured plugins and return the active instances sorted by priority.
 
@@ -2178,24 +2183,25 @@ def load_plugins(passed_config=None):
                 logger.error("Please specify the repository URL in config.yaml")
                 continue
 
-    # Only load community plugins that are explicitly enabled
+        # Only load community plugins that are explicitly enabled
     for plugin_name in active_community_plugins:
         plugin_info = community_plugins_config[plugin_name]
         repo_url = plugin_info.get("repository")
         if repo_url:
             # Extract repo name using lightweight function (no validation needed for loading)
-            repo_name = _get_repo_name_from_url(repo_url)
-            if not repo_name:
+            repo_name_from_url = _get_repo_name_from_url(repo_url)
+            if not repo_name_from_url:
                 logger.error(
                     "Invalid repository URL for community plugin: %s",
                     _redact_url(repo_url),
                 )
                 continue
+            assert repo_name_from_url is not None
 
             # Try each directory in order
             plugin_found = False
             for dir_path in community_plugin_dirs:
-                plugin_path = os.path.join(dir_path, repo_name)
+                plugin_path = os.path.join(dir_path, repo_name_from_url)
                 if os.path.exists(plugin_path):
                     logger.info(f"Loading community plugin from: {plugin_path}")
                     try:

@@ -13,10 +13,19 @@ import ssl
 import sys
 import time
 from types import SimpleNamespace
-from typing import Any, Dict, Optional, Union, cast
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Generator,
+    Optional,
+    Tuple,
+    Union,
+    cast,
+)
 from urllib.parse import urlparse
 
-from nio import (  # type: ignore[import-untyped]
+from nio import (  # type: ignore[import-not-found]
     AsyncClient,
     AsyncClientConfig,
     DiscoveryInfoError,
@@ -32,8 +41,10 @@ from nio import (  # type: ignore[import-untyped]
     UploadError,
     UploadResponse,
 )
-from nio.events.room_events import RoomMemberEvent  # type: ignore[import-untyped]
-from PIL import Image
+from nio.events.room_events import RoomMemberEvent  # type: ignore[import-not-found]
+from PIL import (
+    Image,  # type: ignore[import-not-found]  # type: ignore[import-not-found]
+)
 
 # Local imports
 from mmrelay.cli_utils import (
@@ -87,27 +98,33 @@ from mmrelay.log_utils import get_logger
 
 # Do not import plugin_loader here to avoid circular imports
 from mmrelay.meshtastic_utils import connect_meshtastic, sendTextReply
+
+# Import meshtastic protobuf for port numbers when needed
+try:
+    import meshtastic.protobuf.portnums_pb2  # noqa: F401, type: ignore[import-not-found]
+except ImportError:
+    pass
 from mmrelay.message_queue import get_message_queue, queue_message
 
 # Import nio exception types with error handling for test environments
 try:
     from nio.exceptions import (
-        LocalProtocolError as NioLocalProtocolError,  # type: ignore[import-untyped]
+        LocalProtocolError as NioLocalProtocolError,  # type: ignore[import-not-found]
     )
     from nio.exceptions import (
-        LocalTransportError as NioLocalTransportError,  # type: ignore[import-untyped]
+        LocalTransportError as NioLocalTransportError,  # type: ignore[import-not-found]
     )
     from nio.exceptions import (
-        RemoteProtocolError as NioRemoteProtocolError,  # type: ignore[import-untyped]
+        RemoteProtocolError as NioRemoteProtocolError,  # type: ignore[import-not-found]
     )
     from nio.exceptions import (
-        RemoteTransportError as NioRemoteTransportError,  # type: ignore[import-untyped]
+        RemoteTransportError as NioRemoteTransportError,  # type: ignore[import-not-found]
     )
     from nio.responses import (
-        LoginError as NioLoginError,  # type: ignore[import-untyped]
+        LoginError as NioLoginError,  # type: ignore[import-not-found]
     )
     from nio.responses import (
-        LogoutError as NioLogoutError,  # type: ignore[import-untyped]
+        LogoutError as NioLogoutError,  # type: ignore[import-not-found]
     )
 except ImportError:
     # Fallback for test environments where nio imports might fail
@@ -172,7 +189,9 @@ def _get_valid_device_id(device_id_value: Any) -> Optional[str]:
     return None
 
 
-def _iter_room_alias_entries(mapping):
+def _iter_room_alias_entries(
+    mapping: Any,
+) -> Generator[Tuple[str, Callable[[str], None]], None, None]:
     """
     Yield (alias_or_id, setter) pairs for entries in a Matrix room mapping.
 
@@ -208,7 +227,7 @@ def _iter_room_alias_entries(mapping):
             if isinstance(entry, dict):
                 yield (
                     entry.get("id", ""),
-                    lambda new_id, target=entry: target.__setitem__("id", new_id),
+                    lambda new_id, target=entry: target.__setitem__("id", new_id),  # type: ignore[misc]  # type: ignore[misc]
                 )
             else:
                 yield (
@@ -219,7 +238,10 @@ def _iter_room_alias_entries(mapping):
                 )
 
 
-async def _resolve_aliases_in_mapping(mapping, resolver):
+async def _resolve_aliases_in_mapping(
+    mapping: Any,
+    resolver: Callable[[str], Any],
+) -> None:
     """
     Resolve Matrix room alias entries found in a mapping (list or dict) by calling an async resolver and replacing aliases with resolved room IDs in-place.
 
@@ -247,7 +269,11 @@ async def _resolve_aliases_in_mapping(mapping, resolver):
                 setter(resolved_id)
 
 
-def _update_room_id_in_mapping(mapping, alias, resolved_id) -> bool:
+def _update_room_id_in_mapping(
+    mapping: Any,
+    alias: str,
+    resolved_id: str,
+) -> bool:
     """
     Replace a room alias with its resolved room ID in a mapping.
 
@@ -357,7 +383,7 @@ def _display_room_channel_mappings(
                     logger.info(f"    ✅ {room_name}")
 
 
-def _can_auto_create_credentials(matrix_config: dict) -> bool:
+def _can_auto_create_credentials(matrix_config: Dict[str, Any]) -> bool:
     """
     Check if the Matrix configuration contains the fields required for automatic credential creation.
 
@@ -440,7 +466,7 @@ def _normalize_bot_user_id(homeserver: str, bot_user_id: str | None) -> str | No
     return f"@{localpart.rstrip(':')}:{domain}"
 
 
-def _get_msgs_to_keep_config():
+def _get_msgs_to_keep_config() -> int:
     """
     Determine how many Meshtastic–Matrix message mappings should be retained.
 
@@ -465,10 +491,11 @@ def _get_msgs_to_keep_config():
                 "Using 'db.msg_map' configuration (legacy). 'database.msg_map' is now the preferred format and 'db.msg_map' will be deprecated in a future version."
             )
 
-    return msg_map_config.get("msgs_to_keep", DEFAULT_MSGS_TO_KEEP)
+    msgs_to_keep = msg_map_config.get("msgs_to_keep", DEFAULT_MSGS_TO_KEEP)
+    return msgs_to_keep if isinstance(msgs_to_keep, int) else DEFAULT_MSGS_TO_KEEP
 
 
-def _get_detailed_matrix_error_message(matrix_response) -> str:
+def _get_detailed_matrix_error_message(matrix_response: Any) -> str:
     """
     Summarize a Matrix SDK response or error into a short, user-facing message.
 
@@ -585,8 +612,12 @@ def _get_detailed_matrix_error_message(matrix_response) -> str:
 
 
 def _create_mapping_info(
-    matrix_event_id, room_id, text, meshnet=None, msgs_to_keep=None
-):
+    matrix_event_id: str,
+    room_id: str,
+    text: str,
+    meshnet: str | None = None,
+    msgs_to_keep: int | None = None,
+) -> dict[str, Any] | None:
     """
     Create metadata linking a Matrix event to a Meshtastic message for cross-network mapping.
 
@@ -615,7 +646,7 @@ def _create_mapping_info(
     }
 
 
-def get_interaction_settings(config):
+def get_interaction_settings(config: dict[str, Any] | None) -> dict[str, bool]:
     """
     Determine if message reactions and replies are enabled in the configuration.
 
@@ -651,7 +682,7 @@ def get_interaction_settings(config):
     return {"reactions": False, "replies": False}
 
 
-def message_storage_enabled(interactions):
+def message_storage_enabled(interactions: dict[str, bool]) -> bool:
     """
     Determine if message storage is needed based on enabled message interactions.
 
@@ -661,7 +692,9 @@ def message_storage_enabled(interactions):
     return interactions["reactions"] or interactions["replies"]
 
 
-def _add_truncated_vars(format_vars, prefix, text):
+def _add_truncated_vars(
+    format_vars: dict[str, str], prefix: str, text: str | None
+) -> None:
     """
     Add truncated variants of `text` to `format_vars` under keys formed as `prefix1` … `prefix{MAX_TRUNCATION_LENGTH}`.
 
@@ -709,7 +742,9 @@ def _escape_leading_prefix_for_markdown(message: str) -> tuple[str, bool]:
     return escaped + message[match.end() :], True
 
 
-def validate_prefix_format(format_string, available_vars):
+def validate_prefix_format(
+    format_string: str, available_vars: dict[str, Any]
+) -> tuple[bool, str | None]:
     """
     Validate that a str.format-compatible format string can be formatted using the provided test variables.
 
@@ -728,7 +763,9 @@ def validate_prefix_format(format_string, available_vars):
         return False, str(e)
 
 
-def get_meshtastic_prefix(config, display_name, user_id=None):
+def get_meshtastic_prefix(
+    config: dict[str, Any], display_name: str, user_id: str | None = None
+) -> str:
     """
     Generate a Meshtastic message prefix using the configured format, supporting variable-length truncation and user-specific variables.
 
@@ -795,7 +832,9 @@ def get_meshtastic_prefix(config, display_name, user_id=None):
         )
 
 
-def get_matrix_prefix(config, longname, shortname, meshnet_name):
+def get_matrix_prefix(
+    config: dict[str, Any], longname: str, shortname: str, meshnet_name: str
+) -> str:
     """
     Generates a formatted prefix string for Meshtastic messages relayed to Matrix, based on configuration settings and sender/mesh network names.
 
@@ -951,7 +990,7 @@ def bot_command(
     return any(re.match(pattern, body, re.IGNORECASE) for body in bodies if body)
 
 
-async def _connect_meshtastic():
+async def _connect_meshtastic() -> Any:
     """
     Obtain a Meshtastic interface suitable for use from async code.
 
@@ -962,7 +1001,7 @@ async def _connect_meshtastic():
 
 
 async def _get_meshtastic_interface_and_channel(
-    room_config: dict, purpose: str
+    room_config: dict[str, Any], purpose: str
 ) -> tuple[Any | None, int | None]:
     """
     Obtain a Meshtastic interface and validate the room's Meshtastic channel.
@@ -997,8 +1036,8 @@ async def _get_meshtastic_interface_and_channel(
 
 
 async def _handle_detection_sensor_packet(
-    config: dict,
-    room_config: dict,
+    config: dict[str, Any],
+    room_config: dict[str, Any],
     full_display_name: str,
     text: str,
 ) -> None:
@@ -1040,7 +1079,7 @@ async def _handle_detection_sensor_packet(
     if not meshtastic_interface:
         return
 
-    import meshtastic.protobuf.portnums_pb2  # type: ignore[import-untyped]
+    import meshtastic.protobuf.portnums_pb2  # type: ignore[import-not-found]
 
     success = queue_message(
         meshtastic_interface.sendData,
@@ -1064,7 +1103,9 @@ async def _handle_detection_sensor_packet(
         meshtastic_logger.error("Failed to relay detection sensor data to Meshtastic")
 
 
-async def connect_matrix(passed_config=None):
+async def connect_matrix(
+    passed_config: dict[str, Any] | None = None,
+) -> AsyncClient | None:
     """
     Prepare and return a configured Matrix AsyncClient using available credentials and configuration.
 
@@ -1371,8 +1412,8 @@ async def connect_matrix(passed_config=None):
     if credentials:
         # Use restore_login when a device_id is available so nio can load the store.
         # When the device_id is unknown, discover it first via whoami and then restore.
-        if e2ee_device_id:
-            device_id_for_restore = cast(Any, e2ee_device_id)
+        if e2ee_device_id and bot_user_id:
+            device_id_for_restore: str = e2ee_device_id
             matrix_client.restore_login(
                 user_id=bot_user_id,
                 device_id=device_id_for_restore,
@@ -1411,11 +1452,12 @@ async def connect_matrix(passed_config=None):
 
                     # Reload login and E2EE store now that we have a device_id.
                     # matrix-nio requires a concrete device_id for restore_login; None is not supported.
-                    matrix_client.restore_login(
-                        user_id=bot_user_id,
-                        device_id=e2ee_device_id,
-                        access_token=matrix_access_token,
-                    )
+                    if e2ee_device_id and bot_user_id:
+                        matrix_client.restore_login(
+                            user_id=bot_user_id,
+                            device_id=e2ee_device_id,
+                            access_token=matrix_access_token,
+                        )
                     logger.info(
                         f"Restored login session for {bot_user_id} with device {e2ee_device_id}"
                     )
@@ -1499,7 +1541,7 @@ async def connect_matrix(passed_config=None):
             e2ee_status = get_e2ee_status(config or {}, config_path)
 
             # Resolve room aliases in config (supports list[str|dict] and dict[str->str|dict])
-            async def _resolve_alias(alias: str) -> Optional[str]:
+            async def _resolve_alias(alias: str) -> str | None:
                 """
                 Resolve a Matrix room alias to its canonical room ID.
 
@@ -1616,14 +1658,17 @@ async def connect_matrix(passed_config=None):
         logger.debug(f"Failed to get bot display name for {bot_user_id}: {e}")
         bot_user_name = bot_user_id  # Fallback on network error
 
-    # Store E2EE status on the client for other functions to access
-    matrix_client.e2ee_enabled = e2ee_enabled  # type: ignore[attr-defined]
+    # Note: E2EE status is tracked via config, not on client
+    # matrix_client does not have e2ee_enabled attribute by default
     return matrix_client
 
 
 async def login_matrix_bot(
-    homeserver=None, username=None, password=None, logout_others=False
-):
+    homeserver: str | None = None,
+    username: str | None = None,
+    password: str | None = None,
+    logout_others: bool = False,
+) -> bool:
     """
     Interactively log in the bot to a Matrix homeserver and persist session credentials.
 
@@ -1854,7 +1899,9 @@ async def login_matrix_bot(
 
             # Test the API call that matrix-nio will make
             try:
-                from nio.api import Api  # type: ignore[import-untyped]
+                from nio.api import (
+                    Api,  # type: ignore[import-untyped, import-not-found]
+                )
 
                 method, path, data = Api.login(
                     user=username or "",
@@ -2078,11 +2125,11 @@ async def login_matrix_bot(
             return False
 
     except (
-        NioLoginError,
-        NioLocalProtocolError,
-        NioRemoteProtocolError,
-        NioLocalTransportError,
-        NioRemoteTransportError,
+        NioLoginError,  # type: ignore[misc]
+        NioLocalProtocolError,  # type: ignore[misc]
+        NioRemoteProtocolError,  # type: ignore[misc]
+        NioLocalTransportError,  # type: ignore[misc]
+        NioRemoteTransportError,  # type: ignore[misc]
         asyncio.TimeoutError,
         ssl.SSLError,
         OSError,
@@ -2097,7 +2144,7 @@ async def login_matrix_bot(
         return False
 
 
-async def join_matrix_room(matrix_client, room_id_or_alias: str) -> None:
+async def join_matrix_room(matrix_client: AsyncClient, room_id_or_alias: str) -> None:
     """
     Join the bot to a Matrix room by ID or alias.
 
@@ -2196,7 +2243,7 @@ async def join_matrix_room(matrix_client, room_id_or_alias: str) -> None:
         logger.exception(f"Unexpected error joining room '{room_id}'")
 
 
-def _get_e2ee_error_message():
+def _get_e2ee_error_message() -> str:
     """
     Provide a short, user-facing explanation for why End-to-End Encryption (E2EE) is not enabled.
 
@@ -2216,19 +2263,19 @@ def _get_e2ee_error_message():
 
 
 async def matrix_relay(
-    room_id,
-    message,
-    longname,
-    shortname,
-    meshnet_name,
-    portnum,
-    meshtastic_id=None,
-    meshtastic_replyId=None,
-    meshtastic_text=None,
-    emote=False,
-    emoji=False,
-    reply_to_event_id=None,
-):
+    room_id: str,
+    message: str,
+    longname: str,
+    shortname: str,
+    meshnet_name: str,
+    portnum: int,
+    meshtastic_id: int | None = None,
+    meshtastic_replyId: int | None = None,
+    meshtastic_text: str | None = None,
+    emote: bool = False,
+    emoji: bool = False,
+    reply_to_event_id: str | None = None,
+) -> None:
     """
     Relay a Meshtastic-originated message into a Matrix room and optionally persist a Meshtastic⇄Matrix mapping.
 
@@ -2302,8 +2349,8 @@ async def matrix_relay(
         # Process markdown/HTML if available; otherwise, safe fallback
         if has_markdown or has_html:
             try:
-                import bleach  # type: ignore[import-untyped]  # lazy import
-                import markdown  # type: ignore[import-untyped]  # lazy import
+                import bleach  # type: ignore[import-untyped, import-not-found]  # lazy import
+                import markdown  # type: ignore[import-untyped, import-not-found]  # lazy import
 
                 raw_html = markdown.markdown(safe_message)
                 formatted_body = bleach.clean(
@@ -2492,14 +2539,18 @@ async def matrix_relay(
             and getattr(response, "event_id", None) is not None
         ):
             try:
-                await async_store_message_map(
-                    meshtastic_id,
-                    getattr(response, "event_id", None),
-                    room_id,
-                    meshtastic_text if meshtastic_text else message,
-                    meshtastic_meshnet=local_meshnet_name,
-                )
-                logger.debug(f"Stored message map for meshtastic_id: {meshtastic_id}")
+                event_id = getattr(response, "event_id", None)
+                if isinstance(event_id, str):
+                    await async_store_message_map(
+                        meshtastic_id,
+                        event_id,
+                        room_id,
+                        meshtastic_text if meshtastic_text else message,
+                        meshtastic_meshnet=local_meshnet_name,
+                    )
+                    logger.debug(
+                        f"Stored message map for meshtastic_id: {meshtastic_id}"
+                    )
 
                 # If msgs_to_keep > 0, prune old messages after inserting a new one
                 if msgs_to_keep > 0:
@@ -2514,7 +2565,7 @@ async def matrix_relay(
         logger.exception(f"Error sending radio message to matrix room {room_id}")
 
 
-def truncate_message(text, max_bytes=DEFAULT_MESSAGE_TRUNCATE_BYTES):
+def truncate_message(text: str, max_bytes: int = DEFAULT_MESSAGE_TRUNCATE_BYTES) -> str:
     """
     Truncate a string so its UTF-8 encoding fits within max_bytes.
 
@@ -2545,7 +2596,15 @@ def strip_quoted_lines(text: str) -> str:
     return " ".join(line for line in filtered if line).strip()
 
 
-async def get_user_display_name(room, event):
+async def get_user_display_name(
+    room: MatrixRoom,
+    event: Union[
+        RoomMessageText,
+        RoomMessageNotice,
+        ReactionEvent,
+        RoomMessageEmote,
+    ],
+) -> str:
     """
     Get the display name for an event sender, preferring a room-specific name.
 
@@ -2596,16 +2655,16 @@ async def get_user_display_name(room, event):
 
 
 def format_reply_message(
-    config,
-    full_display_name,
-    text,
+    config: dict[str, Any],
+    full_display_name: str,
+    text: str,
     *,
-    longname=None,
-    shortname=None,
-    meshnet_name=None,
-    local_meshnet_name=None,
-    mesh_text_override=None,
-):
+    longname: str | None = None,
+    shortname: str | None = None,
+    meshnet_name: str | None = None,
+    local_meshnet_name: str | None = None,
+    mesh_text_override: str | None = None,
+) -> str:
     """
     Format a Meshtastic-style reply message by removing quoted lines, applying an appropriate sender prefix (local or remote meshnet), and truncating to the allowed length.
 
@@ -2670,16 +2729,21 @@ def format_reply_message(
 
 
 async def send_reply_to_meshtastic(
-    reply_message,
-    full_display_name,
-    room_config,
-    room,
-    event,
-    text,
-    storage_enabled,
-    local_meshnet_name,
-    reply_id=None,
-):
+    reply_message: str,
+    full_display_name: str,
+    room_config: dict[str, Any],
+    room: MatrixRoom,
+    event: Union[
+        RoomMessageText,
+        RoomMessageNotice,
+        ReactionEvent,
+        RoomMessageEmote,
+    ],
+    text: str,
+    storage_enabled: bool,
+    local_meshnet_name: str,
+    reply_id: int | None = None,
+) -> None:
     """
     Queue a Matrix reply to be delivered over Meshtastic as either a structured reply or a regular broadcast.
 
@@ -2724,8 +2788,8 @@ async def send_reply_to_meshtastic(
 
             if reply_id is not None:
                 # Send as a structured reply using our custom function
-                # Queue the reply message
-                success = queue_message(
+                # Queue is reply message
+                success = queue_message(  # type: ignore[arg-type]
                     sendTextReply,
                     meshtastic_interface,
                     text=reply_message,
@@ -2754,7 +2818,7 @@ async def send_reply_to_meshtastic(
                     return
             else:
                 # Send as regular message (fallback for when no reply_id is available)
-                success = queue_message(
+                success = queue_message(  # type: ignore[arg-type]
                     meshtastic_interface.sendText,
                     text=reply_message,
                     channelIndex=meshtastic_channel,
@@ -2788,20 +2852,25 @@ async def send_reply_to_meshtastic(
 
 
 async def handle_matrix_reply(
-    room,
-    event,
-    reply_to_event_id,
-    text,
-    room_config,
-    storage_enabled,
-    local_meshnet_name,
-    config,
+    room: MatrixRoom,
+    event: Union[
+        RoomMessageText,
+        RoomMessageNotice,
+        ReactionEvent,
+        RoomMessageEmote,
+    ],
+    reply_to_event_id: str,
+    text: str,
+    room_config: dict[str, Any],
+    storage_enabled: bool,
+    local_meshnet_name: str,
+    config: dict[str, Any],
     *,
-    mesh_text_override=None,
-    longname=None,
-    shortname=None,
-    meshnet_name=None,
-):
+    mesh_text_override: str | None = None,
+    longname: str | None = None,
+    shortname: str | None = None,
+    meshnet_name: str | None = None,
+) -> bool:
     """
     Forward a Matrix reply to Meshtastic when the replied-to Matrix event maps to a Meshtastic message.
 
@@ -3364,11 +3433,12 @@ async def on_room_message(
                 require_mention_attr = getattr(
                     plugin_obj, "get_require_bot_mention", lambda: False
                 )
-                require_mention = (
+                require_mention_val = (
                     require_mention_attr()
                     if callable(require_mention_attr)
-                    else bool(require_mention_attr)
+                    else require_mention_attr
                 )
+                require_mention = bool(require_mention_val)
                 return any(
                     bot_command(cmd, event, require_mention=require_mention)
                     for cmd in plugin_obj.get_matrix_commands()
@@ -3534,7 +3604,7 @@ async def send_room_image(
     room_id: str,
     upload_response: Union[UploadResponse, UploadError, SimpleNamespace, None],
     filename: str = "image.png",
-):
+) -> None:
     """
     Send an uploaded image to a Matrix room.
 
@@ -3569,7 +3639,7 @@ async def send_room_image(
 
 async def send_image(
     client: AsyncClient, room_id: str, image: Image.Image, filename: str = "image.png"
-):
+) -> None:
     """
     Upload and send an image to a Matrix room.
 

@@ -4,9 +4,11 @@ import asyncio
 import base64
 import json
 import re
-from typing import Any, cast
+from typing import Any
 
-from meshtastic import mesh_pb2
+from meshtastic import (
+    mesh_pb2,  # type: ignore[import-not-found]  # type: ignore[import-not-found]
+)
 
 from mmrelay.constants.database import DEFAULT_MAX_DATA_ROWS_PER_NODE_MESH_RELAY
 from mmrelay.plugins.base_plugin import BasePlugin, config
@@ -47,7 +49,7 @@ class Plugin(BasePlugin):
             except (json.JSONDecodeError, TypeError):
                 dict_obj = {"decoded": {"text": dict_obj}}
 
-        return cast(dict[str, Any], self.strip_raw(dict_obj))  # type: ignore[no-untyped-call]
+        return self.strip_raw(dict_obj)
 
     def process(self, packet: Any) -> dict[str, Any]:
         """Process and prepare packet data for relay.
@@ -106,8 +108,7 @@ class Plugin(BasePlugin):
         """
         from mmrelay.matrix_utils import connect_matrix
 
-        packet = self.process(packet)
-        matrix_client = await connect_matrix()  # type: ignore[no-untyped-call]
+        matrix_client = await connect_matrix()
         if matrix_client is None:
             self.logger.error("Matrix client is None; skipping mesh relay to Matrix")
             return False
@@ -192,7 +193,7 @@ class Plugin(BasePlugin):
         channel = None
         if config is not None:
             matrix_rooms = config.get("matrix_rooms", [])
-            for room_config in matrix_rooms:
+            for room_config in matrix_rooms:  # type: ignore[misc]
                 if room_config["id"] == room.room_id:
                     channel = room_config["meshtastic_channel"]
 
