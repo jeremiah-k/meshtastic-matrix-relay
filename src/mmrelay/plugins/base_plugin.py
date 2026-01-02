@@ -412,7 +412,7 @@ class BasePlugin(ABC):
         The node ID is cached after first successful retrieval to avoid repeated
         connection calls, as the relay's node ID is static during runtime.
         """
-        if hasattr(self, "_my_node_id"):
+        if self._my_node_id is not None:
             return self._my_node_id
 
         from mmrelay.meshtastic_utils import connect_meshtastic
