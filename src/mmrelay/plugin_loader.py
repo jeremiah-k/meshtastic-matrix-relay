@@ -1740,9 +1740,7 @@ def load_plugins_from_directory(directory: str, recursive: bool = False) -> list
                         )
                         continue
                     plugin_module = importlib.util.module_from_spec(spec)
-                    if not spec.loader:
-                        logger.warning(f"Skipping plugin {plugin_path}: no loader.")
-                        continue
+                    spec.loader.exec_module(plugin_module)
 
                     # Create a compatibility layer for plugins
                     # This allows plugins to import from 'plugins' or 'mmrelay.plugins'

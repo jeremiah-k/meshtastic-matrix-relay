@@ -216,7 +216,7 @@ class MessageQueue:
 
     def enqueue(
         self,
-        send_function: Callable[[], Any],
+        send_function: Callable[..., Any],
         *args: Any,
         description: str = "",
         mapping_info: Optional[dict[str, Any]] = None,

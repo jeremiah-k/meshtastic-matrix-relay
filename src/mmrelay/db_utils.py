@@ -468,7 +468,7 @@ def get_plugin_data_for_node(plugin_name: str, meshtastic_id: int | str) -> list
             "SELECT data FROM plugin_data WHERE plugin_name=? AND meshtastic_id=?",
             (plugin_name, meshtastic_id),
         )
-        return cursor.fetchone()  # type: ignore[no-any-return]
+        return cursor.fetchone()
 
     try:
         result = manager.run_sync(_fetch)
@@ -964,10 +964,10 @@ async def async_store_message_map(
     """
     Store a mapping from a Meshtastic message to a Matrix event in the database asynchronously.
 
-    Inserts or updates the message_map row for the provided Meshtastic ID and Matrix event identifiers along with the message text and optional meshnet flag.
+    Inserts or updates a message_map row for the provided Meshtastic ID and Matrix event identifiers along with the message text and optional meshnet flag.
 
     Parameters:
-        meshtastic_id (str): Meshtastic message identifier.
+        meshtastic_id (str | None): Meshtastic message identifier.
         matrix_event_id (str): Matrix event ID to map to.
         matrix_room_id (str): Matrix room ID where the Matrix event was posted.
         meshtastic_text (str): Text content of the Meshtastic message.

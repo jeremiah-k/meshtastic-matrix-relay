@@ -340,7 +340,7 @@ def get_e2ee_error_message(e2ee_status: Dict[str, Any]) -> str:
         return warning_messages["incomplete"]
 
 
-def get_e2ee_fix_instructions(e2ee_status: Dict[str, Any]) -> List[str]:
+def get_e2ee_fix_instructions(e2ee_status: E2EEStatus) -> List[str]:
     """
     Return ordered, user-facing instructions to resolve E2EE setup problems.
 

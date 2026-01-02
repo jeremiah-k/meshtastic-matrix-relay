@@ -6,9 +6,7 @@ import json
 import re
 from typing import Any
 
-from meshtastic import (
-    mesh_pb2,  # type: ignore[import-not-found]  # type: ignore[import-not-found]
-)
+from meshtastic import mesh_pb2  # type: ignore[import-not-found]
 
 from mmrelay.constants.database import DEFAULT_MAX_DATA_ROWS_PER_NODE_MESH_RELAY
 from mmrelay.plugins.base_plugin import BasePlugin, config
@@ -81,7 +79,7 @@ class Plugin(BasePlugin):
         """
         return []
 
-    def get_mesh_commands(self) -> list[Any]:
+    def get_mesh_commands(self) -> list[str]:
         """Get mesh commands handled by this plugin.
 
         Returns:
@@ -116,6 +114,7 @@ class Plugin(BasePlugin):
             self.logger.error("Matrix client is None; skipping mesh relay to Matrix")
             return False
 
+        packet = self.process(packet)
         packet_type = packet["decoded"]["portnum"]
         if "channel" in packet:
             channel = packet["channel"]

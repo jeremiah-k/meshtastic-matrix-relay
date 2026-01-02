@@ -2,14 +2,12 @@ import asyncio
 import statistics
 from typing import TYPE_CHECKING, Any
 
-from nio import MatrixRoom  # type: ignore[import-not-found]
+from nio import MatrixRoom  # type: ignore[import-untyped]
 
 from mmrelay.plugins.base_plugin import BasePlugin
 
 if TYPE_CHECKING:
-    from meshtastic.mesh_interface import (
-        MeshInterface,  # type: ignore[import-not-found]
-    )
+    from meshtastic.mesh_interface import MeshInterface  # type: ignore[import-untyped]
 
 
 class Plugin(BasePlugin):
@@ -113,7 +111,7 @@ class Plugin(BasePlugin):
 
     async def handle_meshtastic_message(
         self,
-        packet: dict[str, object],
+        packet: dict[str, Any],
         formatted_message: str,
         longname: str,
         meshnet_name: str,

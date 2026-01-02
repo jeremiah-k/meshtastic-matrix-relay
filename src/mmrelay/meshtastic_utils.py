@@ -722,7 +722,7 @@ def connect_meshtastic(
 
 
 def on_lost_meshtastic_connection(
-    interface: Any = None,
+    _interface: Any = None,
     detection_source: str = "unknown",
 ) -> None:
     """
@@ -884,7 +884,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
     from mmrelay.matrix_utils import get_interaction_settings
 
     # Get interaction settings
-    interactions = get_interaction_settings(config)  # type: ignore[no-untyped-call]
+    interactions = get_interaction_settings(config)
 
     # Filter packets based on interaction settings
     if packet.get("decoded", {}).get("portnum") == TEXT_MESSAGE_APP:
@@ -1341,7 +1341,7 @@ async def check_connection() -> None:
                             f"{connection_type.capitalize()} connection health check failed: {e}"
                         )
                         on_lost_meshtastic_connection(
-                            interface=meshtastic_client,
+                            _interface=meshtastic_client,
                             detection_source=f"health check failed: {str(e)}",
                         )
                     else:

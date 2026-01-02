@@ -47,6 +47,7 @@ from mmrelay.constants.network import (
     CONNECTION_TYPE_SERIAL,
     CONNECTION_TYPE_TCP,
 )
+from mmrelay.e2ee_utils import E2EEStatus
 from mmrelay.tools import get_sample_config_path
 
 # =============================================================================
@@ -604,7 +605,7 @@ def _find_credentials_json_path(config_path: str | None) -> str | None:
     return standard if os.path.exists(standard) else None
 
 
-def _print_unified_e2ee_analysis(e2ee_status: dict[str, Any]) -> None:
+def _print_unified_e2ee_analysis(e2ee_status: E2EEStatus) -> None:
     """
     Print a concise, user-facing analysis of E2EE readiness.
 
@@ -912,7 +913,7 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                     )
 
                     e2ee_status = get_e2ee_status(config, config_path)
-                    _print_unified_e2ee_analysis(e2ee_status)  # type: ignore[arg-type]
+                    _print_unified_e2ee_analysis(e2ee_status)
 
                     # Check if there are critical E2EE issues
                     if not e2ee_status.get("platform_supported", True):
