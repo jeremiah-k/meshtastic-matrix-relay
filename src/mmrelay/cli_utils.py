@@ -31,7 +31,7 @@ from types import ModuleType
 try:
     import certifi
 except ImportError:
-    certifi: ModuleType | None = None  # type: ignore[assignment,no-redef]
+    certifi: ModuleType | None = None  # type: ignore[no-redef]
 
 # Import Matrix-related modules for logout functionality
 try:
@@ -97,7 +97,7 @@ DEPRECATED_COMMANDS = {
 }
 
 
-def get_command(command_key):
+def get_command(command_key: str) -> str:
     """Get the current command syntax for a given command key.
 
     Args:
@@ -114,7 +114,7 @@ def get_command(command_key):
     return CLI_COMMANDS[command_key]
 
 
-def get_deprecation_warning(old_flag):
+def get_deprecation_warning(old_flag: str) -> str:
     """
     Return a user-facing deprecation warning for a deprecated CLI flag.
 
@@ -136,7 +136,7 @@ def get_deprecation_warning(old_flag):
     return f"Warning: {old_flag} is deprecated. Run 'mmrelay --help' to see the current commands."
 
 
-def suggest_command(command_key, purpose):
+def suggest_command(command_key: str, purpose: str) -> str:
     """
     Return a concise suggestion message that tells the user which CLI command to run.
 
@@ -151,7 +151,7 @@ def suggest_command(command_key, purpose):
     return f"Run '{command}' {purpose}."
 
 
-def require_command(command_key, purpose):
+def require_command(command_key: str, purpose: str) -> str:
     """
     Return a user-facing requirement message that instructs running a registered CLI command.
 
@@ -169,7 +169,7 @@ def require_command(command_key, purpose):
     return f"Please run '{command}' {purpose}."
 
 
-def retry_command(command_key, context=""):
+def retry_command(command_key: str, context: str = "") -> str:
     """
     Return a user-facing retry message instructing the user to run the given CLI command again.
 
@@ -187,7 +187,7 @@ def retry_command(command_key, context=""):
         return f"Try running '{command}' again."
 
 
-def validate_command(command_key, purpose):
+def validate_command(command_key: str, purpose: str) -> str:
     """
     Return a user-facing validation message that references a registered CLI command.
 
@@ -198,7 +198,7 @@ def validate_command(command_key, purpose):
 
 
 # Common message templates for frequently used commands
-def msg_suggest_generate_config():
+def msg_suggest_generate_config() -> str:
     """
     Return a standardized user-facing suggestion to generate a sample configuration file.
 
@@ -210,7 +210,7 @@ def msg_suggest_generate_config():
     return suggest_command("generate_config", "to generate a sample configuration file")
 
 
-def msg_suggest_check_config():
+def msg_suggest_check_config() -> str:
     """
     Return a standardized suggestion prompting the user to validate their configuration.
 
@@ -222,7 +222,7 @@ def msg_suggest_check_config():
     return validate_command("check_config", "to validate your configuration")
 
 
-def msg_require_auth_login():
+def msg_require_auth_login() -> str:
     """
     Return a standard instruction asking the user to run the authentication command.
 
@@ -237,12 +237,12 @@ def msg_require_auth_login():
     )
 
 
-def msg_retry_auth_login():
+def msg_retry_auth_login() -> str:
     """Standard message suggesting auth retry."""
     return retry_command("auth_login")
 
 
-def msg_run_auth_login():
+def msg_run_auth_login() -> str:
     """
     Return a user-facing message that instructs running the auth login command to (re)generate credentials.
 
@@ -254,7 +254,7 @@ def msg_run_auth_login():
     return msg_regenerate_credentials()
 
 
-def msg_for_e2ee_support():
+def msg_for_e2ee_support() -> str:
     """
     Return a user-facing instruction to run the authentication command required for E2EE support.
 
@@ -264,7 +264,7 @@ def msg_for_e2ee_support():
     return f"For E2EE support: run '{get_command('auth_login')}'"
 
 
-def msg_setup_auth():
+def msg_setup_auth() -> str:
     """
     Return a standard instruction directing the user to run the authentication setup command.
 
@@ -276,7 +276,7 @@ def msg_setup_auth():
     return f"Setup: {get_command('auth_login')}"
 
 
-def msg_or_run_auth_login():
+def msg_or_run_auth_login() -> str:
     """
     Return a short suggestion offering the `auth_login` command as an alternative to setup.
 
@@ -289,12 +289,12 @@ def msg_or_run_auth_login():
     return f"or run '{get_command('auth_login')}' to set up credentials.json"
 
 
-def msg_setup_authentication():
+def msg_setup_authentication() -> str:
     """Standard message for authentication setup."""
     return f"Setup authentication: {get_command('auth_login')}"
 
 
-def msg_regenerate_credentials():
+def msg_regenerate_credentials() -> str:
     """
     Return a standardized instruction prompting the user to re-run the authentication command to regenerate credentials that include a `device_id`.
 
@@ -307,7 +307,7 @@ def msg_regenerate_credentials():
 # Helper functions moved from matrix_utils to break circular dependency
 
 
-def _create_ssl_context():
+def _create_ssl_context() -> ssl.SSLContext | None:
     """
     Create an SSLContext for Matrix client connections, preferring certifi's CA bundle when available.
 
@@ -330,7 +330,7 @@ def _create_ssl_context():
             return None
 
 
-def _cleanup_local_session_data():
+def _cleanup_local_session_data() -> None:
     """
     Remove local Matrix session artifacts: credentials.json and any E2EE store directories.
 
@@ -414,7 +414,9 @@ def _cleanup_local_session_data():
 # CLI-specific functions (can use print statements for user interaction)
 
 
-def _handle_matrix_error(exception: Exception, context: str, log_level: str = "error"):
+def _handle_matrix_error(
+    exception: Exception, context: str, log_level: str = "error"
+) -> str | None:
     """
     Classify a Matrix-related exception and emit user-facing and logged messages.
 

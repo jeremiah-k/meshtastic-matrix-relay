@@ -3,7 +3,7 @@
 import importlib.resources
 
 
-def get_sample_config_path():
+def get_sample_config_path() -> str:
     """
     Provide the filesystem path to the package's sample configuration file.
 
@@ -15,7 +15,7 @@ def get_sample_config_path():
     )
 
 
-def get_service_template_path():
+def get_service_template_path() -> str:
     """
     Return the filesystem path to the mmrelay.service template bundled with the package.
 

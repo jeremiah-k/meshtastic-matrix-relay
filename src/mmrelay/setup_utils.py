@@ -40,7 +40,7 @@ def get_resolved_exec_cmd() -> str:
     return f"{py} -m mmrelay"
 
 
-def get_executable_path():
+def get_executable_path() -> str:
     """
     Return the resolved command to invoke the mmrelay executable with user feedback.
 
@@ -80,18 +80,18 @@ def get_resolved_exec_start(
     return f"ExecStart={get_resolved_exec_cmd()}{args_suffix}"
 
 
-def get_user_service_path():
+def get_user_service_path() -> Path:
     """Get the path to the user service file."""
     service_dir = Path.home() / ".config" / "systemd" / "user"
     return service_dir / "mmrelay.service"
 
 
-def service_exists():
+def service_exists() -> bool:
     """Check if the service file exists."""
     return get_user_service_path().exists()
 
 
-def print_service_commands():
+def print_service_commands() -> None:
     """Print the commands for controlling the systemd user service."""
     print("  systemctl --user start mmrelay.service    # Start the service")
     print("  systemctl --user stop mmrelay.service     # Stop the service")
@@ -99,7 +99,7 @@ def print_service_commands():
     print("  systemctl --user status mmrelay.service   # Check service status")
 
 
-def wait_for_service_start():
+def wait_for_service_start() -> None:
     """
     Wait up to ~10 seconds for the user mmrelay systemd service to become active.
 
@@ -152,7 +152,7 @@ def wait_for_service_start():
                 break
 
 
-def read_service_file():
+def read_service_file() -> str | None:
     """
     Read and return the contents of the user's mmrelay systemd service file.
 
@@ -165,7 +165,7 @@ def read_service_file():
     return None
 
 
-def get_template_service_path():
+def get_template_service_path() -> str | None:
     """
     Locate the mmrelay systemd service template on disk.
 
@@ -237,7 +237,7 @@ def get_template_service_path():
     return None
 
 
-def get_template_service_content():
+def get_template_service_content() -> str:
     """
     Return the systemd service unit content to install for the user-level mmrelay service.
 
@@ -332,7 +332,7 @@ def is_service_enabled():
         return False
 
 
-def is_service_active():
+def is_service_active() -> bool:
     """
     Return True if the user systemd unit 'mmrelay.service' is currently active (running).
 
@@ -356,7 +356,7 @@ def is_service_active():
         return False
 
 
-def create_service_file():
+def create_service_file() -> bool:
     """
     Create or update the per-user systemd unit file for MMRelay.
 
@@ -421,7 +421,7 @@ def create_service_file():
         return False
 
 
-def reload_daemon():
+def reload_daemon() -> bool:
     """
     Reload the current user's systemd daemon to apply unit file changes.
 
@@ -440,7 +440,7 @@ def reload_daemon():
         return False
 
 
-def service_needs_update():
+def service_needs_update() -> tuple[bool, str]:
     """
     Return whether the user systemd unit for mmrelay should be updated.
 
@@ -491,7 +491,7 @@ def service_needs_update():
         return (
             True,
             "Service file does not use an acceptable executable "
-            f"({ ' or '.join(acceptable_execs) }).",
+            f"({' or '.join(acceptable_execs)}).",
         )
 
     # Check if the PATH environment includes common user-bin locations
@@ -522,7 +522,7 @@ def service_needs_update():
     return False, "Service file is up to date"
 
 
-def check_loginctl_available():
+def check_loginctl_available() -> bool:
     """
     Return True if `loginctl` is available and runnable on PATH.
 
@@ -542,7 +542,7 @@ def check_loginctl_available():
         return False
 
 
-def check_lingering_enabled():
+def check_lingering_enabled() -> bool:
     """
     Return whether systemd user "lingering" is enabled for the current user.
 
@@ -578,7 +578,7 @@ def check_lingering_enabled():
         return False
 
 
-def enable_lingering():
+def enable_lingering() -> bool:
     """
     Enable systemd "lingering" for the current user by running `sudo loginctl enable-linger <user>`.
 
@@ -614,7 +614,7 @@ def enable_lingering():
         return False
 
 
-def install_service():
+def install_service() -> bool:
     """
     Install or update the MMRelay systemd user service, guiding the user through creation, updating, enabling, and starting the service as needed.
 
@@ -782,7 +782,7 @@ def install_service():
     return True
 
 
-def start_service():
+def start_service() -> bool:
     """
     Start the user-level systemd service for MMRelay.
 
@@ -803,7 +803,7 @@ def start_service():
         return False
 
 
-def show_service_status():
+def show_service_status() -> bool:
     """
     Show the systemd user status for the mmrelay.service and print it to stdout.
 
