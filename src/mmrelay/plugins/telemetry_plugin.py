@@ -4,6 +4,13 @@ from datetime import datetime, timedelta
 from typing import Any
 
 import matplotlib.pyplot as plt
+from nio import (  # type: ignore[import-untyped]
+    MatrixRoom,
+    ReactionEvent,
+    RoomMessageEmote,
+    RoomMessageNotice,
+    RoomMessageText,
+)
 from PIL import Image
 
 from mmrelay.plugins.base_plugin import BasePlugin
@@ -134,7 +141,10 @@ class Plugin(BasePlugin):
         return []
 
     async def handle_room_message(
-        self, room: Any, event: Any, full_message: str
+        self,
+        room: MatrixRoom,
+        event: RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote,
+        full_message: str,
     ) -> bool:
         # Pass the event to matches()
         """

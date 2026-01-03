@@ -8,6 +8,13 @@ import re
 from typing import Any, cast
 
 from meshtastic import mesh_pb2  # type: ignore[import-untyped]
+from nio import (  # type: ignore[import-untyped]
+    MatrixRoom,
+    ReactionEvent,
+    RoomMessageEmote,
+    RoomMessageNotice,
+    RoomMessageText,
+)
 
 from mmrelay.constants.database import DEFAULT_MAX_DATA_ROWS_PER_NODE_MESH_RELAY
 from mmrelay.plugins.base_plugin import BasePlugin, config
@@ -88,6 +95,30 @@ class Plugin(BasePlugin):
         """
         return []
 
+    def _iter_room_configs(self) -> list[dict[str, Any]]:
+        """
+        Normalize matrix_rooms config entries into a list of dicts.
+
+        Supports both list and dict shapes for backward compatibility and filters
+        out non-dict entries to keep iteration safe.
+        """
+        if config is None:
+            return []
+
+        matrix_rooms = config.get("matrix_rooms", [])
+        if isinstance(matrix_rooms, dict):
+            iterable_rooms = matrix_rooms.values()
+        elif isinstance(matrix_rooms, list):
+            iterable_rooms = matrix_rooms
+        else:
+            self.logger.debug(
+                "matrix_rooms expected list or dict, got %s",
+                type(matrix_rooms).__name__,
+            )
+            return []
+
+        return [room for room in iterable_rooms if isinstance(room, dict)]
+
     async def handle_meshtastic_message(
         self, packet: Any, formatted_message: str, longname: str, meshnet_name: str
     ) -> bool:
@@ -125,20 +156,11 @@ class Plugin(BasePlugin):
 
         channel_mapped = False
         target_room_id = None
-        if config is not None:
-            matrix_rooms = config.get("matrix_rooms", [])
-            iterable_rooms = (
-                matrix_rooms.values()
-                if isinstance(matrix_rooms, dict)
-                else matrix_rooms
-            )
-            for room_config in iterable_rooms:
-                if not isinstance(room_config, dict):
-                    continue
-                if room_config.get("meshtastic_channel") == channel:
-                    channel_mapped = True
-                    target_room_id = room_config.get("id")
-                    break
+        for room_config in self._iter_room_configs():
+            if room_config.get("meshtastic_channel") == channel:
+                channel_mapped = True
+                target_room_id = room_config.get("id")
+                break
 
         if not channel_mapped:
             self.logger.debug(f"Skipping message from unmapped channel {channel}")
@@ -185,7 +207,10 @@ class Plugin(BasePlugin):
         return False
 
     async def handle_room_message(
-        self, room: Any, event: Any, full_message: str
+        self,
+        room: MatrixRoom,
+        event: RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote,
+        full_message: str,
     ) -> bool:
         """
         Relay an embedded Meshtastic packet from a Matrix room message to the Meshtastic mesh.
@@ -210,19 +235,10 @@ class Plugin(BasePlugin):
             return False
 
         channel = None
-        if config is not None:
-            matrix_rooms = config.get("matrix_rooms", [])
-            iterable_rooms = (
-                matrix_rooms.values()
-                if isinstance(matrix_rooms, dict)
-                else matrix_rooms
-            )
-            for room_config in iterable_rooms:
-                if not isinstance(room_config, dict):
-                    continue
-                if room_config.get("id") == room.room_id:
-                    channel = room_config.get("meshtastic_channel")
-                    break
+        for room_config in self._iter_room_configs():
+            if room_config.get("id") == room.room_id:
+                channel = room_config.get("meshtastic_channel")
+                break
 
         if channel is None:
             self.logger.debug(f"Skipping message from unmapped room {room.room_id}")

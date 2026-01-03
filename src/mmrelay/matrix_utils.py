@@ -40,6 +40,8 @@ from nio import (  # type: ignore[import-untyped]
     UploadError,
     UploadResponse,
 )
+
+# matrix-nio lacks type stubs; keep import-untyped for strict mypy.
 from nio.events.room_events import RoomMemberEvent  # type: ignore[import-untyped]
 from PIL import Image
 
@@ -102,6 +104,7 @@ from mmrelay.message_queue import get_message_queue, queue_message
 # Import nio exception types with error handling for test environments.
 # Note: matrix-nio does not ship type stubs; keep import-untyped ignores here
 # to satisfy mypy --strict and align with other nio imports in the codebase.
+# We apply the ignore to the grouped import to avoid mypy unused-ignore noise.
 try:
     from nio.exceptions import (
         LocalProtocolError as NioLocalProtocolError,  # type: ignore[import-untyped]
@@ -2342,7 +2345,10 @@ async def matrix_relay(
         # Process markdown/HTML if available; otherwise, safe fallback
         if has_markdown or has_html:
             try:
+                # bleach lacks type stubs in our env; keep import-untyped for strict mypy.
                 import bleach  # type: ignore[import-untyped]  # lazy import
+
+                # markdown ships stubs here; avoid unused-ignore in strict mypy.
                 import markdown  # lazy import
 
                 raw_html = markdown.markdown(safe_message)
@@ -2895,9 +2901,27 @@ async def handle_matrix_reply(
         )
         return False  # Continue processing as normal message if original not found
 
-    # Extract the original meshtastic_id to use as reply_id
+    # Extract the original meshtastic_id to use as reply_id.
     # orig = (meshtastic_id, matrix_room_id, meshtastic_text, meshtastic_meshnet)
-    original_meshtastic_id = cast(int, orig[0])
+    # message_map may return a legacy string; normalize to int for reply_id.
+    original_meshtastic_id_raw = orig[0]
+    if isinstance(original_meshtastic_id_raw, int):
+        original_meshtastic_id = original_meshtastic_id_raw
+    elif isinstance(original_meshtastic_id_raw, str):
+        if original_meshtastic_id_raw.isdigit():
+            original_meshtastic_id = int(original_meshtastic_id_raw)
+        else:
+            logger.warning(
+                "Message map meshtastic_id %r is not numeric; cannot send reply",
+                original_meshtastic_id_raw,
+            )
+            return False
+    else:
+        logger.warning(
+            "Message map meshtastic_id has unexpected type %s; cannot send reply",
+            type(original_meshtastic_id_raw).__name__,
+        )
+        return False
 
     # Get user display name
     full_display_name = await get_user_display_name(room, event)

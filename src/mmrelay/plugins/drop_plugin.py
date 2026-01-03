@@ -3,7 +3,13 @@ import re
 from typing import TYPE_CHECKING, Any
 
 from haversine import haversine  # type: ignore[import-untyped]
-from nio import MatrixRoom  # type: ignore[import-untyped]
+from nio import (  # type: ignore[import-untyped]
+    MatrixRoom,
+    ReactionEvent,
+    RoomMessageEmote,
+    RoomMessageNotice,
+    RoomMessageText,
+)
 
 from mmrelay.constants.database import DEFAULT_DISTANCE_KM_FALLBACK, DEFAULT_RADIUS_KM
 from mmrelay.constants.formats import TEXT_MESSAGE_APP
@@ -165,7 +171,10 @@ class Plugin(BasePlugin):
         return False
 
     async def handle_room_message(
-        self, room: MatrixRoom, event: dict[str, Any], full_message: str
+        self,
+        room: MatrixRoom,
+        event: RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote,
+        full_message: str,
     ) -> bool:
         # Pass the event to matches() instead of full_message
         """

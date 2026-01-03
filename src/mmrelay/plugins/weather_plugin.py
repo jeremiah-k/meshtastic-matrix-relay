@@ -6,6 +6,13 @@ from typing import Any
 
 import requests  # type: ignore[import-untyped]
 from meshtastic.mesh_interface import BROADCAST_NUM  # type: ignore[import-untyped]
+from nio import (  # type: ignore[import-untyped]
+    MatrixRoom,
+    ReactionEvent,
+    RoomMessageEmote,
+    RoomMessageNotice,
+    RoomMessageText,
+)
 
 from mmrelay.constants.formats import TEXT_MESSAGE_APP
 from mmrelay.constants.messages import PORTNUM_TEXT_MESSAGE_APP
@@ -576,7 +583,10 @@ class Plugin(BasePlugin):
         return list(self.mesh_commands)
 
     async def handle_room_message(
-        self, room: Any, event: Any, full_message: str
+        self,
+        room: MatrixRoom,
+        event: RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote,
+        full_message: str,
     ) -> bool:
         """
         Handle a Matrix room message invoking the weather plugin and post a forecast to the room.

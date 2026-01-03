@@ -3,6 +3,13 @@ import re
 from typing import Any
 
 from meshtastic.mesh_interface import BROADCAST_NUM  # type: ignore[import-untyped]
+from nio import (  # type: ignore[import-untyped]
+    MatrixRoom,
+    ReactionEvent,
+    RoomMessageEmote,
+    RoomMessageNotice,
+    RoomMessageText,
+)
 
 from mmrelay.constants.formats import TEXT_MESSAGE_APP
 from mmrelay.constants.messages import PORTNUM_TEXT_MESSAGE_APP
@@ -184,7 +191,10 @@ class Plugin(BasePlugin):
         return [self.plugin_name]
 
     async def handle_room_message(
-        self, room: Any, event: Any, full_message: str
+        self,
+        room: MatrixRoom,
+        event: RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote,
+        full_message: str,
     ) -> bool:
         """
         Reply "pong!" to a Matrix room message that matches this plugin's trigger.

@@ -2,6 +2,14 @@ import asyncio
 from datetime import datetime
 from typing import Any
 
+from nio import (  # type: ignore[import-untyped]
+    MatrixRoom,
+    ReactionEvent,
+    RoomMessageEmote,
+    RoomMessageNotice,
+    RoomMessageText,
+)
+
 from mmrelay.plugins.base_plugin import BasePlugin
 
 
@@ -138,7 +146,10 @@ $shortname $longname / $devicemodel / $battery $voltage / $snr / $hops / $lastse
         return False
 
     async def handle_room_message(
-        self, room: Any, event: Any, full_message: str
+        self,
+        room: MatrixRoom,
+        event: RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote,
+        full_message: str,
     ) -> bool:
         # Pass the event to matches()
         """

@@ -6,7 +6,10 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 import markdown
+
+# matrix-nio lacks type stubs; ignore imports for strict mypy consistency.
 from nio import (  # type: ignore[import-untyped]
+    MatrixRoom,
     ReactionEvent,
     RoomMessageEmote,
     RoomMessageNotice,
@@ -749,14 +752,18 @@ class BasePlugin(ABC):
 
     @abstractmethod
     async def handle_room_message(
-        self, room: Any, event: dict[str, Any], full_message: str
+        self,
+        room: MatrixRoom,
+        event: RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote,
+        full_message: str,
     ) -> bool:
         """
         Process an incoming Matrix room message and perform plugin-specific handling.
 
         Parameters:
-            room (Any): Matrix room object where the message was received.
-            event (dict[str, Any]): Matrix event payload containing metadata and sender information.
+            room (MatrixRoom): Matrix room object where the message was received.
+            event (RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote):
+                Matrix event payload containing metadata and sender information.
             full_message (str): The full text content of the received message.
 
         Returns:

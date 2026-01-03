@@ -1,6 +1,12 @@
 from typing import Any
 
-from nio import MatrixRoom  # type: ignore[import-untyped]
+from nio import (  # type: ignore[import-untyped]
+    MatrixRoom,
+    ReactionEvent,
+    RoomMessageEmote,
+    RoomMessageNotice,
+    RoomMessageText,
+)
 
 from mmrelay.plugins.base_plugin import BasePlugin
 
@@ -50,7 +56,10 @@ class Plugin(BasePlugin):
         return False
 
     async def handle_room_message(
-        self, _room: MatrixRoom, _event: dict[str, Any], _full_message: str
+        self,
+        _room: MatrixRoom,
+        _event: RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote,
+        _full_message: str,
     ) -> bool:
         """
         Declines to handle room messages so they remain available to other plugins.

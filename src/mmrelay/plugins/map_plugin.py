@@ -1,12 +1,19 @@
 import asyncio
 import os
 import re
-from typing import Any, Protocol
+from typing import Any
 
 import PIL.ImageDraw
 import s2sphere  # type: ignore[import-untyped]
 import staticmaps  # type: ignore[import-untyped]
-from nio import AsyncClient  # type: ignore[import-untyped]
+from nio import (  # type: ignore[import-untyped]
+    AsyncClient,
+    MatrixRoom,
+    ReactionEvent,
+    RoomMessageEmote,
+    RoomMessageNotice,
+    RoomMessageText,
+)
 from PIL import Image as PILImage, ImageFont, ImageDraw as _PILImageDraw
 
 from mmrelay.constants.plugins import (
@@ -15,12 +22,6 @@ from mmrelay.constants.plugins import (
 )
 from mmrelay.log_utils import get_logger
 from mmrelay.plugins.base_plugin import BasePlugin
-
-
-class MatrixRoom(Protocol):
-    """Protocol for Matrix room objects used by plugins."""
-
-    room_id: str
 
 
 def precision_bits_to_meters(bits: int) -> float | None:
@@ -402,7 +403,13 @@ class Plugin(BasePlugin):
         return []
 
     async def handle_room_message(
-        self, room: MatrixRoom, event: object, full_message: str
+        self,
+        room: MatrixRoom,
+        event: RoomMessageText
+        | RoomMessageNotice
+        | ReactionEvent
+        | RoomMessageEmote,
+        full_message: str,
     ) -> bool:
         # Pass the whole event to matches() for compatibility w/ updated base_plugin.py
         """

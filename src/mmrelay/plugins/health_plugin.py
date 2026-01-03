@@ -2,7 +2,13 @@ import asyncio
 import statistics
 from typing import TYPE_CHECKING, Any
 
-from nio import MatrixRoom  # type: ignore[import-untyped]
+from nio import (  # type: ignore[import-untyped]
+    MatrixRoom,
+    ReactionEvent,
+    RoomMessageEmote,
+    RoomMessageNotice,
+    RoomMessageText,
+)
 
 from mmrelay.plugins.base_plugin import BasePlugin
 
@@ -130,7 +136,10 @@ class Plugin(BasePlugin):
         return False
 
     async def handle_room_message(
-        self, room: MatrixRoom, event: dict[str, Any], full_message: str
+        self,
+        room: MatrixRoom,
+        event: RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote,
+        full_message: str,
     ) -> bool:
         """
         Handle a Matrix room message that matches this plugin and send a mesh health summary to the room.

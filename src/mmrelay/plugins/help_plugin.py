@@ -1,5 +1,13 @@
 from typing import Any
 
+from nio import (  # type: ignore[import-untyped]
+    MatrixRoom,
+    ReactionEvent,
+    RoomMessageEmote,
+    RoomMessageNotice,
+    RoomMessageText,
+)
+
 from mmrelay.plugin_loader import load_plugins
 from mmrelay.plugins.base_plugin import BasePlugin
 
@@ -67,7 +75,10 @@ class Plugin(BasePlugin):
         return []
 
     async def handle_room_message(
-        self, room: Any, event: Any, full_message: str
+        self,
+        room: MatrixRoom,
+        event: RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote,
+        full_message: str,
     ) -> bool:
         """
         Provide help for Matrix room messages by replying with either a list of available commands or details for a specific command.
