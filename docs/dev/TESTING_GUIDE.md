@@ -8,7 +8,7 @@ First check for an existing virtual environment in venv/ if it does not exist, c
 
 Run strict mypy type checking (after activating the venv):
 
-```
+```bash
 python -m mypy src/ --strict
 ```
 

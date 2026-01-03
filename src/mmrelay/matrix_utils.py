@@ -23,6 +23,7 @@ from typing import (
 )
 from urllib.parse import urlparse
 
+# matrix-nio does not ship type stubs; ignore for mypy strict consistency.
 from nio import (  # type: ignore[import-untyped]
     AsyncClient,
     AsyncClientConfig,
@@ -98,7 +99,9 @@ from mmrelay.meshtastic_utils import connect_meshtastic, sendTextReply
 # Import meshtastic protobuf for port numbers when needed
 from mmrelay.message_queue import get_message_queue, queue_message
 
-# Import nio exception types with error handling for test environments
+# Import nio exception types with error handling for test environments.
+# Note: matrix-nio does not ship type stubs; keep import-untyped ignores here
+# to satisfy mypy --strict and align with other nio imports in the codebase.
 try:
     from nio.exceptions import (
         LocalProtocolError as NioLocalProtocolError,  # type: ignore[import-untyped]

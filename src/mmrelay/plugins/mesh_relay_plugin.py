@@ -268,5 +268,6 @@ class Plugin(BasePlugin):
         self.logger.debug("Relaying packet to Radio")
 
         # _sendPacket is required for relaying raw MeshPacket payloads.
+        # Note: this is a private API; monitor upstream Meshtastic changes.
         meshtastic_client._sendPacket(meshPacket=meshPacket, destinationId=to_id)
         return True
