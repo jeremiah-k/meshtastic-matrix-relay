@@ -819,24 +819,21 @@ def show_service_status() -> bool:
     """
     Display the user's systemd status for the mmrelay service.
 
-    Prints the service status to stdout on success and prints an error message to stderr on failure.
+    Prints the service status to stdout. Returns True if status was retrieved regardless of service state.
 
     Returns:
-        `true` if the status was printed successfully, `false` otherwise.
+        bool: True if status was retrieved successfully, False on systemctl errors.
     """
     try:
         result = subprocess.run(
             [SYSTEMCTL, "--user", "status", "mmrelay.service"],
-            check=True,
+            check=False,
             capture_output=True,
             text=True,
         )
         print("\nService Status:")
-        print(result.stdout)
+        print(result.stdout if result.stdout else result.stderr)
         return True
-    except subprocess.CalledProcessError as e:
-        print(f"Could not get service status: {e}", file=sys.stderr)
-        return False
     except OSError as e:
         print(f"Error: {e}", file=sys.stderr)
         return False

@@ -259,8 +259,8 @@ def _validate_e2ee_dependencies() -> bool:
     # Check if E2EE dependencies are available
     try:
         import olm  # noqa: F401
-        from nio.crypto import OlmDevice  # type: ignore[import-untyped]  # noqa: F401
-        from nio.store import SqliteStore  # type: ignore[import-untyped]  # noqa: F401
+        from nio.crypto import OlmDevice  # type: ignore[import-untyped]
+        from nio.store import SqliteStore  # type: ignore[import-untyped]
 
         print("✅ E2EE dependencies are installed")
         return True

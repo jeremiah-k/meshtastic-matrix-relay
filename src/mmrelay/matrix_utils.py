@@ -15,6 +15,7 @@ import time
 from types import SimpleNamespace
 from typing import (
     Any,
+    Awaitable,
     Callable,
     Dict,
     Generator,
@@ -228,14 +229,14 @@ def _iter_room_alias_entries(
 
 async def _resolve_aliases_in_mapping(
     mapping: Any,
-    resolver: Callable[[str], Any],
+    resolver: Callable[[str], Awaitable[str | None]],
 ) -> None:
     """
     Resolve Matrix room aliases found in a list or dict by replacing them in-place with resolved room IDs.
 
     Parameters:
         mapping (list|dict): A list or dict containing room identifiers or alias entries; entries that look like room aliases (strings starting with '#') will be replaced in-place when resolved.
-        resolver (Callable[[str], Awaitable[Any]]): Async callable that accepts a room alias and returns a resolved room ID (truthy) or a falsy value on failure.
+        resolver (Callable[[str], Awaitable[str | None]]): Async callable that accepts a room alias and returns a resolved room ID (truthy) or None on failure.
 
     Returns:
         None
@@ -455,24 +456,25 @@ def _normalize_bot_user_id(homeserver: str, bot_user_id: str | None) -> str | No
     return f"@{localpart.rstrip(':')}:{domain}"
 
 
-def _get_msgs_to_keep_config() -> int:
+def _get_msgs_to_keep_config(config_override: dict[str, Any] | None = None) -> int:
     """
     Determine how many Meshtastic–Matrix message mappings should be retained.
 
-    Prefers the new configuration path `database.msg_map.msgs_to_keep`. If that path is absent, falls back to the legacy `db.msg_map.msgs_to_keep` and emits a deprecation warning. If no configuration or value is present, returns DEFAULT_MSGS_TO_KEEP.
+    Prefers the new configuration path `database.msg_map.msgs_to_keep`. If that path is absent, falls back to the legacy `db.msg_map.msgs_to_keep` and emits a deprecation warning. If no configuration or value is present, returns DEFAULT_MSGS_TO_KEEP. When `config_override` is provided, it is used instead of the module-level config.
 
     Returns:
         int: Number of message mappings to keep.
     """
     global config
-    if not config:
+    effective_config = config_override if config_override is not None else config
+    if not effective_config:
         return DEFAULT_MSGS_TO_KEEP
 
-    msg_map_config = config.get("database", {}).get("msg_map", {})
+    msg_map_config = effective_config.get("database", {}).get("msg_map", {})
 
     # If not found in database config, check legacy db config
     if not msg_map_config:
-        legacy_msg_map_config = config.get("db", {}).get("msg_map", {})
+        legacy_msg_map_config = effective_config.get("db", {}).get("msg_map", {})
 
         if legacy_msg_map_config:
             msg_map_config = legacy_msg_map_config
@@ -779,8 +781,13 @@ def get_meshtastic_prefix(
         return ""
 
     # Get custom format or use default
-    prefix_format = cast(
-        str, meshtastic_config.get("prefix_format", DEFAULT_MESHTASTIC_PREFIX)
+    prefix_format_value = meshtastic_config.get(
+        "prefix_format", DEFAULT_MESHTASTIC_PREFIX
+    )
+    prefix_format = (
+        str(prefix_format_value)
+        if prefix_format_value is not None
+        else DEFAULT_MESHTASTIC_PREFIX
     )
 
     # Parse username and server from user_id if available
@@ -847,8 +854,13 @@ def get_matrix_prefix(
         return ""
 
     # Get custom format or use default
-    matrix_prefix_format = cast(
-        str, matrix_config.get("prefix_format", DEFAULT_MATRIX_PREFIX)
+    matrix_prefix_format_value = matrix_config.get(
+        "prefix_format", DEFAULT_MATRIX_PREFIX
+    )
+    matrix_prefix_format = (
+        str(matrix_prefix_format_value)
+        if matrix_prefix_format_value is not None
+        else DEFAULT_MATRIX_PREFIX
     )
     logger.debug(
         f"Using matrix prefix format: '{matrix_prefix_format}' (default: '{DEFAULT_MATRIX_PREFIX}')"
@@ -1652,7 +1664,7 @@ async def connect_matrix(
         bot_user_name = bot_user_id  # Fallback on network error
 
     # Store E2EE status on the client for other functions to access
-    matrix_client.e2ee_enabled = e2ee_enabled
+    cast(Any, matrix_client).e2ee_enabled = e2ee_enabled
     return matrix_client
 
 
@@ -1660,7 +1672,7 @@ async def login_matrix_bot(
     homeserver: str | None = None,
     username: str | None = None,
     password: str | None = None,
-    logout_others: bool = False,
+    logout_others: bool | None = None,
 ) -> bool:
     """
     Interactively authenticate the bot with a Matrix homeserver and persist session credentials.
@@ -1674,7 +1686,7 @@ async def login_matrix_bot(
         homeserver (str | None): Optional homeserver URL to use; if None the user is prompted.
         username (str | None): Optional Matrix username (localpart or full MXID); if None the user is prompted.
         password (str | None): Optional account password; if None the user is prompted securely.
-        logout_others (bool): If True, an attempt to log out other sessions is made; if False no logout is performed.
+        logout_others (bool | None): If True, attempt to log out other sessions; if False, skip logout. If None, prompt during interactive login flows; defaults to False when all credentials are supplied.
 
     Returns:
         bool: `True` on successful login with credentials persisted, `False` otherwise.
@@ -1689,11 +1701,14 @@ async def login_matrix_bot(
             logging.getLogger("nio.responses").setLevel(logging.DEBUG)
             logging.getLogger("aiohttp").setLevel(logging.DEBUG)
 
+        prompted_for_credentials = False
+
         # Get homeserver URL
         if not homeserver:
             homeserver = input(
                 "Enter Matrix homeserver URL (e.g., https://matrix.org): "
             )
+            prompted_for_credentials = True
 
         # Ensure homeserver URL has the correct format
         if not (homeserver.startswith("https://") or homeserver.startswith("http://")):
@@ -1761,6 +1776,7 @@ async def login_matrix_bot(
         # Get username
         if not username:
             username = input("Enter Matrix username (without @): ")
+            prompted_for_credentials = True
 
         # Format username correctly
         username = _normalize_bot_user_id(homeserver, username)
@@ -1791,6 +1807,7 @@ async def login_matrix_bot(
         # Get password
         if not password:
             password = getpass.getpass("Enter Matrix password: ")
+            prompted_for_credentials = True
 
         # Simple password validation without logging sensitive information
         if password:
@@ -1798,14 +1815,16 @@ async def login_matrix_bot(
         else:
             logger.warning("No password provided")
 
-        # Ask about logging out other sessions
-        if logout_others is None:
+        # Ask about logging out other sessions when running interactively
+        if logout_others is None and prompted_for_credentials:
             logout_others_input = input(
                 "Log out other sessions? (Y/n) [Default: Yes]: "
             ).lower()
             logout_others = (
                 not logout_others_input.startswith("n") if logout_others_input else True
             )
+        if logout_others is None:
+            logout_others = False
 
         # Check for existing credentials to reuse device_id
         existing_device_id = None
@@ -2276,7 +2295,7 @@ async def matrix_relay(
         message: Text of the Meshtastic message to relay.
         longname: Sender long display name from Meshtastic (used for metadata and attribution).
         shortname: Sender short display name from Meshtastic (used for metadata).
-        meshnet_name: Remote meshnet name associated with the incoming message.
+        meshnet_name: Meshnet name associated with the incoming message; if empty, defaults to the local meshnet name from config.
         portnum: Meshtastic application/port number for the message.
         meshtastic_id: Optional Meshtastic message identifier; when provided and message storage is enabled, used to persist a mapping to the created Matrix event.
         meshtastic_replyId: Optional original Meshtastic message ID being replied to; included as metadata on the Matrix event.
@@ -2305,31 +2324,11 @@ async def matrix_relay(
     interactions = get_interaction_settings(config)
     storage_enabled = message_storage_enabled(interactions)
 
-    # Retrieve db config for message_map pruning
-    # Check database config for message map settings (preferred format)
-    database_config = config.get("database", {})
-    msg_map_config = database_config.get("msg_map", {})
-
-    # If not found in database config, check legacy db config
-    if not msg_map_config:
-        db_config = config.get("db", {})
-        legacy_msg_map_config = db_config.get("msg_map", {})
-
-        if legacy_msg_map_config:
-            msg_map_config = legacy_msg_map_config
-            logger.warning(
-                "Using 'db.msg_map' configuration (legacy). 'database.msg_map' is now the preferred format and 'db.msg_map' will be deprecated in a future version."
-            )
-    msgs_to_keep = msg_map_config.get(
-        "msgs_to_keep", DEFAULT_MSGS_TO_KEEP
-    )  # Default from constants
-
     try:
         if room_id not in matrix_client.rooms:
             await join_matrix_room(matrix_client, room_id)
 
-        # Always use our own local meshnet_name for outgoing events
-        local_meshnet_name = config["meshtastic"]["meshnet_name"]
+        relay_meshnet_name = meshnet_name or config["meshtastic"]["meshnet_name"]
 
         # Check if message contains HTML tags or markdown formatting, or a prefix that could be parsed as a link definition
         has_html = bool(re.search(r"</?[a-zA-Z][^>]*>", message))
@@ -2377,7 +2376,7 @@ async def matrix_relay(
             "body": plain_body,
             "meshtastic_longname": longname,
             "meshtastic_shortname": shortname,
-            "meshtastic_meshnet": local_meshnet_name,
+            "meshtastic_meshnet": relay_meshnet_name,
             "meshtastic_portnum": portnum,
         }
 
@@ -2529,6 +2528,7 @@ async def matrix_relay(
             and getattr(response, "event_id", None) is not None
         ):
             try:
+                msgs_to_keep = _get_msgs_to_keep_config(config)
                 event_id = getattr(response, "event_id", None)
                 if isinstance(event_id, str):
                     await async_store_message_map(
@@ -2536,7 +2536,7 @@ async def matrix_relay(
                         event_id,
                         room_id,
                         meshtastic_text if meshtastic_text else message,
-                        meshtastic_meshnet=local_meshnet_name,
+                        meshtastic_meshnet=relay_meshnet_name,
                     )
                     logger.debug(
                         f"Stored message map for meshtastic_id: {meshtastic_id}"
@@ -2738,6 +2738,7 @@ async def send_reply_to_meshtastic(
     storage_enabled: bool,
     local_meshnet_name: str,
     reply_id: int | None = None,
+    relay_config: dict[str, Any] | None = None,
 ) -> None:
     """
     Queue a Matrix reply to be delivered over Meshtastic as either a structured reply or a regular broadcast.
@@ -2754,6 +2755,7 @@ async def send_reply_to_meshtastic(
         storage_enabled (bool): If True, create and attach a message-mapping record for correlation.
         local_meshnet_name (str | None): Local meshnet name to include in mapping metadata when present.
         reply_id (int | None): If provided, send as a structured Meshtastic reply targeting this Meshtastic message ID; if None, send as a regular broadcast.
+        relay_config (dict[str, Any] | None): Optional config override to control Meshtastic broadcast and message-map settings.
     """
     (
         meshtastic_interface,
@@ -2764,8 +2766,11 @@ async def send_reply_to_meshtastic(
     if not meshtastic_interface or meshtastic_channel is None:
         return
 
+    effective_config = relay_config if relay_config is not None else config
+    if effective_config is None:
+        effective_config = {}
     broadcast_enabled = get_meshtastic_config_value(
-        cast(dict[str, Any], config),
+        effective_config,
         "broadcast_enabled",
         DEFAULT_BROADCAST_ENABLED,
         required=False,
@@ -2778,7 +2783,7 @@ async def send_reply_to_meshtastic(
             mapping_info = None
             if storage_enabled:
                 # Get message map configuration
-                msgs_to_keep = _get_msgs_to_keep_config()
+                msgs_to_keep = _get_msgs_to_keep_config(effective_config)
 
                 mapping_info = _create_mapping_info(
                     event.event_id, room.room_id, text, local_meshnet_name, msgs_to_keep
@@ -2936,6 +2941,7 @@ async def handle_matrix_reply(
         storage_enabled,
         local_meshnet_name,
         reply_id=original_meshtastic_id,
+        relay_config=config,
     )
 
     return True  # Reply was handled, stop further processing
@@ -3483,7 +3489,7 @@ async def on_room_message(
             mapping_info = None
             if storage_enabled:
                 # Check database config for message map settings (preferred format)
-                msgs_to_keep = _get_msgs_to_keep_config()
+                msgs_to_keep = _get_msgs_to_keep_config(config)
 
                 mapping_info = _create_mapping_info(
                     event.event_id,

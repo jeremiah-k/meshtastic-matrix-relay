@@ -196,12 +196,18 @@ class Plugin(BasePlugin):
 
         channel = None
         if config is not None:
-            matrix_rooms: list[dict[str, Any]] = cast(
-                list[dict[str, Any]], config.get("matrix_rooms", [])
+            matrix_rooms = config.get("matrix_rooms", [])
+            iterable_rooms = (
+                matrix_rooms.values()
+                if isinstance(matrix_rooms, dict)
+                else matrix_rooms
             )
-            for room_config in matrix_rooms:
-                if room_config["id"] == room.room_id:
-                    channel = room_config["meshtastic_channel"]
+            for room_config in iterable_rooms:
+                if not isinstance(room_config, dict):
+                    continue
+                if room_config.get("id") == room.room_id:
+                    channel = room_config.get("meshtastic_channel")
+                    break
 
         if channel is None:
             self.logger.debug(f"Skipping message from unmapped channel {channel}")

@@ -3,7 +3,7 @@ import os
 import re
 import threading
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Union
+from typing import Any
 
 import markdown
 from nio import (  # type: ignore[import-untyped]
@@ -140,7 +140,7 @@ class BasePlugin(ABC):
                 )
 
         self.logger = get_logger(f"Plugin:{self.plugin_name}")
-        self.config: Dict[str, Any] = {"active": False}
+        self.config: dict[str, Any] = {"active": False}
         self.mapped_channels: list[int | None] = []
         self._global_require_bot_mention: bool | None = None
         global config
@@ -167,9 +167,7 @@ class BasePlugin(ABC):
 
             # Get the list of mapped channels
             # Handle both list format and dict format for matrix_rooms
-            matrix_rooms: Union[Dict[str, Any], list[Any]] = config.get(
-                "matrix_rooms", []
-            )
+            matrix_rooms: dict[str, Any] | list[Any] = config.get("matrix_rooms", [])
             if isinstance(matrix_rooms, dict):
                 # Dict format: {"room_name": {"id": "...", "meshtastic_channel": 0}}
                 self.mapped_channels = [
@@ -258,7 +256,7 @@ class BasePlugin(ABC):
 
         If scheduling options are present in plugin configuration, sets up periodic execution of `background_job` method using the global scheduler. If no scheduling is configured, the plugin starts without background tasks.
         """
-        schedule_config: Dict[str, Any] = self.config.get("schedule") or {}
+        schedule_config: dict[str, Any] = self.config.get("schedule") or {}
         if not isinstance(schedule_config, dict):
             schedule_config = {}
 
@@ -459,7 +457,7 @@ class BasePlugin(ABC):
 
         description = f"Plugin {self.plugin_name}: {text[:DEFAULT_TEXT_TRUNCATION_LENGTH]}{'...' if len(text) > DEFAULT_TEXT_TRUNCATION_LENGTH else ''}"
 
-        send_kwargs: Dict[str, Any] = {
+        send_kwargs: dict[str, Any] = {
             "text": text,
             "channelIndex": channel,
         }
@@ -565,6 +563,17 @@ class BasePlugin(ABC):
         """
         return []
 
+    def _require_plugin_name(self) -> str:
+        """
+        Return the plugin name, enforcing that it has been initialized.
+
+        Raises:
+            ValueError: If plugin_name has not been set by initialization.
+        """
+        if self.plugin_name is None:
+            raise ValueError("Plugin name not initialized")
+        return self.plugin_name
+
     def store_node_data(self, meshtastic_id: str, node_data: Any) -> None:
         """
         Append data for a Meshtastic node to this plugin's persistent store, trim to the plugin's configured maximum rows, and persist the result.
@@ -573,14 +582,14 @@ class BasePlugin(ABC):
             meshtastic_id (str): Identifier of the Meshtastic node whose data is being stored.
             node_data (Any): A single data item or a list of items to append for the node.
         """
-        assert self.plugin_name is not None
-        data = self.get_node_data(meshtastic_id=meshtastic_id)
+        plugin_name = self._require_plugin_name()
+        data = get_plugin_data_for_node(plugin_name, meshtastic_id)
         if isinstance(node_data, list):
             data.extend(node_data)
         else:
             data.append(node_data)
         data = data[-self.max_data_rows_per_node :]
-        store_plugin_data(self.plugin_name, meshtastic_id, data)
+        store_plugin_data(plugin_name, meshtastic_id, data)
 
     def set_node_data(self, meshtastic_id: str, node_data: Any) -> None:
         """
@@ -591,9 +600,9 @@ class BasePlugin(ABC):
             node_data (Any): New data to store; if iterable, only the most recent
                 entries up to `self.max_data_rows_per_node` are kept.
         """
-        assert self.plugin_name is not None
+        plugin_name = self._require_plugin_name()
         node_data = node_data[-self.max_data_rows_per_node :]
-        store_plugin_data(self.plugin_name, meshtastic_id, node_data)
+        store_plugin_data(plugin_name, meshtastic_id, node_data)
 
     def delete_node_data(self, meshtastic_id: str) -> None:
         """Delete all stored data for a specific node.
@@ -604,8 +613,8 @@ class BasePlugin(ABC):
         Returns:
             None
         """
-        assert self.plugin_name is not None
-        delete_plugin_data(self.plugin_name, meshtastic_id)
+        plugin_name = self._require_plugin_name()
+        delete_plugin_data(plugin_name, meshtastic_id)
 
     def get_node_data(self, meshtastic_id: str) -> list[Any]:
         """
@@ -614,8 +623,8 @@ class BasePlugin(ABC):
         Returns:
             list[Any]: Stored data rows for the node identified by `meshtastic_id`; empty list if no data exists.
         """
-        assert self.plugin_name is not None
-        return get_plugin_data_for_node(self.plugin_name, meshtastic_id)
+        plugin_name = self._require_plugin_name()
+        return get_plugin_data_for_node(plugin_name, meshtastic_id)
 
     def get_data(self) -> list[Any]:
         """
@@ -624,8 +633,8 @@ class BasePlugin(ABC):
         Returns:
             list[Any]: A list of raw stored entries for this plugin across all nodes. Data is returned without JSON deserialization.
         """
-        assert self.plugin_name is not None
-        return get_plugin_data(self.plugin_name)
+        plugin_name = self._require_plugin_name()
+        return get_plugin_data(plugin_name)
 
     def get_plugin_data_dir(self, subdir: str | None = None) -> str:
         """
@@ -638,8 +647,8 @@ class BasePlugin(ABC):
             str: Absolute path to the plugin's data directory or the requested subdirectory.
         """
         # Get the plugin-specific data directory
-        assert self.plugin_name is not None
-        plugin_dir: str = get_plugin_data_dir(self.plugin_name)
+        plugin_name = self._require_plugin_name()
+        plugin_dir: str = get_plugin_data_dir(plugin_name)
 
         # If a subdirectory is specified, create and return it
         if subdir:
