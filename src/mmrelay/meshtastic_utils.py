@@ -1125,35 +1125,42 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
         for plugin in plugins:
             if not found_matching_plugin:
                 try:
-                    result_future = _submit_coro(
-                        plugin.handle_meshtastic_message(
-                            packet, formatted_message, longname, meshnet_name
-                        ),
-                        loop=loop,
+                    handler_result = plugin.handle_meshtastic_message(
+                        packet, formatted_message, longname, meshnet_name
                     )
-                    if result_future is None:
-                        logger.warning(
-                            "Plugin %s returned no awaitable; skipping.",
-                            plugin.plugin_name,
-                        )
-                        found_matching_plugin = False
-                        continue
-                    try:
-                        found_matching_plugin = bool(
-                            _wait_for_result(
-                                result_future,
-                                plugin_timeout,
-                                loop=loop,
+
+                    # Backward compatibility: handle synchronous plugins
+                    if not inspect.iscoroutine(
+                        handler_result
+                    ) and not inspect.isawaitable(handler_result):
+                        found_matching_plugin = bool(handler_result)
+                    else:
+                        # Async plugins
+                        result_future = _submit_coro(handler_result, loop=loop)
+                        if result_future is None:
+                            logger.warning(
+                                "Plugin %s returned no awaitable; skipping.",
+                                plugin.plugin_name,
                             )
-                        )
-                    except (asyncio.TimeoutError, FuturesTimeoutError) as exc:
-                        logger.warning(
-                            "Plugin %s did not respond within %ss: %s",
-                            plugin.plugin_name,
-                            plugin_timeout,
-                            exc,
-                        )
-                        found_matching_plugin = True
+                            found_matching_plugin = False
+                            continue
+                        try:
+                            found_matching_plugin = bool(
+                                _wait_for_result(
+                                    result_future,
+                                    plugin_timeout,
+                                    loop=loop,
+                                )
+                            )
+                        except (asyncio.TimeoutError, FuturesTimeoutError) as exc:
+                            logger.warning(
+                                "Plugin %s did not respond within %ss: %s",
+                                plugin.plugin_name,
+                                plugin_timeout,
+                                exc,
+                            )
+                            found_matching_plugin = True
+
                     if found_matching_plugin:
                         logger.debug(f"Processed by plugin {plugin.plugin_name}")
                 except Exception:
@@ -1214,38 +1221,44 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
         for plugin in plugins:
             if not found_matching_plugin:
                 try:
-                    result_future = _submit_coro(
-                        plugin.handle_meshtastic_message(
-                            packet,
-                            formatted_message=None,
-                            longname=None,
-                            meshnet_name=None,
-                        ),
-                        loop=loop,
+                    handler_result = plugin.handle_meshtastic_message(
+                        packet,
+                        formatted_message=None,
+                        longname=None,
+                        meshnet_name=None,
                     )
-                    if result_future is None:
-                        logger.warning(
-                            "Plugin %s returned no awaitable; skipping.",
-                            plugin.plugin_name,
-                        )
-                        found_matching_plugin = False
-                        continue
-                    try:
-                        found_matching_plugin = bool(
-                            _wait_for_result(
-                                result_future,
-                                plugin_timeout,
-                                loop=loop,
+
+                    # Backward compatibility: handle synchronous plugins
+                    if not inspect.iscoroutine(
+                        handler_result
+                    ) and not inspect.isawaitable(handler_result):
+                        found_matching_plugin = bool(handler_result)
+                    else:
+                        result_future = _submit_coro(handler_result, loop=loop)
+                        if result_future is None:
+                            logger.warning(
+                                "Plugin %s returned no awaitable; skipping.",
+                                plugin.plugin_name,
                             )
-                        )
-                    except (asyncio.TimeoutError, FuturesTimeoutError) as exc:
-                        logger.warning(
-                            "Plugin %s did not respond within %ss: %s",
-                            plugin.plugin_name,
-                            plugin_timeout,
-                            exc,
-                        )
-                        found_matching_plugin = True
+                            found_matching_plugin = False
+                            continue
+                        try:
+                            found_matching_plugin = bool(
+                                _wait_for_result(
+                                    result_future,
+                                    plugin_timeout,
+                                    loop=loop,
+                                )
+                            )
+                        except (asyncio.TimeoutError, FuturesTimeoutError) as exc:
+                            logger.warning(
+                                "Plugin %s did not respond within %ss: %s",
+                                plugin.plugin_name,
+                                plugin_timeout,
+                                exc,
+                            )
+                            found_matching_plugin = True
+
                     if found_matching_plugin:
                         logger.debug(
                             f"Processed {portnum} with plugin {plugin.plugin_name}"

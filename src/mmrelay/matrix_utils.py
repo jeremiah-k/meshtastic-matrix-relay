@@ -3416,9 +3416,13 @@ async def on_room_message(
     for plugin in plugins:
         if not found_matching_plugin:
             try:
-                found_matching_plugin = await plugin.handle_room_message(
-                    room, event, text
-                )
+                # Support both async and sync plugins for backward compatibility
+                handler_result = plugin.handle_room_message(room, event, text)
+                if inspect.isawaitable(handler_result):
+                    found_matching_plugin = await handler_result
+                else:
+                    found_matching_plugin = bool(handler_result)
+
                 if found_matching_plugin:
                     logger.info(
                         f"Processed command with plugin: {plugin.plugin_name} from {event.sender}"
