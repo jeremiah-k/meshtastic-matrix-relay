@@ -6,6 +6,7 @@ from typing import Any, cast
 import PIL.ImageDraw
 import s2sphere  # type: ignore[import-untyped]
 import staticmaps  # type: ignore[import-untyped]
+# matrix-nio is not marked py.typed; keep import-untyped for strict mypy.
 from nio import (  # type: ignore[import-untyped]
     AsyncClient,
     MatrixRoom,

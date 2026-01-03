@@ -35,6 +35,7 @@ except ImportError:
 
 # Import Matrix-related modules for logout functionality
 try:
+    # matrix-nio is not marked py.typed; keep import-untyped for strict mypy.
     from nio import AsyncClient  # type: ignore[import-untyped]
     from nio.exceptions import (  # type: ignore[import-untyped]
         LocalProtocolError,

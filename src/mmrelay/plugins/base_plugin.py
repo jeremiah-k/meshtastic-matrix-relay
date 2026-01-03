@@ -8,7 +8,7 @@ from typing import Any
 
 import markdown
 
-# matrix-nio lacks type stubs; ignore imports for strict mypy consistency.
+# matrix-nio is not marked py.typed; keep import-untyped for strict mypy.
 from nio import (  # type: ignore[import-untyped]
     MatrixRoom,
     ReactionEvent,

@@ -4,6 +4,8 @@ from datetime import datetime, timedelta
 from typing import Any
 
 import matplotlib.pyplot as plt
+
+# matrix-nio is not marked py.typed; keep import-untyped for strict mypy.
 from nio import (  # type: ignore[import-untyped]
     MatrixRoom,
     ReactionEvent,
@@ -96,25 +98,14 @@ class Plugin(BasePlugin):
             if data:
                 telemetry_data = data
             packet_data = packet["decoded"]["telemetry"]
+            device_metrics = packet_data["deviceMetrics"]
 
             telemetry_data.append(
                 {
                     "time": packet_data["time"],
-                    "batteryLevel": (
-                        packet_data["deviceMetrics"]["batteryLevel"]
-                        if "batteryLevel" in packet_data["deviceMetrics"]
-                        else 0
-                    ),
-                    "voltage": (
-                        packet_data["deviceMetrics"]["voltage"]
-                        if "voltage" in packet_data["deviceMetrics"]
-                        else 0
-                    ),
-                    "airUtilTx": (
-                        packet_data["deviceMetrics"]["airUtilTx"]
-                        if "airUtilTx" in packet_data["deviceMetrics"]
-                        else 0
-                    ),
+                    "batteryLevel": device_metrics.get("batteryLevel", 0),
+                    "voltage": device_metrics.get("voltage", 0),
+                    "airUtilTx": device_metrics.get("airUtilTx", 0),
                 }
             )
             self.set_node_data(meshtastic_id=packet["fromId"], node_data=telemetry_data)
@@ -159,7 +150,7 @@ class Plugin(BasePlugin):
             full_message (str): Full plaintext message content used to parse the command and optional node identifier.
 
         Returns:
-            `true` if the message matched a telemetry command and the graph was generated and sent, or a notice was sent for a node with no data; `false` otherwise.
+            `True` if the message matched a telemetry command and the graph was generated and sent, or a notice was sent for a node with no data; `False` otherwise.
         """
         if not self.matches(event):
             return False

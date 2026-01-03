@@ -23,7 +23,7 @@ from typing import (
 )
 from urllib.parse import urlparse
 
-# matrix-nio does not ship type stubs; ignore for mypy strict consistency.
+# matrix-nio is not marked py.typed in our environment, so mypy treats it as untyped.
 from nio import (  # type: ignore[import-untyped]
     AsyncClient,
     AsyncClientConfig,
@@ -41,7 +41,7 @@ from nio import (  # type: ignore[import-untyped]
     UploadResponse,
 )
 
-# matrix-nio lacks type stubs; keep import-untyped for strict mypy.
+# matrix-nio is not marked py.typed; keep import-untyped for strict mypy.
 from nio.events.room_events import RoomMemberEvent  # type: ignore[import-untyped]
 from PIL import Image
 
@@ -102,8 +102,8 @@ from mmrelay.meshtastic_utils import connect_meshtastic, sendTextReply
 from mmrelay.message_queue import get_message_queue, queue_message
 
 # Import nio exception types with error handling for test environments.
-# Note: matrix-nio does not ship type stubs; keep import-untyped ignores here
-# to satisfy mypy --strict and align with other nio imports in the codebase.
+# Note: matrix-nio is not marked py.typed; keep import-untyped ignores here to
+# satisfy mypy --strict and align with other nio imports in the codebase.
 # We apply the ignore to the grouped import to avoid mypy unused-ignore noise
 # and to make the intent explicit for reviewers.
 try:
@@ -199,40 +199,45 @@ def _iter_room_alias_entries(
         tuple[str, Callable[[str], None]]: (alias_or_id, setter) for each entry in the mapping.
     """
 
+    def _make_entry_setter(entry: dict[str, Any]) -> Callable[[str], None]:
+        # Capture the current entry via default args to avoid loop-variable reuse.
+        def _set_entry_id(new_id: str, target: dict[str, Any] = entry) -> None:
+            target["id"] = new_id
+
+        return _set_entry_id
+
+    def _make_list_setter(index: int, collection: list[Any]) -> Callable[[str], None]:
+        def _set_list_entry_value(
+            new_id: str, idx: int = index, target: list[Any] = collection
+        ) -> None:
+            target[idx] = new_id
+
+        return _set_list_entry_value
+
+    def _make_dict_setter(
+        key: Any, collection: dict[Any, Any]
+    ) -> Callable[[str], None]:
+        def _set_dict_entry_value(
+            new_id: str,
+            target_key: Any = key,
+            target: dict[Any, Any] = collection,
+        ) -> None:
+            target[target_key] = new_id
+
+        return _set_dict_entry_value
+
     if isinstance(mapping, list):
         for index, entry in enumerate(mapping):
             if isinstance(entry, dict):
-
-                def _set_entry_id(new_id: str, target: dict[str, Any] = entry) -> None:
-                    target["id"] = new_id
-
-                yield (entry.get("id", ""), _set_entry_id)
+                yield (entry.get("id", ""), _make_entry_setter(entry))
             else:
-
-                def _set_list_entry_value(
-                    new_id: str, idx: int = index, collection: list[Any] = mapping
-                ) -> None:
-                    collection[idx] = new_id
-
-                yield (entry, _set_list_entry_value)
+                yield (entry, _make_list_setter(index, mapping))
     elif isinstance(mapping, dict):
         for key, entry in list(mapping.items()):
             if isinstance(entry, dict):
-
-                def _set_entry_id(new_id: str, target: dict[str, Any] = entry) -> None:
-                    target["id"] = new_id
-
-                yield (entry.get("id", ""), _set_entry_id)
+                yield (entry.get("id", ""), _make_entry_setter(entry))
             else:
-
-                def _set_dict_entry_value(
-                    new_id: str,
-                    target_key: Any = key,
-                    collection: dict[Any, Any] = mapping,
-                ) -> None:
-                    collection[target_key] = new_id
-
-                yield (entry, _set_dict_entry_value)
+                yield (entry, _make_dict_setter(key, mapping))
 
 
 async def _resolve_aliases_in_mapping(
@@ -478,17 +483,26 @@ def _get_msgs_to_keep_config(config_override: dict[str, Any] | None = None) -> i
     if not effective_config:
         return DEFAULT_MSGS_TO_KEEP
 
-    msg_map_config = effective_config.get("database", {}).get("msg_map", {})
+    msg_map_config: dict[str, Any] | None = None
+    database_cfg = effective_config.get("database")
+    if isinstance(database_cfg, dict):
+        candidate = database_cfg.get("msg_map")
+        if isinstance(candidate, dict):
+            msg_map_config = candidate
 
     # If not found in database config, check legacy db config
-    if not msg_map_config:
-        legacy_msg_map_config = effective_config.get("db", {}).get("msg_map", {})
+    if msg_map_config is None:
+        db_cfg = effective_config.get("db")
+        if isinstance(db_cfg, dict):
+            candidate = db_cfg.get("msg_map")
+            if isinstance(candidate, dict):
+                msg_map_config = candidate
+                logger.warning(
+                    "Using 'db.msg_map' configuration (legacy). 'database.msg_map' is now the preferred format and 'db.msg_map' will be deprecated in a future version."
+                )
 
-        if legacy_msg_map_config:
-            msg_map_config = legacy_msg_map_config
-            logger.warning(
-                "Using 'db.msg_map' configuration (legacy). 'database.msg_map' is now the preferred format and 'db.msg_map' will be deprecated in a future version."
-            )
+    if msg_map_config is None:
+        msg_map_config = {}
 
     msgs_to_keep = msg_map_config.get("msgs_to_keep", DEFAULT_MSGS_TO_KEEP)
     return msgs_to_keep if isinstance(msgs_to_keep, int) else DEFAULT_MSGS_TO_KEEP

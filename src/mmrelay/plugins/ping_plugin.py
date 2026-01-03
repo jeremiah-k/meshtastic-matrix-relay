@@ -3,6 +3,8 @@ import re
 from typing import Any
 
 from meshtastic.mesh_interface import BROADCAST_NUM  # type: ignore[import-untyped]
+
+# matrix-nio is not marked py.typed; keep import-untyped for strict mypy.
 from nio import (  # type: ignore[import-untyped]
     MatrixRoom,
     ReactionEvent,

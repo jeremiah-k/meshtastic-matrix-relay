@@ -2,6 +2,7 @@ import asyncio
 import statistics
 from typing import TYPE_CHECKING, Any
 
+# matrix-nio is not marked py.typed; keep import-untyped for strict mypy.
 from nio import (  # type: ignore[import-untyped]
     MatrixRoom,
     ReactionEvent,
@@ -40,7 +41,7 @@ class Plugin(BasePlugin):
             str: A multi-line human-readable summary. Typical content:
                 - Nodes: total number of nodes
                 - Battery: average% / median% (avg / median) or "Battery: N/A"
-                - Nodes with Low Battery (< 10): count (0 if no battery data)
+                - Nodes with Low Battery (<= 10): count (0 if no battery data)
                 - Air Util: average / median (avg / median) or "Air Util: N/A"
                 - SNR: average / median (avg / median) or "SNR: N/A"
             Special return values:
@@ -110,7 +111,7 @@ class Plugin(BasePlugin):
 
         return f"""Nodes: {radios}
  {battery_line}
- Nodes with Low Battery (< 10): {low_battery}
+ Nodes with Low Battery (<= 10): {low_battery}
  {air_util_line}
  {snr_line}"""
 
@@ -159,6 +160,7 @@ class Plugin(BasePlugin):
         """
         if not self.matches(event):
             return False
+        _ = full_message
 
         response = await asyncio.to_thread(self.generate_response)
         await self.send_matrix_message(room.room_id, response, formatted=False)

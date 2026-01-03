@@ -11,6 +11,8 @@ import sys
 from typing import Any
 
 from aiohttp import ClientError
+
+# matrix-nio is not marked py.typed; keep import-untyped for strict mypy.
 from nio import (  # type: ignore[import-untyped]
     MegolmEvent,
     ReactionEvent,

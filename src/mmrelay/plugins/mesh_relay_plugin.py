@@ -8,6 +8,8 @@ import re
 from typing import Any, cast
 
 from meshtastic import mesh_pb2  # type: ignore[import-untyped]
+
+# matrix-nio is not marked py.typed; keep import-untyped for strict mypy.
 from nio import (  # type: ignore[import-untyped]
     MatrixRoom,
     ReactionEvent,

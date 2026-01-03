@@ -361,13 +361,13 @@ class TestMain(unittest.TestCase):
     @patch("mmrelay.main.stop_message_queue")
     def test_main_closes_meshtastic_client_on_shutdown(
         self,
-        mock_stop_queue,
-        mock_join_room,
+        _mock_stop_queue,
+        _mock_join_room,
         mock_connect_matrix,
         mock_connect_meshtastic,
-        mock_start_queue,
-        mock_load_plugins,
-        mock_init_db,
+        _mock_start_queue,
+        _mock_load_plugins,
+        _mock_init_db,
     ):
         """Shutdown should close the Meshtastic client when present."""
 

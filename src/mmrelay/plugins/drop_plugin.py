@@ -3,6 +3,8 @@ import re
 from typing import TYPE_CHECKING, Any
 
 from haversine import haversine  # type: ignore[import-untyped]
+
+# matrix-nio is not marked py.typed; keep import-untyped for strict mypy.
 from nio import (  # type: ignore[import-untyped]
     MatrixRoom,
     ReactionEvent,

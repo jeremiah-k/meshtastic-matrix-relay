@@ -6298,7 +6298,7 @@ class TestUncoveredMatrixUtils(unittest.TestCase):
         self.assertEqual(mapping[0], "!newroom:example.com")
 
     @patch("mmrelay.matrix_utils.logger")
-    def test_iter_room_alias_entries_dict_format(self, mock_logger):
+    def test_iter_room_alias_entries_dict_format(self, _mock_logger):
         """Test _iter_room_alias_entries with dict format."""
         mapping = {
             "one": "#room1:example.com",
