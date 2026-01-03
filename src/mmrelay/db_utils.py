@@ -410,14 +410,11 @@ def store_plugin_data(plugin_name: str, meshtastic_id: str, data: Any) -> None:
 
 
 def delete_plugin_data(plugin_name: str, meshtastic_id: str) -> None:
-    """
-    Remove a plugin data entry for a Meshtastic node from the database.
-    """
-    """
-    Delete the plugin_data row for the specified plugin and Meshtastic ID using the provided database cursor.
-    
+    """Remove a plugin data entry for a Meshtastic node from the database.
+
     Parameters:
-        cursor (sqlite3.Cursor): Active cursor within the caller's transaction on which the deletion will be executed.
+        plugin_name (str): The name of the plugin whose data should be deleted.
+        meshtastic_id (str): The Meshtastic node ID associated with the plugin data.
     """
     manager = _get_db_manager()
 
