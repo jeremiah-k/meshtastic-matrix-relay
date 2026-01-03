@@ -202,11 +202,12 @@ class Plugin:
             try:
                 with (
                     patch.dict("os.environ", {}, clear=True),
-                    patch("mmrelay.plugin_loader._run"),
+                    patch("mmrelay.plugin_loader._run") as mock_run,
                     patch(
                         "mmrelay.plugin_loader._refresh_dependency_paths",
                         side_effect=fake_refresh,
                     ),
+                    patch("mmrelay.plugin_loader.logger") as mock_logger,
                 ):
                     plugins = load_plugins_from_directory(temp_dir)
             finally:
@@ -214,6 +215,16 @@ class Plugin:
 
             self.assertEqual(len(plugins), 1)
             self.assertEqual(plugins[0].plugin_name, "dependency_plugin")
+
+            # Verify auto-install path was taken
+            mock_run.assert_called_once()
+
+            # Verify appropriate logging occurred
+            info_calls = [str(call) for call in mock_logger.info.call_args_list]
+            self.assertTrue(
+                any("Successfully installed" in call for call in info_calls),
+                "Should have logged successful installation",
+            )
 
     def test_load_plugins_from_directory_dependency_install_failure(self):
         """
@@ -483,12 +494,11 @@ class Plugin:
 
         config = {"custom-plugins": {"duplicate": {"active": True}}}
 
-        with patch(
-            "mmrelay.plugin_loader.load_plugins_from_directory"
-        ) as mock_load, patch("rich.progress.Progress"), patch(
-            "rich.console.Console"
-        ), patch(
-            "rich.logging.RichHandler"
+        with (
+            patch("mmrelay.plugin_loader.load_plugins_from_directory") as mock_load,
+            patch("rich.progress.Progress"),
+            patch("rich.console.Console"),
+            patch("rich.logging.RichHandler"),
         ):
             # Return both plugins with same name
             mock_load.return_value = [mock_plugin1, mock_plugin2]

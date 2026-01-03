@@ -81,7 +81,7 @@ class Plugin(BasePlugin):
                 and f"!{self.plugin_name}" in text
                 and re.search(r"!drop\s+(.+)$", text)
             )
-            return True if is_drop_command else False
+            return bool(is_drop_command)
         nodeInfo = meshtastic_client.getMyNodeInfo()
 
         # Attempt message drop to packet originator if not relay
@@ -164,7 +164,7 @@ class Plugin(BasePlugin):
                 {
                     "location": (position["latitude"], position["longitude"]),
                     "text": drop_message,
-                    "originator": packet["fromId"],
+                    "originator": dropping_from_id,
                 },
             )
             self.logger.debug(f"Dropped a message: {drop_message}")
@@ -184,7 +184,9 @@ class Plugin(BasePlugin):
         Route a room event to the plugin's matching logic.
 
         Parameters:
+            room (MatrixRoom): Matrix room where the event occurred (unused).
             event (object): The room event to evaluate; forwarded to matches().
+            full_message (str): Full text content of the message (unused).
 
         Returns:
             bool: True if the event matches the plugin's criteria, False otherwise.

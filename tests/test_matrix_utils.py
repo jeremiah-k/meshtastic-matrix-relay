@@ -6105,6 +6105,7 @@ async def test_handle_matrix_reply_numeric_string_reply_id():
         mock_db_lookup.return_value = ("123", "!room123", "original text", "remote")
         mock_format_reply.return_value = "formatted reply"
         mock_get_display_name.return_value = "Test User"
+        mock_send_reply.return_value = True
 
         result = await handle_matrix_reply(
             mock_room,
@@ -6920,3 +6921,5 @@ async def test_on_room_message_creates_mapping_info():
         await on_room_message(room, event)
 
     mock_mapping.assert_called_once()
+    args, kwargs = mock_mapping.call_args
+    assert args[0] == "$event123"
