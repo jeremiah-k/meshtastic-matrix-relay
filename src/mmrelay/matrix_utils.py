@@ -2323,6 +2323,7 @@ async def matrix_relay(
     # Get interaction settings
     interactions = get_interaction_settings(config)
     storage_enabled = message_storage_enabled(interactions)
+    msgs_to_keep = _get_msgs_to_keep_config(config)
 
     try:
         if room_id not in matrix_client.rooms:
@@ -2528,7 +2529,6 @@ async def matrix_relay(
             and getattr(response, "event_id", None) is not None
         ):
             try:
-                msgs_to_keep = _get_msgs_to_keep_config(config)
                 event_id = getattr(response, "event_id", None)
                 if isinstance(event_id, str):
                     await async_store_message_map(
