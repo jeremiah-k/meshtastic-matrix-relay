@@ -25,7 +25,7 @@ from typing import (
 )
 from urllib.parse import urlparse
 
-from nio import (  # type: ignore[import-not-found]
+from nio import (
     AsyncClient,
     AsyncClientConfig,
     DiscoveryInfoError,
@@ -41,10 +41,8 @@ from nio import (  # type: ignore[import-not-found]
     UploadError,
     UploadResponse,
 )
-from nio.events.room_events import RoomMemberEvent  # type: ignore[import-not-found]
-from PIL import (
-    Image,  # type: ignore[import-not-found]  # type: ignore[import-not-found]
-)
+from nio.events.room_events import RoomMemberEvent
+from PIL import Image
 
 # Local imports
 from mmrelay.cli_utils import (
@@ -104,24 +102,12 @@ from mmrelay.message_queue import get_message_queue, queue_message
 
 # Import nio exception types with error handling for test environments
 try:
-    from nio.exceptions import (
-        LocalProtocolError as NioLocalProtocolError,  # type: ignore[import-not-found]
-    )
-    from nio.exceptions import (
-        LocalTransportError as NioLocalTransportError,  # type: ignore[import-not-found]
-    )
-    from nio.exceptions import (
-        RemoteProtocolError as NioRemoteProtocolError,  # type: ignore[import-not-found]
-    )
-    from nio.exceptions import (
-        RemoteTransportError as NioRemoteTransportError,  # type: ignore[import-not-found]
-    )
-    from nio.responses import (
-        LoginError as NioLoginError,  # type: ignore[import-not-found]
-    )
-    from nio.responses import (
-        LogoutError as NioLogoutError,  # type: ignore[import-not-found]
-    )
+    from nio.exceptions import LocalProtocolError as NioLocalProtocolError
+    from nio.exceptions import LocalTransportError as NioLocalTransportError
+    from nio.exceptions import RemoteProtocolError as NioRemoteProtocolError
+    from nio.exceptions import RemoteTransportError as NioRemoteTransportError
+    from nio.responses import LoginError as NioLoginError
+    from nio.responses import LogoutError as NioLogoutError
 except ImportError:
     # Fallback for test environments where nio imports might fail
     class _NioStubError(Exception):
@@ -207,31 +193,37 @@ def _iter_room_alias_entries(
     if isinstance(mapping, list):
         for index, entry in enumerate(mapping):
             if isinstance(entry, dict):
-                yield (
-                    entry.get("id", ""),
-                    lambda new_id, target=entry: target.__setitem__("id", new_id),
-                )
+
+                def _set_entry_id(new_id: str, target: dict[str, Any] = entry) -> None:
+                    target["id"] = new_id
+
+                yield (entry.get("id", ""), _set_entry_id)
             else:
-                yield (
-                    entry,
-                    lambda new_id, idx=index, collection=mapping: collection.__setitem__(
-                        idx, new_id
-                    ),
-                )
+
+                def _set_list_entry_value(
+                    new_id: str, idx: int = index, collection: list[Any] = mapping
+                ) -> None:
+                    collection[idx] = new_id
+
+                yield (entry, _set_list_entry_value)
     elif isinstance(mapping, dict):
         for key, entry in list(mapping.items()):
             if isinstance(entry, dict):
-                yield (
-                    entry.get("id", ""),
-                    lambda new_id, target=entry: target.__setitem__("id", new_id),  # type: ignore[misc]  # type: ignore[misc]
-                )
+
+                def _set_entry_id(new_id: str, target: dict[str, Any] = entry) -> None:
+                    target["id"] = new_id
+
+                yield (entry.get("id", ""), _set_entry_id)
             else:
-                yield (
-                    entry,
-                    lambda new_id, target_key=key, collection=mapping: collection.__setitem__(
-                        target_key, new_id
-                    ),
-                )
+
+                def _set_dict_entry_value(
+                    new_id: str,
+                    target_key: Any = key,
+                    collection: dict[Any, Any] = mapping,
+                ) -> None:
+                    collection[target_key] = new_id
+
+                yield (entry, _set_dict_entry_value)
 
 
 async def _resolve_aliases_in_mapping(
@@ -787,7 +779,9 @@ def get_meshtastic_prefix(
         return ""
 
     # Get custom format or use default
-    prefix_format = meshtastic_config.get("prefix_format", DEFAULT_MESHTASTIC_PREFIX)
+    prefix_format = cast(
+        str, meshtastic_config.get("prefix_format", DEFAULT_MESHTASTIC_PREFIX)
+    )
 
     # Parse username and server from user_id if available
     username = ""
@@ -853,7 +847,9 @@ def get_matrix_prefix(
         return ""
 
     # Get custom format or use default
-    matrix_prefix_format = matrix_config.get("prefix_format", DEFAULT_MATRIX_PREFIX)
+    matrix_prefix_format = cast(
+        str, matrix_config.get("prefix_format", DEFAULT_MATRIX_PREFIX)
+    )
     logger.debug(
         f"Using matrix prefix format: '{matrix_prefix_format}' (default: '{DEFAULT_MATRIX_PREFIX}')"
     )
@@ -1047,7 +1043,10 @@ async def _handle_detection_sensor_packet(
         config, "detection_sensor", DEFAULT_DETECTION_SENSOR
     )
     broadcast_enabled = get_meshtastic_config_value(
-        config, "broadcast_enabled", DEFAULT_BROADCAST_ENABLED, required=False
+        config,
+        "broadcast_enabled",
+        DEFAULT_BROADCAST_ENABLED,
+        required=False,
     )
     from mmrelay.meshtastic_utils import logger as meshtastic_logger
 
@@ -1070,7 +1069,7 @@ async def _handle_detection_sensor_packet(
     if not meshtastic_interface:
         return
 
-    import meshtastic.protobuf.portnums_pb2  # type: ignore[import-not-found]
+    import meshtastic.protobuf.portnums_pb2
 
     success = queue_message(
         meshtastic_interface.sendData,
@@ -1553,7 +1552,7 @@ async def connect_matrix(
                     room_id = getattr(response, "room_id", None)
                     if room_id:
                         logger.debug(f"Resolved alias {alias} to {room_id}")
-                        return room_id
+                        return cast(str, room_id)
                     error_details = (
                         getattr(response, "message", response)
                         if response
@@ -1653,7 +1652,7 @@ async def connect_matrix(
         bot_user_name = bot_user_id  # Fallback on network error
 
     # Store E2EE status on the client for other functions to access
-    matrix_client.e2ee_enabled = e2ee_enabled  # type: ignore[attr-defined]
+    matrix_client.e2ee_enabled = e2ee_enabled
     return matrix_client
 
 
@@ -1896,9 +1895,7 @@ async def login_matrix_bot(
 
             # Test the API call that matrix-nio will make
             try:
-                from nio.api import (
-                    Api,  # type: ignore[import-untyped, import-not-found]
-                )
+                from nio.api import Api
 
                 method, path, data = Api.login(
                     user=username or "",
@@ -2122,11 +2119,11 @@ async def login_matrix_bot(
             return False
 
     except (
-        NioLoginError,  # type: ignore[misc]
-        NioLocalProtocolError,  # type: ignore[misc]
-        NioRemoteProtocolError,  # type: ignore[misc]
-        NioLocalTransportError,  # type: ignore[misc]
-        NioRemoteTransportError,  # type: ignore[misc]
+        NioLoginError,
+        NioLocalProtocolError,
+        NioRemoteProtocolError,
+        NioLocalTransportError,
+        NioRemoteTransportError,
         asyncio.TimeoutError,
         ssl.SSLError,
         OSError,
@@ -2342,8 +2339,8 @@ async def matrix_relay(
         # Process markdown/HTML if available; otherwise, safe fallback
         if has_markdown or has_html:
             try:
-                import bleach  # type: ignore[import-untyped, import-not-found]  # lazy import
-                import markdown  # type: ignore[import-untyped, import-not-found]  # lazy import
+                import bleach  # lazy import
+                import markdown  # lazy import
 
                 raw_html = markdown.markdown(safe_message)
                 formatted_body = bleach.clean(
@@ -2614,7 +2611,7 @@ async def get_user_display_name(
     """
     room_display_name = room.user_name(event.sender)
     if room_display_name:
-        return room_display_name
+        return cast(str, room_display_name)
 
     # Some environments may not expose the nio response classes; guard isinstance to avoid TypeError.
     response_types = tuple(
@@ -2626,8 +2623,9 @@ async def get_user_display_name(
         try:
             display_name_response = await matrix_client.get_displayname(event.sender)
             if response_types and isinstance(display_name_response, response_types):
-                return (
-                    getattr(display_name_response, "displayname", None) or event.sender
+                return cast(
+                    str,
+                    getattr(display_name_response, "displayname", None) or event.sender,
                 )
             if error_types and isinstance(display_name_response, error_types):
                 logger.debug(
@@ -2644,11 +2642,11 @@ async def get_user_display_name(
             # Fallback: if the response exposes a displayname attribute, use it.
             display_attr = getattr(display_name_response, "displayname", None)
             if display_attr:
-                return display_attr
+                return cast(str, display_attr)
         except NIO_COMM_EXCEPTIONS as e:
             logger.debug(f"Failed to get display name for {event.sender}: {e}")
-            return event.sender
-    return event.sender
+            return cast(str, event.sender)
+    return cast(str, event.sender)
 
 
 def format_reply_message(
@@ -2767,7 +2765,10 @@ async def send_reply_to_meshtastic(
         return
 
     broadcast_enabled = get_meshtastic_config_value(
-        config, "broadcast_enabled", DEFAULT_BROADCAST_ENABLED, required=False
+        cast(dict[str, Any], config),
+        "broadcast_enabled",
+        DEFAULT_BROADCAST_ENABLED,
+        required=False,
     )
     logger.debug(f"broadcast_enabled = {broadcast_enabled}")
 
@@ -2786,7 +2787,7 @@ async def send_reply_to_meshtastic(
             if reply_id is not None:
                 # Send as a structured reply using our custom function
                 # Queue is reply message
-                success = queue_message(  # type: ignore[arg-type]
+                success = queue_message(
                     sendTextReply,
                     meshtastic_interface,
                     text=reply_message,
@@ -2815,7 +2816,7 @@ async def send_reply_to_meshtastic(
                     return
             else:
                 # Send as regular message (fallback for when no reply_id is available)
-                success = queue_message(  # type: ignore[arg-type]
+                success = queue_message(
                     meshtastic_interface.sendText,
                     text=reply_message,
                     channelIndex=meshtastic_channel,
@@ -2903,7 +2904,7 @@ async def handle_matrix_reply(
 
     # Extract the original meshtastic_id to use as reply_id
     # orig = (meshtastic_id, matrix_room_id, meshtastic_text, meshtastic_meshnet)
-    original_meshtastic_id = orig[0]
+    original_meshtastic_id = cast(int, orig[0])
 
     # Get user display name
     full_display_name = await get_user_display_name(room, event)

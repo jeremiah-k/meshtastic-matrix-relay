@@ -13,8 +13,8 @@ import meshtastic  # type: ignore[import-untyped]
 import meshtastic.ble_interface  # type: ignore[import-untyped]
 import meshtastic.serial_interface  # type: ignore[import-untyped]
 import meshtastic.tcp_interface  # type: ignore[import-untyped]
-import serial  # type: ignore[import-untyped]  # For serial port exceptions
-import serial.tools.list_ports  # type: ignore[import-untyped]  # Import serial tools for port listing
+import serial  # For serial port exceptions
+import serial.tools.list_ports  # Import serial tools for port listing
 from meshtastic.protobuf import mesh_pb2, portnums_pb2  # type: ignore[import-untyped]
 from pubsub import pub
 

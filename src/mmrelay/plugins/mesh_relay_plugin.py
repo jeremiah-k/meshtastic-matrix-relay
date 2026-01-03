@@ -47,7 +47,7 @@ class Plugin(BasePlugin):
             except (json.JSONDecodeError, TypeError):
                 dict_obj = {"decoded": {"text": dict_obj}}
 
-        return self.strip_raw(dict_obj)
+        return cast(dict[str, Any], self.strip_raw(dict_obj))
 
     def process(self, packet: Any) -> dict[str, Any]:
         """

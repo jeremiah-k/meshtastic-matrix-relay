@@ -2,8 +2,8 @@ import asyncio
 import re
 from typing import TYPE_CHECKING, Any
 
-from haversine import haversine  # type: ignore[import-not-found]
-from nio import MatrixRoom  # type: ignore[import-not-found]
+from haversine import haversine  # type: ignore[import-untyped]
+from nio import MatrixRoom  # type: ignore[import-untyped]
 
 from mmrelay.constants.database import DEFAULT_DISTANCE_KM_FALLBACK, DEFAULT_RADIUS_KM
 from mmrelay.constants.formats import TEXT_MESSAGE_APP
@@ -12,9 +12,7 @@ from mmrelay.meshtastic_utils import connect_meshtastic
 from mmrelay.plugins.base_plugin import BasePlugin
 
 if TYPE_CHECKING:
-    from meshtastic.mesh_interface import (
-        MeshInterface,  # type: ignore[import-not-found]
-    )
+    from meshtastic.mesh_interface import MeshInterface  # type: ignore[import-untyped]
 
 
 class Plugin(BasePlugin):
@@ -38,7 +36,7 @@ class Plugin(BasePlugin):
         Returns:
             position (dict[str, Any] | None): The node's `position` dictionary (typically containing latitude and longitude) if the node is found and has position data; `None` if the node is not found or has no `position`.
         """
-        for _node, info in meshtastic_client.nodes.items():  # type: ignore[attr-defined]
+        for _node, info in meshtastic_client.nodes.items():
             if info["user"]["id"] == node_id:
                 if "position" in info:
                     pos: dict[str, Any] = info["position"]

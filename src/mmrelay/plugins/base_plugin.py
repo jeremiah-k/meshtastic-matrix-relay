@@ -539,7 +539,7 @@ class BasePlugin(ABC):
         """
         from mmrelay.matrix_utils import connect_matrix
 
-        matrix_client = await connect_matrix()  # type: ignore[no-untyped-call]
+        matrix_client = await connect_matrix()
 
         if matrix_client is None:
             self.logger.error("Failed to connect to Matrix client")

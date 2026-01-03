@@ -284,11 +284,11 @@ def get_template_service_content() -> str:
         )
 
         # Fall back to the file path method
-        template_path = get_template_service_path()
-        if template_path:
+        fallback_template_path = get_template_service_path()
+        if fallback_template_path:
             # Read the template from file
             try:
-                with open(template_path, "r", encoding="utf-8") as f:
+                with open(fallback_template_path, "r", encoding="utf-8") as f:
                     service_template = f.read()
                 return service_template
             except (OSError, IOError, UnicodeDecodeError) as e:

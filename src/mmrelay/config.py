@@ -5,9 +5,9 @@ import re
 import sys
 from typing import Any, cast
 
-import platformdirs  # type: ignore[import-not-found]
-import yaml  # type: ignore[import-untyped]
-from yaml.loader import SafeLoader  # type: ignore[import-untyped]
+import platformdirs
+import yaml
+from yaml.loader import SafeLoader
 
 # Import application constants
 from mmrelay.cli_utils import msg_suggest_check_config, msg_suggest_generate_config
@@ -60,7 +60,7 @@ def get_base_dir() -> str:
         return os.path.expanduser(os.path.join("~", "." + APP_NAME))
     else:
         # Use platformdirs default for Windows
-        return platformdirs.user_data_dir(APP_NAME, APP_AUTHOR)  # type: ignore[no-any-return]
+        return platformdirs.user_data_dir(APP_NAME, APP_AUTHOR)
 
 
 def get_app_path() -> str:

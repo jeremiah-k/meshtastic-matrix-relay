@@ -259,8 +259,8 @@ def _validate_e2ee_dependencies() -> bool:
     # Check if E2EE dependencies are available
     try:
         import olm  # noqa: F401
-        from nio.crypto import OlmDevice  # noqa: F401
-        from nio.store import SqliteStore  # noqa: F401
+        from nio.crypto import OlmDevice  # type: ignore[import-untyped]  # noqa: F401
+        from nio.store import SqliteStore  # type: ignore[import-untyped]  # noqa: F401
 
         print("✅ E2EE dependencies are installed")
         return True
@@ -1306,7 +1306,7 @@ def handle_auth_login(args: argparse.Namespace) -> int:
 
     try:
         result = asyncio.run(
-            login_matrix_bot(  # type: ignore[no-untyped-call]
+            login_matrix_bot(
                 homeserver=homeserver,
                 username=username,
                 password=password,

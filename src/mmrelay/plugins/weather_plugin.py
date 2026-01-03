@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any
 
 import requests  # type: ignore[import-untyped]
-from meshtastic.mesh_interface import BROADCAST_NUM  # type: ignore[import-not-found]
+from meshtastic.mesh_interface import BROADCAST_NUM  # type: ignore[import-untyped]
 
 from mmrelay.constants.formats import TEXT_MESSAGE_APP
 from mmrelay.constants.messages import PORTNUM_TEXT_MESSAGE_APP

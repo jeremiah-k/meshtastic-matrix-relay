@@ -136,7 +136,7 @@ async def main(config: dict[str, Any]) -> None:
     )
 
     # Connect to Matrix
-    matrix_client = await connect_matrix(passed_config=config)  # type: ignore[no-untyped-call]
+    matrix_client = await connect_matrix(passed_config=config)
 
     # Check if Matrix connection was successful
     if matrix_client is None:

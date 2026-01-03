@@ -1,6 +1,6 @@
 from typing import Any
 
-from nio import MatrixRoom  # type: ignore[import-not-found]
+from nio import MatrixRoom  # type: ignore[import-untyped]
 
 from mmrelay.plugins.base_plugin import BasePlugin
 

@@ -464,7 +464,7 @@ def get_plugin_data_for_node(plugin_name: str, meshtastic_id: int | str) -> list
             "SELECT data FROM plugin_data WHERE plugin_name=? AND meshtastic_id=?",
             (plugin_name, meshtastic_id),
         )
-        return cursor.fetchone()
+        return cast(tuple[Any, ...] | None, cursor.fetchone())
 
     try:
         result = manager.run_sync(_fetch)

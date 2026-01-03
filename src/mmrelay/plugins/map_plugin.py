@@ -4,9 +4,9 @@ import re
 from typing import Any, Protocol
 
 import PIL.ImageDraw
-import s2sphere
-import staticmaps
-from nio import AsyncClient
+import s2sphere  # type: ignore[import-untyped]
+import staticmaps  # type: ignore[import-untyped]
+from nio import AsyncClient  # type: ignore[import-untyped]
 from PIL import Image as PILImage, ImageFont, ImageDraw as _PILImageDraw
 
 from mmrelay.constants.plugins import (
