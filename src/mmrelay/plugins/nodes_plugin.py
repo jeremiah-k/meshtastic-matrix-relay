@@ -166,6 +166,7 @@ $shortname $longname / $devicemodel / $battery $voltage / $snr / $hops / $lastse
         """
         if not self.matches(event):
             return False
+        _ = full_message
 
         response = await asyncio.to_thread(self.generate_response)
         await self.send_matrix_message(

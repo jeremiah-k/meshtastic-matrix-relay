@@ -326,14 +326,7 @@ def get_map(
     else:
         image = context.render_pillow(1000, 1000)
 
-    # staticmaps is untyped; validate the return type instead of suppressing.
-    # In tests PIL is mocked, so skip validation for mock return values.
-    image_cls = getattr(PILImage, "Image", None)
-    if hasattr(image, "_mock_name"):
-        return cast(PILImage.Image, image)
-    if isinstance(image_cls, type) and not isinstance(image, image_cls):
-        raise TypeError("staticmaps.render_pillow returned non-PIL image")
-
+    # staticmaps is untyped but returns PIL images in practice; cast for type checker.
     return cast(PILImage.Image, image)
 
 

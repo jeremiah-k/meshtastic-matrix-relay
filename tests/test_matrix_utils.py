@@ -6040,9 +6040,14 @@ async def test_handle_matrix_reply_success():
         patch(
             "mmrelay.matrix_utils.get_message_map_by_matrix_event_id"
         ) as mock_db_lookup,
-        patch("mmrelay.matrix_utils.send_reply_to_meshtastic") as mock_send_reply,
+        patch(
+            "mmrelay.matrix_utils.send_reply_to_meshtastic",
+            new_callable=AsyncMock,
+        ) as mock_send_reply,
         patch("mmrelay.matrix_utils.format_reply_message") as mock_format_reply,
-        patch("mmrelay.matrix_utils.get_user_display_name") as mock_get_display_name,
+        patch(
+            "mmrelay.matrix_utils.get_user_display_name", new_callable=AsyncMock
+        ) as mock_get_display_name,
     ):
         # Set up successful database lookup
         mock_db_lookup.return_value = (
@@ -6088,9 +6093,14 @@ async def test_handle_matrix_reply_numeric_string_reply_id():
         patch(
             "mmrelay.matrix_utils.get_message_map_by_matrix_event_id"
         ) as mock_db_lookup,
-        patch("mmrelay.matrix_utils.send_reply_to_meshtastic") as mock_send_reply,
+        patch(
+            "mmrelay.matrix_utils.send_reply_to_meshtastic",
+            new_callable=AsyncMock,
+        ) as mock_send_reply,
         patch("mmrelay.matrix_utils.format_reply_message") as mock_format_reply,
-        patch("mmrelay.matrix_utils.get_user_display_name") as mock_get_display_name,
+        patch(
+            "mmrelay.matrix_utils.get_user_display_name", new_callable=AsyncMock
+        ) as mock_get_display_name,
     ):
         mock_db_lookup.return_value = ("123", "!room123", "original text", "remote")
         mock_format_reply.return_value = "formatted reply"
@@ -6123,9 +6133,14 @@ async def test_handle_matrix_reply_unexpected_id_type_broadcasts():
         patch(
             "mmrelay.matrix_utils.get_message_map_by_matrix_event_id"
         ) as mock_db_lookup,
-        patch("mmrelay.matrix_utils.send_reply_to_meshtastic") as mock_send_reply,
+        patch(
+            "mmrelay.matrix_utils.send_reply_to_meshtastic",
+            new_callable=AsyncMock,
+        ) as mock_send_reply,
         patch("mmrelay.matrix_utils.format_reply_message") as mock_format_reply,
-        patch("mmrelay.matrix_utils.get_user_display_name") as mock_get_display_name,
+        patch(
+            "mmrelay.matrix_utils.get_user_display_name", new_callable=AsyncMock
+        ) as mock_get_display_name,
         patch("mmrelay.matrix_utils.logger") as mock_logger,
     ):
         mock_db_lookup.return_value = (12.34, "!room123", "original text", "local")

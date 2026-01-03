@@ -3,7 +3,7 @@ import os
 import re
 import threading
 from abc import ABC, abstractmethod
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable
 from typing import Any
 
 import markdown
@@ -611,10 +611,6 @@ class BasePlugin(ABC):
             normalized = node_data
         elif isinstance(node_data, dict):
             normalized = [node_data]
-        elif isinstance(node_data, Sequence) and not isinstance(
-            node_data, (str, bytes, bytearray)
-        ):
-            normalized = list(node_data)
         elif isinstance(node_data, Iterable) and not isinstance(
             node_data, (str, bytes, bytearray)
         ):

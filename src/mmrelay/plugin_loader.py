@@ -1932,7 +1932,8 @@ def start_global_scheduler() -> None:
         logger.debug("Global scheduler thread already running")
         return
 
-    _global_scheduler_stop_event = threading.Event()
+    stop_event = threading.Event()
+    _global_scheduler_stop_event = stop_event
 
     def scheduler_loop() -> None:
         """
@@ -1941,8 +1942,8 @@ def start_global_scheduler() -> None:
         Continuously calls `schedule.run_pending()` (if the `schedule` library is available) and waits up to 1 second between iterations. The loop exits when the module-level stop event is set.
         """
         logger.debug("Global scheduler thread started")
-        assert _global_scheduler_stop_event is not None
-        while not _global_scheduler_stop_event.is_set():
+        # Capture stop_event locally to avoid races if globals are reset.
+        while not stop_event.is_set():
             if schedule:
                 schedule.run_pending()
             # Wait up to 1 second or until stop is requested
