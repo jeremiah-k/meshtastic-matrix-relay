@@ -237,6 +237,22 @@ def print_version() -> None:
     print(f"MMRelay version {__version__}")
 
 
+def _e2ee_dependencies_available() -> bool:
+    """
+    Return True if E2EE runtime dependencies can be imported.
+
+    This helper avoids repeating optional imports across CLI flows.
+    """
+    try:
+        import olm  # noqa: F401
+        from nio.crypto import OlmDevice  # type: ignore[import-untyped]  # noqa: F401
+        from nio.store import SqliteStore  # type: ignore[import-untyped]  # noqa: F401
+
+        return True
+    except ImportError:
+        return False
+
+
 def _validate_e2ee_dependencies() -> bool:
     """
     Check whether end-to-end encryption (E2EE) is usable on the current platform.
@@ -257,18 +273,14 @@ def _validate_e2ee_dependencies() -> bool:
         return False
 
     # Check if E2EE dependencies are available
-    try:
-        import olm  # noqa: F401
-        from nio.crypto import OlmDevice  # type: ignore[import-untyped]
-        from nio.store import SqliteStore  # type: ignore[import-untyped]
-
+    if _e2ee_dependencies_available():
         print("✅ E2EE dependencies are installed")
         return True
-    except ImportError:
-        print("❌ Error: E2EE dependencies not installed")
-        print("   End-to-end encryption features require additional dependencies")
-        print("   Install E2EE support: pipx install 'mmrelay[e2e]'")
-        return False
+
+    print("❌ Error: E2EE dependencies not installed")
+    print("   End-to-end encryption features require additional dependencies")
+    print("   Install E2EE support: pipx install 'mmrelay[e2e]'")
+    return False
 
 
 def _validate_credentials_json(config_path: str) -> bool:
@@ -505,14 +517,8 @@ def _analyze_e2ee_setup(config: dict[str, Any], config_path: str) -> dict[str, A
         )
 
     # Check dependencies
-    try:
-        import olm  # noqa: F401
-        from nio.crypto import OlmDevice  # noqa: F401
-        from nio.store import SqliteStore  # noqa: F401
-
-        analysis["dependencies_available"] = True
-    except ImportError:
-        analysis["dependencies_available"] = False
+    analysis["dependencies_available"] = _e2ee_dependencies_available()
+    if not analysis["dependencies_available"]:
         analysis["recommendations"].append(
             "Install E2EE dependencies: pipx install 'mmrelay[e2e]'"
         )
@@ -747,13 +753,9 @@ def _print_environment_summary() -> None:
         print("   E2EE Support: ❌ Not available (Windows limitation)")
         print("   Matrix Support: ✅ Available")
     else:
-        try:
-            import olm  # noqa: F401
-            from nio.crypto import OlmDevice  # noqa: F401
-            from nio.store import SqliteStore  # noqa: F401
-
+        if _e2ee_dependencies_available():
             print("   E2EE Support: ✅ Available and installed")
-        except ImportError:
+        else:
             print("   E2EE Support: ⚠️  Available but not installed")
             print("   Install: pipx install 'mmrelay[e2e]'")
 

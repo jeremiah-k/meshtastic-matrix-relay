@@ -2,6 +2,7 @@
 
 import asyncio
 import base64
+import binascii
 import json
 import re
 from typing import Any, cast
@@ -115,24 +116,38 @@ class Plugin(BasePlugin):
             return False
 
         packet = self.process(packet)
-        packet_type = packet["decoded"]["portnum"]
-        if "channel" in packet:
-            channel = packet["channel"]
-        else:
-            channel = 0
+        decoded = packet.get("decoded", {})
+        packet_type = decoded.get("portnum")
+        if packet_type is None:
+            self.logger.error("Packet missing required 'decoded.portnum' field")
+            return False
+        channel = packet.get("channel", 0)
 
         channel_mapped = False
         target_room_id = None
         if config is not None:
             matrix_rooms = config.get("matrix_rooms", [])
-            for room_config in matrix_rooms:
-                if room_config["meshtastic_channel"] == channel:
+            iterable_rooms = (
+                matrix_rooms.values()
+                if isinstance(matrix_rooms, dict)
+                else matrix_rooms
+            )
+            for room_config in iterable_rooms:
+                if not isinstance(room_config, dict):
+                    continue
+                if room_config.get("meshtastic_channel") == channel:
                     channel_mapped = True
-                    target_room_id = room_config["id"]
+                    target_room_id = room_config.get("id")
                     break
 
         if not channel_mapped:
             self.logger.debug(f"Skipping message from unmapped channel {channel}")
+            return False
+        if not target_room_id:
+            self.logger.error(
+                "Skipping message: no Matrix room id mapped for channel %s",
+                channel,
+            )
             return False
 
         await matrix_client.room_send(
@@ -210,7 +225,7 @@ class Plugin(BasePlugin):
                     break
 
         if channel is None:
-            self.logger.debug(f"Skipping message from unmapped channel {channel}")
+            self.logger.debug(f"Skipping message from unmapped room {room.room_id}")
             return False
 
         packet_json = event.source["content"].get("meshtastic_packet")
@@ -227,16 +242,30 @@ class Plugin(BasePlugin):
         from mmrelay.meshtastic_utils import connect_meshtastic
 
         meshtastic_client = await asyncio.to_thread(connect_meshtastic)
-        meshPacket = mesh_pb2.MeshPacket()
-        meshPacket.channel = channel
-        meshPacket.decoded.payload = base64.b64decode(packet["decoded"]["payload"])
-        meshPacket.decoded.portnum = packet["decoded"]["portnum"]
-        meshPacket.decoded.want_response = False
-        meshPacket.id = meshtastic_client._generatePacketId()
+        if meshtastic_client is None:
+            self.logger.error("Meshtastic client unavailable")
+            return False
+
+        try:
+            decoded = packet.get("decoded", {})
+            payload_b64 = decoded.get("payload")
+            portnum = decoded.get("portnum")
+            to_id = packet.get("toId")
+            if not payload_b64 or portnum is None or to_id is None:
+                self.logger.error("Packet missing required fields for relay")
+                return False
+
+            meshPacket = mesh_pb2.MeshPacket()
+            meshPacket.channel = channel
+            meshPacket.decoded.payload = base64.b64decode(payload_b64)
+            meshPacket.decoded.portnum = portnum
+            meshPacket.decoded.want_response = False
+        except (TypeError, ValueError, binascii.Error) as e:
+            self.logger.exception("Error reconstructing packet: %s", e)
+            return False
 
         self.logger.debug("Relaying packet to Radio")
 
-        meshtastic_client._sendPacket(
-            meshPacket=meshPacket, destinationId=packet["toId"]
-        )
+        # _sendPacket is required for relaying raw MeshPacket payloads.
+        meshtastic_client._sendPacket(meshPacket=meshPacket, destinationId=to_id)
         return True
