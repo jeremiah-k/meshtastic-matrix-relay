@@ -281,15 +281,14 @@ def format_room_list(rooms: Dict[str, Any], e2ee_status: Dict[str, Any]) -> List
 
 
 # Standard warning message templates
-def get_e2ee_warning_messages():
+def get_e2ee_warning_messages() -> dict[str, str]:
     """
-    Return a mapping of standard user-facing E2EE warning messages.
+    Provide standard user-facing E2EE warning messages.
 
-    Each key is a short status identifier and the value is a ready-to-display message. Messages that reference external tooling or packages are rendered with the module's constants and CLI commands (e.g. PACKAGE_NAME_E2E and get_command).
     Returns:
-        dict: Mapping of status keys to formatted warning strings. Keys include:
-            - "unavailable", "disabled", "incomplete", "missing_deps",
-              "missing_auth", and "missing_config".
+        dict[str, str]: Mapping of status keys to ready-to-display messages. Keys include
+            "unavailable", "disabled", "incomplete", "missing_deps", "missing_auth",
+            and "missing_config".
     """
     return {
         "unavailable": "E2EE is not supported on Windows - messages to encrypted rooms will be blocked",
@@ -303,23 +302,17 @@ def get_e2ee_warning_messages():
 
 def get_e2ee_error_message(e2ee_status: Dict[str, Any]) -> str:
     """
-    Return a single user-facing E2EE error message based on the provided E2EE status.
+    Selects one actionable E2EE warning or instruction based on the provided E2EE status.
 
-    If the status is "ready" this returns an empty string. Otherwise selects one actionable
-    message (in priority order) for the first failing condition:
-    1. platform not supported
-    2. E2EE disabled in config
-    3. missing E2EE dependencies
-    4. missing Matrix credentials
-    5. otherwise, E2EE setup incomplete
+    If the status indicates "ready", returns an empty string. Otherwise chooses a single message in priority order for the first failing condition: platform unsupported, E2EE disabled in config, missing E2EE dependencies, missing Matrix credentials, or general incomplete setup.
 
     Parameters:
-        e2ee_status (dict): Status dictionary produced by get_e2ee_status().
-            Expected keys used: "overall_status", "platform_supported", "enabled",
-            "dependencies_installed", and "credentials_available".
+        e2ee_status (dict): Status dictionary produced by get_e2ee_status(); expected keys used are
+            "overall_status", "platform_supported", "enabled", "dependencies_installed", and
+            "credentials_available".
 
     Returns:
-        str: A single formatted warning/instruction string, or an empty string when ready.
+        str: The chosen warning or instruction message, or an empty string when no action is required.
     """
     if e2ee_status.get("overall_status") == "ready":
         return ""  # No error
@@ -340,24 +333,22 @@ def get_e2ee_error_message(e2ee_status: Dict[str, Any]) -> str:
         return warning_messages["incomplete"]
 
 
-def get_e2ee_fix_instructions(e2ee_status: Dict[str, Any]) -> List[str]:
+def get_e2ee_fix_instructions(e2ee_status: E2EEStatus) -> List[str]:
     """
-    Return ordered, user-facing instructions to resolve E2EE setup problems.
+    Provide ordered, user-facing instructions to resolve E2EE setup issues.
 
-    If E2EE is already ready, returns a single confirmation line. If the platform is unsupported,
-    returns platform-specific guidance. Otherwise returns a numbered sequence of actionable steps
-    (as separate list lines) to install required E2EE dependencies, provision Matrix credentials,
-    enable E2EE in the configuration, and finally verify the configuration. Command and config
-    snippets appear as indented lines in the returned list.
+    When E2EE is ready, returns a single confirmation line. If the platform is unsupported, returns concise platform guidance. Otherwise returns a numbered sequence of actionable steps to install dependencies, provision Matrix credentials, enable E2EE in configuration, and verify the setup; related commands and config snippets are returned as additional indented lines.
 
     Parameters:
-        e2ee_status (dict): Status mapping produced by get_e2ee_status(). The function reads the
-            following keys to decide which steps to include: "overall_status",
-            "platform_supported", "dependencies_installed", "credentials_available", and "enabled".
+        e2ee_status (E2EEStatus): Status mapping used to select which steps to include. The function reads these keys:
+            - "overall_status"
+            - "platform_supported"
+            - "dependencies_installed"
+            - "credentials_available"
+            - "enabled"
 
     Returns:
-        List[str]: Ordered, human-readable instruction lines. Each step is a separate string;
-            related commands or configuration snippets are returned as additional indented strings.
+        List[str]: Ordered, human-readable instruction lines. Each step is a separate string; indented strings contain commands or configuration snippets.
     """
     if e2ee_status["overall_status"] == "ready":
         return ["✅ E2EE is fully configured and ready"]

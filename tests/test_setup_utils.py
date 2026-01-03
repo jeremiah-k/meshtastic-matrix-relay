@@ -705,7 +705,7 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         self.assertTrue(result)
         mock_run.assert_called_once_with(
             [SYSTEMCTL, "--user", "status", "mmrelay.service"],
-            check=True,
+            check=False,
             capture_output=True,
             text=True,
         )
@@ -713,9 +713,9 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
     @patch("subprocess.run")
     def test_show_service_status_failure(self, mock_run):
         """
-        Test that show_service_status returns False when systemctl command fails.
+        Test that show_service_status returns False when systemctl cannot run.
         """
-        mock_run.side_effect = subprocess.CalledProcessError(1, "systemctl")
+        mock_run.side_effect = OSError("systemctl unavailable")
 
         result = show_service_status()
 

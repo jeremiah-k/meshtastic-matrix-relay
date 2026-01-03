@@ -898,6 +898,34 @@ class TestConnectMeshtasticEdgeCases(unittest.TestCase):
 
         self.assertIsNone(result)
 
+    @patch("mmrelay.meshtastic_utils.meshtastic.tcp_interface.TCPInterface")
+    def test_connect_meshtastic_shutdown_during_unexpected_exception(self, mock_tcp):
+        """Shutdown flag should break out on unexpected exceptions."""
+        import mmrelay.meshtastic_utils as mu
+
+        original_shutdown = mu.shutting_down
+        original_reconnecting = mu.reconnecting
+        original_client = mu.meshtastic_client
+
+        def raise_and_shutdown(*_args, **_kwargs):
+            mu.shutting_down = True
+            raise Exception("boom")
+
+        mock_tcp.side_effect = raise_and_shutdown
+        config = {"meshtastic": {"connection_type": "tcp", "host": "127.0.0.1"}}
+
+        try:
+            mu.shutting_down = False
+            mu.reconnecting = False
+            mu.meshtastic_client = None
+            result = connect_meshtastic(passed_config=config)
+        finally:
+            mu.shutting_down = original_shutdown
+            mu.reconnecting = original_reconnecting
+            mu.meshtastic_client = original_client
+
+        self.assertIsNone(result)
+
     @patch("mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface")
     def test_connect_meshtastic_ble_exception(self, mock_ble):
         """

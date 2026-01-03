@@ -137,7 +137,7 @@ class TestSystemctlPathResolution(unittest.TestCase):
             # Should use the custom systemctl path
             mock_run.assert_called_once_with(
                 ["/custom/path/systemctl", "--user", "status", "mmrelay.service"],
-                check=True,
+                check=False,
                 capture_output=True,
                 text=True,
             )

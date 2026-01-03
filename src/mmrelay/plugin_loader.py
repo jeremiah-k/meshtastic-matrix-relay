@@ -14,13 +14,14 @@ import threading
 import time
 from contextlib import contextmanager
 from types import ModuleType
-from typing import Any, NamedTuple
+from typing import Any, Iterator, NamedTuple, NoReturn
 from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 
+schedule: ModuleType | None
 try:
     import schedule
 except ImportError:
-    schedule: ModuleType | None = None  # type: ignore[assignment,no-redef]
+    schedule = None
 
 from mmrelay.config import get_app_path, get_base_dir
 from mmrelay.constants.plugins import (
@@ -34,7 +35,7 @@ from mmrelay.log_utils import get_logger
 config = None
 
 logger = get_logger(name="Plugins")
-sorted_active_plugins = []
+sorted_active_plugins: list[Any] = []
 plugins_loaded = False
 
 
@@ -60,8 +61,8 @@ PIPX_ENVIRONMENT_KEYS = ("PIPX_HOME", "PIPX_LOCAL_VENVS", "PIPX_BIN_DIR")
 
 
 # Global scheduler management
-_global_scheduler_thread = None
-_global_scheduler_stop_event = None
+_global_scheduler_thread: threading.Thread | None = None
+_global_scheduler_stop_event: threading.Event | None = None
 
 
 # Plugin dependency directory (may not be set if base dir can't be resolved)
@@ -185,7 +186,7 @@ def _collect_requirements(
 
 
 @contextmanager
-def _temp_sys_path(path: str):
+def _temp_sys_path(path: str) -> Iterator[None]:
     """
     Temporarily prepends a directory to Python's import search path for the duration of a with-block.
 
@@ -205,14 +206,14 @@ def _temp_sys_path(path: str):
             pass
 
 
-def _get_security_settings() -> dict:
+def _get_security_settings() -> dict[str, Any]:
     """
-    Return the security settings mapping from the global configuration.
+    Retrieve the `security` mapping from the module-level `config`.
 
-    If the global `config` is unset or does not contain a `"security"` mapping, or if `"security"` exists but is not a dict, this returns an empty dict.
+    If `config` is unset, missing a `"security"` key, or if `"security"` exists but is not a mapping, an empty dict is returned.
 
     Returns:
-        dict: The security configuration dictionary, or an empty dict when unavailable or invalid.
+        dict: Security settings mapping from `config`, or an empty dict when unavailable or invalid.
     """
     if not config:
         return {}
@@ -505,12 +506,12 @@ def _filter_risky_requirements(
 
 def _clean_python_cache(directory: str) -> None:
     """
-    Remove Python bytecode cache files and __pycache__ directories under the given directory.
+    Remove Python bytecode caches under the given directory.
 
-    Walks the directory tree rooted at `directory` and deletes any `__pycache__` directories and `.pyc` files it finds; removal errors are logged and ignored so the operation is non-fatal.
+    Walks the directory tree rooted at `directory` and deletes any `__pycache__` directories and `.pyc` files it finds; deletion errors are logged and ignored so the operation is non-fatal.
 
     Parameters:
-        directory (str): Path to the directory to clean of Python cache files.
+        directory (str): Path whose Python cache files and directories will be removed.
     """
     if not os.path.isdir(directory):
         return
@@ -554,7 +555,7 @@ def _clean_python_cache(directory: str) -> None:
         logger.info(f"Cleaned {' and '.join(log_parts)} from {directory}")
 
 
-def _reset_caches_for_tests():
+def _reset_caches_for_tests() -> None:
     """
     Reset the global plugin loader caches to their initial state for testing purposes.
 
@@ -845,28 +846,28 @@ def _run(
     retry_attempts: int = 1,
     retry_delay: float = 1,
     **kwargs: Any,
-) -> subprocess.CompletedProcess:
+) -> subprocess.CompletedProcess[str]:
     # Validate command to prevent shell injection
     """
-    Run a subprocess command with validated arguments, optional retries, and a configurable timeout.
+    Execute a validated subprocess command with an optional retry loop and timeout.
 
-    Validates that `cmd` is a non-empty list of non-empty strings, disallows `shell=True`, sets `text=True` by default, and optionally retries failed attempts with a delay.
+    Validates that `cmd` is a non-empty list of non-empty strings and disallows `shell=True`. Uses text mode by default unless overridden. On failure, retries up to `retry_attempts` with `retry_delay` seconds between attempts.
 
     Parameters:
-        cmd (list[str]): Command and arguments to execute; must be a non-empty list of non-empty strings.
-        timeout (int | float): Maximum seconds to allow the process to run before raising TimeoutExpired.
+        cmd (list[str]): Command and arguments to execute.
+        timeout (float): Maximum seconds to allow the process to run before raising TimeoutExpired.
         retry_attempts (int): Number of execution attempts (minimum 1).
-        retry_delay (int | float): Seconds to wait between retry attempts.
-        **kwargs: Additional keyword arguments forwarded to subprocess.run (e.g., cwd, env). `text=True` is used by default if not provided.
+        retry_delay (float): Seconds to wait between retry attempts.
+        **kwargs: Additional keyword arguments forwarded to subprocess.run; `text=True` is set by default.
 
     Returns:
-        subprocess.CompletedProcess: The completed process object returned by subprocess.run.
+        subprocess.CompletedProcess[str]: The completed process result.
 
     Raises:
         TypeError: If `cmd` is not a list or any element of `cmd` is not a string.
         ValueError: If `cmd` is empty, contains empty/whitespace-only arguments, or if `shell=True` is provided.
-        subprocess.CalledProcessError: If the subprocess exits with a non-zero status.
-        subprocess.TimeoutExpired: If the process exceeds the specified timeout.
+        subprocess.CalledProcessError: If the subprocess exits with a non-zero status on the final attempt.
+        subprocess.TimeoutExpired: If the process exceeds `timeout` on the final attempt.
     """
     if not isinstance(cmd, list):
         raise TypeError("cmd must be a list of str")
@@ -904,17 +905,17 @@ def _run(
 
 def _run_git(
     cmd: list[str], timeout: float = 120, **kwargs: Any
-) -> subprocess.CompletedProcess:
+) -> subprocess.CompletedProcess[str]:
     """
-    Run a git command using the module's safe subprocess runner with conservative retry defaults.
+    Execute a git command with conservative retry defaults and a non-interactive environment.
 
     Parameters:
         cmd (list[str]): Command and arguments to run (e.g., ['git', 'clone', '...']).
         timeout (float): Maximum seconds to wait for each attempt.
-        **kwargs: Additional options forwarded to `_run` (can override retries).
+        **kwargs: Additional subprocess options (for example `env`, `retry_attempts`, `retry_delay`) that modify execution.
 
     Returns:
-        subprocess.CompletedProcess: The completed process result containing `returncode`, `stdout`, and `stderr`.
+        subprocess.CompletedProcess[str]: Completed process containing `returncode`, `stdout`, and `stderr`.
     """
     kwargs.setdefault("retry_attempts", 3)
     kwargs.setdefault("retry_delay", 2)
@@ -927,7 +928,7 @@ def _run_git(
     return _run(cmd, timeout=timeout, **kwargs)
 
 
-def _check_auto_install_enabled(config):
+def _check_auto_install_enabled(config: Any) -> bool:
     """
     Determine if automatic dependency installation is enabled in the provided configuration.
 
@@ -944,7 +945,7 @@ def _check_auto_install_enabled(config):
     return bool(config.get("security", {}).get("auto_install_deps", True))
 
 
-def _raise_install_error(pkg_name):
+def _raise_install_error(pkg_name: str) -> NoReturn:
     """
     Emit a warning that automatic dependency installation is disabled and raise a subprocess.CalledProcessError.
 
@@ -1707,7 +1708,7 @@ def clone_or_update_repo(repo_url: str, ref: dict[str, str], plugins_dir: str) -
     )
 
 
-def load_plugins_from_directory(directory, recursive=False):
+def load_plugins_from_directory(directory: str, recursive: bool = False) -> list[Any]:
     """
     Discovers and instantiates Plugin classes from Python modules in the given directory.
 
@@ -1759,7 +1760,8 @@ def load_plugins_from_directory(directory, recursive=False):
 
                     try:
                         with _temp_sys_path(plugin_dir):
-                            spec.loader.exec_module(plugin_module)
+                            if spec.loader:
+                                spec.loader.exec_module(plugin_module)
                         if hasattr(plugin_module, "Plugin"):
                             plugins.append(plugin_module.Plugin())
                         else:
@@ -1844,7 +1846,8 @@ def load_plugins_from_directory(directory, recursive=False):
                             # Try to load the module again
                             try:
                                 with _temp_sys_path(plugin_dir):
-                                    spec.loader.exec_module(plugin_module)
+                                    if spec.loader:
+                                        spec.loader.exec_module(plugin_module)
 
                                 if hasattr(plugin_module, "Plugin"):
                                     plugins.append(plugin_module.Plugin())
@@ -1879,16 +1882,16 @@ def load_plugins_from_directory(directory, recursive=False):
     return plugins
 
 
-def schedule_job(plugin_name: str, interval: int = 1):
+def schedule_job(plugin_name: str, interval: int = 1) -> Any:
     """
-    Create a job that runs every specified interval for a plugin.
+    Create and tag a scheduled job for a plugin at the given interval.
 
     Parameters:
-        plugin_name (str): Name of the plugin for job tagging
-        interval (int): Interval for job execution
+        plugin_name (str): Plugin name used to tag the scheduled job.
+        interval (int): Interval value for the schedule; the time unit is selected when configuring the job (e.g., `job.seconds`, `job.minutes`).
 
     Returns:
-        Job object that can be configured with time units and actions
+        job: The scheduled job object tagged with `plugin_name`, or `None` if the scheduling library is unavailable.
     """
     if schedule is None:
         return None
@@ -1899,18 +1902,23 @@ def schedule_job(plugin_name: str, interval: int = 1):
 
 
 def clear_plugin_jobs(plugin_name: str) -> None:
-    """Clear all jobs for a specific plugin."""
+    """
+    Remove all scheduled jobs tagged with the given plugin name.
+
+    Parameters:
+        plugin_name (str): The tag used when scheduling jobs for the plugin; all jobs with this tag will be cleared.
+    """
     if schedule is not None:
         schedule.clear(plugin_name)
 
 
-def start_global_scheduler():
+def start_global_scheduler() -> None:
     """
-    Start the global scheduler thread for all plugins.
+    Start a single global scheduler thread to execute all plugin scheduled jobs.
 
-    Creates and starts a single daemon thread that runs schedule.run_pending()
-    for all plugins. This eliminates race conditions from multiple threads
-    accessing the schedule library's global state.
+    Creates and starts one daemon thread that periodically calls schedule.run_pending()
+    to run pending jobs for all plugins. If the schedule library is unavailable or a
+    global scheduler is already running, the function does nothing.
     """
     global _global_scheduler_thread, _global_scheduler_stop_event
 
@@ -1924,16 +1932,22 @@ def start_global_scheduler():
         logger.debug("Global scheduler thread already running")
         return
 
-    _global_scheduler_stop_event = threading.Event()
+    stop_event = threading.Event()
+    _global_scheduler_stop_event = stop_event
 
-    def scheduler_loop():
-        """Main scheduler loop that runs pending jobs."""
+    def scheduler_loop() -> None:
+        """
+        Runs the global scheduler loop that executes scheduled jobs until stopped.
+
+        Continuously calls `schedule.run_pending()` (if the `schedule` library is available) and waits up to 1 second between iterations. The loop exits when the module-level stop event is set.
+        """
         logger.debug("Global scheduler thread started")
-        while not _global_scheduler_stop_event.is_set():
+        # Capture stop_event locally to avoid races if globals are reset.
+        while not stop_event.is_set():
             if schedule:
                 schedule.run_pending()
             # Wait up to 1 second or until stop is requested
-            _global_scheduler_stop_event.wait(1)
+            stop_event.wait(1)
         logger.debug("Global scheduler thread stopped")
 
     _global_scheduler_thread = threading.Thread(
@@ -1943,12 +1957,11 @@ def start_global_scheduler():
     logger.info("Global plugin scheduler started")
 
 
-def stop_global_scheduler():
+def stop_global_scheduler() -> None:
     """
     Stop the global scheduler thread.
 
-    Signals the scheduler thread to stop and waits for it to terminate.
-    Clears all scheduled jobs to prevent memory leaks.
+    Signals the scheduler loop to stop, waits up to 5 seconds for the thread to terminate, clears all scheduled jobs, and resets the scheduler state.
     """
     global _global_scheduler_thread, _global_scheduler_stop_event
 
@@ -1976,7 +1989,7 @@ def stop_global_scheduler():
     logger.info("Global plugin scheduler stopped")
 
 
-def load_plugins(passed_config=None):
+def load_plugins(passed_config: Any = None) -> list[Any]:
     """
     Load and start the application's configured plugins and return the active instances sorted by priority.
 
@@ -2178,14 +2191,14 @@ def load_plugins(passed_config=None):
                 logger.error("Please specify the repository URL in config.yaml")
                 continue
 
-    # Only load community plugins that are explicitly enabled
+        # Only load community plugins that are explicitly enabled
     for plugin_name in active_community_plugins:
         plugin_info = community_plugins_config[plugin_name]
         repo_url = plugin_info.get("repository")
         if repo_url:
             # Extract repo name using lightweight function (no validation needed for loading)
-            repo_name = _get_repo_name_from_url(repo_url)
-            if not repo_name:
+            repo_name_from_url = _get_repo_name_from_url(repo_url)
+            if not repo_name_from_url:
                 logger.error(
                     "Invalid repository URL for community plugin: %s",
                     _redact_url(repo_url),
@@ -2195,7 +2208,7 @@ def load_plugins(passed_config=None):
             # Try each directory in order
             plugin_found = False
             for dir_path in community_plugin_dirs:
-                plugin_path = os.path.join(dir_path, repo_name)
+                plugin_path = os.path.join(dir_path, repo_name_from_url)
                 if os.path.exists(plugin_path):
                     logger.info(f"Loading community plugin from: {plugin_path}")
                     try:
@@ -2206,13 +2219,13 @@ def load_plugins(passed_config=None):
                         break
                     except Exception:
                         logger.exception(
-                            "Failed to load community plugin %s", repo_name
+                            "Failed to load community plugin %s", plugin_name
                         )
                         continue
 
             if not plugin_found:
                 logger.warning(
-                    f"Community plugin '{repo_name}' not found in any of the plugin directories"
+                    f"Community plugin '{plugin_name}' not found in any of the plugin directories"
                 )
         else:
             logger.error(
