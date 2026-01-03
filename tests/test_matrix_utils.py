@@ -2046,6 +2046,41 @@ async def test_matrix_relay_store_failure_logs(
 @patch("mmrelay.matrix_utils.get_interaction_settings")
 @patch("mmrelay.matrix_utils.message_storage_enabled", return_value=False)
 @patch("mmrelay.matrix_utils.logger")
+async def test_matrix_relay_timeout_logs_and_returns(
+    mock_logger, _mock_storage_enabled, mock_get_interactions, mock_connect_matrix
+):
+    """Timeouts during room_send should be logged and return early."""
+    mock_get_interactions.return_value = {"reactions": False, "replies": False}
+
+    mock_client = MagicMock()
+    mock_client.rooms = {"!room:matrix.org": MagicMock(encrypted=False)}
+    mock_client.room_send = AsyncMock(side_effect=asyncio.TimeoutError)
+    mock_connect_matrix.return_value = mock_client
+
+    config = {
+        "meshtastic": {"meshnet_name": "TestMesh"},
+        "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+    }
+
+    with patch("mmrelay.matrix_utils.config", config):
+        await matrix_relay(
+            room_id="!room:matrix.org",
+            message="Hello Matrix",
+            longname="Alice",
+            shortname="A",
+            meshnet_name="TestMesh",
+            portnum=1,
+        )
+
+    mock_logger.exception.assert_called_with(
+        "Timeout sending message to Matrix room %s", "!room:matrix.org"
+    )
+
+
+@patch("mmrelay.matrix_utils.connect_matrix")
+@patch("mmrelay.matrix_utils.get_interaction_settings")
+@patch("mmrelay.matrix_utils.message_storage_enabled", return_value=False)
+@patch("mmrelay.matrix_utils.logger")
 async def test_matrix_relay_reply_missing_mapping_logs_warning(
     mock_logger, _mock_storage_enabled, mock_get_interactions, mock_connect_matrix
 ):
@@ -6297,7 +6332,7 @@ class TestUncoveredMatrixUtils(unittest.TestCase):
         self.assertFalse(_is_room_alias([]))
 
     @patch("mmrelay.matrix_utils.logger")
-    def test_iter_room_alias_entries_list_format(self, mock_logger):
+    def test_iter_room_alias_entries_list_format(self, _mock_logger):
         """Test _iter_room_alias_entries with list format."""
 
         # Test with list of strings
@@ -6713,6 +6748,7 @@ def test_matrix_utils_imports_nio_exceptions_when_available(monkeypatch):
 
     monkeypatch.setitem(sys.modules, "nio.exceptions", exc_mod)
     monkeypatch.setitem(sys.modules, "nio.responses", resp_mod)
+    # monkeypatch restores sys.modules entries after the test to avoid side effects.
 
     importlib.reload(mu)
 

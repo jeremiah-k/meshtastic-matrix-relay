@@ -104,10 +104,12 @@ class Plugin(BasePlugin):
         Supports both list and dict shapes for backward compatibility and filters
         out non-dict entries to keep iteration safe.
         """
-        if config is None:
+        # matrix_rooms live in the global relay config, not per-plugin config.
+        global_config = config
+        if global_config is None:
             return []
 
-        matrix_rooms = config.get("matrix_rooms", [])
+        matrix_rooms = global_config.get("matrix_rooms", [])
         if isinstance(matrix_rooms, dict):
             iterable_rooms = matrix_rooms.values()
         elif isinstance(matrix_rooms, list):

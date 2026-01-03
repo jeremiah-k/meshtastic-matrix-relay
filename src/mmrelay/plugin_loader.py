@@ -14,7 +14,7 @@ import threading
 import time
 from contextlib import contextmanager
 from types import ModuleType
-from typing import Any, Iterator, NamedTuple
+from typing import Any, Iterator, NamedTuple, NoReturn
 from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 
 schedule: ModuleType | None
@@ -945,7 +945,7 @@ def _check_auto_install_enabled(config: Any) -> bool:
     return bool(config.get("security", {}).get("auto_install_deps", True))
 
 
-def _raise_install_error(pkg_name: str) -> None:
+def _raise_install_error(pkg_name: str) -> NoReturn:
     """
     Emit a warning that automatic dependency installation is disabled and raise a subprocess.CalledProcessError.
 
@@ -1947,7 +1947,7 @@ def start_global_scheduler() -> None:
             if schedule:
                 schedule.run_pending()
             # Wait up to 1 second or until stop is requested
-            _global_scheduler_stop_event.wait(1)
+            stop_event.wait(1)
         logger.debug("Global scheduler thread stopped")
 
     _global_scheduler_thread = threading.Thread(

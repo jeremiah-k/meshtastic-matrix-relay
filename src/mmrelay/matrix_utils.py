@@ -104,8 +104,7 @@ from mmrelay.message_queue import get_message_queue, queue_message
 # Import nio exception types with error handling for test environments.
 # Note: matrix-nio is not marked py.typed; keep import-untyped ignores here to
 # satisfy mypy --strict and align with other nio imports in the codebase.
-# We apply the ignore to the grouped import to avoid mypy unused-ignore noise
-# and to make the intent explicit for reviewers.
+# We apply the ignore to grouped imports so the rationale is explicit.
 try:
     from nio.exceptions import (
         LocalProtocolError as NioLocalProtocolError,  # type: ignore[import-untyped]
@@ -2366,6 +2365,7 @@ async def matrix_relay(
                 # markdown ships type hints in our environment; avoid import-untyped to
                 # prevent mypy unused-ignore warnings under --strict. If that changes,
                 # install types-Markdown rather than adding ignores so strictness stays.
+                # markdown ships type hints; avoid import-untyped to keep mypy clean.
                 import markdown  # lazy import
 
                 raw_html = markdown.markdown(safe_message)

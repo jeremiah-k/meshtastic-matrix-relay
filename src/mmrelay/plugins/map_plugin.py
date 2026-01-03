@@ -292,16 +292,25 @@ def get_map(
     circle_cls = getattr(staticmaps, "Circle", None)
     color_cls = getattr(staticmaps, "Color", None)
 
-    # Center the map on the average location so nodes are not pushed to the edge
-    if locations:
-        avg_lat = sum(float(loc["lat"] or 0) for loc in locations) / len(locations)
-        avg_lon = sum(float(loc["lon"] or 0) for loc in locations) / len(locations)
+    # Center the map on the average location so nodes are not pushed to the edge.
+    # Skip entries missing coordinates to avoid centering on 0,0 by default.
+    valid_locations: list[
+        tuple[float, float, dict[str, float | int | str | None]]
+    ] = []
+    for location in locations:
+        lat = location.get("lat")
+        lon = location.get("lon")
+        if lat is None or lon is None:
+            continue
+        valid_locations.append((float(lat), float(lon), location))
+
+    if valid_locations:
+        avg_lat = sum(lat for lat, _, _ in valid_locations) / len(valid_locations)
+        avg_lon = sum(lon for _, lon, _ in valid_locations) / len(valid_locations)
         context.set_center(staticmaps.create_latlng(avg_lat, avg_lon))
 
-    for location in locations:
-        radio = staticmaps.create_latlng(
-            float(location["lat"] or 0), float(location["lon"] or 0)
-        )
+    for lat, lon, location in valid_locations:
+        radio = staticmaps.create_latlng(lat, lon)
         precision_bits = location.get("precisionBits")
         precision_radius_m = None
         if precision_bits is not None:
@@ -372,13 +381,17 @@ class Plugin(BasePlugin):
         )
 
     async def handle_meshtastic_message(
-        self, packet: object, formatted_message: str, longname: str, meshnet_name: str
+        self,
+        packet: dict[str, Any],
+        formatted_message: str,
+        longname: str,
+        meshnet_name: str,
     ) -> bool:
         """
         Decide whether this plugin consumes an incoming Meshtastic packet.
         
         Parameters:
-            packet (object): Raw Meshtastic packet received from the mesh network.
+            packet (dict[str, Any]): Raw Meshtastic packet received from the mesh network.
             formatted_message (str): Human-readable, pre-formatted message derived from the packet.
             longname (str): Sender's long name or identifier.
             meshnet_name (str): Name of the mesh network the packet originated from.
