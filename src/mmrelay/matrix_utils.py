@@ -2349,6 +2349,8 @@ async def matrix_relay(
                 import bleach  # type: ignore[import-untyped]  # lazy import
 
                 # markdown ships stubs here; avoid unused-ignore in strict mypy.
+                # If stubs are missing in another environment, install types instead of
+                # toggling ignores so mypy remains strict.
                 import markdown  # lazy import
 
                 raw_html = markdown.markdown(safe_message)
@@ -2903,7 +2905,8 @@ async def handle_matrix_reply(
 
     # Extract the original meshtastic_id to use as reply_id.
     # orig = (meshtastic_id, matrix_room_id, meshtastic_text, meshtastic_meshnet)
-    # message_map may return a legacy string; normalize to int for reply_id.
+    # message_map may return legacy string IDs; normalize when numeric, otherwise
+    # fall back to a broadcast reply to preserve compatibility.
     original_meshtastic_id_raw = orig[0]
     if isinstance(original_meshtastic_id_raw, int):
         original_meshtastic_id = original_meshtastic_id_raw
@@ -2912,16 +2915,16 @@ async def handle_matrix_reply(
             original_meshtastic_id = int(original_meshtastic_id_raw)
         else:
             logger.warning(
-                "Message map meshtastic_id %r is not numeric; cannot send reply",
+                "Message map meshtastic_id %r is not numeric; sending broadcast reply",
                 original_meshtastic_id_raw,
             )
-            return False
+            original_meshtastic_id = None
     else:
         logger.warning(
-            "Message map meshtastic_id has unexpected type %s; cannot send reply",
+            "Message map meshtastic_id has unexpected type %s; sending broadcast reply",
             type(original_meshtastic_id_raw).__name__,
         )
-        return False
+        original_meshtastic_id = None
 
     # Get user display name
     full_display_name = await get_user_display_name(room, event)
@@ -2938,9 +2941,14 @@ async def handle_matrix_reply(
         mesh_text_override=mesh_text_override,
     )
 
-    logger.info(
-        f"Relaying Matrix reply from {full_display_name} to Meshtastic as reply to message {original_meshtastic_id}"
-    )
+    if original_meshtastic_id is not None:
+        logger.info(
+            f"Relaying Matrix reply from {full_display_name} to Meshtastic as reply to message {original_meshtastic_id}"
+        )
+    else:
+        logger.info(
+            f"Relaying Matrix reply from {full_display_name} to Meshtastic as broadcast reply"
+        )
 
     # Send the reply to Meshtastic with the original message ID as reply_id
     await send_reply_to_meshtastic(
