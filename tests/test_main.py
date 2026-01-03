@@ -352,6 +352,50 @@ class TestMain(unittest.TestCase):
             asyncio.run(main(self.mock_config))
         self.assertIn("Matrix connection failed", str(context.exception))
 
+    @patch("mmrelay.main.initialize_database")
+    @patch("mmrelay.main.load_plugins")
+    @patch("mmrelay.main.start_message_queue")
+    @patch("mmrelay.main.connect_meshtastic")
+    @patch("mmrelay.main.connect_matrix", new_callable=AsyncMock)
+    @patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock)
+    @patch("mmrelay.main.stop_message_queue")
+    def test_main_closes_meshtastic_client_on_shutdown(
+        self,
+        mock_stop_queue,
+        mock_join_room,
+        mock_connect_matrix,
+        mock_connect_meshtastic,
+        mock_start_queue,
+        mock_load_plugins,
+        mock_init_db,
+    ):
+        """Shutdown should close the Meshtastic client when present."""
+
+        class ImmediateEvent:
+            def __init__(self) -> None:
+                self._set = True
+
+            def is_set(self) -> bool:
+                return self._set
+
+            def set(self) -> None:
+                self._set = True
+
+            async def wait(self) -> None:
+                return None
+
+        mock_meshtastic_client = MagicMock()
+        mock_connect_meshtastic.return_value = mock_meshtastic_client
+
+        mock_matrix_client = MagicMock()
+        mock_matrix_client.close = AsyncMock()
+        mock_connect_matrix.return_value = mock_matrix_client
+
+        with patch("mmrelay.main.asyncio.Event", return_value=ImmediateEvent()):
+            asyncio.run(main(self.mock_config))
+
+        mock_meshtastic_client.close.assert_called_once()
+
 
 class TestPrintBanner(unittest.TestCase):
     """Test cases for banner printing functionality."""

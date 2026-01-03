@@ -104,7 +104,8 @@ from mmrelay.message_queue import get_message_queue, queue_message
 # Import nio exception types with error handling for test environments.
 # Note: matrix-nio does not ship type stubs; keep import-untyped ignores here
 # to satisfy mypy --strict and align with other nio imports in the codebase.
-# We apply the ignore to the grouped import to avoid mypy unused-ignore noise.
+# We apply the ignore to the grouped import to avoid mypy unused-ignore noise
+# and to make the intent explicit for reviewers.
 try:
     from nio.exceptions import (
         LocalProtocolError as NioLocalProtocolError,  # type: ignore[import-untyped]
@@ -1669,7 +1670,7 @@ async def connect_matrix(
         logger.debug(f"Failed to get bot display name for {bot_user_id}: {e}")
         bot_user_name = bot_user_id  # Fallback on network error
 
-    # Store E2EE status on the client for other functions to access
+    # AsyncClient doesn't define e2ee_enabled; cast to Any so mypy allows the attribute.
     cast(Any, matrix_client).e2ee_enabled = e2ee_enabled
     return matrix_client
 
@@ -2348,9 +2349,9 @@ async def matrix_relay(
                 # bleach lacks type stubs in our env; keep import-untyped for strict mypy.
                 import bleach  # type: ignore[import-untyped]  # lazy import
 
-                # markdown ships stubs here; avoid unused-ignore in strict mypy.
-                # If stubs are missing in another environment, install types instead of
-                # toggling ignores so mypy remains strict.
+                # markdown ships type hints in our environment; avoid import-untyped to
+                # prevent mypy unused-ignore warnings under --strict. If that changes,
+                # install types-Markdown rather than adding ignores so strictness stays.
                 import markdown  # lazy import
 
                 raw_html = markdown.markdown(safe_message)

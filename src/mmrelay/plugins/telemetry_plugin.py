@@ -83,6 +83,7 @@ class Plugin(BasePlugin):
         Returns:
             bool: `False` always; telemetry is recorded but the message is not consumed by this handler.
         """
+        _ = formatted_message, longname, meshnet_name
         if (
             "decoded" in packet
             and "portnum" in packet["decoded"]

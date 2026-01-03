@@ -15,6 +15,7 @@ import os
 import sys
 import time
 import unittest
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -26,6 +27,7 @@ from mmrelay.message_queue import (
     MessageQueue,
     QueuedMessage,
     queue_message,
+    start_message_queue,
 )
 
 
@@ -217,6 +219,53 @@ class TestMessageQueue(unittest.TestCase):
 
         self.loop.run_until_complete(async_test())
 
+    def test_stop_waits_for_task_on_running_loop(self):
+        """stop should wait on tasks running in a different event loop."""
+        queue = MessageQueue()
+        queue._running = True
+
+        fake_loop = MagicMock()
+        fake_loop.is_closed.return_value = False
+        fake_loop.is_running.return_value = True
+
+        fake_task = MagicMock()
+        fake_task.get_loop.return_value = fake_loop
+        queue._processor_task = fake_task
+
+        mock_future = MagicMock()
+        mock_future.result.return_value = None
+
+        with (
+            patch(
+                "asyncio.run_coroutine_threadsafe", return_value=mock_future
+            ) as mock_run,
+            patch("asyncio.shield", side_effect=lambda task: task),
+        ):
+            queue.stop()
+
+        mock_run.assert_called_once()
+        mock_future.result.assert_called_once_with(timeout=1.0)
+
+    def test_should_send_message_import_error_stops_queue(self):
+        """_should_send_message should stop when meshtastic_utils import fails."""
+        queue = MessageQueue()
+
+        original_import = __import__
+
+        def raising_import(name, globals=None, locals=None, fromlist=(), level=0):
+            if name == "mmrelay.meshtastic_utils":
+                raise ImportError("missing")
+            return original_import(name, globals, locals, fromlist, level)
+
+        with (
+            patch("builtins.__import__", side_effect=raising_import),
+            patch("mmrelay.message_queue.threading.Thread") as mock_thread,
+        ):
+            result = queue._should_send_message()
+
+        self.assertFalse(result)
+        mock_thread.return_value.start.assert_called_once()
+
     @pytest.mark.usefixtures("comprehensive_cleanup")
     def test_queue_size_limit(self):
         """
@@ -339,6 +388,48 @@ class TestGlobalFunctions(unittest.TestCase):
         # Should refuse to send when queue not running to prevent event loop blocking
         self.assertFalse(success)
         self.assertEqual(len(mock_send_function.calls), 0)
+
+    def test_start_message_queue_calls_start(self):
+        """start_message_queue should delegate to the global queue."""
+        with patch("mmrelay.message_queue._message_queue.start") as mock_start:
+            start_message_queue(1.5)
+        mock_start.assert_called_once_with(1.5)
+
+
+@pytest.mark.asyncio
+async def test_handle_message_mapping_stores_and_prunes():
+    """_handle_message_mapping should store mappings and prune as configured."""
+    queue = MessageQueue()
+    result = MagicMock()
+    result.id = 123
+    mapping_info = {
+        "matrix_event_id": "$event",
+        "room_id": "!room:example.org",
+        "text": "hello",
+        "meshnet": "mesh",
+        "msgs_to_keep": 1,
+    }
+
+    with (
+        patch(
+            "mmrelay.db_utils.async_store_message_map",
+            new_callable=AsyncMock,
+        ) as mock_store,
+        patch(
+            "mmrelay.db_utils.async_prune_message_map",
+            new_callable=AsyncMock,
+        ) as mock_prune,
+    ):
+        await queue._handle_message_mapping(result, mapping_info)
+
+    mock_store.assert_awaited_once_with(
+        123,
+        "$event",
+        "!room:example.org",
+        "hello",
+        meshtastic_meshnet="mesh",
+    )
+    mock_prune.assert_awaited_once_with(1)
 
 
 class TestQueuedMessage(unittest.TestCase):

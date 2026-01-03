@@ -1,7 +1,10 @@
 import asyncio
+import importlib
 import os
 import re
 import ssl
+import sys
+import types
 import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
@@ -6074,6 +6077,78 @@ async def test_handle_matrix_reply_success():
 
 
 @pytest.mark.asyncio
+async def test_handle_matrix_reply_numeric_string_reply_id():
+    """Numeric string meshtastic_id should be treated as a reply_id."""
+    mock_room = MagicMock()
+    mock_event = MagicMock()
+    mock_room_config = {"meshtastic_channel": 0}
+    mock_config = {"matrix_rooms": []}
+
+    with (
+        patch(
+            "mmrelay.matrix_utils.get_message_map_by_matrix_event_id"
+        ) as mock_db_lookup,
+        patch("mmrelay.matrix_utils.send_reply_to_meshtastic") as mock_send_reply,
+        patch("mmrelay.matrix_utils.format_reply_message") as mock_format_reply,
+        patch("mmrelay.matrix_utils.get_user_display_name") as mock_get_display_name,
+    ):
+        mock_db_lookup.return_value = ("123", "!room123", "original text", "remote")
+        mock_format_reply.return_value = "formatted reply"
+        mock_get_display_name.return_value = "Test User"
+
+        result = await handle_matrix_reply(
+            mock_room,
+            mock_event,
+            "reply_to_event_id",
+            "reply text",
+            mock_room_config,
+            True,
+            "local_meshnet",
+            mock_config,
+        )
+
+        assert result is True
+        assert mock_send_reply.call_args.kwargs["reply_id"] == 123
+
+
+@pytest.mark.asyncio
+async def test_handle_matrix_reply_unexpected_id_type_broadcasts():
+    """Unexpected meshtastic_id types should fall back to broadcast replies."""
+    mock_room = MagicMock()
+    mock_event = MagicMock()
+    mock_room_config = {"meshtastic_channel": 0}
+    mock_config = {"matrix_rooms": []}
+
+    with (
+        patch(
+            "mmrelay.matrix_utils.get_message_map_by_matrix_event_id"
+        ) as mock_db_lookup,
+        patch("mmrelay.matrix_utils.send_reply_to_meshtastic") as mock_send_reply,
+        patch("mmrelay.matrix_utils.format_reply_message") as mock_format_reply,
+        patch("mmrelay.matrix_utils.get_user_display_name") as mock_get_display_name,
+        patch("mmrelay.matrix_utils.logger") as mock_logger,
+    ):
+        mock_db_lookup.return_value = (12.34, "!room123", "original text", "local")
+        mock_format_reply.return_value = "formatted reply"
+        mock_get_display_name.return_value = "Test User"
+
+        result = await handle_matrix_reply(
+            mock_room,
+            mock_event,
+            "reply_to_event_id",
+            "reply text",
+            mock_room_config,
+            True,
+            "local_meshnet",
+            mock_config,
+        )
+
+        assert result is True
+        assert mock_send_reply.call_args.kwargs["reply_id"] is None
+        mock_logger.warning.assert_called_once()
+
+
+@pytest.mark.asyncio
 async def test_handle_matrix_reply_original_not_found():
     """Test handle_matrix_reply when original message is not found."""
 
@@ -6221,6 +6296,22 @@ class TestUncoveredMatrixUtils(unittest.TestCase):
         # Test that setters work
         entries[0][1]("!newroom:example.com")
         self.assertEqual(mapping[0], "!newroom:example.com")
+
+    @patch("mmrelay.matrix_utils.logger")
+    def test_iter_room_alias_entries_dict_format(self, mock_logger):
+        """Test _iter_room_alias_entries with dict format."""
+        mapping = {
+            "one": "#room1:example.com",
+            "two": {"id": "#room2:example.com"},
+        }
+        entries = list(_iter_room_alias_entries(mapping))
+
+        self.assertEqual(len(entries), 2)
+        entries[0][1]("!new1:example.com")
+        entries[1][1]("!new2:example.com")
+
+        self.assertEqual(mapping["one"], "!new1:example.com")
+        self.assertEqual(mapping["two"]["id"], "!new2:example.com")
 
     @patch("mmrelay.matrix_utils.logger")
     def test_can_auto_create_credentials_missing_fields(self, mock_logger):
@@ -6553,3 +6644,260 @@ async def test_handle_detection_sensor_packet_queue_fail():
         )
 
         mock_queue_message.assert_called_once()
+
+
+def test_matrix_utils_imports_nio_exceptions_when_available(monkeypatch):
+    """Exercise the nio exception import branch for coverage."""
+    import mmrelay.matrix_utils as mu
+
+    original_values = {
+        "NioLocalProtocolError": mu.NioLocalProtocolError,
+        "NioLocalTransportError": mu.NioLocalTransportError,
+        "NioRemoteProtocolError": mu.NioRemoteProtocolError,
+        "NioRemoteTransportError": mu.NioRemoteTransportError,
+        "NioLoginError": mu.NioLoginError,
+        "NioLogoutError": mu.NioLogoutError,
+        "NIO_COMM_EXCEPTIONS": mu.NIO_COMM_EXCEPTIONS,
+        "config": mu.config,
+        "matrix_client": mu.matrix_client,
+        "matrix_rooms": mu.matrix_rooms,
+        "bot_user_id": mu.bot_user_id,
+        "matrix_access_token": mu.matrix_access_token,
+        "matrix_homeserver": mu.matrix_homeserver,
+        "bot_user_name": mu.bot_user_name,
+        "bot_start_time": mu.bot_start_time,
+    }
+
+    exc_mod = types.ModuleType("nio.exceptions")
+    resp_mod = types.ModuleType("nio.responses")
+
+    class LocalProtocolError(Exception):
+        pass
+
+    class LocalTransportError(Exception):
+        pass
+
+    class RemoteProtocolError(Exception):
+        pass
+
+    class RemoteTransportError(Exception):
+        pass
+
+    class LoginError(Exception):
+        pass
+
+    class LogoutError(Exception):
+        pass
+
+    exc_mod.LocalProtocolError = LocalProtocolError
+    exc_mod.LocalTransportError = LocalTransportError
+    exc_mod.RemoteProtocolError = RemoteProtocolError
+    exc_mod.RemoteTransportError = RemoteTransportError
+    resp_mod.LoginError = LoginError
+    resp_mod.LogoutError = LogoutError
+
+    monkeypatch.setitem(sys.modules, "nio.exceptions", exc_mod)
+    monkeypatch.setitem(sys.modules, "nio.responses", resp_mod)
+
+    importlib.reload(mu)
+
+    assert mu.NioLocalProtocolError is LocalProtocolError
+    assert mu.NioLoginError is LoginError
+
+    # Restore original exception classes so other tests using imports remain consistent.
+    mu.NioLocalProtocolError = original_values["NioLocalProtocolError"]
+    mu.NioLocalTransportError = original_values["NioLocalTransportError"]
+    mu.NioRemoteProtocolError = original_values["NioRemoteProtocolError"]
+    mu.NioRemoteTransportError = original_values["NioRemoteTransportError"]
+    mu.NioLoginError = original_values["NioLoginError"]
+    mu.NioLogoutError = original_values["NioLogoutError"]
+    mu.NIO_COMM_EXCEPTIONS = original_values["NIO_COMM_EXCEPTIONS"]
+    mu.config = original_values["config"]
+    mu.matrix_client = original_values["matrix_client"]
+    mu.matrix_rooms = original_values["matrix_rooms"]
+    mu.bot_user_id = original_values["bot_user_id"]
+    mu.matrix_access_token = original_values["matrix_access_token"]
+    mu.matrix_homeserver = original_values["matrix_homeserver"]
+    mu.bot_user_name = original_values["bot_user_name"]
+    mu.bot_start_time = original_values["bot_start_time"]
+
+
+@pytest.mark.asyncio
+async def test_connect_matrix_alias_resolution_warns_when_client_falsey(monkeypatch):
+    """Alias resolution should warn when the client is unavailable/truthy check fails."""
+    mock_client = MagicMock()
+    mock_client.__bool__.return_value = False
+    mock_client.rooms = {}
+    mock_client.sync = AsyncMock(return_value=SimpleNamespace())
+    mock_client.get_displayname = AsyncMock(
+        return_value=SimpleNamespace(displayname="Bot")
+    )
+    mock_client.should_upload_keys = False
+
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils.AsyncClient",
+        lambda *_args, **_kwargs: mock_client,
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils._create_ssl_context",
+        lambda: MagicMock(),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "mmrelay.matrix_utils._display_room_channel_mappings",
+        lambda *_args, **_kwargs: None,
+        raising=False,
+    )
+    monkeypatch.setattr("mmrelay.matrix_utils.matrix_client", None, raising=False)
+
+    with (
+        patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
+        patch(
+            "mmrelay.e2ee_utils.get_e2ee_status", return_value={"overall_status": "ok"}
+        ),
+        patch("mmrelay.e2ee_utils.get_room_encryption_warnings", return_value=[]),
+        patch("mmrelay.matrix_utils.logger") as mock_logger,
+    ):
+        config = {
+            "matrix": {
+                "homeserver": "https://example.org",
+                "access_token": "token",
+                "bot_user_id": "@bot:example.org",
+            },
+            "matrix_rooms": [{"id": "#alias:example.org", "meshtastic_channel": 0}],
+        }
+        await connect_matrix(config)
+
+    mock_logger.warning.assert_any_call(
+        "Cannot resolve alias #alias:example.org: Matrix client is not available"
+    )
+
+
+@pytest.mark.asyncio
+async def test_matrix_relay_logs_unexpected_exception():
+    """Unexpected errors in matrix_relay should be logged and not raised."""
+    mock_client = MagicMock()
+    mock_client.rooms = {}
+    mock_client.room_send = AsyncMock()
+
+    config = {
+        "meshtastic": {"meshnet_name": "TestMesh"},
+        "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+    }
+
+    with (
+        patch("mmrelay.matrix_utils.config", config),
+        patch("mmrelay.matrix_utils.connect_matrix", return_value=mock_client),
+        patch(
+            "mmrelay.matrix_utils.get_interaction_settings",
+            return_value={"reactions": False, "replies": False},
+        ),
+        patch("mmrelay.matrix_utils.message_storage_enabled", return_value=False),
+        patch(
+            "mmrelay.matrix_utils.join_matrix_room",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("boom"),
+        ),
+        patch("mmrelay.matrix_utils.logger") as mock_logger,
+    ):
+        await matrix_relay(
+            room_id="!room:matrix.org",
+            message="Hello",
+            longname="Alice",
+            shortname="A",
+            meshnet_name="TestMesh",
+            portnum=1,
+        )
+
+    mock_logger.exception.assert_called_once_with(
+        "Error sending radio message to matrix room !room:matrix.org"
+    )
+
+
+@pytest.mark.asyncio
+async def test_send_reply_to_meshtastic_defaults_config_when_missing():
+    """send_reply_to_meshtastic should tolerate a missing global config."""
+    room = MagicMock()
+    room.room_id = "!room:example.org"
+    event = MagicMock()
+    event.event_id = "$event"
+    room_config = {"meshtastic_channel": 0}
+
+    with (
+        patch(
+            "mmrelay.matrix_utils._get_meshtastic_interface_and_channel",
+            new_callable=AsyncMock,
+            return_value=(MagicMock(), 0),
+        ),
+        patch("mmrelay.matrix_utils.get_meshtastic_config_value", return_value=True),
+        patch("mmrelay.matrix_utils.queue_message", return_value=True),
+        patch("mmrelay.matrix_utils._create_mapping_info", return_value=None),
+        patch("mmrelay.matrix_utils.config", None),
+    ):
+        await send_reply_to_meshtastic(
+            "reply",
+            "Test User",
+            room_config,
+            room,
+            event,
+            "text",
+            False,
+            "local_meshnet",
+        )
+
+
+@pytest.mark.asyncio
+async def test_on_room_message_creates_mapping_info():
+    """on_room_message should build mapping info when storage is enabled."""
+    room = MagicMock()
+    room.room_id = "!room:matrix.org"
+
+    event = MagicMock()
+    event.sender = "@user:matrix.org"
+    event.server_timestamp = 1234
+    event.event_id = "$event123"
+    event.body = "Hello"
+    event.source = {"content": {"body": "Hello", "meshtastic_portnum": 1}}
+
+    config = {
+        "meshtastic": {"meshnet_name": "LocalMesh", "broadcast_enabled": True},
+        "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+    }
+
+    mock_queue = MagicMock()
+    mock_queue.get_queue_size.return_value = 1
+
+    with (
+        patch("mmrelay.matrix_utils.config", config),
+        patch(
+            "mmrelay.matrix_utils.matrix_rooms",
+            [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+        ),
+        patch("mmrelay.matrix_utils.bot_user_id", "@bot:matrix.org"),
+        patch("mmrelay.matrix_utils.bot_start_time", 0),
+        patch(
+            "mmrelay.matrix_utils.get_interaction_settings",
+            return_value={"reactions": True, "replies": False},
+        ),
+        patch(
+            "mmrelay.matrix_utils.get_user_display_name",
+            new_callable=AsyncMock,
+            return_value="User",
+        ),
+        patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
+        patch(
+            "mmrelay.matrix_utils._get_meshtastic_interface_and_channel",
+            new_callable=AsyncMock,
+            return_value=(MagicMock(), 0),
+        ),
+        patch("mmrelay.matrix_utils._get_msgs_to_keep_config", return_value=5),
+        patch(
+            "mmrelay.matrix_utils._create_mapping_info",
+            return_value={"matrix_event_id": "$event123"},
+        ) as mock_mapping,
+        patch("mmrelay.matrix_utils.queue_message", return_value=True),
+        patch("mmrelay.matrix_utils.get_message_queue", return_value=mock_queue),
+    ):
+        await on_room_message(room, event)
+
+    mock_mapping.assert_called_once()

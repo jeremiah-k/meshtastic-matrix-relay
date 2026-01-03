@@ -133,6 +133,8 @@ class Plugin(BasePlugin):
         Returns:
             bool: `False` since this plugin does not process Meshtastic messages.
         """
+        # Keep parameter names for compatibility with keyword calls in tests.
+        _ = packet, formatted_message, longname, meshnet_name
         return False
 
     async def handle_room_message(

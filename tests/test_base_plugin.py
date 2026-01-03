@@ -422,6 +422,21 @@ class TestBasePlugin(unittest.TestCase):
             "test_plugin", "!node123", test_data
         )
 
+    def test_set_node_data_sequence_and_iterable(self):
+        """set_node_data should normalize sequences and iterables to lists."""
+        plugin = MockPlugin()
+
+        self.mock_store_plugin_data.reset_mock()
+        plugin.set_node_data("node1", (1, 2, 3))
+        self.mock_store_plugin_data.assert_called_with(
+            "test_plugin", "node1", [1, 2, 3]
+        )
+
+        self.mock_store_plugin_data.reset_mock()
+        plugin.max_data_rows_per_node = 2
+        plugin.set_node_data("node2", (i for i in range(3)))
+        self.mock_store_plugin_data.assert_called_with("test_plugin", "node2", [1, 2])
+
     def test_get_data(self):
         """
         Tests that the get_data method retrieves all plugin data using the correct plugin name.
@@ -568,6 +583,17 @@ class TestBasePlugin(unittest.TestCase):
         # Should return unchanged
         self.assertEqual(result, packet_without_raw)
 
+    def test_strip_raw_list_entries(self):
+        """Test that strip_raw removes raw keys inside list items."""
+        plugin = MockPlugin()
+
+        data = [{"raw": b"data", "value": 1}, "keep", {"nested": {"raw": b"x"}}]
+        result = plugin.strip_raw(data)
+
+        self.assertEqual(result[0], {"value": 1})
+        self.assertEqual(result[1], "keep")
+        self.assertEqual(result[2], {"nested": {}})
+
     @patch("mmrelay.plugins.base_plugin.queue_message")
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     def test_send_message(self, mock_connect_meshtastic, mock_queue_message):
@@ -600,6 +626,21 @@ class TestBasePlugin(unittest.TestCase):
         """
         plugin = MockPlugin()
         self.assertEqual(plugin.get_matrix_commands(), ["test_plugin"])
+
+    def test_get_matrix_commands_without_plugin_name(self):
+        """get_matrix_commands should return empty list when plugin_name is None."""
+        plugin = MockPlugin()
+        plugin.plugin_name = None
+
+        self.assertEqual(plugin.get_matrix_commands(), [])
+
+    def test_require_plugin_name_raises_when_missing(self):
+        """_require_plugin_name should raise when plugin_name is unset."""
+        plugin = MockPlugin()
+        plugin.plugin_name = None
+
+        with self.assertRaises(ValueError):
+            plugin._require_plugin_name()
 
     def test_get_mesh_commands_default(self):
         """
