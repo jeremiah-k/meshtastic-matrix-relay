@@ -406,8 +406,8 @@ def test_on_meshtastic_message_non_text_plugin_returns_none(
     ):
         on_meshtastic_message(packet, _make_interface())
 
-    mock_logger.warning.assert_any_call(
-        "Plugin %s returned no awaitable; skipping.", "noawait"
+    plugin.handle_meshtastic_message.assert_called_once_with(
+        packet, formatted_message=None, longname=None, meshnet_name=None
     )
 
 
