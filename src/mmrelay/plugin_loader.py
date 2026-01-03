@@ -1756,6 +1756,14 @@ def load_plugins_from_directory(directory: str, recursive: bool = False) -> list
 
                         sys.modules["plugins"] = mmrelay.plugins
 
+                    # Critical: Alias base_plugin to prevent double-loading and config reset
+                    # This ensures that plugins importing 'plugins.base_plugin' get the same
+                    # module object (with configured global state) as 'mmrelay.plugins.base_plugin'.
+                    if "plugins.base_plugin" not in sys.modules:
+                        import mmrelay.plugins.base_plugin
+
+                        sys.modules["plugins.base_plugin"] = mmrelay.plugins.base_plugin
+
                     plugin_dir = os.path.dirname(plugin_path)
 
                     try:
