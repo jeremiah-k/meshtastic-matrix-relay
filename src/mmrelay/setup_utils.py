@@ -319,7 +319,7 @@ WantedBy=default.target
 """
 
 
-def is_service_enabled():
+def is_service_enabled() -> bool:
     """
     Determine whether the user systemd service 'mmrelay.service' is enabled to start at login.
 

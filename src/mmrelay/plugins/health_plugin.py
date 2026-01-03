@@ -25,7 +25,7 @@ class Plugin(BasePlugin):
         return "Show mesh health using avg battery, SNR, AirUtil"
 
     def generate_response(self) -> str:
-        """
+        r"""
         Produce a concise multi-line health summary for the mesh using metrics reported by discovered Meshtastic nodes.
 
         The returned text reports total node count and, when available, average and median values for battery percentage, air utilization (tx), and SNR, plus a count of nodes with battery <= 10%.

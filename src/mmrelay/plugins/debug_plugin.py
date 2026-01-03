@@ -26,9 +26,9 @@ class Plugin(BasePlugin):
     async def handle_meshtastic_message(
         self,
         packet: dict[str, Any],
-        formatted_message: str,
-        longname: str,
-        meshnet_name: str,
+        _formatted_message: str,
+        _longname: str,
+        _meshnet_name: str,
     ) -> bool:
         """
         Log a Meshtastic packet after removing raw binary fields.
@@ -42,7 +42,7 @@ class Plugin(BasePlugin):
             meshnet_name (str): Name of the mesh network where the packet was received.
 
         Returns:
-            bool: `False` to indicate the message is not intercepted and may be processed by other plugins.
+            bool: `False` to indicate that the message is not intercepted and may be processed by other plugins.
         """
         packet = self.strip_raw(packet)
 
@@ -50,7 +50,7 @@ class Plugin(BasePlugin):
         return False
 
     async def handle_room_message(
-        self, room: MatrixRoom, event: dict[str, Any], full_message: str
+        self, _room: MatrixRoom, _event: dict[str, Any], _full_message: str
     ) -> bool:
         """
         Declines to handle room messages so they remain available to other plugins.
@@ -58,9 +58,8 @@ class Plugin(BasePlugin):
         Parameters:
             room: The room or channel associated with the message.
             event: Metadata describing the room event.
-            full_message: The complete message payload.
 
         Returns:
-            `False` always, indicating the message is not intercepted and processing continues.
+            bool: `False` to indicate that the message is not handled.
         """
         return False

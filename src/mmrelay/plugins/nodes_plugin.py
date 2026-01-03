@@ -128,11 +128,13 @@ $shortname $longname / $devicemodel / $battery $voltage / $snr / $hops / $lastse
             packet: Raw Meshtastic packet data received from the mesh.
             formatted_message (str): Human-readable representation of the packet payload.
             longname (str): Full device name of the packet sender.
-            meshnet_name (str): Name of the mesh network the packet originated from.
+            meshnet_name (str): Name of the mesh network that the packet originated from.
 
         Returns:
-            `False` indicating the plugin did not handle the message.
+            `False` indicating that the plugin did not handle the message.
         """
+        # Preserve API surface; arguments are currently unused.
+        _ = formatted_message, meshnet_name
         return False
 
     async def handle_room_message(
