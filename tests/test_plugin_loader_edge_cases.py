@@ -15,6 +15,7 @@ Tests edge cases and error handling including:
 import os
 import sys
 import tempfile
+import types
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -175,6 +176,44 @@ class Plugin:
                             len(info_calls) > 0,
                             "Should have logged installation attempt",
                         )
+
+    def test_load_plugins_from_directory_dependency_install_success(self):
+        """
+        Ensure auto-install path retries and loads the plugin when the dependency becomes available.
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            plugin_file = os.path.join(temp_dir, "dependency_plugin.py")
+            with open(plugin_file, "w") as f:
+                f.write(
+                    """
+import missing_dependency
+class Plugin:
+    def __init__(self):
+        self.plugin_name = "dependency_plugin"
+"""
+                )
+
+            missing_module = "missing_dependency"
+            sys.modules.pop(missing_module, None)
+
+            def fake_refresh() -> None:
+                sys.modules.setdefault(missing_module, types.ModuleType(missing_module))
+
+            try:
+                with (
+                    patch.dict("os.environ", {}, clear=True),
+                    patch("mmrelay.plugin_loader._run"),
+                    patch(
+                        "mmrelay.plugin_loader._refresh_dependency_paths",
+                        side_effect=fake_refresh,
+                    ),
+                ):
+                    plugins = load_plugins_from_directory(temp_dir)
+            finally:
+                sys.modules.pop(missing_module, None)
+
+            self.assertEqual(len(plugins), 1)
+            self.assertEqual(plugins[0].plugin_name, "dependency_plugin")
 
     def test_load_plugins_from_directory_dependency_install_failure(self):
         """

@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Iterable
 from typing import Any
 
+# markdown has stubs in our env; avoid import-untyped so mypy --strict stays clean.
 import markdown
 
 # matrix-nio is not marked py.typed; keep import-untyped for strict mypy.

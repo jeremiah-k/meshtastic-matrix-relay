@@ -1,4 +1,4 @@
-# Note: This plugin was experimental and is not functional.
+# Core mesh-to-Matrix relay plugin providing bidirectional message bridging.
 
 import asyncio
 import base64
@@ -140,8 +140,8 @@ class Plugin(BasePlugin):
         Returns:
             True if the packet was sent to a mapped Matrix room, False otherwise.
         """
-        # formatted_message, longname, and meshnet_name are part of the public
-        # plugin callback API but not used for routing in this plugin.
+        # Keep parameter names for keyword-arg compatibility in tests and plugin API.
+        # Unused for routing in this plugin.
         _ = (formatted_message, longname, meshnet_name)
         from mmrelay.matrix_utils import connect_matrix
 
@@ -232,8 +232,7 @@ class Plugin(BasePlugin):
         Returns:
             True if a packet was successfully sent to the mesh, False otherwise.
         """
-        # Use the event for matching instead of full_message; keep full_message
-        # in the signature for API compatibility.
+        # Keep parameter name for keyword-arg compatibility in tests and plugin API.
         _ = full_message
         if not self.matches(event):
             return False
@@ -292,7 +291,7 @@ class Plugin(BasePlugin):
         try:
             meshtastic_client._sendPacket(meshPacket=meshPacket, destinationId=to_id)
         except AttributeError:
-            self.logger.error(
+            self.logger.exception(
                 "_sendPacket method not available; Meshtastic API may have changed"
             )
             return False

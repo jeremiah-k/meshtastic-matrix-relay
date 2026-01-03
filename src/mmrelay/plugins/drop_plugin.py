@@ -68,6 +68,7 @@ class Plugin(BasePlugin):
         Returns:
             `True` if a drop command was processed (including cases where processing occurred but the dropper's position was unavailable), `False` otherwise.
         """
+        # Keep parameter names for keyword-arg compatibility in tests and plugin API.
         _ = (formatted_message, longname, meshnet_name)
         meshtastic_client = await asyncio.to_thread(connect_meshtastic)
         if meshtastic_client is None:
@@ -188,5 +189,6 @@ class Plugin(BasePlugin):
         Returns:
             bool: True if the event matches the plugin's criteria, False otherwise.
         """
+        # Preserve parameter names for keyword-arg compatibility in tests and plugin API.
         _ = (room, full_message)
         return self.matches(event)

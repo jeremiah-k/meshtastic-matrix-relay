@@ -616,6 +616,19 @@ class TestMeshRelayPlugin(unittest.TestCase):
         self.assertEqual(rooms, [])
         self.plugin.logger.debug.assert_called_once()
 
+    @patch("mmrelay.plugins.mesh_relay_plugin.config")
+    def test_iter_room_configs_dict_entries(self, mock_config):
+        """_iter_room_configs should filter dict values and ignore non-dict entries."""
+        mock_config.get.return_value = {
+            "room1": {"id": "!room1:matrix.org", "meshtastic_channel": 0},
+            "room2": "ignore-me",
+        }
+
+        rooms = self.plugin._iter_room_configs()
+
+        self.assertEqual(len(rooms), 1)
+        self.assertEqual(rooms[0]["id"], "!room1:matrix.org")
+
     @patch("mmrelay.matrix_utils.connect_matrix", new_callable=AsyncMock)
     def test_handle_meshtastic_message_no_matrix_client(self, mock_connect_matrix):
         """handle_meshtastic_message should fail fast when Matrix client is missing."""

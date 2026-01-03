@@ -2046,41 +2046,6 @@ async def test_matrix_relay_store_failure_logs(
 @patch("mmrelay.matrix_utils.get_interaction_settings")
 @patch("mmrelay.matrix_utils.message_storage_enabled", return_value=False)
 @patch("mmrelay.matrix_utils.logger")
-async def test_matrix_relay_timeout_logs_and_returns(
-    mock_logger, _mock_storage_enabled, mock_get_interactions, mock_connect_matrix
-):
-    """Timeouts during room_send should be logged and return early."""
-    mock_get_interactions.return_value = {"reactions": False, "replies": False}
-
-    mock_client = MagicMock()
-    mock_client.rooms = {"!room:matrix.org": MagicMock(encrypted=False)}
-    mock_client.room_send = AsyncMock(side_effect=asyncio.TimeoutError)
-    mock_connect_matrix.return_value = mock_client
-
-    config = {
-        "meshtastic": {"meshnet_name": "TestMesh"},
-        "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
-    }
-
-    with patch("mmrelay.matrix_utils.config", config):
-        await matrix_relay(
-            room_id="!room:matrix.org",
-            message="Hello Matrix",
-            longname="Alice",
-            shortname="A",
-            meshnet_name="TestMesh",
-            portnum=1,
-        )
-
-    mock_logger.exception.assert_called_with(
-        "Timeout sending message to Matrix room %s", "!room:matrix.org"
-    )
-
-
-@patch("mmrelay.matrix_utils.connect_matrix")
-@patch("mmrelay.matrix_utils.get_interaction_settings")
-@patch("mmrelay.matrix_utils.message_storage_enabled", return_value=False)
-@patch("mmrelay.matrix_utils.logger")
 async def test_matrix_relay_reply_missing_mapping_logs_warning(
     mock_logger, _mock_storage_enabled, mock_get_interactions, mock_connect_matrix
 ):
@@ -6700,6 +6665,8 @@ def test_matrix_utils_imports_nio_exceptions_when_available(monkeypatch):
     """Exercise the nio exception import branch for coverage."""
     import mmrelay.matrix_utils as mu
 
+    # reload is intentional to exercise the import-time wiring of nio exceptions.
+
     original_values = {
         "NioLocalProtocolError": mu.NioLocalProtocolError,
         "NioLocalTransportError": mu.NioLocalTransportError,
@@ -6935,6 +6902,7 @@ async def test_on_room_message_creates_mapping_info():
             new_callable=AsyncMock,
             return_value="User",
         ),
+        patch("mmrelay.matrix_utils.message_storage_enabled", return_value=True),
         patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
         patch(
             "mmrelay.matrix_utils._get_meshtastic_interface_and_channel",

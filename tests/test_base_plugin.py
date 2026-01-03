@@ -437,6 +437,17 @@ class TestBasePlugin(unittest.TestCase):
         plugin.set_node_data("node2", (i for i in range(3)))
         self.mock_store_plugin_data.assert_called_with("test_plugin", "node2", [1, 2])
 
+    def test_set_node_data_dict_normalizes(self):
+        """set_node_data should wrap dict input into a list before storing."""
+        plugin = MockPlugin()
+        test_data = {"key": "value"}
+
+        plugin.set_node_data("node3", test_data)
+
+        self.mock_store_plugin_data.assert_called_with(
+            "test_plugin", "node3", [test_data]
+        )
+
     def test_get_data(self):
         """
         Tests that the get_data method retrieves all plugin data using the correct plugin name.

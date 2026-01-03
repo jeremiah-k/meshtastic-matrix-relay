@@ -102,9 +102,7 @@ from mmrelay.meshtastic_utils import connect_meshtastic, sendTextReply
 from mmrelay.message_queue import get_message_queue, queue_message
 
 # Import nio exception types with error handling for test environments.
-# Note: matrix-nio is not marked py.typed; keep import-untyped ignores here to
-# satisfy mypy --strict and align with other nio imports in the codebase.
-# We apply the ignore to grouped imports so the rationale is explicit.
+# matrix-nio is not marked py.typed in our env; keep import-untyped for mypy --strict.
 try:
     from nio.exceptions import (
         LocalProtocolError as NioLocalProtocolError,  # type: ignore[import-untyped]
@@ -479,26 +477,24 @@ def _get_msgs_to_keep_config(config_override: dict[str, Any] | None = None) -> i
     """
     global config
     effective_config = config_override if config_override is not None else config
-    if not effective_config:
+    if not isinstance(effective_config, dict) or not effective_config:
         return DEFAULT_MSGS_TO_KEEP
 
-    msg_map_config: dict[str, Any] | None = None
-    database_cfg = effective_config.get("database")
-    if isinstance(database_cfg, dict):
-        candidate = database_cfg.get("msg_map")
-        if isinstance(candidate, dict):
-            msg_map_config = candidate
+    def _get_msg_map_config(section: dict[str, Any] | None) -> dict[str, Any] | None:
+        if not isinstance(section, dict):
+            return None
+        candidate = section.get("msg_map")
+        return candidate if isinstance(candidate, dict) else None
+
+    msg_map_config = _get_msg_map_config(effective_config.get("database"))
 
     # If not found in database config, check legacy db config
     if msg_map_config is None:
-        db_cfg = effective_config.get("db")
-        if isinstance(db_cfg, dict):
-            candidate = db_cfg.get("msg_map")
-            if isinstance(candidate, dict):
-                msg_map_config = candidate
-                logger.warning(
-                    "Using 'db.msg_map' configuration (legacy). 'database.msg_map' is now the preferred format and 'db.msg_map' will be deprecated in a future version."
-                )
+        msg_map_config = _get_msg_map_config(effective_config.get("db"))
+        if msg_map_config is not None:
+            logger.warning(
+                "Using 'db.msg_map' configuration (legacy). 'database.msg_map' is now the preferred format and 'db.msg_map' will be deprecated in a future version."
+            )
 
     if msg_map_config is None:
         msg_map_config = {}
@@ -1706,7 +1702,10 @@ async def login_matrix_bot(
         homeserver (str | None): Optional homeserver URL to use; if None the user is prompted.
         username (str | None): Optional Matrix username (localpart or full MXID); if None the user is prompted.
         password (str | None): Optional account password; if None the user is prompted securely.
-        logout_others (bool | None): If True, attempt to log out other sessions; if False, skip logout. If None, prompt during interactive login flows; defaults to False when all credentials are supplied.
+        logout_others (bool | None): Controls whether other sessions are logged out.
+            True: Always attempt to log out other sessions.
+            False: Never log out other sessions.
+            None: Prompt when any credentials are entered interactively; treated as False for programmatic calls.
 
     Returns:
         bool: `True` on successful login with credentials persisted, `False` otherwise.
@@ -2362,10 +2361,8 @@ async def matrix_relay(
                 # bleach lacks type stubs in our env; keep import-untyped for strict mypy.
                 import bleach  # type: ignore[import-untyped]  # lazy import
 
-                # markdown ships type hints in our environment; avoid import-untyped to
-                # prevent mypy unused-ignore warnings under --strict. If that changes,
-                # install types-Markdown rather than adding ignores so strictness stays.
-                # markdown ships type hints; avoid import-untyped to keep mypy clean.
+                # markdown has stubs in our env; avoid import-untyped to keep mypy clean.
+                # If that changes, prefer installing types-Markdown over adding ignores.
                 import markdown  # lazy import
 
                 raw_html = markdown.markdown(safe_message)
