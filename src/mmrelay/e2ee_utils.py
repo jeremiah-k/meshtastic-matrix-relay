@@ -284,7 +284,7 @@ def format_room_list(rooms: Dict[str, Any], e2ee_status: Dict[str, Any]) -> List
 def get_e2ee_warning_messages() -> dict[str, str]:
     """
     Provide standard user-facing E2EE warning messages.
-    
+
     Returns:
         dict[str, str]: Mapping of status keys to ready-to-display messages. Keys include
             "unavailable", "disabled", "incomplete", "missing_deps", "missing_auth",
@@ -303,14 +303,14 @@ def get_e2ee_warning_messages() -> dict[str, str]:
 def get_e2ee_error_message(e2ee_status: Dict[str, Any]) -> str:
     """
     Selects one actionable E2EE warning or instruction based on the provided E2EE status.
-    
+
     If the status indicates "ready", returns an empty string. Otherwise chooses a single message in priority order for the first failing condition: platform unsupported, E2EE disabled in config, missing E2EE dependencies, missing Matrix credentials, or general incomplete setup.
-    
+
     Parameters:
         e2ee_status (dict): Status dictionary produced by get_e2ee_status(); expected keys used are
             "overall_status", "platform_supported", "enabled", "dependencies_installed", and
             "credentials_available".
-    
+
     Returns:
         str: The chosen warning or instruction message, or an empty string when no action is required.
     """
@@ -336,9 +336,9 @@ def get_e2ee_error_message(e2ee_status: Dict[str, Any]) -> str:
 def get_e2ee_fix_instructions(e2ee_status: E2EEStatus) -> List[str]:
     """
     Provide ordered, user-facing instructions to resolve E2EE setup issues.
-    
+
     When E2EE is ready, returns a single confirmation line. If the platform is unsupported, returns concise platform guidance. Otherwise returns a numbered sequence of actionable steps to install dependencies, provision Matrix credentials, enable E2EE in configuration, and verify the setup; related commands and config snippets are returned as additional indented lines.
-    
+
     Parameters:
         e2ee_status (E2EEStatus): Status mapping used to select which steps to include. The function reads these keys:
             - "overall_status"
@@ -346,7 +346,7 @@ def get_e2ee_fix_instructions(e2ee_status: E2EEStatus) -> List[str]:
             - "dependencies_installed"
             - "credentials_available"
             - "enabled"
-    
+
     Returns:
         List[str]: Ordered, human-readable instruction lines. Each step is a separate string; indented strings contain commands or configuration snippets.
     """

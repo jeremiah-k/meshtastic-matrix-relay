@@ -54,7 +54,7 @@ class MessageQueue:
     def __init__(self) -> None:
         """
         Initialize the MessageQueue's internal structures and default runtime state.
-        
+
         Sets up the bounded FIFO queue, timing/state variables for rate limiting and delivery tracking, a thread lock for state transitions, and counters/placeholders for the processor task and executor.
         """
         self._queue: Queue[QueuedMessage] = Queue(maxsize=MAX_QUEUE_SIZE)
@@ -214,11 +214,11 @@ class MessageQueue:
     ) -> bool:
         """
         Add a send operation to the queue for ordered, rate-limited delivery.
-        
+
         Parameters:
             description (str): Human-readable description used for logging.
             mapping_info (dict[str, Any] | None): Optional metadata to correlate the sent message with an external event (e.g., Matrix IDs); stored after a successful send.
-        
+
         Returns:
             bool: `true` if the message was successfully enqueued, `false` if the queue is not running or is full.
         """
@@ -272,7 +272,7 @@ class MessageQueue:
     def is_running(self) -> bool:
         """
         Report whether the message queue processor is active.
-        
+
         Returns:
             True if the processor is running, False otherwise.
         """
@@ -281,7 +281,7 @@ class MessageQueue:
     def get_status(self) -> dict[str, Any]:
         """
         Get a snapshot of the message queue's runtime status for monitoring and debugging.
-        
+
         Returns:
             dict: Mapping with the following keys:
                 - running (bool): `True` if the queue processor is active, `False` otherwise.
@@ -314,10 +314,10 @@ class MessageQueue:
     async def drain(self, timeout: Optional[float] = None) -> bool:
         """
         Wait until the queue is drained (no queued messages and no in-flight or current message) or until an optional timeout elapses.
-        
+
         Parameters:
             timeout (Optional[float]): Maximum time to wait in seconds; if None, wait indefinitely.
-        
+
         Returns:
             True if the queue became empty and no message was in-flight, False if the queue was stopped before draining or the timeout was reached.
         """
@@ -522,9 +522,9 @@ class MessageQueue:
     ) -> None:
         """
         Persist a mapping from a sent Meshtastic message to a Matrix event and optionally prune old mappings.
-        
+
         Stores the Meshtastic message id taken from `result.id` alongside `matrix_event_id`, `room_id`, `text`, and optional `meshnet` from `mapping_info`. If `mapping_info` contains `msgs_to_keep` greater than zero, prunes older mappings to retain that many entries; otherwise uses DEFAULT_MSGS_TO_KEEP.
-        
+
         Parameters:
             result: Object returned by the send function; must have an `id` attribute containing the Meshtastic message id.
             mapping_info (dict[str, Any]): Mapping details. Relevant keys:
@@ -574,7 +574,7 @@ _message_queue = MessageQueue()
 def get_message_queue() -> MessageQueue:
     """
     Get the global MessageQueue instance used for rate-limited sending of Meshtastic messages.
-    
+
     Returns:
         MessageQueue: The module-level message queue instance.
     """
@@ -584,7 +584,7 @@ def get_message_queue() -> MessageQueue:
 def start_message_queue(message_delay: float = DEFAULT_MESSAGE_DELAY) -> None:
     """
     Start the global message queue processor.
-    
+
     Parameters:
         message_delay (float): Minimum seconds to wait between consecutive message sends.
     """

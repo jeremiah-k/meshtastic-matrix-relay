@@ -26,9 +26,9 @@ custom_data_dir: str | None = None
 def set_secure_file_permissions(file_path: str, mode: int = 0o600) -> None:
     """
     Set restrictive Unix permission bits on a file to limit access.
-    
+
     On Linux/macOS attempts to set the file's mode (default 0o600). No action is performed on other platforms; failures are logged and not raised.
-    
+
     Parameters:
         file_path (str): Path to the file to modify.
         mode (int): Unix permission bits to apply (default 0o600).
@@ -45,9 +45,9 @@ def set_secure_file_permissions(file_path: str, mode: int = 0o600) -> None:
 def get_base_dir() -> str:
     """
     Determine the filesystem base directory used to store the application's files.
-    
+
     If the module-level `custom_data_dir` is set, that path is returned. On Linux and macOS the directory is `~/.<APP_NAME>`; on Windows the platform-specific user data directory for the application is returned.
-    
+
     Returns:
         The filesystem path to the application's base data directory.
     """
@@ -66,7 +66,7 @@ def get_base_dir() -> str:
 def get_app_path() -> str:
     """
     Get the application's base directory, accounting for frozen (bundled) executables.
-    
+
     Returns:
         The path to the application's base directory: the directory containing the frozen executable when running from a bundle, or the directory containing this source file otherwise.
     """
@@ -81,12 +81,12 @@ def get_app_path() -> str:
 def get_config_paths(args: Any = None) -> list[str]:
     """
     Produce a prioritized list of candidate configuration file paths for the application.
-    
+
     Order of priority: a path provided via command-line args (args.config), the user config directory (created when possible), the current working directory, and the application directory. The user config directory entry is omitted if the directory cannot be created.
-    
+
     Parameters:
         args (Any): Parsed command-line arguments, expected to have an optional `config` attribute specifying a config file path.
-    
+
     Returns:
         list[str]: Absolute paths to candidate configuration files, ordered by priority.
     """
@@ -126,10 +126,10 @@ def get_config_paths(args: Any = None) -> list[str]:
 def get_data_dir() -> str:
     """
     Get the application's data directory, creating it if necessary.
-    
+
     On Linux and macOS this is "<base_dir>/data" (where base_dir is returned by get_base_dir()).
     On Windows this is "<custom_data_dir>/data" if a global override is set, otherwise the platform default user data directory for the application.
-    
+
     Returns:
         Absolute path to the data directory.
     """
@@ -151,12 +151,12 @@ def get_data_dir() -> str:
 def get_plugin_data_dir(plugin_name: str | None = None) -> str:
     """
     Resolve and ensure the application's plugins data directory, optionally for a specific plugin.
-    
+
     Creates the top-level plugins directory if missing; if `plugin_name` is provided, creates and returns a subdirectory for that plugin.
-    
+
     Parameters:
         plugin_name (str | None): Optional plugin identifier to return a plugin-specific subdirectory.
-    
+
     Returns:
         str: Absolute path to the plugins directory, or to the plugin-specific subdirectory when `plugin_name` is provided.
     """
@@ -359,9 +359,9 @@ def load_logging_config_from_env() -> dict[str, Any] | None:
 def load_database_config_from_env() -> dict[str, Any] | None:
     """
     Build a database configuration fragment from environment variables.
-    
+
     Reads the environment variables specified by the module-level mapping and converts present values into a dictionary keyed by configuration keys. Useful for merging database-related overrides into the main application config.
-    
+
     Returns:
         dict[str, Any] | None: A dictionary of database configuration values if any mapped environment variables were found, `None` otherwise.
     """
@@ -408,12 +408,12 @@ def is_e2ee_enabled(config: dict[str, Any]) -> bool:
 def check_e2ee_enabled_silently(args: Any = None) -> bool:
     """
     Determine whether End-to-End Encryption (E2EE) is enabled by inspecting the first readable configuration file.
-    
+
     Checks candidate config paths in priority order and returns as soon as a readable configuration enabling E2EE is found. Unreadable files or YAML errors are ignored and the search continues. On Windows this always returns False.
-    
+
     Parameters:
         args: Optional parsed command-line arguments that can influence config search order.
-    
+
     Returns:
         `true` if E2EE is enabled in the first readable configuration file, `false` otherwise.
     """
@@ -441,14 +441,14 @@ def check_e2ee_enabled_silently(args: Any = None) -> bool:
 def apply_env_config_overrides(config: dict[str, Any] | None) -> dict[str, Any]:
     """
     Merge configuration values derived from environment variables into a configuration dictionary.
-    
+
     If `config` is falsy, a new dict is created. Environment-derived fragments are merged into the top-level
     keys "meshtastic", "logging", and "database" when present; existing keys in those sections are preserved.
     The input dictionary may be mutated in place.
-    
+
     Parameters:
         config (dict[str, Any] | None): Base configuration to update (or None to start from an empty dict).
-    
+
     Returns:
         dict[str, Any]: The configuration dictionary with environment overrides applied.
     """
@@ -479,9 +479,9 @@ def apply_env_config_overrides(config: dict[str, Any] | None) -> dict[str, Any]:
 def load_credentials() -> dict[str, Any] | None:
     """
     Load Matrix credentials from the application's base configuration directory.
-    
+
     Searches for "credentials.json" in the application's base configuration directory and parses it as JSON.
-    
+
     Returns:
         dict[str, Any] | None: Parsed credentials dictionary when the file exists and contains valid JSON; `None` if the file is missing, unreadable, or contains invalid JSON.
     """
@@ -956,18 +956,18 @@ def get_meshtastic_config_value(
 ) -> Any:
     """
     Retrieve a value from the meshtastic section of the configuration.
-    
+
     If the meshtastic section or the requested key is missing, returns `default` unless `required` is True, in which case a KeyError is raised and an error is logged.
-    
+
     Parameters:
         config (dict): Configuration mapping that may contain a "meshtastic" section.
         key (str): Key to look up within the "meshtastic" section.
         default: Value to return when the key is absent and `required` is False.
         required (bool): If True, a missing key raises KeyError; otherwise the function returns `default`.
-    
+
     Returns:
         The value found at `config["meshtastic"][key]`, or `default` if the key is not present and `required` is False.
-    
+
     Raises:
         KeyError: When `required` is True and the requested key is missing.
     """

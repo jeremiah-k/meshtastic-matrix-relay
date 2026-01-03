@@ -17,7 +17,7 @@ class Plugin(BasePlugin):
     def commands(self) -> list[str]:
         """
         List supported telemetry metric command names.
-        
+
         Returns:
             list[str]: Supported telemetry command names: "batteryLevel", "voltage", and "airUtilTx".
         """
@@ -27,7 +27,7 @@ class Plugin(BasePlugin):
     def description(self) -> str:
         """
         Short description of the plugin's visualization purpose.
-        
+
         Returns:
             str: The text "Graph of avg Mesh telemetry value for last 12 hours".
         """
@@ -36,10 +36,10 @@ class Plugin(BasePlugin):
     def _generate_timeperiods(self, hours: int = 12) -> list[datetime]:
         """
         Generate hourly datetime anchors spanning the past `hours` hours up to the current time.
-        
+
         Parameters:
             hours (int): Number of hours to look back from now (default 12).
-        
+
         Returns:
             list[datetime]: Hourly datetime objects from (now - hours) up to and including now.
         """
@@ -64,15 +64,15 @@ class Plugin(BasePlugin):
         # Support deviceMetrics only for now
         """
         Process an incoming Meshtastic packet and record device telemetry for the sending node when present.
-        
+
         If the packet contains `decoded.telemetry.deviceMetrics` and `decoded.portnum == "TELEMETRY_APP"`, extracts the `time` plus the `batteryLevel`, `voltage`, and `airUtilTx` fields (each defaults to 0 if missing) and persists an appended telemetry record for the sender. Other parameters (`formatted_message`, `longname`, `meshnet_name`) are not inspected by this method.
-        
+
         Parameters:
             packet (dict): Meshtastic packet expected to include `decoded` with `portnum` and a `telemetry.deviceMetrics` object.
             formatted_message (str): Unused in this handler.
             longname (str): Unused in this handler.
             meshnet_name (str): Unused in this handler.
-        
+
         Returns:
             bool: `False` always; telemetry is recorded but the message is not consumed by this handler.
         """
@@ -118,7 +118,7 @@ class Plugin(BasePlugin):
     def get_matrix_commands(self) -> list[str]:
         """
         Telemetry command names supported for Matrix messages.
-        
+
         Returns:
             list[str]: Supported telemetry command names: ["batteryLevel", "voltage", "airUtilTx"].
         """
@@ -127,7 +127,7 @@ class Plugin(BasePlugin):
     def get_mesh_commands(self) -> list[str]:
         """
         List supported mesh commands for this plugin.
-        
+
         Returns:
             list[str]: An empty list indicating the plugin exposes no mesh commands.
         """
@@ -139,14 +139,14 @@ class Plugin(BasePlugin):
         # Pass the event to matches()
         """
         Handle a Matrix message requesting a telemetry graph and send the generated image to the originating room.
-        
+
         Parses a telemetry command (e.g. `batteryLevel`, `voltage`, `airUtilTx`) optionally followed by a node identifier, computes hourly averages for the last 12 hours (either for the specified node or network-wide), generates a line plot of those averages, and uploads the image to the room. If a requested node has no telemetry data, a user-facing notice is sent instead of an image.
-        
+
         Parameters:
             room: Matrix room object where the event originated; used as the destination for responses.
             event: Matrix event inspected to determine whether it matches a supported telemetry command.
             full_message (str): Full plaintext message content used to parse the command and optional node identifier.
-        
+
         Returns:
             `true` if the message matched a telemetry command and the graph was generated and sent, or a notice was sent for a node with no data; `false` otherwise.
         """
@@ -177,12 +177,12 @@ class Plugin(BasePlugin):
         def calculate_averages(node_data_rows: list[dict[str, Any]]) -> None:
             """
             Accumulate telemetry values from node records into hourly bins stored in the outer `hourly_averages`.
-            
+
             Iterates over `node_data_rows`, maps each record to the hourly interval defined by the outer `hourly_intervals` list, and appends the record's telemetry value (accessed by the outer `telemetry_option` key) to `hourly_averages[index]`, creating the list if it does not exist.
-            
+
             Parameters:
                 node_data_rows (list[dict[str, Any]]): List of telemetry records where each record contains a `time` field (POSIX timestamp in seconds) and a telemetry value under the key named by the surrounding `telemetry_option`.
-            
+
             Returns:
                 None
             """

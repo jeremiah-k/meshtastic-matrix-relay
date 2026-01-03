@@ -172,10 +172,10 @@ def _is_room_alias(value: Any) -> bool:
 def _get_valid_device_id(device_id_value: Any) -> Optional[str]:
     """
     Normalize and validate a device ID value.
-    
+
     Parameters:
         device_id_value (Any): Value to validate; expected to be a string or other type.
-    
+
     Returns:
         Optional[str]: The input string with surrounding whitespace removed if it is non-empty, `None` otherwise.
     """
@@ -240,14 +240,14 @@ async def _resolve_aliases_in_mapping(
 ) -> None:
     """
     Resolve Matrix room aliases found in a list or dict by replacing them in-place with resolved room IDs.
-    
+
     Parameters:
         mapping (list|dict): A list or dict containing room identifiers or alias entries; entries that look like room aliases (strings starting with '#') will be replaced in-place when resolved.
         resolver (Callable[[str], Awaitable[Any]]): Async callable that accepts a room alias and returns a resolved room ID (truthy) or a falsy value on failure.
-    
+
     Returns:
         None
-    
+
     Notes:
         If `mapping` is not a list or dict, the function logs a warning and makes no changes.
     """
@@ -383,10 +383,10 @@ def _display_room_channel_mappings(
 def _can_auto_create_credentials(matrix_config: Dict[str, Any]) -> bool:
     """
     Check whether the Matrix configuration contains the fields required for automatic credential creation.
-    
+
     Parameters:
         matrix_config (dict): The `matrix` section from config.yaml.
-    
+
     Returns:
         `True` if `homeserver`, a user id (`bot_user_id` or `user_id`), and `password` are present as non-empty strings, `False` otherwise.
     """
@@ -646,12 +646,12 @@ def _create_mapping_info(
 def get_interaction_settings(config: dict[str, Any] | None) -> dict[str, bool]:
     """
     Determine whether message reactions and replies are enabled according to the configuration.
-    
+
     Checks the new `meshtastic.message_interactions` mapping first; if present, uses its `reactions` and `replies` values. If absent, falls back to the legacy `meshtastic.relay_reactions` flag (deprecated) which enables only reactions. If `config` is None or no relevant keys are present, both features are disabled.
-    
+
     Parameters:
         config (dict[str, Any] | None): The loaded configuration mapping or None.
-    
+
     Returns:
         dict[str, bool]: A mapping with keys `"reactions"` and `"replies"`. `"reactions"` is `True` when reactions are enabled, `"replies"` is `True` when replies are enabled; both are `False` by default.
     """
@@ -700,9 +700,9 @@ def _add_truncated_vars(
 ) -> None:
     """
     Populate format_vars with truncated variants of text using keys prefix1 … prefix{MAX_TRUNCATION_LENGTH}.
-    
+
     Each generated key maps to the first N characters of text (or an empty string when text is None). This function mutates format_vars in place to ensure all truncation keys exist.
-    
+
     Parameters:
         format_vars (dict[str, str]): Mapping to populate; mutated in place.
         prefix (str): Base name for keys; numeric suffixes 1..MAX_TRUNCATION_LENGTH are appended.
@@ -771,12 +771,12 @@ def get_meshtastic_prefix(
 ) -> str:
     """
     Generate the Meshtastic message prefix according to configuration.
-    
+
     When prefixing is enabled, return a formatted prefix that may include the user's display name and parts of their Matrix ID. The format string can reference these variables: `{display}` (full display name), `{displayN}` (truncated display name where N is a positive integer), `{user}` (full MXID), `{username}` (localpart without leading `@`), and `{server}` (homeserver domain). If the configured format is invalid, a safe default prefix is returned. If prefixing is disabled in the config, return an empty string.
-    
+
     Parameters:
         user_id (str | None): Optional Matrix ID in the form `@localpart:server`; when provided, `username` and `server` variables are derived from it.
-    
+
     Returns:
         str: The formatted prefix string when enabled, or an empty string if prefixing is disabled.
     """
@@ -996,11 +996,11 @@ async def _get_meshtastic_interface_and_channel(
 ) -> tuple[Any | None, int | None]:
     """
     Obtain a connected Meshtastic interface and the room's validated Meshtastic channel.
-    
+
     Parameters:
         room_config (dict): Room configuration; expected to include "meshtastic_channel" as a non-negative int.
         purpose (str): Short description of why the interface/channel are needed (used in error messages).
-    
+
     Returns:
         tuple: (meshtastic_interface, channel) where `meshtastic_interface` is the connected Meshtastic interface object or `None` on failure, and `channel` is the non-negative integer channel from the room config or `None` if missing or invalid.
     """
@@ -1034,9 +1034,9 @@ async def _handle_detection_sensor_packet(
 ) -> None:
     """
     Relay detection-sensor text from Matrix to Meshtastic as a DETECTION_SENSOR_APP payload when enabled.
-    
+
     If both global broadcast and detection_sensor processing are enabled, queue the provided text on the room's configured Meshtastic channel using the DETECTION_SENSOR_APP port; otherwise do nothing. Logs outcomes and returns silently on failures to obtain a Meshtastic interface or channel.
-    
+
     Parameters:
         config (dict[str, Any]): Global configuration used to determine feature flags.
         room_config (dict[str, Any]): Room-specific configuration; must include "meshtastic_channel".
@@ -1535,9 +1535,9 @@ async def connect_matrix(
             async def _resolve_alias(alias: str) -> str | None:
                 """
                 Resolve a Matrix room alias to its canonical room ID.
-                
+
                 Attempts to resolve the given room alias via the module-level Matrix client. If the alias is resolved, the canonical room ID string is returned; if the client is unavailable, the alias cannot be resolved, or an error occurs, `None` is returned. Underlying client and network errors are caught internally.
-                
+
                 Returns:
                     str | None: The resolved room ID when available, `None` otherwise.
                 """
@@ -1665,18 +1665,18 @@ async def login_matrix_bot(
 ) -> bool:
     """
     Interactively authenticate the bot with a Matrix homeserver and persist session credentials.
-    
+
     Performs server discovery if needed, prompts for any missing homeserver, username, or password,
     optionally prepares an E2EE store when enabled in configuration, reuses an existing device_id
     when available, and saves resulting credentials (homeserver, user_id, access_token, device_id)
     to credentials.json for later non-interactive restoration.
-    
+
     Parameters:
         homeserver (str | None): Optional homeserver URL to use; if None the user is prompted.
         username (str | None): Optional Matrix username (localpart or full MXID); if None the user is prompted.
         password (str | None): Optional account password; if None the user is prompted securely.
         logout_others (bool): If True, an attempt to log out other sessions is made; if False no logout is performed.
-    
+
     Returns:
         bool: `True` on successful login with credentials persisted, `False` otherwise.
     """
@@ -2144,7 +2144,7 @@ async def login_matrix_bot(
 async def join_matrix_room(matrix_client: AsyncClient, room_id_or_alias: str) -> None:
     """
     Join the bot to a Matrix room identified by a room ID or room alias.
-    
+
     If given a room alias (starts with '#'), resolve it to a canonical room ID, update the in-memory
     matrix_rooms mapping with the resolved ID when available, and attempt to join the resolved room.
     No action is taken if the client is already joined. Errors during alias resolution or join are
@@ -2581,10 +2581,10 @@ def truncate_message(text: str, max_bytes: int = DEFAULT_MESSAGE_TRUNCATE_BYTES)
 def strip_quoted_lines(text: str) -> str:
     """
     Strip quoted lines (lines starting with '>') from a block of text.
-    
+
     Parameters:
         text (str): Input text possibly containing quoted lines.
-    
+
     Returns:
         str: The remaining non-quoted lines joined with single spaces and trimmed of leading/trailing whitespace.
     """
@@ -3402,14 +3402,14 @@ async def on_room_message(
     def _matches_command(plugin_obj: Any) -> bool:
         """
         Determine whether a plugin should handle the current Matrix event.
-        
+
         Parameters:
             plugin_obj: Plugin instance that may implement `matches(event)`, `get_matrix_commands()`,
                         and optionally `get_require_bot_mention()`.
-        
+
         Returns:
             `True` if the plugin should handle the current event, `False` otherwise.
-        
+
         Notes:
             If the plugin raises an exception while evaluating its predicates, the exception is logged
             and the plugin is treated as not matching.

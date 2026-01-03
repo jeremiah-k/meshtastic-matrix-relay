@@ -100,13 +100,13 @@ DEPRECATED_COMMANDS = {
 def get_command(command_key: str) -> str:
     """
     Lookup the current CLI syntax for the given command key.
-    
+
     Parameters:
         command_key (str): Registered command key (for example, "generate_config").
-    
+
     Returns:
         str: The full CLI command syntax (for example, "mmrelay config generate").
-    
+
     Raises:
         KeyError: If `command_key` is not present in the command registry.
     """
@@ -118,12 +118,12 @@ def get_command(command_key: str) -> str:
 def get_deprecation_warning(old_flag: str) -> str:
     """
     Produce a deprecation warning message for a deprecated CLI flag.
-    
+
     If a replacement command is known, the message suggests the full new command; otherwise it directs the user to `mmrelay --help`.
-    
+
     Parameters:
         old_flag (str): Deprecated flag (for example, '--generate-config').
-    
+
     Returns:
         str: Formatted deprecation warning message.
     """
@@ -137,11 +137,11 @@ def get_deprecation_warning(old_flag: str) -> str:
 def suggest_command(command_key: str, purpose: str) -> str:
     """
     Suggests the full CLI command to run for a given purpose.
-    
+
     Parameters:
         command_key (str): Key used to look up the full CLI command in the registry.
         purpose (str): Short phrase describing why to run the command (e.g. "to validate your configuration").
-    
+
     Returns:
         str: A string formatted as "Run '<full command>' {purpose}."
     """
@@ -152,14 +152,14 @@ def suggest_command(command_key: str, purpose: str) -> str:
 def require_command(command_key: str, purpose: str) -> str:
     """
     Compose a user-facing instruction to run a registered CLI command.
-    
+
     Parameters:
         command_key (str): Key used to look up the command in the CLI registry.
         purpose (str): Short purpose phrase (typically begins with "to"), e.g. "to generate a sample configuration file".
-    
+
     Returns:
         str: Instruction string like "Please run '<full command>' {purpose}."
-    
+
     Raises:
         KeyError: If `command_key` is not found in the command registry.
     """
@@ -170,11 +170,11 @@ def require_command(command_key: str, purpose: str) -> str:
 def retry_command(command_key: str, context: str = "") -> str:
     """
     Produce a retry instruction telling the user to run a given CLI command again.
-    
+
     Parameters:
         command_key (str): Key from CLI_COMMANDS identifying the command to show.
         context (str): Optional trailing context to append to the message (e.g., "after fixing X").
-    
+
     Returns:
         str: A formatted message like "Try running '<full command>' again." or "Try running '<full command>' again {context}."
     """
@@ -188,11 +188,11 @@ def retry_command(command_key: str, context: str = "") -> str:
 def validate_command(command_key: str, purpose: str) -> str:
     """
     Produce a user-facing instruction that recommends running a registered CLI command for a given purpose.
-    
+
     Parameters:
         command_key (str): Key from the module's command registry identifying which CLI command to reference (e.g., "check_config").
         purpose (str): Short phrase describing the validation action to append (e.g., "to validate your configuration").
-    
+
     Returns:
         str: Instruction string formatted as "Use '<full-command>' {purpose}."
     """
@@ -204,7 +204,7 @@ def validate_command(command_key: str, purpose: str) -> str:
 def msg_suggest_generate_config() -> str:
     """
     Suggest running the configured "generate_config" CLI command to create a sample configuration file.
-    
+
     Returns:
         str: A single-sentence instruction containing the full CLI command to generate a sample configuration file (e.g., "Run 'mmrelay config generate' to generate a sample configuration file.").
     """
@@ -214,7 +214,7 @@ def msg_suggest_generate_config() -> str:
 def msg_suggest_check_config() -> str:
     """
     Suggest the CLI command the user should run to validate their configuration.
-    
+
     Returns:
         str: A sentence suggesting running the configured config validation command (e.g. "Run 'mmrelay config check' to validate your configuration.").
     """
@@ -224,7 +224,7 @@ def msg_suggest_check_config() -> str:
 def msg_require_auth_login() -> str:
     """
     Produce a standard instruction asking the user to run the authentication command.
-    
+
     Returns:
         str: Instruction telling the user to run the configured "auth_login" CLI command to set up credentials.json or add a Matrix section to config.yaml.
     """
@@ -236,7 +236,7 @@ def msg_require_auth_login() -> str:
 def msg_retry_auth_login() -> str:
     """
     Suggest retrying the authentication login command.
-    
+
     Returns:
         str: Suggestion message instructing the user to try running the auth_login command again.
     """
@@ -246,7 +246,7 @@ def msg_retry_auth_login() -> str:
 def msg_run_auth_login() -> str:
     """
     Instruct the user to run the authentication/login command to regenerate credentials.
-    
+
     Returns:
         str: Instruction string telling the user to run the auth login command to regenerate credentials (including a device_id).
     """
@@ -256,7 +256,7 @@ def msg_run_auth_login() -> str:
 def msg_for_e2ee_support() -> str:
     """
     Instruct the user to run the configured authentication command required for end-to-end encryption (E2EE) support.
-    
+
     Returns:
         str: Message instructing the user to run the configured `auth_login` CLI command for E2EE support.
     """
@@ -266,7 +266,7 @@ def msg_for_e2ee_support() -> str:
 def msg_setup_auth() -> str:
     """
     Return a setup instruction pointing to the current `auth_login` CLI command.
-    
+
     Returns:
         setup_instruction (str): A string formatted as "Setup: <full command>" where `<full command>` is the resolved `auth_login` command from the CLI registry.
     """
@@ -276,7 +276,7 @@ def msg_setup_auth() -> str:
 def msg_or_run_auth_login() -> str:
     """
     Suggest running the configured `auth_login` command to set up credentials.json.
-    
+
     Returns:
         str: Message in the form "or run '<command>' to set up credentials.json".
     """
@@ -286,7 +286,7 @@ def msg_or_run_auth_login() -> str:
 def msg_setup_authentication() -> str:
     """
     Produce an instruction to run the authentication setup command.
-    
+
     Returns:
         Instruction text: 'Setup authentication: <full command>'.
     """
@@ -296,7 +296,7 @@ def msg_setup_authentication() -> str:
 def msg_regenerate_credentials() -> str:
     """
     Prompt the user to rerun the authentication command to regenerate credentials that include a device_id.
-    
+
     Returns:
         str: Instruction message telling the user to run the `auth_login` command to produce new credentials containing a `device_id`.
     """
@@ -309,7 +309,7 @@ def msg_regenerate_credentials() -> str:
 def _create_ssl_context() -> ssl.SSLContext | None:
     """
     Create an SSLContext for Matrix client connections, preferring certifi's CA bundle when available.
-    
+
     Returns:
         ssl.SSLContext | None: The SSLContext configured to use certifi's CA bundle when available, or the system default SSLContext; `None` if context creation ultimately fails.
     """
@@ -332,13 +332,13 @@ def _create_ssl_context() -> ssl.SSLContext | None:
 def _cleanup_local_session_data() -> bool:
     """
     Remove local Matrix session artifacts including credentials and E2EE store directories.
-    
+
     Removes the credentials file located at the application's base directory and any
     E2EE store directories (the default store directory and any user-configured
     overrides under `matrix.e2ee.store_path` or `matrix.encryption.store_path`).
     The function makes a best-effort attempt to remove all targeted files and
     directories and continues attempting other removals even if some fail.
-    
+
     Returns:
         bool: `True` if all targeted files and directories were removed successfully;
               `False` if any removal failed.
@@ -416,12 +416,12 @@ def _handle_matrix_error(
 ) -> bool:
     """
     Classify a Matrix-related exception, log and print an appropriate user-facing message, and mark it handled.
-    
+
     Parameters:
         exception (Exception): The exception to classify and report.
         context (str): Short description of the operation (e.g., "Password verification"); used to tailor message phrasing and detect verification flows.
         log_level (str): Logging level to use; either "error" or "warning".
-    
+
     Returns:
         bool: `True` indicating the exception was handled and reported.
     """
@@ -544,12 +544,12 @@ def _handle_matrix_error(
 async def logout_matrix_bot(password: str) -> bool:
     """
     Log out the configured Matrix account (if any), verify credentials, and remove local session data.
-    
+
     Performs an optional password verification via a temporary login, attempts server-side logout to invalidate the access token when full credentials are available, and removes local session artifacts (for example, credentials.json and any E2EE store directories). If stored credentials lack a user_id but include an access_token and homeserver, the function will attempt to fetch and persist the missing user_id before proceeding.
-    
+
     Parameters:
         password (str): The Matrix account password used to verify the session before performing server logout.
-    
+
     Returns:
         bool: `True` when local cleanup (and server logout, if attempted) completed successfully; `False` on failure or when the matrix-nio dependency is unavailable.
     """

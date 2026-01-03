@@ -361,7 +361,7 @@ class BasePlugin(ABC):
     def background_job(self) -> None:
         """
         Run periodic work for the plugin when scheduled.
-        
+
         Subclasses should implement this to perform the plugin's scheduled task; the default implementation does nothing.
         """
         pass  # Implement in subclass if needed
@@ -369,12 +369,12 @@ class BasePlugin(ABC):
     def strip_raw(self, data: Any) -> Any:
         """
         Remove all 'raw' keys from a nested data structure.
-        
+
         Recursively removes keys named "raw" from dictionaries and any dictionaries contained in lists, returning the cleaned structure.
-        
+
         Parameters:
             data (Any): The data structure (dict, list, or other) to clean.
-        
+
         Returns:
             Any: The cleaned data structure with all "raw" keys removed.
         """
@@ -389,9 +389,9 @@ class BasePlugin(ABC):
     def get_response_delay(self) -> float:
         """
         Get the configured Meshtastic response delay in seconds.
-        
+
         The value reflects plugin configuration and is clamped to the minimum allowed delay.
-        
+
         Returns:
             float: The response delay in seconds.
         """
@@ -400,9 +400,9 @@ class BasePlugin(ABC):
     def get_my_node_id(self) -> int | None:
         """
         Get the relay's Meshtastic node ID.
-        
+
         The node ID is cached after the first successful retrieval to avoid repeated connections.
-        
+
         Returns:
             int | None: The relay's Meshtastic node ID if available, `None` otherwise.
         """
@@ -420,10 +420,10 @@ class BasePlugin(ABC):
     def is_direct_message(self, packet: dict[str, Any]) -> bool:
         """
         Determine whether a Meshtastic packet is addressed directly to this relay.
-        
+
         Parameters:
             packet (dict): Meshtastic packet data; may contain a "to" field with the destination node ID.
-        
+
         Returns:
             `true` if the packet's "to" field equals this relay's node ID, `false` otherwise.
         """
@@ -441,12 +441,12 @@ class BasePlugin(ABC):
     ) -> bool:
         """
         Queue a text message for broadcast or direct delivery on the Meshtastic network.
-        
+
         Parameters:
             text (str): Message content to send.
             channel (int): Channel index to send the message on. Defaults to 0.
             destination_id (int | None): Destination node ID for a direct message; if None the message is broadcast.
-        
+
         Returns:
             bool: `true` if the message was queued successfully, `false` otherwise.
         """
@@ -528,12 +528,12 @@ class BasePlugin(ABC):
     ) -> RoomSendResponse | RoomSendError | None:
         """
         Send a message to a Matrix room, optionally converting Markdown to HTML.
-        
+
         Parameters:
             room_id (str): Matrix room identifier.
             message (str): Message content to send.
             formatted (bool): If True, convert `message` from Markdown to HTML and send as formatted content; otherwise send plain text.
-        
+
         Returns:
             RoomSendResponse | RoomSendError | None: The Matrix API response from room_send, or `None` if the Matrix client could not be obtained.
         """
@@ -559,7 +559,7 @@ class BasePlugin(ABC):
     def get_mesh_commands(self) -> list[str]:
         """
         Return the mesh/radio command names this plugin handles.
-        
+
         Returns:
             list[str]: Command names without the leading '!' (empty list by default; override in subclasses to enable commands).
         """
@@ -568,7 +568,7 @@ class BasePlugin(ABC):
     def store_node_data(self, meshtastic_id: str, node_data: Any) -> None:
         """
         Append data for a Meshtastic node to this plugin's persistent store, trim to the plugin's configured maximum rows, and persist the result.
-        
+
         Parameters:
             meshtastic_id (str): Identifier of the Meshtastic node whose data is being stored.
             node_data (Any): A single data item or a list of items to append for the node.
@@ -585,7 +585,7 @@ class BasePlugin(ABC):
     def set_node_data(self, meshtastic_id: str, node_data: Any) -> None:
         """
         Replace all stored data for a Meshtastic node with the provided data.
-        
+
         Parameters:
             meshtastic_id (str): Node identifier for which data will be replaced.
             node_data (Any): New data to store; if iterable, only the most recent
@@ -610,7 +610,7 @@ class BasePlugin(ABC):
     def get_node_data(self, meshtastic_id: str) -> list[Any]:
         """
         Return the list of stored data rows for the given Meshtastic node.
-        
+
         Returns:
             list[Any]: Stored data rows for the node identified by `meshtastic_id`; empty list if no data exists.
         """
@@ -620,7 +620,7 @@ class BasePlugin(ABC):
     def get_data(self) -> list[Any]:
         """
         Retrieve all stored plugin data across all Meshtastic nodes.
-        
+
         Returns:
             list[Any]: A list of raw stored entries for this plugin across all nodes. Data is returned without JSON deserialization.
         """
@@ -630,10 +630,10 @@ class BasePlugin(ABC):
     def get_plugin_data_dir(self, subdir: str | None = None) -> str:
         """
         Get the filesystem path for this plugin's data directory, creating it if it does not exist.
-        
+
         Parameters:
             subdir (str | None): Optional name of a subdirectory inside the plugin's data directory. If provided, that subdirectory will be created and its path returned.
-        
+
         Returns:
             str: Absolute path to the plugin's data directory or the requested subdirectory.
         """
@@ -655,10 +655,10 @@ class BasePlugin(ABC):
     ) -> bool:
         """
         Check whether a Matrix event invokes this plugin's Matrix commands.
-        
+
         Parameters:
             event (RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote): The Matrix room event to evaluate.
-        
+
         Returns:
             `True` if the event invokes one of the plugin's Matrix commands, `False` otherwise.
         """
@@ -726,13 +726,13 @@ class BasePlugin(ABC):
     ) -> bool:
         """
         Handle an incoming Meshtastic packet and perform plugin-specific processing.
-        
+
         Parameters:
             packet (dict[str, Any]): Original Meshtastic packet (protobuf-derived dict or message).
             formatted_message (str): Clean, human-readable text payload extracted from the packet.
             longname (str): Sender display name or node label.
             meshnet_name (str): Identifier of the originating mesh network.
-        
+
         Returns:
             bool: True if the packet was handled, False otherwise.
         """
@@ -744,12 +744,12 @@ class BasePlugin(ABC):
     ) -> bool:
         """
         Process an incoming Matrix room message and perform plugin-specific handling.
-        
+
         Parameters:
             room (Any): Matrix room object where the message was received.
             event (dict[str, Any]): Matrix event payload containing metadata and sender information.
             full_message (str): The full text content of the received message.
-        
+
         Returns:
             bool: `True` if the plugin handled the message, `False` otherwise.
         """

@@ -27,9 +27,9 @@ class Plugin(BasePlugin):
     def generate_response(self) -> str:
         """
         Produce a concise multi-line health summary for the mesh using metrics reported by discovered Meshtastic nodes.
-        
+
         The returned text reports total node count and, when available, average and median values for battery percentage, air utilization (tx), and SNR, plus a count of nodes with battery <= 10%.
-        
+
         Returns:
             str: A multi-line human-readable summary. Typical content:
                 - Nodes: total number of nodes
@@ -134,14 +134,14 @@ class Plugin(BasePlugin):
     ) -> bool:
         """
         Handle a Matrix room message that matches this plugin and send a mesh health summary to the room.
-        
+
         If the event matches this plugin, generate the mesh health summary off the event loop and send it to the room.
-        
+
         Parameters:
             room (MatrixRoom): The room where the message was received.
             event (dict[str, Any]): The Matrix message event used to determine whether the plugin should run.
             full_message (str): The full text of the received message.
-        
+
         Returns:
             True if the message matched this plugin and was handled, False otherwise.
         """

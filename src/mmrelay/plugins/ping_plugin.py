@@ -52,7 +52,7 @@ class Plugin(BasePlugin):
     def description(self) -> str:
         """
         Return a short, human-readable description of the plugin's purpose.
-        
+
         Returns:
             str: Check connectivity with the relay or respond to pings over the mesh
         """
@@ -67,13 +67,13 @@ class Plugin(BasePlugin):
     ) -> bool:
         """
         Responds to a "ping" text in an incoming Meshtastic packet with a case-matching "pong" reply when channel/ addressing rules allow.
-        
+
         Parameters:
             packet (dict[str, Any]): Meshtastic packet expected to include a `decoded` mapping with `text`, and may include `channel`, `to`, and `fromId`.
             formatted_message (str): Pre-formatted representation of the message (may be unused by this handler).
             longname (str): Human-readable sender identifier used for logging.
             meshnet_name (str): Name of the mesh network where the message originated.
-        
+
         Returns:
             bool: `True` if the handler processed the packet or intentionally suppressed processing (e.g., when the Meshtastic client or its `myInfo` is unavailable), `False` otherwise.
         """
@@ -188,12 +188,12 @@ class Plugin(BasePlugin):
     ) -> bool:
         """
         Reply "pong!" to a Matrix room message that matches this plugin's trigger.
-        
+
         Parameters:
             room (Any): Matrix room object; used to obtain the target room_id for the reply.
             event (Any): Matrix event to evaluate against the plugin's matching rules.
             full_message (str): The raw or normalized text content of the event.
-        
+
         Returns:
             True if the message matched and a reply was sent, False otherwise.
         """

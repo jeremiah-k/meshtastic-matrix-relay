@@ -103,11 +103,11 @@ def _submit_coro(
 ) -> Future[Any] | None:
     """
     Schedule a coroutine to run on an available asyncio event loop.
-    
+
     Parameters:
         coro: The coroutine object to execute. If not a coroutine, this function returns None.
         loop: Optional target asyncio event loop to run the coroutine on. If omitted, the module-level `event_loop` is used when available.
-    
+
     Returns:
         A Future that will hold the coroutine's result, or `None` if `coro` is not a coroutine.
     """
@@ -359,11 +359,11 @@ def _get_name_or_none(
 ) -> str | None:
     """
     Retrieve a name for a sender using the provided lookup function, or return None if the lookup fails.
-    
+
     Parameters:
         name_func (Callable[[Any], str | None]): Function that returns a name given the sender (e.g., longname or shortname).
         sender (Any): Sender identifier passed to `name_func`.
-    
+
     Returns:
         str | None: The name returned by `name_func`, or `None` if the function raises TypeError or AttributeError.
     """
@@ -440,10 +440,10 @@ def _get_device_metadata(client: Any) -> dict[str, Any]:
 def serial_port_exists(port_name: str) -> bool:
     """
     Check whether a serial port with the specified device name exists on the system.
-    
+
     Parameters:
         port_name (str): Device name to check (e.g., '/dev/ttyUSB0' on Unix or 'COM3' on Windows).
-    
+
     Returns:
         True if a matching port device name is present, False otherwise.
     """
@@ -457,13 +457,13 @@ def connect_meshtastic(
 ) -> Any:
     """
     Establishes a Meshtastic client connection using the configured connection type (serial, BLE, or TCP).
-    
+
     On success updates the module-level client state (meshtastic_client), may update matrix_rooms when a config is provided, and subscribes to meshtastic receive and connection-lost events once for the process lifetime. Honors shutdown and reconnect state and will respect `force_connect` to replace an existing connection.
-    
+
     Parameters:
         passed_config (dict[str, Any] | None): Optional configuration to use in place of the module-level config; if provided and contains "matrix_rooms", that value will be used to update module-level matrix_rooms.
         force_connect (bool): If True, forces creating a new connection even if a client already exists.
-    
+
     Returns:
         The connected Meshtastic client instance on success, or `None` if a connection could not be established or shutdown is in progress.
     """

@@ -223,7 +223,7 @@ def parse_arguments() -> argparse.Namespace:
 def get_version() -> str:
     """
     Get the application's current version string.
-    
+
     Returns:
         str: The application's version string.
     """
@@ -274,12 +274,12 @@ def _validate_e2ee_dependencies() -> bool:
 def _validate_credentials_json(config_path: str) -> bool:
     """
     Validate presence and contents of a Matrix credentials.json adjacent to the given config.
-    
+
     Checks that a credentials.json file can be located from the supplied config path and contains non-empty string values for the keys "homeserver", "access_token", "user_id", and "device_id". On validation failure this function prints a concise error message and guidance to run the authentication login flow.
-    
+
     Parameters:
         config_path (str): Path to the configuration file used to determine where to look for credentials.json.
-    
+
     Returns:
         bool: `True` if a credentials.json was found and contains all required non-empty fields, `False` otherwise.
     """
@@ -319,10 +319,10 @@ def _validate_credentials_json(config_path: str) -> bool:
 def _is_valid_non_empty_string(value: Any) -> bool:
     """
     Determine whether a value is a non-empty string containing non-whitespace characters.
-    
+
     Parameters:
         value (Any): Value to test.
-    
+
     Returns:
         bool: `True` if `value` is a `str` and stripping whitespace yields a non-empty string, `False` otherwise.
     """
@@ -332,12 +332,12 @@ def _is_valid_non_empty_string(value: Any) -> bool:
 def _has_valid_password_auth(matrix_section: Mapping[str, Any] | None) -> bool:
     """
     Check whether a Matrix configuration section contains valid password-based authentication settings.
-    
+
     Validates that `homeserver` and `bot_user_id` are non-empty strings (after trimming) and that `password` is a string (an empty string is allowed).
-    
+
     Parameters:
         matrix_section (Mapping[str, Any] | None): The parsed "matrix" configuration section to validate.
-    
+
     Returns:
         bool: `True` if `homeserver` and `bot_user_id` are non-empty strings and `password` is a string, `False` otherwise.
     """
@@ -362,13 +362,13 @@ def _validate_matrix_authentication(
 ) -> bool:
     """
     Determine whether Matrix authentication is configured and usable.
-    
+
     Checks for a credentials.json located relative to config_path and, if absent, falls back to password-based fields or an access_token in matrix_section. Prints which authentication source will be used and whether E2EE support is available.
-    
+
     Parameters:
         config_path (str): Path to the application's YAML config file; used to locate a credentials.json candidate.
         matrix_section (Mapping[str, Any] | None): The parsed "matrix" configuration section; an `access_token` or password-based fields may provide authentication when credentials.json is not present.
-    
+
     Returns:
         bool: `True` if a usable authentication method (credentials.json, password-based config, or access_token) is available, `False` otherwise.
     """
@@ -408,17 +408,17 @@ def _validate_e2ee_config(
 ) -> bool:
     """
     Validate the application's end-to-end encryption (E2EE) configuration and Matrix authentication readiness.
-    
+
     Checks that Matrix authentication is available for the given configuration source (credentials.json or in-config credentials). If a matrix section is absent, E2EE is considered not configured and validation succeeds. When E2EE/encryption is enabled in the matrix configuration, verifies platform and dependency support and inspects the configured store path (prints a note if the store directory does not yet exist).
-    
+
     Parameters:
         _config (dict): Full parsed configuration (present for caller compatibility; not required for most checks).
         matrix_section (Mapping[str, Any] | None): The "matrix" subsection of the parsed config, or None if missing.
         config_path (str): Path to the active configuration file; used to locate adjacent authentication artifacts (e.g., credentials.json).
-    
+
     Returns:
         bool: `True` if authentication and any enabled E2EE settings are valid (or if E2EE is not configured), `False` otherwise.
-    
+
     Notes:
         This function prints informational and error messages about authentication status, dependency checks, and E2EE store-path actions as part of its validation.
     """
@@ -559,14 +559,14 @@ def _analyze_e2ee_setup(config: dict[str, Any], config_path: str) -> dict[str, A
 def _find_credentials_json_path(config_path: str | None) -> str | None:
     """
     Locate a credentials.json file adjacent to the given configuration or in the application's base directory.
-    
+
     Search order:
     1. credentials.json in the same directory as `config_path` (if provided).
     2. credentials.json in the application's base directory (get_base_dir()).
-    
+
     Parameters:
         config_path (str | None): Path to the configuration file used to derive the adjacent credentials.json location.
-    
+
     Returns:
         str | None: Absolute path to the discovered credentials.json, or `None` if no file is found.
     """
@@ -589,12 +589,12 @@ def _find_credentials_json_path(config_path: str | None) -> str | None:
 def _print_unified_e2ee_analysis(e2ee_status: E2EEStatus) -> None:
     """
     Print a concise, user-facing analysis of end-to-end encryption (E2EE) readiness.
-    
+
     Given an E2EE status dictionary, prints platform support, dependency availability,
     configuration state, credentials presence, and an overall readiness summary. If
     the overall status is not "ready", prints actionable fix instructions obtained
     from get_e2ee_fix_instructions().
-    
+
     Parameters:
         e2ee_status (E2EEStatus): A status mapping containing at least the following keys:
             - platform_supported (bool): whether the current OS/platform supports E2EE.
@@ -735,7 +735,7 @@ def _print_e2ee_analysis(analysis: dict[str, Any]) -> None:
 def _print_environment_summary() -> None:
     """
     Print a concise environment summary showing platform, Python version, and Matrix E2EE support status.
-    
+
     Prints whether the current platform supports E2EE (Windows is reported as not supported), whether required E2EE dependencies are installed, and a brief installation hint when dependencies are missing.
     """
     print("\n🖥️  Environment Summary:")
@@ -761,15 +761,15 @@ def _print_environment_summary() -> None:
 def check_config(args: argparse.Namespace | None = None) -> bool:
     """
     Validate the application's YAML configuration file and its required sections.
-    
+
     Performs syntax validation, ensures required sections and fields for Matrix and Meshtastic
     are present and well-formed, verifies authentication (credentials.json, access_token or password),
     and assesses E2EE configuration and dependencies. Prints human-readable errors, warnings,
     and status messages to stdout/stderr for any issues found.
-    
+
     Parameters:
         args (argparse.Namespace | None): Parsed CLI arguments; if None, CLI arguments are parsed internally.
-    
+
     Returns:
         bool: `True` if a configuration file was found and passed all checks, `False` otherwise.
     """
@@ -1203,11 +1203,11 @@ def handle_config_command(args: argparse.Namespace) -> int:
 def handle_auth_command(args: argparse.Namespace) -> int:
     """
     Dispatches the "auth" subcommand to the appropriate handler (login, status, or logout).
-    
+
     Parameters:
         args (argparse.Namespace): Parsed CLI arguments. May include `auth_command` with values
             "login", "status", or "logout"; if missing or any other value, defaults to login.
-    
+
     Returns:
         int: Exit code from the invoked handler — 0 on success, non-zero on failure.
     """
@@ -1227,12 +1227,12 @@ def handle_auth_command(args: argparse.Namespace) -> int:
 def handle_auth_login(args: argparse.Namespace) -> int:
     """
     Run the Matrix bot login flow using either command-line credentials or an interactive prompt.
-    
+
     Attempts non-interactive authentication when `args` provides all three of `homeserver`, `username`, and `password`; otherwise initiates an interactive login. Prints user-facing messages for missing parameters and error conditions.
-    
+
     Parameters:
         args (argparse.Namespace): Parsed CLI namespace; may include `homeserver`, `username`, and `password`.
-    
+
     Returns:
         int: 0 on successful authentication, 1 on failure, cancellation, or unexpected errors.
     """
@@ -1469,12 +1469,12 @@ def handle_auth_logout(args: argparse.Namespace) -> int:
 def handle_service_command(args: argparse.Namespace) -> int:
     """
     Dispatch the requested service subcommand.
-    
+
     Supports the "install" action which attempts to install the application service and returns a status code indicating success or failure.
-    
+
     Parameters:
         args (argparse.Namespace): Parsed CLI arguments; must have a `service_command` attribute specifying the action.
-    
+
     Returns:
         int: `0` on success, `1` on failure or for unknown subcommands.
     """
@@ -1520,12 +1520,12 @@ def _diagnose_config_paths(args: argparse.Namespace) -> None:
 def _diagnose_sample_config_accessibility() -> bool:
     """
     Print a short diagnostic about accessibility of the bundled sample configuration.
-    
+
     Performs two non-destructive checks: reports whether a filesystem copy of the sample
     configuration exists at the path returned by mmrelay.tools.get_sample_config_path(),
     and attempts to read the embedded resource "sample_config.yaml" from the mmrelay.tools
     package via importlib.resources, reporting the read result and content length.
-    
+
     Returns:
         bool: `True` if a filesystem sample config exists at the resolved path, `False` otherwise.
     """
@@ -1624,9 +1624,9 @@ def _diagnose_platform_specific(args: argparse.Namespace) -> bool:
 def _get_minimal_config_template() -> str:
     """
     Provide a minimal YAML configuration template for MMRelay to use as a fallback when the packaged sample_config.yaml cannot be found.
-    
+
     The template includes a basic matrix section, a serial meshtastic connection example, one room entry, and minimal logging settings suitable for editing into a working config file.
-    
+
     Returns:
         str: A YAML-formatted minimal configuration template.
     """
@@ -1671,7 +1671,7 @@ logging:
 def _diagnose_minimal_config_template() -> None:
     """
     Validate the bundled minimal YAML configuration template and print a concise pass/fail result.
-    
+
     Parses the built-in minimal template and prints a single-line outcome:
     on success it prints "Minimal template: ✅ (<n> chars, valid YAML)"; on failure
     it prints "Minimal template: ❌ (<error>)". This function is a non-destructive
@@ -1754,12 +1754,12 @@ if __name__ == "__main__":
 def handle_cli_commands(args: argparse.Namespace) -> bool:
     """
     Handle legacy CLI flags: --version, --install-service, --generate-config, and --check-config.
-    
+
     Processes backward-compatible flags and executes their immediate actions. Some flags perform terminal actions and may call sys.exit() directly (for example, installing the service or performing a config check), while others print output and return control to the caller.
-    
+
     Parameters:
         args (argparse.Namespace): Parsed command-line arguments produced by parse_arguments().
-    
+
     Returns:
         bool: `True` if a legacy command was handled and the caller should not continue normal execution, `False` otherwise.
     """

@@ -18,7 +18,7 @@ def get_sample_config_path() -> str:
 def get_service_template_path() -> str:
     """
     Get the filesystem path to the mmrelay.service template bundled with the package.
-    
+
     Returns:
         str: Filesystem path to the `mmrelay.service` template within the `mmrelay.tools` package.
     """

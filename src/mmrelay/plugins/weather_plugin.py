@@ -50,12 +50,12 @@ class Plugin(BasePlugin):
     ) -> str:
         """
         Generate a concise one-line weather forecast for the given GPS coordinates and requested mode.
-        
+
         Parameters:
             latitude (float): Latitude in decimal degrees.
             longitude (float): Longitude in decimal degrees.
             mode (str): One of "weather", "hourly", or "daily" specifying the forecast format.
-        
+
         Returns:
             str: A single-line forecast string on success. On recoverable failures returns one of:
                  - "Weather data temporarily unavailable." (missing hourly data),
@@ -560,7 +560,7 @@ class Plugin(BasePlugin):
     def get_matrix_commands(self) -> list[str]:
         """
         Return the list of mesh command strings exposed to Matrix integrations.
-        
+
         Returns:
             list[str]: A copy of the plugin's mesh command strings.
         """
@@ -654,12 +654,12 @@ class Plugin(BasePlugin):
     ) -> tuple[float, float] | None:
         """
         Compute an approximate mesh location by averaging coordinates of nodes with valid positions.
-        
+
         Only nodes whose `position` contains numeric `latitude` and `longitude` are considered. Longitudes are averaged on the unit circle to correctly handle antimeridian wrapping.
-        
+
         Parameters:
             meshtastic_client: Object exposing a `nodes` mapping whose values may include a `position` dict with numeric `latitude` and `longitude`.
-        
+
         Returns:
             A (latitude, longitude) tuple representing the averaged position across available nodes, or None if no valid node coordinates are found.
         """

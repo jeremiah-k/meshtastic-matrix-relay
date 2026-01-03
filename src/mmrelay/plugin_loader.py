@@ -209,9 +209,9 @@ def _temp_sys_path(path: str) -> Iterator[None]:
 def _get_security_settings() -> dict[str, Any]:
     """
     Retrieve the `security` mapping from the module-level `config`.
-    
+
     If `config` is unset, missing a `"security"` key, or if `"security"` exists but is not a mapping, an empty dict is returned.
-    
+
     Returns:
         dict: Security settings mapping from `config`, or an empty dict when unavailable or invalid.
     """
@@ -507,9 +507,9 @@ def _filter_risky_requirements(
 def _clean_python_cache(directory: str) -> None:
     """
     Remove Python bytecode caches under the given directory.
-    
+
     Walks the directory tree rooted at `directory` and deletes any `__pycache__` directories and `.pyc` files it finds; deletion errors are logged and ignored so the operation is non-fatal.
-    
+
     Parameters:
         directory (str): Path whose Python cache files and directories will be removed.
     """
@@ -850,19 +850,19 @@ def _run(
     # Validate command to prevent shell injection
     """
     Execute a validated subprocess command with an optional retry loop and timeout.
-    
+
     Validates that `cmd` is a non-empty list of non-empty strings and disallows `shell=True`. Uses text mode by default unless overridden. On failure, retries up to `retry_attempts` with `retry_delay` seconds between attempts.
-    
+
     Parameters:
         cmd (list[str]): Command and arguments to execute.
         timeout (float): Maximum seconds to allow the process to run before raising TimeoutExpired.
         retry_attempts (int): Number of execution attempts (minimum 1).
         retry_delay (float): Seconds to wait between retry attempts.
         **kwargs: Additional keyword arguments forwarded to subprocess.run; `text=True` is set by default.
-    
+
     Returns:
         subprocess.CompletedProcess[str]: The completed process result.
-    
+
     Raises:
         TypeError: If `cmd` is not a list or any element of `cmd` is not a string.
         ValueError: If `cmd` is empty, contains empty/whitespace-only arguments, or if `shell=True` is provided.
@@ -908,12 +908,12 @@ def _run_git(
 ) -> subprocess.CompletedProcess[str]:
     """
     Execute a git command with conservative retry defaults and a non-interactive environment.
-    
+
     Parameters:
         cmd (list[str]): Command and arguments to run (e.g., ['git', 'clone', '...']).
         timeout (float): Maximum seconds to wait for each attempt.
         **kwargs: Additional subprocess options (for example `env`, `retry_attempts`, `retry_delay`) that modify execution.
-    
+
     Returns:
         subprocess.CompletedProcess[str]: Completed process containing `returncode`, `stdout`, and `stderr`.
     """
@@ -1885,11 +1885,11 @@ def load_plugins_from_directory(directory: str, recursive: bool = False) -> list
 def schedule_job(plugin_name: str, interval: int = 1) -> Any:
     """
     Create and tag a scheduled job for a plugin at the given interval.
-    
+
     Parameters:
         plugin_name (str): Plugin name used to tag the scheduled job.
         interval (int): Interval value for the schedule; the time unit is selected when configuring the job (e.g., `job.seconds`, `job.minutes`).
-    
+
     Returns:
         job: The scheduled job object tagged with `plugin_name`, or `None` if the scheduling library is unavailable.
     """
@@ -1904,7 +1904,7 @@ def schedule_job(plugin_name: str, interval: int = 1) -> Any:
 def clear_plugin_jobs(plugin_name: str) -> None:
     """
     Remove all scheduled jobs tagged with the given plugin name.
-    
+
     Parameters:
         plugin_name (str): The tag used when scheduling jobs for the plugin; all jobs with this tag will be cleared.
     """
@@ -1915,7 +1915,7 @@ def clear_plugin_jobs(plugin_name: str) -> None:
 def start_global_scheduler() -> None:
     """
     Start a single global scheduler thread to execute all plugin scheduled jobs.
-    
+
     Creates and starts one daemon thread that periodically calls schedule.run_pending()
     to run pending jobs for all plugins. If the schedule library is unavailable or a
     global scheduler is already running, the function does nothing.
@@ -1937,7 +1937,7 @@ def start_global_scheduler() -> None:
     def scheduler_loop() -> None:
         """
         Runs the global scheduler loop that executes scheduled jobs until stopped.
-        
+
         Continuously calls `schedule.run_pending()` (if the `schedule` library is available) and waits up to 1 second between iterations. The loop exits when the module-level stop event is set.
         """
         logger.debug("Global scheduler thread started")
@@ -1959,7 +1959,7 @@ def start_global_scheduler() -> None:
 def stop_global_scheduler() -> None:
     """
     Stop the global scheduler thread.
-    
+
     Signals the scheduler loop to stop, waits up to 5 seconds for the thread to terminate, clears all scheduled jobs, and resets the scheduler state.
     """
     global _global_scheduler_thread, _global_scheduler_stop_event
