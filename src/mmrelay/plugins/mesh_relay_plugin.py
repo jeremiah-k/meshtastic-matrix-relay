@@ -261,8 +261,8 @@ class Plugin(BasePlugin):
             meshPacket.decoded.portnum = portnum
             meshPacket.decoded.want_response = False
             meshPacket.id = 0
-        except (TypeError, ValueError, binascii.Error) as e:
-            self.logger.exception("Error reconstructing packet: %s", e)
+        except (TypeError, ValueError, binascii.Error):
+            self.logger.exception("Error reconstructing packet")
             return False
 
         self.logger.debug("Relaying packet to Radio")

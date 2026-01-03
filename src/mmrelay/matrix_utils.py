@@ -1,5 +1,3 @@
-# mypy: disable-error-code=import-untyped
-
 import asyncio
 import getpass
 import html
@@ -25,7 +23,7 @@ from typing import (
 )
 from urllib.parse import urlparse
 
-from nio import (
+from nio import (  # type: ignore[import-untyped]
     AsyncClient,
     AsyncClientConfig,
     DiscoveryInfoError,
@@ -41,7 +39,7 @@ from nio import (
     UploadError,
     UploadResponse,
 )
-from nio.events.room_events import RoomMemberEvent
+from nio.events.room_events import RoomMemberEvent  # type: ignore[import-untyped]
 from PIL import Image
 
 # Local imports
@@ -102,11 +100,15 @@ from mmrelay.message_queue import get_message_queue, queue_message
 
 # Import nio exception types with error handling for test environments
 try:
-    from nio.exceptions import LocalProtocolError as NioLocalProtocolError
+    from nio.exceptions import (
+        LocalProtocolError as NioLocalProtocolError,  # type: ignore[import-untyped]
+    )
     from nio.exceptions import LocalTransportError as NioLocalTransportError
     from nio.exceptions import RemoteProtocolError as NioRemoteProtocolError
     from nio.exceptions import RemoteTransportError as NioRemoteTransportError
-    from nio.responses import LoginError as NioLoginError
+    from nio.responses import (
+        LoginError as NioLoginError,  # type: ignore[import-untyped]
+    )
     from nio.responses import LogoutError as NioLogoutError
 except ImportError:
     # Fallback for test environments where nio imports might fail
@@ -1080,7 +1082,7 @@ async def _handle_detection_sensor_packet(
     if not meshtastic_interface:
         return
 
-    import meshtastic.protobuf.portnums_pb2
+    import meshtastic.protobuf.portnums_pb2  # type: ignore[import-untyped]
 
     success = queue_message(
         meshtastic_interface.sendData,
@@ -1414,10 +1416,9 @@ async def connect_matrix(
         # Use restore_login when a device_id is available so nio can load the store.
         # When the device_id is unknown, discover it first via whoami and then restore.
         if e2ee_device_id and bot_user_id:
-            device_id_for_restore: str = e2ee_device_id
             matrix_client.restore_login(
                 user_id=bot_user_id,
-                device_id=device_id_for_restore,
+                device_id=e2ee_device_id,
                 access_token=matrix_access_token,
             )
             logger.info(
@@ -1913,7 +1914,7 @@ async def login_matrix_bot(
 
             # Test the API call that matrix-nio will make
             try:
-                from nio.api import Api
+                from nio.api import Api  # type: ignore[import-untyped]
 
                 method, path, data = Api.login(
                     user=username or "",
@@ -2338,7 +2339,7 @@ async def matrix_relay(
         # Process markdown/HTML if available; otherwise, safe fallback
         if has_markdown or has_html:
             try:
-                import bleach  # lazy import
+                import bleach  # type: ignore[import-untyped]  # lazy import
                 import markdown  # lazy import
 
                 raw_html = markdown.markdown(safe_message)
@@ -2780,7 +2781,7 @@ async def send_reply_to_meshtastic(
 
             if reply_id is not None:
                 # Send as a structured reply using our custom function
-                # Queue is reply message
+                # Queue the structured reply message for delivery to Meshtastic.
                 success = queue_message(
                     sendTextReply,
                     meshtastic_interface,
@@ -3415,12 +3416,11 @@ async def on_room_message(
                 require_mention_attr = getattr(
                     plugin_obj, "get_require_bot_mention", lambda: False
                 )
-                require_mention_val = (
+                require_mention = bool(
                     require_mention_attr()
                     if callable(require_mention_attr)
                     else require_mention_attr
                 )
-                require_mention = bool(require_mention_val)
                 return any(
                     bot_command(cmd, event, require_mention=require_mention)
                     for cmd in plugin_obj.get_matrix_commands()
