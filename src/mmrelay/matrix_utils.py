@@ -1652,8 +1652,8 @@ async def connect_matrix(
         logger.debug(f"Failed to get bot display name for {bot_user_id}: {e}")
         bot_user_name = bot_user_id  # Fallback on network error
 
-    # Note: E2EE status is tracked via config, not on client
-    # matrix_client does not have e2ee_enabled attribute by default
+    # Store E2EE status on the client for other functions to access
+    matrix_client.e2ee_enabled = e2ee_enabled  # type: ignore[attr-defined]
     return matrix_client
 
 
