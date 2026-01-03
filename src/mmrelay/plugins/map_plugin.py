@@ -1,7 +1,7 @@
 import asyncio
 import os
 import re
-from typing import Any
+from typing import Any, cast
 
 import PIL.ImageDraw
 import s2sphere  # type: ignore[import-untyped]
@@ -321,9 +321,17 @@ def get_map(
 
     # render non-anti-aliased png
     if image_size:
-        return context.render_pillow(image_size[0], image_size[1])  # type: ignore[no-any-return]
+        image = context.render_pillow(image_size[0], image_size[1])
     else:
-        return context.render_pillow(1000, 1000)  # type: ignore[no-any-return]
+        image = context.render_pillow(1000, 1000)
+
+    # staticmaps is untyped; validate the return type instead of suppressing.
+    # In tests PIL is mocked, so only enforce when Image is a real class.
+    image_cls = getattr(PILImage, "Image", None)
+    if isinstance(image_cls, type) and not isinstance(image, image_cls):
+        raise TypeError("staticmaps.render_pillow returned non-PIL image")
+
+    return cast(PILImage.Image, image)
 
 
 class Plugin(BasePlugin):
@@ -368,7 +376,11 @@ class Plugin(BasePlugin):
         )
 
     async def handle_meshtastic_message(
-        self, packet: object, formatted_message: str, longname: str, meshnet_name: str
+        self,
+        _packet: object,
+        _formatted_message: str,
+        _longname: str,
+        _meshnet_name: str,
     ) -> bool:
         """
         Decide whether this plugin consumes an incoming Meshtastic packet.

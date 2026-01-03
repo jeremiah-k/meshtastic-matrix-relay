@@ -40,7 +40,11 @@ class Plugin(BasePlugin):
         return "List supported relay commands"
 
     async def handle_meshtastic_message(
-        self, packet: Any, formatted_message: Any, longname: Any, meshnet_name: Any
+        self,
+        _packet: Any,
+        _formatted_message: Any,
+        _longname: Any,
+        _meshnet_name: Any,
     ) -> bool:
         """
         State that this plugin does not handle messages originating from Meshtastic.

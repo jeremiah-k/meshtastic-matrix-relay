@@ -148,7 +148,8 @@ class Plugin(BasePlugin):
 
         Parameters:
             room (MatrixRoom): The room where the message was received.
-            event (dict[str, Any]): The Matrix message event used to determine whether the plugin should run.
+            event (RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote):
+                The Matrix message event used to determine whether the plugin should run.
             full_message (str): The full text of the received message.
 
         Returns:

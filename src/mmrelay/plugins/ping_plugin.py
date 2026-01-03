@@ -68,9 +68,9 @@ class Plugin(BasePlugin):
     async def handle_meshtastic_message(
         self,
         packet: dict[str, Any],
-        formatted_message: str,
+        _formatted_message: str,
         longname: str,
-        meshnet_name: str,
+        _meshnet_name: str,
     ) -> bool:
         """
         Responds to a "ping" text in an incoming Meshtastic packet with a case-matching "pong" reply when channel/ addressing rules allow.
@@ -194,7 +194,7 @@ class Plugin(BasePlugin):
         self,
         room: MatrixRoom,
         event: RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote,
-        full_message: str,
+        _full_message: str,
     ) -> bool:
         """
         Reply "pong!" to a Matrix room message that matches this plugin's trigger.

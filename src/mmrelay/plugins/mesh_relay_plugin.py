@@ -285,5 +285,11 @@ class Plugin(BasePlugin):
 
         # _sendPacket is required for relaying raw MeshPacket payloads.
         # Note: this is a private API; monitor upstream Meshtastic changes.
-        meshtastic_client._sendPacket(meshPacket=meshPacket, destinationId=to_id)
+        try:
+            meshtastic_client._sendPacket(meshPacket=meshPacket, destinationId=to_id)
+        except AttributeError:
+            self.logger.error(
+                "_sendPacket method not available; Meshtastic API may have changed"
+            )
+            return False
         return True

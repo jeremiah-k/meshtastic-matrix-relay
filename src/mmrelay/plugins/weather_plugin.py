@@ -447,9 +447,9 @@ class Plugin(BasePlugin):
     async def handle_meshtastic_message(
         self,
         packet: dict[str, Any],
-        formatted_message: str,
+        _formatted_message: str,
         longname: str,
-        meshnet_name: str,
+        _meshnet_name: str,
     ) -> bool:
         """
         Handle an incoming Meshtastic text message and respond with a weather forecast when a supported command is detected.

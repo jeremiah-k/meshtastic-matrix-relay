@@ -245,9 +245,8 @@ def _e2ee_dependencies_available() -> bool:
     This helper avoids repeating optional imports across CLI flows.
     """
     try:
-        olm_module = importlib.import_module("olm")
-        if olm_module is None:
-            raise ImportError("olm module is unavailable")
+        # import_module raises ImportError on failure; no None checks needed.
+        importlib.import_module("olm")
 
         nio_crypto = importlib.import_module("nio.crypto")
         if not hasattr(nio_crypto, "OlmDevice"):

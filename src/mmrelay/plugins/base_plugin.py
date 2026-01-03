@@ -3,6 +3,7 @@ import os
 import re
 import threading
 from abc import ABC, abstractmethod
+from collections.abc import Iterable, Sequence
 from typing import Any
 
 import markdown
@@ -600,12 +601,29 @@ class BasePlugin(ABC):
 
         Parameters:
             meshtastic_id (str): Node identifier for which data will be replaced.
-            node_data (Any): New data to store; if iterable, only the most recent
-                entries up to `self.max_data_rows_per_node` are kept.
+            node_data (Any): New data to store; if a sequence, only the most recent
+                entries up to `self.max_data_rows_per_node` are kept. Scalars and
+                non-sequence iterables are normalized to a list.
         """
         plugin_name = self._require_plugin_name()
-        node_data = node_data[-self.max_data_rows_per_node :]
-        store_plugin_data(plugin_name, meshtastic_id, node_data)
+        # Normalize to a list so scalars, dicts, and generators are stored safely.
+        if isinstance(node_data, list):
+            normalized = node_data
+        elif isinstance(node_data, dict):
+            normalized = [node_data]
+        elif isinstance(node_data, Sequence) and not isinstance(
+            node_data, (str, bytes, bytearray)
+        ):
+            normalized = list(node_data)
+        elif isinstance(node_data, Iterable) and not isinstance(
+            node_data, (str, bytes, bytearray)
+        ):
+            normalized = list(node_data)
+        else:
+            normalized = [node_data]
+
+        trimmed = normalized[-self.max_data_rows_per_node :]
+        store_plugin_data(plugin_name, meshtastic_id, trimmed)
 
     def delete_node_data(self, meshtastic_id: str) -> None:
         """Delete all stored data for a specific node.

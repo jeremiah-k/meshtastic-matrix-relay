@@ -2929,6 +2929,11 @@ async def handle_matrix_reply(
     # Get user display name
     full_display_name = await get_user_display_name(room, event)
 
+    # Prefer the meshnet stored with the original mapping when available; the
+    # Matrix event often lacks this field for replies.
+    orig_meshnet_name = orig[3]
+    reply_meshnet_name = meshnet_name or orig_meshnet_name
+
     # Format the reply message
     reply_message = format_reply_message(
         config,
@@ -2936,7 +2941,7 @@ async def handle_matrix_reply(
         text,
         longname=longname,
         shortname=shortname,
-        meshnet_name=meshnet_name,
+        meshnet_name=reply_meshnet_name,
         local_meshnet_name=local_meshnet_name,
         mesh_text_override=mesh_text_override,
     )

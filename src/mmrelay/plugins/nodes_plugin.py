@@ -142,7 +142,7 @@ $shortname $longname / $devicemodel / $battery $voltage / $snr / $hops / $lastse
             `False` indicating that the plugin did not handle the message.
         """
         # Preserve API surface; arguments are currently unused.
-        _ = formatted_message, meshnet_name
+        _ = packet, formatted_message, longname, meshnet_name
         return False
 
     async def handle_room_message(
