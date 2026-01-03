@@ -6847,9 +6847,9 @@ async def test_send_reply_to_meshtastic_defaults_config_when_missing():
             "mmrelay.matrix_utils._get_meshtastic_interface_and_channel",
             new_callable=AsyncMock,
             return_value=(MagicMock(), 0),
-        ),
+        ) as mock_get_interface,
         patch("mmrelay.matrix_utils.get_meshtastic_config_value", return_value=True),
-        patch("mmrelay.matrix_utils.queue_message", return_value=True),
+        patch("mmrelay.matrix_utils.queue_message", return_value=True) as mock_queue,
         patch("mmrelay.matrix_utils._create_mapping_info", return_value=None),
         patch("mmrelay.matrix_utils.config", None),
     ):
@@ -6863,6 +6863,9 @@ async def test_send_reply_to_meshtastic_defaults_config_when_missing():
             False,
             "local_meshnet",
         )
+
+    mock_get_interface.assert_called_once()
+    mock_queue.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -6921,5 +6924,5 @@ async def test_on_room_message_creates_mapping_info():
         await on_room_message(room, event)
 
     mock_mapping.assert_called_once()
-    args, kwargs = mock_mapping.call_args
+    args, _ = mock_mapping.call_args
     assert args[0] == "$event123"
