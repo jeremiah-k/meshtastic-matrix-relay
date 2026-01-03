@@ -3,6 +3,7 @@ Command-line interface handling for the Meshtastic Matrix Relay.
 """
 
 import argparse
+import importlib
 import importlib.resources
 import os
 import shutil
@@ -244,9 +245,17 @@ def _e2ee_dependencies_available() -> bool:
     This helper avoids repeating optional imports across CLI flows.
     """
     try:
-        import olm  # noqa: F401
-        from nio.crypto import OlmDevice  # type: ignore[import-untyped]  # noqa: F401
-        from nio.store import SqliteStore  # type: ignore[import-untyped]  # noqa: F401
+        olm_module = importlib.import_module("olm")
+        if olm_module is None:
+            raise ImportError("olm module is unavailable")
+
+        nio_crypto = importlib.import_module("nio.crypto")
+        if not hasattr(nio_crypto, "OlmDevice"):
+            raise ImportError("nio.crypto.OlmDevice is unavailable")
+
+        nio_store = importlib.import_module("nio.store")
+        if not hasattr(nio_store, "SqliteStore"):
+            raise ImportError("nio.store.SqliteStore is unavailable")
 
         return True
     except ImportError:

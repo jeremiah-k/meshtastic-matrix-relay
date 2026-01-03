@@ -260,6 +260,7 @@ class Plugin(BasePlugin):
             meshPacket.decoded.payload = base64.b64decode(payload_b64)
             meshPacket.decoded.portnum = portnum
             meshPacket.decoded.want_response = False
+            meshPacket.id = 0
         except (TypeError, ValueError, binascii.Error) as e:
             self.logger.exception("Error reconstructing packet: %s", e)
             return False

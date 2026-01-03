@@ -187,7 +187,7 @@ def test_config_generation_windows(args: Any = None) -> dict[str, Any]:
         dict: Diagnostic results with these keys:
             - sample_config_path, importlib_resources, config_paths, directory_creation:
                 dict objects with "status" ("ok" or "error") and "details" (string).
-            - overall_status: one of "ok" (no errors), "partial" (1–2 errors), or "error" (3+ errors).
+            - overall_status: one of "ok" (no errors), "partial" (1-2 errors), or "error" (3+ errors).
         If called on a non-Windows platform, returns {"error": "This function is only for Windows systems"}.
 
     Notes:

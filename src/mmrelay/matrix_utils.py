@@ -21,7 +21,6 @@ from typing import (
     Generator,
     Optional,
     Tuple,
-    Union,
     cast,
 )
 from urllib.parse import urlparse
@@ -2592,12 +2591,7 @@ def strip_quoted_lines(text: str) -> str:
 
 async def get_user_display_name(
     room: MatrixRoom,
-    event: Union[
-        RoomMessageText,
-        RoomMessageNotice,
-        ReactionEvent,
-        RoomMessageEmote,
-    ],
+    event: RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote,
 ) -> str:
     """
     Get the display name for an event sender, preferring a room-specific name.
@@ -2728,12 +2722,7 @@ async def send_reply_to_meshtastic(
     full_display_name: str,
     room_config: dict[str, Any],
     room: MatrixRoom,
-    event: Union[
-        RoomMessageText,
-        RoomMessageNotice,
-        ReactionEvent,
-        RoomMessageEmote,
-    ],
+    event: RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote,
     text: str,
     storage_enabled: bool,
     local_meshnet_name: str,
@@ -2856,12 +2845,7 @@ async def send_reply_to_meshtastic(
 
 async def handle_matrix_reply(
     room: MatrixRoom,
-    event: Union[
-        RoomMessageText,
-        RoomMessageNotice,
-        ReactionEvent,
-        RoomMessageEmote,
-    ],
+    event: RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote,
     reply_to_event_id: str,
     text: str,
     room_config: dict[str, Any],
@@ -2989,12 +2973,7 @@ async def on_decryption_failure(room: MatrixRoom, event: MegolmEvent) -> None:
 # Callback for new messages in Matrix room
 async def on_room_message(
     room: MatrixRoom,
-    event: Union[
-        RoomMessageText,
-        RoomMessageNotice,
-        ReactionEvent,
-        RoomMessageEmote,
-    ],
+    event: RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote,
 ) -> None:
     """
     Handle a Matrix room event and, when applicable, bridge it to Meshtastic.
@@ -3552,7 +3531,7 @@ class ImageUploadError(RuntimeError):
 
 async def upload_image(
     client: AsyncClient, image: Image.Image, filename: str
-) -> Union[UploadResponse, UploadError, SimpleNamespace]:
+) -> UploadResponse | UploadError | SimpleNamespace:
     """
     Upload a Pillow Image to the Matrix content repository.
 
@@ -3605,7 +3584,7 @@ async def upload_image(
 async def send_room_image(
     client: AsyncClient,
     room_id: str,
-    upload_response: Union[UploadResponse, UploadError, SimpleNamespace, None],
+    upload_response: UploadResponse | UploadError | SimpleNamespace | None,
     filename: str = "image.png",
 ) -> None:
     """
