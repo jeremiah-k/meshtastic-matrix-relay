@@ -68,9 +68,9 @@ class Plugin(BasePlugin):
     async def handle_meshtastic_message(
         self,
         packet: dict[str, Any],
-        _formatted_message: str,
+        formatted_message: str,
         longname: str,
-        _meshnet_name: str,
+        meshnet_name: str,
     ) -> bool:
         """
         Responds to a "ping" text in an incoming Meshtastic packet with a case-matching "pong" reply when channel/ addressing rules allow.
@@ -84,6 +84,8 @@ class Plugin(BasePlugin):
         Returns:
             bool: `True` if the handler processed the packet or intentionally suppressed processing (e.g., when the Meshtastic client or its `myInfo` is unavailable), `False` otherwise.
         """
+        # Keep parameter names for compatibility with keyword calls in tests.
+        _ = formatted_message, meshnet_name
         if "decoded" not in packet or "text" not in packet["decoded"]:
             return False
 
@@ -194,7 +196,7 @@ class Plugin(BasePlugin):
         self,
         room: MatrixRoom,
         event: RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote,
-        _full_message: str,
+        full_message: str,
     ) -> bool:
         """
         Reply "pong!" to a Matrix room message that matches this plugin's trigger.
@@ -207,6 +209,8 @@ class Plugin(BasePlugin):
         Returns:
             True if the message matched and a reply was sent, False otherwise.
         """
+        # Keep parameter names for compatibility with keyword calls in tests.
+        _ = full_message
         if not self.matches(event):
             return False
 

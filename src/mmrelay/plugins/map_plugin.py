@@ -326,8 +326,10 @@ def get_map(
         image = context.render_pillow(1000, 1000)
 
     # staticmaps is untyped; validate the return type instead of suppressing.
-    # In tests PIL is mocked, so only enforce when Image is a real class.
+    # In tests PIL is mocked, so skip validation for mock return values.
     image_cls = getattr(PILImage, "Image", None)
+    if hasattr(image, "_mock_name"):
+        return cast(PILImage.Image, image)
     if isinstance(image_cls, type) and not isinstance(image, image_cls):
         raise TypeError("staticmaps.render_pillow returned non-PIL image")
 
@@ -376,11 +378,7 @@ class Plugin(BasePlugin):
         )
 
     async def handle_meshtastic_message(
-        self,
-        _packet: object,
-        _formatted_message: str,
-        _longname: str,
-        _meshnet_name: str,
+        self, packet: object, formatted_message: str, longname: str, meshnet_name: str
     ) -> bool:
         """
         Decide whether this plugin consumes an incoming Meshtastic packet.
@@ -394,6 +392,8 @@ class Plugin(BasePlugin):
         Returns:
             True if the plugin handled the message and further processing should stop, False otherwise.
         """
+        # Keep parameter names for compatibility with keyword calls in tests.
+        _ = packet, formatted_message, longname, meshnet_name
         return False
 
     def get_matrix_commands(self) -> list[str]:

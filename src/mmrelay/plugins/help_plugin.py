@@ -40,11 +40,7 @@ class Plugin(BasePlugin):
         return "List supported relay commands"
 
     async def handle_meshtastic_message(
-        self,
-        _packet: Any,
-        _formatted_message: Any,
-        _longname: Any,
-        _meshnet_name: Any,
+        self, packet: Any, formatted_message: Any, longname: Any, meshnet_name: Any
     ) -> bool:
         """
         State that this plugin does not handle messages originating from Meshtastic.
@@ -58,6 +54,8 @@ class Plugin(BasePlugin):
         Returns:
             True if the message was handled by the plugin, False otherwise. This implementation always returns False.
         """
+        # Keep parameter names for compatibility with keyword calls in tests.
+        _ = packet, formatted_message, longname, meshnet_name
         return False
 
     def get_matrix_commands(self) -> list[str]:

@@ -447,9 +447,9 @@ class Plugin(BasePlugin):
     async def handle_meshtastic_message(
         self,
         packet: dict[str, Any],
-        _formatted_message: str,
+        formatted_message: str,
         longname: str,
-        _meshnet_name: str,
+        meshnet_name: str,
     ) -> bool:
         """
         Handle an incoming Meshtastic text message and respond with a weather forecast when a supported command is detected.
@@ -459,6 +459,8 @@ class Plugin(BasePlugin):
         Returns:
             bool: `True` if the packet was handled (a response was sent or the request was acknowledged as handled); `False` if the packet is not a relevant text message or command for this plugin.
         """
+        # Keep parameter names for compatibility with keyword calls in tests.
+        _ = formatted_message, meshnet_name
         if (
             "decoded" not in packet
             or "portnum" not in packet["decoded"]
