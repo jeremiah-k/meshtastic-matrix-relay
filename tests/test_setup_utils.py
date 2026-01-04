@@ -877,34 +877,19 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
             args=["sudo", "loginctl", "enable-linger", "test"], returncode=0
         )
 
-        # Mock the import and getuser call
-        with patch("mmrelay.setup_utils.logger") as mock_logger:
-            # Mock importlib to return a mock getpass module
-            mock_getpass = MagicMock()
-            mock_getpass.getuser.return_value = ""
+        # Mock import and getuser call
+        with (
+            patch("mmrelay.setup_utils.logger") as mock_logger,
+            patch("getpass.getuser", return_value=""),
+        ):
+            result = enable_lingering()
 
-            with patch("builtins.__import__") as mock_import:
-
-                def mock_import_side_effect(name, *args, **kwargs):
-                    """
-                    Import hook used by tests to substitute a mocked getpass module.
-
-                    If `name` is "getpass" returns the test's `mock_getpass` object; otherwise delegates to Python's built-in `__import__`, forwarding any additional positional and keyword arguments.
-                    """
-                    if name == "getpass":
-                        return mock_getpass
-                    return __import__(name, *args, **kwargs)
-
-                mock_import.side_effect = mock_import_side_effect
-
-                result = enable_lingering()
-
-                # Should return False when username cannot be determined
-                self.assertFalse(result)
-                # Should log error message
-                mock_logger.error.assert_any_call(
-                    "Error enabling lingering: could not determine current user"
-                )
+            # Should return False when username cannot be determined
+            self.assertFalse(result)
+            # Should log error message
+            mock_logger.error.assert_any_call(
+                "Error enabling lingering: could not determine current user"
+            )
 
     @patch("mmrelay.setup_utils.service_needs_update")
     @patch("mmrelay.setup_utils.read_service_file")
@@ -1175,7 +1160,7 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
             result = install_service()
         self.assertTrue(result)  # it should still succeed, but log a warning
         mock_logger.warning.assert_any_call(
-            "Warning: Failed to reload systemd daemon. You may need to run 'systemctl --user daemon-reload' manually."
+            "Failed to reload systemd daemon. You may need to run 'systemctl --user daemon-reload' manually."
         )
 
     @patch("subprocess.run", side_effect=OSError("OS error"))
