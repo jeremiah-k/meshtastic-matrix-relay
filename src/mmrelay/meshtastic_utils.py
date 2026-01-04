@@ -1445,7 +1445,7 @@ def send_text_reply(
         logger.exception("Failed to send text reply")
         return None
     except SystemExit:
-        # Preserve SystemExit to allow graceful shutdown; some paths in meshtastic may call sys.exit()
+        logger.debug("SystemExit encountered, preserving for graceful shutdown")
         raise
 
 

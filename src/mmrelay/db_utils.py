@@ -442,16 +442,16 @@ def delete_plugin_data(plugin_name: str, meshtastic_id: str) -> None:
 
 def get_plugin_data_for_node(plugin_name: str, meshtastic_id: int | str) -> Any:
     """
-    Return the deserialized JSON value stored for a plugin and Meshtastic node.
+    Return deserialized JSON value stored for a plugin and Meshtastic node, or an empty list on error.
 
-    If no row exists or a database or decoding error occurs, returns an empty list.
+    The stored value may be of any JSON-serializable type. If no row exists or a database or decoding error occurs, returns an empty list as a fallback.
 
     Parameters:
         plugin_name (str): Name of the plugin.
         meshtastic_id (int | str): Identifier of the Meshtastic node.
 
     Returns:
-        Any: The deserialized JSON value stored for the given plugin and node, or an empty list if none is stored or on error.
+        Any: The deserialized JSON value (may be dict, list, scalar, etc.) for the given plugin and node, or an empty list `[]` if none is stored or on error.
     """
     manager = _get_db_manager()
 

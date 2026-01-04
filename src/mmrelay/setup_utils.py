@@ -246,7 +246,7 @@ def get_template_service_path() -> str | None:
 
     # If we get here, we couldn't find the template
     # Warning output to help diagnose issues
-    logger.warning("Warning: Could not find mmrelay.service in any of these locations:")
+    logger.warning("Could not find mmrelay.service in any of these locations:")
     for path in template_paths:
         logger.warning("  - %s", path)
 
@@ -340,7 +340,7 @@ def is_service_enabled() -> bool:
         )
         return result.returncode == 0 and result.stdout.strip() == "enabled"
     except (OSError, subprocess.SubprocessError) as e:
-        logger.warning("Warning: Failed to check service enabled status: %s", e)
+        logger.warning("Failed to check service enabled status: %s", e)
         return False
 
 
@@ -360,7 +360,7 @@ def is_service_active() -> bool:
         )
         return result.returncode == 0 and result.stdout.strip() == "active"
     except (OSError, subprocess.SubprocessError) as e:
-        logger.warning("Warning: Failed to check service active status: %s", e)
+        logger.warning("Failed to check service active status: %s", e)
         return False
 
 
@@ -422,11 +422,12 @@ def create_service_file() -> bool:
     # Write service file
     try:
         get_user_service_path().write_text(service_content, encoding="utf-8")
-        logger.info("Service file created at %s", get_user_service_path())
-        return True
     except (IOError, OSError):
         logger.exception("Error creating service file")
         return False
+    else:
+        logger.info("Service file created at %s", get_user_service_path())
+        return True
 
 
 def reload_daemon() -> bool:
@@ -447,7 +448,7 @@ def reload_daemon() -> bool:
         logger.exception("Error reloading systemd daemon")
         return False
     except OSError:
-        logger.exception("Error")
+        logger.exception("Error running systemctl daemon-reload")
         return False
 
 
@@ -549,7 +550,7 @@ def check_loginctl_available() -> bool:
         )
         return result.returncode == 0
     except (OSError, subprocess.SubprocessError) as e:
-        logger.warning("Warning: Failed to check loginctl availability: %s", e)
+        logger.warning("Failed to check loginctl availability: %s", e)
         return False
 
 
@@ -607,8 +608,13 @@ def enable_lingering() -> bool:
             logger.error("Error enabling lingering: could not determine current user")
             return False
         logger.info("Enabling lingering for user %s...", username)
+        sudo_path = shutil.which("sudo")
+        loginctl_path = shutil.which("loginctl")
+        if not sudo_path or not loginctl_path:
+            logger.error("Error enabling lingering: sudo or loginctl not found")
+            return False
         result = subprocess.run(
-            ["sudo", "loginctl", "enable-linger", username],
+            [sudo_path, loginctl_path, "enable-linger", username],
             check=False,
             capture_output=True,
             text=True,
@@ -671,7 +677,7 @@ def install_service() -> bool:
         # Reload daemon (continue even if this fails)
         if not reload_daemon():
             logger.warning(
-                "Warning: Failed to reload systemd daemon. You may need to run 'systemctl --user daemon-reload' manually."
+                "Failed to reload systemd daemon. You may need to run 'systemctl --user daemon-reload' manually."
             )
 
         if existing_service:
@@ -777,7 +783,7 @@ def install_service() -> bool:
                 logger.info("Service started successfully")
             else:
                 logger.warning(
-                    "\nWarning: Failed to start the service. Please check the logs."
+                    "\nFailed to start of the service. Please check the logs."
                 )
 
     # Log a summary of the service status
@@ -812,7 +818,7 @@ def start_service() -> bool:
         logger.exception("Error starting service")
         return False
     except OSError:
-        logger.exception("Error")
+        logger.exception("Error starting mmrelay service")
         return False
 
 
@@ -836,5 +842,5 @@ def show_service_status() -> bool:
         logger.info(result.stdout if result.stdout else result.stderr)
         return True
     except OSError:
-        logger.exception("Error")
+        logger.exception("Error displaying service status")
         return False
