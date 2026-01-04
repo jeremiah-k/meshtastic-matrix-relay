@@ -402,7 +402,7 @@ def test_on_meshtastic_message_non_text_plugin_returns_none(
             return_value={"reactions": False, "replies": False},
         ),
         patch("mmrelay.plugin_loader.load_plugins", return_value=[plugin]),
-        patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+        patch("mmrelay.meshtastic_utils.logger"),
     ):
         on_meshtastic_message(packet, _make_interface())
 

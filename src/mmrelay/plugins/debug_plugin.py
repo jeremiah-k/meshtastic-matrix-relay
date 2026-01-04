@@ -39,12 +39,12 @@ class Plugin(BasePlugin):
     ) -> bool:
         """
         Log a Meshtastic packet after removing raw binary fields.
-        
+
         Strips raw binary fields from `packet` for readability and logs the sanitized packet at debug level. The other parameters are accepted for compatibility but are not used. This plugin does not intercept the message.
-        
+
         Parameters:
             packet: The received Meshtastic packet; raw binary fields will be removed before logging.
-        
+
         Returns:
             `True` if the message is intercepted, `False` otherwise.
         """

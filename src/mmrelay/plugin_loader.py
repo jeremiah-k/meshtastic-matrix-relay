@@ -17,12 +17,6 @@ from types import ModuleType
 from typing import Any, Iterator, NamedTuple, NoReturn
 from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 
-schedule: ModuleType | None
-try:
-    import schedule
-except ImportError:
-    schedule = None
-
 from mmrelay.config import get_app_path, get_base_dir
 from mmrelay.constants.plugins import (
     DEFAULT_ALLOWED_COMMUNITY_HOSTS,
@@ -30,6 +24,12 @@ from mmrelay.constants.plugins import (
     RISKY_REQUIREMENT_PREFIXES,
 )
 from mmrelay.log_utils import get_logger
+
+schedule: ModuleType | None
+try:
+    import schedule
+except ImportError:
+    schedule = None
 
 # Global config variable that will be set from main.py
 config = None
@@ -189,7 +189,7 @@ def _collect_requirements(
 def _temp_sys_path(path: str) -> Iterator[None]:
     """
     Temporarily prepend a directory to sys.path for the lifetime of the context manager.
-    
+
     On entry the given filesystem path is inserted at the front of sys.path; on exit the first matching occurrence is removed if present. The function accepts path-like objects (converted via os.fspath).
     Parameters:
         path (str | os.PathLike): Directory path to add to sys.path for the duration of the context.
@@ -208,9 +208,9 @@ def _temp_sys_path(path: str) -> Iterator[None]:
 def _get_security_settings() -> dict[str, Any]:
     """
     Return the `security` mapping from the module-level `config`.
-    
+
     If the module-level `config` is falsy, lacks a `"security"` key, or the `"security"` value is not a mapping, an empty dict is returned.
-    
+
     Returns:
         dict: Security settings mapping from module config, or an empty dict when unavailable or invalid.
     """
@@ -557,7 +557,7 @@ def _clean_python_cache(directory: str) -> None:
 def _reset_caches_for_tests() -> None:
     """
     Reset global plugin loader caches to their initial state for testing.
-    
+
     Sets the module globals `sorted_active_plugins` to an empty list and `plugins_loaded` to False to ensure test isolation.
     """
     global sorted_active_plugins, plugins_loaded
@@ -930,12 +930,12 @@ def _run_git(
 def _check_auto_install_enabled(config: Any) -> bool:
     """
     Determine whether automatic dependency installation is enabled for the given configuration.
-    
+
     Parameters:
         config (dict|Any): Configuration mapping expected to contain a "security" dict with an optional
             boolean "auto_install_deps" key. If `config` is falsy or missing the key, automatic
             installation is considered enabled by default.
-    
+
     Returns:
         True if automatic installation is enabled, False otherwise.
     """
@@ -1710,13 +1710,13 @@ def clone_or_update_repo(repo_url: str, ref: dict[str, str], plugins_dir: str) -
 def load_plugins_from_directory(directory: str, recursive: bool = False) -> list[Any]:
     """
     Discover and instantiate top-level Plugin classes from Python modules in a directory.
-    
+
     Scans the given directory (optionally recursively) for .py files, imports each module in an isolated namespace, and instantiates any top-level `Plugin` class found. If a module import fails due to a missing dependency and automatic installation is enabled, the function may attempt to install the missing package, refresh import paths, and retry loading. The function may modify interpreter import state (for compatibility aliases) and invoke external installers when auto-installation occurs.
-    
+
     Parameters:
         directory (str): Path to the directory containing plugin Python files.
         recursive (bool): If True, scan subdirectories recursively; otherwise scan only the top-level directory.
-    
+
     Returns:
         list[Any]: Instances of discovered plugin classes; returns an empty list if none are found.
     """

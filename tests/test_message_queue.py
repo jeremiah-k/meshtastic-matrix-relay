@@ -255,17 +255,17 @@ class TestMessageQueue(unittest.TestCase):
         def raising_import(name, globals=None, locals=None, fromlist=(), level=0):
             """
             Raise ImportError when attempting to import "mmrelay.meshtastic_utils"; otherwise delegate to the original import function.
-            
+
             Parameters:
                 name (str): The module name to import.
                 globals (dict | None): The globals dictionary to pass to the import machinery.
                 locals (dict | None): The locals dictionary to pass to the import machinery.
                 fromlist (tuple): Names to emulate "from <module> import ..." semantics.
                 level (int): The package import level (0 for absolute imports).
-            
+
             Returns:
                 Any: The result of the original import call (a module or an attribute from a module).
-            
+
             Raises:
                 ImportError: If `name` is exactly "mmrelay.meshtastic_utils".
             """

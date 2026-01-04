@@ -173,12 +173,12 @@ def check_windows_requirements() -> Optional[str]:
 def test_config_generation_windows(args: Any = None) -> dict[str, Any]:
     """
     Run Windows-only diagnostics for MMRelay configuration generation.
-    
+
     Performs four checks (sample_config_path, importlib_resources, config_paths, directory_creation) and reports per-test results plus an aggregated overall_status.
-    
+
     Parameters:
         args (optional): Forwarded to mmrelay.config.get_config_paths; typically CLI-style arguments or None.
-    
+
     Returns:
         dict: Diagnostic results containing:
             - sample_config_path, importlib_resources, config_paths, directory_creation:

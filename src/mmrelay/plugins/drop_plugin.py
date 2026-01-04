@@ -182,10 +182,10 @@ class Plugin(BasePlugin):
         # Pass the event to matches() instead of full_message
         """
         Route a Matrix room event to the plugin's matching logic.
-        
+
         Parameters:
             event (RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote): The room event to evaluate; forwarded to `matches()`.
-        
+
         Returns:
             bool: `True` if the event matches the plugin's criteria, `False` otherwise.
         """

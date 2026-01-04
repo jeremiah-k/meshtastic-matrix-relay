@@ -64,9 +64,9 @@ class Plugin(BasePlugin):
     def description(self) -> str:
         """
         Provide the plugin description and the node-list line format.
-        
+
         The returned string contains a human-readable description followed by an example node line format using these placeholders: $shortname, $longname, $devicemodel, $battery, $voltage, $snr, $hops, $lastseen.
-        
+
         Returns:
             A multiline string with the plugin description and the node output format.
         """
@@ -133,13 +133,13 @@ $shortname $longname / $devicemodel / $battery $voltage / $snr / $hops / $lastse
     ) -> bool:
         """
         Handle an incoming Meshtastic packet without processing it.
-        
+
         Parameters:
             packet (Any): Raw Meshtastic packet data received from the mesh.
             formatted_message (str): Human-readable representation of the packet payload.
             longname (str): Full device name of the packet sender.
             meshnet_name (str): Name of the mesh network that the packet originated from.
-        
+
         Returns:
             bool: `False` indicating the plugin did not handle the message.
         """
@@ -156,12 +156,12 @@ $shortname $longname / $devicemodel / $battery $voltage / $snr / $hops / $lastse
         # Pass the event to matches()
         """
         Handle a Matrix room event and send the nodes summary when the event matches plugin criteria.
-        
+
         Parameters:
             room (MatrixRoom): The Matrix room where the event occurred; used as the destination for the response.
             event (RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote): Incoming event evaluated to determine whether this plugin should handle it.
             full_message (str): The raw message text; present for signature compatibility and not used by this handler.
-        
+
         Returns:
             bool: `True` if the event was handled and a response was sent, `False` otherwise.
         """

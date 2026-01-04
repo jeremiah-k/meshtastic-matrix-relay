@@ -139,12 +139,12 @@ def test_plugin_loader_schedule_import_error():
     def raising_import(name, globals=None, locals=None, fromlist=(), level=0):
         """
         Simulate a missing 'schedule' module by raising ImportError for that name, otherwise delegate to the original import.
-        
+
         Returns:
-        	The result of importing `name` using the original import function.
-        
+                The result of importing `name` using the original import function.
+
         Raises:
-        	ImportError: If `name` is "schedule".
+                ImportError: If `name` is "schedule".
         """
         if name == "schedule":
             raise ImportError("missing")
@@ -170,10 +170,10 @@ def test_temp_sys_path_handles_missing_remove():
         def remove(self, value):  # noqa: A003 - intentional shadow for list.remove
             """
             Always raises a ValueError indicating the requested item is missing.
-            
+
             Parameters:
                 value: The item attempted to be removed (ignored).
-            
+
             Raises:
                 ValueError: Always raised with the message "missing".
             """
@@ -437,9 +437,9 @@ class Plugin:
         def fake_run(_cmd, *_args, **_kwargs):  # nosec B603
             """
             Simulate a successful subprocess call and inject a dummy module named "missingdep" into sys.modules.
-            
+
             This test helper inserts a ModuleType("missingdep") into sys.modules as a side effect and returns a subprocess.CompletedProcess indicating success.
-            
+
             Returns:
                 subprocess.CompletedProcess: CompletedProcess with `args` set to the provided command and `returncode` 0.
             """
@@ -548,11 +548,11 @@ class Plugin:
         def fake_validate(repo_url, ref):
             """
             Create a ValidationResult for the given repository URL and ref, marking it as found and attaching an inferred repository name.
-            
+
             Parameters:
                 repo_url (str): The repository URL being validated.
                 ref (dict): A mapping containing ref information; expected keys are `"type"` and `"value"`.
-            
+
             Returns:
                 pl.ValidationResult: A ValidationResult with `success=True`, the original `repo_url`, the ref `type` and `value` extracted from `ref`, and a `repo_name` set to `"found_repo"` if `"found_repo"` is a substring of `repo_url`, otherwise `"missing_repo"`.
             """
@@ -568,10 +568,10 @@ class Plugin:
         def fake_repo_name(repo_url):
             """
             Derives a simplified repository identifier from a repository URL.
-            
+
             Parameters:
                 repo_url (str): The repository URL or path to evaluate.
-            
+
             Returns:
                 repo_name (str): `"found_repo"` if the substring `"found_repo"` appears in `repo_url`, otherwise `"missing_repo"`.
             """
@@ -580,10 +580,10 @@ class Plugin:
         def fake_exists(path):
             """
             Determine whether the provided path equals the preconfigured `found_path` value.
-            
+
             Parameters:
                 path (str): Filesystem path to check.
-            
+
             Returns:
                 bool: `True` if `path` is equal to the outer-scope `found_path`, `False` otherwise.
             """
@@ -3242,7 +3242,7 @@ class TestDependencyInstallation(BaseGitTest):
             def __bool__(self):
                 """
                 Make the object always evaluate as truthy.
-                
+
                 Returns:
                     True indicating the object is truthy.
                 """
@@ -3251,7 +3251,7 @@ class TestDependencyInstallation(BaseGitTest):
             def run_pending(self):
                 """
                 Signal the scheduler to execute pending jobs now and request the global scheduler thread to stop.
-                
+
                 Sets the local run event to trigger immediate execution of pending jobs. If a global scheduler stop event is present, sets that event to request the global scheduler thread to terminate after processing.
                 """
                 run_event.set()
@@ -3261,7 +3261,7 @@ class TestDependencyInstallation(BaseGitTest):
             def clear(self):
                 """
                 Remove all scheduled jobs associated with this plugin.
-                
+
                 This method clears any entries the global scheduler has registered for the plugin instance so no future scheduled tasks for this plugin will run.
                 """
                 pass

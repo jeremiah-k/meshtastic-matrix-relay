@@ -89,9 +89,9 @@ class BasePlugin(ABC):
     def description(self) -> str:
         """
         Human-readable description of the plugin for help text.
-        
+
         Override in subclasses to provide plugin-specific help text displayed by the help system.
-        
+
         Returns:
             str: Description text for the plugin.
         """
@@ -372,12 +372,12 @@ class BasePlugin(ABC):
     def strip_raw(self, data: Any) -> Any:
         """
         Recursively remove any "raw" keys from dictionaries within a nested data structure.
-        
+
         This function walks dictionaries and lists and removes entries with the key `"raw"`, returning a structure with the same shape but without those keys.
-        
+
         Parameters:
             data (Any): The nested data structure (e.g., dicts and lists) to clean.
-        
+
         Returns:
             Any: The cleaned data structure with all `"raw"` keys removed.
         """
@@ -403,9 +403,9 @@ class BasePlugin(ABC):
     def get_my_node_id(self) -> int | None:
         """
         Return the relay's Meshtastic node ID.
-        
+
         Caches the ID after the first successful retrieval to avoid repeated connections.
-        
+
         Returns:
             int: The relay's node ID if available, `None` otherwise.
         """
@@ -423,10 +423,10 @@ class BasePlugin(ABC):
     def is_direct_message(self, packet: dict[str, Any]) -> bool:
         """
         Determine whether a Meshtastic packet is addressed to this relay.
-        
+
         Parameters:
             packet (dict): Meshtastic packet data; may include a "to" field with the destination node ID.
-        
+
         Returns:
             True if the packet's "to" field equals this relay's node ID, False otherwise.
         """
@@ -444,12 +444,12 @@ class BasePlugin(ABC):
     ) -> bool:
         """
         Queue a text message for broadcast or direct delivery on the Meshtastic network.
-        
+
         Parameters:
             text: Message content to send.
             channel: Channel index to send the message on (defaults to 0).
             destination_id: Destination node ID for a direct message; if omitted the message is broadcast.
-        
+
         Returns:
             `true` if the message was queued successfully, `false` otherwise.
         """
@@ -512,9 +512,9 @@ class BasePlugin(ABC):
     ) -> str | None:
         """
         Return the first Matrix command name that matches the given event.
-        
-        Uses the plugin's require-mention setting when testing commands. 
-        
+
+        Uses the plugin's require-mention setting when testing commands.
+
         Returns:
             The matching command string if a command matches the event, `None` otherwise.
         """
@@ -562,9 +562,9 @@ class BasePlugin(ABC):
     def get_mesh_commands(self) -> list[str]:
         """
         List mesh/radio command names the plugin handles.
-        
+
         By default this returns an empty list; subclasses should override to expose commands. Command names must be provided without the leading '!'.
-        
+
         Returns:
             list[str]: Command names without the leading '!' (empty by default).
         """
@@ -573,10 +573,10 @@ class BasePlugin(ABC):
     def _require_plugin_name(self) -> str:
         """
         Return the initialized plugin name.
-        
+
         Returns:
             plugin_name (str): The plugin's name.
-        
+
         Raises:
             ValueError: If the plugin name has not been initialized.
         """
@@ -587,7 +587,7 @@ class BasePlugin(ABC):
     def store_node_data(self, meshtastic_id: str, node_data: Any) -> None:
         """
         Append data items for a Meshtastic node to this plugin's persistent store and persist the trimmed result.
-        
+
         Parameters:
             meshtastic_id (str): Identifier of the Meshtastic node to which the data belongs.
             node_data (Any): A single item or an iterable/list of items to append for the node.
@@ -630,7 +630,7 @@ class BasePlugin(ABC):
     def delete_node_data(self, meshtastic_id: str) -> None:
         """
         Remove all stored data entries for the specified Meshtastic node from this plugin's persistent storage.
-        
+
         Parameters:
             meshtastic_id (str): Meshtastic node identifier whose stored data will be removed.
         """
@@ -640,7 +640,7 @@ class BasePlugin(ABC):
     def get_node_data(self, meshtastic_id: str) -> list[Any]:
         """
         Retrieve stored data rows for the specified Meshtastic node.
-        
+
         Returns:
             list[Any]: Stored data rows for the node identified by `meshtastic_id`; empty list if no data exists.
         """
@@ -660,12 +660,12 @@ class BasePlugin(ABC):
     def get_plugin_data_dir(self, subdir: str | None = None) -> str:
         """
         Get the filesystem path for this plugin's data directory, creating it if missing.
-        
+
         Parameters:
-        	subdir (str | None): Optional subdirectory name inside the plugin data directory to create and return. If None, the top-level plugin data directory path is returned.
-        
+                subdir (str | None): Optional subdirectory name inside the plugin data directory to create and return. If None, the top-level plugin data directory path is returned.
+
         Returns:
-        	plugin_path (str): Absolute path to the plugin's data directory or the requested subdirectory.
+                plugin_path (str): Absolute path to the plugin's data directory or the requested subdirectory.
         """
         # Get the plugin-specific data directory
         plugin_name = self._require_plugin_name()

@@ -146,12 +146,12 @@ class Plugin(BasePlugin):
     ) -> bool:
         """
         Process a Matrix room event and, if it matches this plugin, post a Meshtastic health summary to the room.
-        
+
         Parameters:
             room (MatrixRoom): The room where the message was received.
             event (RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote): The Matrix event used to determine whether the plugin should run.
             full_message (str): The full text of the received message; preserved for compatibility with callers.
-        
+
         Returns:
             True if the event matched this plugin and a response was sent to the room, False otherwise.
         """

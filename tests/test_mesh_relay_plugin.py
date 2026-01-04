@@ -725,7 +725,7 @@ class TestMeshRelayPlugin(unittest.TestCase):
         async def run_test():
             """
             Execute handle_room_message with a mocked room and event and assert it fails when no Meshtastic client is available.
-            
+
             Calls the plugin's handle_room_message, verifies it returns False, and checks that an error was logged with message "Meshtastic client unavailable".
             """
             result = await self.plugin.handle_room_message(room, event, "full_message")

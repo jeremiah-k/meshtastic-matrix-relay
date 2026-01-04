@@ -61,7 +61,7 @@ class Plugin(BasePlugin):
     def description(self) -> str:
         """
         Short human-readable description of the plugin's purpose.
-        
+
         Returns:
             A single-line string describing the plugin: "Check connectivity with the relay or respond to pings over the mesh"
         """
@@ -76,15 +76,15 @@ class Plugin(BasePlugin):
     ) -> bool:
         """
         Responds to an incoming Meshtastic "ping" message with a case-matched "pong" when permitted by addressing and channel rules.
-        
+
         Matches "ping" with optional surrounding punctuation (case-insensitive) in packet["decoded"]["text"]; if matched and the channel is enabled, sends a reply that preserves the punctuation and letter case pattern of the trigger, or "Pong..." when surrounding punctuation is excessively long. If the Meshtastic client or its `myInfo` is unavailable the function logs a warning and returns `True` to suppress further handling.
-        
+
         Parameters:
             packet (dict[str, Any]): Incoming Meshtastic packet. Expected to contain `decoded["text"]`; may include `decoded["portnum"]`, `channel`, `to`, and `fromId`.
             formatted_message (str): Preformatted representation of the message (kept for compatibility; not used).
             longname (str): Human-readable sender identifier used for logging.
             meshnet_name (str): Name of the mesh network where the message originated (kept for compatibility; not used).
-        
+
         Returns:
             bool: `True` if the handler processed the packet or intentionally suppressed processing (e.g., client/myInfo unavailable); `False` if the packet was not handled (no match, disallowed port, or channel disabled).
         """
@@ -190,7 +190,7 @@ class Plugin(BasePlugin):
     def get_mesh_commands(self) -> list[str]:
         """
         List the mesh command names exposed by this plugin.
-        
+
         Returns:
             list[str]: Command names provided by the plugin (typically a single-element list containing the plugin's name).
         """
@@ -204,12 +204,12 @@ class Plugin(BasePlugin):
     ) -> bool:
         """
         Reply "pong!" in the Matrix room when the event matches this plugin's trigger.
-        
+
         Parameters:
             room (MatrixRoom): The room containing the event; used to determine the target room_id for the reply.
             event (RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote): The Matrix event to evaluate against the plugin's matching rules.
             full_message (str): The message text (kept for compatibility; not used by this implementation).
-        
+
         Returns:
             `true` if the event matched and a reply was sent, `false` otherwise.
         """

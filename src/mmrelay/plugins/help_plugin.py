@@ -34,7 +34,7 @@ class Plugin(BasePlugin):
     def description(self) -> str:
         """
         Return a short human-readable description of the plugin.
-        
+
         Returns:
             A brief description string for the plugin, e.g., "List supported relay commands".
         """
@@ -45,13 +45,13 @@ class Plugin(BasePlugin):
     ) -> bool:
         """
         Indicates the plugin does not handle messages originating from Meshtastic.
-        
+
         Parameters:
             packet (Any): Raw Meshtastic packet data (unused).
             formatted_message (Any): Human-readable representation of the message (unused).
             longname (Any): Sender's long display name (unused).
             meshnet_name (Any): Name of the mesh network the message originated from (unused).
-        
+
         Returns:
             bool: `False` to indicate the message was not handled.
         """
@@ -62,7 +62,7 @@ class Plugin(BasePlugin):
     def get_matrix_commands(self) -> list[str]:
         """
         Lists Matrix command names provided by this plugin.
-        
+
         Returns:
             list[str]: Command names handled by this plugin (for example, ['help']).
         """
@@ -71,7 +71,7 @@ class Plugin(BasePlugin):
     def get_mesh_commands(self) -> list[str]:
         """
         Report mesh commands provided by this plugin.
-        
+
         Returns:
             list[str]: An empty list indicating this plugin exposes no mesh commands.
         """
@@ -85,14 +85,14 @@ class Plugin(BasePlugin):
     ) -> bool:
         """
         Provide help for Matrix room messages by replying with either a list of available commands or details for a specific command.
-        
+
         If the incoming event matches this plugin's Matrix help command, sends a reply to the room: either a comma-separated list of all available Matrix commands from loaded plugins or a description for a requested command.
-        
+
         Parameters:
             room (MatrixRoom): Matrix room object; its `room_id` is used to send the reply.
             event (RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote): Incoming Matrix event used to determine whether this plugin should handle the message.
             full_message (str): Raw message text from the room; used to extract command arguments.
-        
+
         Returns:
             True if the incoming event matched this plugin and a reply was sent, False otherwise.
         """

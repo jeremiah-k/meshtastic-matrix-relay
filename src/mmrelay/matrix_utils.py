@@ -201,13 +201,14 @@ def _iter_room_alias_entries(
         # Capture the current entry via default args to avoid loop-variable reuse.
         """
         Create and return a setter function that updates the given entry's "id" field in place.
-        
+
         Parameters:
             entry (dict[str, Any]): The dictionary whose "id" key will be updated by the returned setter.
-        
+
         Returns:
             Callable[[str], None]: A function that sets entry["id"] to the provided string.
         """
+
         def _set_entry_id(new_id: str, target: dict[str, Any] = entry) -> None:
             target["id"] = new_id
 
@@ -216,14 +217,15 @@ def _iter_room_alias_entries(
     def _make_list_setter(index: int, collection: list[Any]) -> Callable[[str], None]:
         """
         Create a callable that replaces the element at a fixed index in a given list.
-        
+
         Parameters:
             index (int): The index in the list whose value the returned callable will replace.
             collection (list[Any]): The list to be modified by the returned callable.
-        
+
         Returns:
             Callable[[str], None]: A function that accepts a single `new_id` string and sets `collection[index]` to `new_id`.
         """
+
         def _set_list_entry_value(
             new_id: str, idx: int = index, target: list[Any] = collection
         ) -> None:
@@ -236,14 +238,15 @@ def _iter_room_alias_entries(
     ) -> Callable[[str], None]:
         """
         Create a setter function that assigns a new string ID to a specific key in a dictionary.
-        
+
         Parameters:
             key (Any): The dictionary key whose value the returned setter will replace.
             collection (dict[Any, Any]): The dictionary to be modified by the returned setter.
-        
+
         Returns:
             setter (Callable[[str], None]): A function that sets collection[key] to the provided `new_id`.
         """
+
         def _set_dict_entry_value(
             new_id: str,
             target_key: Any = key,
@@ -416,10 +419,10 @@ def _display_room_channel_mappings(
 def _can_auto_create_credentials(matrix_config: Dict[str, Any]) -> bool:
     """
     Determine whether the Matrix configuration contains the fields required to create credentials automatically.
-    
+
     Parameters:
         matrix_config (dict): The `matrix` section from config.yaml.
-    
+
     Returns:
         True if `homeserver`, a user id (`bot_user_id` or `user_id`), and `password` are present as non-empty strings, False otherwise.
     """
@@ -499,7 +502,7 @@ def _normalize_bot_user_id(homeserver: str, bot_user_id: str | None) -> str | No
 def _get_msgs_to_keep_config(config_override: dict[str, Any] | None = None) -> int:
     """
     Determine how many Meshtastic–Matrix message mappings to retain.
-    
+
     Prefers the new configuration key `database.msg_map.msgs_to_keep`; falls back to the legacy `db.msg_map.msgs_to_keep` and emits a deprecation warning if that legacy key is used. If no valid integer is configured, returns DEFAULT_MSGS_TO_KEEP. When provided, `config_override` is consulted instead of the module-level `config`.
     Parameters:
         config_override (dict[str, Any] | None): Optional configuration dictionary to use in place of the module-level `config`.
@@ -514,10 +517,10 @@ def _get_msgs_to_keep_config(config_override: dict[str, Any] | None = None) -> i
     def _get_msg_map_config(section: dict[str, Any] | None) -> dict[str, Any] | None:
         """
         Extract the "msg_map" subsection from a configuration section if present and valid.
-        
+
         Parameters:
             section (dict[str, Any] | None): Configuration section to inspect.
-        
+
         Returns:
             dict[str, Any] | None: The value of `section["msg_map"]` if it exists and is a dict, otherwise `None`.
         """
@@ -546,12 +549,12 @@ def _get_msgs_to_keep_config(config_override: dict[str, Any] | None = None) -> i
 def _get_detailed_matrix_error_message(matrix_response: Any) -> str:
     """
     Summarize a Matrix SDK response or error into a short, user-facing message.
-    
+
     Accepts a bytes/bytearray, string, or an object exposing attributes such as `message`, `status_code`, or `transport_response`, and returns a concise, actionable description suitable for logs or user feedback (examples: authentication failure, forbidden access, rate limiting, server error, or a generic network/connectivity issue). The function prefers explicit message or HTTP status information when available, falls back to a safe string representation, and avoids exposing unhelpful object reprs or HTML fragments.
-    
+
     Parameters:
         matrix_response: The response or error to summarize. May be raw bytes, a human-readable string, or an exception/response object with `message`, `status_code`, or `transport_response` attributes.
-    
+
     Returns:
         A short descriptive error string (e.g., "Authentication failed - invalid or expired credentials", "Access forbidden - check user permissions", "Rate limited - too many requests", "Server error (HTTP <code>) - the Matrix server is experiencing issues", or "Network connectivity issue or server unreachable").
     """
@@ -667,16 +670,16 @@ def _create_mapping_info(
 ) -> dict[str, Any] | None:
     """
     Create a mapping dictionary that links a Matrix event to a Meshtastic message.
-    
+
     If `msgs_to_keep` is None, the value is obtained from _get_msgs_to_keep_config(). The `text` value in the mapping has quoted lines removed. Returns None when `matrix_event_id`, `room_id`, or `text` is missing or empty.
-    
+
     Parameters:
         matrix_event_id: The Matrix event ID to map from.
         room_id: The Matrix room ID where the event was posted.
         text: The message text to store (quoted lines will be stripped).
         meshnet: Optional meshnet name to record for the mapping.
         msgs_to_keep: Optional override for how many message mappings to retain; if omitted, the configured default is used.
-    
+
     Returns:
         A dict with keys `matrix_event_id`, `room_id`, `text`, `meshnet`, and `msgs_to_keep`, or `None` if required inputs are missing.
     """
@@ -780,9 +783,9 @@ _MARKDOWN_ESCAPE_PATTERN = re.compile(r"([*_`~\\\[\]])")
 def _escape_leading_prefix_for_markdown(message: str) -> tuple[str, bool]:
     """
     Prevent a leading reference-style Markdown link definition from being interpreted by escaping its bracketed prefix.
-    
+
     If the message begins with a bracketed prefix followed by a colon (for example, "[name]: "), returns a version of the message where characters that would trigger Markdown link-definition parsing inside the leading brackets are backslash-escaped. If no such prefix is present the input is returned unchanged.
-    
+
     Returns:
         tuple[str, bool]: `(safe_message, escaped)` where `safe_message` is the possibly-escaped message and `escaped` is `True` if an escape was performed, `False` otherwise.
     """
@@ -1050,7 +1053,7 @@ def bot_command(
 async def _connect_meshtastic() -> Any:
     """
     Obtain a Meshtastic interface usable from asynchronous code.
-    
+
     Returns:
         meshtastic_iface: The Meshtastic interface or proxy object produced by the synchronous connector.
     """
@@ -1062,11 +1065,11 @@ async def _get_meshtastic_interface_and_channel(
 ) -> tuple[Any | None, int | None]:
     """
     Return a connected Meshtastic interface and the room's validated Meshtastic channel.
-    
+
     Parameters:
         room_config (dict): Room configuration; must contain a non-negative integer under "meshtastic_channel".
         purpose (str): Short description of the caller's intent used in logged error messages.
-    
+
     Returns:
         tuple: (meshtastic_interface, channel)
             - meshtastic_interface (Any | None): A connected Meshtastic interface object, or `None` if a connection could not be made.
@@ -1735,7 +1738,7 @@ async def login_matrix_bot(
 ) -> bool:
     """
     Interactively authenticate the bot with a Matrix homeserver and persist the resulting session credentials.
-    
+
     Parameters:
         homeserver (str | None): Optional homeserver URL (e.g., "https://matrix.org"). If None, the user will be prompted.
         username (str | None): Optional Matrix username (localpart like "alice" or full MXID like "@alice:server"). If None, the user will be prompted.
@@ -1744,7 +1747,7 @@ async def login_matrix_bot(
             True — attempt to log out other sessions;
             False — do not log out other sessions;
             None — prompt interactively when credentials are entered, treated as False for non-interactive calls.
-    
+
     Returns:
         bool: `True` if login succeeded and credentials were saved, `False` otherwise.
     """
@@ -2344,9 +2347,9 @@ async def matrix_relay(
 ) -> None:
     """
     Relay a Meshtastic-originated message into a Matrix room and optionally persist a Meshtastic↔Matrix mapping.
-    
+
     Formats the provided Meshtastic text for Matrix (plain and HTML/quoted forms as appropriate), sends it to the specified Matrix room with the chosen msgtype, and when message storage is enabled, records a mapping from the Meshtastic message to the created Matrix event to support cross-network replies and reactions. The function respects room encryption/E2EE constraints and logs send/storage failures without raising.
-    
+
     Parameters:
         room_id (str): Matrix room ID or alias to send the message into.
         message (str): Text content from Meshtastic to relay.
@@ -2619,13 +2622,13 @@ async def matrix_relay(
 def truncate_message(text: str, max_bytes: int = DEFAULT_MESSAGE_TRUNCATE_BYTES) -> str:
     """
     Truncate text so its UTF-8 encoding occupies no more than the given byte limit.
-    
+
     If `max_bytes` cuts a multi-byte UTF-8 character, the partial character is discarded so the result is valid UTF-8.
-    
+
     Parameters:
         text (str): Input text to truncate.
         max_bytes (int): Maximum allowed size in bytes for the UTF-8 encoded result.
-    
+
     Returns:
         str: A string whose UTF-8 encoding is at most `max_bytes` bytes.
     """
@@ -2715,7 +2718,7 @@ def format_reply_message(
 ) -> str:
     """
     Format a Meshtastic-style reply, applying an appropriate sender prefix and truncating the result to the configured maximum length.
-    
+
     Parameters:
         config (dict[str, Any]): Runtime configuration used to build prefix formats.
         full_display_name (str): Sender's full display name used when constructing local prefixes.
@@ -2725,7 +2728,7 @@ def format_reply_message(
         meshnet_name (str | None): Remote meshnet name; when provided and different from local_meshnet_name, remote-prefix rules are applied.
         local_meshnet_name (str | None): Local meshnet name used to determine whether a reply is remote.
         mesh_text_override (str | None): Optional raw Meshtastic payload preferred over `text` when generating the reply body.
-    
+
     Returns:
         str: The formatted reply message with quoted lines removed, the appropriate prefix applied (remote or local), and truncated to the configured maximum length.
     """
@@ -2790,9 +2793,9 @@ async def send_reply_to_meshtastic(
 ) -> bool:
     """
     Queue a Meshtastic delivery for a Matrix reply, optionally sending it as a structured reply that targets a specific Meshtastic message.
-    
+
     Creates and attaches message-mapping metadata when storage is enabled, respects the channel from room_config, and honors an optional relay_config override. Enqueues either a structured reply (when reply_id is provided) or a regular broadcast and logs outcomes; the function handles errors internally and does not raise.
-    
+
     Parameters:
         reply_message (str): Meshtastic-ready text payload to send.
         full_display_name (str): Sender display name used in queue descriptions and logs.
@@ -2804,7 +2807,7 @@ async def send_reply_to_meshtastic(
         local_meshnet_name (str): Local meshnet name to include in mapping metadata when present.
         reply_id (int | None): If provided, send as a structured Meshtastic reply targeting this Meshtastic message ID; if None, send as a regular broadcast.
         relay_config (dict[str, Any] | None): Optional config override to control Meshtastic broadcast and message-map settings.
-    
+
     Returns:
         bool: `True` if the message was successfully queued for delivery to Meshtastic, `False` otherwise.
     """
@@ -3071,9 +3074,9 @@ async def on_room_message(
 ) -> None:
     """
     Handle an incoming Matrix room event and bridge eligible events to Meshtastic.
-    
+
     Processes RoomMessageText, RoomMessageNotice, RoomMessageEmote, and ReactionEvent events for configured rooms. Filters out events older than the bot start time and messages sent by the bot. Respects per-room and global interaction settings (reactions and replies), delegates command handling to plugins (preventing relay when handled), and forwards eligible reactions, replies, detection-sensor packets, remote-meshnet messages, and ordinary Matrix messages to Meshtastic. When configured, creates and attaches message mapping metadata for reply/reaction correlation.
-    
+
     Parameters:
         room (MatrixRoom): The Matrix room where the event was received.
         event (RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote): The received room event.
@@ -3486,18 +3489,18 @@ async def on_room_message(
     def _matches_command(plugin_obj: Any) -> bool:
         """
         Return whether a plugin should handle the currently processed Matrix event.
-        
+
         Checks the plugin for a `matches(event)` predicate first; if present and truthy, the plugin matches.
         If `matches` is absent but `get_matrix_commands()` is present, the function invokes `bot_command`
         for each command returned, respecting an optional `get_require_bot_mention()` flag on the plugin.
-        
+
         Parameters:
             plugin_obj (Any): Plugin instance that may implement `matches(event)`, `get_matrix_commands()`,
                 and optionally `get_require_bot_mention()`.
-        
+
         Returns:
             bool: `True` if the plugin should handle the current event, `False` otherwise.
-        
+
         Notes:
             If the plugin raises an exception while evaluating predicates or commands, the exception is logged
             and the plugin is treated as not matching.
@@ -3635,12 +3638,12 @@ async def upload_image(
 ) -> UploadResponse | UploadError | SimpleNamespace:
     """
     Upload an image to the Matrix content repository and return the upload result.
-    
+
     Parameters:
         client (AsyncClient): Matrix nio client used to perform the upload.
         image (PIL.Image.Image): Pillow image to upload.
         filename (str): Filename used to infer the image MIME type and as the uploaded filename.
-    
+
     Returns:
         UploadResponse on success (contains `content_uri`).
         On failure, a SimpleNamespace-like object with `message` and optional `status_code` attributes describing the error.
@@ -3691,15 +3694,15 @@ async def send_room_image(
 ) -> None:
     """
     Send an uploaded image to a Matrix room.
-    
+
     If `upload_response` exposes a `content_uri`, sends an `m.image` message referencing that URI and using `filename` as the body. If `content_uri` is missing, logs an error and raises ImageUploadError.
-    
+
     Parameters:
         client (AsyncClient): Matrix client used to send the message.
         room_id (str): Target Matrix room ID.
         upload_response (UploadResponse | UploadError | SimpleNamespace | None): Result from an upload operation; must provide a `content_uri` attribute on success.
         filename (str): Filename to include as the message body (defaults to "image.png").
-    
+
     Raises:
         ImageUploadError: If `upload_response` does not contain a `content_uri`.
     """
@@ -3726,9 +3729,9 @@ async def send_image(
 ) -> None:
     """
     Upload a Pillow Image to the Matrix content repository and send it to a room.
-    
+
     Uploads the provided PIL Image, stores it in the client's content repository, and sends it to the specified room as an `m.image` message using the given filename.
-    
+
     Raises:
         ImageUploadError: If the upload or send operation fails.
     """

@@ -191,7 +191,7 @@ class TestTelemetryPlugin(unittest.TestCase):
     def test_handle_meshtastic_message_partial_metrics(self):
         """
         Validate handling of a Meshtastic telemetry packet with partial deviceMetrics.
-        
+
         Asserts that handle_meshtastic_message does not trigger a Matrix relay, calls set_node_data with the node's telemetry list, stores present metric values (e.g., `batteryLevel`), and records missing metrics (`voltage`, `airUtilTx`) as `None` to preserve data integrity.
         """
         packet = {

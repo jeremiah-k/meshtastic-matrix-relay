@@ -910,9 +910,9 @@ class TestConnectMeshtasticEdgeCases(unittest.TestCase):
         def raise_and_shutdown(*_args, **_kwargs):
             """
             Set the global shutdown flag and immediately abort by raising an exception.
-            
+
             This function sets mu.shutting_down to True as a side effect and then unconditionally raises an Exception with the message "boom".
-            
+
             Raises:
                 Exception: Always raised with message "boom".
             """

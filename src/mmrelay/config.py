@@ -179,9 +179,9 @@ def get_plugin_data_dir(plugin_name: str | None = None) -> str:
 def get_log_dir() -> str:
     """
     Get the application's log directory, creating it if missing.
-    
+
     On Linux/macOS this is "<base_dir>/logs". On Windows this is "<custom_data_dir>/logs" when a global custom data directory is set, otherwise the platform-specific user log directory is used.
-    
+
     Returns:
         str: Absolute path to the log directory; the directory is guaranteed to exist.
     """
@@ -339,9 +339,9 @@ def load_meshtastic_config_from_env() -> dict[str, Any] | None:
 def load_logging_config_from_env() -> dict[str, Any] | None:
     """
     Load logging configuration from environment variables.
-    
+
     Builds a logging configuration dictionary from the module's predefined environment-variable mappings. If the resulting mapping contains a "filename" key, adds "log_to_file": True.
-    
+
     Returns:
         dict[str, Any] | None: Parsed logging configuration when any relevant environment variables are set; otherwise `None`.
     """
@@ -375,12 +375,12 @@ def load_database_config_from_env() -> dict[str, Any] | None:
 def is_e2ee_enabled(config: dict[str, Any]) -> bool:
     """
     Determine whether End-to-End Encryption (E2EE) is enabled in the provided configuration.
-    
+
     Checks the `matrix` section for either `matrix.encryption.enabled` or `matrix.e2ee.enabled` and returns True if either is set to True. On Windows (`sys.platform == "win32"`), E2EE is treated as unsupported and this function always returns False.
-    
+
     Parameters:
         config (dict[str, Any]): Top-level configuration mapping (may be empty or None).
-    
+
     Returns:
         bool: `true` if E2EE is enabled in the configuration and the platform supports E2EE, `false` otherwise.
     """
@@ -406,12 +406,12 @@ def is_e2ee_enabled(config: dict[str, Any]) -> bool:
 def check_e2ee_enabled_silently(args: Any = None) -> bool:
     """
     Check whether End-to-End Encryption (E2EE) is enabled by inspecting the first readable configuration file.
-    
+
     This function examines candidate configuration files in priority order, ignoring unreadable files and YAML parsing errors, and returns as soon as a readable configuration enabling E2EE is found. On Windows this function always returns False.
-    
+
     Parameters:
         args: Optional parsed command-line arguments that can influence config search order.
-    
+
     Returns:
         True if E2EE is enabled in the first readable configuration file, False otherwise.
     """
@@ -721,13 +721,13 @@ def _load_config_from_env_mapping(
 def set_config(module: Any, passed_config: dict[str, Any]) -> dict[str, Any]:
     """
     Assign the given configuration to a module and apply known module-specific settings.
-    
+
     If the target module's name is "matrix_utils", this may assign `matrix_rooms` and, when present, `matrix.homeserver`, `matrix.access_token`, and `matrix.bot_user_id` into module attributes. If the module's name is "meshtastic_utils", this may assign `matrix_rooms`. If the module exposes a callable `setup_config()`, it will be invoked.
-    
+
     Parameters:
         module (Any): The module object to receive the configuration.
         passed_config (dict[str, Any]): Configuration mapping to attach to the module.
-    
+
     Returns:
         dict[str, Any]: The same `passed_config` object that was assigned to the module.
     """
@@ -954,18 +954,18 @@ def get_meshtastic_config_value(
 ) -> Any:
     """
     Retrieve a value from the "meshtastic" section of a configuration mapping.
-    
+
     If the "meshtastic" section or the requested key is absent, returns `default` unless `required` is True, in which case an error is logged and a KeyError is raised.
-    
+
     Parameters:
         config (dict): Configuration mapping that may contain a "meshtastic" section.
         key (str): Key to look up within the "meshtastic" section.
         default: Value to return when the key is absent and `required` is False.
         required (bool): If True, a missing key causes a KeyError to be raised.
-    
+
     Returns:
         The value at `config["meshtastic"][key]`, or `default` if the key is missing and `required` is False.
-    
+
     Raises:
         KeyError: If `required` is True and the requested key is missing.
     """

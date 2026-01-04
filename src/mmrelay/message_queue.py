@@ -74,9 +74,9 @@ class MessageQueue:
     def start(self, message_delay: float = DEFAULT_MESSAGE_DELAY) -> None:
         """
         Activate the message queue and configure the inter-message send delay.
-        
+
         When started, the queue accepts enqueued messages for processing and will attempt to schedule its background processor on the current asyncio event loop if available. If `message_delay` is less than or equal to the firmware minimum, a warning is logged.
-        
+
         Parameters:
             message_delay (float): Desired delay between consecutive sends in seconds; may trigger a warning if less than or equal to the firmware minimum.
         """
@@ -128,7 +128,7 @@ class MessageQueue:
     def stop(self) -> None:
         """
         Stop the message queue processor and release its resources.
-        
+
         Cancels the background processor task and, when possible, waits briefly for it to finish on its owning event loop; shuts down the dedicated ThreadPoolExecutor (using a background thread if called from an asyncio event loop) and clears internal state so the queue can be restarted. Thread-safe; this call may wait briefly for shutdown to complete but avoids blocking the current asyncio event loop.
         """
         with self._lock:
@@ -309,10 +309,10 @@ class MessageQueue:
     async def drain(self, timeout: Optional[float] = None) -> bool:
         """
         Wait until the message queue is empty and no message is in flight, or until an optional timeout elapses.
-        
+
         Parameters:
             timeout (Optional[float]): Maximum time to wait in seconds; if None, wait indefinitely.
-        
+
         Returns:
             `True` if the queue drained before being stopped and before the timeout, `False` if the queue was stopped before draining or the timeout was reached.
         """
@@ -328,7 +328,7 @@ class MessageQueue:
     def ensure_processor_started(self) -> None:
         """
         Start the background message processor if the queue is running and no processor is active.
-        
+
         Has no effect if the processor is already running or the queue is not active.
         """
         with self._lock:
@@ -470,9 +470,9 @@ class MessageQueue:
     def _should_send_message(self) -> bool:
         """
         Determine whether the queue may send a Meshtastic message.
-        
+
         Performs runtime checks: ensures the global reconnecting flag is false, a Meshtastic client object exists, and—if the client exposes a connectivity indicator—that indicator reports connected. If importing Meshtastic utilities fails, triggers an asynchronous stop of the queue.
-        
+
         Returns:
             `True` if not reconnecting, a Meshtastic client exists, and the client is connected when checkable; `False` otherwise.
         """
@@ -569,7 +569,7 @@ _message_queue = MessageQueue()
 def get_message_queue() -> MessageQueue:
     """
     Return the global MessageQueue instance used for rate-limited sending of Meshtastic messages.
-    
+
     Returns:
         message_queue (MessageQueue): The module-level MessageQueue instance.
     """
@@ -602,12 +602,12 @@ def queue_message(
 ) -> bool:
     """
     Enqueues a message for sending via the global message queue.
-    
+
     Parameters:
         send_function: Callable to execute to perform the send; will be invoked with the provided args and kwargs.
         description: Human-readable description used for logging.
         mapping_info: Optional metadata used to persist or associate the sent message with external identifiers (for example, a Matrix event id and room id).
-    
+
     Returns:
         `True` if the message was successfully enqueued, `False` otherwise.
     """

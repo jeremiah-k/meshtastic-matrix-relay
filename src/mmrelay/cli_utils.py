@@ -205,7 +205,7 @@ def validate_command(command_key: str, purpose: str) -> str:
 def msg_suggest_generate_config() -> str:
     """
     Suggest running the configured generate_config CLI command to create a sample configuration file.
-    
+
     Returns:
         str: Instruction string, e.g. "Run 'mmrelay config generate' to generate a sample configuration file."
     """
@@ -225,7 +225,7 @@ def msg_suggest_check_config() -> str:
 def msg_require_auth_login() -> str:
     """
     Return an instruction telling the user to run the configured authentication command.
-    
+
     Returns:
         Instruction string directing the user to run the `auth_login` command to set up `credentials.json` or add a Matrix section to `config.yaml`.
     """
@@ -257,7 +257,7 @@ def msg_run_auth_login() -> str:
 def msg_for_e2ee_support() -> str:
     """
     Instructs the user to run the configured authentication command for end-to-end encryption (E2EE) support.
-    
+
     Returns:
         str: Instructional message telling the user to run the configured `auth_login` CLI command for E2EE support.
     """
@@ -267,7 +267,7 @@ def msg_for_e2ee_support() -> str:
 def msg_setup_auth() -> str:
     """
     Provide a setup instruction that references the current `auth_login` CLI command.
-    
+
     Returns:
         setup_instruction (str): The string "Setup: <full command>" where `<full command>` is the resolved `auth_login` command from the CLI registry.
     """
@@ -277,7 +277,7 @@ def msg_setup_auth() -> str:
 def msg_or_run_auth_login() -> str:
     """
     Suggest running the configured `auth_login` command to set up credentials.json.
-    
+
     Returns:
         A message in the form "or run '<full command>' to set up credentials.json".
     """
@@ -287,7 +287,7 @@ def msg_or_run_auth_login() -> str:
 def msg_setup_authentication() -> str:
     """
     Prompt the user to run the authentication setup command.
-    
+
     Returns:
         Instruction text in the form "Setup authentication: <full command>".
     """
@@ -310,7 +310,7 @@ def msg_regenerate_credentials() -> str:
 def _create_ssl_context() -> ssl.SSLContext | None:
     """
     Create an SSL context for Matrix client connections, preferring certifi's CA bundle when available.
-    
+
     Returns:
         ssl.SSLContext | None: An SSLContext that uses certifi's CA bundle when available or the system default; `None` if context creation fails.
     """
@@ -545,12 +545,12 @@ def _handle_matrix_error(
 async def logout_matrix_bot(password: str) -> bool:
     """
     Log out the configured Matrix account, verify credentials when possible, and remove local session data.
-    
+
     When available, the function attempts to fetch a missing `user_id` using the stored access token, verifies the provided `password` by performing a temporary login, and requests server-side logout to invalidate the access token. Regardless of server-side actions, it performs a best-effort removal of local session artifacts (for example, credentials.json and any E2EE store directories) and reports overall success.
-    
+
     Parameters:
         password (str): Matrix account password used to verify the session before attempting server logout.
-    
+
     Returns:
         bool: `True` when local cleanup (and server logout, if attempted) completed successfully; `False` on failure or when the matrix-nio dependency is unavailable.
     """
