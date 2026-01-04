@@ -1041,6 +1041,165 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
             # Should not process message without decoded field
             mock_submit_coro.assert_not_called()
 
+    def test_on_meshtastic_message_save_names_from_interface_nodes(
+        self,
+    ):
+        """
+        Test that on_meshtastic_message saves longname/shortname from interface.nodes when database returns None.
+        """
+        from mmrelay.meshtastic_utils import on_meshtastic_message
+
+        packet = {
+            "from": 123456789,
+            "to": 987654321,
+            "decoded": {
+                "text": "test message",
+                "portnum": "TEXT_MESSAGE_APP",
+            },
+            "channel": 0,
+            "id": 12345,
+            "rxTime": 1234567890,
+        }
+
+        mock_interface = MagicMock()
+        mock_interface.nodes = {
+            123456789: {
+                "user": {
+                    "longName": "Test User Long",
+                    "shortName": "TU",
+                }
+            }
+        }
+
+        with (
+            patch("mmrelay.meshtastic_utils.config", self.mock_config),
+            patch(
+                "mmrelay.meshtastic_utils.matrix_rooms",
+                self.mock_config["matrix_rooms"],
+            ),
+            patch("mmrelay.meshtastic_utils.event_loop", MagicMock()),
+            patch("mmrelay.meshtastic_utils.get_longname", return_value=None),
+            patch("mmrelay.meshtastic_utils.get_shortname", return_value=None),
+            patch("mmrelay.db_runtime.save_longname") as mock_save_long,
+            patch("mmrelay.db_runtime.save_shortname") as mock_save_short,
+            patch(
+                "mmrelay.matrix_utils.get_interaction_settings",
+                return_value={"reactions": False, "replies": True},
+            ),
+            patch("mmrelay.matrix_utils.message_storage_enabled", return_value=False),
+        ):
+            on_meshtastic_message(packet, mock_interface)
+
+            # Verify that save_longname and save_shortname were called with values from interface.nodes
+            mock_save_long.assert_called_once_with(123456789, "Test User Long")
+            mock_save_short.assert_called_once_with(123456789, "TU")
+
+    def test_on_meshtastic_message_save_longname_only_from_interface(
+        self,
+    ):
+        """
+        Test that on_meshtastic_message saves only longname when shortname exists in database.
+        """
+        from mmrelay.meshtastic_utils import on_meshtastic_message
+
+        packet = {
+            "from": 123456789,
+            "to": 987654321,
+            "decoded": {
+                "text": "test message",
+                "portnum": "TEXT_MESSAGE_APP",
+            },
+            "channel": 0,
+            "id": 12345,
+            "rxTime": 1234567890,
+        }
+
+        mock_interface = MagicMock()
+        mock_interface.nodes = {
+            123456789: {
+                "user": {
+                    "longName": "Test User Long",
+                    "shortName": "TU",
+                }
+            }
+        }
+
+        with (
+            patch("mmrelay.meshtastic_utils.config", self.mock_config),
+            patch(
+                "mmrelay.meshtastic_utils.matrix_rooms",
+                self.mock_config["matrix_rooms"],
+            ),
+            patch("mmrelay.meshtastic_utils.event_loop", MagicMock()),
+            patch("mmrelay.meshtastic_utils.get_longname", return_value=None),
+            patch("mmrelay.meshtastic_utils.get_shortname", return_value="Existing SN"),
+            patch("mmrelay.db_runtime.save_longname") as mock_save_long,
+            patch("mmrelay.db_runtime.save_shortname") as mock_save_short,
+            patch(
+                "mmrelay.matrix_utils.get_interaction_settings",
+                return_value={"reactions": False, "replies": True},
+            ),
+            patch("mmrelay.matrix_utils.message_storage_enabled", return_value=False),
+        ):
+            on_meshtastic_message(packet, mock_interface)
+
+            # Verify only longname was saved
+            mock_save_long.assert_called_once_with(123456789, "Test User Long")
+            mock_save_short.assert_not_called()
+
+    def test_on_meshtastic_message_save_shortname_only_from_interface(
+        self,
+    ):
+        """
+        Test that on_meshtastic_message saves only shortname when longname exists in database.
+        """
+        from mmrelay.meshtastic_utils import on_meshtastic_message
+
+        packet = {
+            "from": 123456789,
+            "to": 987654321,
+            "decoded": {
+                "text": "test message",
+                "portnum": "TEXT_MESSAGE_APP",
+            },
+            "channel": 0,
+            "id": 12345,
+            "rxTime": 1234567890,
+        }
+
+        mock_interface = MagicMock()
+        mock_interface.nodes = {
+            123456789: {
+                "user": {
+                    "longName": "Test User Long",
+                    "shortName": "TU",
+                }
+            }
+        }
+
+        with (
+            patch("mmrelay.meshtastic_utils.config", self.mock_config),
+            patch(
+                "mmrelay.meshtastic_utils.matrix_rooms",
+                self.mock_config["matrix_rooms"],
+            ),
+            patch("mmrelay.meshtastic_utils.event_loop", MagicMock()),
+            patch("mmrelay.meshtastic_utils.get_longname", return_value="Existing LN"),
+            patch("mmrelay.meshtastic_utils.get_shortname", return_value=None),
+            patch("mmrelay.db_runtime.save_longname") as mock_save_long,
+            patch("mmrelay.db_runtime.save_shortname") as mock_save_short,
+            patch(
+                "mmrelay.matrix_utils.get_interaction_settings",
+                return_value={"reactions": False, "replies": True},
+            ),
+            patch("mmrelay.matrix_utils.message_storage_enabled", return_value=False),
+        ):
+            on_meshtastic_message(packet, mock_interface)
+
+            # Verify only shortname was saved
+            mock_save_long.assert_not_called()
+            mock_save_short.assert_called_once_with(123456789, "TU")
+
     def test_on_meshtastic_message_empty_text(self):
         """
         Test that Meshtastic packets with empty text messages do not trigger relaying to Matrix rooms.
@@ -1748,6 +1907,30 @@ class TestTextReplyFunctionality(unittest.TestCase):
         # Function should exist and be callable
         self.assertTrue(callable(send_text_reply))
 
+    @patch("mmrelay.meshtastic_utils.logger")
+    def test_send_text_reply_system_exit_handling(self, mock_logger):
+        """Test send_text_reply catches SystemExit, logs, and re-raises."""
+        from meshtastic import mesh_pb2, portnums_pb2
+
+        from mmrelay.meshtastic_utils import send_text_reply
+
+        mock_interface = MagicMock()
+        mock_interface._generatePacketId.return_value = 12345
+
+        mock_interface._sendPacket.side_effect = SystemExit(0)
+
+        result = send_text_reply(
+            mock_interface, "test message", reply_id=100, channelIndex=0
+        )
+
+        # Should return None when SystemExit is raised
+        self.assertIsNone(result)
+
+        # Should log debug message
+        mock_logger.debug.assert_called_once_with(
+            "SystemExit encountered, preserving for graceful shutdown"
+        )
+
 
 class TestGetDeviceMetadata(unittest.TestCase):
     """Test cases for _get_device_metadata helper function."""
@@ -1890,6 +2073,170 @@ def test_resolve_plugin_timeout(cfg, default, expected):
 
 class TestUncoveredMeshtasticUtils(unittest.TestCase):
     """Test cases for uncovered functions and edge cases in meshtastic_utils.py."""
+
+    @patch("mmrelay.meshtastic_utils.logger")
+    def test_connect_meshtastic_timeout_negative(self, mock_logger):
+        """Test connect_meshtastic handles negative timeout value."""
+        from mmrelay.constants.network import DEFAULT_MESHTASTIC_TIMEOUT
+        from mmrelay.meshtastic_utils import connect_meshtastic
+
+        config = {
+            "meshtastic": {
+                "connection_type": "tcp",
+                "host": "localhost:4403",
+                "timeout": -5,
+            },
+            "matrix_rooms": {},
+        }
+
+        with patch("meshtastic.tcp_interface.TCPInterface") as mock_tcp:
+            mock_interface = Mock()
+            mock_interface.getMyNodeInfo.return_value = {"num": 123}
+            mock_tcp.return_value = mock_interface
+
+            with patch("mmrelay.meshtastic_utils.shutting_down", True):
+                connect_meshtastic(config)
+
+            mock_logger.warning.assert_called(
+                "Non-positive meshtastic.timeout value %r; using %ss fallback.",
+                -5,
+                DEFAULT_MESHTASTIC_TIMEOUT,
+            )
+
+        config = {
+            "meshtastic": {
+                "connection_type": "tcp",
+                "host": "localhost:4403",
+                "timeout": -5,
+            },
+            "matrix_rooms": {},
+        }
+
+        with patch("meshtastic.tcp_interface.TCPInterface") as mock_tcp:
+            mock_interface = Mock()
+            mock_interface.getMyNodeInfo.return_value = {"num": 123}
+            mock_tcp.return_value = mock_interface
+
+            with patch("mmrelay.meshtastic_utils.shutting_down", True):
+                connect_meshtastic(config)
+
+            mock_logger.warning.assert_called(
+                "Non-positive meshtastic.timeout value %r; using %ss fallback.",
+                -5,
+                DEFAULT_MESHTASTIC_TIMEOUT,
+            )
+
+    @patch("mmrelay.meshtastic_utils.logger")
+    def test_connect_meshtastic_timeout_zero(self, mock_logger):
+        """Test connect_meshtastic handles zero timeout value."""
+        from mmrelay.meshtastic_utils import (
+            DEFAULT_MESHTASTIC_TIMEOUT,
+            connect_meshtastic,
+        )
+
+        config = {
+            "meshtastic": {
+                "connection_type": "tcp",
+                "host": "localhost:4403",
+                "timeout": 0,
+            },
+            "matrix_rooms": {},
+        }
+
+        with patch("meshtastic.tcp_interface.TCPInterface") as mock_tcp:
+            mock_interface = Mock()
+            mock_interface.getMyNodeInfo.return_value = {"num": 123}
+            mock_tcp.return_value = mock_interface
+
+            with patch("mmrelay.meshtastic_utils.shutting_down", True):
+                connect_meshtastic(config)
+
+            mock_logger.warning.assert_called(
+                "Non-positive meshtastic.timeout value %r; using %ss fallback.",
+                0,
+                DEFAULT_MESHTASTIC_TIMEOUT,
+            )
+
+    @patch("mmrelay.meshtastic_utils.logger")
+    def test_connect_meshtastic_timeout_invalid_string(self, mock_logger):
+        """Test connect_meshtastic handles invalid timeout string value."""
+        from mmrelay.meshtastic_utils import (
+            DEFAULT_MESHTASTIC_TIMEOUT,
+            connect_meshtastic,
+        )
+
+        config = {
+            "meshtastic": {
+                "connection_type": "tcp",
+                "host": "localhost:4403",
+                "timeout": "invalid",
+            },
+            "matrix_rooms": {},
+        }
+
+        with patch("meshtastic.tcp_interface.TCPInterface") as mock_tcp:
+            mock_interface = Mock()
+            mock_interface.getMyNodeInfo.return_value = {"num": 123}
+            mock_tcp.return_value = mock_interface
+
+            with patch("mmrelay.meshtastic_utils.shutting_down", True):
+                connect_meshtastic(config)
+
+            mock_logger.warning.assert_called(
+                "Invalid meshtastic.timeout value %r; using %ss fallback.",
+                "invalid",
+                DEFAULT_MESHTASTIC_TIMEOUT,
+            )
+
+    @patch("mmrelay.meshtastic_utils.logger")
+    def test_connect_meshtastic_timeout_none(self, mock_logger):
+        """Test connect_meshtastic handles None timeout value."""
+        from mmrelay.meshtastic_utils import (
+            DEFAULT_MESHTASTIC_TIMEOUT,
+            connect_meshtastic,
+        )
+
+        config = {
+            "meshtastic": {
+                "connection_type": "tcp",
+                "host": "localhost:4403",
+                "timeout": None,
+            },
+            "matrix_rooms": {},
+        }
+
+        with patch("meshtastic.tcp_interface.TCPInterface") as mock_tcp:
+            mock_interface = Mock()
+            mock_interface.getMyNodeInfo.return_value = {"num": 123}
+            mock_tcp.return_value = mock_interface
+
+            with patch("mmrelay.meshtastic_utils.shutting_down", True):
+                connect_meshtastic(config)
+
+            mock_logger.warning.assert_called(
+                "Invalid meshtastic.timeout value %r; using %ss fallback.",
+                None,
+                DEFAULT_MESHTASTIC_TIMEOUT,
+            )
+
+    @patch("mmrelay.meshtastic_utils.logger")
+    def test_send_text_reply_system_exit_handling(self, mock_logger):
+        """Test send_text_reply catches SystemExit, logs, and re-raises."""
+        from mmrelay.meshtastic_utils import send_text_reply
+
+        mock_interface = Mock()
+        mock_interface._generatePacketId.return_value = 12345
+
+        mock_interface._sendPacket.side_effect = SystemExit(0)
+
+        result = send_text_reply(
+            mock_interface, "test message", reply_id=100, channelIndex=0
+        )
+
+        self.assertIsNone(result)
+        mock_logger.debug.assert_called_once_with(
+            "SystemExit encountered, preserving for graceful shutdown"
+        )
 
     @patch("mmrelay.meshtastic_utils.logger")
     def test_resolve_plugin_timeout_attribute_error_handling(self, mock_logger):

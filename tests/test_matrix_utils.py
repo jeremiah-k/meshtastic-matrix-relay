@@ -6967,3 +6967,52 @@ async def test_on_room_message_creates_mapping_info():
     mock_mapping.assert_called_once()
     args, _ = mock_mapping.call_args
     assert args[0] == "$event123"
+
+
+@pytest.mark.asyncio
+async def test_send_reply_to_meshtastic_error_boundary():
+    """Test send_reply_to_meshtastic catches exceptions to keep bridge alive."""
+    from mmrelay.matrix_utils import send_reply_to_meshtastic
+
+    room = MagicMock()
+    room.room_id = "!room:example.com"
+    event = MagicMock()
+    event.event_id = "$event123"
+
+    room_config = {"meshtastic_channel": 0}
+    from mmrelay.meshtastic_utils import logger as meshtastic_logger
+
+    with (
+        patch(
+            "mmrelay.matrix_utils._get_meshtastic_interface_and_channel",
+            new_callable=AsyncMock,
+            return_value=(MagicMock(), 0),
+        ) as mock_get_interface,
+        patch("mmrelay.matrix_utils.broadcast_enabled", return_value=True),
+        patch(
+            "mmrelay.matrix_utils.queue_message",
+            side_effect=RuntimeError("Unexpected error"),
+        ) as mock_queue,
+    ):
+        result = await send_reply_to_meshtastic(
+            "reply",
+            "Test User",
+            room_config,
+            room,
+            event,
+            "text",
+            False,
+            "local_meshnet",
+            None,
+        )
+
+        # Should return False on exception
+        assert result is False
+
+        # Should log exception
+        meshtastic_logger.exception.assert_called_once_with(
+            "Error sending Matrix reply to Meshtastic"
+        )
+
+        # Verify that queue_message was attempted
+        mock_queue.assert_called_once()
