@@ -563,7 +563,7 @@ def get_longname(meshtastic_id: str) -> str | None:
         return None
 
 
-def save_longname(meshtastic_id: str, longname: str) -> None:
+def save_longname(meshtastic_id: int | str, longname: str) -> None:
     """
     Store or update the long display name for a Meshtastic node.
 
@@ -648,7 +648,7 @@ def get_shortname(meshtastic_id: str) -> str | None:
         return None
 
 
-def save_shortname(meshtastic_id: str, shortname: str) -> None:
+def save_shortname(meshtastic_id: int | str, shortname: str) -> None:
     """
     Insert or update the short name for a Meshtastic node.
 

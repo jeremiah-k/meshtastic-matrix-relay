@@ -1752,9 +1752,9 @@ def handle_cli_commands(args: argparse.Namespace) -> int | None:
     # Handle --install-service
     if args_dict.get("install_service"):
         print(get_deprecation_warning("--install-service"))
-        from mmrelay.setup_utils import install_service
-
         try:
+            from mmrelay.setup_utils import install_service
+
             return 0 if install_service() else 1
         except ImportError as e:
             print(f"Error importing setup utilities: {e}")
