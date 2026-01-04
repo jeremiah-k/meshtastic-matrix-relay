@@ -12,6 +12,7 @@ from typing import Any, Awaitable, Callable, Coroutine, cast
 # meshtastic is not marked py.typed; keep import-untyped for strict mypy.
 import meshtastic  # type: ignore[import-untyped]
 import meshtastic.ble_interface  # type: ignore[import-untyped]
+import meshtastic.mesh_interface  # type: ignore[import-untyped]
 import meshtastic.serial_interface  # type: ignore[import-untyped]
 import meshtastic.tcp_interface  # type: ignore[import-untyped]
 import serial  # For serial port exceptions
@@ -1412,10 +1413,9 @@ def send_text_reply(
         )
     except (
         AttributeError,
+        meshtastic.mesh_interface.MeshInterfaceError,
         OSError,
         RuntimeError,
-        TypeError,
-        ValueError,
     ):
         logger.exception("Failed to send text reply")
         return None

@@ -49,7 +49,10 @@ from mmrelay.constants.network import (
     CONNECTION_TYPE_TCP,
 )
 from mmrelay.e2ee_utils import E2EEStatus
+from mmrelay.log_utils import get_logger
 from mmrelay.tools import get_sample_config_path
+
+logger = get_logger(__name__)
 
 # =============================================================================
 # CLI Argument Parsing and Command Handling
@@ -1751,28 +1754,28 @@ def handle_cli_commands(args: argparse.Namespace) -> int | None:
 
     # Handle --install-service
     if args_dict.get("install_service"):
-        print(get_deprecation_warning("--install-service"))
+        logger.warning(get_deprecation_warning("--install-service"))
         try:
             from mmrelay.setup_utils import install_service
 
             return 0 if install_service() else 1
         except ImportError as e:
-            print(f"Error importing setup utilities: {e}")
+            logger.error(f"Error importing setup utilities: {e}")
             return 1
 
     # Handle --generate-config
     if args_dict.get("generate_config"):
-        print(get_deprecation_warning("--generate-config"))
+        logger.warning(get_deprecation_warning("--generate-config"))
         return 0 if generate_sample_config() else 1
 
     # Handle --check-config
     if args_dict.get("check_config"):
-        print(get_deprecation_warning("--check-config"))
+        logger.warning(get_deprecation_warning("--check-config"))
         return 0 if check_config(args) else 1
 
     # Handle --auth
     if args_dict.get("auth"):
-        print(get_deprecation_warning("--auth"))
+        logger.warning(get_deprecation_warning("--auth"))
         return handle_auth_command(args)
 
     # No commands were handled
