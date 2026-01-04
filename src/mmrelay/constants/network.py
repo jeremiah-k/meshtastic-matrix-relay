@@ -18,6 +18,7 @@ CONFIG_KEY_BLE_ADDRESS = "ble_address"
 CONFIG_KEY_SERIAL_PORT = "serial_port"
 CONFIG_KEY_HOST = "host"
 CONFIG_KEY_CONNECTION_TYPE = "connection_type"
+CONFIG_KEY_TIMEOUT = "timeout"
 
 # Connection retry and timing
 DEFAULT_BACKOFF_TIME = 10  # seconds
@@ -27,6 +28,9 @@ MINIMUM_MESSAGE_DELAY = 2.0  # Minimum delay for message queue fallback
 RECOMMENDED_MINIMUM_DELAY = (
     2.1  # Recommended minimum delay (MINIMUM_MESSAGE_DELAY + 0.1)
 )
+
+# Meshtastic client timeout (for getMetadata and other operations)
+DEFAULT_MESHTASTIC_TIMEOUT = 30  # seconds
 
 # Matrix client timeouts
 MATRIX_EARLY_SYNC_TIMEOUT = 2000  # milliseconds

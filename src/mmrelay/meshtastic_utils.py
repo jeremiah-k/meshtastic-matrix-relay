@@ -40,11 +40,13 @@ from mmrelay.constants.network import (
     CONFIG_KEY_CONNECTION_TYPE,
     CONFIG_KEY_HOST,
     CONFIG_KEY_SERIAL_PORT,
+    CONFIG_KEY_TIMEOUT,
     CONNECTION_TYPE_BLE,
     CONNECTION_TYPE_NETWORK,
     CONNECTION_TYPE_SERIAL,
     CONNECTION_TYPE_TCP,
     DEFAULT_BACKOFF_TIME,
+    DEFAULT_MESHTASTIC_TIMEOUT,
     ERRNO_BAD_FILE_DESCRIPTOR,
     INFINITE_RETRIES,
 )
@@ -121,10 +123,10 @@ def _submit_coro(
         async def _await_wrapper(awaitable: Any) -> Any:
             """
             Await the given awaitable and return its result.
-            
+
             Parameters:
                 awaitable (Any): An awaitable object (e.g., coroutine, Future) to be awaited.
-            
+
             Returns:
                 Any: The value produced by awaiting `awaitable`.
             """
@@ -568,6 +570,15 @@ def connect_meshtastic(
     timeout_attempts = 0
     successful = False
 
+    # Get timeout configuration (default: DEFAULT_MESHTASTIC_TIMEOUT)
+    timeout_raw = meshtastic_settings.get(
+        CONFIG_KEY_TIMEOUT, DEFAULT_MESHTASTIC_TIMEOUT
+    )
+    try:
+        timeout = int(timeout_raw)
+    except (TypeError, ValueError):
+        timeout = DEFAULT_MESHTASTIC_TIMEOUT
+
     while (
         not successful
         and (retry_limit == 0 or attempts <= retry_limit)
@@ -592,7 +603,9 @@ def connect_meshtastic(
                         f"Serial port {serial_port} does not exist."
                     )
 
-                client = meshtastic.serial_interface.SerialInterface(serial_port)
+                client = meshtastic.serial_interface.SerialInterface(
+                    serial_port, timeout=timeout
+                )
 
             elif connection_type == CONNECTION_TYPE_BLE:
                 # BLE connection
@@ -606,6 +619,7 @@ def connect_meshtastic(
                         noProto=False,
                         debugOut=None,
                         noNodes=False,
+                        timeout=timeout,
                     )
                 else:
                     logger.error("No BLE address provided.")
@@ -623,7 +637,9 @@ def connect_meshtastic(
                 logger.info(f"Connecting to host {target_host}")
 
                 # Connect without progress indicator
-                client = meshtastic.tcp_interface.TCPInterface(hostname=target_host)
+                client = meshtastic.tcp_interface.TCPInterface(
+                    hostname=target_host, timeout=timeout
+                )
             else:
                 logger.error(f"Unknown connection type: {connection_type}")
                 return None
