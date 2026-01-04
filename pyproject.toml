@@ -2,13 +2,6 @@
 requires = ["setuptools>=42", "wheel"]
 build-backend = "setuptools.build_meta"
 
-[project]
-name = "meshtastic-matrix-relay"
-requires-python = ">=3.10"
-
-[project.optional-dependencies]
-dev = ["pyright>=1.1.0"]
-
 [tool.pyright]
 typeCheckingMode = "basic"
 pythonVersion = "3.10"
