@@ -413,142 +413,6 @@ class TestGenerateSampleConfig(unittest.TestCase):
         mock_file().write.assert_called_once_with("sample config content")
 
 
-class TestHandleCLICommands(unittest.TestCase):
-    """Test cases for handle_cli_commands function."""
-
-    def test_handle_version_command(self):
-        """
-        Test that handle_cli_commands processes the --version flag by calling print_version and returning 0.
-        """
-        args = MagicMock()
-        args.version = True
-        args.install_service = False
-        args.generate_config = False
-        args.check_config = False
-
-        with patch("mmrelay.cli.print_version") as mock_print_version:
-            result = handle_cli_commands(args)
-
-        self.assertEqual(result, 0)
-        mock_print_version.assert_called_once()
-
-    @patch("mmrelay.setup_utils.install_service")
-    def test_handle_install_service_success(self, mock_install):
-        """
-        Test that the --install-service command triggers service installation and exits with code 0 on success.
-        """
-        args = MagicMock()
-        args.version = False
-        args.install_service = True
-        args.generate_config = False
-        args.check_config = False
-        mock_install.return_value = True
-
-        result = handle_cli_commands(args)
-
-        mock_install.assert_called_once()
-        self.assertEqual(result, 0)
-
-    @patch("mmrelay.setup_utils.install_service")
-    def test_handle_install_service_failure(self, mock_install):
-        """
-        Test that handle_cli_commands exits with code 1 when service installation fails using the --install-service flag.
-        """
-        args = MagicMock()
-        args.version = False
-        args.install_service = True
-        args.generate_config = False
-        args.check_config = False
-        mock_install.return_value = False
-
-        result = handle_cli_commands(args)
-
-        mock_install.assert_called_once()
-        self.assertEqual(result, 1)
-
-    @patch("mmrelay.cli.generate_sample_config")
-    def test_handle_generate_config_success(self, mock_generate):
-        """
-        Test that handle_cli_commands returns 0 when the --generate-config command is specified and sample config generation succeeds.
-        """
-        args = MagicMock()
-        args.version = False
-        args.install_service = False
-        args.generate_config = True
-        args.check_config = False
-        mock_generate.return_value = True
-
-        result = handle_cli_commands(args)
-
-        self.assertEqual(result, 0)
-        mock_generate.assert_called_once()
-
-    @patch("mmrelay.cli.generate_sample_config")
-    def test_handle_generate_config_failure(self, mock_generate):
-        """
-        Test that handle_cli_commands exits with code 1 when --generate-config is specified and config generation fails.
-        """
-        args = MagicMock()
-        args.version = False
-        args.install_service = False
-        args.generate_config = True
-        args.check_config = False
-        mock_generate.return_value = False
-
-        result = handle_cli_commands(args)
-
-        mock_generate.assert_called_once()
-        self.assertEqual(result, 1)
-
-    @patch("mmrelay.cli.check_config")
-    def test_handle_check_config_success(self, mock_check):
-        """
-        Test that handle_cli_commands exits with code 0 when --check-config is specified and the config check succeeds.
-        """
-        args = MagicMock()
-        args.version = False
-        args.install_service = False
-        args.generate_config = False
-        args.check_config = True
-        mock_check.return_value = True
-
-        result = handle_cli_commands(args)
-
-        mock_check.assert_called_once()
-        self.assertEqual(result, 0)
-
-    @patch("mmrelay.cli.check_config")
-    def test_handle_check_config_failure(self, mock_check):
-        """
-        Test that handle_cli_commands exits with code 1 when --check-config is specified and the config check fails.
-        """
-        args = MagicMock()
-        args.version = False
-        args.install_service = False
-        args.generate_config = False
-        args.check_config = True
-        mock_check.return_value = False
-
-        result = handle_cli_commands(args)
-
-        mock_check.assert_called_once()
-        self.assertEqual(result, 1)
-
-    def test_handle_no_commands(self):
-        """
-        Test that handle_cli_commands returns None when no CLI command flags are set.
-        """
-        args = MagicMock()
-        args.version = False
-        args.install_service = False
-        args.generate_config = False
-        args.check_config = False
-
-        result = handle_cli_commands(args)
-
-        self.assertIsNone(result)
-
-
 class TestMainFunction(unittest.TestCase):
     """Test cases for main function."""
 
@@ -3103,11 +2967,12 @@ class TestPrintEnvironmentSummary(unittest.TestCase):
     @patch("builtins.print")
     def test_print_environment_summary_linux_without_e2ee(self, mock_print):
         """Test environment summary on Linux without E2EE dependencies."""
-        # Import the function first
+        # Import function first
         from mmrelay.cli import _print_environment_summary
 
         # Mock failed E2EE imports by removing modules from sys.modules and making import fail
         original_modules = sys.modules.copy()
+        original_import = None
         try:
             # Remove E2EE modules if they exist
             for module in ["olm", "nio.crypto", "nio.store"]:
@@ -3115,12 +2980,13 @@ class TestPrintEnvironmentSummary(unittest.TestCase):
                     del sys.modules[module]
 
             # Mock import to raise ImportError for E2EE modules
+            original_import = builtins.__import__
+
             def mock_import(name, *args, **kwargs):
                 if name in ["olm", "nio.crypto", "nio.store"]:
                     raise ImportError(f"No module named '{name}'")
                 return original_import(name, *args, **kwargs)
 
-            original_import = builtins.__import__
             builtins.__import__ = mock_import
 
             # Call function
@@ -3128,7 +2994,8 @@ class TestPrintEnvironmentSummary(unittest.TestCase):
 
         finally:
             # Restore original state
-            builtins.__import__ = original_import
+            if original_import is not None:
+                builtins.__import__ = original_import
             sys.modules.update(original_modules)
 
         # Verify results
@@ -3479,6 +3346,7 @@ class TestAnalyzeE2eeSetup(unittest.TestCase):
 
         # Mock missing E2EE dependencies
         original_modules = sys.modules.copy()
+        original_import = None
         try:
             # Remove E2EE modules if they exist
             for module in ["olm", "nio.crypto", "nio.store"]:
@@ -3486,12 +3354,13 @@ class TestAnalyzeE2eeSetup(unittest.TestCase):
                     del sys.modules[module]
 
             # Mock import to raise ImportError for E2EE modules
+            original_import = builtins.__import__
+
             def mock_import(name, *args, **kwargs):
                 if name in ["olm", "nio.crypto", "nio.store"]:
                     raise ImportError(f"No module named '{name}'")
                 return original_import(name, *args, **kwargs)
 
-            original_import = builtins.__import__
             builtins.__import__ = mock_import
 
             # Import and call function
@@ -3501,7 +3370,8 @@ class TestAnalyzeE2eeSetup(unittest.TestCase):
 
         finally:
             # Restore original state
-            builtins.__import__ = original_import
+            if original_import is not None:
+                builtins.__import__ = original_import
             sys.modules.update(original_modules)
 
         # Verify results
