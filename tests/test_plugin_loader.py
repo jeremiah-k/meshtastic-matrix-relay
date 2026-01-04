@@ -167,12 +167,12 @@ def test_temp_sys_path_handles_missing_remove():
     original_path = sys.path
 
     class PathList(list):
-        def remove(self, value):  # noqa: A003 - intentional shadow for list.remove
+        def remove(self, _value):
             """
             Always raises a ValueError indicating the requested item is missing.
 
             Parameters:
-                value: The item attempted to be removed (ignored).
+                _value: The item attempted to be removed (ignored).
 
             Raises:
                 ValueError: Always raised with the message "missing".
@@ -181,7 +181,7 @@ def test_temp_sys_path_handles_missing_remove():
 
     sys.path = PathList(original_path)
     try:
-        with _temp_sys_path("/tmp/fake-path"):
+        with _temp_sys_path("fake-path"):
             pass
     finally:
         sys.path = original_path

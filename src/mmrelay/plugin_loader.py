@@ -1873,7 +1873,7 @@ def load_plugins_from_directory(directory: str, recursive: bool = False) -> list
                                     plugin_path,
                                 )
 
-                        except subprocess.CalledProcessError:
+                        except (subprocess.CalledProcessError, FileNotFoundError):
                             logger.exception(
                                 f"Failed to automatically install {missing_pkg}. "
                                 f"Please install manually:\n"

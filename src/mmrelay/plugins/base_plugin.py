@@ -373,7 +373,7 @@ class BasePlugin(ABC):
         """
         Recursively remove any "raw" keys from dictionaries within a nested data structure.
 
-        This function walks dictionaries and lists and removes entries with the key `"raw"`, returning a structure with the same shape but without those keys.
+        This function walks dictionaries and lists and removes entries with the key `"raw"`, mutates dictionaries/lists in place and returns the same structure.
 
         Parameters:
             data (Any): The nested data structure (e.g., dicts and lists) to clean.
@@ -548,15 +548,17 @@ class BasePlugin(ABC):
             self.logger.error("Failed to connect to Matrix client")
             return None
 
+        content = {
+            "msgtype": "m.text",
+            "body": message,
+        }
+        if formatted:
+            content["format"] = "org.matrix.custom.html"
+            content["formatted_body"] = markdown.markdown(message)
         return await matrix_client.room_send(
             room_id=room_id,
             message_type="m.room.message",
-            content={
-                "msgtype": "m.text",
-                "format": "org.matrix.custom.html" if formatted else None,
-                "body": message,
-                "formatted_body": markdown.markdown(message) if formatted else None,
-            },
+            content=content,
         )
 
     def get_mesh_commands(self) -> list[str]:
@@ -637,12 +639,12 @@ class BasePlugin(ABC):
         plugin_name = self._require_plugin_name()
         delete_plugin_data(plugin_name, meshtastic_id)
 
-    def get_node_data(self, meshtastic_id: str) -> list[Any]:
+    def get_node_data(self, meshtastic_id: str) -> Any:
         """
-        Retrieve stored data rows for the specified Meshtastic node.
+        Retrieve stored data rows for specified Meshtastic node.
 
         Returns:
-            list[Any]: Stored data rows for the node identified by `meshtastic_id`; empty list if no data exists.
+            Any: Stored data for node identified by `meshtastic_id`; returns an empty list if no data exists.
         """
         plugin_name = self._require_plugin_name()
         return get_plugin_data_for_node(plugin_name, meshtastic_id)

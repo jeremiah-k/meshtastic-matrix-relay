@@ -440,7 +440,7 @@ def delete_plugin_data(plugin_name: str, meshtastic_id: str) -> None:
         )
 
 
-def get_plugin_data_for_node(plugin_name: str, meshtastic_id: int | str) -> list[Any]:
+def get_plugin_data_for_node(plugin_name: str, meshtastic_id: int | str) -> Any:
     """
     Retrieve JSON-encoded plugin data for a specific Meshtastic node.
 
@@ -449,7 +449,7 @@ def get_plugin_data_for_node(plugin_name: str, meshtastic_id: int | str) -> list
         meshtastic_id (int | str): Node identifier used in the plugin_data table.
 
     Returns:
-        list: The deserialized plugin data as a Python list; returns an empty list if no data is found or if decoding or database errors occur.
+        Any: The deserialized plugin data; returns an empty list if no data is found or if decoding or database errors occur.
     """
     manager = _get_db_manager()
 
@@ -477,7 +477,7 @@ def get_plugin_data_for_node(plugin_name: str, meshtastic_id: int | str) -> list
         return []
 
     try:
-        return cast(list[Any], json.loads(result[0] if result else "[]"))
+        return json.loads(result[0] if result else "[]")
     except (json.JSONDecodeError, TypeError):
         logger.exception(
             "Failed to decode JSON data for plugin %s, node %s",

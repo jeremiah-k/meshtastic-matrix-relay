@@ -501,7 +501,7 @@ def _normalize_bot_user_id(homeserver: str, bot_user_id: str | None) -> str | No
 
 def _get_msgs_to_keep_config(config_override: dict[str, Any] | None = None) -> int:
     """
-    Determine how many Meshtastic–Matrix message mappings to retain.
+    Determine how many Meshtastic-Matrix message mappings to retain.
 
     Prefers the new configuration key `database.msg_map.msgs_to_keep`; falls back to the legacy `db.msg_map.msgs_to_keep` and emits a deprecation warning if that legacy key is used. If no valid integer is configured, returns DEFAULT_MSGS_TO_KEEP. When provided, `config_override` is consulted instead of the module-level `config`.
     Parameters:
@@ -2905,7 +2905,7 @@ async def send_reply_to_meshtastic(
 
         # Message mapping is now handled automatically by the queue system
 
-    except Exception:
+    except Exception:  # noqa: BLE001 - error boundary for Meshtastic send path
         # Keep the bridge alive for unexpected Meshtastic send errors
         meshtastic_logger.exception("Error sending Matrix reply to Meshtastic")
         return False

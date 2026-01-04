@@ -328,7 +328,7 @@ def _validate_credentials_json(config_path: str) -> bool:
             return False
 
         return True
-    except Exception as e:
+    except (OSError, json.JSONDecodeError) as e:
         print(f"❌ Error: Could not validate credentials.json: {e}")
         return False
 
