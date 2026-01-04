@@ -184,7 +184,7 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
             )
 
             with patch("mmrelay.setup_utils.logger") as mock_logger:
-                result = check_lingering_enabled()
+                result = reload_daemon()
                 self.assertFalse(result)
                 mock_logger.exception.assert_called()
 
@@ -226,7 +226,7 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         with patch("subprocess.run") as mock_run:
             mock_run.side_effect = OSError("Command failed")
             with patch("mmrelay.setup_utils.logger") as mock_logger:
-                result = reload_daemon()
+                result = check_lingering_enabled()
                 self.assertFalse(result)
                 mock_logger.exception.assert_called()
 
