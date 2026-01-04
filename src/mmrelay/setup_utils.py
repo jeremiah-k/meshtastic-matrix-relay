@@ -143,10 +143,10 @@ def wait_for_service_start() -> None:
 
     # Create a Rich progress display with spinner and elapsed time
     if not running_as_service:
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[bold green]Starting mmrelay service..."),
-            TimeElapsedColumn(),
+        with Progress(  # type: ignore[misc]
+            SpinnerColumn(),  # type: ignore[misc]
+            TextColumn("[bold green]Starting mmrelay service..."),  # type: ignore[misc]
+            TimeElapsedColumn(),  # type: ignore[misc]
             transient=True,
         ) as progress:
             # Add a task that will run for approximately 10 seconds
@@ -442,11 +442,11 @@ def reload_daemon() -> bool:
     try:
         # Using resolved systemctl path
         subprocess.run([SYSTEMCTL, "--user", "daemon-reload"], check=True)
-    except subprocess.CalledProcessError:
-        logger.exception("Error reloading systemd daemon")
+    except subprocess.CalledProcessError as e:
+        logger.exception("Error reloading systemd daemon (exit code %s)", e.returncode)
         return False
-    except OSError:
-        logger.exception("Error running systemctl daemon-reload")
+    except OSError as e:
+        logger.exception("Error running systemctl daemon-reload: %s", e)
         return False
     else:
         logger.info("Systemd user daemon reloaded")
@@ -626,8 +626,8 @@ def enable_lingering() -> bool:
         else:
             logger.error("Error enabling lingering: %s", result.stderr)
             return False
-    except (OSError, subprocess.SubprocessError):
-        logger.exception("Error enabling lingering")
+    except (OSError, subprocess.SubprocessError) as e:
+        logger.exception("Error enabling lingering: %s", e)
         return False
 
 
@@ -735,10 +735,10 @@ def install_service() -> bool:
                 )
                 logger.info("Service enabled successfully")
                 service_enabled = True
-            except subprocess.CalledProcessError:
-                logger.exception("Error enabling service")
-            except OSError:
-                logger.exception("Error")
+            except subprocess.CalledProcessError as e:
+                logger.exception("Error enabling service (exit code %s)", e.returncode)
+            except OSError as e:
+                logger.exception("OS error while enabling service: %s", e)
 
     # Check if the service is already running
     service_active = is_service_active()
@@ -762,10 +762,12 @@ def install_service() -> bool:
                 wait_for_service_start()
                 # Show service status
                 show_service_status()
-            except subprocess.CalledProcessError:
-                logger.exception("Error restarting service")
-            except OSError:
-                logger.exception("Error")
+            except subprocess.CalledProcessError as e:
+                logger.exception(
+                    "Error restarting service (exit code %s)", e.returncode
+                )
+            except OSError as e:
+                logger.exception("OS error while restarting service: %s", e)
     else:
         logger.info("The service is not currently running.")
         try:

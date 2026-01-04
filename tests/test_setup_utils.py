@@ -848,7 +848,6 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
             )
 
     @patch.dict(os.environ, {}, clear=True)
-    @patch.dict(os.environ, {}, clear=True)
     @patch("getpass.getuser")
     @patch("shutil.which")
     def test_check_lingering_enabled_no_username(self, mock_which, mock_getpass):
@@ -1209,9 +1208,9 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         mock_loginctl_available,
         mock_service_enabled,
         mock_service_active,
-        mock_run,
-        mock_show_status,
-        mock_wait,
+        _mock_run,
+        _mock_show_status,
+        _mock_wait,
     ):
         """Test install_service when service file is updated successfully (lines 683-684)."""
         mock_get_path.return_value = Path(
@@ -1297,7 +1296,7 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         mock_loginctl_available,
         mock_service_enabled,
         mock_service_active,
-        mock_run,
+        _mock_run,
         mock_show_status,
         mock_wait,
     ):

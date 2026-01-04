@@ -652,7 +652,7 @@ class BasePlugin(ABC):
             meshtastic_id (str): Identifier of the Meshtastic node.
 
         Returns:
-            Any: The stored data value for the given node (may be any JSON-serializable value), or `None` if no data exists.
+            Any: The stored data value for the given node (may be any JSON-serializable value), or an empty list [] if no data exists or on error.
         """
         plugin_name = self._require_plugin_name()
         return get_plugin_data_for_node(plugin_name, meshtastic_id)
