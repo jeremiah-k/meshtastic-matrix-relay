@@ -9,6 +9,7 @@ from concurrent.futures import Future
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from typing import Any, Awaitable, Callable, Coroutine, cast
 
+# meshtastic is not marked py.typed; keep import-untyped for strict mypy.
 import meshtastic  # type: ignore[import-untyped]
 import meshtastic.ble_interface  # type: ignore[import-untyped]
 import meshtastic.serial_interface  # type: ignore[import-untyped]
@@ -102,18 +103,25 @@ def _submit_coro(
     loop: asyncio.AbstractEventLoop | None = None,
 ) -> Future[Any] | None:
     """
-    Schedule a coroutine to run on an available asyncio event loop and return a Future for its result.
+    Schedule a coroutine or awaitable on an available asyncio event loop and return a Future for its result.
 
     Parameters:
-        coro: The coroutine object to execute. If not a coroutine, the function returns None.
+        coro: The coroutine or awaitable object to execute. If not awaitable, the function returns None.
         loop: Optional target asyncio event loop to run the coroutine on. If omitted, a suitable loop (module-level or running loop) will be used when available.
 
     Returns:
-        A Future containing the coroutine's result, or `None` if `coro` is not a coroutine.
+        A Future containing the coroutine's result, or `None` if `coro` is not awaitable.
     """
     if not inspect.iscoroutine(coro):
-        # Defensive guard for tests that mistakenly patch async funcs to return None
-        return None
+        if not inspect.isawaitable(coro):
+            # Defensive guard for tests that mistakenly patch async funcs to return None
+            return None
+
+        # Wrap awaitables that are not coroutine objects (e.g., Futures) for scheduling.
+        async def _await_wrapper(awaitable: Any) -> Any:
+            return await awaitable
+
+        coro = _await_wrapper(coro)
     loop = loop or event_loop
     if loop and isinstance(loop, asyncio.AbstractEventLoop) and not loop.is_closed():
         return asyncio.run_coroutine_threadsafe(coro, loop)
@@ -140,7 +148,7 @@ def _submit_coro(
             finally:
                 new_loop.close()
                 asyncio.set_event_loop(None)
-        except Exception as e:
+        except (RuntimeError, OSError) as e:
             # Ultimate fallback: create a completed Future with the exception
             error_future: Future[Any] = Future()
             error_future.set_exception(e)
@@ -1350,7 +1358,7 @@ async def check_connection() -> None:
         await asyncio.sleep(heartbeat_interval)
 
 
-def sendTextReply(
+def send_text_reply(
     interface: Any,
     text: str,
     reply_id: int,
@@ -1397,9 +1405,20 @@ def sendTextReply(
         return interface._sendPacket(
             mesh_packet, destinationId=destinationId, wantAck=wantAck
         )
-    except Exception:
+    except (
+        AttributeError,
+        OSError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+        SystemExit,
+    ):
         logger.exception("Failed to send text reply")
         return None
+
+
+# Backward-compatible alias for older call sites.
+sendTextReply = send_text_reply
 
 
 if __name__ == "__main__":

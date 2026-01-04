@@ -32,7 +32,7 @@ from mmrelay.meshtastic_utils import (
     on_lost_meshtastic_connection,
     on_meshtastic_message,
     reconnect,
-    sendTextReply,
+    send_text_reply,
     serial_port_exists,
 )
 
@@ -526,9 +526,9 @@ class TestMeshtasticUtils(unittest.TestCase):
         mock_tcp.assert_not_called()
         mock_ble.assert_not_called()
 
-    def test_sendTextReply_success(self):
+    def test_send_text_reply_success(self):
         """
-        Test that sendTextReply returns the expected result when sending a text reply succeeds.
+        Test that send_text_reply returns the expected result when sending a text reply succeeds.
 
         Verifies that the function correctly calls the interface methods and returns the response from _sendPacket.
         """
@@ -537,7 +537,9 @@ class TestMeshtasticUtils(unittest.TestCase):
         mock_interface._generatePacketId.return_value = 12345
         mock_interface._sendPacket.return_value = {"id": 12345}
 
-        result = sendTextReply(mock_interface, "Hello", 999, destinationId="123456789")
+        result = send_text_reply(
+            mock_interface, "Hello", 999, destinationId="123456789"
+        )
 
         # Should return the result from _sendPacket
         self.assertEqual(result, {"id": 12345})
@@ -546,16 +548,18 @@ class TestMeshtasticUtils(unittest.TestCase):
         mock_interface._generatePacketId.assert_called_once()
         mock_interface._sendPacket.assert_called_once()
 
-    def test_sendTextReply_no_client(self):
+    def test_send_text_reply_no_client(self):
         """
-        Test that sendTextReply returns None when the interface fails to send a packet.
+        Test that send_text_reply returns None when the interface fails to send a packet.
         """
         # Create a mock interface that fails
         mock_interface = MagicMock()
         mock_interface._generatePacketId.return_value = 12345
         mock_interface._sendPacket.return_value = None  # Simulate failure
 
-        result = sendTextReply(mock_interface, "Hello", 999, destinationId="123456789")
+        result = send_text_reply(
+            mock_interface, "Hello", 999, destinationId="123456789"
+        )
 
         self.assertIsNone(result)
 
@@ -1455,7 +1459,7 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
         mu._submit_coro = self.mocked_submit_coro
 
     def test_submit_coro_with_no_event_loop_no_running_loop(self):
-        """Test _submit_coro with no event loop and no running loop - should use asyncio.run."""
+        """Test _submit_coro with no event loop and no running loop - uses a temporary loop."""
         from concurrent.futures import Future
 
         async def test_coro():
@@ -1474,8 +1478,7 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
             self.assertEqual(result.result(), "test_result")
 
     def test_submit_coro_with_no_event_loop_no_running_loop_exception(self):
-        """Test _submit_coro exception handling when asyncio.run fails."""
-        from concurrent.futures import Future
+        """Test _submit_coro exception handling when coroutine execution fails."""
 
         async def failing_coro():
             """
@@ -1494,12 +1497,8 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
         with patch("asyncio.get_running_loop") as mock_get_loop:
             mock_get_loop.side_effect = RuntimeError("No running loop")
 
-            result = self.original_submit_coro(coro)
-
-            # Should return a Future with the exception
-            self.assertIsInstance(result, Future)
             with self.assertRaises(ValueError) as cm:
-                result.result()
+                self.original_submit_coro(coro)
             self.assertEqual(str(cm.exception), "Test exception")
 
     def test_submit_coro_with_running_loop(self):
@@ -1581,6 +1580,26 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
         # Test with integer input
         result = self.original_submit_coro(42)
         self.assertIsNone(result)
+
+    def test_submit_coro_accepts_non_coroutine_awaitable(self):
+        """Test _submit_coro handles non-coroutine awaitables by awaiting them."""
+        from concurrent.futures import Future
+
+        class DummyAwaitable:
+            def __await__(self):
+                if False:
+                    yield None
+                return "awaitable-result"
+
+        awaitable = DummyAwaitable()
+
+        with patch("asyncio.get_running_loop") as mock_get_loop:
+            mock_get_loop.side_effect = RuntimeError("No running loop")
+
+            result = self.original_submit_coro(awaitable)
+
+            self.assertIsInstance(result, Future)
+            self.assertEqual(result.result(), "awaitable-result")
 
 
 class TestBLEExceptionHandling(unittest.TestCase):
@@ -1699,22 +1718,22 @@ class TestReconnectingFlagLogic(unittest.TestCase):
 class TestTextReplyFunctionality(unittest.TestCase):
     """Test cases for text reply functionality."""
 
-    def test_sendTextReply_with_none_interface(self):
-        """Test sendTextReply returns None when interface is None."""
-        from mmrelay.meshtastic_utils import sendTextReply
+    def test_send_text_reply_with_none_interface(self):
+        """Test send_text_reply returns None when interface is None."""
+        from mmrelay.meshtastic_utils import send_text_reply
 
         # Test with None interface
-        result = sendTextReply(None, "Test message", reply_id=12345)
+        result = send_text_reply(None, "Test message", reply_id=12345)
 
         # Should return None
         self.assertIsNone(result)
 
-    def test_sendTextReply_function_exists_and_callable(self):
-        """Test that sendTextReply function exists and is callable."""
-        from mmrelay.meshtastic_utils import sendTextReply
+    def test_send_text_reply_function_exists_and_callable(self):
+        """Test that send_text_reply function exists and is callable."""
+        from mmrelay.meshtastic_utils import send_text_reply
 
         # Function should exist and be callable
-        self.assertTrue(callable(sendTextReply))
+        self.assertTrue(callable(send_text_reply))
 
 
 class TestGetDeviceMetadata(unittest.TestCase):

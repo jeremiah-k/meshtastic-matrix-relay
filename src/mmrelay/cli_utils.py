@@ -649,6 +649,7 @@ async def logout_matrix_bot(password: str) -> bool:
     logger.info(f"Verifying password for {user_id}...")
     print(f"🔐 Verifying password for {user_id}...")
 
+    temp_client = None
     try:
         # Create SSL context using certifi's certificates
         ssl_context = _create_ssl_context()
@@ -691,7 +692,15 @@ async def logout_matrix_bot(password: str) -> bool:
             _handle_matrix_error(e, "Password verification", "error")
             return False
         finally:
-            await temp_client.close()
+            if temp_client is not None:
+                try:
+                    await temp_client.close()
+                except Exception:
+                    # Avoid masking the original error; log for diagnostics only.
+                    logger.debug(
+                        "Ignoring error while closing temporary Matrix client after password verification",
+                        exc_info=True,
+                    )
 
         # Now logout the main session
         logger.info("Logging out from Matrix server...")

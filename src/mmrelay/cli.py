@@ -1104,31 +1104,9 @@ def main() -> int:
             return handle_subcommand(args)
 
         # Handle legacy flags (with deprecation warnings)
-        if args.check_config:
-            print(get_deprecation_warning("--check-config"))
-            return 0 if check_config(args) else 1
-
-        if args.install_service:
-            print(get_deprecation_warning("--install-service"))
-            try:
-                from mmrelay.setup_utils import install_service
-
-                return 0 if install_service() else 1
-            except ImportError as e:
-                print(f"Error importing setup utilities: {e}")
-                return 1
-
-        if args.generate_config:
-            print(get_deprecation_warning("--generate-config"))
-            return 0 if generate_sample_config() else 1
-
-        if args.version:
-            print_version()
-            return 0
-
-        if args.auth:
-            print(get_deprecation_warning("--auth"))
-            return handle_auth_command(args)
+        legacy_exit = handle_cli_commands(args)
+        if legacy_exit is not None:
+            return legacy_exit
 
         # If no command was specified, run the main functionality
         try:
@@ -1758,51 +1736,53 @@ if __name__ == "__main__":
     sys.exit(main())
 
 
-def handle_cli_commands(args: argparse.Namespace) -> bool:
+def handle_cli_commands(args: argparse.Namespace) -> int | None:
     """
-    Handle legacy CLI flags (--version, --install-service, --generate-config, --check-config).
+    Handle legacy CLI flags (--version, --install-service, --generate-config, --check-config, --auth).
 
-    Processes backward-compatible, legacy command-line flags and performs their immediate actions. Some handled flags perform immediate operations that may terminate the process as part of their normal behavior (for example, installing the service or performing a config check).
+    Processes backward-compatible, legacy command-line flags and performs their immediate actions.
 
     Parameters:
         args (argparse.Namespace): Parsed command-line arguments produced by parse_arguments().
 
     Returns:
-        bool: `True` if a legacy command was handled and the caller should not continue normal execution, `False` otherwise.
+        int | None: Exit code if a legacy command was handled, otherwise `None`.
     """
+    args_dict = vars(args)
+
     # Handle --version
-    if args.version:
+    if args_dict.get("version"):
         print_version()
-        return True
+        return 0
 
     # Handle --install-service
-    if args.install_service:
+    if args_dict.get("install_service"):
+        print(get_deprecation_warning("--install-service"))
         from mmrelay.setup_utils import install_service
 
-        success = install_service()
-        import sys
-
-        sys.exit(0 if success else 1)
+        try:
+            return 0 if install_service() else 1
+        except ImportError as e:
+            print(f"Error importing setup utilities: {e}")
+            return 1
 
     # Handle --generate-config
-    if args.generate_config:
-        if generate_sample_config():
-            # Exit with success if config was generated
-            return True
-        else:
-            # Exit with error if config generation failed
-            import sys
-
-            sys.exit(1)
+    if args_dict.get("generate_config"):
+        print(get_deprecation_warning("--generate-config"))
+        return 0 if generate_sample_config() else 1
 
     # Handle --check-config
-    if args.check_config:
-        import sys
+    if args_dict.get("check_config"):
+        print(get_deprecation_warning("--check-config"))
+        return 0 if check_config(args) else 1
 
-        sys.exit(0 if check_config() else 1)
+    # Handle --auth
+    if args_dict.get("auth"):
+        print(get_deprecation_warning("--auth"))
+        return handle_auth_command(args)
 
     # No commands were handled
-    return False
+    return None
 
 
 def generate_sample_config() -> bool:

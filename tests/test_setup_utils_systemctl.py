@@ -89,7 +89,7 @@ class TestSystemctlPathResolution(unittest.TestCase):
 
         with patch("mmrelay.setup_utils.SYSTEMCTL", "/custom/path/systemctl"), patch(
             "subprocess.run"
-        ) as mock_run, patch("builtins.print"):
+        ) as mock_run, patch("mmrelay.setup_utils.logger"):
 
             mock_run.return_value = None  # Successful run
 
@@ -146,9 +146,9 @@ class TestSystemctlPathResolution(unittest.TestCase):
 class TestServiceTemplateImprovements(unittest.TestCase):
     """Test cases for service template improvements."""
 
-    @patch("builtins.print")
-    def test_get_template_service_content_stderr_output(self, mock_print):
-        """Test that error messages are printed to stderr."""
+    @patch("mmrelay.setup_utils.logger")
+    def test_get_template_service_content_stderr_output(self, mock_logger):
+        """Test that error messages are logged."""
         from mmrelay.setup_utils import get_template_service_content
 
         # Mock all methods to fail
@@ -165,10 +165,8 @@ class TestServiceTemplateImprovements(unittest.TestCase):
             # Should return default template
             self.assertIn("MMRelay - Meshtastic <=> Matrix Relay", result)
 
-            # Should print error messages to stderr
-            mock_print.assert_any_call(
-                "Using default service template", file=sys.stderr
-            )
+            # Should log error messages
+            mock_logger.warning.assert_any_call("Using default service template")
 
     def test_default_service_template_updated_description(self):
         """Test that default service template has updated description."""
@@ -221,9 +219,9 @@ class TestInstallServiceSystemctlUsage(unittest.TestCase):
     @patch("mmrelay.setup_utils.SYSTEMCTL", "/test/systemctl")
     @patch("subprocess.run")
     @patch("builtins.input", side_effect=["y", "y"])  # Enable service, start service
-    @patch("builtins.print")
+    @patch("mmrelay.setup_utils.logger")
     def test_install_service_uses_custom_systemctl_path(
-        self, _mock_print, _mock_input, mock_run
+        self, _mock_logger, _mock_input, mock_run
     ):
         """Test that install_service uses the resolved systemctl path."""
         from mmrelay.setup_utils import install_service
@@ -257,8 +255,8 @@ class TestInstallServiceSystemctlUsage(unittest.TestCase):
 
     @patch("mmrelay.setup_utils.SYSTEMCTL", "/test/systemctl")
     @patch("builtins.input", side_effect=["y", "y"])  # Enable service, start service
-    @patch("builtins.print")
-    def test_install_service_handles_systemctl_error(self, _mock_print, _mock_input):
+    @patch("mmrelay.setup_utils.logger")
+    def test_install_service_handles_systemctl_error(self, _mock_logger, _mock_input):
         """Test that install_service handles systemctl errors gracefully."""
         from mmrelay.setup_utils import install_service
 
@@ -280,8 +278,8 @@ class TestInstallServiceSystemctlUsage(unittest.TestCase):
             # Should still complete (returns True even if systemctl operations fail)
             self.assertTrue(result)
 
-            # Should print error messages
-            _mock_print.assert_called()
+            # Should log messages
+            _mock_logger.info.assert_called()
 
 
 if __name__ == "__main__":

@@ -317,9 +317,9 @@ class TestCLIEdgeCases(unittest.TestCase):
 
     def test_handle_cli_commands_service_installation_failure(self):
         """
-        Test that handle_cli_commands exits with code 1 when service installation fails.
+        Test that handle_cli_commands returns code 1 when service installation fails.
 
-        Simulates a failure in the service installation process and verifies that the CLI handler triggers a system exit with the appropriate error code.
+        Simulates a failure in the service installation process and verifies that the CLI handler returns the appropriate error code.
         """
         args = MagicMock()
         args.version = False
@@ -328,15 +328,14 @@ class TestCLIEdgeCases(unittest.TestCase):
         args.check_config = False
 
         with patch("mmrelay.setup_utils.install_service", return_value=False):
-            with patch("sys.exit") as mock_exit:
-                handle_cli_commands(args)
-                mock_exit.assert_called_once_with(1)
+            result = handle_cli_commands(args)
+            self.assertEqual(result, 1)
 
     def test_handle_cli_commands_config_generation_failure(self):
         """
-        Test that handle_cli_commands exits with code 1 when configuration generation fails.
+        Test that handle_cli_commands returns code 1 when configuration generation fails.
 
-        Simulates a failure in generate_sample_config and verifies that handle_cli_commands calls sys.exit(1).
+        Simulates a failure in generate_sample_config and verifies that handle_cli_commands returns 1.
         """
         args = MagicMock()
         args.version = False
@@ -345,9 +344,8 @@ class TestCLIEdgeCases(unittest.TestCase):
         args.check_config = False
 
         with patch("mmrelay.cli.generate_sample_config", return_value=False):
-            with patch("sys.exit") as mock_exit:
-                handle_cli_commands(args)
-                mock_exit.assert_called_once_with(1)
+            result = handle_cli_commands(args)
+            self.assertEqual(result, 1)
 
 
 if __name__ == "__main__":

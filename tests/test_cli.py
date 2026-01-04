@@ -418,7 +418,7 @@ class TestHandleCLICommands(unittest.TestCase):
 
     def test_handle_version_command(self):
         """
-        Test that handle_cli_commands processes the --version flag by calling print_version and returning True.
+        Test that handle_cli_commands processes the --version flag by calling print_version and returning 0.
         """
         args = MagicMock()
         args.version = True
@@ -429,12 +429,11 @@ class TestHandleCLICommands(unittest.TestCase):
         with patch("mmrelay.cli.print_version") as mock_print_version:
             result = handle_cli_commands(args)
 
-        self.assertTrue(result)
+        self.assertEqual(result, 0)
         mock_print_version.assert_called_once()
 
     @patch("mmrelay.setup_utils.install_service")
-    @patch("sys.exit")
-    def test_handle_install_service_success(self, mock_exit, mock_install):
+    def test_handle_install_service_success(self, mock_install):
         """
         Test that the --install-service command triggers service installation and exits with code 0 on success.
         """
@@ -445,14 +444,13 @@ class TestHandleCLICommands(unittest.TestCase):
         args.check_config = False
         mock_install.return_value = True
 
-        handle_cli_commands(args)
+        result = handle_cli_commands(args)
 
         mock_install.assert_called_once()
-        mock_exit.assert_called_once_with(0)
+        self.assertEqual(result, 0)
 
     @patch("mmrelay.setup_utils.install_service")
-    @patch("sys.exit")
-    def test_handle_install_service_failure(self, mock_exit, mock_install):
+    def test_handle_install_service_failure(self, mock_install):
         """
         Test that handle_cli_commands exits with code 1 when service installation fails using the --install-service flag.
         """
@@ -463,15 +461,15 @@ class TestHandleCLICommands(unittest.TestCase):
         args.check_config = False
         mock_install.return_value = False
 
-        handle_cli_commands(args)
+        result = handle_cli_commands(args)
 
         mock_install.assert_called_once()
-        mock_exit.assert_called_once_with(1)
+        self.assertEqual(result, 1)
 
     @patch("mmrelay.cli.generate_sample_config")
     def test_handle_generate_config_success(self, mock_generate):
         """
-        Test that handle_cli_commands returns True when the --generate-config command is specified and sample config generation succeeds.
+        Test that handle_cli_commands returns 0 when the --generate-config command is specified and sample config generation succeeds.
         """
         args = MagicMock()
         args.version = False
@@ -482,12 +480,11 @@ class TestHandleCLICommands(unittest.TestCase):
 
         result = handle_cli_commands(args)
 
-        self.assertTrue(result)
+        self.assertEqual(result, 0)
         mock_generate.assert_called_once()
 
     @patch("mmrelay.cli.generate_sample_config")
-    @patch("sys.exit")
-    def test_handle_generate_config_failure(self, mock_exit, mock_generate):
+    def test_handle_generate_config_failure(self, mock_generate):
         """
         Test that handle_cli_commands exits with code 1 when --generate-config is specified and config generation fails.
         """
@@ -498,14 +495,13 @@ class TestHandleCLICommands(unittest.TestCase):
         args.check_config = False
         mock_generate.return_value = False
 
-        handle_cli_commands(args)
+        result = handle_cli_commands(args)
 
         mock_generate.assert_called_once()
-        mock_exit.assert_called_once_with(1)
+        self.assertEqual(result, 1)
 
     @patch("mmrelay.cli.check_config")
-    @patch("sys.exit")
-    def test_handle_check_config_success(self, mock_exit, mock_check):
+    def test_handle_check_config_success(self, mock_check):
         """
         Test that handle_cli_commands exits with code 0 when --check-config is specified and the config check succeeds.
         """
@@ -516,14 +512,13 @@ class TestHandleCLICommands(unittest.TestCase):
         args.check_config = True
         mock_check.return_value = True
 
-        handle_cli_commands(args)
+        result = handle_cli_commands(args)
 
         mock_check.assert_called_once()
-        mock_exit.assert_called_once_with(0)
+        self.assertEqual(result, 0)
 
     @patch("mmrelay.cli.check_config")
-    @patch("sys.exit")
-    def test_handle_check_config_failure(self, mock_exit, mock_check):
+    def test_handle_check_config_failure(self, mock_check):
         """
         Test that handle_cli_commands exits with code 1 when --check-config is specified and the config check fails.
         """
@@ -534,14 +529,14 @@ class TestHandleCLICommands(unittest.TestCase):
         args.check_config = True
         mock_check.return_value = False
 
-        handle_cli_commands(args)
+        result = handle_cli_commands(args)
 
         mock_check.assert_called_once()
-        mock_exit.assert_called_once_with(1)
+        self.assertEqual(result, 1)
 
     def test_handle_no_commands(self):
         """
-        Test that handle_cli_commands returns False when no CLI command flags are set.
+        Test that handle_cli_commands returns None when no CLI command flags are set.
         """
         args = MagicMock()
         args.version = False
@@ -551,7 +546,7 @@ class TestHandleCLICommands(unittest.TestCase):
 
         result = handle_cli_commands(args)
 
-        self.assertFalse(result)
+        self.assertIsNone(result)
 
 
 class TestMainFunction(unittest.TestCase):

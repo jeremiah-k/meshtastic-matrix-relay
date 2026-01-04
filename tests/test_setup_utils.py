@@ -11,7 +11,6 @@ Tests the service installation and management functionality including:
 - Service file update detection
 """
 
-import io
 import os
 import subprocess  # nosec B404 - Used for controlled test environment operations
 import sys
@@ -134,19 +133,19 @@ class TestSetupUtils(unittest.TestCase):
         expected = f"ExecStart={sys.executable} -m mmrelay --config %h/.mmrelay/config.yaml --logfile %h/.mmrelay/logs/mmrelay.log"
         self.assertEqual(result, expected)
 
-    @patch("builtins.print")
-    def test_print_service_commands(self, mock_print):
-        """Test that print_service_commands prints the correct commands."""
+    @patch("mmrelay.setup_utils.logger")
+    def test_print_service_commands(self, mock_logger):
+        """Test that print_service_commands logs the correct commands."""
         print_service_commands()
 
-        # Verify all expected commands were printed
+        # Verify all expected commands were logged
         expected_calls = [
             call("  systemctl --user start mmrelay.service    # Start the service"),
             call("  systemctl --user stop mmrelay.service     # Stop the service"),
             call("  systemctl --user restart mmrelay.service  # Restart the service"),
             call("  systemctl --user status mmrelay.service   # Check service status"),
         ]
-        mock_print.assert_has_calls(expected_calls)
+        mock_logger.info.assert_has_calls(expected_calls)
 
     @patch("mmrelay.setup_utils.is_service_active")
     @patch("time.sleep")
@@ -216,9 +215,9 @@ class TestSetupUtils(unittest.TestCase):
     @patch("mmrelay.setup_utils.get_template_service_path")
     @patch("os.path.exists")
     @patch("builtins.open", side_effect=IOError("File read error"))
-    @patch("sys.stderr")
+    @patch("mmrelay.setup_utils.logger")
     def test_get_template_service_content_file_read_error(
-        self, mock_stderr, mock_open, mock_exists, mock_get_path
+        self, mock_logger, mock_open, mock_exists, mock_get_path
     ):
         """Test get_template_service_content handles file read errors gracefully."""
         mock_get_path.return_value = "/path/to/template"
@@ -229,8 +228,8 @@ class TestSetupUtils(unittest.TestCase):
 
         # Should have attempted to read the file and caught the error
         mock_open.assert_called()
-        # Should have printed error message
-        mock_stderr.write.assert_called()
+        # Should have logged error message
+        mock_logger.error.assert_called()
 
     @patch("mmrelay.setup_utils.Path.home")
     def test_get_user_service_path(self, mock_home):
@@ -603,9 +602,9 @@ class TestSetupUtils(unittest.TestCase):
     @patch("shutil.which")
     @patch("mmrelay.setup_utils.get_template_service_content")
     @patch("mmrelay.setup_utils.get_user_service_path")
-    @patch("builtins.print")
+    @patch("mmrelay.setup_utils.logger")
     def test_create_service_file_no_executable(
-        self, mock_print, mock_get_path, mock_get_content, mock_which
+        self, mock_logger, mock_get_path, mock_get_content, mock_which
     ):
         """
         Test that creating a service file succeeds using python -m mmrelay fallback when mmrelay binary is not found.
@@ -629,10 +628,9 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         # Should succeed with fallback
         self.assertTrue(result)
 
-        # Should print fallback message
-        mock_print.assert_any_call(
-            "Warning: Could not find mmrelay executable in PATH. Using current Python interpreter.",
-            file=sys.stderr,
+        # Should log fallback message
+        mock_logger.warning.assert_any_call(
+            "Warning: Could not find mmrelay executable in PATH. Using current Python interpreter."
         )
 
         # Should write service content with python -m mmrelay
@@ -868,12 +866,12 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
     @patch("subprocess.run")
     def test_enable_lingering_no_username(self, mock_subprocess):
         """
-        Verify enable_lingering returns False and prints an error when the current username cannot be determined.
+        Verify enable_lingering returns False and logs an error when the current username cannot be determined.
 
         This test stubs getpass to return an empty username and ensures enable_lingering:
         - does not attempt to enable lingering for a user,
         - returns False,
-        - prints an error message to stderr indicating the username could not be determined.
+        - logs an error message indicating the username could not be determined.
         """
         # Mock subprocess to prevent actual execution
         mock_subprocess.return_value = subprocess.CompletedProcess(
@@ -881,7 +879,7 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         )
 
         # Mock the import and getuser call
-        with patch("builtins.print") as mock_print:
+        with patch("mmrelay.setup_utils.logger") as mock_logger:
 
             # Mock importlib to return a mock getpass module
             mock_getpass = MagicMock()
@@ -905,10 +903,9 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
 
                 # Should return False when username cannot be determined
                 self.assertFalse(result)
-                # Should print error message
-                mock_print.assert_any_call(
-                    "Error enabling lingering: could not determine current user",
-                    file=sys.stderr,
+                # Should log error message
+                mock_logger.error.assert_any_call(
+                    "Error enabling lingering: could not determine current user"
                 )
 
     @patch("mmrelay.setup_utils.service_needs_update")
@@ -918,7 +915,7 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         self, mock_get_path, mock_read_service, mock_needs_update
     ):
         """
-        Verify install_service returns True and prints a "no update needed" message when a user service file already exists and service_needs_update reports no update required.
+        Verify install_service returns True and logs a "no update needed" message when a user service file already exists and service_needs_update reports no update required.
         """
         # Mock existing service with no update needed
         mock_get_path.return_value = Path(
@@ -927,7 +924,7 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         mock_read_service.return_value = "[Unit]\nDescription=Test Service\n"
         mock_needs_update.return_value = (False, "Service is up to date")
 
-        with patch("builtins.print") as mock_print, patch(
+        with patch("mmrelay.setup_utils.logger") as mock_logger, patch(
             "builtins.input", return_value="n"
         ):
 
@@ -935,8 +932,8 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
 
             # Should complete successfully
             self.assertTrue(result)
-            # Should print that no update is needed
-            mock_print.assert_any_call(
+            # Should log that no update is needed
+            mock_logger.info.assert_any_call(
                 "No update needed for the service file: Service is up to date"
             )
 
@@ -967,7 +964,7 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
 
         # Mock user input to cancel lingering setup
         with patch("builtins.input", side_effect=EOFError()), patch(
-            "builtins.print"
+            "mmrelay.setup_utils.logger"
         ), patch("mmrelay.setup_utils.create_service_file") as mock_create, patch(
             "mmrelay.setup_utils.reload_daemon"
         ) as mock_reload, patch(
@@ -1018,8 +1015,8 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
 
         # Mock user input to cancel service enable
         with patch("builtins.input", side_effect=EOFError()), patch(
-            "builtins.print"
-        ) as mock_print, patch("mmrelay.setup_utils.is_service_active") as mock_active:
+            "mmrelay.setup_utils.logger"
+        ) as mock_logger, patch("mmrelay.setup_utils.is_service_active") as mock_active:
 
             mock_active.return_value = False
 
@@ -1027,8 +1024,10 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
 
             # Should complete successfully
             self.assertTrue(result)
-            # Should print that service enable was skipped
-            mock_print.assert_any_call("\nInput cancelled. Skipping service enable.")
+            # Should log that service enable was skipped
+            mock_logger.info.assert_any_call(
+                "\nInput cancelled. Skipping service enable."
+            )
 
     @patch("mmrelay.setup_utils.is_service_active")
     @patch("mmrelay.setup_utils.is_service_enabled")
@@ -1063,15 +1062,17 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
 
         # Mock user input to cancel service restart
         with patch("builtins.input", side_effect=EOFError()), patch(
-            "builtins.print"
-        ) as mock_print:
+            "mmrelay.setup_utils.logger"
+        ) as mock_logger:
 
             result = install_service()
 
             # Should complete successfully
             self.assertTrue(result)
-            # Should print that service restart was skipped
-            mock_print.assert_any_call("\nInput cancelled. Skipping service restart.")
+            # Should log that service restart was skipped
+            mock_logger.info.assert_any_call(
+                "\nInput cancelled. Skipping service restart."
+            )
 
     @patch("mmrelay.setup_utils.start_service")
     @patch("mmrelay.setup_utils.is_service_active")
@@ -1109,15 +1110,17 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
 
         # Mock user input to cancel service start
         with patch("builtins.input", side_effect=EOFError()), patch(
-            "builtins.print"
-        ) as mock_print:
+            "mmrelay.setup_utils.logger"
+        ) as mock_logger:
 
             result = install_service()
 
             # Should complete successfully
             self.assertTrue(result)
-            # Should print that service start was skipped
-            mock_print.assert_any_call("\nInput cancelled. Skipping service start.")
+            # Should log that service start was skipped
+            mock_logger.info.assert_any_call(
+                "\nInput cancelled. Skipping service start."
+            )
 
     @patch("subprocess.run")
     def test_show_service_status_os_error(self, mock_run):
@@ -1133,17 +1136,22 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         self.assertFalse(result)
 
     @patch("os.path.exists")
-    @patch("sys.stderr", new_callable=io.StringIO)
+    @patch("mmrelay.setup_utils.logger")
     def test_get_template_service_path_not_found_prints_warning(
-        self, mock_stderr, mock_exists
+        self, mock_logger, mock_exists
     ):
-        """Test that a warning is printed when the template service path is not found."""
+        """Test that a warning is logged when the template service path is not found."""
         mock_exists.return_value = False
 
         path = get_template_service_path()
 
         self.assertIsNone(path)
-        self.assertIn("Warning: Could not find mmrelay.service", mock_stderr.getvalue())
+        self.assertTrue(
+            any(
+                "Warning: Could not find mmrelay.service" in call_args.args[0]
+                for call_args in mock_logger.warning.call_args_list
+            )
+        )
 
     @patch("mmrelay.setup_utils.read_service_file", return_value=None)
     @patch("mmrelay.setup_utils.service_needs_update", return_value=(True, "reason"))
@@ -1159,17 +1167,16 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
     @patch("mmrelay.setup_utils.service_needs_update", return_value=(True, "reason"))
     @patch("mmrelay.setup_utils.create_service_file", return_value=True)
     @patch("mmrelay.setup_utils.reload_daemon", return_value=False)
-    @patch("builtins.print")
+    @patch("mmrelay.setup_utils.logger")
     def test_install_service_reload_fails(
-        self, mock_print, _mock_reload, _mock_create, _mock_needs_update, _mock_read
+        self, mock_logger, _mock_reload, _mock_create, _mock_needs_update, _mock_read
     ):
         """Test install_service when reload_daemon fails."""
         with patch("builtins.input", return_value="y"):
             result = install_service()
-        self.assertTrue(result)  # it should still succeed, but print a warning
-        mock_print.assert_any_call(
-            "Warning: Failed to reload systemd daemon. You may need to run 'systemctl --user daemon-reload' manually.",
-            file=sys.stderr,
+        self.assertTrue(result)  # it should still succeed, but log a warning
+        mock_logger.warning.assert_any_call(
+            "Warning: Failed to reload systemd daemon. You may need to run 'systemctl --user daemon-reload' manually."
         )
 
     @patch("subprocess.run", side_effect=OSError("OS error"))
