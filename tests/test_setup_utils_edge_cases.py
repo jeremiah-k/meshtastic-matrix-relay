@@ -51,7 +51,7 @@ class TestSetupUtilsEdgeCases(unittest.TestCase):
                 with patch("mmrelay.setup_utils.logger") as mock_logger:
                     result = create_service_file()
                     self.assertFalse(result)
-                    mock_logger.error.assert_called()
+                    mock_logger.exception.assert_called()
 
     def test_get_executable_path_not_found(self):
         """
@@ -113,7 +113,7 @@ class TestSetupUtilsEdgeCases(unittest.TestCase):
                     result = get_template_service_content()
                     # Should return default template and log error
                     self.assertIn("[Unit]", result)
-                    mock_logger.error.assert_called()
+                    mock_logger.exception.assert_called()
 
     def test_create_service_file_write_permission_error(self):
         """
@@ -135,7 +135,7 @@ class TestSetupUtilsEdgeCases(unittest.TestCase):
                     with patch("mmrelay.setup_utils.logger") as mock_logger:
                         result = create_service_file()
                         self.assertFalse(result)
-                        mock_logger.error.assert_called()
+                        mock_logger.exception.assert_called()
 
     def test_create_service_file_no_executable_uses_fallback(self):
         """
@@ -184,9 +184,9 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
             )
 
             with patch("mmrelay.setup_utils.logger") as mock_logger:
-                result = reload_daemon()
+                result = check_lingering_enabled()
                 self.assertFalse(result)
-                mock_logger.error.assert_called()
+                mock_logger.exception.assert_called()
 
     def test_reload_daemon_exception(self):
         """
@@ -198,7 +198,7 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
             with patch("mmrelay.setup_utils.logger") as mock_logger:
                 result = reload_daemon()
                 self.assertFalse(result)
-                mock_logger.error.assert_called()
+                mock_logger.exception.assert_called()
 
     def test_check_loginctl_available_not_found(self):
         """
@@ -226,9 +226,9 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         with patch("subprocess.run") as mock_run:
             mock_run.side_effect = OSError("Command failed")
             with patch("mmrelay.setup_utils.logger") as mock_logger:
-                result = check_lingering_enabled()
+                result = reload_daemon()
                 self.assertFalse(result)
-                mock_logger.error.assert_called()
+                mock_logger.exception.assert_called()
 
     def test_check_lingering_enabled_parsing_error(self):
         """
@@ -263,7 +263,7 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
             with patch("mmrelay.setup_utils.logger") as mock_logger:
                 result = enable_lingering()
                 self.assertFalse(result)
-                mock_logger.error.assert_called()
+                mock_logger.exception.assert_called()
 
     def test_install_service_no_executable_uses_fallback(self):
         """

@@ -95,9 +95,9 @@ class TestPatchCoverageImprovements(unittest.TestCase):
                 result = check_lingering_enabled()
 
         self.assertFalse(result)
-        mock_logger.error.assert_called()
+        mock_logger.exception.assert_called()
         # Check that error is logged
-        call_args = mock_logger.error.call_args_list
+        call_args = mock_logger.exception.call_args_list
         self.assertTrue(
             any("Error checking lingering status" in str(call) for call in call_args)
         )
@@ -109,9 +109,9 @@ class TestPatchCoverageImprovements(unittest.TestCase):
                 result = enable_lingering()
 
         self.assertFalse(result)
-        mock_logger.error.assert_called()
+        mock_logger.exception.assert_called()
         # Check that error is logged
-        call_args = mock_logger.error.call_args_list
+        call_args = mock_logger.exception.call_args_list
         self.assertTrue(
             any("Error enabling lingering" in str(call) for call in call_args)
         )
