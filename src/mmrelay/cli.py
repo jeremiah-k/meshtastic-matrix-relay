@@ -331,8 +331,8 @@ def _validate_credentials_json(config_path: str) -> bool:
             return False
 
         return True
-    except (OSError, json.JSONDecodeError) as e:
-        logger.error("❌ Error: Could not validate credentials.json: %s", e)
+    except (OSError, json.JSONDecodeError):
+        logger.exception("❌ Error: Could not validate credentials.json")
         return False
 
 
@@ -1753,7 +1753,7 @@ def handle_cli_commands(args: argparse.Namespace) -> int | None:
             from mmrelay.setup_utils import install_service
 
             return 0 if install_service() else 1
-        except ImportError as e:
+        except ImportError:
             logger.exception("Error importing setup utilities")
             return 1
 
