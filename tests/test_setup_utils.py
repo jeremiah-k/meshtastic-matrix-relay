@@ -301,7 +301,8 @@ class TestSetupUtils(unittest.TestCase):
         path = get_template_service_path()
 
         self.assertIsNotNone(path)
-        self.assertIn("mmrelay.service", path)  # type: ignore[arg-type]
+        assert path is not None  # type narrowing for mypy
+        self.assertIn("mmrelay.service", path)
 
     @patch("os.path.exists")
     def test_get_template_service_path_not_found(self, mock_exists):
@@ -335,7 +336,8 @@ class TestSetupUtils(unittest.TestCase):
         path = get_template_service_path()
 
         self.assertIsNotNone(path)
-        self.assertTrue(path.endswith("share/mmrelay/mmrelay.service"))  # type: ignore[optional-attr]
+        assert path is not None  # type narrowing for mypy
+        self.assertTrue(path.endswith("share/mmrelay/mmrelay.service"))
 
     @patch("mmrelay.setup_utils.get_service_template_path")
     @patch("os.path.exists")
