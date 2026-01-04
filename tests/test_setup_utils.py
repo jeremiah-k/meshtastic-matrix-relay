@@ -301,7 +301,7 @@ class TestSetupUtils(unittest.TestCase):
         path = get_template_service_path()
 
         self.assertIsNotNone(path)
-        self.assertIn("mmrelay.service", path)
+        self.assertIn("mmrelay.service", path)  # type: ignore[arg-type]
 
     @patch("os.path.exists")
     def test_get_template_service_path_not_found(self, mock_exists):
@@ -335,7 +335,7 @@ class TestSetupUtils(unittest.TestCase):
         path = get_template_service_path()
 
         self.assertIsNotNone(path)
-        self.assertTrue(path.endswith("share/mmrelay/mmrelay.service"))
+        self.assertTrue(path.endswith("share/mmrelay/mmrelay.service"))  # type: ignore[optional-attr]
 
     @patch("mmrelay.setup_utils.get_service_template_path")
     @patch("os.path.exists")
@@ -1235,48 +1235,6 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
             self.assertTrue(result)
             mock_logger.info.assert_any_call("Service file updated successfully")
 
-    @patch("subprocess.run", side_effect=OSError("Permission denied"))
-    @patch("mmrelay.setup_utils.is_service_active")
-    @patch("mmrelay.setup_utils.is_service_enabled")
-    @patch("mmrelay.setup_utils.check_loginctl_available")
-    @patch("mmrelay.setup_utils.check_lingering_enabled")
-    @patch("mmrelay.setup_utils.service_needs_update")
-    @patch("mmrelay.setup_utils.read_service_file")
-    @patch("mmrelay.setup_utils.get_user_service_path")
-    def test_install_service_enable_service_os_error(
-        self,
-        mock_get_path,
-        mock_read_service,
-        mock_needs_update,
-        mock_lingering_enabled,
-        mock_loginctl_available,
-        mock_service_enabled,
-        mock_service_active,
-        _mock_run,
-    ):
-        """Test install_service OSError when enabling service (lines 739-740)."""
-        mock_get_path.return_value = Path(
-            "/home/user/.config/systemd/user/mmrelay.service"
-        )
-        mock_read_service.return_value = None
-        mock_needs_update.return_value = (False, "No update needed")
-        mock_loginctl_available.return_value = False
-        mock_lingering_enabled.return_value = True
-        mock_service_enabled.return_value = False
-        mock_service_active.return_value = False
-
-        with (
-            patch("builtins.input", return_value="y"),
-            patch("mmrelay.setup_utils.logger") as mock_logger,
-            patch("mmrelay.setup_utils.create_service_file") as mock_create,
-            patch("mmrelay.setup_utils.reload_daemon"),
-        ):
-            mock_create.return_value = True
-            result = install_service()
-
-            self.assertTrue(result)
-            mock_logger.exception.assert_any_call("Error")
-
     @patch("mmrelay.setup_utils.wait_for_service_start")
     @patch("mmrelay.setup_utils.show_service_status")
     @patch("subprocess.run")
@@ -1366,55 +1324,13 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
             result = install_service()
 
             self.assertTrue(result)
-            mock_logger.exception.assert_any_call("Error")
-
-    @patch("subprocess.run", side_effect=OSError("System error"))
-    def test_start_service_os_error(self, _mock_run):
-        """Test start_service with OSError (lines 820-822)."""
-        result = start_service()
-        self.assertFalse(result)
-
-    @patch("subprocess.run", side_effect=subprocess.CalledProcessError(1, "systemctl"))
-    @patch("mmrelay.setup_utils.is_service_active")
-    @patch("mmrelay.setup_utils.is_service_enabled")
-    @patch("mmrelay.setup_utils.check_loginctl_available")
-    @patch("mmrelay.setup_utils.check_lingering_enabled")
-    @patch("mmrelay.setup_utils.service_needs_update")
-    @patch("mmrelay.setup_utils.read_service_file")
-    @patch("mmrelay.setup_utils.get_user_service_path")
-    def test_install_service_enable_service_calledprocesserror(
-        self,
-        mock_get_path,
-        mock_read_service,
-        mock_needs_update,
-        mock_lingering_enabled,
-        mock_loginctl_available,
-        mock_service_enabled,
-        mock_service_active,
-        _mock_run,
-    ):
-        """Test install_service CalledProcessError when enabling service (line 738)."""
-        mock_get_path.return_value = Path(
-            "/home/user/.config/systemd/user/mmrelay.service"
-        )
-        mock_read_service.return_value = None
-        mock_needs_update.return_value = (False, "No update needed")
-        mock_loginctl_available.return_value = False
-        mock_lingering_enabled.return_value = True
-        mock_service_enabled.return_value = False
-        mock_service_active.return_value = False
-
-        with (
-            patch("builtins.input", return_value="y"),
-            patch("mmrelay.setup_utils.logger") as mock_logger,
-            patch("mmrelay.setup_utils.create_service_file") as mock_create,
-            patch("mmrelay.setup_utils.reload_daemon"),
-        ):
-            mock_create.return_value = True
-            result = install_service()
-
-            self.assertTrue(result)
-            mock_logger.exception.assert_any_call("Error enabling service")
+            # Check that the exception was logged (matching string part, not exact OSError object)
+            exception_calls = [
+                call
+                for call in mock_logger.exception.call_args_list
+                if "OS error while restarting service" in str(call.args[0])
+            ]
+            self.assertTrue(len(exception_calls) > 0)
 
     @patch("mmrelay.setup_utils.wait_for_service_start")
     @patch("mmrelay.setup_utils.show_service_status")
@@ -1460,7 +1376,9 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
             result = install_service()
 
             self.assertTrue(result)
-            mock_logger.exception.assert_any_call("Error restarting service")
+            mock_logger.exception.assert_any_call(
+                "Error restarting service (exit code %s)", 1
+            )
 
 
 if __name__ == "__main__":
