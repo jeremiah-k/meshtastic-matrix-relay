@@ -848,14 +848,15 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
             )
 
     @patch.dict(os.environ, {}, clear=True)
+    @patch.dict(os.environ, {}, clear=True)
     @patch("getpass.getuser")
     @patch("shutil.which")
     def test_check_lingering_enabled_no_username(self, mock_which, mock_getpass):
         """
         Test check_lingering_enabled when username cannot be determined (lines 549-556).
         """
-        # Mock environment with no USER/USERNAME and getpass failure
-        mock_getpass.side_effect = KeyError("Cannot determine user")
+        # Mock environment with no USER/USERNAME and getpass returns None
+        mock_getpass.return_value = None
         mock_which.return_value = "/usr/bin/loginctl"
 
         result = check_lingering_enabled()
@@ -936,21 +937,21 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         mock_loginctl_available,
     ):
         """
-        Test install_service lingering setup user interaction (lines 683-685, 687-691).
+        Test install_service lingering setup user interaction (lines 683-685, 687-691, 707-709).
         """
-        # Mock service exists and needs update
+        # Mock service exists but no update needed (to skip service update prompt)
         mock_get_path.return_value = Path(
             "/home/user/.config/systemd/user/mmrelay.service"
         )
         mock_read_service.return_value = "[Unit]\nDescription=Test Service\n"
-        mock_needs_update.return_value = (True, "Update needed")
+        mock_needs_update.return_value = (False, "No update needed")
         mock_loginctl_available.return_value = True
         mock_lingering_enabled.return_value = False
 
         # Mock user input to cancel lingering setup
         with (
             patch("builtins.input", side_effect=EOFError()),
-            patch("mmrelay.setup_utils.logger"),
+            patch("mmrelay.setup_utils.logger") as mock_logger,
             patch("mmrelay.setup_utils.create_service_file") as mock_create,
             patch("mmrelay.setup_utils.reload_daemon") as mock_reload,
             patch("mmrelay.setup_utils.is_service_enabled") as mock_enabled,
@@ -965,8 +966,9 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
 
             # Should complete successfully
             self.assertTrue(result)
-            # Should complete successfully despite input cancellation
-            self.assertTrue(result)
+            mock_logger.info.assert_any_call(
+                "\nInput cancelled. Skipping lingering setup."
+            )
 
     @patch("mmrelay.setup_utils.is_service_enabled")
     @patch("mmrelay.setup_utils.check_loginctl_available")
@@ -1179,6 +1181,287 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         with patch.dict(os.environ, {"USER": "testuser"}):
             result = enable_lingering()
         self.assertFalse(result)
+
+    @patch("shutil.which")
+    def test_enable_lingering_loginctl_not_found(self, mock_which):
+        """Test enable_lingering when loginctl is not found (lines 613-614)."""
+        mock_which.return_value = None
+        with patch.dict(os.environ, {"USER": "testuser"}):
+            result = enable_lingering()
+        self.assertFalse(result)
+
+    @patch("mmrelay.setup_utils.wait_for_service_start")
+    @patch("mmrelay.setup_utils.show_service_status")
+    @patch("subprocess.run")
+    @patch("mmrelay.setup_utils.is_service_active")
+    @patch("mmrelay.setup_utils.is_service_enabled")
+    @patch("mmrelay.setup_utils.check_loginctl_available")
+    @patch("mmrelay.setup_utils.check_lingering_enabled")
+    @patch("mmrelay.setup_utils.service_needs_update")
+    @patch("mmrelay.setup_utils.read_service_file")
+    @patch("mmrelay.setup_utils.get_user_service_path")
+    def test_install_service_update_successfully(
+        self,
+        mock_get_path,
+        mock_read_service,
+        mock_needs_update,
+        mock_lingering_enabled,
+        mock_loginctl_available,
+        mock_service_enabled,
+        mock_service_active,
+        mock_run,
+        mock_show_status,
+        mock_wait,
+    ):
+        """Test install_service when service file is updated successfully (lines 683-684)."""
+        mock_get_path.return_value = Path(
+            "/home/user/.config/systemd/user/mmrelay.service"
+        )
+        mock_read_service.return_value = "[Unit]\nDescription=Test Service\n"
+        mock_needs_update.return_value = (True, "Update needed")
+        mock_loginctl_available.return_value = False
+        mock_lingering_enabled.return_value = True
+        mock_service_enabled.return_value = True
+        mock_service_active.return_value = False
+
+        with (
+            patch("builtins.input", return_value="y"),
+            patch("mmrelay.setup_utils.logger") as mock_logger,
+            patch("mmrelay.setup_utils.create_service_file") as mock_create,
+            patch("mmrelay.setup_utils.reload_daemon"),
+        ):
+            mock_create.return_value = True
+            result = install_service()
+
+            self.assertTrue(result)
+            mock_logger.info.assert_any_call("Service file updated successfully")
+
+    @patch("subprocess.run", side_effect=OSError("Permission denied"))
+    @patch("mmrelay.setup_utils.is_service_active")
+    @patch("mmrelay.setup_utils.is_service_enabled")
+    @patch("mmrelay.setup_utils.check_loginctl_available")
+    @patch("mmrelay.setup_utils.check_lingering_enabled")
+    @patch("mmrelay.setup_utils.service_needs_update")
+    @patch("mmrelay.setup_utils.read_service_file")
+    @patch("mmrelay.setup_utils.get_user_service_path")
+    def test_install_service_enable_service_os_error(
+        self,
+        mock_get_path,
+        mock_read_service,
+        mock_needs_update,
+        mock_lingering_enabled,
+        mock_loginctl_available,
+        mock_service_enabled,
+        mock_service_active,
+        _mock_run,
+    ):
+        """Test install_service OSError when enabling service (lines 739-740)."""
+        mock_get_path.return_value = Path(
+            "/home/user/.config/systemd/user/mmrelay.service"
+        )
+        mock_read_service.return_value = None
+        mock_needs_update.return_value = (False, "No update needed")
+        mock_loginctl_available.return_value = False
+        mock_lingering_enabled.return_value = True
+        mock_service_enabled.return_value = False
+        mock_service_active.return_value = False
+
+        with (
+            patch("builtins.input", return_value="y"),
+            patch("mmrelay.setup_utils.logger") as mock_logger,
+            patch("mmrelay.setup_utils.create_service_file") as mock_create,
+            patch("mmrelay.setup_utils.reload_daemon"),
+        ):
+            mock_create.return_value = True
+            result = install_service()
+
+            self.assertTrue(result)
+            mock_logger.exception.assert_any_call("Error")
+
+    @patch("mmrelay.setup_utils.wait_for_service_start")
+    @patch("mmrelay.setup_utils.show_service_status")
+    @patch("subprocess.run")
+    @patch("mmrelay.setup_utils.is_service_active")
+    @patch("mmrelay.setup_utils.is_service_enabled")
+    @patch("mmrelay.setup_utils.check_loginctl_available")
+    @patch("mmrelay.setup_utils.check_lingering_enabled")
+    @patch("mmrelay.setup_utils.service_needs_update")
+    @patch("mmrelay.setup_utils.read_service_file")
+    @patch("mmrelay.setup_utils.get_user_service_path")
+    def test_install_service_restart_service_successfully(
+        self,
+        mock_get_path,
+        mock_read_service,
+        mock_needs_update,
+        mock_lingering_enabled,
+        mock_loginctl_available,
+        mock_service_enabled,
+        mock_service_active,
+        mock_run,
+        mock_show_status,
+        mock_wait,
+    ):
+        """Test install_service when service is restarted successfully (line 748, 756-767)."""
+        mock_get_path.return_value = Path(
+            "/home/user/.config/systemd/user/mmrelay.service"
+        )
+        mock_read_service.return_value = None
+        mock_needs_update.return_value = (False, "No update needed")
+        mock_loginctl_available.return_value = False
+        mock_lingering_enabled.return_value = True
+        mock_service_enabled.return_value = True
+        mock_service_active.return_value = True
+
+        with (
+            patch("builtins.input", return_value="y"),
+            patch("mmrelay.setup_utils.logger") as mock_logger,
+            patch("mmrelay.setup_utils.create_service_file") as mock_create,
+            patch("mmrelay.setup_utils.reload_daemon"),
+        ):
+            mock_create.return_value = True
+            result = install_service()
+
+            self.assertTrue(result)
+            mock_logger.info.assert_any_call("Service restarted successfully")
+            mock_wait.assert_called_once()
+            mock_show_status.assert_called_once()
+
+    @patch("subprocess.run")
+    @patch("mmrelay.setup_utils.is_service_active")
+    @patch("mmrelay.setup_utils.is_service_enabled")
+    @patch("mmrelay.setup_utils.check_loginctl_available")
+    @patch("mmrelay.setup_utils.check_lingering_enabled")
+    @patch("mmrelay.setup_utils.service_needs_update")
+    @patch("mmrelay.setup_utils.read_service_file")
+    @patch("mmrelay.setup_utils.get_user_service_path")
+    def test_install_service_restart_service_os_error(
+        self,
+        mock_get_path,
+        mock_read_service,
+        mock_needs_update,
+        mock_lingering_enabled,
+        mock_loginctl_available,
+        mock_service_enabled,
+        mock_service_active,
+        mock_run,
+    ):
+        """Test install_service OSError when restarting service (lines 766-767)."""
+        mock_get_path.return_value = Path(
+            "/home/user/.config/systemd/user/mmrelay.service"
+        )
+        mock_read_service.return_value = None
+        mock_needs_update.return_value = (False, "No update needed")
+        mock_loginctl_available.return_value = False
+        mock_lingering_enabled.return_value = True
+        mock_service_enabled.return_value = True
+        mock_service_active.return_value = True
+        mock_run.side_effect = OSError("System error")
+
+        with (
+            patch("builtins.input", return_value="y"),
+            patch("mmrelay.setup_utils.logger") as mock_logger,
+            patch("mmrelay.setup_utils.create_service_file") as mock_create,
+            patch("mmrelay.setup_utils.reload_daemon"),
+        ):
+            mock_create.return_value = True
+            result = install_service()
+
+            self.assertTrue(result)
+            mock_logger.exception.assert_any_call("Error")
+
+    @patch("subprocess.run", side_effect=OSError("System error"))
+    def test_start_service_os_error(self, _mock_run):
+        """Test start_service with OSError (lines 820-822)."""
+        result = start_service()
+        self.assertFalse(result)
+
+    @patch("subprocess.run", side_effect=subprocess.CalledProcessError(1, "systemctl"))
+    @patch("mmrelay.setup_utils.is_service_active")
+    @patch("mmrelay.setup_utils.is_service_enabled")
+    @patch("mmrelay.setup_utils.check_loginctl_available")
+    @patch("mmrelay.setup_utils.check_lingering_enabled")
+    @patch("mmrelay.setup_utils.service_needs_update")
+    @patch("mmrelay.setup_utils.read_service_file")
+    @patch("mmrelay.setup_utils.get_user_service_path")
+    def test_install_service_enable_service_calledprocesserror(
+        self,
+        mock_get_path,
+        mock_read_service,
+        mock_needs_update,
+        mock_lingering_enabled,
+        mock_loginctl_available,
+        mock_service_enabled,
+        mock_service_active,
+        _mock_run,
+    ):
+        """Test install_service CalledProcessError when enabling service (line 738)."""
+        mock_get_path.return_value = Path(
+            "/home/user/.config/systemd/user/mmrelay.service"
+        )
+        mock_read_service.return_value = None
+        mock_needs_update.return_value = (False, "No update needed")
+        mock_loginctl_available.return_value = False
+        mock_lingering_enabled.return_value = True
+        mock_service_enabled.return_value = False
+        mock_service_active.return_value = False
+
+        with (
+            patch("builtins.input", return_value="y"),
+            patch("mmrelay.setup_utils.logger") as mock_logger,
+            patch("mmrelay.setup_utils.create_service_file") as mock_create,
+            patch("mmrelay.setup_utils.reload_daemon"),
+        ):
+            mock_create.return_value = True
+            result = install_service()
+
+            self.assertTrue(result)
+            mock_logger.exception.assert_any_call("Error enabling service")
+
+    @patch("mmrelay.setup_utils.wait_for_service_start")
+    @patch("mmrelay.setup_utils.show_service_status")
+    @patch("subprocess.run", side_effect=subprocess.CalledProcessError(1, "systemctl"))
+    @patch("mmrelay.setup_utils.is_service_active")
+    @patch("mmrelay.setup_utils.is_service_enabled")
+    @patch("mmrelay.setup_utils.check_loginctl_available")
+    @patch("mmrelay.setup_utils.check_lingering_enabled")
+    @patch("mmrelay.setup_utils.service_needs_update")
+    @patch("mmrelay.setup_utils.read_service_file")
+    @patch("mmrelay.setup_utils.get_user_service_path")
+    def test_install_service_restart_service_calledprocesserror(
+        self,
+        mock_get_path,
+        mock_read_service,
+        mock_needs_update,
+        mock_lingering_enabled,
+        mock_loginctl_available,
+        mock_service_enabled,
+        mock_service_active,
+        _mock_run,
+        mock_show_status,
+        mock_wait,
+    ):
+        """Test install_service CalledProcessError when restarting service (line 765)."""
+        mock_get_path.return_value = Path(
+            "/home/user/.config/systemd/user/mmrelay.service"
+        )
+        mock_read_service.return_value = None
+        mock_needs_update.return_value = (False, "No update needed")
+        mock_loginctl_available.return_value = False
+        mock_lingering_enabled.return_value = True
+        mock_service_enabled.return_value = True
+        mock_service_active.return_value = True
+
+        with (
+            patch("builtins.input", return_value="y"),
+            patch("mmrelay.setup_utils.logger") as mock_logger,
+            patch("mmrelay.setup_utils.create_service_file") as mock_create,
+            patch("mmrelay.setup_utils.reload_daemon"),
+        ):
+            mock_create.return_value = True
+            result = install_service()
+
+            self.assertTrue(result)
+            mock_logger.exception.assert_any_call("Error restarting service")
 
 
 if __name__ == "__main__":
