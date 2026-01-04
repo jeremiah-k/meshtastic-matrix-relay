@@ -1880,6 +1880,108 @@ class TestValidateE2EEDependencies(unittest.TestCase):
         )
         mock_print.assert_any_call("   Solution: Use Linux or macOS for E2EE support")
 
+    @patch("sys.platform", "linux")
+    @patch("builtins.print")
+    def test_validate_e2ee_dependencies_linux_success(self, mock_print):
+        """Test E2EE validation on Linux with all dependencies available."""
+        from mmrelay.cli import _validate_e2ee_dependencies
+
+        with patch.dict(
+            "sys.modules",
+            {"olm": MagicMock(), "nio.crypto": MagicMock(), "nio.store": MagicMock()},
+        ):
+            result = _validate_e2ee_dependencies()
+
+        self.assertTrue(result)
+        mock_print.assert_called_once_with("✅ E2EE dependencies are installed")
+
+    @patch("sys.platform", "linux")
+    @patch("builtins.print")
+    def test_validate_e2ee_dependencies_linux_missing_olm(self, mock_print):
+        """Test E2EE validation on Linux with missing olm dependency."""
+        from mmrelay.cli import _validate_e2ee_dependencies
+
+        with patch("mmrelay.cli.importlib.import_module") as mock_import:
+            mock_import.side_effect = ImportError("No module named 'olm'")
+            result = _validate_e2ee_dependencies()
+
+        self.assertFalse(result)
+        mock_print.assert_any_call("❌ Error: python-olm is not installed")
+        mock_print.assert_any_call(
+            "   Install E2EE support: pipx install 'mmrelay[e2e]'"
+        )
+
+    @patch("sys.platform", "darwin")
+    @patch("builtins.print")
+    def test_validate_e2ee_dependencies_macos_success(self, mock_print):
+        """Test E2EE validation on macOS with all dependencies available."""
+        from mmrelay.cli import _validate_e2ee_dependencies
+
+        with patch.dict(
+            "sys.modules",
+            {"olm": MagicMock(), "nio.crypto": MagicMock(), "nio.store": MagicMock()},
+        ):
+            result = _validate_e2ee_dependencies()
+
+        self.assertTrue(result)
+        mock_print.assert_called_once_with("✅ E2EE dependencies are installed")
+
+    @patch("sys.platform", "darwin")
+    @patch("builtins.print")
+    def test_validate_e2ee_dependencies_macos_missing_nio_crypto(self, mock_print):
+        """Test E2EE validation on macOS with missing nio.crypto dependency."""
+        import builtins
+
+        from mmrelay.cli import _validate_e2ee_dependencies
+
+        original_import = builtins.__import__
+
+        def mock_import(name, *args, **kwargs):
+            if name == "olm":
+                return MagicMock()
+            elif "nio.crypto" in name:
+                raise ImportError("No module named 'nio.crypto'")
+            return original_import(name, *args, **kwargs)
+
+        with patch("builtins.__import__", side_effect=mock_import):
+            result = _validate_e2ee_dependencies()
+
+        self.assertFalse(result)
+        mock_print.assert_any_call(
+            "❌ Error: nio crypto or store modules not available"
+        )
+        mock_print.assert_any_call(
+            "   Install E2EE support: pipx install 'mmrelay[e2e]'"
+        )
+
+    @patch("sys.platform", "linux")
+    @patch("builtins.print")
+    def test_validate_e2ee_dependencies_linux_missing_nio_store(self, mock_print):
+        """Test E2EE validation on Linux with missing nio.store dependency."""
+        import builtins
+
+        from mmrelay.cli import _validate_e2ee_dependencies
+
+        original_import = builtins.__import__
+
+        def mock_import(name, *args, **kwargs):
+            if name == "olm" or "nio.crypto" in name:
+                return MagicMock()
+            elif "nio.store" in name:
+                raise ImportError("No module named 'nio.store'")
+            return original_import(name, *args, **kwargs)
+
+        with patch("builtins.__import__", side_effect=mock_import):
+            result = _validate_e2ee_dependencies()
+
+        self.assertFalse(result)
+        mock_print.assert_any_call(
+            "❌ Error: nio crypto or store modules not available"
+        )
+        mock_print.assert_any_call(
+            "   Install E2EE support: pipx install 'mmrelay[e2e]'"
+        )
+
     @patch("os.path.exists")
     @patch("builtins.open", new_callable=mock_open)
     @patch("builtins.print")

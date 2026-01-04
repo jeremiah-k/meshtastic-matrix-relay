@@ -281,14 +281,28 @@ def _validate_e2ee_dependencies() -> bool:
         return False
 
     # Check if E2EE dependencies are available
-    if _e2ee_dependencies_available():
+    try:
+        importlib.import_module("olm")
+
+        nio_crypto = importlib.import_module("nio.crypto")
+        if not hasattr(nio_crypto, "OlmDevice"):
+            raise ImportError("nio.crypto.OlmDevice is unavailable")
+
+        nio_store = importlib.import_module("nio.store")
+        if not hasattr(nio_store, "SqliteStore"):
+            raise ImportError("nio.store.SqliteStore is unavailable")
+
         print("✅ E2EE dependencies are installed")
         return True
-
-    print("❌ Error: E2EE dependencies not installed")
-    print("   End-to-end encryption features require additional dependencies")
-    print("   Install E2EE support: pipx install 'mmrelay[e2e]'")
-    return False
+    except ImportError as e:
+        if "olm" in str(e):
+            print("❌ Error: python-olm is not installed")
+        elif "nio" in str(e):
+            print("❌ Error: nio crypto or store modules not available")
+        else:
+            print("❌ Error: E2EE dependencies not installed")
+        print("   Install E2EE support: pipx install 'mmrelay[e2e]'")
+        return False
 
 
 def _validate_credentials_json(config_path: str) -> bool:

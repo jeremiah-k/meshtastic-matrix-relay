@@ -446,7 +446,7 @@ def reload_daemon() -> bool:
         logger.exception("Error reloading systemd daemon (exit code %s)", e.returncode)
         return False
     except OSError as e:
-        logger.exception("Error running systemctl daemon-reload: %s", e)
+        logger.exception("Error running systemctl daemon-reload")
         return False
     else:
         logger.info("Systemd user daemon reloaded")
@@ -627,7 +627,7 @@ def enable_lingering() -> bool:
             logger.error("Error enabling lingering: %s", result.stderr)
             return False
     except (OSError, subprocess.SubprocessError) as e:
-        logger.exception("Error enabling lingering: %s", e)
+        logger.exception("Error enabling lingering")
         return False
 
 
@@ -738,7 +738,7 @@ def install_service() -> bool:
             except subprocess.CalledProcessError as e:
                 logger.exception("Error enabling service (exit code %s)", e.returncode)
             except OSError as e:
-                logger.exception("OS error while enabling service: %s", e)
+                logger.exception("OS error while enabling service")
 
     # Check if the service is already running
     service_active = is_service_active()
@@ -767,7 +767,7 @@ def install_service() -> bool:
                     "Error restarting service (exit code %s)", e.returncode
                 )
             except OSError as e:
-                logger.exception("OS error while restarting service: %s", e)
+                logger.exception("OS error while restarting service")
     else:
         logger.info("The service is not currently running.")
         try:
