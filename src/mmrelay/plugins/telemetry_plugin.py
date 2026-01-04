@@ -74,7 +74,7 @@ class Plugin(BasePlugin):
         """
         Process an incoming Meshtastic packet and record device telemetry for the sending node when present.
 
-        If the packet contains `decoded.telemetry.deviceMetrics` and `decoded.portnum == "TELEMETRY_APP"`, extracts the `time` plus the `batteryLevel`, `voltage`, and `airUtilTx` fields (each defaults to 0 if missing) and persists an appended telemetry record for the sender. Other parameters (`formatted_message`, `longname`, `meshnet_name`) are not inspected by this method.
+        If the packet contains `decoded.telemetry.deviceMetrics` and `decoded.portnum == "TELEMETRY_APP"`, extracts the `time` plus the `batteryLevel`, `voltage`, and `airUtilTx` fields (each None if missing) and persists an appended telemetry record for the sender. Other parameters (`formatted_message`, `longname`, `meshnet_name`) are not inspected by this method.
 
         Parameters:
             packet (dict): Meshtastic packet expected to include `decoded` with `portnum` and a `telemetry.deviceMetrics` object.
@@ -121,7 +121,7 @@ class Plugin(BasePlugin):
         Returns:
             list[str]: Supported telemetry command names: ["batteryLevel", "voltage", "airUtilTx"].
         """
-        return ["batteryLevel", "voltage", "airUtilTx"]
+        return self.commands()
 
     def get_mesh_commands(self) -> list[str]:
         """

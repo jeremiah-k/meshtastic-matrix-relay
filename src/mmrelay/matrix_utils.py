@@ -2753,7 +2753,7 @@ async def send_reply_to_meshtastic(
     local_meshnet_name: str,
     reply_id: int | None = None,
     relay_config: dict[str, Any] | None = None,
-) -> None:
+) -> bool:
     """
     Queue a Matrix reply to be delivered over Meshtastic as either a structured reply or a regular broadcast.
 
@@ -2778,7 +2778,7 @@ async def send_reply_to_meshtastic(
     from mmrelay.meshtastic_utils import logger as meshtastic_logger
 
     if not meshtastic_interface or meshtastic_channel is None:
-        return
+        return False
 
     effective_config = relay_config if relay_config is not None else config
     if effective_config is None:
@@ -2791,81 +2791,84 @@ async def send_reply_to_meshtastic(
     )
     logger.debug(f"broadcast_enabled = {broadcast_enabled}")
 
-    if broadcast_enabled:
-        try:
-            # Create mapping info once if storage is enabled
-            mapping_info = None
-            if storage_enabled:
-                # Get message map configuration
-                msgs_to_keep = _get_msgs_to_keep_config(effective_config)
+    if not broadcast_enabled:
+        return False
 
-                mapping_info = _create_mapping_info(
-                    event.event_id, room.room_id, text, local_meshnet_name, msgs_to_keep
-                )
+    try:
+        # Create mapping info once if storage is enabled
+        mapping_info = None
+        if storage_enabled:
+            # Get message map configuration
+            msgs_to_keep = _get_msgs_to_keep_config(effective_config)
 
-            if reply_id is not None:
-                # Send as a structured reply using our custom function
-                # Queue the structured reply message for delivery to Meshtastic.
-                success = queue_message(
-                    sendTextReply,
-                    meshtastic_interface,
-                    text=reply_message,
-                    reply_id=reply_id,
-                    channelIndex=meshtastic_channel,
-                    description=f"Reply from {full_display_name} to message {reply_id}",
-                    mapping_info=mapping_info,
-                )
+            mapping_info = _create_mapping_info(
+                event.event_id, room.room_id, text, local_meshnet_name, msgs_to_keep
+            )
 
-                if success:
-                    # Get queue size to determine logging approach
-                    queue_size = get_message_queue().get_queue_size()
+        if reply_id is not None:
+            # Send as a structured reply using our custom function
+            # Queue structured reply message for delivery to Meshtastic.
+            success = queue_message(
+                sendTextReply,
+                meshtastic_interface,
+                text=reply_message,
+                reply_id=reply_id,
+                channelIndex=meshtastic_channel,
+                description=f"Reply from {full_display_name} to message {reply_id}",
+                mapping_info=mapping_info,
+            )
 
-                    if queue_size > 1:
-                        meshtastic_logger.info(
-                            f"Relaying Matrix reply from {full_display_name} to radio broadcast as structured reply (queued: {queue_size} messages)"
-                        )
-                    else:
-                        meshtastic_logger.info(
-                            f"Relaying Matrix reply from {full_display_name} to radio broadcast as structured reply"
-                        )
-                else:
-                    meshtastic_logger.error(
-                        "Failed to relay structured reply to Meshtastic"
+            if success:
+                # Get queue size to determine logging approach
+                queue_size = get_message_queue().get_queue_size()
+
+                if queue_size > 1:
+                    meshtastic_logger.info(
+                        f"Relaying Matrix reply from {full_display_name} to radio broadcast as structured reply (queued: {queue_size} messages)"
                     )
-                    return
+                else:
+                    meshtastic_logger.info(
+                        f"Relaying Matrix reply from {full_display_name} to radio broadcast as structured reply"
+                    )
+                return True
             else:
-                # Send as regular message (fallback for when no reply_id is available)
-                success = queue_message(
-                    meshtastic_interface.sendText,
-                    text=reply_message,
-                    channelIndex=meshtastic_channel,
-                    description=f"Reply from {full_display_name} (fallback to regular message)",
-                    mapping_info=mapping_info,
+                meshtastic_logger.error(
+                    "Failed to relay structured reply to Meshtastic"
                 )
+                return False
+        else:
+            # Send as regular message (fallback for when no reply_id is available)
+            success = queue_message(
+                meshtastic_interface.sendText,
+                text=reply_message,
+                channelIndex=meshtastic_channel,
+                description=f"Reply from {full_display_name} (fallback to regular message)",
+                mapping_info=mapping_info,
+            )
 
-                if success:
-                    # Get queue size to determine logging approach
-                    queue_size = get_message_queue().get_queue_size()
+            if success:
+                # Get queue size to determine logging approach
+                queue_size = get_message_queue().get_queue_size()
 
-                    if queue_size > 1:
-                        meshtastic_logger.info(
-                            f"Relaying Matrix reply from {full_display_name} to radio broadcast (queued: {queue_size} messages)"
-                        )
-                    else:
-                        meshtastic_logger.info(
-                            f"Relaying Matrix reply from {full_display_name} to radio broadcast"
-                        )
-                else:
-                    meshtastic_logger.error(
-                        "Failed to relay reply message to Meshtastic"
+                if queue_size > 1:
+                    meshtastic_logger.info(
+                        f"Relaying Matrix reply from {full_display_name} to radio broadcast (queued: {queue_size} messages)"
                     )
-                    return
+                else:
+                    meshtastic_logger.info(
+                        f"Relaying Matrix reply from {full_display_name} to radio broadcast"
+                    )
+                return True
+            else:
+                meshtastic_logger.error("Failed to relay reply message to Meshtastic")
+                return False
 
-            # Message mapping is now handled automatically by the queue system
+        # Message mapping is now handled automatically by the queue system
 
-        except Exception:
-            # Keep the bridge alive for unexpected Meshtastic send errors
-            meshtastic_logger.exception("Error sending Matrix reply to Meshtastic")
+    except Exception:
+        # Keep the bridge alive for unexpected Meshtastic send errors
+        meshtastic_logger.exception("Error sending Matrix reply to Meshtastic")
+        return False
 
 
 async def handle_matrix_reply(

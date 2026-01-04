@@ -2205,8 +2205,8 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
         repo_url = plugin_info.get("repository")
         if repo_url:
             # Extract repo name using lightweight function (no validation needed for loading)
-            repo_name_from_url = _get_repo_name_from_url(repo_url)
-            if not repo_name_from_url:
+            repo_name = _get_repo_name_from_url(repo_url)
+            if not repo_name:
                 logger.error(
                     "Invalid repository URL for community plugin: %s",
                     _redact_url(repo_url),
@@ -2216,7 +2216,7 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
             # Try each directory in order
             plugin_found = False
             for dir_path in community_plugin_dirs:
-                plugin_path = os.path.join(dir_path, repo_name_from_url)
+                plugin_path = os.path.join(dir_path, repo_name)
                 if os.path.exists(plugin_path):
                     logger.info(f"Loading community plugin from: {plugin_path}")
                     try:

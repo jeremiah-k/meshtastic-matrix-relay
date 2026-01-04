@@ -626,8 +626,11 @@ async def logout_matrix_bot(password: str) -> bool:
                 try:
                     await temp_client.close()
                 except Exception:
-                    # Ignore errors when closing client during logout
-                    pass
+                    # Ignore close failures but keep a trace for diagnostics.
+                    logger.debug(
+                        "Ignoring error while closing temporary Matrix client during logout",
+                        exc_info=True,
+                    )
 
     if not all([homeserver, user_id, access_token, device_id]):
         logger.error("Invalid credentials found. Cannot verify logout.")
