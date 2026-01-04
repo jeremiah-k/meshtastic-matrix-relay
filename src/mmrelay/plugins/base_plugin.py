@@ -373,7 +373,7 @@ class BasePlugin(ABC):
         """
         Recursively remove any "raw" keys from dictionaries within a nested data structure.
 
-        This function walks dictionaries and lists and removes entries with the key `"raw"`, mutates dictionaries/lists in place and returns the same structure.
+        This function walks dictionaries and lists and removes entries with the key `"raw"`. Dictionaries are mutated in place, but lists are recreated (the function returns a new list for each level).
 
         Parameters:
             data (Any): The nested data structure (e.g., dicts and lists) to clean.

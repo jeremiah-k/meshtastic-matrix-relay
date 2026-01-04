@@ -828,12 +828,11 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         )
 
         # Mock template path and acceptable executables
-        with patch(
-            "mmrelay.setup_utils.get_template_service_path"
-        ) as mock_get_template, patch("shutil.which") as mock_which, patch(
-            "mmrelay.setup_utils._quote_if_needed"
-        ) as mock_quote:
-
+        with (
+            patch("mmrelay.setup_utils.get_template_service_path") as mock_get_template,
+            patch("shutil.which") as mock_which,
+            patch("mmrelay.setup_utils._quote_if_needed") as mock_quote,
+        ):
             mock_get_template.return_value = "/template/path"
             mock_which.return_value = "/usr/bin/mmrelay"
             mock_quote.side_effect = lambda x: x  # No quoting needed
@@ -880,7 +879,6 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
 
         # Mock the import and getuser call
         with patch("mmrelay.setup_utils.logger") as mock_logger:
-
             # Mock importlib to return a mock getpass module
             mock_getpass = MagicMock()
             mock_getpass.getuser.return_value = ""
@@ -924,17 +922,17 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         mock_read_service.return_value = "[Unit]\nDescription=Test Service\n"
         mock_needs_update.return_value = (False, "Service is up to date")
 
-        with patch("mmrelay.setup_utils.logger") as mock_logger, patch(
-            "builtins.input", return_value="n"
+        with (
+            patch("mmrelay.setup_utils.logger") as mock_logger,
+            patch("builtins.input", return_value="n"),
         ):
-
             result = install_service()
 
             # Should complete successfully
             self.assertTrue(result)
             # Should log that no update is needed
             mock_logger.info.assert_any_call(
-                "No update needed for the service file: Service is up to date"
+                "No update needed for the service file: %s", "Service is up to date"
             )
 
     @patch("mmrelay.setup_utils.check_loginctl_available")
@@ -963,16 +961,14 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         mock_lingering_enabled.return_value = False
 
         # Mock user input to cancel lingering setup
-        with patch("builtins.input", side_effect=EOFError()), patch(
-            "mmrelay.setup_utils.logger"
-        ), patch("mmrelay.setup_utils.create_service_file") as mock_create, patch(
-            "mmrelay.setup_utils.reload_daemon"
-        ) as mock_reload, patch(
-            "mmrelay.setup_utils.is_service_enabled"
-        ) as mock_enabled, patch(
-            "mmrelay.setup_utils.is_service_active"
-        ) as mock_active:
-
+        with (
+            patch("builtins.input", side_effect=EOFError()),
+            patch("mmrelay.setup_utils.logger"),
+            patch("mmrelay.setup_utils.create_service_file") as mock_create,
+            patch("mmrelay.setup_utils.reload_daemon") as mock_reload,
+            patch("mmrelay.setup_utils.is_service_enabled") as mock_enabled,
+            patch("mmrelay.setup_utils.is_service_active") as mock_active,
+        ):
             mock_create.return_value = True
             mock_reload.return_value = True
             mock_enabled.return_value = False
@@ -1014,10 +1010,11 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         mock_service_enabled.return_value = False
 
         # Mock user input to cancel service enable
-        with patch("builtins.input", side_effect=EOFError()), patch(
-            "mmrelay.setup_utils.logger"
-        ) as mock_logger, patch("mmrelay.setup_utils.is_service_active") as mock_active:
-
+        with (
+            patch("builtins.input", side_effect=EOFError()),
+            patch("mmrelay.setup_utils.logger") as mock_logger,
+            patch("mmrelay.setup_utils.is_service_active") as mock_active,
+        ):
             mock_active.return_value = False
 
             result = install_service()
@@ -1061,10 +1058,10 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         mock_service_active.return_value = True
 
         # Mock user input to cancel service restart
-        with patch("builtins.input", side_effect=EOFError()), patch(
-            "mmrelay.setup_utils.logger"
-        ) as mock_logger:
-
+        with (
+            patch("builtins.input", side_effect=EOFError()),
+            patch("mmrelay.setup_utils.logger") as mock_logger,
+        ):
             result = install_service()
 
             # Should complete successfully
@@ -1109,10 +1106,10 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         mock_start_service.return_value = True
 
         # Mock user input to cancel service start
-        with patch("builtins.input", side_effect=EOFError()), patch(
-            "mmrelay.setup_utils.logger"
-        ) as mock_logger:
-
+        with (
+            patch("builtins.input", side_effect=EOFError()),
+            patch("mmrelay.setup_utils.logger") as mock_logger,
+        ):
             result = install_service()
 
             # Should complete successfully

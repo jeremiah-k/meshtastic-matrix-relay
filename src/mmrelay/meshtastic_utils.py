@@ -1411,7 +1411,7 @@ def send_text_reply(
         RuntimeError,
         TypeError,
         ValueError,
-        SystemExit,
+        SystemExit,  # noqa: BLE001 - Catch SystemExit from underlying library calls that may call sys.exit()
     ):
         logger.exception("Failed to send text reply")
         return None
