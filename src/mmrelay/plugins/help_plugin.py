@@ -33,10 +33,10 @@ class Plugin(BasePlugin):
     @property
     def description(self) -> str:
         """
-        Provide a short human-readable description of the plugin.
-
+        Return a short human-readable description of the plugin.
+        
         Returns:
-            str: Brief description of the plugin's functionality.
+            A brief description string for the plugin, e.g., "List supported relay commands".
         """
         return "List supported relay commands"
 
@@ -44,16 +44,16 @@ class Plugin(BasePlugin):
         self, packet: Any, formatted_message: Any, longname: Any, meshnet_name: Any
     ) -> bool:
         """
-        State that this plugin does not handle messages originating from Meshtastic.
-
+        Indicates the plugin does not handle messages originating from Meshtastic.
+        
         Parameters:
-            packet: Raw Meshtastic packet data.
-            formatted_message: Human-readable representation of the message.
-            longname: Sender's long display name.
-            meshnet_name: Name of the mesh network the message originated from.
-
+            packet (Any): Raw Meshtastic packet data (unused).
+            formatted_message (Any): Human-readable representation of the message (unused).
+            longname (Any): Sender's long display name (unused).
+            meshnet_name (Any): Name of the mesh network the message originated from (unused).
+        
         Returns:
-            True if the message was handled by the plugin, False otherwise. This implementation always returns False.
+            bool: `False` to indicate the message was not handled.
         """
         # Keep parameter names for compatibility with keyword calls in tests.
         _ = packet, formatted_message, longname, meshnet_name
@@ -61,19 +61,19 @@ class Plugin(BasePlugin):
 
     def get_matrix_commands(self) -> list[str]:
         """
-        List Matrix commands provided by this plugin.
-
+        Lists Matrix command names provided by this plugin.
+        
         Returns:
-            list: Command names handled by this plugin (e.g., ['help']).
+            list[str]: Command names handled by this plugin (for example, ['help']).
         """
         return [self.plugin_name]
 
     def get_mesh_commands(self) -> list[str]:
         """
-        List mesh commands provided by this plugin.
-
+        Report mesh commands provided by this plugin.
+        
         Returns:
-            list: An empty list — this plugin does not provide any mesh commands (help is available via Matrix only).
+            list[str]: An empty list indicating this plugin exposes no mesh commands.
         """
         return []
 
@@ -85,16 +85,16 @@ class Plugin(BasePlugin):
     ) -> bool:
         """
         Provide help for Matrix room messages by replying with either a list of available commands or details for a specific command.
-
+        
         If the incoming event matches this plugin's Matrix help command, sends a reply to the room: either a comma-separated list of all available Matrix commands from loaded plugins or a description for a requested command.
-
+        
         Parameters:
-            room: Matrix room object; its `room_id` is used to send the reply.
-            event: Incoming Matrix event used to determine whether this plugin should handle the message.
-            full_message (str): Raw message text from the room.
-
+            room (MatrixRoom): Matrix room object; its `room_id` is used to send the reply.
+            event (RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote): Incoming Matrix event used to determine whether this plugin should handle the message.
+            full_message (str): Raw message text from the room; used to extract command arguments.
+        
         Returns:
-            `True` if the message matched this plugin and a reply was sent, `False` otherwise.
+            True if the incoming event matched this plugin and a reply was sent, False otherwise.
         """
         # Maintain legacy matches() call for tests/compatibility but do not gate handling on it
         self.matches(event)

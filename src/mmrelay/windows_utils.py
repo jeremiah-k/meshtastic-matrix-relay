@@ -173,26 +173,18 @@ def check_windows_requirements() -> Optional[str]:
 def test_config_generation_windows(args: Any = None) -> dict[str, Any]:
     """
     Run Windows-only diagnostics for MMRelay configuration generation.
-
-    Performs four checks and returns a dictionary with per-test results and an overall status:
-    - sample_config_path: verifies mmrelay.tools.get_sample_config_path() exists.
-    - importlib_resources: attempts to read mmrelay.tools/sample_config.yaml via importlib.resources.
-    - config_paths: calls mmrelay.config.get_config_paths(args) and reports the returned paths.
-    - directory_creation: ensures parent directories for the config paths exist (creates them if missing).
-
+    
+    Performs four checks (sample_config_path, importlib_resources, config_paths, directory_creation) and reports per-test results plus an aggregated overall_status.
+    
     Parameters:
         args (optional): Forwarded to mmrelay.config.get_config_paths; typically CLI-style arguments or None.
-
+    
     Returns:
-        dict: Diagnostic results with these keys:
+        dict: Diagnostic results containing:
             - sample_config_path, importlib_resources, config_paths, directory_creation:
-                dict objects with "status" ("ok" or "error") and "details" (string).
+                dict with "status" ("ok" or "error") and "details" (string).
             - overall_status: one of "ok" (no errors), "partial" (1-2 errors), or "error" (3+ errors).
         If called on a non-Windows platform, returns {"error": "This function is only for Windows systems"}.
-
-    Notes:
-        - The function does not raise on expected failures; errors are reported in the returned dict.
-        - Directory creation test may create directories on disk when missing.
     """
     if not is_windows():
         return {"error": "This function is only for Windows systems"}

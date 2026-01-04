@@ -178,13 +178,12 @@ def get_plugin_data_dir(plugin_name: str | None = None) -> str:
 
 def get_log_dir() -> str:
     """
-    Return the path to the application's log directory, creating it if missing.
-
-    On Linux/macOS this is '<base_dir>/logs' (where base_dir is returned by get_base_dir()).
-    On Windows, if a global custom_data_dir is set it uses '<custom_data_dir>/logs'; otherwise it uses the platform-specific user log directory from platformdirs.
-
+    Get the application's log directory, creating it if missing.
+    
+    On Linux/macOS this is "<base_dir>/logs". On Windows this is "<custom_data_dir>/logs" when a global custom data directory is set, otherwise the platform-specific user log directory is used.
+    
     Returns:
-        str: Absolute path to the log directory that now exists (created if necessary).
+        str: Absolute path to the log directory; the directory is guaranteed to exist.
     """
     if sys.platform in ["linux", "darwin"]:
         # Use ~/.mmrelay/logs/ for Linux and Mac
@@ -340,11 +339,11 @@ def load_meshtastic_config_from_env() -> dict[str, Any] | None:
 def load_logging_config_from_env() -> dict[str, Any] | None:
     """
     Load logging configuration from environment variables.
-
-    Reads the logging-related environment variables defined by the module's mappings and returns a dict of parsed values. If a filename is present in the resulting mapping, adds "log_to_file": True to indicate file logging should be used.
-
+    
+    Builds a logging configuration dictionary from the module's predefined environment-variable mappings. If the resulting mapping contains a "filename" key, adds "log_to_file": True.
+    
     Returns:
-        dict | None: Parsed logging configuration when any relevant environment variables are set; otherwise None.
+        dict[str, Any] | None: Parsed logging configuration when any relevant environment variables are set; otherwise `None`.
     """
     config = _load_config_from_env_mapping(_LOGGING_ENV_VAR_MAPPINGS)
     if config:
@@ -375,16 +374,15 @@ def load_database_config_from_env() -> dict[str, Any] | None:
 
 def is_e2ee_enabled(config: dict[str, Any]) -> bool:
     """
-    Check if End-to-End Encryption (E2EE) is enabled in the configuration.
-
-    Checks both 'encryption' and 'e2ee' keys in the matrix section for backward compatibility.
-    On Windows, this always returns False since E2EE is not supported.
-
+    Determine whether End-to-End Encryption (E2EE) is enabled in the provided configuration.
+    
+    Checks the `matrix` section for either `matrix.encryption.enabled` or `matrix.e2ee.enabled` and returns True if either is set to True. On Windows (`sys.platform == "win32"`), E2EE is treated as unsupported and this function always returns False.
+    
     Parameters:
-        config (dict): Configuration dictionary to check.
-
+        config (dict[str, Any]): Top-level configuration mapping (may be empty or None).
+    
     Returns:
-        bool: True if E2EE is enabled, False otherwise.
+        bool: `true` if E2EE is enabled in the configuration and the platform supports E2EE, `false` otherwise.
     """
     # E2EE is not supported on Windows
     if sys.platform == "win32":
@@ -407,15 +405,15 @@ def is_e2ee_enabled(config: dict[str, Any]) -> bool:
 
 def check_e2ee_enabled_silently(args: Any = None) -> bool:
     """
-    Determine whether End-to-End Encryption (E2EE) is enabled by inspecting the first readable configuration file.
-
-    Checks candidate config paths in priority order and returns as soon as a readable configuration enabling E2EE is found. Unreadable files or YAML errors are ignored and the search continues. On Windows this always returns False.
-
+    Check whether End-to-End Encryption (E2EE) is enabled by inspecting the first readable configuration file.
+    
+    This function examines candidate configuration files in priority order, ignoring unreadable files and YAML parsing errors, and returns as soon as a readable configuration enabling E2EE is found. On Windows this function always returns False.
+    
     Parameters:
         args: Optional parsed command-line arguments that can influence config search order.
-
+    
     Returns:
-        `true` if E2EE is enabled in the first readable configuration file, `false` otherwise.
+        True if E2EE is enabled in the first readable configuration file, False otherwise.
     """
     # E2EE is not supported on Windows
     if sys.platform == "win32":
@@ -722,16 +720,16 @@ def _load_config_from_env_mapping(
 
 def set_config(module: Any, passed_config: dict[str, Any]) -> dict[str, Any]:
     """
-    Assign the given configuration to a module and apply known, optional module-specific settings.
-
-    This function sets module.config = passed_config and, for known module names, applies additional configuration when present:
-    - For a module named "matrix_utils": if `matrix_rooms` exists on the module and in the config, it is assigned; if the config contains a `matrix` section with `homeserver`, `access_token`, and `bot_user_id`, those values are assigned to module.matrix_homeserver, module.matrix_access_token, and module.bot_user_id respectively.
-    - For a module named "meshtastic_utils": if `matrix_rooms` exists on the module and in the config, it is assigned.
-
-    If the module exposes a callable setup_config() it will be invoked (kept for backward compatibility).
-
+    Assign the given configuration to a module and apply known module-specific settings.
+    
+    If the target module's name is "matrix_utils", this may assign `matrix_rooms` and, when present, `matrix.homeserver`, `matrix.access_token`, and `matrix.bot_user_id` into module attributes. If the module's name is "meshtastic_utils", this may assign `matrix_rooms`. If the module exposes a callable `setup_config()`, it will be invoked.
+    
+    Parameters:
+        module (Any): The module object to receive the configuration.
+        passed_config (dict[str, Any]): Configuration mapping to attach to the module.
+    
     Returns:
-        dict: The same configuration dictionary that was assigned to the module.
+        dict[str, Any]: The same `passed_config` object that was assigned to the module.
     """
     # Set the module's config variable
     module.config = passed_config
@@ -955,21 +953,21 @@ def get_meshtastic_config_value(
     config: dict[str, Any], key: str, default: Any = None, required: bool = False
 ) -> Any:
     """
-    Retrieve a value from the meshtastic section of the configuration.
-
-    If the meshtastic section or the requested key is missing, returns `default` unless `required` is True, in which case a KeyError is raised and an error is logged.
-
+    Retrieve a value from the "meshtastic" section of a configuration mapping.
+    
+    If the "meshtastic" section or the requested key is absent, returns `default` unless `required` is True, in which case an error is logged and a KeyError is raised.
+    
     Parameters:
         config (dict): Configuration mapping that may contain a "meshtastic" section.
         key (str): Key to look up within the "meshtastic" section.
         default: Value to return when the key is absent and `required` is False.
-        required (bool): If True, a missing key raises KeyError; otherwise the function returns `default`.
-
+        required (bool): If True, a missing key causes a KeyError to be raised.
+    
     Returns:
-        The value found at `config["meshtastic"][key]`, or `default` if the key is not present and `required` is False.
-
+        The value at `config["meshtastic"][key]`, or `default` if the key is missing and `required` is False.
+    
     Raises:
-        KeyError: When `required` is True and the requested key is missing.
+        KeyError: If `required` is True and the requested key is missing.
     """
     try:
         return config["meshtastic"][key]

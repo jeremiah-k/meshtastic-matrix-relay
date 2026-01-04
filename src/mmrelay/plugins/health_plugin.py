@@ -145,18 +145,15 @@ class Plugin(BasePlugin):
         full_message: str,
     ) -> bool:
         """
-        Handle a Matrix room message that matches this plugin and send a mesh health summary to the room.
-
-        If the event matches this plugin, generate the mesh health summary off the event loop and send it to the room.
-
+        Process a Matrix room event and, if it matches this plugin, post a Meshtastic health summary to the room.
+        
         Parameters:
             room (MatrixRoom): The room where the message was received.
-            event (RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote):
-                The Matrix message event used to determine whether the plugin should run.
-            full_message (str): The full text of the received message.
-
+            event (RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote): The Matrix event used to determine whether the plugin should run.
+            full_message (str): The full text of the received message; preserved for compatibility with callers.
+        
         Returns:
-            True if the message matched this plugin and was handled, False otherwise.
+            True if the event matched this plugin and a response was sent to the room, False otherwise.
         """
         if not self.matches(event):
             return False

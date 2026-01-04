@@ -102,14 +102,14 @@ def _submit_coro(
     loop: asyncio.AbstractEventLoop | None = None,
 ) -> Future[Any] | None:
     """
-    Schedule a coroutine to run on an available asyncio event loop.
-
+    Schedule a coroutine to run on an available asyncio event loop and return a Future for its result.
+    
     Parameters:
-        coro: The coroutine object to execute. If not a coroutine, this function returns None.
-        loop: Optional target asyncio event loop to run the coroutine on. If omitted, the module-level `event_loop` is used when available.
-
+        coro: The coroutine object to execute. If not a coroutine, the function returns None.
+        loop: Optional target asyncio event loop to run the coroutine on. If omitted, a suitable loop (module-level or running loop) will be used when available.
+    
     Returns:
-        A Future that will hold the coroutine's result, or `None` if `coro` is not a coroutine.
+        A Future containing the coroutine's result, or `None` if `coro` is not a coroutine.
     """
     if not inspect.iscoroutine(coro):
         # Defensive guard for tests that mistakenly patch async funcs to return None
@@ -152,12 +152,12 @@ def _fire_and_forget(
 ) -> None:
     """
     Schedule a coroutine to run in the background and log any non-cancellation exceptions.
-
-    Schedules the given coroutine for execution on the provided or module-default event loop and attaches a done callback that logs exceptions raised by the task; does nothing if the argument is not a coroutine or if scheduling fails.
-
+    
+    If `coro` is not a coroutine or scheduling fails, the function returns without side effects. The scheduled task will have a done callback that logs exceptions (except `asyncio.CancelledError`).
+    
     Parameters:
-        coro (Coroutine[Any, Any, Any]): The coroutine to execute in the background.
-        loop: Optional asyncio event loop to run the coroutine on; if omitted, the module-level event loop is used.
+        coro (Coroutine[Any, Any, Any]): The coroutine to execute.
+        loop (asyncio.AbstractEventLoop | None): Optional event loop to use; if omitted the module-default loop is used.
     """
     if not inspect.iscoroutine(coro):
         return
@@ -168,13 +168,16 @@ def _fire_and_forget(
 
     def _handle_exception(t: asyncio.Future[Any] | Future[Any]) -> None:
         """
-        Callback for fire-and-forget tasks that logs any exception raised by the task.
-
-        If the provided task or future has an exception, logs it at error level including traceback.
-        Ignores asyncio.CancelledError and logs a debug message when retrieving the exception itself fails.
-
+        Log non-cancellation exceptions raised by a fire-and-forget task.
+        
+        If the provided task or future has an exception and it is not an
+        asyncio.CancelledError, logs the exception at error level including the
+        traceback. If retrieving the exception raises asyncio.CancelledError it is
+        ignored; other errors encountered while inspecting the future are logged at
+        debug level.
+        
         Parameters:
-            t (asyncio.Future | Future): A task or future whose exception should be checked and logged.
+            t (asyncio.Future | concurrent.futures.Future): Task or future to inspect.
         """
         try:
             if (exc := t.exception()) and not isinstance(exc, asyncio.CancelledError):
@@ -214,18 +217,18 @@ def _wait_for_result(
     loop: asyncio.AbstractEventLoop | None = None,
 ) -> Any:
     """
-    Resolve and return the value of a future or awaitable within a synchronous context using a timeout.
-
-    Supports concurrent.futures.Future, asyncio.Future/Task, awaitables, and objects exposing a `.result(timeout)` API.
-
+    Await and return the value of a future-like object from synchronous code, enforcing a timeout.
+    
+    Supports concurrent.futures.Future, asyncio.Future/Task, awaitables, and objects exposing a callable `result(timeout)` method. If called when an event loop is running, schedules the awaitable on that loop; otherwise it will run the awaitable on the provided loop or create a temporary loop.
+    
     Parameters:
         result_future (Any): The future/awaitable or future-like object to resolve.
         timeout (float): Maximum seconds to wait for the result.
-        loop (asyncio.AbstractEventLoop | None): Optional event loop to drive awaiting; if omitted, the function will use a running loop or create a temporary one.
-
+        loop (asyncio.AbstractEventLoop | None): Optional event loop to use for awaiting; if omitted, a running loop will be used or a temporary loop will be created.
+    
     Returns:
         Any: The value produced by the resolved future/awaitable.
-
+    
     Raises:
         asyncio.TimeoutError: If awaiting the awaitable times out.
         concurrent.futures.TimeoutError: If a concurrent.futures.Future times out.
@@ -254,11 +257,11 @@ def _wait_for_result(
 
     async def _runner() -> Any:
         """
-        Await the captured awaitable and fail if it does not complete within the captured timeout.
-
+        Await the captured awaitable and enforce the captured timeout.
+        
         Returns:
-            The result of the awaited awaitable.
-
+            The result returned by the awaitable.
+        
         Raises:
             asyncio.TimeoutError: If the awaitable does not complete before the timeout expires.
         """
@@ -294,16 +297,14 @@ def _wait_for_result(
 
 def _resolve_plugin_timeout(cfg: dict[str, Any] | None, default: float = 5.0) -> float:
     """
-    Resolve and return a positive plugin timeout value from the given configuration.
-
-    Attempts to read meshtastic.plugin_timeout from cfg and convert it to a positive float.
-    If the value is missing, non-numeric, or not greater than 0, the provided default is returned.
-    Invalid or non-positive values will cause a warning to be logged.
-
+    Resolve the plugin timeout value from the configuration.
+    
+    Reads `meshtastic.plugin_timeout` from `cfg` and returns it as a positive float. If the value is missing, cannot be converted to a number, or is not greater than 0, the provided `default` is returned and a warning is logged.
+    
     Parameters:
-        cfg (dict | None): Configuration mapping that may contain a "meshtastic" section.
-        default (float): Fallback timeout (seconds) used when cfg does not provide a valid value.
-
+        cfg (dict | None): Configuration mapping that may contain a "meshtastic" section with a "plugin_timeout" value.
+        default (float): Fallback timeout in seconds used when `cfg` does not provide a valid value.
+    
     Returns:
         float: A positive timeout in seconds.
     """
@@ -336,17 +337,14 @@ def _resolve_plugin_timeout(cfg: dict[str, Any] | None, default: float = 5.0) ->
 
 def _get_name_safely(name_func: Callable[[Any], str | None], sender: Any) -> str:
     """
-    Safely retrieve a name (longname or shortname) for a sender with fallback to sender ID.
-
-    This function encapsulates the common try/except pattern used throughout the codebase
-    for safely retrieving node names from the database with graceful fallback.
-
+    Return a display name for a sender, falling back to the sender's string form.
+    
     Parameters:
-        name_func: Function to call (get_longname or get_shortname)
-        sender: The sender ID to look up
-
+        name_func (Callable[[Any], str | None]): Function to obtain a name for the sender (e.g., get_longname or get_shortname).
+        sender (Any): Sender identifier passed to `name_func`.
+    
     Returns:
-        str: The retrieved name or sender ID as fallback
+        str: The name returned by `name_func`, or `str(sender)` if no name is available or an error occurs.
     """
     try:
         return name_func(sender) or str(sender)
@@ -439,13 +437,13 @@ def _get_device_metadata(client: Any) -> dict[str, Any]:
 
 def serial_port_exists(port_name: str) -> bool:
     """
-    Check whether a serial port with the specified device name exists on the system.
-
+    Determine whether a serial port with the given device name exists on the system.
+    
     Parameters:
         port_name (str): Device name to check (e.g., '/dev/ttyUSB0' on Unix or 'COM3' on Windows).
-
+    
     Returns:
-        True if a matching port device name is present, False otherwise.
+        `True` if a matching port device name is present, `False` otherwise.
     """
     ports = [p.device for p in serial.tools.list_ports.comports()]
     return port_name in ports
@@ -762,14 +760,9 @@ def on_lost_meshtastic_connection(
 
 async def reconnect() -> None:
     """
-    Attempt to re-establish a Meshtastic connection with exponential backoff.
-
-    This coroutine repeatedly tries to reconnect by invoking connect_meshtastic(force_connect=True)
-    in a thread executor until a connection is obtained, the global shutting_down flag is set,
-    or the task is cancelled. It begins with DEFAULT_BACKOFF_TIME and doubles the wait after each
-    failed attempt, capping the backoff at 300 seconds. The function ensures the module-level
-    reconnecting flag is cleared before it returns. asyncio.CancelledError is handled (logged)
-    and causes the routine to stop.
+    Re-establish the Meshtastic connection using exponential backoff.
+    
+    Retries connect_meshtastic(force_connect=True) until a connection is obtained, the application begins shutting down, or the task is cancelled. Starts with DEFAULT_BACKOFF_TIME and doubles the wait after each failed attempt, capped at 300 seconds. Stops promptly on cancellation or when shutting_down is set, and ensures the module-level `reconnecting` flag is cleared before returning.
     """
     global meshtastic_client, reconnecting, shutting_down
     backoff_time = DEFAULT_BACKOFF_TIME
@@ -836,24 +829,18 @@ async def reconnect() -> None:
 
 def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
     """
-    Route an incoming Meshtastic packet to configured Matrix rooms or installed plugins according to runtime configuration.
-
-    Processes a decoded Meshtastic packet and, depending on interaction settings and packet contents, will:
-    - Relay reactions (emoji replies) and plain replies to the mapped Matrix event/room when enabled.
-    - Relay ordinary text messages to all Matrix rooms mapped to the Meshtastic channel unless the message is a direct message to the relay node or a plugin handles it.
-    - Dispatch non-text or otherwise unhandled packets to installed plugins, waiting up to the configured per‑plugin timeout for a handler to claim the message.
-
-    Behavior notes:
-    - Respects interaction settings for reactions and replies.
-    - Determines channel from packet or portnum and skips messages from unmapped channels.
-    - Skips detection_sensor packets when detection processing is disabled.
-    - Attempts to resolve sender longname/shortname from the database or the provided interface and falls back to sender ID.
-    - Uses the provided interface to determine the relay node ID and node metadata.
-    - Schedules Matrix relay coroutines in the event loop and applies a per-plugin timeout when awaiting plugin handlers.
-
+    Route an incoming Meshtastic packet to configured Matrix rooms or installed plugins based on runtime configuration.
+    
+    Processes the decoded packet and, depending on interaction settings and packet contents, will relay emoji reactions and replies to mapped Matrix events, dispatch ordinary text messages to Matrix rooms mapped to the packet's channel (unless the message is a direct message to the relay node or handled by a plugin), and hand non-text or unhandled packets to installed plugins with a per-plugin timeout.
+    
     Parameters:
-        packet (dict): Decoded Meshtastic packet. Expected keys include 'decoded' (may contain 'text', 'replyId', 'portnum', and optional 'emoji'), 'fromId' or 'from' (sender id), 'to' (destination id), 'id' (packet id), and optional 'channel'.
-        interface: Meshtastic interface used to resolve node information and the relay node id. Must provide .myInfo.my_node_num and a .nodes mapping used to enrich sender metadata.
+        packet (dict): Decoded Meshtastic packet. Expected keys include:
+            - 'decoded' (dict): may contain 'text', 'replyId', 'portnum', and optional 'emoji'
+            - 'fromId' or 'from' (sender id)
+            - 'to' (destination id)
+            - 'id' (packet id)
+            - optional 'channel' (mapped channel value)
+        interface: Meshtastic interface used to resolve node information and the relay node id. Must provide .myInfo.my_node_num and a .nodes mapping for sender metadata.
     """
     global config, matrix_rooms
 
@@ -1372,21 +1359,19 @@ def sendTextReply(
     channelIndex: int = 0,
 ) -> Any:
     """
-    Send a Meshtastic text reply that references a previous Meshtastic message.
-
-    Builds a Data payload containing `text` and `reply_id`, wraps it in a MeshPacket on `channelIndex`,
-    and sends it using the provided Meshtastic interface.
-
+    Send a Meshtastic text message that references (replies to) a previous Meshtastic message.
+    
     Parameters:
+        interface (Any): Meshtastic interface used to send the packet.
         text (str): UTF-8 text to send.
         reply_id (int): ID of the Meshtastic message being replied to.
-        destinationId (int | str, optional): Recipient address or node ID (defaults to broadcast).
+        destinationId (Any, optional): Recipient address or node ID; defaults to broadcast.
         wantAck (bool, optional): If True, request an acknowledgement for the packet.
         channelIndex (int, optional): Channel index to send the packet on.
-
+    
     Returns:
         The result returned by the interface's _sendPacket call (typically the sent MeshPacket), or
-        None if the interface is not available or sending fails.
+        `None` if the interface is unavailable or sending fails.
     """
     logger.debug(f"Sending text reply: '{text}' replying to message ID {reply_id}")
 
