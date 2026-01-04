@@ -1710,13 +1710,13 @@ def clone_or_update_repo(repo_url: str, ref: dict[str, str], plugins_dir: str) -
 def load_plugins_from_directory(directory: str, recursive: bool = False) -> list[Any]:
     """
     Discover and instantiate top-level Plugin classes from Python modules in a directory.
-    
+
     Scans the given directory (optionally recursively) for .py modules, imports each module in an isolated namespace, and returns instantiated top-level `Plugin` objects found. On import failure due to a missing dependency and when automatic installation is enabled, the function may attempt to install the missing package and refresh import paths before retrying. The function does not raise on individual plugin load failures; it returns only successfully instantiated plugins.
-    
+
     Parameters:
         directory (str): Path to the directory containing plugin Python files.
         recursive (bool): If True, scan subdirectories recursively; otherwise scan only the top-level directory.
-    
+
     Returns:
         list[Any]: Instances of discovered `Plugin` classes; returns an empty list if none are found.
     """
@@ -1999,12 +1999,12 @@ def stop_global_scheduler() -> None:
 def load_plugins(passed_config: Any = None) -> list[Any]:
     """
     Load, prepare, and start configured core, custom, and community plugins and return the active instances sorted by priority.
-    
+
     Uses the module-global configuration unless an explicit `passed_config` is provided. Ensures community repositories and their dependencies are prepared as configured, starts plugins marked active, caches the loaded set for subsequent calls, and returns the active plugin instances ordered by their `priority`.
-    
+
     Parameters:
         passed_config (dict | Any, optional): Configuration to use instead of the module-global `config`.
-    
+
     Returns:
         list[Any]: Active plugin instances sorted by their `priority` attribute.
     """

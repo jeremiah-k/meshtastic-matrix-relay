@@ -2277,7 +2277,6 @@ class TestHandleCliCommands(unittest.TestCase):
         self.mock_args.version = True
 
         # Import and call function
-        from mmrelay.cli import handle_cli_commands
 
         result = handle_cli_commands(self.mock_args)
 
@@ -2293,7 +2292,6 @@ class TestHandleCliCommands(unittest.TestCase):
         mock_install_service.return_value = True
 
         # Import and call function
-        from mmrelay.cli import handle_cli_commands
 
         result = handle_cli_commands(self.mock_args)
 
@@ -2309,7 +2307,6 @@ class TestHandleCliCommands(unittest.TestCase):
         mock_install_service.return_value = False
 
         # Import and call function
-        from mmrelay.cli import handle_cli_commands
 
         result = handle_cli_commands(self.mock_args)
 
@@ -2325,7 +2322,6 @@ class TestHandleCliCommands(unittest.TestCase):
         mock_generate_config.return_value = True
 
         # Import and call function
-        from mmrelay.cli import handle_cli_commands
 
         result = handle_cli_commands(self.mock_args)
 
@@ -2341,7 +2337,6 @@ class TestHandleCliCommands(unittest.TestCase):
         mock_generate_config.return_value = False
 
         # Import and call function
-        from mmrelay.cli import handle_cli_commands
 
         result = handle_cli_commands(self.mock_args)
 
@@ -2357,7 +2352,6 @@ class TestHandleCliCommands(unittest.TestCase):
         mock_check_config.return_value = True
 
         # Import and call function
-        from mmrelay.cli import handle_cli_commands
 
         result = handle_cli_commands(self.mock_args)
 
@@ -2373,7 +2367,6 @@ class TestHandleCliCommands(unittest.TestCase):
         mock_check_config.return_value = False
 
         # Import and call function
-        from mmrelay.cli import handle_cli_commands
 
         result = handle_cli_commands(self.mock_args)
 
@@ -2386,7 +2379,6 @@ class TestHandleCliCommands(unittest.TestCase):
         # All flags are False by default in setUp
 
         # Import and call function
-        from mmrelay.cli import handle_cli_commands
 
         result = handle_cli_commands(self.mock_args)
 

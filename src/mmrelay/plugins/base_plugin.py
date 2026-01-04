@@ -565,9 +565,9 @@ class BasePlugin(ABC):
     def get_mesh_commands(self) -> list[str]:
         """
         Return the mesh/radio command names this plugin handles.
-        
+
         By default returns an empty list; subclasses should override to expose commands. Command names must be provided without a leading '!'.
-        
+
         Returns:
             list[str]: Command names (without a leading '!'); empty by default.
         """
@@ -590,9 +590,9 @@ class BasePlugin(ABC):
     def store_node_data(self, meshtastic_id: str, node_data: Any) -> None:
         """
         Append data for a Meshtastic node to this plugin's persistent per-node store.
-        
+
         The existing stored value (if any) is normalized to a list, the provided item or items are appended, the list is trimmed to the plugin's max_data_rows_per_node, and the updated list is persisted.
-        
+
         Parameters:
             meshtastic_id (str): Identifier of the Meshtastic node.
             node_data (Any): A single data item or a list/iterable of items to append; the stored value will be a list after this call.
@@ -637,7 +637,7 @@ class BasePlugin(ABC):
     def delete_node_data(self, meshtastic_id: str) -> None:
         """
         Remove all persisted data associated with the given Meshtastic node for this plugin.
-        
+
         Parameters:
             meshtastic_id (str): Identifier of the Meshtastic node whose stored data will be deleted.
         """
@@ -647,10 +647,10 @@ class BasePlugin(ABC):
     def get_node_data(self, meshtastic_id: str) -> Any:
         """
         Retrieve the plugin-specific data stored for a Meshtastic node.
-        
+
         Parameters:
             meshtastic_id (str): Identifier of the Meshtastic node.
-        
+
         Returns:
             Any: The stored data value for the given node (may be any JSON-serializable value), or `None` if no data exists.
         """

@@ -27,10 +27,10 @@ logger = get_logger(name="Setup")
 def _quote_if_needed(path: str) -> str:
     """
     Quote a filesystem path or command if it contains spaces to make it safe for systemd unit files.
-    
+
     Parameters:
         path (str): The path or command string to evaluate.
-    
+
     Returns:
         str: The original path if it contains no spaces; otherwise the path wrapped in double quotes.
     """
@@ -122,7 +122,7 @@ def print_service_commands() -> None:
 def wait_for_service_start() -> None:
     """
     Waits up to ten seconds for the per-user mmrelay systemd service to become active.
-    
+
     When running interactively, displays a spinner and elapsed-time indicator; when not interactive, performs the same timed checks without UI. The function exits early if the service becomes active (checks allow early exit starting after five seconds); otherwise it returns after roughly ten seconds.
     """
     import time
@@ -325,9 +325,9 @@ WantedBy=default.target
 def is_service_enabled() -> bool:
     """
     Check whether the user systemd unit 'mmrelay.service' is enabled to start at login.
-    
+
     Performs `systemctl --user is-enabled mmrelay.service` and treats the service as enabled only if the command exits with status 0 and its stdout equals "enabled".
-    
+
     Returns:
         `True` if the service is enabled to start at login, `False` otherwise.
     """
@@ -347,7 +347,7 @@ def is_service_enabled() -> bool:
 def is_service_active() -> bool:
     """
     Determine whether the per-user systemd unit 'mmrelay.service' is currently active.
-    
+
     Returns:
         True if the service's state is "active", False otherwise. If an OS-level or subprocess error occurs while checking, the function returns False.
     """
@@ -367,9 +367,9 @@ def is_service_active() -> bool:
 def create_service_file() -> bool:
     """
     Create or update the per-user systemd unit file for MMRelay.
-    
+
     Ensures required user service and log directories exist, loads a service template, replaces placeholders with resolved paths (including normalizing the ExecStart line to the resolved MMRelay invocation), and writes the resulting unit file to the current user's systemd directory.
-    
+
     Returns:
         bool: `True` if the service file was written successfully, `False` if a template could not be obtained or writing the file failed.
     """
@@ -627,9 +627,9 @@ def enable_lingering() -> bool:
 def install_service() -> bool:
     """
     Install or update the MMRelay systemd user service and guide interactive setup.
-    
+
     Creates or updates the user unit file, reloads the systemd daemon, optionally enables user lingering, optionally enables the service at login, and optionally starts or restarts the service based on user confirmation. Logs progress and a final status summary.
-    
+
     Returns:
         True if the installation or update process completes successfully, False otherwise.
     """

@@ -443,13 +443,13 @@ def delete_plugin_data(plugin_name: str, meshtastic_id: str) -> None:
 def get_plugin_data_for_node(plugin_name: str, meshtastic_id: int | str) -> Any:
     """
     Return the deserialized JSON value stored for a plugin and Meshtastic node.
-    
+
     If no row exists or a database or decoding error occurs, returns an empty list.
-    
+
     Parameters:
         plugin_name (str): Name of the plugin.
         meshtastic_id (int | str): Identifier of the Meshtastic node.
-    
+
     Returns:
         Any: The deserialized JSON value stored for the given plugin and node, or an empty list if none is stored or on error.
     """
@@ -568,9 +568,9 @@ def get_longname(meshtastic_id: str) -> str | None:
 def save_longname(meshtastic_id: int | str, longname: str) -> None:
     """
     Store or update the long display name for a Meshtastic node in the longnames table.
-    
+
     If a row for the given node exists it will be replaced; database errors are logged and suppressed.
-    
+
     Parameters:
         meshtastic_id (int | str): Identifier of the Meshtastic node.
         longname (str): Full display name to store for the node.
@@ -653,9 +653,9 @@ def get_shortname(meshtastic_id: str) -> str | None:
 def save_shortname(meshtastic_id: int | str, shortname: str) -> None:
     """
     Insert or update the shortname for a Meshtastic node.
-    
+
     Stores the provided `shortname` in the `shortnames` table keyed by `meshtastic_id`. Database errors are logged (with stacktrace) and suppressed; the function does not raise on sqlite3 errors.
-    
+
     Parameters:
         meshtastic_id (int | str): Node identifier used as the primary key in the shortnames table.
         shortname (str): Display name to store for the node.

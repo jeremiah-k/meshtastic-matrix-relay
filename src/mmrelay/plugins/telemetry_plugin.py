@@ -73,15 +73,15 @@ class Plugin(BasePlugin):
         # Support deviceMetrics only for now
         """
         Record device telemetry from an incoming Meshtastic telemetry packet for the sending node.
-        
+
         When `packet` contains `decoded.portnum == "TELEMETRY_APP"` and `decoded.telemetry.deviceMetrics`, extracts the telemetry timestamp and the `batteryLevel`, `voltage`, and `airUtilTx` fields (each `None` if missing) and appends a telemetry record for the sender identified by `packet["fromId"]`. Other packet contents are not modified.
-        
+
         Parameters:
             packet (dict): Meshtastic packet expected to include `decoded` with `portnum` and `telemetry.deviceMetrics`.
             formatted_message (str): Unused.
             longname (str): Unused.
             meshnet_name (str): Unused.
-        
+
         Returns:
             bool: `False` always; telemetry is recorded but the message is not consumed by this handler.
         """
