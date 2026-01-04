@@ -1,8 +1,18 @@
 import io
 import json
 from datetime import datetime, timedelta
+from typing import Any
 
 import matplotlib.pyplot as plt
+
+# matrix-nio is not marked py.typed; keep import-untyped for strict mypy.
+from nio import (  # type: ignore[import-untyped]
+    MatrixRoom,
+    ReactionEvent,
+    RoomMessageEmote,
+    RoomMessageNotice,
+    RoomMessageText,
+)
 from PIL import Image
 
 from mmrelay.plugins.base_plugin import BasePlugin
@@ -13,12 +23,12 @@ class Plugin(BasePlugin):
     is_core_plugin = True
     max_data_rows_per_node = 50
 
-    def commands(self):
+    def commands(self) -> list[str]:
         """
-        Return the list of supported telemetry metric command names.
+        List supported telemetry metric command names.
 
         Returns:
-            list[str]: Supported telemetry commands: "batteryLevel", "voltage", and "airUtilTx".
+            list[str]: Supported telemetry command names: "batteryLevel", "voltage", and "airUtilTx".
         """
         return ["batteryLevel", "voltage", "airUtilTx"]
 
@@ -28,20 +38,19 @@ class Plugin(BasePlugin):
         Short description of the plugin's visualization purpose.
 
         Returns:
-            str: Description text "Graph of avg Mesh telemetry value for last 12 hours".
+            str: The text "Graph of avg Mesh telemetry value for last 12 hours".
         """
         return "Graph of avg Mesh telemetry value for last 12 hours"
 
-    def _generate_timeperiods(self, hours=12):
-        # Calculate the start and end times
+    def _generate_timeperiods(self, hours: int = 12) -> list[datetime]:
         """
-        Generate a list of hourly datetime anchors spanning the past `hours` hours up to now.
+        Generate hourly datetime anchors spanning the past `hours` hours up to the current time.
 
         Parameters:
-                hours (int): Number of hours to look back from the current time (default 12).
+            hours (int): Number of hours to look back from now (default 12).
 
         Returns:
-                hourly_intervals (list[datetime.datetime]): List of datetime objects at hourly intervals from (now - hours) up to and including the current time.
+            list[datetime]: Hourly datetime objects from (now - hours) up to and including now.
         """
         end_time = datetime.now()
         start_time = end_time - timedelta(hours=hours)
@@ -55,20 +64,28 @@ class Plugin(BasePlugin):
         return hourly_intervals
 
     async def handle_meshtastic_message(
-        self, packet, formatted_message, longname, meshnet_name
+        self,
+        packet: dict[str, Any],
+        formatted_message: str,
+        longname: str,
+        meshnet_name: str,
     ) -> bool:
         # Support deviceMetrics only for now
         """
-        Process an incoming Meshtastic packet and record deviceMetrics telemetry for the sender when present.
+        Process an incoming Meshtastic packet and record device telemetry for the sending node when present.
 
-        If the packet contains `decoded.telemetry.deviceMetrics` and `decoded.portnum == "TELEMETRY_APP"`, extracts `time`, `batteryLevel`, `voltage`, and `airUtilTx` (each telemetry field defaults to 0 if missing) and appends a telemetry record to the sender's node data via `set_node_data`.
+        If the packet contains `decoded.telemetry.deviceMetrics` and `decoded.portnum == "TELEMETRY_APP"`, extracts the `time` plus the `batteryLevel`, `voltage`, and `airUtilTx` fields (each None if missing) and persists an appended telemetry record for the sender. Other parameters (`formatted_message`, `longname`, `meshnet_name`) are not inspected by this method.
 
         Parameters:
-            packet (dict): Meshtastic packet dictionary; expected to contain `decoded` with `portnum` and a `telemetry` object that includes `deviceMetrics`. Other parameters (formatted_message, longname, meshnet_name) are not inspected by this function.
+            packet (dict): Meshtastic packet expected to include `decoded` with `portnum` and a `telemetry.deviceMetrics` object.
+            formatted_message (str): Unused in this handler.
+            longname (str): Unused in this handler.
+            meshnet_name (str): Unused in this handler.
 
         Returns:
-            bool: Always `False`; this plugin records telemetry data but does not consume the message, allowing other handlers to process it.
+            bool: `False` always; telemetry is recorded but the message is not consumed by this handler.
         """
+        _ = formatted_message, longname, meshnet_name
         if (
             "decoded" in packet
             and "portnum" in packet["decoded"]
@@ -81,25 +98,14 @@ class Plugin(BasePlugin):
             if data:
                 telemetry_data = data
             packet_data = packet["decoded"]["telemetry"]
+            device_metrics = packet_data["deviceMetrics"]
 
             telemetry_data.append(
                 {
                     "time": packet_data["time"],
-                    "batteryLevel": (
-                        packet_data["deviceMetrics"]["batteryLevel"]
-                        if "batteryLevel" in packet_data["deviceMetrics"]
-                        else 0
-                    ),
-                    "voltage": (
-                        packet_data["deviceMetrics"]["voltage"]
-                        if "voltage" in packet_data["deviceMetrics"]
-                        else 0
-                    ),
-                    "airUtilTx": (
-                        packet_data["deviceMetrics"]["airUtilTx"]
-                        if "airUtilTx" in packet_data["deviceMetrics"]
-                        else 0
-                    ),
+                    "batteryLevel": device_metrics.get("batteryLevel"),
+                    "voltage": device_metrics.get("voltage"),
+                    "airUtilTx": device_metrics.get("airUtilTx"),
                 }
             )
             self.set_node_data(meshtastic_id=packet["fromId"], node_data=telemetry_data)
@@ -108,38 +114,43 @@ class Plugin(BasePlugin):
         # Return False for non-telemetry packets
         return False
 
-    def get_matrix_commands(self):
+    def get_matrix_commands(self) -> list[str]:
         """
-        Return the telemetry command names supported for Matrix commands.
+        Telemetry command names supported for Matrix messages.
 
         Returns:
-            list[str]: A list of supported command names: ["batteryLevel", "voltage", "airUtilTx"].
+            list[str]: Supported telemetry command names: ["batteryLevel", "voltage", "airUtilTx"].
         """
-        return ["batteryLevel", "voltage", "airUtilTx"]
+        return self.commands()
 
-    def get_mesh_commands(self):
+    def get_mesh_commands(self) -> list[str]:
         """
-        List the supported mesh commands for this plugin.
+        List supported mesh commands for this plugin.
 
         Returns:
-            list: An empty list indicating no mesh commands are supported.
+            list[str]: An empty list indicating the plugin exposes no mesh commands.
         """
         return []
 
-    async def handle_room_message(self, room, event, full_message) -> bool:
+    async def handle_room_message(
+        self,
+        room: MatrixRoom,
+        event: RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote,
+        full_message: str,
+    ) -> bool:
         # Pass the event to matches()
         """
-        Handle a Matrix room message requesting a telemetry graph and send the generated image to the originating room.
+        Handle a Matrix message requesting a telemetry graph and send the generated image to the originating room.
 
-        Parses a telemetry command (`!batteryLevel`, `!voltage`, or `!airUtilTx`) optionally followed by a node identifier, computes hourly averages for the last 12 hours (per-node or network-wide), generates a line plot of those averages, and uploads the image to the room.
+        Parses a telemetry command (one of `batteryLevel`, `voltage`, `airUtilTx`) optionally followed by a node identifier, computes hourly averages for the last 12 hours (for the specified node or network-wide), generates a line plot of those averages, and uploads the image to the originating room. If a requested node has no telemetry data, a user-facing notice is sent instead of an image.
 
         Parameters:
-            room: Matrix room object where the event originated; used to determine the destination room_id.
-            event: Matrix event used to detect whether the message matches a supported telemetry command.
+            room: Matrix room object where the event originated and where the response will be sent.
+            event: Matrix event used to determine whether it matches a supported telemetry command.
             full_message (str): Full plaintext message content used to parse the command and optional node identifier.
 
         Returns:
-            `true` if the message matched a telemetry command and the graph was generated and sent (or a user-facing notification was sent when a requested node had no data); `false` otherwise.
+            `True` if the message matched a telemetry command and either a graph was generated and sent or a notice was sent for a node with no data; `False` otherwise.
         """
         if not self.matches(event):
             return False
@@ -163,9 +174,15 @@ class Plugin(BasePlugin):
             return False
 
         # Compute the hourly averages for each node
-        hourly_averages = {}
+        hourly_averages: dict[int, list[float]] = {}
 
-        def calculate_averages(node_data_rows):
+        def calculate_averages(node_data_rows: list[dict[str, Any]]) -> None:
+            """
+            Accumulate per-record telemetry values into hourly bins keyed by indices of the outer `hourly_intervals`.
+
+            Parameters:
+                node_data_rows (list[dict[str, Any]]): Records containing a "time" POSIX timestamp (seconds) and a telemetry value under the key named by the enclosing `telemetry_option`; values are appended to the outer `hourly_averages` dictionary for the matching hourly interval.
+            """
             for record in node_data_rows:
                 record_time = datetime.fromtimestamp(
                     record["time"]
@@ -175,9 +192,10 @@ class Plugin(BasePlugin):
                 ]  # Replace with your battery level field name
                 for i in range(len(hourly_intervals) - 1):
                     if hourly_intervals[i] <= record_time < hourly_intervals[i + 1]:
-                        if i not in hourly_averages:
-                            hourly_averages[i] = []
-                        hourly_averages[i].append(telemetry_value)
+                        if telemetry_value is not None:
+                            if i not in hourly_averages:
+                                hourly_averages[i] = []
+                            hourly_averages[i].append(telemetry_value)
                         break
 
         if node:

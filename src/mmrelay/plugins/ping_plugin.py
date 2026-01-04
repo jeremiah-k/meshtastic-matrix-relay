@@ -1,7 +1,17 @@
 import asyncio
 import re
+from typing import Any
 
-from meshtastic.mesh_interface import BROADCAST_NUM
+from meshtastic.mesh_interface import BROADCAST_NUM  # type: ignore[import-untyped]
+
+# matrix-nio is not marked py.typed; keep import-untyped for strict mypy.
+from nio import (  # type: ignore[import-untyped]
+    MatrixRoom,
+    ReactionEvent,
+    RoomMessageEmote,
+    RoomMessageNotice,
+    RoomMessageText,
+)
 
 from mmrelay.constants.formats import TEXT_MESSAGE_APP
 from mmrelay.constants.messages import PORTNUM_TEXT_MESSAGE_APP
@@ -48,34 +58,38 @@ class Plugin(BasePlugin):
     is_core_plugin = True
 
     @property
-    def description(self):
+    def description(self) -> str:
         """
-        Provide a short description of the plugin's purpose.
+        Short human-readable description of the plugin's purpose.
 
         Returns:
-            str: A human-readable description: "Check connectivity with the relay or respond to pings over the mesh"
+            A single-line string describing the plugin: "Check connectivity with the relay or respond to pings over the mesh"
         """
         return "Check connectivity with the relay or respond to pings over the mesh"
 
     async def handle_meshtastic_message(
-        self, packet, formatted_message, longname, meshnet_name
+        self,
+        packet: dict[str, Any],
+        formatted_message: str,
+        longname: str,
+        meshnet_name: str,
     ) -> bool:
         """
-        Handle an incoming Meshtastic packet and respond to a matched "ping" message when appropriate.
+        Responds to an incoming Meshtastic "ping" message with a case-matched "pong" when permitted by addressing and channel rules.
 
-        Checks packet for decoded text, verifies channel and addressing rules, and if the message contains the word "ping" (optionally surrounded by punctuation) constructs a case-matching "pong" reply and sends it either as a direct message or to the same channel.
+        Matches "ping" with optional surrounding punctuation (case-insensitive) in packet["decoded"]["text"]; if matched and the channel is enabled, sends a reply that preserves the punctuation and letter case pattern of the trigger, or "Pong..." when surrounding punctuation is excessively long. If the Meshtastic client or its `myInfo` is unavailable the function logs a warning and returns `True` to suppress further handling.
 
         Parameters:
-            packet (dict): Meshtastic packet expected to include a `decoded` mapping with `text`, and may include `channel`, `to`, and `fromId`.
-            formatted_message (str): Pre-formatted representation of the message (may be unused by this handler).
+            packet (dict[str, Any]): Incoming Meshtastic packet. Expected to contain `decoded["text"]`; may include `decoded["portnum"]`, `channel`, `to`, and `fromId`.
+            formatted_message (str): Preformatted representation of the message (kept for compatibility; not used).
             longname (str): Human-readable sender identifier used for logging.
-            meshnet_name (str): Name of the mesh network where the message originated.
+            meshnet_name (str): Name of the mesh network where the message originated (kept for compatibility; not used).
 
         Returns:
-            bool: `True` if the handler processed the packet or intentionally
-            suppressed it (for example, when the Meshtastic client or its
-            `myInfo` is unavailable), `False` otherwise.
+            bool: `True` if the handler processed the packet or intentionally suppressed processing (e.g., client/myInfo unavailable); `False` if the packet was not handled (no match, disallowed port, or channel disabled).
         """
+        # Keep parameter names for compatibility with keyword calls in tests.
+        _ = formatted_message, meshnet_name
         if "decoded" not in packet or "text" not in packet["decoded"]:
             return False
 
@@ -175,25 +189,32 @@ class Plugin(BasePlugin):
 
     def get_mesh_commands(self) -> list[str]:
         """
-        List mesh command names exposed by this plugin.
+        List the mesh command names exposed by this plugin.
 
         Returns:
-            list[str]: List of command names exposed by the plugin; typically a single-element list containing the plugin's name.
+            list[str]: Command names provided by the plugin (typically a single-element list containing the plugin's name).
         """
         return [self.plugin_name]
 
-    async def handle_room_message(self, room, event, full_message) -> bool:
+    async def handle_room_message(
+        self,
+        room: MatrixRoom,
+        event: RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote,
+        full_message: str,
+    ) -> bool:
         """
-        Handle a Matrix room message that matches this plugin's trigger and reply with "pong!".
+        Reply "pong!" in the Matrix room when the event matches this plugin's trigger.
 
         Parameters:
-            room: The Matrix room object where the event originated; used to obtain the room_id for the reply.
-            event: The Matrix event to evaluate against the plugin's matching rules.
-            full_message: The raw or normalized message text content of the event.
+            room (MatrixRoom): The room containing the event; used to determine the target room_id for the reply.
+            event (RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote): The Matrix event to evaluate against the plugin's matching rules.
+            full_message (str): The message text (kept for compatibility; not used by this implementation).
 
         Returns:
-            bool: `True` if the message matched and a reply was sent, `False` otherwise.
+            `true` if the event matched and a reply was sent, `false` otherwise.
         """
+        # Keep parameter names for compatibility with keyword calls in tests.
+        _ = full_message
         if not self.matches(event):
             return False
 

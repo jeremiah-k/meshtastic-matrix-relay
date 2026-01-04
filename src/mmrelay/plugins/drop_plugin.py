@@ -1,13 +1,26 @@
 import asyncio
 import re
+from typing import TYPE_CHECKING, Any
 
-from haversine import haversine
+from haversine import haversine  # type: ignore[import-untyped]
+
+# matrix-nio is not marked py.typed; keep import-untyped for strict mypy.
+from nio import (  # type: ignore[import-untyped]
+    MatrixRoom,
+    ReactionEvent,
+    RoomMessageEmote,
+    RoomMessageNotice,
+    RoomMessageText,
+)
 
 from mmrelay.constants.database import DEFAULT_DISTANCE_KM_FALLBACK, DEFAULT_RADIUS_KM
 from mmrelay.constants.formats import TEXT_MESSAGE_APP
 from mmrelay.constants.plugins import SPECIAL_NODE_MESSAGES
 from mmrelay.meshtastic_utils import connect_meshtastic
 from mmrelay.plugins.base_plugin import BasePlugin
+
+if TYPE_CHECKING:
+    from meshtastic.mesh_interface import MeshInterface  # type: ignore[import-untyped]
 
 
 class Plugin(BasePlugin):
@@ -18,17 +31,34 @@ class Plugin(BasePlugin):
     # No __init__ method needed with the simplified plugin system
     # The BasePlugin will automatically use the class-level plugin_name
 
-    def get_position(self, meshtastic_client, node_id):
+    def get_position(
+        self, meshtastic_client: "MeshInterface", node_id: str
+    ) -> dict[str, Any] | None:
+        """
+        Retrieve the geographic position for a Meshtastic node by its node ID.
+
+        Parameters:
+            meshtastic_client (MeshInterface): Connected Meshtastic client containing node information.
+            node_id (str): The node's user ID to look up.
+
+        Returns:
+            position (dict[str, Any] | None): The node's `position` dictionary (typically containing latitude and longitude) if the node is found and has position data; `None` if the node is not found or has no `position`.
+        """
         for _node, info in meshtastic_client.nodes.items():
             if info["user"]["id"] == node_id:
                 if "position" in info:
-                    return info["position"]
+                    pos: dict[str, Any] = info["position"]
+                    return pos
                 else:
                     return None
         return None
 
     async def handle_meshtastic_message(
-        self, packet, formatted_message, longname, meshnet_name
+        self,
+        packet: dict[str, Any],
+        formatted_message: str,
+        longname: str,
+        meshnet_name: str,
     ) -> bool:
         """
         Handle delivery of stored drop messages and record new drops from an incoming Meshtastic packet.
@@ -38,6 +68,8 @@ class Plugin(BasePlugin):
         Returns:
             `True` if a drop command was processed (including cases where processing occurred but the dropper's position was unavailable), `False` otherwise.
         """
+        # Keep parameter names for keyword-arg compatibility in tests and plugin API.
+        _ = (formatted_message, longname, meshnet_name)
         meshtastic_client = await asyncio.to_thread(connect_meshtastic)
         if meshtastic_client is None:
             self.logger.warning(
@@ -49,12 +81,13 @@ class Plugin(BasePlugin):
                 and f"!{self.plugin_name}" in text
                 and re.search(r"!drop\s+(.+)$", text)
             )
-            return True if is_drop_command else False
+            return bool(is_drop_command)
         nodeInfo = meshtastic_client.getMyNodeInfo()
 
         # Attempt message drop to packet originator if not relay
         if "fromId" in packet and packet["fromId"] != nodeInfo["user"]["id"]:
-            position = self.get_position(meshtastic_client, packet["fromId"])
+            from_id: str = packet["fromId"]
+            position = self.get_position(meshtastic_client, from_id)
             if position and "latitude" in position and "longitude" in position:
                 packet_location = (
                     position["latitude"],
@@ -62,14 +95,13 @@ class Plugin(BasePlugin):
                 )
 
                 self.logger.debug(f"Packet originates from: {packet_location}")
-                messages = self.get_node_data(self.special_node) or []
-                unsent_messages = []
+                messages: list[dict[str, Any]] = (
+                    self.get_node_data(self.special_node) or []
+                )
+                unsent_messages: list[dict[str, Any]] = []
                 for message in messages:
                     # You cannot pickup what you dropped
-                    if (
-                        "originator" in message
-                        and message["originator"] == packet["fromId"]
-                    ):
+                    if "originator" in message and message["originator"] == from_id:
                         unsent_messages.append(message)
                         continue
 
@@ -82,7 +114,7 @@ class Plugin(BasePlugin):
                         distance_km = DEFAULT_DISTANCE_KM_FALLBACK
                     radius_km = self.config.get("radius_km", DEFAULT_RADIUS_KM)
                     if distance_km <= radius_km:
-                        target_node = packet["fromId"]
+                        target_node = from_id
                         self.logger.debug(f"Sending dropped message to {target_node}")
                         await asyncio.to_thread(
                             meshtastic_client.sendText,
@@ -112,14 +144,14 @@ class Plugin(BasePlugin):
 
             drop_message = match.group(1)
 
-            from_id = packet.get("fromId")
-            if not from_id:
+            dropping_from_id: str | None = packet.get("fromId")
+            if not dropping_from_id:
                 self.logger.debug(
                     "Drop command missing fromId; cannot determine originator. Skipping ..."
                 )
                 return False
 
-            position = self.get_position(meshtastic_client, from_id) or {}
+            position = self.get_position(meshtastic_client, dropping_from_id) or {}
 
             if "latitude" not in position or "longitude" not in position:
                 self.logger.debug(
@@ -132,7 +164,7 @@ class Plugin(BasePlugin):
                 {
                     "location": (position["latitude"], position["longitude"]),
                     "text": drop_message,
-                    "originator": packet["fromId"],
+                    "originator": dropping_from_id,
                 },
             )
             self.logger.debug(f"Dropped a message: {drop_message}")
@@ -141,15 +173,22 @@ class Plugin(BasePlugin):
         # Packet did not contain a drop command or was not processable
         return False
 
-    async def handle_room_message(self, _room, event, _full_message) -> bool:
+    async def handle_room_message(
+        self,
+        room: MatrixRoom,
+        event: RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote,
+        full_message: str,
+    ) -> bool:
         # Pass the event to matches() instead of full_message
         """
-        Route a room event to the plugin's matching logic.
+        Route a Matrix room event to the plugin's matching logic.
 
         Parameters:
-            event (object): The room event to evaluate; forwarded to matches().
+            event (RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote): The room event to evaluate; forwarded to `matches()`.
 
         Returns:
-            bool: True if the event matches the plugin's criteria, False otherwise.
+            bool: `True` if the event matches the plugin's criteria, `False` otherwise.
         """
+        # Preserve parameter names for keyword-arg compatibility in tests and plugin API.
+        _ = (room, full_message)
         return self.matches(event)

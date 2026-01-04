@@ -1,11 +1,22 @@
-# Note: This plugin was experimental and is not functional.
+# Core mesh-to-Matrix relay plugin providing bidirectional message bridging.
 
 import asyncio
 import base64
+import binascii
 import json
 import re
+from typing import Any, cast
 
-from meshtastic import mesh_pb2
+from meshtastic import mesh_pb2  # type: ignore[import-untyped]
+
+# matrix-nio is not marked py.typed; keep import-untyped for strict mypy.
+from nio import (  # type: ignore[import-untyped]
+    MatrixRoom,
+    ReactionEvent,
+    RoomMessageEmote,
+    RoomMessageNotice,
+    RoomMessageText,
+)
 
 from mmrelay.constants.database import DEFAULT_MAX_DATA_ROWS_PER_NODE_MESH_RELAY
 from mmrelay.plugins.base_plugin import BasePlugin, config
@@ -30,7 +41,7 @@ class Plugin(BasePlugin):
     plugin_name = "mesh_relay"
     max_data_rows_per_node = DEFAULT_MAX_DATA_ROWS_PER_NODE_MESH_RELAY
 
-    def normalize(self, dict_obj):
+    def normalize(self, dict_obj: Any) -> dict[str, Any]:
         """
         Converts packet data in various formats (dict, JSON string, or plain string) into a normalized dictionary with raw data fields removed.
 
@@ -46,48 +57,76 @@ class Plugin(BasePlugin):
             except (json.JSONDecodeError, TypeError):
                 dict_obj = {"decoded": {"text": dict_obj}}
 
-        return self.strip_raw(dict_obj)
+        return cast(dict[str, Any], self.strip_raw(dict_obj))
 
-    def process(self, packet):
-        """Process and prepare packet data for relay.
+    def process(self, packet: Any) -> dict[str, Any]:
+        """
+        Prepare a Meshtastic packet for transport by normalizing it and encoding any binary payloads as base64 strings.
 
-        Args:
-            packet: Raw packet data to process
+        Parameters:
+            packet (Any): Raw packet data to normalize and prepare.
 
         Returns:
-            dict: Processed packet with base64-encoded binary payloads
-
-        Normalizes packet format and encodes binary payloads as base64
-        for JSON serialization and Matrix transmission.
+            dict[str, Any]: The normalized packet. If `decoded.payload` was bytes, it is replaced with a base64-encoded UTF-8 string.
         """
-        packet = self.normalize(packet)
+        result = self.normalize(packet)
 
-        if "decoded" in packet and "payload" in packet["decoded"]:
-            if isinstance(packet["decoded"]["payload"], bytes):
-                packet["decoded"]["payload"] = base64.b64encode(
-                    packet["decoded"]["payload"]
+        if "decoded" in result and "payload" in result["decoded"]:
+            if isinstance(result["decoded"]["payload"], bytes):
+                result["decoded"]["payload"] = base64.b64encode(
+                    result["decoded"]["payload"]
                 ).decode("utf-8")
 
-        return packet
+        return result
 
-    def get_matrix_commands(self):
-        """Get Matrix commands handled by this plugin.
+    def get_matrix_commands(self) -> list[str]:
+        """
+        Get the Matrix commands this plugin handles.
 
         Returns:
-            list: Empty list (this plugin handles all traffic, not specific commands)
+            list[str]: Empty list when the plugin handles all Matrix traffic instead of specific commands.
         """
         return []
 
-    def get_mesh_commands(self):
-        """Get mesh commands handled by this plugin.
+    def get_mesh_commands(self) -> list[str]:
+        """
+        Declare which Meshtastic/mesh commands the plugin handles.
 
         Returns:
-            list: Empty list (this plugin handles all traffic, not specific commands)
+            list[str]: An empty list indicating the plugin handles all mesh traffic rather than specific commands.
         """
         return []
+
+    def _iter_room_configs(self) -> list[dict[str, Any]]:
+        """
+        Return a normalized list of matrix room configuration dictionaries.
+
+        This reads the global `matrix_rooms` entry from the relay config, accepts either a dict or a list for backward compatibility, filters out any non-dict entries, and returns an empty list if the global config or `matrix_rooms` is absent or malformed.
+
+        Returns:
+            list[dict[str, Any]]: A list of room configuration dictionaries suitable for iteration.
+        """
+        # matrix_rooms live in the global relay config, not per-plugin config.
+        global_config = config
+        if global_config is None:
+            return []
+
+        matrix_rooms = global_config.get("matrix_rooms", [])
+        if isinstance(matrix_rooms, dict):
+            iterable_rooms = matrix_rooms.values()
+        elif isinstance(matrix_rooms, list):
+            iterable_rooms = matrix_rooms
+        else:
+            self.logger.debug(
+                "matrix_rooms expected list or dict, got %s",
+                type(matrix_rooms).__name__,
+            )
+            return []
+
+        return [room for room in iterable_rooms if isinstance(room, dict)]
 
     async def handle_meshtastic_message(
-        self, packet, formatted_message, longname, meshnet_name
+        self, packet: Any, formatted_message: str, longname: str, meshnet_name: str
     ) -> bool:
         """
         Relay a Meshtastic packet to the configured Matrix room for its channel.
@@ -103,32 +142,40 @@ class Plugin(BasePlugin):
         Returns:
             True if the packet was sent to a mapped Matrix room, False otherwise.
         """
+        # Keep parameter names for keyword-arg compatibility in tests and plugin API.
+        # Unused for routing in this plugin.
+        _ = (formatted_message, longname, meshnet_name)
         from mmrelay.matrix_utils import connect_matrix
 
-        packet = self.process(packet)
         matrix_client = await connect_matrix()
         if matrix_client is None:
             self.logger.error("Matrix client is None; skipping mesh relay to Matrix")
             return False
 
-        packet_type = packet["decoded"]["portnum"]
-        if "channel" in packet:
-            channel = packet["channel"]
-        else:
-            channel = 0
+        packet = self.process(packet)
+        decoded = packet.get("decoded", {})
+        packet_type = decoded.get("portnum")
+        if packet_type is None:
+            self.logger.error("Packet missing required 'decoded.portnum' field")
+            return False
+        channel = packet.get("channel", 0)
 
         channel_mapped = False
         target_room_id = None
-        if config is not None:
-            matrix_rooms = config.get("matrix_rooms", [])
-            for room_config in matrix_rooms:
-                if room_config["meshtastic_channel"] == channel:
-                    channel_mapped = True
-                    target_room_id = room_config["id"]
-                    break
+        for room_config in self._iter_room_configs():
+            if room_config.get("meshtastic_channel") == channel:
+                channel_mapped = True
+                target_room_id = room_config.get("id")
+                break
 
         if not channel_mapped:
             self.logger.debug(f"Skipping message from unmapped channel {channel}")
+            return False
+        if not target_room_id:
+            self.logger.error(
+                "Skipping message: no Matrix room id mapped for channel %s",
+                channel,
+            )
             return False
 
         await matrix_client.room_send(
@@ -144,7 +191,7 @@ class Plugin(BasePlugin):
 
         return True
 
-    def matches(self, event):
+    def matches(self, event: Any) -> bool:
         """
         Determine whether a Matrix event's message body contains the bridged-packet marker.
 
@@ -165,7 +212,12 @@ class Plugin(BasePlugin):
             return bool(match)
         return False
 
-    async def handle_room_message(self, room, event, full_message) -> bool:
+    async def handle_room_message(
+        self,
+        room: MatrixRoom,
+        event: RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote,
+        full_message: str,
+    ) -> bool:
         """
         Relay an embedded Meshtastic packet from a Matrix room message to the Meshtastic mesh.
 
@@ -182,19 +234,19 @@ class Plugin(BasePlugin):
         Returns:
             True if a packet was successfully sent to the mesh, False otherwise.
         """
-        # Use the event for matching instead of full_message
+        # Keep parameter name for keyword-arg compatibility in tests and plugin API.
+        _ = full_message
         if not self.matches(event):
             return False
 
         channel = None
-        if config is not None:
-            matrix_rooms = config.get("matrix_rooms", [])
-            for room_config in matrix_rooms:
-                if room_config["id"] == room.room_id:
-                    channel = room_config["meshtastic_channel"]
+        for room_config in self._iter_room_configs():
+            if room_config.get("id") == room.room_id:
+                channel = room_config.get("meshtastic_channel")
+                break
 
         if channel is None:
-            self.logger.debug(f"Skipping message from unmapped channel {channel}")
+            self.logger.debug(f"Skipping message from unmapped room {room.room_id}")
             return False
 
         packet_json = event.source["content"].get("meshtastic_packet")
@@ -211,16 +263,38 @@ class Plugin(BasePlugin):
         from mmrelay.meshtastic_utils import connect_meshtastic
 
         meshtastic_client = await asyncio.to_thread(connect_meshtastic)
-        meshPacket = mesh_pb2.MeshPacket()
-        meshPacket.channel = channel
-        meshPacket.decoded.payload = base64.b64decode(packet["decoded"]["payload"])
-        meshPacket.decoded.portnum = packet["decoded"]["portnum"]
-        meshPacket.decoded.want_response = False
-        meshPacket.id = meshtastic_client._generatePacketId()
+        if meshtastic_client is None:
+            self.logger.error("Meshtastic client unavailable")
+            return False
+
+        try:
+            decoded = packet.get("decoded", {})
+            payload_b64 = decoded.get("payload")
+            portnum = decoded.get("portnum")
+            to_id = packet.get("toId")
+            if not payload_b64 or portnum is None or to_id is None:
+                self.logger.error("Packet missing required fields for relay")
+                return False
+
+            meshPacket = mesh_pb2.MeshPacket()
+            meshPacket.channel = channel
+            meshPacket.decoded.payload = base64.b64decode(payload_b64)
+            meshPacket.decoded.portnum = portnum
+            meshPacket.decoded.want_response = False
+            meshPacket.id = 0
+        except (TypeError, ValueError, binascii.Error):
+            self.logger.exception("Error reconstructing packet")
+            return False
 
         self.logger.debug("Relaying packet to Radio")
 
-        meshtastic_client._sendPacket(
-            meshPacket=meshPacket, destinationId=packet["toId"]
-        )
+        # _sendPacket is required for relaying raw MeshPacket payloads.
+        # Note: this is a private API; monitor upstream Meshtastic changes.
+        try:
+            meshtastic_client._sendPacket(meshPacket=meshPacket, destinationId=to_id)
+        except AttributeError:
+            self.logger.exception(
+                "_sendPacket method not available; Meshtastic API may have changed"
+            )
+            return False
         return True

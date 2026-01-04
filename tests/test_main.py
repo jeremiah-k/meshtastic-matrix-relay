@@ -352,6 +352,71 @@ class TestMain(unittest.TestCase):
             asyncio.run(main(self.mock_config))
         self.assertIn("Matrix connection failed", str(context.exception))
 
+    @patch("mmrelay.main.initialize_database")
+    @patch("mmrelay.main.load_plugins")
+    @patch("mmrelay.main.start_message_queue")
+    @patch("mmrelay.main.connect_meshtastic")
+    @patch("mmrelay.main.connect_matrix", new_callable=AsyncMock)
+    @patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock)
+    @patch("mmrelay.main.stop_message_queue")
+    def test_main_closes_meshtastic_client_on_shutdown(
+        self,
+        _mock_stop_queue,
+        _mock_join_room,
+        mock_connect_matrix,
+        mock_connect_meshtastic,
+        _mock_start_queue,
+        _mock_load_plugins,
+        _mock_init_db,
+    ):
+        """Shutdown should close the Meshtastic client when present."""
+
+        class ImmediateEvent:
+            def __init__(self) -> None:
+                """
+                Initialize the instance and mark it as set.
+
+                Sets the internal flag `_set` to True to indicate the object has been initialized.
+                """
+                self._set = True
+
+            def is_set(self) -> bool:
+                """
+                Indicates whether the internal set flag is enabled.
+
+                Returns:
+                    True if the flag is set, False otherwise.
+                """
+                return self._set
+
+            def set(self) -> None:
+                """
+                Mark the event as set, allowing any waiters to proceed.
+
+                When called, the event's state becomes set; subsequent checks or waits observing the event will see it as set until cleared.
+                """
+                self._set = True
+
+            async def wait(self) -> None:
+                """
+                A no-op asynchronous wait that completes immediately.
+
+                This coroutine does not block; awaiting it returns without delay or side effects.
+                """
+                return None
+
+        mock_meshtastic_client = MagicMock()
+        mock_connect_meshtastic.return_value = mock_meshtastic_client
+
+        mock_matrix_client = MagicMock()
+        mock_matrix_client.close = AsyncMock()
+        mock_connect_matrix.return_value = mock_matrix_client
+
+        with patch("mmrelay.main.asyncio.Event", return_value=ImmediateEvent()):
+            asyncio.run(main(self.mock_config))
+
+        mock_meshtastic_client.close.assert_called_once()
+
 
 class TestPrintBanner(unittest.TestCase):
     """Test cases for banner printing functionality."""

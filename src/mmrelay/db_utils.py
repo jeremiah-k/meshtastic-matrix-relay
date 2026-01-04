@@ -3,7 +3,7 @@ import json
 import os
 import sqlite3
 import threading
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Tuple, cast
 
 from mmrelay.config import get_data_dir
 from mmrelay.db_runtime import DatabaseManager
@@ -32,7 +32,7 @@ DEFAULT_EXTRA_PRAGMAS: Dict[str, Any] = {
 logger = get_logger(name="db_utils")
 
 
-def clear_db_path_cache():
+def clear_db_path_cache() -> None:
     """Clear the cached database path to force re-resolution on next call.
 
     This is useful for testing or if the application supports runtime
@@ -45,14 +45,14 @@ def clear_db_path_cache():
 
 
 # Get the database path
-def get_db_path():
+def get_db_path() -> str:
     """
-    Resolve and return the absolute filesystem path to the SQLite database.
+    Resolve the absolute filesystem path to the SQLite database, preferring configured values and falling back to the application data directory.
 
-    Prefers a user-configured path (config["database"]["path"]), falls back to the legacy config["db"]["path"], and otherwise uses the default file meshtastic.sqlite in the application data directory returned by get_data_dir(). The result is cached and the cache is invalidated when relevant config sections change. Attempts to create parent directories for configured or default paths; directory creation failures are logged as warnings but are not raised here.
+    Selects the path in this precedence: `config["database"]["path"]` (preferred), `config["db"]["path"]` (legacy), then `<data_dir>/meshtastic.sqlite`. The chosen path is cached and the cache is invalidated when relevant database configuration changes. Attempts to create parent or data directories and logs warnings on failure but does not raise.
 
     Returns:
-        str: The filesystem path to the SQLite database.
+        str: Filesystem path to the SQLite database.
     """
     global config, _cached_db_path, _db_path_logged, _cached_config_hash
 
@@ -139,20 +139,20 @@ def get_db_path():
 
 def _close_manager_safely(manager: DatabaseManager | None) -> None:
     """
-    Safely close a DatabaseManager instance.
+    Close the given DatabaseManager if provided, suppressing any exceptions raised during close.
 
-    Parameters:
-        manager: The manager to close, or None.
+    Closes the manager when non-None; any exception raised by the manager's close() is ignored.
     """
     if manager:
         with contextlib.suppress(Exception):
             manager.close()
 
 
-def _reset_db_manager():
+def _reset_db_manager() -> None:
     """
-    Reset the database manager instance.
-    Used for testing and configuration changes.
+    Reset the cached global DatabaseManager so a new instance will be created on next access.
+
+    If a manager exists, it is closed while holding the manager lock to avoid race conditions. Intended for testing and when configuration changes require recreating the manager.
     """
     global _db_manager, _db_manager_signature
     manager_to_close = None
@@ -167,7 +167,7 @@ def _reset_db_manager():
             _close_manager_safely(manager_to_close)
 
 
-def _parse_bool(value, default):
+def _parse_bool(value: Any, default: bool) -> bool:
     """
     Parse a value into a boolean using common representations.
 
@@ -189,7 +189,7 @@ def _parse_bool(value, default):
     return default
 
 
-def _parse_int(value, default):
+def _parse_int(value: Any, default: int) -> int:
     """
     Parse a value as an integer and return a fallback if parsing fails.
 
@@ -307,7 +307,7 @@ def _get_db_manager() -> DatabaseManager:
 
 
 # Initialize SQLite database
-def initialize_database():
+def initialize_database() -> None:
     """
     Initializes the SQLite database schema for the relay application.
 
@@ -364,7 +364,7 @@ def initialize_database():
         raise
 
 
-def store_plugin_data(plugin_name, meshtastic_id, data):
+def store_plugin_data(plugin_name: str, meshtastic_id: str, data: Any) -> None:
     """
     Store or update JSON-serialized plugin data for a specific plugin and Meshtastic ID in the database.
 
@@ -409,9 +409,8 @@ def store_plugin_data(plugin_name, meshtastic_id, data):
         )
 
 
-def delete_plugin_data(plugin_name, meshtastic_id):
-    """
-    Deletes the plugin data entry for the specified plugin and Meshtastic ID from the database.
+def delete_plugin_data(plugin_name: str, meshtastic_id: str) -> None:
+    """Remove a plugin data entry for a Meshtastic node from the database.
 
     Parameters:
         plugin_name (str): The name of the plugin whose data should be deleted.
@@ -441,7 +440,7 @@ def delete_plugin_data(plugin_name, meshtastic_id):
         )
 
 
-def get_plugin_data_for_node(plugin_name, meshtastic_id):
+def get_plugin_data_for_node(plugin_name: str, meshtastic_id: int | str) -> list[Any]:
     """
     Retrieve JSON-encoded plugin data for a specific Meshtastic node.
 
@@ -454,21 +453,18 @@ def get_plugin_data_for_node(plugin_name, meshtastic_id):
     """
     manager = _get_db_manager()
 
-    def _fetch(cursor: sqlite3.Cursor):
-        """Retrieve the first `data` column for a plugin/node pair using the provided DB cursor.
-
-        Args:
-            cursor: An open sqlite3.Cursor used to execute the query.
+    def _fetch(cursor: sqlite3.Cursor) -> tuple[Any, ...] | None:
+        """
+        Retrieve the single-row `data` column for the current plugin/node pair using the provided database cursor.
 
         Returns:
-            A single row (sequence) containing the `data` column for the
-            matching plugin and Meshtastic ID, or `None` if no matching row exists.
+            `tuple[Any, ...]` containing the `data` column for the matched row, or `None` if no matching row exists.
         """
         cursor.execute(
             "SELECT data FROM plugin_data WHERE plugin_name=? AND meshtastic_id=?",
             (plugin_name, meshtastic_id),
         )
-        return cursor.fetchone()
+        return cast(tuple[Any, ...] | None, cursor.fetchone())
 
     try:
         result = manager.run_sync(_fetch)
@@ -481,7 +477,7 @@ def get_plugin_data_for_node(plugin_name, meshtastic_id):
         return []
 
     try:
-        return json.loads(result[0] if result else "[]")
+        return cast(list[Any], json.loads(result[0] if result else "[]"))
     except (json.JSONDecodeError, TypeError):
         logger.exception(
             "Failed to decode JSON data for plugin %s, node %s",
@@ -491,7 +487,7 @@ def get_plugin_data_for_node(plugin_name, meshtastic_id):
         return []
 
 
-def get_plugin_data(plugin_name):
+def get_plugin_data(plugin_name: str) -> list[tuple[Any, ...]]:
     """
     Retrieve all stored plugin data rows for a given plugin.
 
@@ -503,15 +499,17 @@ def get_plugin_data(plugin_name):
     """
     manager = _get_db_manager()
 
-    def _fetch_all(cursor: sqlite3.Cursor):
-        """Fetch all data rows for a plugin using the provided DB cursor.
+    def _fetch_all(cursor: sqlite3.Cursor) -> list[tuple[Any, ...]]:
+        """
+        Fetch all `data` values from the `plugin_data` table for the current `plugin_name` and return them as rows.
 
-        Args:
-            cursor: An open sqlite3.Cursor used to execute the query.
+        The function executes "SELECT data FROM plugin_data WHERE plugin_name=?" using a `plugin_name` value captured from the enclosing scope and returns the query results.
+
+        Parameters:
+            cursor (sqlite3.Cursor): Cursor used to execute the SELECT query.
 
         Returns:
-            List of rows, where each row is a tuple containing the JSON string
-            from the `data` column.
+            list[tuple[Any, ...]]: List of rows; each row is a single-item tuple containing the stored `data` value.
         """
         cursor.execute(
             "SELECT data FROM plugin_data WHERE plugin_name=?", (plugin_name,)
@@ -526,36 +524,36 @@ def get_plugin_data(plugin_name):
         )
         return []
 
-    return result
+    return cast(list[tuple[Any, ...]], result)
 
 
-def get_longname(meshtastic_id):
+def get_longname(meshtastic_id: str) -> str | None:
     """
-    Retrieve the long name associated with a given Meshtastic ID.
+    Return the long name for the given Meshtastic node ID.
 
     Parameters:
-        meshtastic_id (str): The Meshtastic node ID to look up.
+        meshtastic_id (str): Meshtastic node identifier to look up.
 
     Returns:
-        str or None: The long name if found, or None if not found or on database error.
+        str | None: The stored long name if present, `None` if not found or on database error.
     """
     manager = _get_db_manager()
 
-    def _fetch(cursor: sqlite3.Cursor):
+    def _fetch(cursor: sqlite3.Cursor) -> tuple[Any, ...] | None:
         """
-        Retrieve the longname row for the current Meshtastic ID using the provided DB cursor.
+        Fetches the first row from the given cursor's result set.
 
         Parameters:
-            cursor (sqlite3.Cursor): Cursor used to execute the SELECT query.
+            cursor (sqlite3.Cursor): A cursor whose query has already been executed and is positioned to read results.
 
         Returns:
-            sqlite3.Row or tuple or None: The first row containing the `longname` if found, `None` otherwise.
+            tuple[Any, ...] | None: The first row as a tuple, or `None` if no row is available.
         """
         cursor.execute(
             "SELECT longname FROM longnames WHERE meshtastic_id=?",
             (meshtastic_id,),
         )
-        return cursor.fetchone()
+        return cast(tuple[Any, ...] | None, cursor.fetchone())
 
     try:
         result = manager.run_sync(_fetch)
@@ -565,16 +563,15 @@ def get_longname(meshtastic_id):
         return None
 
 
-def save_longname(meshtastic_id, longname):
+def save_longname(meshtastic_id: str, longname: str) -> None:
     """
-    Persist or update the long display name for a Meshtastic node.
+    Store or update the long display name for a Meshtastic node.
 
-    Writes or replaces the row for the given meshtastic_id in the longnames table and commits the change.
-    If a database error occurs it is logged and swallowed (no exception is raised).
+    Writes or replaces the row for `meshtastic_id` in the longnames table. Database errors are logged and suppressed (no exception is raised).
 
     Parameters:
-        meshtastic_id: Unique identifier for the Meshtastic node (string-like).
-        longname: The full/display name to store for the node (string).
+        meshtastic_id (str): Unique identifier of the Meshtastic node.
+        longname (str): Full display name to store for the node.
     """
     manager = _get_db_manager()
 
@@ -597,14 +594,14 @@ def save_longname(meshtastic_id, longname):
         logger.exception("Database error saving longname for %s", meshtastic_id)
 
 
-def update_longnames(nodes):
+def update_longnames(nodes: dict[str, Any]) -> None:
     """
-    Update stored long names for nodes that contain user information.
+    Persist long names from node user entries into the database.
 
-    For each node that has a "user" dictionary, persisting the user's `longName` (or "N/A" if missing) keyed by the user's `id` via save_longname.
+    For each node in `nodes` that contains a `"user"` mapping, save the user's `"longName"` (use `"N/A"` if missing) under the user's `"id"` by calling `save_longname`.
 
     Parameters:
-        nodes (Mapping): Mapping of node identifiers to node dictionaries; each node dictionary may contain a "user" dict with an "id" key and an optional "longName" key.
+        nodes (dict[str, Any]): Mapping of node identifiers to node dictionaries; each node dictionary may include a `"user"` dict with an `"id"` key and an optional `"longName"` key.
     """
     if nodes:
         for node in nodes.values():
@@ -615,33 +612,33 @@ def update_longnames(nodes):
                 save_longname(meshtastic_id, longname)
 
 
-def get_shortname(meshtastic_id):
+def get_shortname(meshtastic_id: str) -> str | None:
     """
-    Retrieve the short name associated with a given Meshtastic ID.
+    Retrieve the short display name for a Meshtastic node.
 
     Parameters:
-        meshtastic_id (str): The Meshtastic node ID to look up.
+        meshtastic_id (str): Meshtastic node identifier used to look up the short name.
 
     Returns:
-        str or None: The short name if found, or None if not found or on database error.
+        str | None: The shortname string if present in the database, `None` if not found or on database error.
     """
     manager = _get_db_manager()
 
-    def _fetch(cursor: sqlite3.Cursor):
+    def _fetch(cursor: sqlite3.Cursor) -> tuple[Any, ...] | None:
         """
-        Retrieve the shortname row for the current Meshtastic ID using the provided DB cursor.
+        Fetch the first shortname row for the active Meshtastic ID using the provided database cursor.
 
         Parameters:
-            cursor (sqlite3.Cursor): Cursor used to execute the SELECT query.
+            cursor (sqlite3.Cursor): Cursor on which the SELECT query is executed; the function expects a `meshtastic_id` value to be available from the surrounding scope.
 
         Returns:
-            sqlite3.Row or tuple or None: The first row containing the `shortname` if found, `None` otherwise.
+            tuple[Any, ...] | None: The first row returned by the query (typically a single-item tuple containing the `shortname`), or `None` if no row is found.
         """
         cursor.execute(
             "SELECT shortname FROM shortnames WHERE meshtastic_id=?",
             (meshtastic_id,),
         )
-        return cursor.fetchone()
+        return cast(tuple[Any, ...] | None, cursor.fetchone())
 
     try:
         result = manager.run_sync(_fetch)
@@ -651,7 +648,7 @@ def get_shortname(meshtastic_id):
         return None
 
 
-def save_shortname(meshtastic_id, shortname):
+def save_shortname(meshtastic_id: str, shortname: str) -> None:
     """
     Insert or update the short name for a Meshtastic node.
 
@@ -682,7 +679,7 @@ def save_shortname(meshtastic_id, shortname):
         logger.exception("Database error saving shortname for %s", meshtastic_id)
 
 
-def update_shortnames(nodes):
+def update_shortnames(nodes: dict[str, Any]) -> None:
     """
     Update persisted short names for nodes that include a user object.
 
@@ -704,22 +701,22 @@ def update_shortnames(nodes):
 
 def _store_message_map_core(
     cursor: sqlite3.Cursor,
-    meshtastic_id,
-    matrix_event_id,
-    matrix_room_id,
-    meshtastic_text,
-    meshtastic_meshnet=None,
+    meshtastic_id: int | str,
+    matrix_event_id: str,
+    matrix_room_id: str,
+    meshtastic_text: str,
+    meshtastic_meshnet: str | None = None,
 ) -> None:
     """
-    Insert or replace a message mapping between a Meshtastic message and a Matrix event.
+    Insert or update a mapping between a Meshtastic message (or node) and a Matrix event.
 
     Parameters:
-        cursor (sqlite3.Cursor): Active database cursor to execute the statement.
-        meshtastic_id: Identifier of the Meshtastic message or node.
-        matrix_event_id: The Matrix event ID to map to.
-        matrix_room_id: The Matrix room ID where the Matrix event resides.
-        meshtastic_text: Text content of the Meshtastic message.
-        meshtastic_meshnet (optional): Meshnet flag or value associated with the Meshtastic message; may be None.
+        cursor (sqlite3.Cursor): Active database cursor used to execute the statement.
+        meshtastic_id (int | str): Meshtastic message or node identifier.
+        matrix_event_id (str): Matrix event ID to map to.
+        matrix_room_id (str): Matrix room ID where the Matrix event resides.
+        meshtastic_text (str): Text content of the Meshtastic message.
+        meshtastic_meshnet (str | None): Optional meshnet flag or value associated with the Meshtastic message.
     """
     cursor.execute(
         "INSERT INTO message_map (meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) VALUES (?, ?, ?, ?, ?) "
@@ -739,12 +736,12 @@ def _store_message_map_core(
 
 
 def store_message_map(
-    meshtastic_id,
-    matrix_event_id,
-    matrix_room_id,
-    meshtastic_text,
-    meshtastic_meshnet=None,
-):
+    meshtastic_id: int | str,
+    matrix_event_id: str,
+    matrix_room_id: str,
+    meshtastic_text: str,
+    meshtastic_meshnet: str | None = None,
+) -> None:
     """
     Persist a mapping between a Meshtastic message and a Matrix event.
 
@@ -781,7 +778,9 @@ def store_message_map(
         logger.exception("Database error storing message map for %s", matrix_event_id)
 
 
-def get_message_map_by_meshtastic_id(meshtastic_id):
+def get_message_map_by_meshtastic_id(
+    meshtastic_id: int | str,
+) -> tuple[str, str, str, str | None] | None:
     """
     Retrieve the mapping between a Meshtastic message ID and its corresponding Matrix event.
 
@@ -790,21 +789,18 @@ def get_message_map_by_meshtastic_id(meshtastic_id):
     """
     manager = _get_db_manager()
 
-    def _fetch(cursor: sqlite3.Cursor):
+    def _fetch(cursor: sqlite3.Cursor) -> tuple[Any, ...] | None:
         """
-        Fetches the message_map row for a Meshtastic message ID using the provided database cursor.
-
-        Parameters:
-            cursor (sqlite3.Cursor): Cursor on which the SELECT query will be executed.
+        Fetch a single row from message_map for the current Meshtastic ID and return its fields.
 
         Returns:
-            tuple: `(matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet)` if a row is found, `None` otherwise.
+            tuple[Any, ...] | None: (matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) if a row is found, `None` otherwise.
         """
         cursor.execute(
             "SELECT matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet FROM message_map WHERE meshtastic_id=?",
             (meshtastic_id,),
         )
-        return cursor.fetchone()
+        return cast(tuple[Any, ...] | None, cursor.fetchone())
 
     try:
         result = manager.run_sync(_fetch)
@@ -829,30 +825,35 @@ def get_message_map_by_meshtastic_id(meshtastic_id):
         return None
 
 
-def get_message_map_by_matrix_event_id(matrix_event_id):
+def get_message_map_by_matrix_event_id(
+    matrix_event_id: str,
+) -> tuple[int | str, str, str, str | None] | None:
     """
-    Retrieve the message mapping entry for a given Matrix event ID.
+    Retrieve the mapping row for a given Matrix event ID.
+
+    Parameters:
+        matrix_event_id (str): Matrix event ID to look up.
 
     Returns:
-        tuple or None: A tuple (meshtastic_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) if found, or None if not found or on error.
+        tuple[int | str, str, str, str | None] | None: A tuple (meshtastic_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) if a matching row exists, `None` otherwise.
     """
     manager = _get_db_manager()
 
-    def _fetch(cursor: sqlite3.Cursor):
+    def _fetch(cursor: sqlite3.Cursor) -> tuple[Any, ...] | None:
         """
-        Retrieve the message_map row for a Matrix event id using the provided SQLite cursor.
+        Fetch a single row from message_map for the Matrix event ID taken from the enclosing scope.
 
         Parameters:
-            cursor (sqlite3.Cursor): Cursor used to execute the query; the function reads the value of `matrix_event_id` from the surrounding scope.
+            cursor (sqlite3.Cursor): SQLite cursor used to execute the query.
 
         Returns:
-            tuple|None: A tuple `(meshtastic_id, matrix_room_id, meshtastic_text, meshtastic_meshnet)` if a matching row is found, `None` otherwise.
+            tuple[Any, ...] | None: Tuple (meshtastic_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) if a matching row is found, `None` otherwise.
         """
         cursor.execute(
             "SELECT meshtastic_id, matrix_room_id, meshtastic_text, meshtastic_meshnet FROM message_map WHERE matrix_event_id=?",
             (matrix_event_id,),
         )
-        return cursor.fetchone()
+        return cast(tuple[Any, ...] | None, cursor.fetchone())
 
     try:
         result = manager.run_sync(_fetch)
@@ -877,11 +878,9 @@ def get_message_map_by_matrix_event_id(matrix_event_id):
         return None
 
 
-def wipe_message_map():
+def wipe_message_map() -> None:
     """
-    Wipes all entries from the message_map table.
-    Useful when database.msg_map.wipe_on_restart or db.msg_map.wipe_on_restart is True,
-    ensuring no stale data remains.
+    Delete all rows from the message_map table.
     """
     manager = _get_db_manager()
 
@@ -903,14 +902,10 @@ def wipe_message_map():
 
 def _prune_message_map_core(cursor: sqlite3.Cursor, msgs_to_keep: int) -> int:
     """
-    Prune the message_map table to keep only the most recent msgs_to_keep entries.
-
-    Parameters:
-        cursor (sqlite3.Cursor): Cursor used to execute the database statements.
-        msgs_to_keep (int): Number of most-recent rows to retain in message_map.
+    Prune the message_map table to retain only the most recent msgs_to_keep rows.
 
     Returns:
-        int: Number of rows deleted.
+        int: Number of rows deleted (0 if no rows were removed).
     """
     cursor.execute("SELECT COUNT(*) FROM message_map")
     row = cursor.fetchone()
@@ -926,7 +921,7 @@ def _prune_message_map_core(cursor: sqlite3.Cursor, msgs_to_keep: int) -> int:
     return 0
 
 
-def prune_message_map(msgs_to_keep):
+def prune_message_map(msgs_to_keep: int) -> None:
     """
     Prune the message_map table so only the most recent msgs_to_keep records remain.
 
@@ -951,23 +946,21 @@ def prune_message_map(msgs_to_keep):
 
 
 async def async_store_message_map(
-    meshtastic_id,
-    matrix_event_id,
-    matrix_room_id,
-    meshtastic_text,
-    meshtastic_meshnet=None,
-):
+    meshtastic_id: int | str,
+    matrix_event_id: str,
+    matrix_room_id: str,
+    meshtastic_text: str,
+    meshtastic_meshnet: str | None = None,
+) -> None:
     """
-    Store a mapping from a Meshtastic message to a Matrix event in the database asynchronously.
-
-    Inserts or updates the message_map row for the provided Meshtastic ID and Matrix event identifiers along with the message text and optional meshnet flag.
+    Store or update a mapping between a Meshtastic message and a Matrix event in the database.
 
     Parameters:
-        meshtastic_id (str): Meshtastic message identifier.
+        meshtastic_id (int | str): Meshtastic message identifier.
         matrix_event_id (str): Matrix event ID to map to.
         matrix_room_id (str): Matrix room ID where the Matrix event was posted.
         meshtastic_text (str): Text content of the Meshtastic message.
-        meshtastic_meshnet (bool | None): Optional flag indicating whether the message originated from Meshnet; may be None.
+        meshtastic_meshnet (str | None): Optional meshnet identifier associated with the message.
     """
     manager = _get_db_manager()
 
@@ -995,14 +988,12 @@ async def async_store_message_map(
         logger.exception("Database error storing message map for %s", matrix_event_id)
 
 
-async def async_prune_message_map(msgs_to_keep):
+async def async_prune_message_map(msgs_to_keep: int) -> None:
     """
-    Prune the message_map table to retain only the most recent `msgs_to_keep` entries asynchronously.
-
-    Executes the prune operation in a background database task and logs if rows were removed.
+    Prune the message_map table to keep only the most recent entries.
 
     Parameters:
-        msgs_to_keep (int): Number of most recent message_map entries to keep; older entries will be deleted.
+        msgs_to_keep (int): Number of most recent message_map rows to retain; older rows will be deleted.
     """
     manager = _get_db_manager()
 

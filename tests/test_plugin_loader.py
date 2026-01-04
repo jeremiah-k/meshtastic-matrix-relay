@@ -11,12 +11,14 @@ Tests the plugin discovery, loading, and management functionality including:
 - Plugin priority sorting and startup
 """
 
+import importlib
 import os
 import shutil
 import subprocess  # nosec B404 - Used for controlled test environment operations
 import sys
 import tempfile
 import unittest
+from types import ModuleType
 from unittest.mock import MagicMock, call, patch
 
 # Add src to path for imports
@@ -31,6 +33,7 @@ from mmrelay.plugin_loader import (
     _install_requirements_for_repo,
     _is_repo_url_allowed,
     _run,
+    _temp_sys_path,
     _update_existing_repo_to_branch_or_tag,
     _validate_clone_inputs,
     clear_plugin_jobs,
@@ -124,6 +127,64 @@ class BaseGitTest(unittest.TestCase):
         """
         super().tearDown()
         shutil.rmtree(self.temp_plugins_dir, ignore_errors=True)
+
+
+def test_plugin_loader_schedule_import_error():
+    """Reload plugin_loader with schedule unavailable to exercise import fallback."""
+    import mmrelay.plugin_loader as pl_module
+
+    original_schedule = sys.modules.get("schedule")
+    original_import = __import__
+
+    def raising_import(name, globals=None, locals=None, fromlist=(), level=0):
+        """
+        Simulate a missing 'schedule' module by raising ImportError for that name, otherwise delegate to the original import.
+
+        Returns:
+                The result of importing `name` using the original import function.
+
+        Raises:
+                ImportError: If `name` is "schedule".
+        """
+        if name == "schedule":
+            raise ImportError("missing")
+        return original_import(name, globals, locals, fromlist, level)
+
+    with patch("builtins.__import__", side_effect=raising_import):
+        sys.modules.pop("schedule", None)
+        importlib.reload(pl_module)
+        assert pl_module.schedule is None
+
+    if original_schedule is not None:
+        sys.modules["schedule"] = original_schedule
+    else:
+        sys.modules.pop("schedule", None)
+    importlib.reload(pl_module)
+
+
+def test_temp_sys_path_handles_missing_remove():
+    """_temp_sys_path should swallow ValueError when path removal fails."""
+    original_path = sys.path
+
+    class PathList(list):
+        def remove(self, value):  # noqa: A003 - intentional shadow for list.remove
+            """
+            Always raises a ValueError indicating the requested item is missing.
+
+            Parameters:
+                value: The item attempted to be removed (ignored).
+
+            Raises:
+                ValueError: Always raised with the message "missing".
+            """
+            raise ValueError("missing")
+
+    sys.path = PathList(original_path)
+    try:
+        with _temp_sys_path("/tmp/fake-path"):
+            pass
+    finally:
+        sys.path = original_path
 
 
 class TestPluginLoader(BaseGitTest):
@@ -352,6 +413,48 @@ class Plugin:
         self.assertIn(user_site, added_dirs)
         self.assertNotIn(self.custom_dir, sys.path)
 
+    def test_load_plugins_from_directory_auto_installs_missing_dependency(self):
+        """Auto-install missing dependencies and retry plugin load."""
+        for var in ("PIPX_HOME", "PIPX_LOCAL_VENVS"):
+            os.environ.pop(var, None)
+
+        plugin_content = """
+import missingdep
+
+
+class Plugin:
+    def __init__(self):
+        self.plugin_name = "auto_plugin"
+        self.priority = 1
+
+    def start(self):
+        pass
+"""
+        plugin_file = os.path.join(self.custom_dir, "auto_plugin.py")
+        with open(plugin_file, "w", encoding="utf-8") as handle:
+            handle.write(plugin_content)
+
+        def fake_run(_cmd, *_args, **_kwargs):  # nosec B603
+            """
+            Simulate a successful subprocess call and inject a dummy module named "missingdep" into sys.modules.
+
+            This test helper inserts a ModuleType("missingdep") into sys.modules as a side effect and returns a subprocess.CompletedProcess indicating success.
+
+            Returns:
+                subprocess.CompletedProcess: CompletedProcess with `args` set to the provided command and `returncode` 0.
+            """
+            sys.modules["missingdep"] = ModuleType("missingdep")
+            return subprocess.CompletedProcess(args=_cmd, returncode=0)
+
+        try:
+            with patch("mmrelay.plugin_loader._run", side_effect=fake_run):
+                plugins = load_plugins_from_directory(self.custom_dir)
+        finally:
+            sys.modules.pop("missingdep", None)
+
+        self.assertEqual(len(plugins), 1)
+        self.assertEqual(plugins[0].plugin_name, "auto_plugin")
+
     def test_load_plugins_from_directory_syntax_error(self):
         """
         Verify that loading plugins from a directory containing a Python file with a syntax error returns an empty list without raising exceptions.
@@ -371,6 +474,153 @@ class Plugin:
 
         plugins = load_plugins_from_directory(self.custom_dir)
         self.assertEqual(plugins, [])
+
+    def test_load_plugins_community_missing_repository_logs_errors(self):
+        """Missing repository URL should log errors in community plugin processing."""
+        config = {
+            "plugins": {},
+            "community-plugins": {"no_repo": {"active": True}},
+        }
+
+        with (
+            patch("mmrelay.plugin_loader.get_custom_plugin_dirs", return_value=[]),
+            patch("mmrelay.plugin_loader.get_community_plugin_dirs", return_value=[]),
+            patch("mmrelay.plugin_loader.start_global_scheduler"),
+            patch("mmrelay.plugin_loader.logger") as mock_logger,
+        ):
+            pl.plugins_loaded = False
+            pl.sorted_active_plugins = []
+            load_plugins(config)
+
+        mock_logger.error.assert_any_call(
+            "Repository URL not specified for a community plugin"
+        )
+        mock_logger.error.assert_any_call(
+            "Please specify the repository URL in config.yaml"
+        )
+        mock_logger.error.assert_any_call(
+            "Repository URL not specified for community plugin: %s",
+            "no_repo",
+        )
+
+    def test_load_plugins_community_invalid_repo_url(self):
+        """Invalid repository URLs should be rejected in community loading."""
+        config = {
+            "plugins": {},
+            "community-plugins": {
+                "bad_repo": {"active": True, "repository": "bad-url"}
+            },
+        }
+
+        with (
+            patch("mmrelay.plugin_loader.get_custom_plugin_dirs", return_value=[]),
+            patch("mmrelay.plugin_loader.get_community_plugin_dirs", return_value=[]),
+            patch("mmrelay.plugin_loader._get_repo_name_from_url", return_value=None),
+            patch("mmrelay.plugin_loader.start_global_scheduler"),
+            patch("mmrelay.plugin_loader.logger") as mock_logger,
+        ):
+            pl.plugins_loaded = False
+            pl.sorted_active_plugins = []
+            load_plugins(config)
+
+        mock_logger.error.assert_any_call(
+            "Invalid repository URL for community plugin: %s",
+            pl._redact_url("bad-url"),
+        )
+
+    def test_load_plugins_community_found_and_missing(self):
+        """Load community plugins when present and warn when missing."""
+        config = {
+            "plugins": {},
+            "community-plugins": {
+                "found_plugin": {
+                    "active": True,
+                    "repository": "https://example.com/found_repo.git",
+                },
+                "missing_plugin": {
+                    "active": True,
+                    "repository": "https://example.com/missing_repo.git",
+                },
+            },
+        }
+        found_path = os.path.join(self.community_dir, "found_repo")
+
+        def fake_validate(repo_url, ref):
+            """
+            Create a ValidationResult for the given repository URL and ref, marking it as found and attaching an inferred repository name.
+
+            Parameters:
+                repo_url (str): The repository URL being validated.
+                ref (dict): A mapping containing ref information; expected keys are `"type"` and `"value"`.
+
+            Returns:
+                pl.ValidationResult: A ValidationResult with `success=True`, the original `repo_url`, the ref `type` and `value` extracted from `ref`, and a `repo_name` set to `"found_repo"` if `"found_repo"` is a substring of `repo_url`, otherwise `"missing_repo"`.
+            """
+            repo_name = "found_repo" if "found_repo" in repo_url else "missing_repo"
+            return pl.ValidationResult(
+                True,
+                repo_url,
+                ref.get("type"),
+                ref.get("value"),
+                repo_name,
+            )
+
+        def fake_repo_name(repo_url):
+            """
+            Derives a simplified repository identifier from a repository URL.
+
+            Parameters:
+                repo_url (str): The repository URL or path to evaluate.
+
+            Returns:
+                repo_name (str): `"found_repo"` if the substring `"found_repo"` appears in `repo_url`, otherwise `"missing_repo"`.
+            """
+            return "found_repo" if "found_repo" in repo_url else "missing_repo"
+
+        def fake_exists(path):
+            """
+            Determine whether the provided path equals the preconfigured `found_path` value.
+
+            Parameters:
+                path (str): Filesystem path to check.
+
+            Returns:
+                bool: `True` if `path` is equal to the outer-scope `found_path`, `False` otherwise.
+            """
+            return path == found_path
+
+        with (
+            patch("mmrelay.plugin_loader.get_custom_plugin_dirs", return_value=[]),
+            patch(
+                "mmrelay.plugin_loader.get_community_plugin_dirs",
+                return_value=[self.community_dir],
+            ),
+            patch(
+                "mmrelay.plugin_loader._validate_clone_inputs",
+                side_effect=fake_validate,
+            ),
+            patch("mmrelay.plugin_loader.clone_or_update_repo", return_value=True),
+            patch("mmrelay.plugin_loader._install_requirements_for_repo"),
+            patch(
+                "mmrelay.plugin_loader._get_repo_name_from_url",
+                side_effect=fake_repo_name,
+            ),
+            patch("mmrelay.plugin_loader.os.path.exists", side_effect=fake_exists),
+            patch(
+                "mmrelay.plugin_loader.load_plugins_from_directory",
+                return_value=[MockPlugin("community_plugin", priority=1)],
+            ) as mock_load,
+            patch("mmrelay.plugin_loader.start_global_scheduler"),
+            patch("mmrelay.plugin_loader.logger") as mock_logger,
+        ):
+            pl.plugins_loaded = False
+            pl.sorted_active_plugins = []
+            load_plugins(config)
+
+        mock_load.assert_called_once_with(found_path, recursive=True)
+        mock_logger.warning.assert_any_call(
+            "Community plugin 'missing_plugin' not found in any of the plugin directories"
+        )
 
     @patch("mmrelay.plugins.health_plugin.Plugin")
     @patch("mmrelay.plugins.map_plugin.Plugin")
@@ -2981,6 +3231,54 @@ class TestDependencyInstallation(BaseGitTest):
         mock_threading.Event.assert_called_once()
         mock_threading.Thread.assert_called_once()
         mock_thread.start.assert_called_once()
+
+    def test_start_global_scheduler_runs_pending_once(self):
+        """scheduler_loop should call schedule.run_pending when available."""
+        import threading
+
+        run_event = threading.Event()
+
+        class FakeSchedule:
+            def __bool__(self):
+                """
+                Make the object always evaluate as truthy.
+
+                Returns:
+                    True indicating the object is truthy.
+                """
+                return True
+
+            def run_pending(self):
+                """
+                Signal the scheduler to execute pending jobs now and request the global scheduler thread to stop.
+
+                Sets the local run event to trigger immediate execution of pending jobs. If a global scheduler stop event is present, sets that event to request the global scheduler thread to terminate after processing.
+                """
+                run_event.set()
+                if pl._global_scheduler_stop_event:
+                    pl._global_scheduler_stop_event.set()
+
+            def clear(self):
+                """
+                Remove all scheduled jobs associated with this plugin.
+
+                This method clears any entries the global scheduler has registered for the plugin instance so no future scheduled tasks for this plugin will run.
+                """
+                pass
+
+        original_schedule = pl.schedule
+        pl.schedule = FakeSchedule()
+        pl._global_scheduler_thread = None
+        pl._global_scheduler_stop_event = None
+
+        try:
+            start_global_scheduler()
+            run_event.wait(timeout=1.0)
+            stop_global_scheduler()
+        finally:
+            pl.schedule = original_schedule
+
+        self.assertTrue(run_event.is_set())
 
     @patch("mmrelay.plugin_loader.threading")
     @patch("mmrelay.plugin_loader.schedule", None)

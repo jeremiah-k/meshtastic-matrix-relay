@@ -1,3 +1,4 @@
+import argparse
 import contextlib
 import logging
 import os
@@ -28,7 +29,7 @@ from mmrelay.constants.messages import (
 )
 
 # Initialize Rich console only if available
-console = Console() if RICH_AVAILABLE else None  # type: ignore[name-defined]
+console = Console() if RICH_AVAILABLE else None
 
 # Define custom log level styles - not used directly but kept for reference
 # Rich 14.0.0+ supports level_styles parameter, but we're using an approach
@@ -75,13 +76,11 @@ _COMPONENT_LOGGERS = {
 }
 
 
-def configure_component_debug_logging():
+def configure_component_debug_logging() -> None:
     """
-    Apply per-component debug logging from config["logging"]["debug"].
+    Apply per-component debug logging settings from the global configuration.
 
-    For each known external component, enable or suppress its loggers: if the component's debug setting is truthy or a valid logging level string, set that component's loggers to the specified level (a boolean value is treated as DEBUG) and attach the main application logger's handlers so their output appears alongside application logs; if the setting is falsy or missing, set the component's loggers to a level above CRITICAL to suppress their output.
-
-    This function is idempotent and not thread-safe. Call it after the main application logger is configured and before importing modules that produce component logs.
+    Reads config["logging"]["debug"] (expected as a dict) and for each known component enables or suppresses its loggers: a boolean value enables DEBUG, a valid logging level name (string) sets that level, and a falsy or missing value suppresses the component by setting its loggers above CRITICAL. No-op if the global `config` is None.
     """
     global config
 
@@ -141,7 +140,7 @@ def configure_component_debug_logging():
                 logging.getLogger(logger_name).setLevel(logging.CRITICAL + 1)
 
 
-def _should_log_to_file(args) -> bool:
+def _should_log_to_file(args: argparse.Namespace | None) -> bool:
     """
     Decide whether logging to a file is enabled according to configuration and CLI options.
 
@@ -164,7 +163,7 @@ def _should_log_to_file(args) -> bool:
     return bool(enabled)
 
 
-def _resolve_log_file(args):
+def _resolve_log_file(args: argparse.Namespace | None) -> str:
     """
     Determine the log file path, preferring a CLI-provided value, then the configuration, and falling back to the default log directory.
 
@@ -175,21 +174,29 @@ def _resolve_log_file(args):
         str: Filesystem path to the log file chosen according to the precedence: `args.logfile`, `config["logging"]["filename"]`, or the default "<log_dir>/mmrelay.log".
     """
     logfile = getattr(args, "logfile", None) if args is not None else None
-    if logfile:
+    if isinstance(logfile, str) and logfile:
         return logfile
 
     config_log_file = config.get("logging", {}).get("filename") if config else None
-    if config_log_file:
+    if isinstance(config_log_file, str) and config_log_file:
         return config_log_file
 
     return os.path.join(get_log_dir(), "mmrelay.log")
 
 
-def _configure_logger(logger: logging.Logger, *, args=None) -> logging.Logger:
+def _configure_logger(
+    logger: logging.Logger, *, args: argparse.Namespace | None = None
+) -> logging.Logger:
     """
-    Configure a Logger object's level, handlers, and formatting based on the current application configuration and optional CLI arguments.
+    Configure and attach console and optional rotating file handlers to a logger based on application configuration and optional CLI arguments.
 
-    Reconfiguration is performed when the logger has no handlers or when the module configuration generation has changed. This function attaches a console handler (colorized via Rich when available and enabled) and, if enabled, a rotating file handler; it may set the module-level `log_file_path` when configuring the main application logger to write to a file.
+    Reapplies the current logging settings (level, formatters, handlers) when the configuration generation has changed, disables propagation on the logger, and updates the global `log_file_path` when the main application logger is configured for file logging.
+
+    Parameters:
+        args: Optional CLI arguments that can override or force file logging and influence logfile path resolution.
+
+    Returns:
+        The same `logging.Logger` instance after applying the configuration.
     """
     global log_file_path
 
@@ -235,7 +242,7 @@ def _configure_logger(logger: logging.Logger, *, args=None) -> logging.Logger:
     # Add handler for console logging (with or without colors)
     if color_enabled and RICH_AVAILABLE:
         # Use Rich handler with colors
-        console_handler: logging.Handler = RichHandler(  # type: ignore[name-defined]
+        console_handler: logging.Handler = RichHandler(
             rich_tracebacks=rich_tracebacks_enabled,
             console=console,
             show_time=True,
@@ -322,12 +329,13 @@ def _configure_logger(logger: logging.Logger, *, args=None) -> logging.Logger:
     return logger
 
 
-def get_logger(name: str, args=None) -> logging.Logger:
+def get_logger(name: str, args: argparse.Namespace | None = None) -> logging.Logger:
     """
-    Create or retrieve a named logger configured with console output and optional rotating file logging.
+    Create or retrieve a named logger configured for console output and optional rotating file logging.
 
     Parameters:
-        name (str): Logger name. If file logging is enabled and this equals APP_DISPLAY_NAME, the module-level `log_file_path` will be set to the resolved logfile path.
+        name (str): Logger name. If file logging is enabled and `name` equals APP_DISPLAY_NAME, the module-level `log_file_path` is set to the resolved logfile path.
+        args (argparse.Namespace | None): Optional CLI arguments that may override logging behavior (e.g., `logfile`). If omitted, configuration values are used.
 
     Returns:
         logging.Logger: The configured logger instance.
@@ -338,11 +346,14 @@ def get_logger(name: str, args=None) -> logging.Logger:
     return _configure_logger(logger, args=args)
 
 
-def refresh_all_loggers(args=None) -> None:
+def refresh_all_loggers(args: argparse.Namespace | None = None) -> None:
     """
-    Reconfigure all loggers created via get_logger() so they reflect the current logging configuration.
+    Reconfigure all registered loggers to apply the current logging configuration.
 
-    Increments the internal configuration generation and re-applies configuration to each registered logger. Not thread-safe; intended for startup or controlled configuration reload paths.
+    Increments the internal configuration generation, then re-applies configuration to every logger created via get_logger(). Not thread-safe; intended for startup or controlled configuration reload paths.
+
+    Parameters:
+        args (argparse.Namespace | None): Optional CLI arguments that influence logging configuration (for example, a provided logfile). If None, global configuration is used.
     """
     global _config_generation
 

@@ -15,6 +15,7 @@ Tests edge cases and error handling including:
 import os
 import sys
 import tempfile
+import types
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -175,6 +176,60 @@ class Plugin:
                             len(info_calls) > 0,
                             "Should have logged installation attempt",
                         )
+
+    def test_load_plugins_from_directory_dependency_install_success(self):
+        """
+        Ensure auto-install path retries and loads the plugin when the dependency becomes available.
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            plugin_file = os.path.join(temp_dir, "dependency_plugin.py")
+            with open(plugin_file, "w") as f:
+                f.write(
+                    """
+import missing_dependency
+class Plugin:
+    def __init__(self):
+        self.plugin_name = "dependency_plugin"
+"""
+                )
+
+            missing_module = "missing_dependency"
+            sys.modules.pop(missing_module, None)
+
+            def fake_refresh() -> None:
+                """
+                Injects a fake module into sys.modules under the name stored in `missing_module` to simulate the missing dependency becoming available.
+
+                This function adds an entry to sys.modules mapping `missing_module` to a newly created types.ModuleType if it is not already present. It has the side effect of making imports for that module succeed for subsequent import attempts.
+                """
+                sys.modules.setdefault(missing_module, types.ModuleType(missing_module))
+
+            try:
+                with (
+                    patch.dict("os.environ", {}, clear=True),
+                    patch("mmrelay.plugin_loader._run") as mock_run,
+                    patch(
+                        "mmrelay.plugin_loader._refresh_dependency_paths",
+                        side_effect=fake_refresh,
+                    ),
+                    patch("mmrelay.plugin_loader.logger") as mock_logger,
+                ):
+                    plugins = load_plugins_from_directory(temp_dir)
+            finally:
+                sys.modules.pop(missing_module, None)
+
+            self.assertEqual(len(plugins), 1)
+            self.assertEqual(plugins[0].plugin_name, "dependency_plugin")
+
+            # Verify auto-install path was taken
+            mock_run.assert_called_once()
+
+            # Verify appropriate logging occurred
+            info_calls = [str(call) for call in mock_logger.info.call_args_list]
+            self.assertTrue(
+                any("Successfully installed" in call for call in info_calls),
+                "Should have logged successful installation",
+            )
 
     def test_load_plugins_from_directory_dependency_install_failure(self):
         """
@@ -444,12 +499,11 @@ class Plugin:
 
         config = {"custom-plugins": {"duplicate": {"active": True}}}
 
-        with patch(
-            "mmrelay.plugin_loader.load_plugins_from_directory"
-        ) as mock_load, patch("rich.progress.Progress"), patch(
-            "rich.console.Console"
-        ), patch(
-            "rich.logging.RichHandler"
+        with (
+            patch("mmrelay.plugin_loader.load_plugins_from_directory") as mock_load,
+            patch("rich.progress.Progress"),
+            patch("rich.console.Console"),
+            patch("rich.logging.RichHandler"),
         ):
             # Return both plugins with same name
             mock_load.return_value = [mock_plugin1, mock_plugin2]

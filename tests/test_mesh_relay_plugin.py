@@ -421,7 +421,7 @@ class TestMeshRelayPlugin(unittest.TestCase):
 
             # Should log debug message
             self.plugin.logger.debug.assert_called_with(
-                "Skipping message from unmapped channel None"
+                "Skipping message from unmapped room !test:matrix.org"
             )
 
         import asyncio
@@ -455,7 +455,7 @@ class TestMeshRelayPlugin(unittest.TestCase):
 
             # Should log debug message
             self.plugin.logger.debug.assert_called_with(
-                "Skipping message from unmapped channel None"
+                "Skipping message from unmapped room !test:matrix.org"
             )
 
         import asyncio
@@ -564,7 +564,6 @@ class TestMeshRelayPlugin(unittest.TestCase):
 
         # Mock Meshtastic client
         mock_client = MagicMock()
-        mock_client._generatePacketId.return_value = 12345
         mock_connect_meshtastic.return_value = mock_client
 
         room = MagicMock()
@@ -598,10 +597,202 @@ class TestMeshRelayPlugin(unittest.TestCase):
                 mesh_packet.decoded.payload, b"Hello World"
             )  # base64 decoded
             self.assertFalse(mesh_packet.decoded.want_response)
-            self.assertEqual(mesh_packet.id, 12345)
+            self.assertEqual(mesh_packet.id, 0)
 
             # Verify destination
             self.assertEqual(call_args.kwargs["destinationId"], "!1234567890")
+
+        import asyncio
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.plugins.mesh_relay_plugin.config")
+    def test_iter_room_configs_invalid_type(self, mock_config):
+        """_iter_room_configs should return empty list for unexpected config shape."""
+        mock_config.get.return_value = "invalid"
+
+        rooms = self.plugin._iter_room_configs()
+
+        self.assertEqual(rooms, [])
+        self.plugin.logger.debug.assert_called_once()
+
+    @patch("mmrelay.plugins.mesh_relay_plugin.config")
+    def test_iter_room_configs_dict_entries(self, mock_config):
+        """_iter_room_configs should filter dict values and ignore non-dict entries."""
+        mock_config.get.return_value = {
+            "room1": {"id": "!room1:matrix.org", "meshtastic_channel": 0},
+            "room2": "ignore-me",
+        }
+
+        rooms = self.plugin._iter_room_configs()
+
+        self.assertEqual(len(rooms), 1)
+        self.assertEqual(rooms[0]["id"], "!room1:matrix.org")
+
+    @patch("mmrelay.matrix_utils.connect_matrix", new_callable=AsyncMock)
+    def test_handle_meshtastic_message_no_matrix_client(self, mock_connect_matrix):
+        """handle_meshtastic_message should fail fast when Matrix client is missing."""
+        mock_connect_matrix.return_value = None
+
+        async def run_test():
+            result = await self.plugin.handle_meshtastic_message(
+                packet={"decoded": {"portnum": 1}},
+                formatted_message="msg",
+                longname="long",
+                meshnet_name="mesh",
+            )
+            self.assertFalse(result)
+            self.plugin.logger.error.assert_called_once_with(
+                "Matrix client is None; skipping mesh relay to Matrix"
+            )
+
+        import asyncio
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.matrix_utils.connect_matrix", new_callable=AsyncMock)
+    def test_handle_meshtastic_message_missing_portnum(self, mock_connect_matrix):
+        """handle_meshtastic_message should reject packets without decoded.portnum."""
+        mock_connect_matrix.return_value = MagicMock()
+        self.plugin.process = MagicMock(return_value={"decoded": {}})
+
+        async def run_test():
+            result = await self.plugin.handle_meshtastic_message(
+                packet={"decoded": {}},
+                formatted_message="msg",
+                longname="long",
+                meshnet_name="mesh",
+            )
+            self.assertFalse(result)
+            self.plugin.logger.error.assert_called_once_with(
+                "Packet missing required 'decoded.portnum' field"
+            )
+
+        import asyncio
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.plugins.mesh_relay_plugin.config")
+    @patch("mmrelay.matrix_utils.connect_matrix", new_callable=AsyncMock)
+    def test_handle_meshtastic_message_missing_room_id(
+        self, mock_connect_matrix, mock_config
+    ):
+        """handle_meshtastic_message should reject mappings without a room id."""
+        mock_connect_matrix.return_value = MagicMock()
+        mock_config.get.return_value = [{"meshtastic_channel": 0}]
+        self.plugin.process = MagicMock(
+            return_value={"decoded": {"portnum": 1}, "channel": 0}
+        )
+
+        async def run_test():
+            result = await self.plugin.handle_meshtastic_message(
+                packet={"decoded": {"portnum": 1}, "channel": 0},
+                formatted_message="msg",
+                longname="long",
+                meshnet_name="mesh",
+            )
+            self.assertFalse(result)
+            self.plugin.logger.error.assert_called_once_with(
+                "Skipping message: no Matrix room id mapped for channel %s",
+                0,
+            )
+
+        import asyncio
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.plugins.mesh_relay_plugin.config")
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    def test_handle_room_message_no_meshtastic_client(
+        self, mock_connect_meshtastic, mock_config
+    ):
+        """handle_room_message should fail when Meshtastic client is unavailable."""
+        self.plugin.matches = MagicMock(return_value=True)
+        mock_config.get.return_value = [
+            {"id": "!test:matrix.org", "meshtastic_channel": 0}
+        ]
+        mock_connect_meshtastic.return_value = None
+
+        room = MagicMock()
+        room.room_id = "!test:matrix.org"
+        event = MagicMock()
+        event.source = {
+            "content": {
+                "meshtastic_packet": '{"decoded": {"portnum": 1, "payload": "QQ=="}, "toId": "!dest"}'
+            }
+        }
+
+        async def run_test():
+            """
+            Execute handle_room_message with a mocked room and event and assert it fails when no Meshtastic client is available.
+
+            Calls the plugin's handle_room_message, verifies it returns False, and checks that an error was logged with message "Meshtastic client unavailable".
+            """
+            result = await self.plugin.handle_room_message(room, event, "full_message")
+            self.assertFalse(result)
+            self.plugin.logger.error.assert_called_once_with(
+                "Meshtastic client unavailable"
+            )
+
+        import asyncio
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.plugins.mesh_relay_plugin.config")
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    def test_handle_room_message_missing_payload_fields(
+        self, mock_connect_meshtastic, mock_config
+    ):
+        """handle_room_message should reject packets missing required relay fields."""
+        self.plugin.matches = MagicMock(return_value=True)
+        mock_config.get.return_value = [
+            {"id": "!test:matrix.org", "meshtastic_channel": 0}
+        ]
+        mock_connect_meshtastic.return_value = MagicMock()
+
+        room = MagicMock()
+        room.room_id = "!test:matrix.org"
+        event = MagicMock()
+        event.source = {"content": {"meshtastic_packet": '{"decoded": {"portnum": 1}}'}}
+
+        async def run_test():
+            result = await self.plugin.handle_room_message(room, event, "full_message")
+            self.assertFalse(result)
+            self.plugin.logger.error.assert_called_once_with(
+                "Packet missing required fields for relay"
+            )
+
+        import asyncio
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.plugins.mesh_relay_plugin.config")
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    def test_handle_room_message_invalid_payload_type(
+        self, mock_connect_meshtastic, mock_config
+    ):
+        """handle_room_message should handle non-bytes payloads cleanly."""
+        self.plugin.matches = MagicMock(return_value=True)
+        mock_config.get.return_value = [
+            {"id": "!test:matrix.org", "meshtastic_channel": 0}
+        ]
+        mock_connect_meshtastic.return_value = MagicMock()
+
+        room = MagicMock()
+        room.room_id = "!test:matrix.org"
+        event = MagicMock()
+        event.source = {
+            "content": {
+                "meshtastic_packet": '{"decoded": {"portnum": 1, "payload": 123}, "toId": "!dest"}'
+            }
+        }
+
+        async def run_test():
+            result = await self.plugin.handle_room_message(room, event, "full_message")
+            self.assertFalse(result)
+            self.plugin.logger.exception.assert_called_once_with(
+                "Error reconstructing packet"
+            )
 
         import asyncio
 

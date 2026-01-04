@@ -1,9 +1,20 @@
 import asyncio
 import statistics
+from typing import TYPE_CHECKING, Any
 
-from nio import MatrixRoom, RoomMessageText
+# matrix-nio is not marked py.typed; keep import-untyped for strict mypy.
+from nio import (  # type: ignore[import-untyped]
+    MatrixRoom,
+    ReactionEvent,
+    RoomMessageEmote,
+    RoomMessageNotice,
+    RoomMessageText,
+)
 
 from mmrelay.plugins.base_plugin import BasePlugin
+
+if TYPE_CHECKING:
+    from meshtastic.mesh_interface import MeshInterface  # type: ignore[import-untyped]
 
 
 class Plugin(BasePlugin):
@@ -22,26 +33,25 @@ class Plugin(BasePlugin):
 
     def generate_response(self) -> str:
         r"""
-        Generate a concise health summary for the mesh based on metrics reported by discovered Meshtastic nodes.
+        Produce a concise multi-line health summary for the mesh using metrics reported by discovered Meshtastic nodes.
 
-        Queries a Meshtastic client for connected nodes, extracts battery levels, air utilization (tx), and SNR values, computes counts, averages, medians, and the number of nodes with battery < 10, and formats these into a multi-line human-readable summary. If the Meshtastic client cannot be obtained or no nodes are discovered, returns a short explanatory message.
+        The returned text reports total node count and, when available, average and median values for battery percentage, air utilization (tx), and SNR, plus a count of nodes with battery <= 10%.
 
         Returns:
-            str: A multi-line summary containing:
+            str: A multi-line human-readable summary. Typical content:
                 - Nodes: total number of nodes
-                - Battery: average and median battery percentage, or "Battery: N/A" if no battery data
-                - Nodes with Low Battery (< 10): count of low-battery nodes (0 if no battery data)
-                - Air Util: average and median air utilization, or "Air Util: N/A" if no air-util data
-                - SNR: average and median signal-to-noise ratio, or "SNR: N/A" if no SNR data
-
+                - Battery: average% / median% (avg / median) or "Battery: N/A"
+                - Nodes with Low Battery (<= 10): count (0 if no battery data)
+                - Air Util: average / median (avg / median) or "Air Util: N/A"
+                - SNR: average / median (avg / median) or "SNR: N/A"
             Special return values:
-                - "Unable to connect to Meshtastic device." if the Meshtastic client could not be created.
+                - "Unable to connect to Meshtastic device." if a Meshtastic client cannot be obtained.
                 - "No nodes discovered yet." if the client has no discovered nodes.
-                - "Nodes: <count>\nNo nodes with health metrics found." if nodes exist but none report any of the tracked metrics.
+                - "Nodes: <count>\nNo nodes with health metrics found." if nodes exist but none report any tracked metrics.
         """
         from mmrelay.meshtastic_utils import connect_meshtastic
 
-        meshtastic_client = connect_meshtastic()
+        meshtastic_client: MeshInterface | None = connect_meshtastic()
         if meshtastic_client is None:
             return "Unable to connect to Meshtastic device."
         battery_levels = []
@@ -101,12 +111,16 @@ class Plugin(BasePlugin):
 
         return f"""Nodes: {radios}
  {battery_line}
- Nodes with Low Battery (< 10): {low_battery}
+ Nodes with Low Battery (<= 10): {low_battery}
  {air_util_line}
  {snr_line}"""
 
     async def handle_meshtastic_message(
-        self, packet, formatted_message: str, longname: str, meshnet_name: str
+        self,
+        packet: dict[str, Any],
+        formatted_message: str,
+        longname: str,
+        meshnet_name: str,
     ) -> bool:
         """
         Indicates that this plugin does not handle incoming Meshtastic packets.
@@ -120,26 +134,30 @@ class Plugin(BasePlugin):
         Returns:
             bool: `False` since this plugin does not process Meshtastic messages.
         """
+        # Keep parameter names for compatibility with keyword calls in tests.
+        _ = packet, formatted_message, longname, meshnet_name
         return False
 
     async def handle_room_message(
-        self, room: MatrixRoom, event: RoomMessageText, full_message: str
+        self,
+        room: MatrixRoom,
+        event: RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote,
+        full_message: str,
     ) -> bool:
         """
-        Handle a Matrix room message that triggers this plugin and send a mesh health response.
-
-        If the incoming event matches this plugin, generate the mesh health summary (off the event loop) and send it to the room.
+        Process a Matrix room event and, if it matches this plugin, post a Meshtastic health summary to the room.
 
         Parameters:
             room (MatrixRoom): The room where the message was received.
-            event (RoomMessageText): The Matrix message event used to determine a match.
-            full_message (str): The full text of the received message.
+            event (RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote): The Matrix event used to determine whether the plugin should run.
+            full_message (str): The full text of the received message; preserved for compatibility with callers.
 
         Returns:
-            true if the message matched this plugin and was handled, false otherwise.
+            True if the event matched this plugin and a response was sent to the room, False otherwise.
         """
         if not self.matches(event):
             return False
+        _ = full_message
 
         response = await asyncio.to_thread(self.generate_response)
         await self.send_matrix_message(room.room_id, response, formatted=False)

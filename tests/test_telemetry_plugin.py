@@ -190,7 +190,9 @@ class TestTelemetryPlugin(unittest.TestCase):
 
     def test_handle_meshtastic_message_partial_metrics(self):
         """
-        Test that the plugin correctly handles telemetry messages with missing device metrics by defaulting absent values to zero and storing the resulting data.
+        Validate handling of a Meshtastic telemetry packet with partial deviceMetrics.
+
+        Asserts that handle_meshtastic_message does not trigger a Matrix relay, calls set_node_data with the node's telemetry list, stores present metric values (e.g., `batteryLevel`), and records missing metrics (`voltage`, `airUtilTx`) as `None` to preserve data integrity.
         """
         packet = {
             "fromId": "!12345678",
@@ -208,7 +210,7 @@ class TestTelemetryPlugin(unittest.TestCase):
 
         async def run_test():
             """
-            Asynchronously tests handling of a Meshtastic telemetry message with partial device metrics, verifying that missing metrics are stored with default values.
+            Asynchronously tests handling of a Meshtastic telemetry message with partial device metrics, verifying that missing metrics are stored as None to preserve data integrity.
             """
             result = await self.plugin.handle_meshtastic_message(
                 packet, "formatted_message", "longname", "meshnet_name"
@@ -216,12 +218,14 @@ class TestTelemetryPlugin(unittest.TestCase):
 
             self.assertFalse(result)
 
-            # Check stored data has default values for missing metrics
+            # Check stored data has None for missing metrics (data integrity fix)
             call_args = self.plugin.set_node_data.call_args
             stored_data = call_args.kwargs["node_data"]
             self.assertEqual(stored_data[0]["batteryLevel"], 75)
-            self.assertEqual(stored_data[0]["voltage"], 0)  # Default value
-            self.assertEqual(stored_data[0]["airUtilTx"], 0)  # Default value
+            self.assertIsNone(stored_data[0]["voltage"])  # Missing field stored as None
+            self.assertIsNone(
+                stored_data[0]["airUtilTx"]
+            )  # Missing field stored as None
 
         import asyncio
 
@@ -358,8 +362,9 @@ class TestTelemetryPlugin(unittest.TestCase):
         event.body = full_message
         event.source = {"content": {"formatted_body": ""}}
 
-        with patch("mmrelay.matrix_utils.bot_user_id", "@bot:matrix.org"), patch(
-            "mmrelay.matrix_utils.bot_user_name", "TestBot"
+        with (
+            patch("mmrelay.matrix_utils.bot_user_id", "@bot:matrix.org"),
+            patch("mmrelay.matrix_utils.bot_user_name", "TestBot"),
         ):
 
             async def run_test():
@@ -488,8 +493,9 @@ class TestTelemetryPlugin(unittest.TestCase):
             event.body = full_message
             event.source = {"content": {"formatted_body": ""}}
 
-            with patch("mmrelay.matrix_utils.bot_user_id", "@bot:matrix.org"), patch(
-                "mmrelay.matrix_utils.bot_user_name", "TestBot"
+            with (
+                patch("mmrelay.matrix_utils.bot_user_id", "@bot:matrix.org"),
+                patch("mmrelay.matrix_utils.bot_user_name", "TestBot"),
             ):
 
                 async def run_test():

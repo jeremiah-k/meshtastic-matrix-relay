@@ -3,9 +3,22 @@ import os
 import re
 import threading
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Union
+from collections.abc import Iterable
+from typing import Any
 
+# markdown has stubs in our env; avoid import-untyped so mypy --strict stays clean.
 import markdown
+
+# matrix-nio is not marked py.typed; keep import-untyped for strict mypy.
+from nio import (  # type: ignore[import-untyped]
+    MatrixRoom,
+    ReactionEvent,
+    RoomMessageEmote,
+    RoomMessageNotice,
+    RoomMessageText,
+    RoomSendError,
+    RoomSendResponse,
+)
 
 from mmrelay.config import get_plugin_data_dir
 from mmrelay.constants.config import (
@@ -67,24 +80,24 @@ class BasePlugin(ABC):
     """
 
     # Class-level default attributes
-    plugin_name = None  # Must be overridden in subclasses
+    plugin_name: str | None = None  # Must be overridden in subclasses
     is_core_plugin: bool | None = None
     max_data_rows_per_node = DEFAULT_MAX_DATA_ROWS_PER_NODE_BASE
     priority = 10
 
     @property
     def description(self) -> str:
-        """Get the plugin description for help text.
+        """
+        Human-readable description of the plugin for help text.
+
+        Override in subclasses to provide plugin-specific help text displayed by the help system.
 
         Returns:
-            str: Human-readable description of plugin functionality
-
-        Override this property in subclasses to provide meaningful help text
-        that will be displayed by help plugin.
+            str: Description text for the plugin.
         """
         return ""
 
-    def __init__(self, plugin_name=None) -> None:
+    def __init__(self, plugin_name: str | None = None) -> None:
         """
         Initialize plugin state and load per-plugin configuration and runtime defaults.
 
@@ -101,6 +114,7 @@ class BasePlugin(ABC):
         super().__init__()
 
         self._stop_event = threading.Event()
+        self._my_node_id: int | None = None
 
         # If plugin_name is provided as a parameter, use it
         if plugin_name is not None:
@@ -131,7 +145,7 @@ class BasePlugin(ABC):
                 )
 
         self.logger = get_logger(f"Plugin:{self.plugin_name}")
-        self.config: Dict[str, Any] = {"active": False}
+        self.config: dict[str, Any] = {"active": False}
         self.mapped_channels: list[int | None] = []
         self._global_require_bot_mention: bool | None = None
         global config
@@ -158,7 +172,7 @@ class BasePlugin(ABC):
 
             # Get the list of mapped channels
             # Handle both list format and dict format for matrix_rooms
-            matrix_rooms: Union[Dict[str, Any], list] = config.get("matrix_rooms", [])
+            matrix_rooms: dict[str, Any] | list[Any] = config.get("matrix_rooms", [])
             if isinstance(matrix_rooms, dict):
                 # Dict format: {"room_name": {"id": "...", "meshtastic_channel": 0}}
                 self.mapped_channels = [
@@ -247,7 +261,7 @@ class BasePlugin(ABC):
 
         If scheduling options are present in plugin configuration, sets up periodic execution of `background_job` method using the global scheduler. If no scheduling is configured, the plugin starts without background tasks.
         """
-        schedule_config: Dict[str, Any] = self.config.get("schedule") or {}
+        schedule_config: dict[str, Any] = self.config.get("schedule") or {}
         if not isinstance(schedule_config, dict):
             schedule_config = {}
 
@@ -348,26 +362,24 @@ class BasePlugin(ABC):
 
     # trunk-ignore(ruff/B027)
     def background_job(self) -> None:
-        """Background task executed on schedule.
+        """
+        Run periodic work for the plugin when scheduled.
 
-        Override this method in subclasses to implement scheduled functionality.
-        Called automatically based on schedule configuration in start().
-
-        Default implementation does nothing.
+        Subclasses should implement this to perform the plugin's scheduled task; the default implementation does nothing.
         """
         pass  # Implement in subclass if needed
 
-    def strip_raw(self, data):
-        """Recursively remove 'raw' keys from data structures.
+    def strip_raw(self, data: Any) -> Any:
+        """
+        Recursively remove any "raw" keys from dictionaries within a nested data structure.
 
-        Args:
-            data: Data structure (dict, list, or other) to clean
+        This function walks dictionaries and lists and removes entries with the key `"raw"`, returning a structure with the same shape but without those keys.
+
+        Parameters:
+            data (Any): The nested data structure (e.g., dicts and lists) to clean.
 
         Returns:
-            Cleaned data structure with 'raw' keys removed
-
-        Useful for cleaning packet data before logging or storage to remove
-        binary protobuf data that's not human-readable.
+            Any: The cleaned data structure with all `"raw"` keys removed.
         """
         if isinstance(data, dict):
             data.pop("raw", None)
@@ -377,31 +389,27 @@ class BasePlugin(ABC):
             data = [self.strip_raw(item) for item in data]
         return data
 
-    def get_response_delay(self):
+    def get_response_delay(self) -> float:
         """
-        Return the configured delay in seconds before sending a Meshtastic response.
+        Get the configured Meshtastic response delay in seconds.
 
-        The delay is determined by the `meshtastic.message_delay` configuration option, defaulting to 2.5 seconds with a minimum of 2.1 seconds. The deprecated `plugin_response_delay` option is also supported for backward compatibility.
+        The value reflects plugin configuration and is clamped to the minimum allowed delay.
 
         Returns:
             float: The response delay in seconds.
         """
         return self.response_delay
 
-    def get_my_node_id(self):
-        """Get the relay's Meshtastic node ID.
+    def get_my_node_id(self) -> int | None:
+        """
+        Return the relay's Meshtastic node ID.
+
+        Caches the ID after the first successful retrieval to avoid repeated connections.
 
         Returns:
-            int: The relay's node ID, or None if unavailable
-
-        This method provides access to the relay's own node ID without requiring
-        plugins to call connect_meshtastic() directly. Useful for determining
-        if messages are direct messages or for other node identification needs.
-
-        The node ID is cached after first successful retrieval to avoid repeated
-        connection calls, as the relay's node ID is static during runtime.
+            int: The relay's node ID if available, `None` otherwise.
         """
-        if hasattr(self, "_my_node_id"):
+        if hasattr(self, "_my_node_id") and self._my_node_id is not None:
             return self._my_node_id
 
         from mmrelay.meshtastic_utils import connect_meshtastic
@@ -412,39 +420,38 @@ class BasePlugin(ABC):
             return self._my_node_id
         return None
 
-    def is_direct_message(self, packet):
-        """Check if a Meshtastic packet is a direct message to this relay.
+    def is_direct_message(self, packet: dict[str, Any]) -> bool:
+        """
+        Determine whether a Meshtastic packet is addressed to this relay.
 
-        Args:
-            packet (dict): Meshtastic packet data
+        Parameters:
+            packet (dict): Meshtastic packet data; may include a "to" field with the destination node ID.
 
         Returns:
-            bool: True if the packet is a direct message to this relay, False otherwise
-
-        This method encapsulates the common pattern of checking if a message
-        is addressed directly to the relay node, eliminating the need for plugins
-        to call connect_meshtastic() directly for DM detection.
+            True if the packet's "to" field equals this relay's node ID, False otherwise.
         """
-        toId = packet.get("to")
+        toId: int | None = packet.get("to")
         if toId is None:
             return False
 
         myId = self.get_my_node_id()
+        if myId is None:
+            return False
         return toId == myId
 
-    def send_message(self, text: str, channel: int = 0, destination_id=None) -> bool:
+    def send_message(
+        self, text: str, channel: int = 0, destination_id: int | None = None
+    ) -> bool:
         """
-        Send a message to the Meshtastic network using the message queue.
-
-        Queues the specified text for broadcast or direct delivery on the given channel. Returns True if the message was successfully queued, or False if the Meshtastic client is unavailable.
+        Queue a text message for broadcast or direct delivery on the Meshtastic network.
 
         Parameters:
-            text (str): The message content to send.
-            channel (int, optional): The channel index for sending the message. Defaults to 0.
-            destination_id (optional): The destination node ID for direct messages. If None, the message is broadcast.
+            text: Message content to send.
+            channel: Channel index to send the message on (defaults to 0).
+            destination_id: Destination node ID for a direct message; if omitted the message is broadcast.
 
         Returns:
-            bool: True if the message was queued successfully; False otherwise.
+            `true` if the message was queued successfully, `false` otherwise.
         """
         from mmrelay.meshtastic_utils import connect_meshtastic
 
@@ -455,7 +462,7 @@ class BasePlugin(ABC):
 
         description = f"Plugin {self.plugin_name}: {text[:DEFAULT_TEXT_TRUNCATION_LENGTH]}{'...' if len(text) > DEFAULT_TEXT_TRUNCATION_LENGTH else ''}"
 
-        send_kwargs: Dict[str, Any] = {
+        send_kwargs: dict[str, Any] = {
             "text": text,
             "channelIndex": channel,
         }
@@ -468,7 +475,9 @@ class BasePlugin(ABC):
             **send_kwargs,
         )
 
-    def is_channel_enabled(self, channel, is_direct_message=False):
+    def is_channel_enabled(
+        self, channel: int | None, is_direct_message: bool = False
+    ) -> bool:
         """
         Determine whether the plugin should respond to a message on the specified channel or direct message.
 
@@ -484,7 +493,7 @@ class BasePlugin(ABC):
         else:
             return channel in self.channels
 
-    def get_matrix_commands(self):
+    def get_matrix_commands(self) -> list[str]:
         """
         Return the Matrix command names this plugin responds to.
 
@@ -493,16 +502,21 @@ class BasePlugin(ABC):
         Returns:
             list[str]: Command names (without a leading '!' prefix)
         """
+        if self.plugin_name is None:
+            return []
         return [self.plugin_name]
 
-    def get_matching_matrix_command(self, event) -> str | None:
+    def get_matching_matrix_command(
+        self,
+        event: RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote,
+    ) -> str | None:
         """
-        Identify the first Matrix command that matches the given event.
+        Return the first Matrix command name that matches the given event.
 
-        Checks each command returned by get_matrix_commands() against the event using this plugin's bot-mention requirement.
+        Uses the plugin's require-mention setting when testing commands.
 
         Returns:
-                The matching command string, or None if no command matches.
+            The matching command string if a command matches the event, `None` otherwise.
         """
         from mmrelay.matrix_utils import bot_command
 
@@ -512,17 +526,19 @@ class BasePlugin(ABC):
                 return command
         return None
 
-    async def send_matrix_message(self, room_id, message, formatted=True):
+    async def send_matrix_message(
+        self, room_id: str, message: str, formatted: bool = True
+    ) -> RoomSendResponse | RoomSendError | None:
         """
-        Send a message to a Matrix room, optionally formatted as HTML.
+        Send a message to a Matrix room, optionally converting Markdown to HTML.
 
         Parameters:
             room_id (str): Matrix room identifier.
             message (str): Message content to send.
-            formatted (bool): If True, send an HTML-formatted message (message is converted from Markdown); otherwise send plain text.
+            formatted (bool): If True, convert `message` from Markdown to HTML and send as formatted content; otherwise send plain text.
 
         Returns:
-            dict | None: The Matrix API response from the room send call, or `None` if the Matrix client could not be obtained.
+            RoomSendResponse | RoomSendError | None: The Matrix API response from room_send, or `None` if the Matrix client could not be obtained.
         """
         from mmrelay.matrix_utils import connect_matrix
 
@@ -543,101 +559,117 @@ class BasePlugin(ABC):
             },
         )
 
-    def get_mesh_commands(self):
-        """Get list of mesh/radio commands this plugin responds to.
+    def get_mesh_commands(self) -> list[str]:
+        """
+        List mesh/radio command names the plugin handles.
+
+        By default this returns an empty list; subclasses should override to expose commands. Command names must be provided without the leading '!'.
 
         Returns:
-            list: List of command strings (without ! prefix)
-
-        Default implementation returns empty list. Override to handle
-        commands sent over the mesh radio network.
+            list[str]: Command names without the leading '!' (empty by default).
         """
         return []
 
-    def store_node_data(self, meshtastic_id, node_data):
-        """Store data for a specific node, appending to existing data.
-
-        Args:
-            meshtastic_id (str): Node identifier
-            node_data: Data to store (single item or list)
-
-        Retrieves existing data, appends new data, trims to max_data_rows_per_node,
-        and stores back to database. Use for accumulating time-series data.
+    def _require_plugin_name(self) -> str:
         """
-        data = self.get_node_data(meshtastic_id=meshtastic_id)
+        Return the initialized plugin name.
+
+        Returns:
+            plugin_name (str): The plugin's name.
+
+        Raises:
+            ValueError: If the plugin name has not been initialized.
+        """
+        if self.plugin_name is None:
+            raise ValueError("Plugin name not initialized")
+        return self.plugin_name
+
+    def store_node_data(self, meshtastic_id: str, node_data: Any) -> None:
+        """
+        Append data items for a Meshtastic node to this plugin's persistent store and persist the trimmed result.
+
+        Parameters:
+            meshtastic_id (str): Identifier of the Meshtastic node to which the data belongs.
+            node_data (Any): A single item or an iterable/list of items to append for the node.
+        """
+        plugin_name = self._require_plugin_name()
+        data = get_plugin_data_for_node(plugin_name, meshtastic_id)
         if isinstance(node_data, list):
             data.extend(node_data)
         else:
             data.append(node_data)
         data = data[-self.max_data_rows_per_node :]
-        store_plugin_data(self.plugin_name, meshtastic_id, data)
+        store_plugin_data(plugin_name, meshtastic_id, data)
 
-    def set_node_data(self, meshtastic_id, node_data):
-        """Replace all data for a specific node.
-
-        Args:
-            meshtastic_id (str): Node identifier
-            node_data: Data to store (replaces existing data)
-
-        Completely replaces existing data for the node, trimming to
-        max_data_rows_per_node if needed. Use when you want to reset
-        or completely replace a node's data.
+    def set_node_data(self, meshtastic_id: str, node_data: Any) -> None:
         """
-        node_data = node_data[-self.max_data_rows_per_node :]
-        store_plugin_data(self.plugin_name, meshtastic_id, node_data)
+        Replace all stored data for a Meshtastic node with the provided data.
 
-    def delete_node_data(self, meshtastic_id):
-        """Delete all stored data for a specific node.
+        Parameters:
+            meshtastic_id (str): Node identifier for which data will be replaced.
+            node_data (Any): New data to store; if a sequence, only the most recent
+                entries up to `self.max_data_rows_per_node` are kept. Scalars and
+                non-sequence iterables are normalized to a list.
+        """
+        plugin_name = self._require_plugin_name()
+        # Normalize to a list so scalars, dicts, and generators are stored safely.
+        if isinstance(node_data, list):
+            normalized = node_data
+        elif isinstance(node_data, dict):
+            normalized = [node_data]
+        elif isinstance(node_data, Iterable) and not isinstance(
+            node_data, (str, bytes, bytearray)
+        ):
+            normalized = list(node_data)
+        else:
+            normalized = [node_data]
 
-        Args:
-            meshtastic_id (str): Node identifier
+        trimmed = normalized[-self.max_data_rows_per_node :]
+        store_plugin_data(plugin_name, meshtastic_id, trimmed)
+
+    def delete_node_data(self, meshtastic_id: str) -> None:
+        """
+        Remove all stored data entries for the specified Meshtastic node from this plugin's persistent storage.
+
+        Parameters:
+            meshtastic_id (str): Meshtastic node identifier whose stored data will be removed.
+        """
+        plugin_name = self._require_plugin_name()
+        delete_plugin_data(plugin_name, meshtastic_id)
+
+    def get_node_data(self, meshtastic_id: str) -> list[Any]:
+        """
+        Retrieve stored data rows for the specified Meshtastic node.
 
         Returns:
-            bool: True if deletion succeeded, False otherwise
+            list[Any]: Stored data rows for the node identified by `meshtastic_id`; empty list if no data exists.
         """
-        return delete_plugin_data(self.plugin_name, meshtastic_id)
+        plugin_name = self._require_plugin_name()
+        return get_plugin_data_for_node(plugin_name, meshtastic_id)
 
-    def get_node_data(self, meshtastic_id):
-        """Retrieve stored data for a specific node.
-
-        Args:
-            meshtastic_id (str): Node identifier
+    def get_data(self) -> list[Any]:
+        """
+        Retrieve all stored plugin data across all Meshtastic nodes.
 
         Returns:
-            list: Stored data for the node (JSON deserialized)
+            list[Any]: A list of raw stored entries for this plugin across all nodes. Data is returned without JSON deserialization.
         """
-        return get_plugin_data_for_node(self.plugin_name, meshtastic_id)
+        plugin_name = self._require_plugin_name()
+        return get_plugin_data(plugin_name)
 
-    def get_data(self):
-        """Retrieve all stored data for this plugin across all nodes.
+    def get_plugin_data_dir(self, subdir: str | None = None) -> str:
+        """
+        Get the filesystem path for this plugin's data directory, creating it if missing.
+
+        Parameters:
+                subdir (str | None): Optional subdirectory name inside the plugin data directory to create and return. If None, the top-level plugin data directory path is returned.
 
         Returns:
-            list: List of tuples containing raw data entries
-
-        Returns raw data without JSON deserialization. Use get_node_data()
-        for individual node data that's automatically deserialized.
-        """
-        return get_plugin_data(self.plugin_name)
-
-    def get_plugin_data_dir(self, subdir=None):
-        """
-        Returns the directory for storing plugin-specific data files.
-
-        Creates the directory if it doesn't exist.
-
-        Args:
-            subdir (str, optional): Optional subdirectory within the plugin's data directory.
-                                   If provided, this subdirectory will be created.
-
-        Returns:
-            str: Path to the plugin's data directory or subdirectory
-
-        Example:
-            self.get_plugin_data_dir() returns ~/.mmrelay/data/plugins/your_plugin_name/
-            self.get_plugin_data_dir("data_files") returns ~/.mmrelay/data/plugins/your_plugin_name/data_files/
+                plugin_path (str): Absolute path to the plugin's data directory or the requested subdirectory.
         """
         # Get the plugin-specific data directory
-        plugin_dir = get_plugin_data_dir(self.plugin_name)
+        plugin_name = self._require_plugin_name()
+        plugin_dir: str = get_plugin_data_dir(plugin_name)
 
         # If a subdirectory is specified, create and return it
         if subdir:
@@ -647,17 +679,18 @@ class BasePlugin(ABC):
 
         return plugin_dir
 
-    def matches(self, event):
+    def matches(
+        self,
+        event: RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote,
+    ) -> bool:
         """
-        Determine whether a Matrix event invokes this plugin's Matrix commands.
-
-        Checks whether the event contains any of the plugin's configured Matrix commands, taking into account the plugin's configured bot-mention requirement.
+        Check whether a Matrix event invokes this plugin's Matrix commands.
 
         Parameters:
-            event: The Matrix room event to evaluate.
+            event (RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote): The Matrix room event to evaluate.
 
         Returns:
-            True if the event matches one of the plugin's Matrix commands, False otherwise.
+            `True` if the event invokes one of the plugin's Matrix commands, `False` otherwise.
         """
         from mmrelay.matrix_utils import bot_command
 
@@ -715,33 +748,43 @@ class BasePlugin(ABC):
 
     @abstractmethod
     async def handle_meshtastic_message(
-        self, packet, formatted_message, longname, meshnet_name
+        self,
+        packet: dict[str, Any],
+        formatted_message: str,
+        longname: str,
+        meshnet_name: str,
     ) -> bool:
         """
         Handle an incoming Meshtastic packet and perform plugin-specific processing.
 
         Parameters:
-            packet: Original Meshtastic packet (protobuf-derived dict or message).
-            formatted_message (str): Clean, human-readable text payload.
+            packet (dict[str, Any]): Original Meshtastic packet (protobuf-derived dict or message).
+            formatted_message (str): Clean, human-readable text payload extracted from the packet.
             longname (str): Sender display name or node label.
             meshnet_name (str): Identifier of the originating mesh network.
 
         Returns:
-            `true` if the packet was handled, `false` otherwise.
+            bool: True if the packet was handled, False otherwise.
         """
         pass  # Implement in subclass
 
     @abstractmethod
-    async def handle_room_message(self, room, event, full_message) -> bool:
+    async def handle_room_message(
+        self,
+        room: MatrixRoom,
+        event: RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote,
+        full_message: str,
+    ) -> bool:
         """
-        Handle an incoming Matrix room message and perform plugin-specific processing.
+        Process an incoming Matrix room message and perform plugin-specific handling.
 
         Parameters:
-            room: Matrix room object where the message was received.
-            event: Matrix event object containing message metadata and sender.
-            full_message: The full text content of the received message.
+            room (MatrixRoom): Matrix room object where the message was received.
+            event (RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote):
+                Matrix event payload containing metadata and sender information.
+            full_message (str): The full text content of the received message.
 
         Returns:
-            True if the message was handled by the plugin, False otherwise.
+            bool: `True` if the plugin handled the message, `False` otherwise.
         """
         pass  # Implement in subclass
