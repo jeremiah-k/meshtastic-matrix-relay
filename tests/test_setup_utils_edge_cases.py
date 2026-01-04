@@ -39,7 +39,7 @@ class TestSetupUtilsEdgeCases(unittest.TestCase):
 
     def test_create_service_file_permission_error(self):
         """
-        Test that create_service_file returns False when directory creation fails due to a PermissionError.
+        Verify create_service_file logs the exception and indicates failure when writing the service file raises a PermissionError.
         """
         with patch(
             "mmrelay.setup_utils.get_executable_path", return_value="/usr/bin/mmrelay"

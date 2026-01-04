@@ -119,6 +119,15 @@ def _submit_coro(
 
         # Wrap awaitables that are not coroutine objects (e.g., Futures) for scheduling.
         async def _await_wrapper(awaitable: Any) -> Any:
+            """
+            Await the given awaitable and return its result.
+            
+            Parameters:
+                awaitable (Any): An awaitable object (e.g., coroutine, Future) to be awaited.
+            
+            Returns:
+                Any: The value produced by awaiting `awaitable`.
+            """
             return await awaitable
 
         coro = _await_wrapper(coro)

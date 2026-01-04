@@ -1463,6 +1463,12 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
         from concurrent.futures import Future
 
         async def test_coro():
+            """
+            Simple coroutine that returns a fixed test string.
+            
+            Returns:
+                str: The literal string "test_result".
+            """
             return "test_result"
 
         coro = test_coro()
@@ -1482,10 +1488,10 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
 
         async def failing_coro():
             """
-            Coroutine that immediately raises a ValueError when awaited.
-
-            Intended for tests: awaiting this coroutine always raises ValueError("Test exception").
-
+            Raise ValueError("Test exception") when awaited.
+            
+            Intended for tests: awaiting this coroutine always raises ValueError with the message "Test exception".
+            
             Raises:
                 ValueError: Always raised when the coroutine is awaited.
             """
@@ -1587,6 +1593,12 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
 
         class DummyAwaitable:
             def __await__(self):
+                """
+                Make the object awaitable; awaiting the instance yields its awaited result.
+                
+                Returns:
+                    str: The value produced when awaiting the object, "awaitable-result".
+                """
                 if False:
                     yield None
                 return "awaitable-result"

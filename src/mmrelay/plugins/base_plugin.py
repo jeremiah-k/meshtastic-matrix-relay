@@ -564,12 +564,12 @@ class BasePlugin(ABC):
 
     def get_mesh_commands(self) -> list[str]:
         """
-        List mesh/radio command names the plugin handles.
-
-        By default this returns an empty list; subclasses should override to expose commands. Command names must be provided without the leading '!'.
-
+        Return the mesh/radio command names this plugin handles.
+        
+        By default returns an empty list; subclasses should override to expose commands. Command names must be provided without a leading '!'.
+        
         Returns:
-            list[str]: Command names without the leading '!' (empty by default).
+            list[str]: Command names (without a leading '!'); empty by default.
         """
         return []
 
@@ -589,11 +589,13 @@ class BasePlugin(ABC):
 
     def store_node_data(self, meshtastic_id: str, node_data: Any) -> None:
         """
-        Append data items for a Meshtastic node to this plugin's persistent store and persist the trimmed result.
-
+        Append data for a Meshtastic node to this plugin's persistent per-node store.
+        
+        The existing stored value (if any) is normalized to a list, the provided item or items are appended, the list is trimmed to the plugin's max_data_rows_per_node, and the updated list is persisted.
+        
         Parameters:
-            meshtastic_id (str): Identifier of the Meshtastic node to which the data belongs.
-            node_data (Any): A single item or an iterable/list of items to append for the node.
+            meshtastic_id (str): Identifier of the Meshtastic node.
+            node_data (Any): A single data item or a list/iterable of items to append; the stored value will be a list after this call.
         """
         plugin_name = self._require_plugin_name()
         data = get_plugin_data_for_node(plugin_name, meshtastic_id)
@@ -634,20 +636,23 @@ class BasePlugin(ABC):
 
     def delete_node_data(self, meshtastic_id: str) -> None:
         """
-        Remove all stored data entries for the specified Meshtastic node from this plugin's persistent storage.
-
+        Remove all persisted data associated with the given Meshtastic node for this plugin.
+        
         Parameters:
-            meshtastic_id (str): Meshtastic node identifier whose stored data will be removed.
+            meshtastic_id (str): Identifier of the Meshtastic node whose stored data will be deleted.
         """
         plugin_name = self._require_plugin_name()
         delete_plugin_data(plugin_name, meshtastic_id)
 
     def get_node_data(self, meshtastic_id: str) -> Any:
         """
-        Retrieve stored data rows for specified Meshtastic node.
-
+        Retrieve the plugin-specific data stored for a Meshtastic node.
+        
+        Parameters:
+            meshtastic_id (str): Identifier of the Meshtastic node.
+        
         Returns:
-            Any: Stored data for node identified by `meshtastic_id`.
+            Any: The stored data value for the given node (may be any JSON-serializable value), or `None` if no data exists.
         """
         plugin_name = self._require_plugin_name()
         return get_plugin_data_for_node(plugin_name, meshtastic_id)
