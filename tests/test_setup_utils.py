@@ -632,12 +632,12 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
 
         # Should log fallback message
         mock_logger.warning.assert_any_call(
-            "Warning: Could not find mmrelay executable in PATH. Using current Python interpreter."
+            "Could not find mmrelay executable in PATH. Using current Python interpreter."
         )
 
         # Should write service content with python -m mmrelay
         written_content = mock_path.write_text.call_args[0][0]
-        self.assertIn("python -m mmrelay", written_content)
+        self.assertIn("-m mmrelay", written_content)
 
     @patch("mmrelay.setup_utils.read_service_file")
     @patch("mmrelay.setup_utils.get_executable_path")

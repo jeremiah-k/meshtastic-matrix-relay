@@ -576,7 +576,19 @@ def connect_meshtastic(
     )
     try:
         timeout = int(timeout_raw)
+        if timeout <= 0:
+            logger.warning(
+                "Non-positive meshtastic.timeout value %r; using %ss fallback.",
+                timeout_raw,
+                DEFAULT_MESHTASTIC_TIMEOUT,
+            )
+            timeout = DEFAULT_MESHTASTIC_TIMEOUT
     except (TypeError, ValueError):
+        logger.warning(
+            "Invalid meshtastic.timeout value %r; using %ss fallback.",
+            timeout_raw,
+            DEFAULT_MESHTASTIC_TIMEOUT,
+        )
         timeout = DEFAULT_MESHTASTIC_TIMEOUT
 
     while (

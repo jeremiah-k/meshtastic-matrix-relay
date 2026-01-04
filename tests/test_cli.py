@@ -1875,6 +1875,10 @@ class TestValidateE2EEDependencies(unittest.TestCase):
         self.assertFalse(result)
         # Function uses print statements, not logger
         mock_print.assert_any_call("❌ Error: E2EE is not supported on Windows")
+        mock_print.assert_any_call(
+            "   Reason: python-olm library requires native C libraries"
+        )
+        mock_print.assert_any_call("   Solution: Use Linux or macOS for E2EE support")
 
     @patch("os.path.exists")
     @patch("builtins.open", new_callable=mock_open)

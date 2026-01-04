@@ -65,7 +65,7 @@ def get_executable_path() -> str:
     resolved_cmd = get_resolved_exec_cmd()
     if " -m mmrelay" in resolved_cmd:
         logger.warning(
-            "Warning: Could not find mmrelay executable in PATH. Using current Python interpreter."
+            "Could not find mmrelay executable in PATH. Using current Python interpreter."
         )
     else:
         logger.info("Found mmrelay executable at: %s", resolved_cmd)
@@ -387,7 +387,7 @@ def create_service_file() -> bool:
     # Get the template service content
     service_template = get_template_service_content()
     if not service_template:
-        logger.error("Error: Could not find service template file")
+        logger.error("Could not find service template file")
         return False
 
     # Replace placeholders with actual values
@@ -442,14 +442,15 @@ def reload_daemon() -> bool:
     try:
         # Using resolved systemctl path
         subprocess.run([SYSTEMCTL, "--user", "daemon-reload"], check=True)
-        logger.info("Systemd user daemon reloaded")
-        return True
     except subprocess.CalledProcessError:
         logger.exception("Error reloading systemd daemon")
         return False
     except OSError:
         logger.exception("Error running systemctl daemon-reload")
         return False
+    else:
+        logger.info("Systemd user daemon reloaded")
+        return True
 
 
 def service_needs_update() -> tuple[bool, str]:
@@ -782,9 +783,7 @@ def install_service() -> bool:
                 show_service_status()
                 logger.info("Service started successfully")
             else:
-                logger.warning(
-                    "\nFailed to start of the service. Please check the logs."
-                )
+                logger.warning("\nFailed to start the service. Please check the logs.")
 
     # Log a summary of the service status
     logger.info("\nService Status Summary:")
@@ -838,9 +837,10 @@ def show_service_status() -> bool:
             capture_output=True,
             text=True,
         )
-        logger.info("\nService Status:")
-        logger.info(result.stdout if result.stdout else result.stderr)
-        return True
     except OSError:
         logger.exception("Error displaying service status")
         return False
+    else:
+        logger.info("\nService Status:")
+        logger.info(result.stdout if result.stdout else result.stderr)
+        return True
