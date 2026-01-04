@@ -309,7 +309,7 @@ def _validate_credentials_json(config_path: str) -> bool:
     """
     Validate presence and contents of a Matrix credentials.json adjacent to the given config.
 
-    Checks that a credentials.json file can be located from the supplied config path and contains non-empty string values for the keys "homeserver", "access_token", "user_id", and "device_id". On validation failure this function prints a concise error message and guidance to run the authentication login flow.
+    Checks that a credentials.json file can be located from the supplied config path and contains non-empty string values for the keys "homeserver", "access_token", "user_id", and "device_id". On logical validation failure (missing fields), prints error message and guidance. On IO/parse errors, logs exception and prints error message with guidance.
 
     Parameters:
         config_path (str): Path to the configuration file used to determine where to look for credentials.json.

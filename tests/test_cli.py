@@ -322,11 +322,11 @@ class TestCLI(unittest.TestCase):
 class TestGenerateSampleConfig(unittest.TestCase):
     """Test cases for generate_sample_config function."""
 
-    @patch("mmrelay.config.get_config_paths")
+    @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
     def test_generate_sample_config_existing_file(self, mock_isfile, mock_get_paths):
         """
-        Test that generate_sample_config returns False and prints a message when the config file already exists.
+        Test that generate_sample_config returns False and prints a message when config file already exists.
         """
         mock_get_paths.return_value = ["/home/user/.mmrelay/config.yaml"]
         mock_isfile.return_value = True
@@ -343,9 +343,9 @@ class TestGenerateSampleConfig(unittest.TestCase):
     @patch("mmrelay.config.get_config_paths")
     @patch("os.path.isfile")
     @patch("os.makedirs")
-    @patch("mmrelay.cli.get_sample_config_path")
+    @patch("mmrelay.tools.get_sample_config_path")
     @patch("os.path.exists")
-    @patch("shutil.copy2")
+    @patch("shutil.copy")
     def test_generate_sample_config_success(
         self,
         mock_copy,
@@ -373,7 +373,7 @@ class TestGenerateSampleConfig(unittest.TestCase):
         print_calls = [call[0][0] for call in mock_print.call_args_list]
         self.assertTrue(any("Generated sample config" in call for call in print_calls))
 
-    @patch("mmrelay.config.get_config_paths")
+    @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.isfile")
     @patch("os.makedirs")
     @patch("mmrelay.cli.get_sample_config_path")
@@ -1569,7 +1569,7 @@ class TestAuthStatus(unittest.TestCase):
         self.mock_args = MagicMock()
 
     @patch("mmrelay.cli_utils.get_command")
-    @patch("mmrelay.config.get_config_paths")
+    @patch("mmrelay.cli.get_config_paths")
     @patch("os.path.exists")
     @patch("builtins.open", new_callable=mock_open)
     @patch("builtins.print")

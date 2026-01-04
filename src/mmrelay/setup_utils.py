@@ -112,7 +112,7 @@ def service_exists() -> bool:
 
 
 def print_service_commands() -> None:
-    """Print the commands for controlling the systemd user service."""
+    """Print and log the commands for controlling the systemd user service."""
     commands = [
         "  systemctl --user start mmrelay.service    # Start the service",
         "  systemctl --user stop mmrelay.service     # Stop the service",
@@ -277,7 +277,7 @@ def get_template_service_content() -> str:
             with open(template_path, "r", encoding="utf-8") as f:
                 service_template = f.read()
             return service_template
-        except (OSError, UnicodeDecodeError):
+        except OSError:
             logger.exception("Error reading service template file")
 
     # If the helper function failed, try using importlib.resources directly
@@ -299,7 +299,7 @@ def get_template_service_content() -> str:
                 with open(fallback_template_path, "r", encoding="utf-8") as f:
                     service_template = f.read()
                 return service_template
-            except (OSError, UnicodeDecodeError):
+            except OSError:
                 logger.exception("Error reading service template file")
 
     # If we couldn't find or read the template file, use a default template
@@ -859,9 +859,9 @@ def start_service() -> bool:
 
 def show_service_status() -> bool:
     """
-    Display the user's systemd status for the mmrelay service.
+    Display the user's systemd status for the mmrelay service to the user.
 
-    Prints and logs the service status output; if systemctl cannot be executed, an error is logged.
+    Prints the service status output to stdout for visibility; logs errors if systemctl cannot be executed.
 
     Returns:
         True if the status command executed and its output was displayed, False if an OS-level error prevented running systemctl.
