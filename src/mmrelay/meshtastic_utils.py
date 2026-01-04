@@ -114,10 +114,7 @@ def _submit_coro(
     """
     if not inspect.iscoroutine(coro):
         if not inspect.isawaitable(coro):
-            # Defensive guard: Tests may patch async functions to return non-awaitable values
-            # (e.g., when mocking with return_value instead of using AsyncMock patterns).
-            # This prevents AttributeError when the test framework returns a regular value
-            # instead of a coroutine object.
+            # Guard against test mocks returning non-awaitable values (e.g., return_value vs AsyncMock).
             return None
 
         # Wrap awaitables that are not coroutine objects (e.g., Futures) for scheduling.
@@ -1094,12 +1091,12 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
                 if user:
                     if not longname:
                         longname_val = user.get("longName")
-                        if longname_val and sender:
+                        if longname_val and sender is not None:
                             save_longname(sender, longname_val)
                             longname = longname_val
                     if not shortname:
                         shortname_val = user.get("shortName")
-                        if shortname_val and sender:
+                        if shortname_val and sender is not None:
                             save_shortname(sender, shortname_val)
                             shortname = shortname_val
             else:
@@ -1423,6 +1420,7 @@ def send_text_reply(
         logger.exception("Failed to send text reply")
         return None
     except SystemExit:
+        # Preserve SystemExit to allow graceful shutdown; some paths in meshtastic may call sys.exit()
         raise
 
 
