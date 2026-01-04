@@ -347,6 +347,8 @@ def _validate_credentials_json(config_path: str) -> bool:
         return True
     except (OSError, json.JSONDecodeError):
         logger.exception("❌ Error: Could not validate credentials.json")
+        print(f"❌ Error: Could not validate credentials.json")
+        print(f"   {msg_run_auth_login()}")
         return False
 
 
@@ -1481,10 +1483,11 @@ def handle_service_command(args: argparse.Namespace) -> int:
             from mmrelay.setup_utils import install_service
 
             return 0 if install_service() else 1
-        except ImportError as e:
-            print(f"Error importing setup utilities: {e}")
+        except ImportError:
+            logger.exception("Error importing setup utilities")
             return 1
     else:
+        logger.warning("Unknown service command: %s", args.service_command)
         print(f"Unknown service command: {args.service_command}")
         return 1
 
@@ -1821,15 +1824,18 @@ def generate_sample_config() -> bool:
     target_path = config_paths[0]
 
     # Directory should already exist from get_config_paths() call
+    # Use a helper function to get the sample config path
+    try:
+        sample_config_path = get_sample_config_path()
+    except (IOError, OSError):
+        # If we can't get the sample config path, continue to fallback
+        # This handles the case where get_sample_config_path() fails
+        sample_config_path = None
 
-    # Use the helper function to get the sample config path
-    sample_config_path = get_sample_config_path()
-
-    if os.path.exists(sample_config_path):
-        # Copy the sample config file to the target path
-
+    if sample_config_path and os.path.exists(sample_config_path):
+        # Copy of sample config file to the target path
         try:
-            shutil.copy2(sample_config_path, target_path)
+            shutil.copy(sample_config_path, target_path)
 
             # Set secure permissions on Unix systems (600 - owner read/write)
             set_secure_file_permissions(target_path)

@@ -259,9 +259,7 @@ class TestCLIEdgeCases(unittest.TestCase):
             mock_get_paths.return_value = ["/test/config.yaml"]
             with patch("os.path.isfile", return_value=False):
                 with patch("os.makedirs"):
-                    with patch(
-                        "mmrelay.tools.get_sample_config_path"
-                    ) as mock_get_sample:
+                    with patch("mmrelay.cli.get_sample_config_path") as mock_get_sample:
                         mock_get_sample.return_value = "/nonexistent/sample.yaml"
                         with patch("mmrelay.cli.os.path.exists", return_value=False):
                             with patch("importlib.resources.files") as mock_resources:
@@ -283,9 +281,7 @@ class TestCLIEdgeCases(unittest.TestCase):
             mock_get_paths.return_value = ["/test/config.yaml"]
             with patch("os.path.isfile", return_value=False):
                 with patch("os.makedirs"):
-                    with patch(
-                        "mmrelay.tools.get_sample_config_path"
-                    ) as mock_get_sample:
+                    with patch("mmrelay.cli.get_sample_config_path") as mock_get_sample:
                         mock_get_sample.return_value = "/sample/config.yaml"
                         with patch("os.path.exists", return_value=True):
                             with patch(

@@ -120,7 +120,7 @@ class TestCLIWindowsErrorHandling(unittest.TestCase):
             patch("mmrelay.cli.get_config_paths", return_value=["/test/config.yaml"]),
             patch("os.path.isfile", return_value=False),
             patch(
-                "mmrelay.tools.get_sample_config_path",
+                "mmrelay.cli.get_sample_config_path",
                 side_effect=OSError("Access denied"),
             ),
         ):

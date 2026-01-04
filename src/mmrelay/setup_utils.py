@@ -112,11 +112,16 @@ def service_exists() -> bool:
 
 
 def print_service_commands() -> None:
-    """Log the commands for controlling the systemd user service."""
-    logger.info("  systemctl --user start mmrelay.service    # Start the service")
-    logger.info("  systemctl --user stop mmrelay.service     # Stop the service")
-    logger.info("  systemctl --user restart mmrelay.service  # Restart the service")
-    logger.info("  systemctl --user status mmrelay.service   # Check service status")
+    """Print the commands for controlling the systemd user service."""
+    commands = [
+        "  systemctl --user start mmrelay.service    # Start the service",
+        "  systemctl --user stop mmrelay.service     # Stop the service",
+        "  systemctl --user restart mmrelay.service  # Restart the service",
+        "  systemctl --user status mmrelay.service   # Check service status",
+    ]
+    for cmd in commands:
+        print(cmd)
+        logger.debug(cmd)
 
 
 def wait_for_service_start() -> None:
@@ -272,7 +277,7 @@ def get_template_service_content() -> str:
             with open(template_path, "r", encoding="utf-8") as f:
                 service_template = f.read()
             return service_template
-        except (OSError, IOError, UnicodeDecodeError):
+        except (OSError, UnicodeDecodeError):
             logger.exception("Error reading service template file")
 
     # If the helper function failed, try using importlib.resources directly
@@ -283,7 +288,7 @@ def get_template_service_content() -> str:
             .read_text(encoding="utf-8")
         )
         return service_template
-    except (FileNotFoundError, ImportError, OSError, UnicodeDecodeError):
+    except (FileNotFoundError, ImportError, UnicodeDecodeError):
         logger.exception("Error accessing mmrelay.service via importlib.resources")
 
         # Fall back to the file path method
@@ -294,7 +299,7 @@ def get_template_service_content() -> str:
                 with open(fallback_template_path, "r", encoding="utf-8") as f:
                     service_template = f.read()
                 return service_template
-            except (OSError, IOError, UnicodeDecodeError):
+            except (OSError, UnicodeDecodeError):
                 logger.exception("Error reading service template file")
 
     # If we couldn't find or read the template file, use a default template
@@ -420,14 +425,15 @@ def create_service_file() -> bool:
     )
 
     # Write service file
+    service_path = get_user_service_path()
     try:
-        get_user_service_path().write_text(service_content, encoding="utf-8")
-    except (IOError, OSError):
-        logger.exception("Error creating service file")
+        service_path.write_text(service_content, encoding="utf-8")
+    except OSError:
+        logger.exception("Error creating service file at %s", service_path)
         return False
-    else:
-        logger.info("Service file created at %s", get_user_service_path())
-        return True
+
+    logger.info("Service file created at %s", service_path)
+    return True
 
 
 def reload_daemon() -> bool:
@@ -442,15 +448,14 @@ def reload_daemon() -> bool:
     try:
         # Using resolved systemctl path
         subprocess.run([SYSTEMCTL, "--user", "daemon-reload"], check=True)
+        logger.info("Systemd user daemon reloaded")
+        return True
     except subprocess.CalledProcessError as e:
         logger.exception("Error reloading systemd daemon (exit code %s)", e.returncode)
         return False
-    except OSError as e:
+    except OSError:
         logger.exception("Error running systemctl daemon-reload")
         return False
-    else:
-        logger.info("Systemd user daemon reloaded")
-        return True
 
 
 def service_needs_update() -> tuple[bool, str]:
@@ -650,25 +655,33 @@ def install_service() -> bool:
     # Check if the service is already installed and if it needs updating
     if existing_service:
         logger.info("A service file already exists at %s", service_path)
+        print(f"\nA service file already exists at {service_path}")
 
         if update_needed:
             logger.info("The service file needs to be updated: %s", reason)
+            print(f"The service file needs to be updated: {reason}")
             try:
                 user_input = input("Do you want to update the service file? (y/n): ")
                 if not user_input.lower().startswith("y"):
+                    print("Service update cancelled.")
                     logger.info("Service update cancelled.")
                     print_service_commands()
                     return True
             except (EOFError, KeyboardInterrupt):
+                print("\nInput cancelled. Proceeding with default behavior.")
                 logger.info("\nInput cancelled. Proceeding with default behavior.")
+                print("Service update cancelled.")
                 logger.info("Service update cancelled.")
                 print_service_commands()
                 return True
         else:
             logger.info("No update needed for the service file: %s", reason)
+            print(f"No update needed for the service file: {reason}")
     else:
         logger.info("No service file found at %s", service_path)
         logger.info("A new service file will be created.")
+        print(f"\nNo service file found at {service_path}")
+        print("A new service file will be created.")
 
     # Create or update service file if needed
     if not existing_service or update_needed:
@@ -694,6 +707,12 @@ def install_service() -> bool:
         # Check if user lingering is enabled
         lingering_enabled = check_lingering_enabled()
         if not lingering_enabled:
+            print(
+                "\nUser lingering is not enabled. This is required for the service to start automatically at boot."
+            )
+            print(
+                "Lingering allows user services to run even when you're not logged in."
+            )
             logger.info(
                 "\nUser lingering is not enabled. This is required for the service to start automatically at boot."
             )
@@ -706,6 +725,7 @@ def install_service() -> bool:
                 )
                 should_enable_lingering = user_input.lower().startswith("y")
             except (EOFError, KeyboardInterrupt):
+                print("\nInput cancelled. Skipping lingering setup.")
                 logger.info("\nInput cancelled. Skipping lingering setup.")
                 should_enable_lingering = False
 
@@ -716,14 +736,17 @@ def install_service() -> bool:
     service_enabled = is_service_enabled()
     if service_enabled:
         logger.info("The service is already enabled to start at boot.")
+        print("\nThe service is already enabled to start at boot.")
     else:
         logger.info("The service is not currently enabled to start at boot.")
+        print("\nThe service is not currently enabled to start at boot.")
         try:
             user_input = input(
                 "Do you want to enable the service to start at boot? (y/n): "
             )
             enable_service = user_input.lower().startswith("y")
         except (EOFError, KeyboardInterrupt):
+            print("\nInput cancelled. Skipping service enable.")
             logger.info("\nInput cancelled. Skipping service enable.")
             enable_service = False
 
@@ -744,10 +767,12 @@ def install_service() -> bool:
     service_active = is_service_active()
     if service_active:
         logger.info("The service is already running.")
+        print("\nThe service is already running.")
         try:
             user_input = input("Do you want to restart the service? (y/n): ")
             restart_service = user_input.lower().startswith("y")
         except (EOFError, KeyboardInterrupt):
+            print("\nInput cancelled. Skipping service restart.")
             logger.info("\nInput cancelled. Skipping service restart.")
             restart_service = False
 
@@ -757,6 +782,7 @@ def install_service() -> bool:
                     [SYSTEMCTL, "--user", "restart", "mmrelay.service"],
                     check=True,
                 )
+                print("Service restarted successfully")
                 logger.info("Service restarted successfully")
                 # Wait for the service to restart
                 wait_for_service_start()
@@ -766,14 +792,16 @@ def install_service() -> bool:
                 logger.exception(
                     "Error restarting service (exit code %s)", e.returncode
                 )
-            except OSError as e:
+            except OSError:
                 logger.exception("OS error while restarting service")
     else:
         logger.info("The service is not currently running.")
+        print("\nThe service is not currently running.")
         try:
             user_input = input("Do you want to start the service now? (y/n): ")
             start_now = user_input.lower().startswith("y")
         except (EOFError, KeyboardInterrupt):
+            print("\nInput cancelled. Skipping service start.")
             logger.info("\nInput cancelled. Skipping service start.")
             start_now = False
 
@@ -783,21 +811,27 @@ def install_service() -> bool:
                 wait_for_service_start()
                 # Show service status
                 show_service_status()
+                print("Service started successfully")
                 logger.info("Service started successfully")
             else:
+                print("\nFailed to start the service. Please check the logs.")
                 logger.warning("\nFailed to start the service. Please check the logs.")
 
     # Log a summary of the service status
+    print("\nService Status Summary:")
+    print(f"  Service File: {service_path}")
+    print(f"  Enabled at Boot: {'Yes' if service_enabled else 'No'}")
+    if loginctl_available:
+        lingering_status = "Yes" if check_lingering_enabled() else "No"
+        print(f"  User Lingering: {lingering_status}")
+        logger.info("  User Lingering: %s", lingering_status)
+    running_status = "Yes" if is_service_active() else "No"
+    print(f"  Currently Running: {running_status}")
     logger.info("\nService Status Summary:")
     logger.info("  Service File: %s", service_path)
     logger.info("  Enabled at Boot: %s", "Yes" if service_enabled else "No")
-    if loginctl_available:
-        logger.info(
-            "  User Lingering: %s",
-            "Yes" if check_lingering_enabled() else "No",
-        )
-    logger.info("  Currently Running: %s", "Yes" if is_service_active() else "No")
-    logger.info("\nService Management Commands:")
+    logger.info("  Currently Running: %s", running_status)
+    print("\nService Management Commands:")
     print_service_commands()
 
     return True
@@ -827,7 +861,7 @@ def show_service_status() -> bool:
     """
     Display the user's systemd status for the mmrelay service.
 
-    Logs the service status output; if systemctl cannot be executed, an error is logged.
+    Prints and logs the service status output; if systemctl cannot be executed, an error is logged.
 
     Returns:
         True if the status command executed and its output was displayed, False if an OS-level error prevented running systemctl.
@@ -842,7 +876,7 @@ def show_service_status() -> bool:
     except OSError:
         logger.exception("Error displaying service status")
         return False
-    else:
-        logger.info("\nService Status:")
-        logger.info(result.stdout if result.stdout else result.stderr)
-        return True
+
+    print("\nService Status:")
+    print(result.stdout if result.stdout else result.stderr)
+    return True
