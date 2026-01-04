@@ -542,10 +542,12 @@ class TestSetupUtils(unittest.TestCase):
         self.assertFalse(result)
 
     @patch("subprocess.run")
-    def test_enable_lingering_success(self, mock_run):
+    @patch("shutil.which")
+    def test_enable_lingering_success(self, mock_which, mock_run):
         """
         Test that enabling user lingering returns True when the command succeeds.
         """
+        mock_which.side_effect = lambda cmd: cmd
         mock_run.return_value.returncode = 0
 
         with patch.dict(os.environ, {"USER": "testuser"}):
@@ -1132,7 +1134,8 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         self.assertIsNone(path)
         self.assertTrue(
             any(
-                "Warning: Could not find mmrelay.service" in call_args.args[0]
+                "Could not find mmrelay.service in any of these locations:"
+                in call_args.args[0]
                 for call_args in mock_logger.warning.call_args_list
             )
         )
