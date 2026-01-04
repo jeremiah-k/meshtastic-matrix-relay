@@ -300,9 +300,9 @@ def _validate_credentials_json(config_path: str) -> bool:
     Returns:
         bool: `True` if a credentials.json was found and contains all required non-empty fields, `False` otherwise.
     """
-    try:
-        import json
+    import json
 
+    try:
         # Look for credentials.json using helper function
         credentials_path = _find_credentials_json_path(config_path)
         if not credentials_path:
@@ -1730,12 +1730,6 @@ def handle_config_diagnose(args: argparse.Namespace) -> int:
         return 1
 
 
-if __name__ == "__main__":
-    import sys
-
-    sys.exit(main())
-
-
 def handle_cli_commands(args: argparse.Namespace) -> int | None:
     """
     Handle legacy CLI flags (--version, --install-service, --generate-config, --check-config, --auth).
@@ -1966,3 +1960,9 @@ def generate_sample_config() -> bool:
             pass
 
         return False
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(main())

@@ -96,7 +96,7 @@ class Plugin(BasePlugin):
             telemetry_data = []
             data = self.get_node_data(meshtastic_id=packet["fromId"])
             if data:
-                telemetry_data = data
+                telemetry_data = data if isinstance(data, list) else [data]
             packet_data = packet["decoded"]["telemetry"]
             device_metrics = packet_data["deviceMetrics"]
 
@@ -201,7 +201,11 @@ class Plugin(BasePlugin):
         if node:
             node_data_rows = self.get_node_data(node)
             if node_data_rows:
-                calculate_averages(node_data_rows)
+                calculate_averages(
+                    node_data_rows
+                    if isinstance(node_data_rows, list)
+                    else [node_data_rows]
+                )
             else:
                 await self.send_matrix_message(
                     room.room_id,

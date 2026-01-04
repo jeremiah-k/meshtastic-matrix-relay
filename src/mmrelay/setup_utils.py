@@ -264,8 +264,8 @@ def get_template_service_content() -> str:
             with open(template_path, "r", encoding="utf-8") as f:
                 service_template = f.read()
             return service_template
-        except (OSError, IOError, UnicodeDecodeError) as e:
-            logger.error("Error reading service template file: %s", e)
+        except (OSError, IOError, UnicodeDecodeError):
+            logger.exception("Error reading service template file")
 
     # If the helper function failed, try using importlib.resources directly
     try:
@@ -275,11 +275,8 @@ def get_template_service_content() -> str:
             .read_text(encoding="utf-8")
         )
         return service_template
-    except (FileNotFoundError, ImportError, OSError, UnicodeDecodeError) as e:
-        logger.error(
-            "Error accessing mmrelay.service via importlib.resources: %s",
-            e,
-        )
+    except (FileNotFoundError, ImportError, OSError, UnicodeDecodeError):
+        logger.exception("Error accessing mmrelay.service via importlib.resources")
 
         # Fall back to the file path method
         fallback_template_path = get_template_service_path()
@@ -289,8 +286,8 @@ def get_template_service_content() -> str:
                 with open(fallback_template_path, "r", encoding="utf-8") as f:
                     service_template = f.read()
                 return service_template
-            except (OSError, IOError, UnicodeDecodeError) as e:
-                logger.error("Error reading service template file: %s", e)
+            except (OSError, IOError, UnicodeDecodeError):
+                logger.exception("Error reading service template file")
 
     # If we couldn't find or read the template file, use a default template
     logger.warning("Using default service template")
@@ -421,8 +418,8 @@ def create_service_file() -> bool:
         get_user_service_path().write_text(service_content, encoding="utf-8")
         logger.info("Service file created at %s", get_user_service_path())
         return True
-    except (IOError, OSError) as e:
-        logger.error("Error creating service file: %s", e)
+    except (IOError, OSError):
+        logger.exception("Error creating service file")
         return False
 
 
@@ -440,11 +437,11 @@ def reload_daemon() -> bool:
         subprocess.run([SYSTEMCTL, "--user", "daemon-reload"], check=True)
         logger.info("Systemd user daemon reloaded")
         return True
-    except subprocess.CalledProcessError as e:
-        logger.error("Error reloading systemd daemon: %s", e)
+    except subprocess.CalledProcessError:
+        logger.exception("Error reloading systemd daemon")
         return False
-    except OSError as e:
-        logger.error("Error: %s", e)
+    except OSError:
+        logger.exception("Error")
         return False
 
 
@@ -580,8 +577,8 @@ def check_lingering_enabled() -> bool:
             text=True,
         )
         return result.returncode == 0 and "Linger=yes" in result.stdout
-    except (OSError, subprocess.SubprocessError, KeyError, RuntimeError) as e:
-        logger.error("Error checking lingering status: %s", e)
+    except (OSError, subprocess.SubprocessError, KeyError, RuntimeError):
+        logger.exception("Error checking lingering status")
         return False
 
 
@@ -616,8 +613,8 @@ def enable_lingering() -> bool:
         else:
             logger.error("Error enabling lingering: %s", result.stderr)
             return False
-    except (OSError, subprocess.SubprocessError) as e:
-        logger.error("Error enabling lingering: %s", e)
+    except (OSError, subprocess.SubprocessError):
+        logger.exception("Error enabling lingering")
         return False
 
 
@@ -725,10 +722,10 @@ def install_service() -> bool:
                 )
                 logger.info("Service enabled successfully")
                 service_enabled = True
-            except subprocess.CalledProcessError as e:
-                logger.error("Error enabling service: %s", e)
-            except OSError as e:
-                logger.error("Error: %s", e)
+            except subprocess.CalledProcessError:
+                logger.exception("Error enabling service")
+            except OSError:
+                logger.exception("Error")
 
     # Check if the service is already running
     service_active = is_service_active()
@@ -752,10 +749,10 @@ def install_service() -> bool:
                 wait_for_service_start()
                 # Show service status
                 show_service_status()
-            except subprocess.CalledProcessError as e:
-                logger.error("Error restarting service: %s", e)
-            except OSError as e:
-                logger.error("Error: %s", e)
+            except subprocess.CalledProcessError:
+                logger.exception("Error restarting service")
+            except OSError:
+                logger.exception("Error")
     else:
         logger.info("The service is not currently running.")
         try:
@@ -805,11 +802,11 @@ def start_service() -> bool:
     try:
         subprocess.run([SYSTEMCTL, "--user", "start", "mmrelay.service"], check=True)
         return True
-    except subprocess.CalledProcessError as e:
-        logger.error("Error starting service: %s", e)
+    except subprocess.CalledProcessError:
+        logger.exception("Error starting service")
         return False
-    except OSError as e:
-        logger.error("Error: %s", e)
+    except OSError:
+        logger.exception("Error")
         return False
 
 
@@ -832,6 +829,6 @@ def show_service_status() -> bool:
         logger.info("\nService Status:")
         logger.info(result.stdout if result.stdout else result.stderr)
         return True
-    except OSError as e:
-        logger.error("Error: %s", e)
+    except OSError:
+        logger.exception("Error")
         return False

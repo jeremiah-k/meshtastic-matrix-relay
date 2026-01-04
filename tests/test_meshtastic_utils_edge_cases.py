@@ -611,6 +611,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         Ensures that if the client's `_sendPacket` raises an exception, `send_text_reply` handles it by returning None and calling `logger.exception`.
         """
         mock_client = MagicMock()
+        mock_client._generatePacketId.return_value = 12345
         mock_client._sendPacket.side_effect = RuntimeError("Send failed")
 
         import mmrelay.meshtastic_utils

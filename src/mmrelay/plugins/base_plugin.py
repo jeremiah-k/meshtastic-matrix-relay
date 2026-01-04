@@ -373,7 +373,7 @@ class BasePlugin(ABC):
         """
         Recursively remove any "raw" keys from dictionaries within a nested data structure.
 
-        This function walks dictionaries and lists and removes entries with the key `"raw"`. Dictionaries are mutated in place, but lists are recreated (the function returns a new list for each level).
+        This function walks dictionaries and lists and removes entries with the key `"raw"`. Both dictionaries and lists are mutated in place.
 
         Parameters:
             data (Any): The nested data structure (e.g., dicts and lists) to clean.
@@ -386,7 +386,8 @@ class BasePlugin(ABC):
             for k, v in data.items():
                 data[k] = self.strip_raw(v)
         elif isinstance(data, list):
-            data = [self.strip_raw(item) for item in data]
+            for idx, item in enumerate(data):
+                data[idx] = self.strip_raw(item)
         return data
 
     def get_response_delay(self) -> float:
@@ -596,6 +597,8 @@ class BasePlugin(ABC):
         """
         plugin_name = self._require_plugin_name()
         data = get_plugin_data_for_node(plugin_name, meshtastic_id)
+        if not isinstance(data, list):
+            data = [data]
         if isinstance(node_data, list):
             data.extend(node_data)
         else:
@@ -644,7 +647,7 @@ class BasePlugin(ABC):
         Retrieve stored data rows for specified Meshtastic node.
 
         Returns:
-            Any: Stored data for node identified by `meshtastic_id`; returns an empty list if no data exists.
+            Any: Stored data for node identified by `meshtastic_id`.
         """
         plugin_name = self._require_plugin_name()
         return get_plugin_data_for_node(plugin_name, meshtastic_id)

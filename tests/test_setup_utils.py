@@ -229,7 +229,7 @@ class TestSetupUtils(unittest.TestCase):
         # Should have attempted to read the file and caught the error
         mock_open.assert_called()
         # Should have logged error message
-        mock_logger.error.assert_called()
+        mock_logger.exception.assert_called()
 
     @patch("mmrelay.setup_utils.Path.home")
     def test_get_user_service_path(self, mock_home):

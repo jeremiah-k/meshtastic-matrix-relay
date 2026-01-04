@@ -150,6 +150,11 @@ def _submit_coro(
                 asyncio.set_event_loop(None)
         except (RuntimeError, OSError) as e:
             # Ultimate fallback: create a completed Future with the exception
+            logger.debug(
+                "Ultimate fallback triggered for _submit_coro: %s: %s",
+                type(e).__name__,
+                e,
+            )
             error_future: Future[Any] = Future()
             error_future.set_exception(e)
             return error_future
@@ -1411,10 +1416,11 @@ def send_text_reply(
         RuntimeError,
         TypeError,
         ValueError,
-        SystemExit,  # noqa: BLE001 - Catch SystemExit from underlying library calls that may call sys.exit()
     ):
         logger.exception("Failed to send text reply")
         return None
+    except SystemExit:
+        raise
 
 
 # Backward-compatible alias for older call sites.
