@@ -43,7 +43,7 @@ def test_connect_meshtastic_network_alias_warns_and_uses_tcp(reset_meshtastic_gl
         result = connect_meshtastic(passed_config=config)
 
     assert result is mock_client
-    mock_tcp.assert_called_once_with(hostname="127.0.0.1")
+    mock_tcp.assert_called_once_with(hostname="127.0.0.1", timeout=30)
     mock_logger.warning.assert_any_call(
         "Using 'network' connection type (legacy). 'tcp' is now the preferred name and 'network' will be deprecated in a future version."
     )
