@@ -28,6 +28,15 @@ class DatabaseManager:
     tracked so they can be closed when the manager is reset.
     """
 
+    _path: str
+    _enable_wal: bool
+    _busy_timeout_ms: int
+    _extra_pragmas: dict[str, Any]
+    _thread_local: threading.local
+    _write_lock: threading.RLock
+    _connections: set[sqlite3.Connection]
+    _connections_lock: threading.Lock
+
     def __init__(
         self,
         path: str,

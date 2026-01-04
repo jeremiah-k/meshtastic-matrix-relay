@@ -3,11 +3,13 @@ Command-line interface handling for the Meshtastic Matrix Relay.
 """
 
 import argparse
+import importlib
 import importlib.resources
 import os
 import shutil
 import sys
 from collections.abc import Mapping
+from typing import Any
 
 import yaml
 
@@ -46,6 +48,7 @@ from mmrelay.constants.network import (
     CONNECTION_TYPE_SERIAL,
     CONNECTION_TYPE_TCP,
 )
+from mmrelay.e2ee_utils import E2EEStatus
 from mmrelay.tools import get_sample_config_path
 
 # =============================================================================
@@ -53,7 +56,7 @@ from mmrelay.tools import get_sample_config_path
 # =============================================================================
 
 
-def parse_arguments():
+def parse_arguments() -> argparse.Namespace:
     """
     Parse command-line arguments for the Meshtastic Matrix Relay CLI.
 
@@ -218,24 +221,47 @@ def parse_arguments():
     return args
 
 
-def get_version():
+def get_version() -> str:
     """
-    Returns the current version of the application.
+    Get the application's current version string.
 
     Returns:
-        str: The version string
+        str: The application's version string.
     """
     return __version__
 
 
-def print_version():
+def print_version() -> None:
     """
-    Print the version in a simple format.
+    Print the current MMRelay package version to standard output.
     """
     print(f"MMRelay version {__version__}")
 
 
-def _validate_e2ee_dependencies():
+def _e2ee_dependencies_available() -> bool:
+    """
+    Return True if E2EE runtime dependencies can be imported.
+
+    This helper avoids repeating optional imports across CLI flows.
+    """
+    try:
+        # import_module raises ImportError on failure; no None checks needed.
+        importlib.import_module("olm")
+
+        nio_crypto = importlib.import_module("nio.crypto")
+        if not hasattr(nio_crypto, "OlmDevice"):
+            raise ImportError("nio.crypto.OlmDevice is unavailable")
+
+        nio_store = importlib.import_module("nio.store")
+        if not hasattr(nio_store, "SqliteStore"):
+            raise ImportError("nio.store.SqliteStore is unavailable")
+
+        return True
+    except ImportError:
+        return False
+
+
+def _validate_e2ee_dependencies() -> bool:
     """
     Check whether end-to-end encryption (E2EE) is usable on the current platform.
 
@@ -255,31 +281,27 @@ def _validate_e2ee_dependencies():
         return False
 
     # Check if E2EE dependencies are available
-    try:
-        import olm  # noqa: F401
-        from nio.crypto import OlmDevice  # noqa: F401
-        from nio.store import SqliteStore  # noqa: F401
-
+    if _e2ee_dependencies_available():
         print("✅ E2EE dependencies are installed")
         return True
-    except ImportError:
-        print("❌ Error: E2EE dependencies not installed")
-        print("   End-to-end encryption features require additional dependencies")
-        print("   Install E2EE support: pipx install 'mmrelay[e2e]'")
-        return False
+
+    print("❌ Error: E2EE dependencies not installed")
+    print("   End-to-end encryption features require additional dependencies")
+    print("   Install E2EE support: pipx install 'mmrelay[e2e]'")
+    return False
 
 
-def _validate_credentials_json(config_path):
+def _validate_credentials_json(config_path: str) -> bool:
     """
-    Validate that a credentials.json file exists (adjacent to config_path or in the base directory) and contains the required Matrix session fields.
+    Validate presence and contents of a Matrix credentials.json adjacent to the given config.
 
-    Checks for a credentials.json via _find_credentials_json_path(config_path). If found, the file is parsed as JSON and must include non-empty string values for the keys "homeserver", "access_token", "user_id", and "device_id". On validation failure the function prints a brief error and guidance to run the auth login flow.
+    Checks that a credentials.json file can be located from the supplied config path and contains non-empty string values for the keys "homeserver", "access_token", "user_id", and "device_id". On validation failure this function prints a concise error message and guidance to run the authentication login flow.
 
     Parameters:
-        config_path (str): Path to the configuration file used to determine the primary search directory for credentials.json.
+        config_path (str): Path to the configuration file used to determine where to look for credentials.json.
 
     Returns:
-        bool: True if a credentials.json was found and contains all required non-empty fields; False otherwise.
+        bool: `True` if a credentials.json was found and contains all required non-empty fields, `False` otherwise.
     """
     try:
         import json
@@ -314,35 +336,30 @@ def _validate_credentials_json(config_path):
         return False
 
 
-def _is_valid_non_empty_string(value) -> bool:
+def _is_valid_non_empty_string(value: Any) -> bool:
     """
-    Return True if value is a string containing non-whitespace characters.
+    Determine whether a value is a non-empty string containing non-whitespace characters.
 
-    Checks that the input is an instance of `str` and that stripping whitespace
-    does not produce an empty string.
+    Parameters:
+        value (Any): Value to test.
 
     Returns:
-        bool: True when value is a non-empty, non-whitespace-only string; otherwise False.
+        bool: `True` if `value` is a `str` and stripping whitespace yields a non-empty string, `False` otherwise.
     """
     return isinstance(value, str) and value.strip() != ""
 
 
-def _has_valid_password_auth(matrix_section):
+def _has_valid_password_auth(matrix_section: Mapping[str, Any] | None) -> bool:
     """
-    Return True if the given Matrix config section contains valid password-based authentication settings.
+    Check whether a Matrix configuration section contains valid password-based authentication settings.
 
-    The function expects matrix_section to be a dict-like mapping from configuration keys to values.
-    It validates that:
-    - `homeserver` and `bot_user_id` are present and are non-empty strings (after trimming),
-    - `password` is present and is a string (it may be an empty string, which is accepted).
-
-    If matrix_section is not a dict, the function returns False.
+    Validates that `homeserver` and `bot_user_id` are non-empty strings (after trimming) and that `password` is a string (an empty string is allowed).
 
     Parameters:
-        matrix_section: dict-like Matrix configuration section (may be the parsed "matrix" config).
+        matrix_section (Mapping[str, Any] | None): The parsed "matrix" configuration section to validate.
 
     Returns:
-        bool: True when password-based authentication is correctly configured as described above; otherwise False.
+        bool: `True` if `homeserver` and `bot_user_id` are non-empty strings and `password` is a string, `False` otherwise.
     """
     if not isinstance(matrix_section, Mapping):
         return False
@@ -360,29 +377,20 @@ def _has_valid_password_auth(matrix_section):
     )
 
 
-def _validate_matrix_authentication(config_path, matrix_section):
+def _validate_matrix_authentication(
+    config_path: str, matrix_section: Mapping[str, Any] | None
+) -> bool:
     """
     Determine whether Matrix authentication is configured and usable.
 
-    Checks for a valid credentials.json (located relative to the provided config path) and, if not present,
-    falls back to an access_token in the provided matrix_section. Returns True when authentication
-    information is found and usable; returns False when no authentication is configured.
+    Checks for a credentials.json located relative to config_path and, if absent, falls back to password-based fields or an access_token in matrix_section. Prints which authentication source will be used and whether E2EE support is available.
 
     Parameters:
-        config_path (str | os.PathLike): Path to the application's YAML config file; used to locate a
-            credentials.json candidate in the same directory or standard locations.
-        matrix_section (Mapping | None): The parsed "matrix" configuration section (mapping-like). If
-            provided, an "access_token" key will be considered as a valid fallback when credentials.json
-            is absent.
+        config_path (str): Path to the application's YAML config file; used to locate a credentials.json candidate.
+        matrix_section (Mapping[str, Any] | None): The parsed "matrix" configuration section; an `access_token` or password-based fields may provide authentication when credentials.json is not present.
 
     Returns:
-        bool: True if a valid authentication method (credentials.json or access_token) is available,
-        False otherwise.
-
-    Notes:
-        - The function prefers credentials.json over an access_token if both are present.
-        - The function emits user-facing status messages describing which authentication source is used
-          and whether E2EE support is available.
+        bool: `True` if a usable authentication method (credentials.json, password-based config, or access_token) is available, `False` otherwise.
     """
     has_valid_credentials = _validate_credentials_json(config_path)
     token = (matrix_section or {}).get(CONFIG_KEY_ACCESS_TOKEN)
@@ -415,25 +423,24 @@ def _validate_matrix_authentication(config_path, matrix_section):
         return False
 
 
-def _validate_e2ee_config(config, matrix_section, config_path):
+def _validate_e2ee_config(
+    _config: dict[str, Any], matrix_section: Mapping[str, Any] | None, config_path: str
+) -> bool:
     """
-    Validate end-to-end encryption (E2EE) configuration and Matrix authentication for the given config.
+    Validate the application's end-to-end encryption (E2EE) configuration and Matrix authentication readiness.
 
-    Performs these checks:
-    - Confirms Matrix authentication is available (via credentials.json or matrix access token); returns False if authentication is missing or invalid.
-    - If no matrix section is present, treats E2EE as not configured and returns True.
-    - If E2EE/encryption is enabled in the matrix config, verifies platform/dependency support and inspects the configured store path. If the store directory does not yet exist, a note is printed indicating it will be created.
+    Checks that Matrix authentication is available for the given configuration source (credentials.json or in-config credentials). If a matrix section is absent, E2EE is considered not configured and validation succeeds. When E2EE/encryption is enabled in the matrix configuration, verifies platform and dependency support and inspects the configured store path (prints a note if the store directory does not yet exist).
 
     Parameters:
-        config_path (str): Path to the active configuration file (used to locate credentials.json and related auth artifacts).
-        matrix_section (dict | None): The "matrix" subsection of the parsed config (may be None or empty).
-        config (dict): Full parsed configuration (unused for most checks but kept for consistency with caller signature).
+        _config (dict): Full parsed configuration (present for caller compatibility; not required for most checks).
+        matrix_section (Mapping[str, Any] | None): The "matrix" subsection of the parsed config, or None if missing.
+        config_path (str): Path to the active configuration file; used to locate adjacent authentication artifacts (e.g., credentials.json).
 
     Returns:
-        bool: True if configuration and required authentication/dependencies are valid (or E2EE is not configured); False if validation fails.
+        bool: `True` if authentication and any enabled E2EE settings are valid (or if E2EE is not configured), `False` otherwise.
 
-    Side effects:
-        Prints informational or error messages about authentication, dependency checks, and E2EE store path status.
+    Notes:
+        This function prints informational and error messages about authentication status, dependency checks, and E2EE store-path actions as part of its validation.
     """
     # First validate authentication
     if not _validate_matrix_authentication(config_path, matrix_section):
@@ -469,7 +476,7 @@ def _validate_e2ee_config(config, matrix_section, config_path):
     return True
 
 
-def _analyze_e2ee_setup(config, config_path):
+def _analyze_e2ee_setup(config: dict[str, Any], config_path: str) -> dict[str, Any]:
     """
     Analyze local E2EE readiness without contacting Matrix.
 
@@ -501,7 +508,7 @@ def _analyze_e2ee_setup(config, config_path):
             next steps (e.g., enable E2EE in config, install dependencies, run
             auth login).
     """
-    analysis = {
+    analysis: dict[str, Any] = {
         "config_enabled": False,
         "dependencies_available": False,
         "credentials_available": False,
@@ -518,14 +525,8 @@ def _analyze_e2ee_setup(config, config_path):
         )
 
     # Check dependencies
-    try:
-        import olm  # noqa: F401
-        from nio.crypto import OlmDevice  # noqa: F401
-        from nio.store import SqliteStore  # noqa: F401
-
-        analysis["dependencies_available"] = True
-    except ImportError:
-        analysis["dependencies_available"] = False
+    analysis["dependencies_available"] = _e2ee_dependencies_available()
+    if not analysis["dependencies_available"]:
         analysis["recommendations"].append(
             "Install E2EE dependencies: pipx install 'mmrelay[e2e]'"
         )
@@ -571,17 +572,17 @@ def _analyze_e2ee_setup(config, config_path):
 
 def _find_credentials_json_path(config_path: str | None) -> str | None:
     """
-    Return the filesystem path to a credentials.json file if one can be found, otherwise None.
+    Locate a credentials.json file adjacent to the given configuration or in the application's base directory.
 
     Search order:
-    1. A credentials.json file located in the same directory as the provided config_path.
-    2. A credentials.json file in the application's base directory (get_base_dir()).
+    1. credentials.json in the same directory as `config_path` (if provided).
+    2. credentials.json in the application's base directory (get_base_dir()).
 
     Parameters:
         config_path (str | None): Path to the configuration file used to derive the adjacent credentials.json location.
 
     Returns:
-        str | None: Absolute path to the discovered credentials.json, or None if no file is found.
+        str | None: Absolute path to the discovered credentials.json, or `None` if no file is found.
     """
     if not config_path:
         from mmrelay.config import get_base_dir
@@ -599,23 +600,23 @@ def _find_credentials_json_path(config_path: str | None) -> str | None:
     return standard if os.path.exists(standard) else None
 
 
-def _print_unified_e2ee_analysis(e2ee_status):
+def _print_unified_e2ee_analysis(e2ee_status: E2EEStatus) -> None:
     """
-    Print a concise, user-facing analysis of E2EE readiness.
+    Print a concise, user-facing analysis of end-to-end encryption (E2EE) readiness.
 
-    Given a status dictionary produced by the E2EE analysis routines, prints platform support,
-    dependency availability, whether E2EE is enabled in configuration, whether credentials.json
-    is available, and the overall status. If the overall status is not "ready", prints actionable
-    fix instructions.
+    Given an E2EE status dictionary, prints platform support, dependency availability,
+    configuration state, credentials presence, and an overall readiness summary. If
+    the overall status is not "ready", prints actionable fix instructions obtained
+    from get_e2ee_fix_instructions().
 
     Parameters:
-        e2ee_status (dict): Status dictionary with (at least) the following keys:
+        e2ee_status (E2EEStatus): A status mapping containing at least the following keys:
             - platform_supported (bool): whether the current OS/platform supports E2EE.
             - dependencies_installed or dependencies_available (bool): whether required E2EE
               Python packages and runtime dependencies are present.
             - enabled or config_enabled (bool): whether E2EE is enabled in the configuration.
             - credentials_available (bool): whether a usable credentials.json is present.
-            - overall_status (str): high-level status ("ready", "disabled", "incomplete", etc.).
+            - overall_status (str): high-level status such as "ready", "disabled", or "incomplete".
     """
     print("\n🔐 E2EE Configuration Analysis:")
 
@@ -660,7 +661,7 @@ def _print_unified_e2ee_analysis(e2ee_status):
             print(f"   {instruction}")
 
 
-def _print_e2ee_analysis(analysis):
+def _print_e2ee_analysis(analysis: dict[str, Any]) -> None:
     """
     Print a user-facing analysis of end-to-end encryption (E2EE) readiness to standard output.
 
@@ -745,16 +746,11 @@ def _print_e2ee_analysis(analysis):
             )
 
 
-def _print_environment_summary():
+def _print_environment_summary() -> None:
     """
-    Print a concise environment summary including platform, Python version, and Matrix E2EE capability.
+    Print a concise environment summary showing platform, Python version, and Matrix E2EE support status.
 
-    Provides:
-    - Platform and Python version.
-    - Whether E2EE is supported on the current platform (Windows is reported as not supported).
-    - Whether the `olm` dependency is installed when E2EE is supported, and a brief installation hint if missing.
-
-    This function writes human-facing lines to standard output and returns None.
+    Prints whether the current platform supports E2EE (Windows is reported as not supported), whether required E2EE dependencies are installed, and a brief installation hint when dependencies are missing.
     """
     print("\n🖥️  Environment Summary:")
     print(f"   Platform: {sys.platform}")
@@ -765,36 +761,27 @@ def _print_environment_summary():
         print("   E2EE Support: ❌ Not available (Windows limitation)")
         print("   Matrix Support: ✅ Available")
     else:
-        try:
-            import olm  # noqa: F401
-            from nio.crypto import OlmDevice  # noqa: F401
-            from nio.store import SqliteStore  # noqa: F401
-
+        if _e2ee_dependencies_available():
             print("   E2EE Support: ✅ Available and installed")
-        except ImportError:
+        else:
             print("   E2EE Support: ⚠️  Available but not installed")
             print("   Install: pipx install 'mmrelay[e2e]'")
 
 
-def check_config(args=None):
+def check_config(args: argparse.Namespace | None = None) -> bool:
     """
     Validate the application's YAML configuration file and its required sections.
 
-    Performs these checks: locates the first existing config file from get_config_paths(args),
-    validates YAML syntax and non-empty content, verifies Matrix authentication (prefers
-    credentials.json but accepts access_token or password in the matrix section), performs
-    E2EE configuration and dependency checks, validates matrix_rooms and meshtastic sections
-    (including connection-specific requirements), checks a set of optional meshtastic settings
-    (and value constraints), and warns about deprecated sections.
-
-    Side effects:
-    - Prints human-readable errors, warnings, and status messages to stdout.
+    Performs syntax validation, ensures required sections and fields for Matrix and Meshtastic
+    are present and well-formed, verifies authentication (credentials.json, access_token or password),
+    and assesses E2EE configuration and dependencies. Prints human-readable errors, warnings,
+    and status messages to stdout/stderr for any issues found.
 
     Parameters:
         args (argparse.Namespace | None): Parsed CLI arguments; if None, CLI arguments are parsed internally.
 
     Returns:
-        bool: True if a configuration file was found and passed all checks; False otherwise.
+        bool: `True` if a configuration file was found and passed all checks, `False` otherwise.
     """
 
     # If args is None, parse them now
@@ -931,13 +918,13 @@ def check_config(args=None):
                 for i, room in enumerate(config["matrix_rooms"]):
                     if not isinstance(room, dict):
                         print(
-                            f"Error: Room {i+1} in 'matrix_rooms' must be a dictionary"
+                            f"Error: Room {i + 1} in 'matrix_rooms' must be a dictionary"
                         )
                         return False
 
                     if "id" not in room:
                         print(
-                            f"Error: Room {i+1} in 'matrix_rooms' is missing the 'id' field"
+                            f"Error: Room {i + 1} in 'matrix_rooms' is missing the 'id' field"
                         )
                         return False
 
@@ -997,7 +984,7 @@ def check_config(args=None):
                     return False
 
                 # Check for other important optional configurations and provide guidance
-                optional_configs = {
+                optional_configs: dict[str, dict[str, Any]] = {
                     "broadcast_enabled": {
                         "type": bool,
                         "description": "Enable Matrix to Meshtastic message forwarding (required for two-way communication)",
@@ -1016,7 +1003,7 @@ def check_config(args=None):
                     },
                 }
 
-                warnings = []
+                warnings: list[str] = []
                 for option, config_info in optional_configs.items():
                     if option in meshtastic_section:
                         value = meshtastic_section[option]
@@ -1081,7 +1068,7 @@ def check_config(args=None):
     return False
 
 
-def main():
+def main() -> int:
     """
     Entry point for the MMRelay command-line interface; parses arguments, dispatches commands, and returns an appropriate process exit code.
 
@@ -1176,7 +1163,7 @@ def main():
         return 1
 
 
-def handle_subcommand(args):
+def handle_subcommand(args: argparse.Namespace) -> int:
     """
     Dispatch the modern grouped CLI subcommand to the appropriate handler and return an exit code.
 
@@ -1197,7 +1184,7 @@ def handle_subcommand(args):
         return 1
 
 
-def handle_config_command(args):
+def handle_config_command(args: argparse.Namespace) -> int:
     """
     Dispatch the "config" command group to the selected subcommand handler.
 
@@ -1223,19 +1210,16 @@ def handle_config_command(args):
         return 1
 
 
-def handle_auth_command(args):
+def handle_auth_command(args: argparse.Namespace) -> int:
     """
-    Dispatch the "auth" CLI subcommand to the appropriate handler.
-
-    If args.auth_command is "status" calls handle_auth_status; if "logout" calls handle_auth_logout;
-    any other value (or missing attribute) defaults to handle_auth_login.
+    Dispatches the "auth" subcommand to the appropriate handler (login, status, or logout).
 
     Parameters:
-        args (argparse.Namespace): Parsed CLI arguments. Expected to optionally provide `auth_command`
-            with one of "login", "status", or "logout".
+        args (argparse.Namespace): Parsed CLI arguments. May include `auth_command` with values
+            "login", "status", or "logout"; if missing or any other value, defaults to login.
 
     Returns:
-        int: Exit code from the invoked handler (0 = success, non-zero = failure).
+        int: Exit code from the invoked handler — 0 on success, non-zero on failure.
     """
     if hasattr(args, "auth_command"):
         if args.auth_command == "status":
@@ -1250,21 +1234,17 @@ def handle_auth_command(args):
         return handle_auth_login(args)
 
 
-def handle_auth_login(args):
+def handle_auth_login(args: argparse.Namespace) -> int:
     """
-    Run the Matrix bot login flow and return a CLI-style exit code.
+    Run the Matrix bot login flow using either command-line credentials or an interactive prompt.
 
-    Performs Matrix bot authentication either interactively (prompts the user) or non-interactively
-    when all three parameters (--homeserver, --username, --password) are provided on the command line.
-    For non-interactive mode, --homeserver and --username must be non-empty strings; --password may be
-    an empty string (some flows will prompt). Supplying some but not all of the three parameters
-    is treated as an error and the function exits with a non-zero status.
-
-    Returns:
-        int: 0 on successful authentication, 1 on failure, cancellation (KeyboardInterrupt), or unexpected errors.
+    Attempts non-interactive authentication when `args` provides all three of `homeserver`, `username`, and `password`; otherwise initiates an interactive login. Prints user-facing messages for missing parameters and error conditions.
 
     Parameters:
-        args: Parsed CLI namespace; may contain attributes `homeserver`, `username`, and `password`.
+        args (argparse.Namespace): Parsed CLI namespace; may include `homeserver`, `username`, and `password`.
+
+    Returns:
+        int: 0 on successful authentication, 1 on failure, cancellation, or unexpected errors.
     """
     import asyncio
 
@@ -1300,7 +1280,7 @@ def handle_auth_login(args):
             missing_params.append("--password")
 
         error_message = f"""❌ Error: All authentication parameters are required when using command-line options.
-   Missing: {', '.join(missing_params)}
+   Missing: {", ".join(missing_params)}
 
 💡 Options:
    • For secure interactive authentication: mmrelay auth login
@@ -1352,7 +1332,7 @@ def handle_auth_login(args):
         return 1
 
 
-def handle_auth_status(args):
+def handle_auth_status(args: argparse.Namespace) -> int:
     """
     Print the Matrix authentication status by locating and reading a credentials.json file.
 
@@ -1424,7 +1404,7 @@ def handle_auth_status(args):
     return 1
 
 
-def handle_auth_logout(args):
+def handle_auth_logout(args: argparse.Namespace) -> int:
     """
     Log out the Matrix bot and remove local session artifacts.
 
@@ -1496,18 +1476,17 @@ def handle_auth_logout(args):
         return 1
 
 
-def handle_service_command(args):
+def handle_service_command(args: argparse.Namespace) -> int:
     """
-    Dispatch service-related subcommands.
+    Dispatch the requested service subcommand.
 
-    Currently supports the "install" subcommand which imports and runs mmrelay.setup_utils.install_service().
-    Returns 0 on successful installation, 1 on failure or for unknown subcommands.
+    Supports the "install" action which attempts to install the application service and returns a status code indicating success or failure.
 
     Parameters:
-        args: argparse.Namespace with a `service_command` attribute indicating the requested action.
+        args (argparse.Namespace): Parsed CLI arguments; must have a `service_command` attribute specifying the action.
 
     Returns:
-        int: Exit code (0 on success, 1 on error).
+        int: `0` on success, `1` on failure or for unknown subcommands.
     """
     if args.service_command == "install":
         try:
@@ -1522,7 +1501,7 @@ def handle_service_command(args):
         return 1
 
 
-def _diagnose_config_paths(args):
+def _diagnose_config_paths(args: argparse.Namespace) -> None:
     """
     Prints a diagnostic summary of resolved configuration file search paths and their directory accessibility.
 
@@ -1548,16 +1527,17 @@ def _diagnose_config_paths(args):
     print()
 
 
-def _diagnose_sample_config_accessibility():
+def _diagnose_sample_config_accessibility() -> bool:
     """
-    Check availability of the bundled sample configuration and print a short diagnostic.
+    Print a short diagnostic about accessibility of the bundled sample configuration.
 
-    Performs two non-destructive checks and prints human-readable results:
-    1) Verifies whether the sample config file exists at the path returned by mmrelay.tools.get_sample_config_path().
-    2) Attempts to read the embedded resource "sample_config.yaml" from the mmrelay.tools package via importlib.resources and reports success and the content length.
+    Performs two non-destructive checks: reports whether a filesystem copy of the sample
+    configuration exists at the path returned by mmrelay.tools.get_sample_config_path(),
+    and attempts to read the embedded resource "sample_config.yaml" from the mmrelay.tools
+    package via importlib.resources, reporting the read result and content length.
 
     Returns:
-        bool: True if a filesystem sample config exists at the resolved path; False otherwise.
+        bool: `True` if a filesystem sample config exists at the resolved path, `False` otherwise.
     """
     print("2. Testing sample config accessibility...")
     from mmrelay.tools import get_sample_config_path
@@ -1584,7 +1564,7 @@ def _diagnose_sample_config_accessibility():
     return sample_exists
 
 
-def _diagnose_platform_specific(args):
+def _diagnose_platform_specific(args: argparse.Namespace) -> bool:
     """
     Run platform-specific diagnostic checks and print a concise report.
 
@@ -1651,11 +1631,11 @@ def _diagnose_platform_specific(args):
     return on_windows
 
 
-def _get_minimal_config_template():
+def _get_minimal_config_template() -> str:
     """
-    Return a minimal MMRelay YAML configuration template used as a fallback when the packaged sample_config.yaml cannot be located.
+    Provide a minimal YAML configuration template for MMRelay to use as a fallback when the packaged sample_config.yaml cannot be found.
 
-    The template contains a small, functional configuration (matrix connection hints, a serial meshtastic connection, one room entry, and basic logging) that users can edit to create a working config file.
+    The template includes a basic matrix section, a serial meshtastic connection example, one room entry, and minimal logging settings suitable for editing into a working config file.
 
     Returns:
         str: A YAML-formatted minimal configuration template.
@@ -1698,11 +1678,14 @@ logging:
 """
 
 
-def _diagnose_minimal_config_template():
+def _diagnose_minimal_config_template() -> None:
     """
-    Validate the built-in minimal YAML configuration template and print a concise pass/fail status.
+    Validate the bundled minimal YAML configuration template and print a concise pass/fail result.
 
-    Attempts to parse the string returned by _get_minimal_config_template() using yaml.safe_load. Prints a single-line result showing a ✅ with the template character length when the template is valid YAML, or a ❌ with the YAML parsing error when invalid. This is a non-destructive diagnostic helper that prints output and does not return a value.
+    Parses the built-in minimal template and prints a single-line outcome:
+    on success it prints "Minimal template: ✅ (<n> chars, valid YAML)"; on failure
+    it prints "Minimal template: ❌ (<error>)". This function is a non-destructive
+    diagnostic helper that writes to stdout and does not return a value.
     """
     print("4. Testing minimal config template fallback...")
     try:
@@ -1715,7 +1698,7 @@ def _diagnose_minimal_config_template():
     print()
 
 
-def handle_config_diagnose(args):
+def handle_config_diagnose(args: argparse.Namespace) -> int:
     """
     Run a set of non-destructive diagnostics for the MMRelay configuration subsystem and print a concise, human-readable report.
 
@@ -1778,19 +1761,17 @@ if __name__ == "__main__":
     sys.exit(main())
 
 
-def handle_cli_commands(args):
+def handle_cli_commands(args: argparse.Namespace) -> bool:
     """
-    Handle legacy CLI flags (--version, --install-service, --generate-config, --check-config).
+    Handle legacy CLI flags: --version, --install-service, --generate-config, and --check-config.
 
-    This helper processes backward-compatible flags and may call sys.exit() for flags that perform an immediate action
-    (e.g., install service, check config). Prefer the modern grouped subcommands (e.g., `mmrelay config`, `mmrelay auth`)
-    when available.
+    Processes backward-compatible flags and executes their immediate actions. Some flags perform terminal actions and may call sys.exit() directly (for example, installing the service or performing a config check), while others print output and return control to the caller.
 
     Parameters:
         args (argparse.Namespace): Parsed command-line arguments produced by parse_arguments().
 
     Returns:
-        bool: True if a legacy command was handled (the process may have already exited), False to continue normal flow.
+        bool: `True` if a legacy command was handled and the caller should not continue normal execution, `False` otherwise.
     """
     # Handle --version
     if args.version:
@@ -1827,7 +1808,7 @@ def handle_cli_commands(args):
     return False
 
 
-def generate_sample_config():
+def generate_sample_config() -> bool:
     """
     Generate a sample configuration file at the highest-priority config path if no config already exists.
 

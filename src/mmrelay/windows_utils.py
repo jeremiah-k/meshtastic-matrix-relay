@@ -7,7 +7,7 @@ for better compatibility and user experience on Windows systems.
 
 import os
 import sys
-from typing import Optional
+from typing import Any, Optional
 
 from mmrelay.constants.app import WINDOWS_PLATFORM
 
@@ -39,9 +39,9 @@ def setup_windows_console() -> None:
     try:
         # Enable UTF-8 output on Windows
         if hasattr(sys.stdout, "reconfigure"):
-            sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[attr-defined]
+            sys.stdout.reconfigure(encoding="utf-8")
         if hasattr(sys.stderr, "reconfigure"):
-            sys.stderr.reconfigure(encoding="utf-8")  # type: ignore[attr-defined]
+            sys.stderr.reconfigure(encoding="utf-8")
 
         # Enable ANSI color codes on Windows 10+
         import ctypes
@@ -170,7 +170,7 @@ def check_windows_requirements() -> Optional[str]:
     return None
 
 
-def test_config_generation_windows(args=None) -> dict:
+def test_config_generation_windows(args: Any = None) -> dict[str, Any]:
     """
     Run Windows-only diagnostics for MMRelay configuration generation.
 
@@ -187,7 +187,7 @@ def test_config_generation_windows(args=None) -> dict:
         dict: Diagnostic results with these keys:
             - sample_config_path, importlib_resources, config_paths, directory_creation:
                 dict objects with "status" ("ok" or "error") and "details" (string).
-            - overall_status: one of "ok" (no errors), "partial" (1–2 errors), or "error" (3+ errors).
+            - overall_status: one of "ok" (no errors), "partial" (1-2 errors), or "error" (3+ errors).
         If called on a non-Windows platform, returns {"error": "This function is only for Windows systems"}.
 
     Notes:

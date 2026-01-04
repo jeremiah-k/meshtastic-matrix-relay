@@ -1,7 +1,17 @@
 import asyncio
 import re
+from typing import Any
 
-from meshtastic.mesh_interface import BROADCAST_NUM
+from meshtastic.mesh_interface import BROADCAST_NUM  # type: ignore[import-untyped]
+
+# matrix-nio is not marked py.typed; keep import-untyped for strict mypy.
+from nio import (  # type: ignore[import-untyped]
+    MatrixRoom,
+    ReactionEvent,
+    RoomMessageEmote,
+    RoomMessageNotice,
+    RoomMessageText,
+)
 
 from mmrelay.constants.formats import TEXT_MESSAGE_APP
 from mmrelay.constants.messages import PORTNUM_TEXT_MESSAGE_APP
@@ -48,34 +58,36 @@ class Plugin(BasePlugin):
     is_core_plugin = True
 
     @property
-    def description(self):
+    def description(self) -> str:
         """
-        Provide a short description of the plugin's purpose.
+        Return a short, human-readable description of the plugin's purpose.
 
         Returns:
-            str: A human-readable description: "Check connectivity with the relay or respond to pings over the mesh"
+            str: Check connectivity with the relay or respond to pings over the mesh
         """
         return "Check connectivity with the relay or respond to pings over the mesh"
 
     async def handle_meshtastic_message(
-        self, packet, formatted_message, longname, meshnet_name
+        self,
+        packet: dict[str, Any],
+        formatted_message: str,
+        longname: str,
+        meshnet_name: str,
     ) -> bool:
         """
-        Handle an incoming Meshtastic packet and respond to a matched "ping" message when appropriate.
-
-        Checks packet for decoded text, verifies channel and addressing rules, and if the message contains the word "ping" (optionally surrounded by punctuation) constructs a case-matching "pong" reply and sends it either as a direct message or to the same channel.
+        Responds to a "ping" text in an incoming Meshtastic packet with a case-matching "pong" reply when channel/ addressing rules allow.
 
         Parameters:
-            packet (dict): Meshtastic packet expected to include a `decoded` mapping with `text`, and may include `channel`, `to`, and `fromId`.
+            packet (dict[str, Any]): Meshtastic packet expected to include a `decoded` mapping with `text`, and may include `channel`, `to`, and `fromId`.
             formatted_message (str): Pre-formatted representation of the message (may be unused by this handler).
             longname (str): Human-readable sender identifier used for logging.
             meshnet_name (str): Name of the mesh network where the message originated.
 
         Returns:
-            bool: `True` if the handler processed the packet or intentionally
-            suppressed it (for example, when the Meshtastic client or its
-            `myInfo` is unavailable), `False` otherwise.
+            bool: `True` if the handler processed the packet or intentionally suppressed processing (e.g., when the Meshtastic client or its `myInfo` is unavailable), `False` otherwise.
         """
+        # Keep parameter names for compatibility with keyword calls in tests.
+        _ = formatted_message, meshnet_name
         if "decoded" not in packet or "text" not in packet["decoded"]:
             return False
 
@@ -182,18 +194,25 @@ class Plugin(BasePlugin):
         """
         return [self.plugin_name]
 
-    async def handle_room_message(self, room, event, full_message) -> bool:
+    async def handle_room_message(
+        self,
+        room: MatrixRoom,
+        event: RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote,
+        full_message: str,
+    ) -> bool:
         """
-        Handle a Matrix room message that matches this plugin's trigger and reply with "pong!".
+        Reply "pong!" to a Matrix room message that matches this plugin's trigger.
 
         Parameters:
-            room: The Matrix room object where the event originated; used to obtain the room_id for the reply.
-            event: The Matrix event to evaluate against the plugin's matching rules.
-            full_message: The raw or normalized message text content of the event.
+            room (Any): Matrix room object; used to obtain the target room_id for the reply.
+            event (Any): Matrix event to evaluate against the plugin's matching rules.
+            full_message (str): The raw or normalized text content of the event.
 
         Returns:
-            bool: `True` if the message matched and a reply was sent, `False` otherwise.
+            True if the message matched and a reply was sent, False otherwise.
         """
+        # Keep parameter names for compatibility with keyword calls in tests.
+        _ = full_message
         if not self.matches(event):
             return False
 

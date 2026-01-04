@@ -7,15 +7,15 @@ import threading
 import time
 from concurrent.futures import Future
 from concurrent.futures import TimeoutError as FuturesTimeoutError
-from typing import Any, Awaitable, Coroutine, List
+from typing import Any, Awaitable, Callable, Coroutine, cast
 
-import meshtastic
-import meshtastic.ble_interface
-import meshtastic.serial_interface
-import meshtastic.tcp_interface
+import meshtastic  # type: ignore[import-untyped]
+import meshtastic.ble_interface  # type: ignore[import-untyped]
+import meshtastic.serial_interface  # type: ignore[import-untyped]
+import meshtastic.tcp_interface  # type: ignore[import-untyped]
 import serial  # For serial port exceptions
 import serial.tools.list_ports  # Import serial tools for port listing
-from meshtastic.protobuf import mesh_pb2, portnums_pb2
+from meshtastic.protobuf import mesh_pb2, portnums_pb2  # type: ignore[import-untyped]
 from pubsub import pub
 
 from mmrelay.config import get_meshtastic_config_value
@@ -62,14 +62,10 @@ MAX_TIMEOUT_RETRIES_INFINITE = 5
 
 # Import BLE exceptions conditionally
 try:
-    from bleak.exc import BleakDBusError, BleakError  # type: ignore[no-redef]
+    from bleak.exc import BleakDBusError, BleakError
 except ImportError:
-    # Define dummy exception classes if bleak is not available
-    class BleakDBusError(Exception):  # type: ignore[no-redef]
-        pass
-
-    class BleakError(Exception):  # type: ignore[no-redef]
-        pass
+    BleakDBusError = Exception  # type: ignore[misc,assignment]
+    BleakError = Exception  # type: ignore[misc,assignment]
 
 
 # Global config variable that will be set from config.py
@@ -78,7 +74,7 @@ config = None
 # Do not import plugin_loader here to avoid circular imports
 
 # Initialize matrix rooms configuration
-matrix_rooms: List[dict] = []
+matrix_rooms: list[dict[str, Any]] = []
 
 # Initialize logger for Meshtastic
 logger = get_logger(name="Meshtastic")
@@ -101,16 +97,19 @@ subscribed_to_messages = False
 subscribed_to_connection_lost = False
 
 
-def _submit_coro(coro, loop=None):
+def _submit_coro(
+    coro: Any,
+    loop: asyncio.AbstractEventLoop | None = None,
+) -> Future[Any] | None:
     """
-    Schedule a coroutine to run on an appropriate asyncio event loop and return a Future for its result.
+    Schedule a coroutine to run on an available asyncio event loop.
 
     Parameters:
-        coro: The coroutine object to execute. If not a coroutine, the function returns None.
-        loop: Optional target asyncio event loop. If omitted, the module-level `event_loop` is used.
+        coro: The coroutine object to execute. If not a coroutine, this function returns None.
+        loop: Optional target asyncio event loop to run the coroutine on. If omitted, the module-level `event_loop` is used when available.
 
     Returns:
-        A Future-like object representing the coroutine's eventual result, or `None` if `coro` is not a coroutine.
+        A Future that will hold the coroutine's result, or `None` if `coro` is not a coroutine.
     """
     if not inspect.iscoroutine(coro):
         # Defensive guard for tests that mistakenly patch async funcs to return None
@@ -121,7 +120,7 @@ def _submit_coro(coro, loop=None):
     # Fallback: schedule on a real loop if present; tests can override this.
     try:
         running = asyncio.get_running_loop()
-        return running.create_task(coro)
+        return cast(Future[Any], running.create_task(coro))
     except RuntimeError:
         # No running loop: check if we can safely create a new loop
         try:
@@ -135,17 +134,17 @@ def _submit_coro(coro, loop=None):
             asyncio.set_event_loop(new_loop)
             try:
                 result = new_loop.run_until_complete(coro)
-                f = Future()
-                f.set_result(result)
-                return f
+                result_future: Future[Any] = Future()
+                result_future.set_result(result)
+                return result_future
             finally:
                 new_loop.close()
                 asyncio.set_event_loop(None)
         except Exception as e:
             # Ultimate fallback: create a completed Future with the exception
-            f = Future()
-            f.set_exception(e)
-            return f
+            error_future: Future[Any] = Future()
+            error_future.set_exception(e)
+            return error_future
 
 
 def _fire_and_forget(
@@ -167,7 +166,7 @@ def _fire_and_forget(
     if task is None:
         return
 
-    def _handle_exception(t: asyncio.Future | Future) -> None:
+    def _handle_exception(t: asyncio.Future[Any] | Future[Any]) -> None:
         """
         Callback for fire-and-forget tasks that logs any exception raised by the task.
 
@@ -253,7 +252,7 @@ def _wait_for_result(
     else:
         awaitable = _make_awaitable(result_future, loop=target_loop)
 
-    async def _runner():
+    async def _runner() -> Any:
         """
         Await the captured awaitable and fail if it does not complete within the captured timeout.
 
@@ -293,7 +292,7 @@ def _wait_for_result(
         asyncio.set_event_loop(None)
 
 
-def _resolve_plugin_timeout(cfg: dict | None, default: float = 5.0) -> float:
+def _resolve_plugin_timeout(cfg: dict[str, Any] | None, default: float = 5.0) -> float:
     """
     Resolve and return a positive plugin timeout value from the given configuration.
 
@@ -335,7 +334,7 @@ def _resolve_plugin_timeout(cfg: dict | None, default: float = 5.0) -> float:
     return default
 
 
-def _get_name_safely(name_func, sender):
+def _get_name_safely(name_func: Callable[[Any], str | None], sender: Any) -> str:
     """
     Safely retrieve a name (longname or shortname) for a sender with fallback to sender ID.
 
@@ -355,19 +354,18 @@ def _get_name_safely(name_func, sender):
         return str(sender)
 
 
-def _get_name_or_none(name_func, sender):
+def _get_name_or_none(
+    name_func: Callable[[Any], str | None], sender: Any
+) -> str | None:
     """
-    Safely retrieve a name (longname or shortname) for a sender, returning None on failure.
-
-    This function is used for the complex fallback logic where we want to try the database
-    first, then fall back to interface data, and finally to sender ID.
+    Retrieve a name for a sender using the provided lookup function, or return None if the lookup fails.
 
     Parameters:
-        name_func: Function to call (get_longname or get_shortname)
-        sender: The sender ID to look up
+        name_func (Callable[[Any], str | None]): Function that returns a name given the sender (e.g., longname or shortname).
+        sender (Any): Sender identifier passed to `name_func`.
 
     Returns:
-        str | None: The retrieved name or None if database lookup failed
+        str | None: The name returned by `name_func`, or `None` if the function raises TypeError or AttributeError.
     """
     try:
         return name_func(sender)
@@ -375,7 +373,7 @@ def _get_name_or_none(name_func, sender):
         return None
 
 
-def _get_device_metadata(client):
+def _get_device_metadata(client: Any) -> dict[str, Any]:
     """
     Extract firmware version and raw metadata output from a Meshtastic client.
 
@@ -439,35 +437,35 @@ def _get_device_metadata(client):
     return result
 
 
-def serial_port_exists(port_name):
+def serial_port_exists(port_name: str) -> bool:
     """
-    Return True if a serial port with the given device name is present on the system.
-
-    Checks available serial ports via pyserial's list_ports and compares their `.device`
-    strings to the provided port_name.
+    Check whether a serial port with the specified device name exists on the system.
 
     Parameters:
         port_name (str): Device name to check (e.g., '/dev/ttyUSB0' on Unix or 'COM3' on Windows).
 
     Returns:
-        bool: True if the port is found, False otherwise.
+        True if a matching port device name is present, False otherwise.
     """
     ports = [p.device for p in serial.tools.list_ports.comports()]
     return port_name in ports
 
 
-def connect_meshtastic(passed_config=None, force_connect=False):
+def connect_meshtastic(
+    passed_config: dict[str, Any] | None = None,
+    force_connect: bool = False,
+) -> Any:
     """
-    Establish and return a Meshtastic client connection (serial, BLE, or TCP), with configurable retries, exponential backoff, and single-time event subscription.
+    Establishes a Meshtastic client connection using the configured connection type (serial, BLE, or TCP).
 
-    Attempts to (re)connect using the module configuration and updates module-level state on success (meshtastic_client, matrix_rooms, and event subscriptions). Supports the legacy "network" alias for TCP, verifies serial port presence before connecting, and honors a retry limit (or infinite retries when unspecified). On successful connection the client's node info and firmware metadata are probed and message/connection-lost handlers are subscribed once for the process lifetime.
+    On success updates the module-level client state (meshtastic_client), may update matrix_rooms when a config is provided, and subscribes to meshtastic receive and connection-lost events once for the process lifetime. Honors shutdown and reconnect state and will respect `force_connect` to replace an existing connection.
 
     Parameters:
-        passed_config (dict, optional): If provided, replaces the module-level configuration (and may update matrix_rooms).
-        force_connect (bool, optional): When True, forces creating a new connection even if one already exists.
+        passed_config (dict[str, Any] | None): Optional configuration to use in place of the module-level config; if provided and contains "matrix_rooms", that value will be used to update module-level matrix_rooms.
+        force_connect (bool): If True, forces creating a new connection even if a client already exists.
 
     Returns:
-        The connected Meshtastic client instance on success, or None if connection cannot be established or shutdown is in progress.
+        The connected Meshtastic client instance on success, or `None` if a connection could not be established or shutdown is in progress.
     """
     global meshtastic_client, shutting_down, reconnecting, config, matrix_rooms
     if shutting_down:
@@ -717,7 +715,10 @@ def connect_meshtastic(passed_config=None, force_connect=False):
     return meshtastic_client
 
 
-def on_lost_meshtastic_connection(interface=None, detection_source="unknown"):
+def on_lost_meshtastic_connection(
+    _interface: Any = None,
+    detection_source: str = "unknown",
+) -> None:
     """
     Mark the Meshtastic connection as lost, close the current client, and initiate an asynchronous reconnect.
 
@@ -759,7 +760,7 @@ def on_lost_meshtastic_connection(interface=None, detection_source="unknown"):
             reconnect_task = event_loop.create_task(reconnect())
 
 
-async def reconnect():
+async def reconnect() -> None:
     """
     Attempt to re-establish a Meshtastic connection with exponential backoff.
 
@@ -833,7 +834,7 @@ async def reconnect():
         reconnecting = False
 
 
-def on_meshtastic_message(packet, interface):
+def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
     """
     Route an incoming Meshtastic packet to configured Matrix rooms or installed plugins according to runtime configuration.
 
@@ -916,7 +917,7 @@ def on_meshtastic_message(packet, interface):
     emoji_flag = "emoji" in decoded and decoded["emoji"] == EMOJI_FLAG_VALUE
 
     # Determine if this is a direct message to the relay node
-    from meshtastic.mesh_interface import BROADCAST_NUM
+    from meshtastic.mesh_interface import BROADCAST_NUM  # type: ignore[import-untyped]
 
     if not getattr(interface, "myInfo", None):
         logger.warning("Meshtastic interface missing myInfo; cannot determine node id")
@@ -1124,35 +1125,42 @@ def on_meshtastic_message(packet, interface):
         for plugin in plugins:
             if not found_matching_plugin:
                 try:
-                    result_future = _submit_coro(
-                        plugin.handle_meshtastic_message(
-                            packet, formatted_message, longname, meshnet_name
-                        ),
-                        loop=loop,
+                    handler_result = plugin.handle_meshtastic_message(
+                        packet, formatted_message, longname, meshnet_name
                     )
-                    if result_future is None:
-                        logger.warning(
-                            "Plugin %s returned no awaitable; skipping.",
-                            plugin.plugin_name,
-                        )
-                        found_matching_plugin = False
-                        continue
-                    try:
-                        found_matching_plugin = bool(
-                            _wait_for_result(
-                                result_future,
-                                plugin_timeout,
-                                loop=loop,
+
+                    # Backward compatibility: handle synchronous plugins
+                    if not inspect.iscoroutine(
+                        handler_result
+                    ) and not inspect.isawaitable(handler_result):
+                        found_matching_plugin = bool(handler_result)
+                    else:
+                        # Async plugins
+                        result_future = _submit_coro(handler_result, loop=loop)
+                        if result_future is None:
+                            logger.warning(
+                                "Plugin %s returned no awaitable; skipping.",
+                                plugin.plugin_name,
                             )
-                        )
-                    except (asyncio.TimeoutError, FuturesTimeoutError) as exc:
-                        logger.warning(
-                            "Plugin %s did not respond within %ss: %s",
-                            plugin.plugin_name,
-                            plugin_timeout,
-                            exc,
-                        )
-                        found_matching_plugin = True
+                            found_matching_plugin = False
+                            continue
+                        try:
+                            found_matching_plugin = bool(
+                                _wait_for_result(
+                                    result_future,
+                                    plugin_timeout,
+                                    loop=loop,
+                                )
+                            )
+                        except (asyncio.TimeoutError, FuturesTimeoutError) as exc:
+                            logger.warning(
+                                "Plugin %s did not respond within %ss: %s",
+                                plugin.plugin_name,
+                                plugin_timeout,
+                                exc,
+                            )
+                            found_matching_plugin = True
+
                     if found_matching_plugin:
                         logger.debug(f"Processed by plugin {plugin.plugin_name}")
                 except Exception:
@@ -1213,38 +1221,44 @@ def on_meshtastic_message(packet, interface):
         for plugin in plugins:
             if not found_matching_plugin:
                 try:
-                    result_future = _submit_coro(
-                        plugin.handle_meshtastic_message(
-                            packet,
-                            formatted_message=None,
-                            longname=None,
-                            meshnet_name=None,
-                        ),
-                        loop=loop,
+                    handler_result = plugin.handle_meshtastic_message(
+                        packet,
+                        formatted_message=None,
+                        longname=None,
+                        meshnet_name=None,
                     )
-                    if result_future is None:
-                        logger.warning(
-                            "Plugin %s returned no awaitable; skipping.",
-                            plugin.plugin_name,
-                        )
-                        found_matching_plugin = False
-                        continue
-                    try:
-                        found_matching_plugin = bool(
-                            _wait_for_result(
-                                result_future,
-                                plugin_timeout,
-                                loop=loop,
+
+                    # Backward compatibility: handle synchronous plugins
+                    if not inspect.iscoroutine(
+                        handler_result
+                    ) and not inspect.isawaitable(handler_result):
+                        found_matching_plugin = bool(handler_result)
+                    else:
+                        result_future = _submit_coro(handler_result, loop=loop)
+                        if result_future is None:
+                            logger.warning(
+                                "Plugin %s returned no awaitable; skipping.",
+                                plugin.plugin_name,
                             )
-                        )
-                    except (asyncio.TimeoutError, FuturesTimeoutError) as exc:
-                        logger.warning(
-                            "Plugin %s did not respond within %ss: %s",
-                            plugin.plugin_name,
-                            plugin_timeout,
-                            exc,
-                        )
-                        found_matching_plugin = True
+                            found_matching_plugin = False
+                            continue
+                        try:
+                            found_matching_plugin = bool(
+                                _wait_for_result(
+                                    result_future,
+                                    plugin_timeout,
+                                    loop=loop,
+                                )
+                            )
+                        except (asyncio.TimeoutError, FuturesTimeoutError) as exc:
+                            logger.warning(
+                                "Plugin %s did not respond within %ss: %s",
+                                plugin.plugin_name,
+                                plugin_timeout,
+                                exc,
+                            )
+                            found_matching_plugin = True
+
                     if found_matching_plugin:
                         logger.debug(
                             f"Processed {portnum} with plugin {plugin.plugin_name}"
@@ -1254,7 +1268,7 @@ def on_meshtastic_message(packet, interface):
                     # Continue processing other plugins
 
 
-async def check_connection():
+async def check_connection() -> None:
     """
     Periodically verify the Meshtastic connection and initiate a reconnect when the device appears unresponsive.
 
@@ -1334,7 +1348,7 @@ async def check_connection():
                             f"{connection_type.capitalize()} connection health check failed: {e}"
                         )
                         on_lost_meshtastic_connection(
-                            interface=meshtastic_client,
+                            _interface=meshtastic_client,
                             detection_source=f"health check failed: {str(e)}",
                         )
                     else:
@@ -1350,13 +1364,13 @@ async def check_connection():
 
 
 def sendTextReply(
-    interface,
+    interface: Any,
     text: str,
     reply_id: int,
-    destinationId=meshtastic.BROADCAST_ADDR,
+    destinationId: Any = meshtastic.BROADCAST_ADDR,
     wantAck: bool = False,
     channelIndex: int = 0,
-):
+) -> Any:
     """
     Send a Meshtastic text reply that references a previous Meshtastic message.
 
