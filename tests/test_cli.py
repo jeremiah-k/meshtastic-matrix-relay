@@ -1930,20 +1930,27 @@ class TestValidateE2EEDependencies(unittest.TestCase):
     @patch("builtins.print")
     def test_validate_e2ee_dependencies_macos_missing_nio_crypto(self, mock_print):
         """Test E2EE validation on macOS with missing nio.crypto dependency."""
-        import builtins
-
         from mmrelay.cli import _validate_e2ee_dependencies
 
-        original_import = builtins.__import__
+        call_count = [0]
 
-        def mock_import(name, *args, **kwargs):
-            if name == "olm":
+        def mock_import_module(name, package=None):
+            call_count[0] += 1
+            if call_count[0] == 1:  # olm import
                 return MagicMock()
             elif "nio.crypto" in name:
-                raise ImportError("No module named 'nio.crypto'")
-            return original_import(name, *args, **kwargs)
+                module = MagicMock()
+                delattr(module, "OlmDevice")
+                return module
+            elif "nio.store" in name:
+                module = MagicMock()
+                module.SqliteStore = MagicMock()
+                return module
+            raise ImportError(f"No module named '{name}'")
 
-        with patch("builtins.__import__", side_effect=mock_import):
+        with patch(
+            "mmrelay.cli.importlib.import_module", side_effect=mock_import_module
+        ):
             result = _validate_e2ee_dependencies()
 
         self.assertFalse(result)
@@ -1958,20 +1965,27 @@ class TestValidateE2EEDependencies(unittest.TestCase):
     @patch("builtins.print")
     def test_validate_e2ee_dependencies_linux_missing_nio_store(self, mock_print):
         """Test E2EE validation on Linux with missing nio.store dependency."""
-        import builtins
-
         from mmrelay.cli import _validate_e2ee_dependencies
 
-        original_import = builtins.__import__
+        call_count = [0]
 
-        def mock_import(name, *args, **kwargs):
-            if name == "olm" or "nio.crypto" in name:
+        def mock_import_module(name, package=None):
+            call_count[0] += 1
+            if call_count[0] == 1:  # olm import
                 return MagicMock()
+            elif "nio.crypto" in name:
+                module = MagicMock()
+                module.OlmDevice = MagicMock()
+                return module
             elif "nio.store" in name:
-                raise ImportError("No module named 'nio.store'")
-            return original_import(name, *args, **kwargs)
+                module = MagicMock()
+                delattr(module, "SqliteStore")
+                return module
+            raise ImportError(f"No module named '{name}'")
 
-        with patch("builtins.__import__", side_effect=mock_import):
+        with patch(
+            "mmrelay.cli.importlib.import_module", side_effect=mock_import_module
+        ):
             result = _validate_e2ee_dependencies()
 
         self.assertFalse(result)

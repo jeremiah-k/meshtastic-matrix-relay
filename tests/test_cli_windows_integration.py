@@ -116,12 +116,14 @@ class TestCLIWindowsErrorHandling(unittest.TestCase):
         mock_get_error.return_value = "Windows-specific error guidance"
 
         # Mock file operations to fail with OSError
-        with patch(
-            "mmrelay.cli.get_config_paths", return_value=["/test/config.yaml"]
-        ), patch("os.path.isfile", return_value=False), patch(
-            "mmrelay.tools.get_sample_config_path", side_effect=OSError("Access denied")
+        with (
+            patch("mmrelay.cli.get_config_paths", return_value=["/test/config.yaml"]),
+            patch("os.path.isfile", return_value=False),
+            patch(
+                "mmrelay.tools.get_sample_config_path",
+                side_effect=OSError("Access denied"),
+            ),
         ):
-
             result = generate_sample_config()
 
         # Should fail gracefully
@@ -138,19 +140,17 @@ class TestCLIWindowsErrorHandling(unittest.TestCase):
     ):
         """Test that generate_sample_config provides Windows troubleshooting guidance."""
         # Mock all config generation methods to fail
-        with patch(
-            "mmrelay.cli.get_config_paths", return_value=["/test/config.yaml"]
-        ), patch("os.path.isfile", return_value=False), patch(
-            "mmrelay.cli.get_sample_config_path",
-            return_value="/nonexistent/sample_config.yaml",
-        ), patch(
-            "os.path.exists", return_value=False
-        ), patch(
-            "importlib.resources.files", side_effect=ImportError()
-        ), patch(
-            "mmrelay.cli._get_minimal_config_template", side_effect=OSError()
+        with (
+            patch("mmrelay.cli.get_config_paths", return_value=["/test/config.yaml"]),
+            patch("os.path.isfile", return_value=False),
+            patch(
+                "mmrelay.cli.get_sample_config_path",
+                return_value="/nonexistent/sample_config.yaml",
+            ),
+            patch("os.path.exists", return_value=False),
+            patch("importlib.resources.files", side_effect=ImportError()),
+            patch("mmrelay.cli._get_minimal_config_template", side_effect=OSError()),
         ):
-
             result = generate_sample_config()
 
         # Should fail
@@ -170,19 +170,17 @@ class TestCLIWindowsErrorHandling(unittest.TestCase):
     def test_generate_config_no_windows_guidance_on_linux(self, mock_print):
         """Test that generate_sample_config doesn't provide Windows guidance on Linux."""
         # Mock all config generation methods to fail
-        with patch(
-            "mmrelay.cli.get_config_paths", return_value=["/test/config.yaml"]
-        ), patch("os.path.isfile", return_value=False), patch(
-            "mmrelay.cli.get_sample_config_path",
-            return_value="/nonexistent/sample_config.yaml",
-        ), patch(
-            "os.path.exists", return_value=False
-        ), patch(
-            "importlib.resources.files", side_effect=ImportError()
-        ), patch(
-            "mmrelay.cli._get_minimal_config_template", side_effect=OSError()
+        with (
+            patch("mmrelay.cli.get_config_paths", return_value=["/test/config.yaml"]),
+            patch("os.path.isfile", return_value=False),
+            patch(
+                "mmrelay.cli.get_sample_config_path",
+                return_value="/nonexistent/sample_config.yaml",
+            ),
+            patch("os.path.exists", return_value=False),
+            patch("importlib.resources.files", side_effect=ImportError()),
+            patch("mmrelay.cli._get_minimal_config_template", side_effect=OSError()),
         ):
-
             result = generate_sample_config()
 
         # Should fail
@@ -300,9 +298,10 @@ class TestCLIE2EEValidation(unittest.TestCase):
         """Test that E2EE validation shows improved error messages."""
         from mmrelay.cli import _validate_e2ee_dependencies
 
-        # Mock import to fail
+        # Mock importlib.import_module to fail for olm
         with patch(
-            "builtins.__import__", side_effect=ImportError("No module named 'olm'")
+            "mmrelay.cli.importlib.import_module",
+            side_effect=ImportError("No module named 'olm'"),
         ):
             result = _validate_e2ee_dependencies()
 
@@ -316,18 +315,13 @@ class TestCLIE2EEValidation(unittest.TestCase):
 
         # Check for specific improved messages
         error_msg_found = any(
-            "E2EE dependencies not installed" in str(msg) for msg in printed_messages
-        )
-        guidance_found = any(
-            "End-to-end encryption features require additional dependencies" in str(msg)
-            for msg in printed_messages
+            "python-olm is not installed" in str(msg) for msg in printed_messages
         )
         install_cmd_found = any(
             "pipx install 'mmrelay[e2e]'" in str(msg) for msg in printed_messages
         )
 
         self.assertTrue(error_msg_found)
-        self.assertTrue(guidance_found)
         self.assertTrue(install_cmd_found)
 
 
