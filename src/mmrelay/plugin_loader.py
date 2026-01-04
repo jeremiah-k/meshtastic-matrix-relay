@@ -2199,7 +2199,7 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
                 logger.error("Please specify the repository URL in config.yaml")
                 continue
 
-        # Only load community plugins that are explicitly enabled
+    # Only load community plugins that are explicitly enabled
     for plugin_name in active_community_plugins:
         plugin_info = community_plugins_config[plugin_name]
         repo_url = plugin_info.get("repository")

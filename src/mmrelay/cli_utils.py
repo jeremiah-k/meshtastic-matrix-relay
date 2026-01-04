@@ -584,6 +584,7 @@ async def logout_matrix_bot(password: str) -> bool:
         logger.info("user_id missing from credentials, attempting to fetch it...")
         print("🔍 user_id missing from credentials, attempting to fetch it...")
 
+        temp_client = None
         try:
             # Create SSL context for the temporary client
             ssl_context = _create_ssl_context()
@@ -621,11 +622,12 @@ async def logout_matrix_bot(password: str) -> bool:
             logger.exception("Error fetching user_id")
             print(f"❌ Error fetching user_id: {e}")
         finally:
-            try:
-                await temp_client.close()
-            except Exception:
-                # Ignore errors when closing client during logout
-                pass
+            if temp_client is not None:
+                try:
+                    await temp_client.close()
+                except Exception:
+                    # Ignore errors when closing client during logout
+                    pass
 
     if not all([homeserver, user_id, access_token, device_id]):
         logger.error("Invalid credentials found. Cannot verify logout.")

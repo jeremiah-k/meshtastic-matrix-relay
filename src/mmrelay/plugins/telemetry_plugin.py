@@ -103,9 +103,9 @@ class Plugin(BasePlugin):
             telemetry_data.append(
                 {
                     "time": packet_data["time"],
-                    "batteryLevel": device_metrics.get("batteryLevel", 0),
-                    "voltage": device_metrics.get("voltage", 0),
-                    "airUtilTx": device_metrics.get("airUtilTx", 0),
+                    "batteryLevel": device_metrics.get("batteryLevel"),
+                    "voltage": device_metrics.get("voltage"),
+                    "airUtilTx": device_metrics.get("airUtilTx"),
                 }
             )
             self.set_node_data(meshtastic_id=packet["fromId"], node_data=telemetry_data)
@@ -197,9 +197,10 @@ class Plugin(BasePlugin):
                 ]  # Replace with your battery level field name
                 for i in range(len(hourly_intervals) - 1):
                     if hourly_intervals[i] <= record_time < hourly_intervals[i + 1]:
-                        if i not in hourly_averages:
-                            hourly_averages[i] = []
-                        hourly_averages[i].append(telemetry_value)
+                        if telemetry_value is not None:
+                            if i not in hourly_averages:
+                                hourly_averages[i] = []
+                            hourly_averages[i].append(telemetry_value)
                         break
 
         if node:
