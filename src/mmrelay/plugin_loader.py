@@ -188,12 +188,11 @@ def _collect_requirements(
 @contextmanager
 def _temp_sys_path(path: str) -> Iterator[None]:
     """
-    Temporarily prepends a directory to Python's import search path for the duration of a with-block.
-
-    The given path is inserted at the front of sys.path on entry. On exit the first occurrence of the path is removed; if the path is not present, no error is raised.
-
+    Temporarily prepend a directory to sys.path for the lifetime of the context manager.
+    
+    On entry the given filesystem path is inserted at the front of sys.path; on exit the first matching occurrence is removed if present. The function accepts path-like objects (converted via os.fspath).
     Parameters:
-        path (str | os.PathLike): Directory to temporarily add to sys.path.
+        path (str | os.PathLike): Directory path to add to sys.path for the duration of the context.
     """
     path = os.fspath(path)
     sys.path.insert(0, path)
@@ -208,12 +207,12 @@ def _temp_sys_path(path: str) -> Iterator[None]:
 
 def _get_security_settings() -> dict[str, Any]:
     """
-    Retrieve the `security` mapping from the module-level `config`.
-
-    If `config` is unset, missing a `"security"` key, or if `"security"` exists but is not a mapping, an empty dict is returned.
-
+    Return the `security` mapping from the module-level `config`.
+    
+    If the module-level `config` is falsy, lacks a `"security"` key, or the `"security"` value is not a mapping, an empty dict is returned.
+    
     Returns:
-        dict: Security settings mapping from `config`, or an empty dict when unavailable or invalid.
+        dict: Security settings mapping from module config, or an empty dict when unavailable or invalid.
     """
     if not config:
         return {}
@@ -557,9 +556,9 @@ def _clean_python_cache(directory: str) -> None:
 
 def _reset_caches_for_tests() -> None:
     """
-    Reset the global plugin loader caches to their initial state for testing purposes.
-
-    Clears cached plugin instances and loading state to ensure test isolation and prevent interference between test runs.
+    Reset global plugin loader caches to their initial state for testing.
+    
+    Sets the module globals `sorted_active_plugins` to an empty list and `plugins_loaded` to False to ensure test isolation.
     """
     global sorted_active_plugins, plugins_loaded
     sorted_active_plugins = []
@@ -930,15 +929,15 @@ def _run_git(
 
 def _check_auto_install_enabled(config: Any) -> bool:
     """
-    Determine if automatic dependency installation is enabled in the provided configuration.
-
+    Determine whether automatic dependency installation is enabled for the given configuration.
+    
     Parameters:
-        config (dict|None): Configuration mapping; expected to contain a "security" dict with an
-            optional boolean "auto_install_deps" key.
-
+        config (dict|Any): Configuration mapping expected to contain a "security" dict with an optional
+            boolean "auto_install_deps" key. If `config` is falsy or missing the key, automatic
+            installation is considered enabled by default.
+    
     Returns:
-        bool: `True` if automatic installation is enabled, `False` otherwise. If `config` is falsy
-        or the key is missing, automatic installation is enabled by default.
+        True if automatic installation is enabled, False otherwise.
     """
     if not config:
         return True
@@ -1710,16 +1709,16 @@ def clone_or_update_repo(repo_url: str, ref: dict[str, str], plugins_dir: str) -
 
 def load_plugins_from_directory(directory: str, recursive: bool = False) -> list[Any]:
     """
-    Discovers and instantiates Plugin classes from Python modules in the given directory.
-
-    Searches directory (optionally recursively) for .py files, imports each module under an isolated name, and instantiates any top-level `Plugin` class found. On import failures for missing dependencies, the function may attempt to install those dependencies when auto-install is enabled; it also refreshes import paths and retries loading. The function may modify interpreter import state (e.g., entries in sys.modules) and can invoke external installers when auto-install is enabled.
-
+    Discover and instantiate top-level Plugin classes from Python modules in a directory.
+    
+    Scans the given directory (optionally recursively) for .py files, imports each module in an isolated namespace, and instantiates any top-level `Plugin` class found. If a module import fails due to a missing dependency and automatic installation is enabled, the function may attempt to install the missing package, refresh import paths, and retry loading. The function may modify interpreter import state (for compatibility aliases) and invoke external installers when auto-installation occurs.
+    
     Parameters:
         directory (str): Path to the directory containing plugin Python files.
-        recursive (bool): If True, scan subdirectories recursively; otherwise only the top-level directory.
-
+        recursive (bool): If True, scan subdirectories recursively; otherwise scan only the top-level directory.
+    
     Returns:
-        list: Instances of discovered plugin classes (may be empty).
+        list[Any]: Instances of discovered plugin classes; returns an empty list if none are found.
     """
     plugins = []
     if os.path.isdir(directory):

@@ -141,16 +141,16 @@ class Plugin(BasePlugin):
         # Pass the event to matches()
         """
         Handle a Matrix message requesting a telemetry graph and send the generated image to the originating room.
-
-        Parses a telemetry command (e.g. `batteryLevel`, `voltage`, `airUtilTx`) optionally followed by a node identifier, computes hourly averages for the last 12 hours (either for the specified node or network-wide), generates a line plot of those averages, and uploads the image to the room. If a requested node has no telemetry data, a user-facing notice is sent instead of an image.
-
+        
+        Parses a telemetry command (one of `batteryLevel`, `voltage`, `airUtilTx`) optionally followed by a node identifier, computes hourly averages for the last 12 hours (for the specified node or network-wide), generates a line plot of those averages, and uploads the image to the originating room. If a requested node has no telemetry data, a user-facing notice is sent instead of an image.
+        
         Parameters:
-            room: Matrix room object where the event originated; used as the destination for responses.
-            event: Matrix event inspected to determine whether it matches a supported telemetry command.
+            room: Matrix room object where the event originated and where the response will be sent.
+            event: Matrix event used to determine whether it matches a supported telemetry command.
             full_message (str): Full plaintext message content used to parse the command and optional node identifier.
-
+        
         Returns:
-            `True` if the message matched a telemetry command and the graph was generated and sent, or a notice was sent for a node with no data; `False` otherwise.
+            `True` if the message matched a telemetry command and either a graph was generated and sent or a notice was sent for a node with no data; `False` otherwise.
         """
         if not self.matches(event):
             return False
@@ -178,15 +178,10 @@ class Plugin(BasePlugin):
 
         def calculate_averages(node_data_rows: list[dict[str, Any]]) -> None:
             """
-            Accumulate telemetry values from node records into hourly bins stored in the outer `hourly_averages`.
-
-            Iterates over `node_data_rows`, maps each record to the hourly interval defined by the outer `hourly_intervals` list, and appends the record's telemetry value (accessed by the outer `telemetry_option` key) to `hourly_averages[index]`, creating the list if it does not exist.
-
+            Accumulate per-record telemetry values into hourly bins keyed by indices of the outer `hourly_intervals`.
+            
             Parameters:
-                node_data_rows (list[dict[str, Any]]): List of telemetry records where each record contains a `time` field (POSIX timestamp in seconds) and a telemetry value under the key named by the surrounding `telemetry_option`.
-
-            Returns:
-                None
+                node_data_rows (list[dict[str, Any]]): Records containing a "time" POSIX timestamp (seconds) and a telemetry value under the key named by the enclosing `telemetry_option`; values are appended to the outer `hourly_averages` dictionary for the matching hourly interval.
             """
             for record in node_data_rows:
                 record_time = datetime.fromtimestamp(

@@ -39,17 +39,14 @@ class Plugin(BasePlugin):
     ) -> bool:
         """
         Log a Meshtastic packet after removing raw binary fields.
-
-        The packet is stripped of raw binary data and then logged at debug level; this plugin does not intercept the message.
-
+        
+        Strips raw binary fields from `packet` for readability and logs the sanitized packet at debug level. The other parameters are accepted for compatibility but are not used. This plugin does not intercept the message.
+        
         Parameters:
-            packet (dict[str, Any]): The received Meshtastic packet; raw binary fields will be removed before logging.
-            formatted_message (str): Human-friendly representation of the packet.
-            longname (str): Sender's long name or identifier.
-            meshnet_name (str): Name of the mesh network where the packet was received.
-
+            packet: The received Meshtastic packet; raw binary fields will be removed before logging.
+        
         Returns:
-            bool: `False` to indicate that the message is not intercepted and may be processed by other plugins.
+            `True` if the message is intercepted, `False` otherwise.
         """
         # Keep parameter names for compatibility with keyword calls in tests.
         _ = formatted_message, longname, meshnet_name

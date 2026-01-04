@@ -63,11 +63,12 @@ class Plugin(BasePlugin):
     @property
     def description(self) -> str:
         """
-        Provide the plugin description and the output format used when listing mesh nodes.
-
+        Provide the plugin description and the node-list line format.
+        
+        The returned string contains a human-readable description followed by an example node line format using these placeholders: $shortname, $longname, $devicemodel, $battery, $voltage, $snr, $hops, $lastseen.
+        
         Returns:
-            A multiline string describing the plugin and the node line format. The string includes placeholders:
-            `$shortname`, `$longname`, `$devicemodel`, `$battery`, `$voltage`, `$snr`, `$hops`, and `$lastseen`.
+            A multiline string with the plugin description and the node output format.
         """
         return """Show mesh radios and node data
 
@@ -131,16 +132,16 @@ $shortname $longname / $devicemodel / $battery $voltage / $snr / $hops / $lastse
         self, packet: Any, formatted_message: str, longname: str, meshnet_name: str
     ) -> bool:
         """
-        Handle an incoming Meshtastic packet message; currently does not process or consume the message.
-
+        Handle an incoming Meshtastic packet without processing it.
+        
         Parameters:
-            packet: Raw Meshtastic packet data received from the mesh.
+            packet (Any): Raw Meshtastic packet data received from the mesh.
             formatted_message (str): Human-readable representation of the packet payload.
             longname (str): Full device name of the packet sender.
             meshnet_name (str): Name of the mesh network that the packet originated from.
-
+        
         Returns:
-            `False` indicating that the plugin did not handle the message.
+            bool: `False` indicating the plugin did not handle the message.
         """
         # Preserve API surface; arguments are currently unused.
         _ = packet, formatted_message, longname, meshnet_name
@@ -154,13 +155,13 @@ $shortname $longname / $devicemodel / $battery $voltage / $snr / $hops / $lastse
     ) -> bool:
         # Pass the event to matches()
         """
-        Handle an incoming Matrix room event and send the nodes summary when the plugin matches.
-
+        Handle a Matrix room event and send the nodes summary when the event matches plugin criteria.
+        
         Parameters:
-            room (Any): Matrix room object where the event occurred; used to send the response.
-            event (Any): Incoming event evaluated by self.matches() to decide whether to handle the message.
-            full_message (str): Raw message text (not used by this handler).
-
+            room (MatrixRoom): The Matrix room where the event occurred; used as the destination for the response.
+            event (RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote): Incoming event evaluated to determine whether this plugin should handle it.
+            full_message (str): The raw message text; present for signature compatibility and not used by this handler.
+        
         Returns:
             bool: `True` if the event was handled and a response was sent, `False` otherwise.
         """

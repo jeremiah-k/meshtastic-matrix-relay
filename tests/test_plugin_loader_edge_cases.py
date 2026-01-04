@@ -197,6 +197,11 @@ class Plugin:
             sys.modules.pop(missing_module, None)
 
             def fake_refresh() -> None:
+                """
+                Injects a fake module into sys.modules under the name stored in `missing_module` to simulate the missing dependency becoming available.
+                
+                This function adds an entry to sys.modules mapping `missing_module` to a newly created types.ModuleType if it is not already present. It has the side effect of making imports for that module succeed for subsequent import attempts.
+                """
                 sys.modules.setdefault(missing_module, types.ModuleType(missing_module))
 
             try:

@@ -65,10 +65,10 @@ def textsize(
     self: _PILImageDraw.ImageDraw, text: Any, *args: Any, **kwargs: Any
 ) -> tuple[float, float]:
     """
-    Return the width and height of the given text as rendered by this ImageDraw instance.
+    Compute the width and height of `text` as rendered by this ImageDraw instance.
     
     Parameters:
-        text (Any): The text to measure. Additional rendering options may be passed via positional and keyword arguments.
+        text (Any): The text to measure. Additional rendering options (font, anchor, etc.) may be supplied via `*args` and `**kwargs`.
     
     Returns:
         (width, height) (tuple[float, float]): Width and height of the rendered text in pixels.
@@ -266,20 +266,21 @@ def get_map(
     radius: int = 10000,  # noqa: ARG001
 ) -> PILImage.Image:
     """
-    Render a static map showing labeled markers and optional precision-radius circles.
+    Render a static map with labeled markers and optional precision-radius circles.
     
-    Each item in `locations` should contain "lat", "lon", and "label"; if "precisionBits" is present and parseable it will be converted to an approximate radius (meters) and drawn as a lightly shaded circle around the marker. The map is centered on the average of provided locations when any are given.
+    Each entry in `locations` must include "lat", "lon", and "label"; if "precisionBits" is present and parseable it will be converted to an approximate radius (meters) and drawn as a lightly shaded circle around the marker. When one or more valid locations are provided, the map is centered on their average coordinates.
     
     Parameters:
-        locations (list[dict]): Sequence of location dictionaries. Each dictionary must provide:
+        locations (list[dict[str, float | int | str | None]]): Sequence of location dictionaries. Required keys:
             - "lat": latitude (coercible to float).
             - "lon": longitude (coercible to float).
             - "label": text to render at the location.
-            - Optional "precisionBits": integer (or string) used to compute a precision radius in meters.
-        zoom (int | None): Optional map zoom level to apply; if None the context default is used.
-        image_size (tuple[int, int] | None): Optional output size as (width, height) in pixels; if None a default 1000x1000 image is produced.
-        anonymize (bool): Ignored (deprecated).
-        radius (int): Ignored (deprecated).
+            Optional key:
+            - "precisionBits": integer (or string) used to compute an approximate precision radius in meters.
+        zoom (int | None): Optional map zoom level; if None the context default is used.
+        image_size (tuple[int, int] | None): Optional output size as (width, height) in pixels; if None a 1000x1000 image is produced.
+        anonymize (bool): Ignored (kept for compatibility).
+        radius (int): Ignored (kept for compatibility).
     
     Returns:
         PIL.Image.Image: Pillow Image containing the rendered map with markers and any precision circles.
@@ -371,10 +372,10 @@ class Plugin(BasePlugin):
     @property
     def description(self) -> str:
         """
-        Short human-readable description of the plugin for listings and help.
+        Provide a short, human-readable description of the plugin for listings and help.
         
         Returns:
-            description (str): One-line human-readable description of the plugin.
+            A one-line human-readable description of the plugin.
         """
         return (
             "Map of mesh radio nodes. Supports `zoom` and `size` options to customize"
@@ -414,10 +415,10 @@ class Plugin(BasePlugin):
 
     def get_mesh_commands(self) -> list[str]:
         """
-        Provide the list of mesh-specific command names handled by this plugin.
-
+        Return the mesh-specific command names handled by this plugin.
+        
         Returns:
-            list[str]: A list of mesh command strings; empty when the plugin does not handle any mesh commands.
+            list[str]: Mesh command names handled by the plugin; an empty list if the plugin does not handle any mesh commands.
         """
         return []
 

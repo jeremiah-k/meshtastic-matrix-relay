@@ -42,10 +42,10 @@ class Plugin(BasePlugin):
 
     def _normalize_mode(self, mode: str) -> str:
         """
-        Normalize a mode/command string to one of the supported forecast modes.
-
+        Normalize a command string to a supported forecast mode.
+        
         Returns:
-            str: One of "weather", "hourly", or "daily". Unrecognized or empty input defaults to "weather".
+            str: 'weather', 'hourly', or 'daily'. Unrecognized or empty inputs yield 'weather'.
         """
         cmd = (mode or "weather").lower()
         if cmd == "hourly":
@@ -182,13 +182,14 @@ class Plugin(BasePlugin):
 
             def get_hourly(idx: int) -> tuple[Any, Any, Any, Any, Any, Any, Any]:
                 """
-                Fetch hourly weather values at the given hourly index from the parsed API data arrays.
-
+                Return the hourly weather values at the specified index from the parsed weather data arrays.
+                
                 Parameters:
-                        idx (int): Hour offset index into the hourly arrays (0-based).
-
+                    idx (int): Zero-based index into the hourly arrays.
+                
                 Returns:
-                        tuple: (temperature, precipitation, weather_code, is_day, humidity, wind_speed, wind_direction) where each element is the value at `idx` or `None` if that value is unavailable.
+                    tuple: (temperature, precipitation, weather_code, is_day, humidity, wind_speed, wind_direction)
+                    Each element is the value at `idx`, or `None` if that entry is unavailable.
                 """
                 temp = _safe_get(temps, idx)
                 precip = _safe_get(precips, idx)
@@ -290,16 +291,16 @@ class Plugin(BasePlugin):
         daily_days: int,
     ) -> str:
         """
-        Builds a concise multi-day weather summary for display.
-
+        Create a concise multi-day weather summary string for display.
+        
         Parameters:
-            data (dict): Parsed Open-Meteo response containing daily keys like `weathercode`, `temperature_2m_max`, `temperature_2m_min`, and `time`.
-            units (str): Unit system from configuration; when equal to `"imperial"`, temperatures are converted from Celsius to Fahrenheit.
-            temperature_unit (str): Temperature unit symbol to append (e.g., "°C" or "°F").
+            data (dict): Parsed Open-Meteo response containing a "daily" mapping with keys `weathercode`, `temperature_2m_max`, `temperature_2m_min`, and `time`.
+            units (str): Unit system from configuration; when `"imperial"`, temperatures are converted from Celsius to Fahrenheit.
+            temperature_unit (str): Temperature unit symbol to append to values (e.g., "°C" or "°F").
             daily_days (int): Maximum number of days to include in the summary.
-
+        
         Returns:
-            str: A pipe-separated string with one segment per day (e.g., "Mon: ☀️ 20.0°C/10.0°C | Tue: …"), or "Weather data temporarily unavailable." if no valid daily entries; output is truncated to 200 characters.
+            str: A pipe-separated segment for each day (e.g., "Mon: ☀️ 20.0°C/10.0°C | Tue: …"), or "Weather data temporarily unavailable." if no valid daily entries; output is truncated to the plugin's maximum allowed length.
         """
         daily_codes = data.get("daily", {}).get("weathercode") or []
         daily_max = data.get("daily", {}).get("temperature_2m_max") or []
@@ -570,8 +571,8 @@ class Plugin(BasePlugin):
 
     def get_matrix_commands(self) -> list[str]:
         """
-        Return the list of mesh command strings exposed to Matrix integrations.
-
+        List mesh commands exposed to Matrix integrations.
+        
         Returns:
             list[str]: A copy of the plugin's mesh command strings.
         """
@@ -580,9 +581,9 @@ class Plugin(BasePlugin):
     def get_mesh_commands(self) -> list[str]:
         """
         List available mesh commands exposed by this plugin.
-
+        
         Returns:
-            list[str]: A copy of the plugin's mesh command names.
+            A copy of the plugin's mesh command names.
         """
         return list(self.mesh_commands)
 

@@ -61,13 +61,13 @@ class Plugin(BasePlugin):
 
     def process(self, packet: Any) -> dict[str, Any]:
         """
-        Normalize a packet and encode any binary payloads for safe transport.
-
+        Prepare a Meshtastic packet for transport by normalizing it and encoding any binary payloads as base64 strings.
+        
         Parameters:
             packet (Any): Raw packet data to normalize and prepare.
-
+        
         Returns:
-            dict[str, Any]: The normalized packet; if `decoded.payload` was bytes it is replaced with a base64-encoded UTF-8 string.
+            dict[str, Any]: The normalized packet. If `decoded.payload` was bytes, it is replaced with a base64-encoded UTF-8 string.
         """
         result = self.normalize(packet)
 
@@ -90,19 +90,21 @@ class Plugin(BasePlugin):
 
     def get_mesh_commands(self) -> list[str]:
         """
-        Indicate which Meshtastic/mesh commands this plugin handles.
-
+        Declare which Meshtastic/mesh commands the plugin handles.
+        
         Returns:
-            list[str]: An empty list because this plugin handles all mesh traffic rather than specific commands.
+            list[str]: An empty list indicating the plugin handles all mesh traffic rather than specific commands.
         """
         return []
 
     def _iter_room_configs(self) -> list[dict[str, Any]]:
         """
-        Normalize matrix_rooms config entries into a list of dicts.
-
-        Supports both list and dict shapes for backward compatibility and filters
-        out non-dict entries to keep iteration safe.
+        Return a normalized list of matrix room configuration dictionaries.
+        
+        This reads the global `matrix_rooms` entry from the relay config, accepts either a dict or a list for backward compatibility, filters out any non-dict entries, and returns an empty list if the global config or `matrix_rooms` is absent or malformed.
+        
+        Returns:
+            list[dict[str, Any]]: A list of room configuration dictionaries suitable for iteration.
         """
         # matrix_rooms live in the global relay config, not per-plugin config.
         global_config = config

@@ -29,12 +29,12 @@ def _quote_if_needed(path: str) -> str:
 
 def get_resolved_exec_cmd() -> str:
     """
-    Resolve the command string to invoke MMRelay for use in a systemd ExecStart line.
-
-    Prefers an `mmrelay` executable found on PATH; if none is found, falls back to invoking the current Python interpreter with `-m mmrelay`.
-
+    Determine the command to invoke MMRelay for inclusion in a systemd ExecStart line.
+    
+    Prefers an `mmrelay` executable found on PATH; if none is available, falls back to the current Python interpreter with the `-m mmrelay` module.
+    
     Returns:
-        Command string suitable for a systemd `ExecStart` line: the `mmrelay` executable path (quoted if it contains spaces) when available, otherwise the current Python interpreter path followed by `-m mmrelay` (interpreter path quoted if needed).
+        A command string suitable for a systemd `ExecStart` line: the `mmrelay` executable path (quoted if it contains spaces) when available, otherwise the current Python interpreter path followed by `-m mmrelay` (interpreter path quoted if needed).
     """
     mmrelay_path = shutil.which("mmrelay")
     if mmrelay_path:
@@ -45,12 +45,12 @@ def get_resolved_exec_cmd() -> str:
 
 def get_executable_path() -> str:
     """
-    Determines the command used to invoke mmrelay and prints a user-visible message indicating whether a standalone executable was found.
-
-    If no executable is found the function prints a warning to stderr about falling back to invoking mmrelay as a Python module; if an executable is found it prints the executable path to stdout.
-
+    Resolve the command used to invoke MMRelay and report whether a standalone executable was found.
+    
+    Prints a warning to stderr if falling back to running MMRelay via the current Python interpreter; otherwise prints the resolved executable path to stdout.
+    
     Returns:
-        str: Filesystem path to the `mmrelay` executable, or a Python invocation string using the current interpreter (e.g. `"<python> -m mmrelay"`).
+        str: The filesystem path to the `mmrelay` executable, or a Python invocation string using the current interpreter (e.g. `"<python> -m mmrelay"`).
     """
     resolved_cmd = get_resolved_exec_cmd()
     if " -m mmrelay" in resolved_cmd:
@@ -83,10 +83,10 @@ def get_resolved_exec_start(
 
 def get_user_service_path() -> Path:
     """
-    Return the filesystem path for the current user's mmrelay systemd unit file.
-
+    Compute the path to the current user's MMRelay systemd unit file.
+    
     Returns:
-        Path: Path to the user unit, typically '~/.config/systemd/user/mmrelay.service'.
+        Path: Path to the user unit file, typically '~/.config/systemd/user/mmrelay.service'.
     """
     service_dir = Path.home() / ".config" / "systemd" / "user"
     return service_dir / "mmrelay.service"
@@ -250,10 +250,10 @@ def get_template_service_path() -> str | None:
 
 def get_template_service_content() -> str:
     """
-    Get the systemd service unit content to install for the user-level mmrelay service.
-
-    Attempts to load a template in this order: 1) external template path returned by get_service_template_path(), 2) embedded package resource "mmrelay.service" from mmrelay.tools, 3) a second filesystem probe via get_template_service_path(). If none can be read, returns a built-in default service unit that includes a resolved ExecStart (from get_resolved_exec_start()), useful Environment settings, and standard Unit/Service/Install sections. Read/access errors are written to stderr.
-
+    Provide the systemd service unit content to install for the user-level mmrelay service.
+    
+    Attempts to load a template from disk or package resources and, if none are available or readable, falls back to a built-in default service unit that includes a resolved ExecStart and sane Environment settings. Read/access errors are written to stderr.
+    
     Returns:
         str: Complete service file content suitable for writing to the user service unit.
     """
@@ -343,12 +343,12 @@ def is_service_enabled() -> bool:
 
 def is_service_active() -> bool:
     """
-    Determine whether the per-user systemd unit 'mmrelay.service' is currently active.
-
-    If the check fails due to an OSError or subprocess error, a warning is printed to stderr and the function returns False.
-
+    Check whether the per-user systemd unit 'mmrelay.service' is active.
+    
+    If the check fails due to an OSError or subprocess error, a warning is written to stderr and the function returns False.
+    
     Returns:
-        True if the service is active, False otherwise.
+        bool: True if the service is active, False otherwise.
     """
     try:
         result = subprocess.run(
@@ -366,11 +366,11 @@ def is_service_active() -> bool:
 def create_service_file() -> bool:
     """
     Create or update the per-user systemd unit file for MMRelay.
-
-    Ensures the user systemd directory and MMRelay logs directory exist, obtains a service unit template, substitutes known placeholders (executable and config paths), normalizes the unit's ExecStart to the resolved MMRelay invocation while preserving any trailing arguments, and writes the final unit to ~/.config/systemd/user/mmrelay.service.
-
+    
+    Ensures the user systemd directory and MMRelay logs directory exist, obtains a service unit template, substitutes known placeholders (working directory, executable and config paths), normalizes the unit's ExecStart line to the resolved MMRelay invocation while preserving any trailing arguments, and writes the resulting unit to ~/.config/systemd/user/mmrelay.service.
+    
     Returns:
-        bool: True if the service file was written successfully; False if a template could not be obtained or writing the file failed.
+        bool: True if the service file was written successfully, False if a template could not be obtained or writing the file failed.
     """
     # Get executable paths once to avoid duplicate calls and output
     executable_path = get_executable_path()
@@ -452,16 +452,18 @@ def reload_daemon() -> bool:
 
 def service_needs_update() -> tuple[bool, str]:
     """
-    Determine whether the user's systemd unit for mmrelay should be updated.
-
-    Performs these checks (in order) and reports the first failing condition:
+    Determine whether the per-user systemd unit for mmrelay requires updating.
+    
+    Performs the following checks (first failing condition wins):
     - No installed user service file exists.
-    - The installed unit's ExecStart does not invoke mmrelay via an acceptable form (mmrelay on PATH, "/usr/bin/env mmrelay", or the current Python interpreter with "-m mmrelay").
+    - The installed unit's ExecStart does not use an acceptable invocation (mmrelay on PATH, "/usr/bin/env mmrelay", or the current Python interpreter with "-m mmrelay").
     - The unit's Environment PATH lines do not include common user-bin locations ("%h/.local/pipx/venvs/mmrelay/bin" or "%h/.local/bin").
-    - A template service file on disk exists and is newer than the installed unit.
-
+    - A template service file on disk exists and has a newer modification time than the installed unit.
+    
     Returns:
-        tuple: (needs_update: bool, reason: str) — `True` if an update is recommended or required, `False` if the installed service appears up to date. `reason` explains the decision or any error encountered.
+        tuple: (needs_update, reason)
+            needs_update (bool): `True` if an update is recommended or required, `False` if the installed service appears up to date.
+            reason (str): A short explanation for the decision or any error encountered.
     """
     # Check if service already exists
     existing_service = read_service_file()
@@ -530,12 +532,12 @@ def service_needs_update() -> tuple[bool, str]:
 
 def check_loginctl_available() -> bool:
     """
-    Check whether the `loginctl` executable is present on PATH and runnable.
-
-    Attempts to locate `loginctl` on PATH and invoke it with `--version`; reports unavailable if not found or if invocation fails.
-
+    Check whether loginctl is available and runnable on PATH.
+    
+    Locates the `loginctl` executable and invokes `loginctl --version` to verify it can be executed.
+    
     Returns:
-        `true` if `loginctl` is present on PATH and `loginctl --version` exits with code 0, `false` otherwise.
+        `true` if `loginctl` is present on PATH and the command exits with code 0, `false` otherwise.
     """
     path = shutil.which("loginctl")
     if not path:
@@ -553,9 +555,9 @@ def check_loginctl_available() -> bool:
 def check_lingering_enabled() -> bool:
     """
     Determine whether systemd user lingering is enabled for the current user.
-
-    Checks for a usable `loginctl` and queries the current account; returns `True` only if the query succeeds and reports `Linger=yes`.
-
+    
+    Checks for a usable `loginctl` and queries the systemd user account; if the query reports `Linger=yes`, lingering is considered enabled.
+    
     Returns:
         bool: `True` if lingering is enabled for the current user, `False` otherwise.
     """
@@ -589,10 +591,9 @@ def check_lingering_enabled() -> bool:
 def enable_lingering() -> bool:
     """
     Enable systemd user lingering for the current user.
-
-    Determines the current username from environment variables or getpass and invokes
-    `sudo loginctl enable-linger <user>`, printing status messages to stdout/stderr.
-
+    
+    This attempts to determine the current username and runs `sudo loginctl enable-linger <user>`, printing progress and error messages to stdout/stderr.
+    
     Returns:
         True if lingering was enabled successfully, False otherwise.
     """
@@ -797,12 +798,11 @@ def install_service() -> bool:
 def start_service() -> bool:
     """
     Start the user-level systemd service for MMRelay.
-
-    Attempts to run `SYSTEMCTL --user start mmrelay.service`. Returns True if the command exits successfully.
-    On failure the function prints an error message to stderr and returns False.
-
+    
+    Attempts to start the per-user unit "mmrelay.service" and reports whether the operation succeeded.
+    
     Returns:
-        bool: True when the service was started successfully; False on error.
+        bool: True if the service was started successfully, False otherwise.
     """
     try:
         subprocess.run([SYSTEMCTL, "--user", "start", "mmrelay.service"], check=True)
@@ -818,11 +818,11 @@ def start_service() -> bool:
 def show_service_status() -> bool:
     """
     Display the user's systemd status for the mmrelay service.
-
-    Prints the service status to stdout. Returns True if status was retrieved regardless of service state.
-
+    
+    Prints the service status output to stdout; if systemctl cannot be executed, an error is printed to stderr.
+    
     Returns:
-        bool: True if status was retrieved successfully, False on systemctl errors.
+        True if the status command executed and its output was displayed, False if an OS-level error prevented running systemctl.
     """
     try:
         result = subprocess.run(

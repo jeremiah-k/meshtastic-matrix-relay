@@ -168,9 +168,9 @@ async def main(config: dict[str, Any]) -> None:
 
     def _set_shutdown_flag() -> None:
         """
-        Mark the application as shutting down and wake tasks waiting for shutdown.
-
-        Sets the global shutdown indicator and signals the shutdown_event so any awaiting loops or handlers can proceed with shutdown.
+        Mark the application as shutting down and notify waiters.
+        
+        Sets the module-level shutdown flag and sets the shutdown_event so tasks waiting on shutdown can proceed.
         """
         meshtastic_utils.shutting_down = True
         shutdown_event.set()
@@ -295,9 +295,9 @@ async def main(config: dict[str, Any]) -> None:
 
                 def _close_meshtastic() -> None:
                     """
-                    Close the Meshtastic client connection if one exists.
-
-                    If no Meshtastic client is present, this function does nothing.
+                    Close the active Meshtastic client connection.
+                    
+                    Does nothing if no Meshtastic client is present in meshtastic_utils.meshtastic_client.
                     """
                     if meshtastic_utils.meshtastic_client:
                         meshtastic_utils.meshtastic_client.close()

@@ -373,15 +373,36 @@ class TestMain(unittest.TestCase):
 
         class ImmediateEvent:
             def __init__(self) -> None:
+                """
+                Initialize the instance and mark it as set.
+                
+                Sets the internal flag `_set` to True to indicate the object has been initialized.
+                """
                 self._set = True
 
             def is_set(self) -> bool:
+                """
+                Indicates whether the internal set flag is enabled.
+                
+                Returns:
+                    True if the flag is set, False otherwise.
+                """
                 return self._set
 
             def set(self) -> None:
+                """
+                Mark the event as set, allowing any waiters to proceed.
+                
+                When called, the event's state becomes set; subsequent checks or waits observing the event will see it as set until cleared.
+                """
                 self._set = True
 
             async def wait(self) -> None:
+                """
+                A no-op asynchronous wait that completes immediately.
+                
+                This coroutine does not block; awaiting it returns without delay or side effects.
+                """
                 return None
 
         mock_meshtastic_client = MagicMock()
