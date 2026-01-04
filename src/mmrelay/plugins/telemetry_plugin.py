@@ -72,16 +72,16 @@ class Plugin(BasePlugin):
     ) -> bool:
         # Support deviceMetrics only for now
         """
-        Process an incoming Meshtastic packet and record device telemetry for the sending node when present.
-
-        If the packet contains `decoded.telemetry.deviceMetrics` and `decoded.portnum == "TELEMETRY_APP"`, extracts the `time` plus the `batteryLevel`, `voltage`, and `airUtilTx` fields (each None if missing) and persists an appended telemetry record for the sender. Other parameters (`formatted_message`, `longname`, `meshnet_name`) are not inspected by this method.
-
+        Record device telemetry from an incoming Meshtastic telemetry packet for the sending node.
+        
+        When `packet` contains `decoded.portnum == "TELEMETRY_APP"` and `decoded.telemetry.deviceMetrics`, extracts the telemetry timestamp and the `batteryLevel`, `voltage`, and `airUtilTx` fields (each `None` if missing) and appends a telemetry record for the sender identified by `packet["fromId"]`. Other packet contents are not modified.
+        
         Parameters:
-            packet (dict): Meshtastic packet expected to include `decoded` with `portnum` and a `telemetry.deviceMetrics` object.
-            formatted_message (str): Unused in this handler.
-            longname (str): Unused in this handler.
-            meshnet_name (str): Unused in this handler.
-
+            packet (dict): Meshtastic packet expected to include `decoded` with `portnum` and `telemetry.deviceMetrics`.
+            formatted_message (str): Unused.
+            longname (str): Unused.
+            meshnet_name (str): Unused.
+        
         Returns:
             bool: `False` always; telemetry is recorded but the message is not consumed by this handler.
         """

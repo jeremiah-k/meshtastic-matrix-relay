@@ -1674,19 +1674,15 @@ def _diagnose_minimal_config_template() -> None:
 
 def handle_config_diagnose(args: argparse.Namespace) -> int:
     """
-    Run non-destructive diagnostics for the MMRelay configuration subsystem and print a concise, human-readable report.
-
-    Performs four checks without modifying user files:
-    1. Resolves and reports candidate configuration file paths and directory accessibility.
-    2. Verifies availability and readability of the packaged sample configuration.
-    3. Executes platform-specific diagnostics (runs Windows-specific checks when applicable).
-    4. Validates the bundled minimal YAML configuration template.
-
+    Run non-destructive diagnostics for the MMRelay configuration subsystem and print a human-readable report.
+    
+    Performs four checks without modifying user files: (1) resolves and reports candidate configuration paths and directory accessibility, (2) verifies the packaged sample configuration is accessible, (3) runs platform-specific diagnostics (Windows checks when applicable), and (4) validates the bundled minimal YAML template.
+    
     Parameters:
         args (argparse.Namespace): Parsed CLI arguments used to determine configuration search paths and to control platform-specific diagnostic behavior.
-
+    
     Returns:
-        int: Exit code where `0` indicates diagnostics completed successfully and `1` indicates a failure occurred (an error summary is printed to stderr).
+        int: `0` if diagnostics completed successfully, `1` if a failure occurred and an error summary was printed to stderr.
     """
     print("MMRelay Configuration System Diagnostics")
     print("=" * 40)
@@ -1735,15 +1731,13 @@ def handle_config_diagnose(args: argparse.Namespace) -> int:
 
 def handle_cli_commands(args: argparse.Namespace) -> int | None:
     """
-    Handle legacy CLI flags (--version, --install-service, --generate-config, --check-config, --auth).
-
-    Processes backward-compatible, legacy command-line flags and performs their immediate actions.
-
+    Dispatch legacy CLI flags to their immediate handlers.
+    
     Parameters:
-        args (argparse.Namespace): Parsed command-line arguments produced by parse_arguments().
-
+        args (argparse.Namespace): Parsed command-line arguments.
+    
     Returns:
-        int | None: Exit code if a legacy command was handled, otherwise `None`.
+        int | None: Exit code (`0` on success, `1` on failure) if a legacy command was handled; `None` if no legacy flag was present.
     """
     args_dict = vars(args)
 
@@ -1784,12 +1778,12 @@ def handle_cli_commands(args: argparse.Namespace) -> int | None:
 
 def generate_sample_config() -> bool:
     """
-    Generate a sample configuration file at the highest-priority config path when no configuration exists.
-
-    Attempts to create the sample in the first candidate path from get_config_paths(). It prefers copying the packaged sample (get_sample_config_path()), falls back to reading the packaged resource via importlib.resources, then to a set of conventional filesystem locations, and finally writes a minimal built-in template as a last resort. On Unix-like systems the created file will have secure owner-only permissions applied when possible. Prints user-facing diagnostics and troubleshooting guidance.
-
+    Create a sample configuration file at the highest-priority config path when no configuration exists.
+    
+    Tries packaged resources and several fallback locations, writing a minimal built-in template as a last resort. Applies secure owner-only permissions on Unix-like systems when possible and prints user-facing diagnostics and guidance.
+    
     Returns:
-        True when a sample config is successfully generated, False on any error or if a config file already exists.
+        `True` if a sample config file was created, `False` if no file was created (because a config already exists or an error occurred).
     """
 
     # Get the first config path (highest priority)

@@ -1091,7 +1091,9 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         mock_start_service,
     ):
         """
-        Test install_service start service user interaction (lines 749-761).
+        Verify install_service completes and logs that service start was skipped when the user cancels the start prompt.
+        
+        Sets up mocks representing an existing, enabled but inactive per-user service, simulates the user cancelling the start prompt by raising EOFError, and asserts that install_service() returns True and that logger.info was called with the cancellation message.
         """
         # Mock service setup - service is not running
         mock_get_path.return_value = Path(
