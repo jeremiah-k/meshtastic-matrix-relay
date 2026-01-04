@@ -2238,9 +2238,9 @@ class TestValidateCredentialsJson(unittest.TestCase):
 
     @patch("os.path.exists")
     @patch("builtins.open", new_callable=mock_open)
-    @patch("builtins.print")
+    @patch("mmrelay.cli.logger")
     def test_validate_credentials_json_invalid_json(
-        self, mock_print, mock_file, mock_exists
+        self, mock_logger, mock_file, mock_exists
     ):
         """Test validation when credentials.json contains invalid JSON."""
         # Setup mocks
@@ -2256,9 +2256,7 @@ class TestValidateCredentialsJson(unittest.TestCase):
 
         # Verify results
         self.assertFalse(result)
-        mock_print.assert_any_call(
-            "❌ Error: Could not validate credentials.json: Invalid JSON: line 1 column 1 (char 0)"
-        )
+        mock_logger.error.assert_called()
 
     @patch("os.path.exists")
     @patch("builtins.open", new_callable=mock_open)
@@ -2431,8 +2429,8 @@ class TestValidateCredentialsJson(unittest.TestCase):
         )
 
     @patch("os.path.exists")
-    @patch("builtins.print")
-    def test_validate_credentials_json_file_read_error(self, mock_print, mock_exists):
+    @patch("mmrelay.cli.logger")
+    def test_validate_credentials_json_file_read_error(self, mock_logger, mock_exists):
         """Test validation when credentials.json cannot be read due to permissions or other IO error."""
         # Setup mocks
         config_path = "/home/user/.mmrelay/config.yaml"
@@ -2447,9 +2445,7 @@ class TestValidateCredentialsJson(unittest.TestCase):
 
         # Verify results
         self.assertFalse(result)
-        mock_print.assert_any_call(
-            "❌ Error: Could not validate credentials.json: Permission denied"
-        )
+        mock_logger.error.assert_called()
 
     @patch("os.path.exists")
     @patch("builtins.open", new_callable=mock_open)

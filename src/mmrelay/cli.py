@@ -332,7 +332,7 @@ def _validate_credentials_json(config_path: str) -> bool:
 
         return True
     except (OSError, json.JSONDecodeError) as e:
-        print(f"❌ Error: Could not validate credentials.json: {e}")
+        logger.error("❌ Error: Could not validate credentials.json: %s", e)
         return False
 
 
@@ -1675,12 +1675,12 @@ def _diagnose_minimal_config_template() -> None:
 def handle_config_diagnose(args: argparse.Namespace) -> int:
     """
     Run non-destructive diagnostics for the MMRelay configuration subsystem and print a human-readable report.
-    
+
     Performs four checks without modifying user files: (1) resolves and reports candidate configuration paths and directory accessibility, (2) verifies the packaged sample configuration is accessible, (3) runs platform-specific diagnostics (Windows checks when applicable), and (4) validates the bundled minimal YAML template.
-    
+
     Parameters:
         args (argparse.Namespace): Parsed CLI arguments used to determine configuration search paths and to control platform-specific diagnostic behavior.
-    
+
     Returns:
         int: `0` if diagnostics completed successfully, `1` if a failure occurred and an error summary was printed to stderr.
     """
@@ -1732,10 +1732,10 @@ def handle_config_diagnose(args: argparse.Namespace) -> int:
 def handle_cli_commands(args: argparse.Namespace) -> int | None:
     """
     Dispatch legacy CLI flags to their immediate handlers.
-    
+
     Parameters:
         args (argparse.Namespace): Parsed command-line arguments.
-    
+
     Returns:
         int | None: Exit code (`0` on success, `1` on failure) if a legacy command was handled; `None` if no legacy flag was present.
     """
@@ -1754,7 +1754,7 @@ def handle_cli_commands(args: argparse.Namespace) -> int | None:
 
             return 0 if install_service() else 1
         except ImportError as e:
-            logger.error(f"Error importing setup utilities: {e}")
+            logger.exception("Error importing setup utilities")
             return 1
 
     # Handle --generate-config
@@ -1779,9 +1779,9 @@ def handle_cli_commands(args: argparse.Namespace) -> int | None:
 def generate_sample_config() -> bool:
     """
     Create a sample configuration file at the highest-priority config path when no configuration exists.
-    
+
     Tries packaged resources and several fallback locations, writing a minimal built-in template as a last resort. Applies secure owner-only permissions on Unix-like systems when possible and prints user-facing diagnostics and guidance.
-    
+
     Returns:
         `True` if a sample config file was created, `False` if no file was created (because a config already exists or an error occurred).
     """
