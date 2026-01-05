@@ -854,8 +854,8 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         """
         Test check_lingering_enabled when username cannot be determined (lines 549-556).
         """
-        # Mock environment with no USER/USERNAME and getpass returns None
-        mock_getpass.return_value = None
+        # Mock environment with no USER/USERNAME and getpass returns empty string
+        mock_getpass.return_value = ""
         mock_which.return_value = "/usr/bin/loginctl"
 
         result = check_lingering_enabled()
@@ -1324,13 +1324,7 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
             result = install_service()
 
             self.assertTrue(result)
-            # Check that the exception was logged (matching string part, not exact OSError object)
-            exception_calls = [
-                call
-                for call in mock_logger.exception.call_args_list
-                if "OS error while restarting service" in str(call.args[0])
-            ]
-            self.assertTrue(len(exception_calls) > 0)
+            mock_logger.exception.assert_any_call("OS error while restarting service")
 
     @patch("mmrelay.setup_utils.wait_for_service_start")
     @patch("mmrelay.setup_utils.show_service_status")
@@ -1352,8 +1346,8 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         mock_service_enabled,
         mock_service_active,
         _mock_run,
-        mock_show_status,
-        mock_wait,
+        _mock_show_status,
+        _mock_wait,
     ):
         """Test install_service CalledProcessError when restarting service (line 765)."""
         mock_get_path.return_value = Path(

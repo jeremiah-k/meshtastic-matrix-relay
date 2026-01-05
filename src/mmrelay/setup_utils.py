@@ -272,7 +272,7 @@ def get_template_service_content() -> str:
             with open(template_path, "r", encoding="utf-8") as f:
                 service_template = f.read()
             return service_template
-        except (OSError, IOError, UnicodeDecodeError):
+        except (OSError, UnicodeDecodeError):
             logger.exception("Error reading service template file")
 
     # If the helper function failed, try using importlib.resources directly
@@ -294,7 +294,7 @@ def get_template_service_content() -> str:
                 with open(fallback_template_path, "r", encoding="utf-8") as f:
                     service_template = f.read()
                 return service_template
-            except (OSError, IOError, UnicodeDecodeError):
+            except (OSError, UnicodeDecodeError):
                 logger.exception("Error reading service template file")
 
     # If we couldn't find or read the template file, use a default template

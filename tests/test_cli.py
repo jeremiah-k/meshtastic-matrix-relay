@@ -2071,6 +2071,28 @@ class TestValidateE2EEDependencies(unittest.TestCase):
 
     @patch("os.path.exists")
     @patch("builtins.open", new_callable=mock_open)
+    @patch("mmrelay.cli.logger")
+    def test_validate_credentials_json_invalid_json(
+        self, mock_logger, mock_file, mock_exists
+    ):
+        """Test validation when credentials.json contains invalid JSON."""
+        # Setup mocks
+        config_path = "/home/user/.mmrelay/config.yaml"
+        mock_exists.return_value = True
+        # Mock file with invalid JSON
+        mock_file.return_value.read.return_value = "{invalid json"
+
+        # Import and call function
+        from mmrelay.cli import _validate_credentials_json
+
+        result = _validate_credentials_json(config_path)
+
+        # Verify results
+        self.assertFalse(result)
+        mock_logger.exception.assert_called()
+
+    @patch("os.path.exists")
+    @patch("builtins.open", new_callable=mock_open)
     @patch("builtins.print")
     def test_validate_credentials_json_multiple_missing_fields(
         self, mock_print, mock_file, mock_exists
