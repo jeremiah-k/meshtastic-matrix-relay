@@ -1377,7 +1377,7 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
 
             self.assertTrue(result)
             mock_logger.exception.assert_any_call(
-                "Error restarting service (exit code %s)", 1
+                "Error restarting service (exit code %d)", 1
             )
 
 
