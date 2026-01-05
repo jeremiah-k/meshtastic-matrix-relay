@@ -111,7 +111,7 @@ def service_exists() -> bool:
     return get_user_service_path().exists()
 
 
-def print_service_commands() -> None:
+def log_service_commands() -> None:
     """Log the commands for controlling the systemd user service."""
     logger.info("  systemctl --user start mmrelay.service    # Start the service")
     logger.info("  systemctl --user stop mmrelay.service     # Stop the service")
@@ -419,14 +419,14 @@ def create_service_file() -> bool:
         service_content,
     )
 
-    # Write service file
+    service_path = get_user_service_path()
     try:
-        get_user_service_path().write_text(service_content, encoding="utf-8")
-    except (IOError, OSError):
+        service_path.write_text(service_content, encoding="utf-8")
+    except OSError:
         logger.exception("Error creating service file")
         return False
     else:
-        logger.info("Service file created at %s", get_user_service_path())
+        logger.info("Service file created at %s", service_path)
         return True
 
 
@@ -657,12 +657,12 @@ def install_service() -> bool:
                 user_input = input("Do you want to update the service file? (y/n): ")
                 if not user_input.lower().startswith("y"):
                     logger.info("Service update cancelled.")
-                    print_service_commands()
+                    log_service_commands()
                     return True
             except (EOFError, KeyboardInterrupt):
                 logger.info("\nInput cancelled. Proceeding with default behavior.")
                 logger.info("Service update cancelled.")
-                print_service_commands()
+                log_service_commands()
                 return True
         else:
             logger.info("No update needed for the service file: %s", reason)
@@ -798,7 +798,7 @@ def install_service() -> bool:
         )
     logger.info("  Currently Running: %s", "Yes" if is_service_active() else "No")
     logger.info("\nService Management Commands:")
-    print_service_commands()
+    log_service_commands()
 
     return True
 

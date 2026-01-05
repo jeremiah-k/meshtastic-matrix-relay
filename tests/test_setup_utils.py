@@ -36,7 +36,7 @@ from mmrelay.setup_utils import (
     install_service,
     is_service_active,
     is_service_enabled,
-    print_service_commands,
+    log_service_commands,
     read_service_file,
     reload_daemon,
     service_exists,
@@ -134,9 +134,9 @@ class TestSetupUtils(unittest.TestCase):
         self.assertEqual(result, expected)
 
     @patch("mmrelay.setup_utils.logger")
-    def test_print_service_commands(self, mock_logger):
-        """Test that print_service_commands logs the correct commands."""
-        print_service_commands()
+    def test_log_service_commands(self, mock_logger):
+        """Test that log_service_commands logs the correct commands."""
+        log_service_commands()
 
         # Verify all expected commands were logged
         expected_calls = [
@@ -177,7 +177,7 @@ class TestSetupUtils(unittest.TestCase):
 
     @patch("mmrelay.setup_utils.read_service_file")
     @patch("mmrelay.setup_utils.service_needs_update")
-    @patch("mmrelay.setup_utils.print_service_commands")
+    @patch("mmrelay.setup_utils.log_service_commands")
     @patch("builtins.input")
     def test_install_service_update_cancelled_by_user(
         self, mock_input, mock_print_commands, mock_needs_update, mock_read_service
@@ -197,7 +197,7 @@ class TestSetupUtils(unittest.TestCase):
 
     @patch("mmrelay.setup_utils.read_service_file")
     @patch("mmrelay.setup_utils.service_needs_update")
-    @patch("mmrelay.setup_utils.print_service_commands")
+    @patch("mmrelay.setup_utils.log_service_commands")
     @patch("builtins.input")
     def test_install_service_update_cancelled_by_eof(
         self, mock_input, mock_print_commands, mock_needs_update, mock_read_service
