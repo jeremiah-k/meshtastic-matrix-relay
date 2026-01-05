@@ -56,11 +56,13 @@ setup(
         "py-staticmaps>=0.4.0",
         "psutil>=5.8.0",
         "rich==14.2.0",
-        "pyright==1.1.407",
-        "mypy==1.19.1",
         "setuptools>=80.9.0",  # Required for console script entry points and Windows compatibility
     ],
     extras_require={
+        "dev": [
+            "pyright==1.1.407",
+            "mypy==1.19.1",
+        ],
         "e2e": [
             "matrix-nio[e2e]==0.25.2",
             "python-olm",

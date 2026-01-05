@@ -280,8 +280,8 @@ def get_map(
             - "precisionBits": integer (or string) used to compute an approximate precision radius in meters.
         zoom (int | None): Optional map zoom level; if None the context default is used.
         image_size (tuple[int, int] | None): Optional output size as (width, height) in pixels; if None a 1000x1000 image is produced.
-        anonymize (bool): Ignored (kept for compatibility).
-        radius (int): Ignored (kept for compatibility).
+        _anonymize (bool): Ignored (kept for compatibility).
+        _radius (int): Ignored (kept for compatibility).
 
     Returns:
         PIL.Image.Image: Pillow Image containing the rendered map with markers and any precision circles.
