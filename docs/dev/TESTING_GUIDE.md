@@ -6,56 +6,11 @@ First check for an existing virtual environment in venv/ if it does not exist, c
 
 ## Type Checking
 
-The project uses two type checkers: **mypy** and **pyright**. Both tools catch different issues, so it's recommended to run both.
-
-### MyPy
-
-Run mypy with strict mode (after activating venv):
+Run strict mypy type checking (after activating the venv):
 
 ```bash
-# Source code (recommended for CI/CD)
 python -m mypy src/ --strict
 ```
-
-For test files or during development, you can use non-strict mode:
-
-```bash
-# Test files or development
-python -m mypy src/ tests/
-```
-
-Run mypy on specific files:
-
-```bash
-python -m mypy src/mmrelay/setup_utils.py
-```
-
-### Pyright
-
-Run pyright type checking (after activating venv):
-
-```bash
-# Using npx (Node.js)
-npx pyright src/
-
-# Or using pip-installed pyright
-python -m pyright src/
-```
-
-Run pyright on specific files:
-
-```bash
-npx pyright src/mmrelay/setup_utils.py tests/test_setup_utils.py
-```
-
-### Differences
-
-| Tool    | Strengths                                | Use Case                               |
-| ------- | ---------------------------------------- | -------------------------------------- |
-| mypy    | Enforces strict PEP 484 compliance       | Strict type adherence, PEP conformance |
-| pyright | Better inference, more accurate messages | Development, faster feedback           |
-
-**Recommendation**: Use both tools. mypy catches issues pyright might miss (and vice versa). Pyright is often preferred during development for its faster analysis and better IDE integration.
 
 ## Async Function Mocking Patterns
 

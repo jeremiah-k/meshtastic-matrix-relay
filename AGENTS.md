@@ -7,7 +7,6 @@
 - **Run all tests with coverage**: `python -m pytest -v --cov --junitxml=junit.xml -o junit_family=legacy`
 - **Run tests with a timeout**: `python -m pytest -v --timeout=60` (to prevent tests from hanging indefinitely)
 - **Lint code**: `.trunk/trunk check --fix --all` (do not need to run each time, it wastes time)
-- **Type check**: `python -m mypy src/ --strict` and `python -m pyright src/` (or `npx pyright src/`)
 
 ## Code Style Guidelines
 
