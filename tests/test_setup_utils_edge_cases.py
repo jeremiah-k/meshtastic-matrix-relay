@@ -223,12 +223,12 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         """
         Test that check_lingering_enabled returns False and logs an error when the loginctl command raises an exception.
         """
-        with patch("subprocess.run") as mock_run:
-            mock_run.side_effect = OSError("Command failed")
-            with patch("mmrelay.setup_utils.logger") as mock_logger:
-                result = check_lingering_enabled()
-                self.assertFalse(result)
-                mock_logger.exception.assert_called()
+        with patch("shutil.which", return_value="/usr/bin/loginctl"):
+            with patch("subprocess.run", side_effect=OSError("Command failed")):
+                with patch("mmrelay.setup_utils.logger") as mock_logger:
+                    result = check_lingering_enabled()
+                    self.assertFalse(result)
+                    mock_logger.exception.assert_called()
 
     def test_check_lingering_enabled_parsing_error(self):
         """

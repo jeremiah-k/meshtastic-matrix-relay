@@ -443,10 +443,10 @@ def reload_daemon() -> bool:
         # Using resolved systemctl path
         subprocess.run([SYSTEMCTL, "--user", "daemon-reload"], check=True)
     except subprocess.CalledProcessError as e:
-        logger.exception("Error reloading systemd daemon (exit code %s)", e.returncode)
+        logger.exception("Error reloading systemd daemon (exit code %d)", e.returncode)
         return False
     except OSError as e:
-        logger.exception("Error running systemctl daemon-reload: %s", e)
+        logger.exception("Error running systemctl daemon-reload")
         return False
     else:
         logger.info("Systemd user daemon reloaded")
@@ -627,7 +627,7 @@ def enable_lingering() -> bool:
             logger.error("Error enabling lingering: %s", result.stderr)
             return False
     except (OSError, subprocess.SubprocessError) as e:
-        logger.exception("Error enabling lingering: %s", e)
+        logger.exception("Error enabling lingering")
         return False
 
 
@@ -736,9 +736,9 @@ def install_service() -> bool:
                 logger.info("Service enabled successfully")
                 service_enabled = True
             except subprocess.CalledProcessError as e:
-                logger.exception("Error enabling service (exit code %s)", e.returncode)
+                logger.exception("Error enabling service (exit code %d)", e.returncode)
             except OSError as e:
-                logger.exception("OS error while enabling service: %s", e)
+                logger.exception("OS error while enabling service")
 
     # Check if the service is already running
     service_active = is_service_active()
@@ -764,10 +764,10 @@ def install_service() -> bool:
                 show_service_status()
             except subprocess.CalledProcessError as e:
                 logger.exception(
-                    "Error restarting service (exit code %s)", e.returncode
+                    "Error restarting service (exit code %d)", e.returncode
                 )
             except OSError as e:
-                logger.exception("OS error while restarting service: %s", e)
+                logger.exception("OS error while restarting service")
     else:
         logger.info("The service is not currently running.")
         try:

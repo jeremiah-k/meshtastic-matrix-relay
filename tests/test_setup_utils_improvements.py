@@ -73,9 +73,10 @@ class TestPatchCoverageImprovements(unittest.TestCase):
 
     def test_check_loginctl_available_exception_handling(self):
         """Test check_loginctl_available exception handling."""
-        with patch("subprocess.run", side_effect=OSError("Test error")):
-            with patch("mmrelay.setup_utils.logger") as mock_logger:
-                result = check_loginctl_available()
+        with patch("shutil.which", return_value="/usr/bin/loginctl"):
+            with patch("subprocess.run", side_effect=OSError("Test error")):
+                with patch("mmrelay.setup_utils.logger") as mock_logger:
+                    result = check_loginctl_available()
 
         self.assertFalse(result)
         mock_logger.warning.assert_called()
@@ -90,9 +91,10 @@ class TestPatchCoverageImprovements(unittest.TestCase):
 
     def test_check_lingering_enabled_exception_handling(self):
         """Test check_lingering_enabled exception handling."""
-        with patch("subprocess.run", side_effect=OSError("Test error")):
-            with patch("mmrelay.setup_utils.logger") as mock_logger:
-                result = check_lingering_enabled()
+        with patch("shutil.which", return_value="/usr/bin/loginctl"):
+            with patch("subprocess.run", side_effect=OSError("Test error")):
+                with patch("mmrelay.setup_utils.logger") as mock_logger:
+                    result = check_lingering_enabled()
 
         self.assertFalse(result)
         mock_logger.exception.assert_called()
