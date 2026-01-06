@@ -1196,7 +1196,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
                                 plugin_timeout,
                                 exc,
                             )
-                            found_matching_plugin = True
+                            found_matching_plugin = False
 
                     if found_matching_plugin:
                         logger.debug(f"Processed by plugin {plugin.plugin_name}")
@@ -1294,7 +1294,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
                                 plugin_timeout,
                                 exc,
                             )
-                            found_matching_plugin = True
+                            found_matching_plugin = False
 
                     if found_matching_plugin:
                         logger.debug(

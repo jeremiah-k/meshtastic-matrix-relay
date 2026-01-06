@@ -30,7 +30,7 @@ RECOMMENDED_MINIMUM_DELAY = (
 )
 
 # Meshtastic client timeout (for getMetadata and other operations)
-DEFAULT_MESHTASTIC_TIMEOUT = 30  # seconds
+DEFAULT_MESHTASTIC_TIMEOUT = 300  # seconds
 
 # Matrix client timeouts
 MATRIX_EARLY_SYNC_TIMEOUT = 2000  # milliseconds
