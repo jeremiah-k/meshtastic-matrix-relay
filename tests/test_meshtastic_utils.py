@@ -433,7 +433,7 @@ class TestMeshtasticUtils(unittest.TestCase):
         result = connect_meshtastic(passed_config=config)
 
         self.assertEqual(result, mock_client)
-        mock_serial.assert_called_once_with("/dev/ttyUSB0", timeout=30)
+        mock_serial.assert_called_once_with("/dev/ttyUSB0", timeout=300)
 
     @patch("mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface")
     @patch("mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface")
@@ -467,7 +467,7 @@ class TestMeshtasticUtils(unittest.TestCase):
         result = connect_meshtastic(passed_config=config)
 
         self.assertEqual(result, mock_client)
-        mock_tcp.assert_called_once_with(hostname="192.168.1.100", timeout=30)
+        mock_tcp.assert_called_once_with(hostname="192.168.1.100", timeout=300)
 
     @patch("mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface")
     @patch("mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface")
@@ -507,7 +507,7 @@ class TestMeshtasticUtils(unittest.TestCase):
             noProto=False,
             debugOut=None,
             noNodes=False,
-            timeout=30,
+            timeout=300,
         )
 
     @patch("mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface")
@@ -2164,7 +2164,9 @@ class TestTimeoutParsingEdgeCases(unittest.TestCase):
         "meshtastic.serial_interface.SerialInterface",
         side_effect=Exception("timeout not used"),
     )
-    def test_connect_meshtastic_negative_timeout(self, mock_serial, mock_logger):
+    def test_connect_meshtastic_negative_timeout(
+        self, mock_SerialInterface, mock_serial, mock_logger
+    ):
         """Test connect_meshtastic with negative timeout value."""
         from mmrelay.meshtastic_utils import connect_meshtastic
 
@@ -2195,7 +2197,9 @@ class TestTimeoutParsingEdgeCases(unittest.TestCase):
         "meshtastic.serial_interface.SerialInterface",
         side_effect=Exception("timeout not used"),
     )
-    def test_connect_meshtastic_zero_timeout(self, mock_serial, mock_logger):
+    def test_connect_meshtastic_zero_timeout(
+        self, mock_SerialInterface, mock_serial, mock_logger
+    ):
         """Test connect_meshtastic with zero timeout value."""
         from mmrelay.meshtastic_utils import connect_meshtastic
 
@@ -2225,7 +2229,9 @@ class TestTimeoutParsingEdgeCases(unittest.TestCase):
         "meshtastic.serial_interface.SerialInterface",
         side_effect=Exception("timeout not used"),
     )
-    def test_connect_meshtastic_invalid_string_timeout(self, mock_serial, mock_logger):
+    def test_connect_meshtastic_invalid_string_timeout(
+        self, mock_SerialInterface, mock_serial, mock_logger
+    ):
         """Test connect_meshtastic with invalid string timeout value."""
         from mmrelay.meshtastic_utils import connect_meshtastic
 
@@ -2256,7 +2262,9 @@ class TestTimeoutParsingEdgeCases(unittest.TestCase):
         "meshtastic.serial_interface.SerialInterface",
         side_effect=Exception("timeout not used"),
     )
-    def test_connect_meshtastic_none_timeout(self, mock_serial, mock_logger):
+    def test_connect_meshtastic_none_timeout(
+        self, mock_SerialInterface, mock_serial, mock_logger
+    ):
         """Test connect_meshtastic with None timeout value (uses default)."""
         from mmrelay.meshtastic_utils import connect_meshtastic
 
