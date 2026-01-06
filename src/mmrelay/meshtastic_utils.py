@@ -63,6 +63,7 @@ from mmrelay.runtime_utils import is_running_as_service
 # Maximum number of timeout retries when retries are configured as infinite.
 MAX_TIMEOUT_RETRIES_INFINITE = 5
 
+
 # Import BLE exceptions conditionally
 try:
     from bleak.exc import BleakDBusError, BleakError
@@ -85,6 +86,7 @@ logger = get_logger(name="Meshtastic")
 
 # Global variables for the Meshtastic connection and event loop management
 meshtastic_client = None
+meshtastic_iface = None  # BLE interface instance for process lifetime
 event_loop = None  # Will be set from main.py
 
 meshtastic_lock = (
@@ -93,7 +95,11 @@ meshtastic_lock = (
 
 reconnecting = False
 shutting_down = False
+
 reconnect_task = None  # To keep track of the reconnect task
+meshtastic_iface_lock = (
+    threading.Lock()
+)  # To prevent race conditions on BLE interface singleton creation
 
 # Subscription flags to prevent duplicate subscriptions
 subscribed_to_messages = False
@@ -489,7 +495,7 @@ def connect_meshtastic(
     Returns:
         The connected Meshtastic client instance on success, or `None` if a connection could not be established or shutdown is in progress.
     """
-    global meshtastic_client, shutting_down, reconnecting, config, matrix_rooms
+    global meshtastic_client, meshtastic_iface, shutting_down, reconnecting, config, matrix_rooms
     if shutting_down:
         logger.debug("Shutdown in progress. Not attempting to connect.")
         return None
@@ -627,14 +633,62 @@ def connect_meshtastic(
                 if ble_address:
                     logger.info(f"Connecting to BLE address {ble_address}")
 
-                    # Connect without progress indicator
-                    client = meshtastic.ble_interface.BLEInterface(
-                        address=ble_address,
-                        noProto=False,
-                        debugOut=None,
-                        noNodes=False,
-                        timeout=timeout,
-                    )
+                    iface = None
+                    with meshtastic_iface_lock:
+                        # If BLE address has changed, re-create the interface
+                        if (
+                            meshtastic_iface
+                            and getattr(meshtastic_iface, "address", None)
+                            != ble_address
+                        ):
+                            logger.info(
+                                "BLE address has changed. Re-creating BLE interface."
+                            )
+                            with contextlib.suppress(Exception):
+                                meshtastic_iface.close()
+                            meshtastic_iface = None
+
+                        if meshtastic_iface is None:
+                            # Create a single BLEInterface instance for process lifetime
+                            # Check if auto_reconnect parameter is supported (forked version)
+                            ble_init_sig = inspect.signature(
+                                meshtastic.ble_interface.BLEInterface.__init__
+                            )
+                            ble_kwargs = {
+                                "address": ble_address,
+                                "noProto": False,
+                                "debugOut": None,
+                                "noNodes": False,
+                                "timeout": timeout,
+                            }
+
+                            # Add auto_reconnect only if supported (forked version)
+                            if "auto_reconnect" in ble_init_sig.parameters:
+                                ble_kwargs["auto_reconnect"] = False
+                                logger.debug(
+                                    "Using forked meshtastic library with auto_reconnect support"
+                                )
+                            else:
+                                logger.debug("Using official meshtastic library")
+
+                            try:
+                                meshtastic_iface = (
+                                    meshtastic.ble_interface.BLEInterface(**ble_kwargs)
+                                )
+                            except Exception as e:
+                                # BLEInterface constructor failed - this is a critical error
+                                logger.exception(f"BLE interface creation failed: {e}")
+                                raise
+
+                        iface = meshtastic_iface
+
+                    # Connect outside singleton-creation lock to avoid blocking other threads
+                    # Official version connects automatically during init (no connect() method)
+                    # Forked version has separate connect() method that we need to call
+                    if iface is not None and hasattr(iface, "connect"):
+                        iface.connect()
+
+                    client = iface
                 else:
                     logger.error("No BLE address provided.")
                     return None
