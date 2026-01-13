@@ -46,6 +46,7 @@ from mmrelay.constants.network import (
     CONNECTION_TYPE_SERIAL,
     CONNECTION_TYPE_TCP,
     DEFAULT_BACKOFF_TIME,
+    DEFAULT_MESHTASTIC_OPERATION_TIMEOUT,
     DEFAULT_MESHTASTIC_TIMEOUT,
     ERRNO_BAD_FILE_DESCRIPTOR,
     INFINITE_RETRIES,
@@ -1372,7 +1373,7 @@ async def check_connection() -> None:
       - Backward compatibility: if "heartbeat_interval" exists directly under config["meshtastic"], that value is used.
     - BLE connections are excluded from periodic checks (Bleak provides real-time disconnect detection).
     - For non-BLE connections:
-      - Calls _get_device_metadata(client) in an executor; if metadata parsing fails, performs a fallback probe via client.getMyNodeInfo().
+      - Calls _get_device_metadata(client) in an executor with a 30-second timeout; if metadata parsing fails, performs a fallback probe via client.getMyNodeInfo() with the same timeout.
       - If both probes fail and no reconnection is currently in progress, calls on_lost_meshtastic_connection(...) to start a reconnection.
     No return value; side effect is scheduling/triggering reconnection when the device is unresponsive.
     """
@@ -1414,15 +1415,21 @@ async def check_connection() -> None:
             else:
                 try:
                     loop = asyncio.get_running_loop()
-                    # Use helper function to get device metadata, run in executor
-                    metadata = await loop.run_in_executor(
-                        None, _get_device_metadata, meshtastic_client
+                    # Use helper function to get device metadata, run in executor with timeout
+                    metadata = await asyncio.wait_for(
+                        loop.run_in_executor(
+                            None, _get_device_metadata, meshtastic_client
+                        ),
+                        timeout=DEFAULT_MESHTASTIC_OPERATION_TIMEOUT,
                     )
                     if not metadata["success"]:
                         # Fallback probe: device responding at all?
                         try:
-                            _ = await loop.run_in_executor(
-                                None, meshtastic_client.getMyNodeInfo
+                            _ = await asyncio.wait_for(
+                                loop.run_in_executor(
+                                    None, meshtastic_client.getMyNodeInfo
+                                ),
+                                timeout=DEFAULT_MESHTASTIC_OPERATION_TIMEOUT,
                             )
                         except Exception as probe_err:
                             raise Exception(
