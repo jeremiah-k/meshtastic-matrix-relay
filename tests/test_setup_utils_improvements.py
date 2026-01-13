@@ -35,8 +35,9 @@ class TestPatchCoverageImprovements(unittest.TestCase):
 
     def test_exception_handling_improvements(self):
         """
-        Verify that is_service_enabled gracefully handles subprocess.run raising OSError:
-        it should return False and emit a warning message (logging contains "Warning:").
+        Verify is_service_enabled returns False and logs a warning when subprocess.run raises an OSError.
+        
+        This test patches subprocess.run to raise OSError and asserts that is_service_enabled handles the exception by returning False and emitting a warning log containing "Failed to check service enabled status".
         """
         # Test is_service_enabled with OSError
         with patch("subprocess.run", side_effect=OSError("Test error")):

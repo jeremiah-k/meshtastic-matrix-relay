@@ -310,10 +310,10 @@ def msg_regenerate_credentials() -> str:
 
 def _create_ssl_context() -> ssl.SSLContext | None:
     """
-    Create an SSL context for Matrix client connections, preferring certifi's CA bundle when available.
-
+    Create an SSLContext for Matrix client connections, preferring certifi's CA bundle when available.
+    
     Returns:
-        ssl.SSLContext | None: An SSLContext that uses certifi's CA bundle when available or the system default; `None` if context creation fails.
+        An `ssl.SSLContext` that uses certifi's CA bundle when available or the system default; `None` if context creation fails.
     """
     try:
         if certifi:

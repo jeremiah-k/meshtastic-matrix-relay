@@ -371,10 +371,10 @@ class Plugin(BasePlugin):
     @property
     def description(self) -> str:
         """
-        Provide a short, human-readable description of the plugin for listings and help.
-
+        Provide a brief human-readable description of the plugin for listings and help.
+        
         Returns:
-            A one-line human-readable description of the plugin.
+            str: One-line description mentioning map generation and supported `zoom` and `size` options.
         """
         return (
             "Map of mesh radio nodes. Supports `zoom` and `size` options to customize"

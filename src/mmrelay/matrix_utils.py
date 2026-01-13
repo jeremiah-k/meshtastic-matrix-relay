@@ -501,13 +501,15 @@ def _normalize_bot_user_id(homeserver: str, bot_user_id: str | None) -> str | No
 
 def _get_msgs_to_keep_config(config_override: dict[str, Any] | None = None) -> int:
     """
-    Determine how many Meshtastic-Matrix message mappings to retain.
-
-    Prefers the new configuration key `database.msg_map.msgs_to_keep`; falls back to the legacy `db.msg_map.msgs_to_keep` and emits a deprecation warning if that legacy key is used. If no valid integer is configured, returns DEFAULT_MSGS_TO_KEEP. When provided, `config_override` is consulted instead of the module-level `config`.
+    Return the configured number of Meshtastic–Matrix message mappings to retain.
+    
+    Looks up `database.msg_map.msgs_to_keep` in the provided configuration (or the module-level config when none is provided), falls back to legacy `db.msg_map.msgs_to_keep` with a deprecation warning, and returns DEFAULT_MSGS_TO_KEEP when the value is missing or not an integer.
+    
     Parameters:
-        config_override (dict[str, Any] | None): Optional configuration dictionary to use in place of the module-level `config`.
+        config_override (dict[str, Any] | None): Optional config to consult instead of the module-level `config`.
+    
     Returns:
-        int: The configured number of message mappings to keep, or DEFAULT_MSGS_TO_KEEP if unspecified or invalid.
+        int: The configured number of mappings to keep, or DEFAULT_MSGS_TO_KEEP if unspecified or invalid.
     """
     global config
     effective_config = config_override if config_override is not None else config

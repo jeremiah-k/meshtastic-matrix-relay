@@ -532,14 +532,14 @@ class BasePlugin(ABC):
     ) -> RoomSendResponse | RoomSendError | None:
         """
         Send a message to a Matrix room, optionally converting Markdown to HTML.
-
+        
         Parameters:
-            room_id (str): Matrix room identifier.
-            message (str): Message content to send.
-            formatted (bool): If True, convert `message` from Markdown to HTML and send as formatted content; otherwise send plain text.
-
+            room_id: Matrix room identifier.
+            message: Message content to send.
+            formatted: If True, convert `message` from Markdown to HTML and include it as formatted content; otherwise send plain text only.
+        
         Returns:
-            RoomSendResponse | RoomSendError | None: The Matrix API response from room_send, or `None` if the Matrix client could not be obtained.
+            The Matrix client's `room_send` response (`RoomSendResponse` or `RoomSendError`), or `None` if the Matrix client could not be obtained.
         """
         from mmrelay.matrix_utils import connect_matrix
 
@@ -564,12 +564,12 @@ class BasePlugin(ABC):
 
     def get_mesh_commands(self) -> list[str]:
         """
-        Return the mesh/radio command names this plugin handles.
-
-        By default returns an empty list; subclasses should override to expose commands. Command names must be provided without a leading '!'.
-
+        List mesh/radio command names this plugin handles.
+        
+        Subclasses should override to expose commands. Command names must not include a leading '!'.
+        
         Returns:
-            list[str]: Command names (without a leading '!'); empty by default.
+            list[str]: Command names without a leading '!' (empty list by default).
         """
         return []
 

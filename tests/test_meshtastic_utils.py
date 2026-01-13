@@ -1490,12 +1490,12 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
 
         async def failing_coro():
             """
-            Raise ValueError("Test exception") when awaited.
-
-            Intended for tests: awaiting this coroutine always raises ValueError with the message "Test exception".
-
+            Coroutine that always raises ValueError with message "Test exception" when awaited.
+            
+            Intended for use in tests to simulate a coroutine that fails.
+            
             Raises:
-                ValueError: Always raised when the coroutine is awaited.
+                ValueError: Always raised when the coroutine is awaited with message "Test exception".
             """
             raise ValueError("Test exception")
 
@@ -1577,7 +1577,9 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
                 coro.close()
 
     def test_submit_coro_with_non_coroutine_actual(self):
-        """Test _submit_coro returns None for non-coroutine input (actual implementation)."""
+        """
+        Verify that _submit_coro returns None when given non-coroutine inputs such as strings, None, or integers.
+        """
         # Test with string input
         result = self.original_submit_coro("not a coroutine")
         self.assertIsNone(result)
@@ -1597,10 +1599,10 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
         class DummyAwaitable:
             def __await__(self):
                 """
-                Make the object awaitable; awaiting the instance yields its awaited result.
-
+                Allow awaiting this object to receive its awaited result.
+                
                 Returns:
-                    str: The value produced when awaiting the object, "awaitable-result".
+                    str: The string produced when awaiting the instance, "awaitable-result".
                 """
                 if False:
                     yield None
