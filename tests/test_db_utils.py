@@ -320,7 +320,7 @@ class TestDbUtils(unittest.TestCase):
         # Retrieve by matrix_event_id
         result = get_message_map_by_matrix_event_id(matrix_event_id)
         self.assertIsNotNone(result)
-        self.assertEqual(result[0], meshtastic_id)
+        self.assertEqual(result[0], str(meshtastic_id))
         self.assertEqual(result[1], matrix_room_id)
         self.assertEqual(result[2], meshtastic_text)
         self.assertEqual(result[3], meshtastic_meshnet)

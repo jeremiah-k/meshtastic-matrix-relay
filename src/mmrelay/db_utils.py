@@ -342,13 +342,38 @@ def initialize_database() -> None:
             "CREATE TABLE IF NOT EXISTS plugin_data (plugin_name TEXT, meshtastic_id TEXT, data TEXT, PRIMARY KEY (plugin_name, meshtastic_id))"
         )
         cursor.execute(
-            "CREATE TABLE IF NOT EXISTS message_map (meshtastic_id INTEGER, matrix_event_id TEXT PRIMARY KEY, matrix_room_id TEXT, meshtastic_text TEXT, meshtastic_meshnet TEXT)"
+            "CREATE TABLE IF NOT EXISTS message_map (meshtastic_id TEXT, matrix_event_id TEXT PRIMARY KEY, matrix_room_id TEXT, meshtastic_text TEXT, meshtastic_meshnet TEXT)"
         )
         # Attempt schema adjustments for upgrades
         try:
             cursor.execute("ALTER TABLE message_map ADD COLUMN meshtastic_meshnet TEXT")
         except sqlite3.OperationalError:
             pass
+
+        # Migrate legacy message_map schema where meshtastic_id used INTEGER affinity.
+        cursor.execute("PRAGMA table_info(message_map)")
+        columns = cursor.fetchall()
+        column_map = {column[1]: column for column in columns}
+        meshtastic_column = column_map.get("meshtastic_id")
+        meshnet_column = column_map.get("meshtastic_meshnet")
+        if meshtastic_column and str(meshtastic_column[2]).upper() != "TEXT":
+            cursor.execute("ALTER TABLE message_map RENAME TO message_map_legacy")
+            cursor.execute(
+                "CREATE TABLE message_map (meshtastic_id TEXT, matrix_event_id TEXT PRIMARY KEY, matrix_room_id TEXT, meshtastic_text TEXT, meshtastic_meshnet TEXT)"
+            )
+            if meshnet_column:
+                cursor.execute(
+                    "INSERT INTO message_map (meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) "
+                    "SELECT CAST(meshtastic_id AS TEXT), matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet "
+                    "FROM message_map_legacy"
+                )
+            else:
+                cursor.execute(
+                    "INSERT INTO message_map (meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) "
+                    "SELECT CAST(meshtastic_id AS TEXT), matrix_event_id, matrix_room_id, meshtastic_text, NULL "
+                    "FROM message_map_legacy"
+                )
+            cursor.execute("DROP TABLE message_map_legacy")
 
         try:
             cursor.execute(
