@@ -375,7 +375,7 @@ class TestDbUtils(unittest.TestCase):
             # Verify the kept entries are the most recent ones
             cursor.execute("SELECT meshtastic_id FROM message_map ORDER BY rowid")
             kept_ids = [row[0] for row in cursor.fetchall()]
-            self.assertEqual(kept_ids, [5, 6, 7, 8, 9])
+            self.assertEqual(kept_ids, ["5", "6", "7", "8", "9"])
 
     def test_database_manager_reuses_connection(self):
         """
