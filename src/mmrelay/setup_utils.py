@@ -13,12 +13,12 @@ import subprocess
 import sys
 from pathlib import Path
 
-# Import version from package
-import click
-
 from mmrelay.constants.database import PROGRESS_COMPLETE, PROGRESS_TOTAL_STEPS
 from mmrelay.log_utils import get_logger
 from mmrelay.tools import get_service_template_path
+
+# Import version from package
+
 
 # Resolve systemctl path dynamically with fallback
 SYSTEMCTL = shutil.which("systemctl") or "/usr/bin/systemctl"
@@ -114,10 +114,10 @@ def service_exists() -> bool:
 
 def log_service_commands() -> None:
     """Log the commands for controlling the systemd user service."""
-    click.echo("  systemctl --user start mmrelay.service    # Start the service")
-    click.echo("  systemctl --user stop mmrelay.service     # Stop the service")
-    click.echo("  systemctl --user restart mmrelay.service  # Restart the service")
-    click.echo("  systemctl --user status mmrelay.service   # Check service status")
+    print("  systemctl --user start mmrelay.service    # Start the service")
+    print("  systemctl --user stop mmrelay.service     # Stop the service")
+    print("  systemctl --user restart mmrelay.service  # Restart the service")
+    print("  systemctl --user status mmrelay.service   # Check service status")
 
 
 def wait_for_service_start() -> None:
