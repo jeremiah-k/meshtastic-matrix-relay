@@ -501,13 +501,13 @@ def _normalize_bot_user_id(homeserver: str, bot_user_id: str | None) -> str | No
 
 def _get_msgs_to_keep_config(config_override: dict[str, Any] | None = None) -> int:
     """
-    Return the configured number of Meshtastic–Matrix message mappings to retain.
-    
+    Return the configured number of Meshtastic-Matrix message mappings to retain.
+
     Looks up `database.msg_map.msgs_to_keep` in the provided configuration (or the module-level config when none is provided), falls back to legacy `db.msg_map.msgs_to_keep` with a deprecation warning, and returns DEFAULT_MSGS_TO_KEEP when the value is missing or not an integer.
-    
+
     Parameters:
         config_override (dict[str, Any] | None): Optional config to consult instead of the module-level `config`.
-    
+
     Returns:
         int: The configured number of mappings to keep, or DEFAULT_MSGS_TO_KEEP if unspecified or invalid.
     """

@@ -420,9 +420,9 @@ def initialize_database() -> None:
 def store_plugin_data(plugin_name: str, meshtastic_id: int | str, data: Any) -> None:
     """
     Store or update JSON-serializable plugin data for a given plugin and Meshtastic node.
-    
+
     The provided `data` is JSON-serialized and written to the `plugin_data` table keyed by `plugin_name` and the string form of `meshtastic_id`. If `data` is not JSON-serializable the function logs the error and does not write to the database.
-    
+
     Parameters:
         plugin_name (str): The name of the plugin.
         meshtastic_id (int | str): The Meshtastic node identifier; it is converted to a string for storage.
@@ -443,9 +443,9 @@ def store_plugin_data(plugin_name: str, meshtastic_id: int | str, data: Any) -> 
     def _store(cursor: sqlite3.Cursor) -> None:
         """
         Upserts JSON-serialized plugin data for a plugin and Meshtastic node using the provided DB cursor.
-        
+
         Uses `plugin_name`, `id_key`, and `payload` from the enclosing scope to insert a new row into `plugin_data` or update the existing row on conflict.
-        
+
         Parameters:
             cursor (sqlite3.Cursor): Open database cursor used to execute the insert/update statement.
         """
@@ -463,13 +463,12 @@ def store_plugin_data(plugin_name: str, meshtastic_id: int | str, data: Any) -> 
             plugin_name,
             meshtastic_id,
         )
-        return
 
 
 def delete_plugin_data(plugin_name: str, meshtastic_id: int | str) -> None:
     """
     Remove a plugin data entry for a Meshtastic node.
-    
+
     Parameters:
         plugin_name (str): Name of the plugin whose data should be deleted.
         meshtastic_id (int | str): Meshtastic node ID to delete data for; this value is converted to a string key for the database lookup.
@@ -480,7 +479,7 @@ def delete_plugin_data(plugin_name: str, meshtastic_id: int | str) -> None:
     def _delete(cursor: sqlite3.Cursor) -> None:
         """
         Delete the plugin_data row for the current plugin and node id using the provided database cursor.
-        
+
         Parameters:
             cursor (sqlite3.Cursor): Cursor on which the DELETE is executed; must be part of the caller's transaction.
         """
@@ -502,13 +501,13 @@ def delete_plugin_data(plugin_name: str, meshtastic_id: int | str) -> None:
 def get_plugin_data_for_node(plugin_name: str, meshtastic_id: int | str) -> Any:
     """
     Retrieve the JSON-serialized value for a plugin and Meshtastic node.
-    
+
     If no row exists or a database/decoding error occurs, returns an empty list as a fallback.
-    
+
     Parameters:
         plugin_name (str): Name of the plugin.
         meshtastic_id (int | str): Identifier of the Meshtastic node; will be normalized to a string.
-    
+
     Returns:
         Any: The deserialized JSON value (may be dict, list, scalar, etc.) for the given plugin and node, or `[]` if none is stored or on error.
     """
@@ -518,7 +517,7 @@ def get_plugin_data_for_node(plugin_name: str, meshtastic_id: int | str) -> Any:
     def _fetch(cursor: sqlite3.Cursor) -> tuple[Any, ...] | None:
         """
         Fetches the `data` column for the current plugin and node using the provided cursor.
-        
+
         Returns:
             `tuple[Any, ...]` with the `data` column for the matched row, or `None` if no row matches.
         """
@@ -592,10 +591,10 @@ def get_plugin_data(plugin_name: str) -> list[tuple[Any, ...]]:
 def get_longname(meshtastic_id: int | str) -> str | None:
     """
     Get the stored long name for a Meshtastic node.
-    
+
     Parameters:
         meshtastic_id (int | str): Meshtastic node identifier; numeric IDs are accepted and will be stringified.
-    
+
     Returns:
         str | None: The long name if present, `None` if no entry exists or a database error occurs.
     """
@@ -629,9 +628,9 @@ def get_longname(meshtastic_id: int | str) -> str | None:
 def save_longname(meshtastic_id: int | str, longname: str) -> None:
     """
     Persist the long display name for a Meshtastic node.
-    
+
     If an entry for the given node exists, its longname is updated; database errors are logged and suppressed.
-    
+
     Parameters:
         meshtastic_id (int | str): Identifier of the Meshtastic node; will be normalized to a string.
         longname (str): Full display name to store for the node.
@@ -642,7 +641,7 @@ def save_longname(meshtastic_id: int | str, longname: str) -> None:
     def _store(cursor: sqlite3.Cursor) -> None:
         """
         Insert or update the longname for a Meshtastic ID using the provided database cursor.
-        
+
         This executes an upsert into the `longnames` table for `id_key` with `longname` taken from the enclosing scope.
         """
         cursor.execute(
@@ -691,9 +690,9 @@ def get_shortname(meshtastic_id: int | str) -> str | None:
     def _fetch(cursor: sqlite3.Cursor) -> tuple[Any, ...] | None:
         """
         Retrieve the first shortname row for the normalized Meshtastic ID captured in the enclosing scope.
-        
+
         Executes a SELECT to fetch the `shortname` from the `shortnames` table for the normalized ID and returns the first matching row.
-        
+
         Returns:
             tuple[Any, ...] | None: The first row returned by the query (typically a single-item tuple containing the `shortname`), or `None` if no row is found.
         """
@@ -846,7 +845,7 @@ def get_message_map_by_meshtastic_id(
 ) -> tuple[str, str, str, str | None] | None:
     """
     Retrieve the Matrix event mapping for the given Meshtastic message ID.
-    
+
     Returns:
         tuple[str, str, str, str | None] | None: A tuple (matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) when a mapping exists, `None` otherwise.
     """
@@ -857,7 +856,7 @@ def get_message_map_by_meshtastic_id(
     def _fetch(cursor: sqlite3.Cursor) -> tuple[Any, ...] | None:
         """
         Retrieve the row from message_map for the current Meshtastic ID.
-        
+
         Returns:
             `(matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet)` tuple if a row exists, `None` otherwise.
         """
@@ -892,7 +891,7 @@ def get_message_map_by_meshtastic_id(
 
 def get_message_map_by_matrix_event_id(
     matrix_event_id: str,
-) -> tuple[int | str, str, str, str | None] | None:
+) -> tuple[str, str, str, str | None] | None:
     """
     Retrieve the mapping row for a given Matrix event ID.
 
@@ -900,7 +899,7 @@ def get_message_map_by_matrix_event_id(
         matrix_event_id (str): Matrix event ID to look up.
 
     Returns:
-        tuple[int | str, str, str, str | None] | None: A tuple (meshtastic_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) if a matching row exists, `None` otherwise.
+        tuple[str, str, str, str | None] | None: A tuple (meshtastic_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) if a matching row exists, `None` otherwise.
     """
     manager = _get_db_manager()
 
@@ -1019,7 +1018,7 @@ async def async_store_message_map(
 ) -> None:
     """
     Persist a mapping from a Meshtastic message or node to a Matrix event.
-    
+
     Parameters:
         meshtastic_id (int | str): Meshtastic message or node identifier.
         matrix_event_id (str): Matrix event ID to associate with the Meshtastic message.

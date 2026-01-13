@@ -294,12 +294,12 @@ def _validate_e2ee_dependencies() -> bool:
 def _validate_credentials_json(config_path: str) -> bool:
     """
     Check for a Matrix credentials.json next to the provided config and validate required fields.
-    
+
     Ensures a credentials.json can be located relative to config_path and that it contains non-empty string values for "homeserver", "access_token", "user_id", and "device_id". On validation failure this function prints a concise error message and guidance to run the authentication login flow.
-    
+
     Parameters:
         config_path (str): Path to the configuration file used to determine where to look for credentials.json.
-    
+
     Returns:
         bool: `True` if credentials.json exists and contains non-empty "homeserver", "access_token", "user_id", and "device_id"; `False` otherwise.
     """
@@ -331,8 +331,10 @@ def _validate_credentials_json(config_path: str) -> bool:
             return False
 
         return True
-    except (OSError, json.JSONDecodeError):
-        logger.exception("❌ Error: Could not validate credentials.json")
+    except (OSError, json.JSONDecodeError) as e:
+        logger.exception("Could not validate credentials.json")
+        print(f"❌ Error: Could not validate credentials.json: {e}", file=sys.stderr)
+        print(f"   {msg_run_auth_login()}", file=sys.stderr)
         return False
 
 
@@ -1764,28 +1766,37 @@ def handle_cli_commands(args: argparse.Namespace) -> int | None:
 
     # Handle --install-service
     if args_dict.get("install_service"):
-        logger.warning(get_deprecation_warning("--install-service"))
+        warning = get_deprecation_warning("--install-service")
+        print(warning, file=sys.stderr)
+        logger.warning(warning)
         try:
             from mmrelay.setup_utils import install_service
 
             return 0 if install_service() else 1
-        except ImportError:
+        except ImportError as e:
             logger.exception("Error importing setup utilities")
+            print(f"Error importing setup utilities: {e}", file=sys.stderr)
             return 1
 
     # Handle --generate-config
     if args_dict.get("generate_config"):
-        logger.warning(get_deprecation_warning("--generate-config"))
+        warning = get_deprecation_warning("--generate-config")
+        print(warning, file=sys.stderr)
+        logger.warning(warning)
         return 0 if generate_sample_config() else 1
 
     # Handle --check-config
     if args_dict.get("check_config"):
-        logger.warning(get_deprecation_warning("--check-config"))
+        warning = get_deprecation_warning("--check-config")
+        print(warning, file=sys.stderr)
+        logger.warning(warning)
         return 0 if check_config(args) else 1
 
     # Handle --auth
     if args_dict.get("auth"):
-        logger.warning(get_deprecation_warning("--auth"))
+        warning = get_deprecation_warning("--auth")
+        print(warning, file=sys.stderr)
+        logger.warning(warning)
         return handle_auth_command(args)
 
     # No commands were handled
@@ -1795,9 +1806,9 @@ def handle_cli_commands(args: argparse.Namespace) -> int | None:
 def generate_sample_config() -> bool:
     """
     Generate a sample configuration file at the highest-priority config path when no configuration exists.
-    
+
     Attempts to copy the bundled sample_config.yaml into the first candidate config path. If the packaged resource is unavailable, falls back to reading the sample from importlib.resources, several standard filesystem locations, and finally writes a minimal built-in template as a last resort. When a file is created, the function will attempt to apply secure owner-only permissions on Unix-like systems. If a config file already exists at any candidate path, no file is created.
-    
+
     Returns:
         True if a sample configuration file was created, False if no file was created (because a config already existed or an error occurred).
     """

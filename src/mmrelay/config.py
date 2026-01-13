@@ -775,13 +775,13 @@ def set_config(module: Any, passed_config: dict[str, Any]) -> dict[str, Any]:
 def load_config(config_file: str | None = None, args: Any = None) -> dict[str, Any]:
     """
     Load the application configuration from a YAML file or from environment variables.
-    
+
     If `config_file` is provided and readable, that file is used; otherwise candidate locations from `get_config_paths(args)` are searched in order and the first readable YAML file is loaded. Empty or null YAML content is treated as an empty dictionary. Environment-derived overrides are merged into the loaded configuration. The function updates the module-level `relay_config` and `config_path` to reflect the resulting configuration source.
-    
+
     Parameters:
         config_file (str | None): Path to a specific YAML configuration file to load. If `None`, candidate paths from `get_config_paths(args)` are used.
         args: Parsed command-line arguments forwarded to `get_config_paths()` to influence search order.
-    
+
     Returns:
         dict: The resulting configuration dictionary. Returns an empty dict if no configuration is found or a file read/parse error occurs.
     """
@@ -838,9 +838,12 @@ def load_config(config_file: str | None = None, args: Any = None) -> dict[str, A
         return relay_config
     else:
         logger.error("No configuration found in files or environment variables.")
-        from mmrelay.cli_utils import msg_suggest_generate_config
-
-        logger.error(msg_suggest_generate_config())
+        try:
+            from mmrelay.cli_utils import msg_suggest_generate_config
+        except ImportError:
+            logger.debug("Could not import CLI suggestion helpers", exc_info=True)
+        else:
+            logger.error(msg_suggest_generate_config())
         return {}
 
 
@@ -955,26 +958,32 @@ def get_meshtastic_config_value(
 ) -> Any:
     """
     Retrieve a value from the `meshtastic` section of a configuration mapping.
-    
+
     If the `meshtastic` section or the requested key is missing, returns `default` unless `required` is True, in which case an error is logged and a KeyError is raised.
-    
+
     Parameters:
         config (dict): Configuration mapping that may contain a `meshtastic` section.
         key (str): Key to look up within the `meshtastic` section.
         default: Value to return when the key is absent and `required` is False.
         required (bool): If True, a missing key causes a KeyError to be raised and an error to be logged.
-    
+
     Returns:
         The value of `meshtastic.<key>`, or `default` if the key is missing and `required` is False.
-    
+
     Raises:
         KeyError: If `required` is True and the requested key is missing.
     """
+    section = config.get("meshtastic", {}) if isinstance(config, dict) else {}
+    if not isinstance(section, dict):
+        section = {}
     try:
-        return config["meshtastic"][key]
+        return section[key]
     except KeyError:
         if required:
-            from mmrelay.cli_utils import msg_suggest_check_config
+            try:
+                from mmrelay.cli_utils import msg_suggest_check_config
+            except ImportError:
+                msg_suggest_check_config = lambda: ""  # type: ignore[assignment]
 
             logger.error(
                 f"Missing required configuration: meshtastic.{key}\n"

@@ -130,10 +130,10 @@ def _submit_coro(
         async def _await_wrapper(awaitable: Any) -> Any:
             """
             Await an awaitable and return its result.
-            
+
             Parameters:
                 awaitable (Any): A coroutine, Future, or other awaitable to be awaited.
-            
+
             Returns:
                 Any: The value produced by awaiting `awaitable`.
             """
@@ -526,6 +526,8 @@ def connect_meshtastic(
                 meshtastic_client.close()
             except Exception as e:
                 logger.warning(f"Error closing previous connection: {e}")
+            if meshtastic_client is meshtastic_iface:
+                meshtastic_iface = None
             meshtastic_client = None
 
         # Check if config is available
@@ -838,7 +840,7 @@ def on_lost_meshtastic_connection(
     Parameters:
         detection_source (str): Identifier for where or how the loss was detected; used in log messages.
     """
-    global meshtastic_client, reconnecting, shutting_down, event_loop, reconnect_task
+    global meshtastic_client, meshtastic_iface, reconnecting, shutting_down, event_loop, reconnect_task
     with meshtastic_lock:
         if shutting_down:
             logger.debug("Shutdown in progress. Not attempting to reconnect.")
@@ -862,6 +864,8 @@ def on_lost_meshtastic_connection(
                     logger.warning(f"Error closing Meshtastic client: {e}")
             except Exception as e:
                 logger.warning(f"Error closing Meshtastic client: {e}")
+            if meshtastic_client is meshtastic_iface:
+                meshtastic_iface = None
         meshtastic_client = None
 
         if event_loop and not event_loop.is_closed():
@@ -1368,14 +1372,14 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
 async def check_connection() -> None:
     """
     Periodically verify the Meshtastic connection and trigger a reconnect when the device appears unresponsive.
-    
+
     Checks run until the module-level `shutting_down` flag is True. Behavior:
     - Controlled by config["meshtastic"]["health_check"]:
       - `enabled` (bool, default True) — enable or disable checks.
       - `heartbeat_interval` (int, seconds, default 60) — interval between checks. For backward compatibility, a top-level `heartbeat_interval` under `config["meshtastic"]` is supported.
     - BLE connections are excluded from periodic checks because BLE libraries provide real-time disconnect detection.
     - For non-BLE connections, attempts a metadata probe (via _get_device_metadata) and, if parsing fails, a fallback probe using `client.getMyNodeInfo()`. If both probes fail and no reconnection is already in progress, calls on_lost_meshtastic_connection(...) to initiate reconnection.
-    
+
     No return value; side effects are logging and scheduling/triggering reconnection when the device is unresponsive.
     """
     global meshtastic_client, shutting_down, config
@@ -1535,5 +1539,5 @@ if __name__ == "__main__":
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     event_loop = loop  # Set the event loop for use in callbacks
-    loop.create_task(check_connection())
+    _check_connection_task = loop.create_task(check_connection())
     loop.run_forever()

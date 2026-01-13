@@ -311,7 +311,7 @@ def msg_regenerate_credentials() -> str:
 def _create_ssl_context() -> ssl.SSLContext | None:
     """
     Create an SSLContext for Matrix client connections, preferring certifi's CA bundle when available.
-    
+
     Returns:
         An `ssl.SSLContext` that uses certifi's CA bundle when available or the system default; `None` if context creation fails.
     """
@@ -320,14 +320,15 @@ def _create_ssl_context() -> ssl.SSLContext | None:
             return ssl.create_default_context(cafile=certifi.where())
         else:
             return ssl.create_default_context()
-    except (ssl.SSLError, OSError, ValueError) as e:
+    except (ssl.SSLError, OSError, ValueError):
         logger.warning(
-            f"Failed to create certifi-backed SSL context, falling back to system default: {e}"
+            "Failed to create certifi-backed SSL context, falling back to system default",
+            exc_info=True,
         )
         try:
             return ssl.create_default_context()
-        except (ssl.SSLError, OSError, ValueError) as fallback_e:
-            logger.error(f"Failed to create system default SSL context: {fallback_e}")
+        except (ssl.SSLError, OSError, ValueError):
+            logger.error("Failed to create system default SSL context", exc_info=True)
             return None
 
 
